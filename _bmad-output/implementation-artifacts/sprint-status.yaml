@@ -1,0 +1,153 @@
+# generated: 2026-05-15
+# last_updated: 2026-05-15
+# project: Zanshin
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-15
+last_updated: 2026-05-15
+project: Zanshin
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 1: Workspace & Build Foundation
+  epic-1: backlog
+  1-1-initialize-cargo-workspace-and-create-empty-crate-skeletons: backlog
+  1-2-initialize-flutter-macos-package-with-dart-hooks-wiring: backlog
+  1-3-pin-rust-toolchain-and-document-flutter-dart-pins: backlog
+  1-4-author-makefile-toml-with-build-test-codegen-targets: backlog
+  1-5-configure-cbindgen-and-ffigen-with-committed-outputs: backlog
+  1-6-add-cargo-deny-and-pana-license-compliance-gates: backlog
+  1-7-configure-workspace-level-lint-format-and-cargo-hygiene: backlog
+  1-8-create-schemas-directory-with-versioning-readme: backlog
+  1-9-github-actions-ci-workflow-with-full-quality-gate: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: zanshin-jj Adapter & Read Path
+  epic-2: backlog
+  2-1-generate-test-fixture-repos-via-cargo-xtask-gen-fixture: backlog
+  2-2-define-nfr-p-1-sub-budget-allocation: backlog
+  2-3-implement-repo-rs-open-init-clone: backlog
+  2-4-implement-status-rs-working-copy-status: backlog
+  2-5-implement-revset-rs-revset-resolution: backlog
+  2-6-implement-change-rs-change-metadata-read: backlog
+  2-7-implement-op-log-rs-operation-log-read: backlog
+  2-8-implement-bookmarks-rs-list-bookmarks-read-only: backlog
+  2-9-implement-remotes-rs-list-remotes-read-only: backlog
+  2-10-document-and-lock-the-public-api-surface-fr-jj-16-invariant: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: zanshin-ffi & Watcher (Keystone)
+  epic-3: backlog
+  3-1-ffi-core-envelope-error-codes-panic-catch: backlog
+  3-2-handle-module-ffi-strings-zanshin-ffi-version: backlog
+  3-3-tracing-init-with-rotating-file-sink: backlog
+  3-4-read-path-ffi-wrappers-zanshin-repo-zanshin-status-zanshin-log-etc: backlog
+  3-5-watcher-subsystem-with-notify-debouncer-full: backlog
+  3-6-nativecallable-listener-dispatch-events-progress-callbacks: backlog
+  3-7-watchman-availability-check-api: backlog
+  3-8-diagnostics-api: backlog
+  3-9-dart-worker-isolate-bootstrap-isolate-spawn-ports-correlation: backlog
+  3-10-end-to-end-watcher-test-filesystem-mutation-dart-callback: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: zanshin-graph — DAG Lane Assignment
+  epic-4: backlog
+  4-1-lane-assignment-algorithm-lane-rs: backlog
+  4-2-json-output-graph-v1-schema-json: backlog
+  4-3-full-lane-cache-cache-rs: backlog
+  4-4-render-slice-api-slice-rs: backlog
+  4-5-10k-commit-performance-test: backlog
+  4-6-ffi-wrapper-zanshin-ffi-src-graph-rs: backlog
+  4-7-deferred-p2-checkpoint-caching-for-very-large-repos: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: zanshin-diff — Word-Diff + Syntax Highlight
+  epic-5: backlog
+  5-1-line-level-hunks-via-jj-lib-hunks-rs: backlog
+  5-2-word-level-diff-via-imara-diff-histogram: backlog
+  5-3-tree-sitter-highlight-integration-highlight-rs: backlog
+  5-4-bundle-kern-set-9-grammars-grammars-rs: backlog
+  5-5-json-output-diff-v1-schema-json: backlog
+  5-6-diff-between-two-revisions-api: backlog
+  5-7-5k-line-performance-test: backlog
+  5-8-ffi-wrapper-zanshin-ffi-src-diff-rs: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Write Path & extern "C" Mutation Exposure
+  epic-6: backlog
+  6-1-p0-essentials-mutations-mutate-rs-describe-new-edit-abandon: backlog
+  6-2-op-log-undo-p0: backlog
+  6-3-conflict-ops-conflict-rs: backlog
+  6-4-remote-ops-with-progress-callbacks-fetch-push: backlog
+  6-5-ffi-mutation-surface-zanshin-ffi-src-repo-rs-write-extensions: backlog
+  6-6-schemas-change-v1-schema-json-extension-for-mutations: backlog
+  6-7-op-log-visibility-test-nfr-r-2: backlog
+  6-8-deferred-0-2-advanced-mutations-split-squash-rebase-fr-jj-10b: backlog
+  6-9-deferred-0-2-bookmark-crud-fr-jj-11: backlog
+  6-10-deferred-p1-settings-read-write-fr-jj-15: backlog
+  6-11-deferred-p2-rare-mutations-duplicate-restore-backout-fr-jj-10c: backlog
+  6-12-deferred-p2-op-restore-op-diff-fr-jj-14b: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: zanshin-mcp Binary
+  epic-7: backlog
+  7-1-binary-scaffold-rmcp-stdio-init-repo-selection-repo-cwd-walk-up: backlog
+  7-2-file-only-tracing-in-all-build-modes-ar-p-5-mcp: backlog
+  7-3-read-tools-status-log-show-diff-op-log-bookmarks-remotes: backlog
+  7-4-write-tools-describe-new-edit-abandon-undo-fetch-push-etc: backlog
+  7-5-llm-quality-tool-descriptions-parameter-docs-usage-examples: backlog
+  7-6-bundle-zanshin-mcp-into-zanshin-app: backlog
+  7-7-standalone-cli-usability: backlog
+  7-8-same-repo-concurrency-test-gui-mcp-fr-mcp-9-fr-rx-3: backlog
+  7-9-mcp-tester-smoke-run-integration: backlog
+  7-10-structured-mcp-error-responses-nfr-r-4: backlog
+  7-11-deferred-0-2-mcp-resources-surface-fr-mcp-6: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Distribution & Release Engineering
+  epic-8: backlog
+  8-1-codesigning-infrastructure-env-var-contract: backlog
+  8-2-cargo-make-sign-and-cargo-make-notarize-targets: backlog
+  8-3-notarytool-integration-stapled-receipt: backlog
+  8-4-sparkle-appcast-generation-eddsa-signing: backlog
+  8-5-github-pages-hosting-for-appcast-xml: backlog
+  8-6-update-check-privacy-user-agent-only-fr-dr-4-nfr-priv-3: backlog
+  8-7-cargo-make-release-orchestration: backlog
+  8-8-github-releases-automation-release-yml: backlog
+  8-9-reproducibility-ci-reproducibility-yml-fr-bo-8: backlog
+  8-10-docs-release-process-md-ar-g-6: backlog
+  8-11-deferred-post-0-1-homebrew-cask-fr-dr-6: backlog
+  epic-8-retrospective: optional
