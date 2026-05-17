@@ -1,0 +1,23 @@
+name: zanshin
+description: Flutter macOS shell for the Zanshin JJ VCS GUI.
+publish_to: 'none'
+
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.0-104.0.dev
+  flutter: ^3.44.0-1.0.pre-573 # Flutter main channel, needed for multi window support
+
+dependencies:
+  flutter:
+    sdk: flutter
+  hooks: ^1.0.3
+  native_toolchain_rust: 1.0.4
+
+dev_dependencies:
+  ffigen: 20.1.1
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:

@@ -10,7 +10,11 @@ authors.workspace = true
 rust-version.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+# WHY: native_toolchain_rust 1.0.4 hard-requires both staticlib and cdylib
+# (crate_info_validator.dart:29 enforces `['staticlib', 'cdylib'].every(types.contains)`).
+# The cdylib is the actual FFI boundary; the staticlib is a tool-mandated artefact
+# with no in-tree consumer. Revisit if upstream relaxes the constraint.
+crate-type = ["staticlib", "cdylib"]
 name = "zanshin_ffi"
 
 [dependencies]

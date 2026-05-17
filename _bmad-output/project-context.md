@@ -22,8 +22,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ## Technology Stack & Versions
 
 **Toolchain (systemwide installs — NO FVM, NO rustup overrides per-project):**
-- Flutter `3.41.9`
-- Dart `3.11.5`
+- Flutter `main` channel (≥ `3.44.0-1.0.pre-573`) — main is required for the multi-window
+  surface that the Flutter UI (Ralph's separate work) targets. Stable-channel pins are
+  not viable until multi-window support lands on a stable release; revisit then.
+- Dart `main` channel (≥ `3.13.0-104.0.dev`) — bundled with Flutter main; track moves
+  in lockstep.
 - Rust `1.95.0` (pinned via `rust-toolchain.toml`)
 
 **Rust workspace (5 lib crates + 1 bin + xtask):**
@@ -43,7 +46,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `ffigen` `20.1.1` (dev_dependency)
 - `hooks` (Dart Hooks runtime)
 - `json_schema` (test-only)
-- `package:flutter_lints` + selected `package:very_good_analysis` rules
+- `package:flutter_lints` + a hand-curated rule set in `app/analysis_options.yaml`
+  (no `very_good_analysis` dependency — rules are listed inline)
 - ~~`pana`~~ — license-gate deferred to release phase
 
 **Build & distribution:**
@@ -95,8 +99,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 **Dart:**
 - Strict mode is implicit (Dart 3.x). Sound null safety always on.
-- `analysis_options.yaml` extends `package:flutter_lints` + selected `very_good_analysis`
-  rules. `dart format` enforced in CI.
+- `analysis_options.yaml` extends `package:flutter_lints` + a hand-curated set of rules
+  (no `very_good_analysis` dependency). `dart format` enforced in CI.
 - `dart:ffi` boundary lives ONLY in `app/lib/src/ffi/`. No `dart:ffi` imports elsewhere
   in `lib/`.
 - Async: use `Future`/`Stream` plus the single long-running worker isolate (AD-4).
@@ -156,7 +160,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   ffigen chain is deliberately manual to avoid version-churn pain.
 
 **`zanshin-ffi` — single cdylib boundary:**
-- `crate-type = ["cdylib"]` lives only in `crates/zanshin-ffi/Cargo.toml`.
+- `crate-type = ["staticlib", "cdylib"]` lives only in `crates/zanshin-ffi/Cargo.toml`.
+  The `cdylib` is the actual FFI boundary; the `staticlib` is hard-required by
+  `native_toolchain_rust` 1.0.4 (`crate_info_validator.dart:29`) and has no
+  in-tree consumer. Documented with a `# WHY:` comment at the declaration.
 - Module layout: `lib.rs` (init, panic handler, `zanshin_ffi_version`),
   `envelope.rs` (JSON envelope), `handle.rs` (`Box<T>` ↔ `*mut T`, panic-catch
   wrapper), `ffi_strings.rs` (CString in/out), then one file per noun
@@ -340,7 +347,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 **Linter / formatter enforcement:**
 - `rustfmt.toml`: `max_width = 100`. `cargo fmt --check` in CI.
-- `analysis_options.yaml`: `package:flutter_lints` + selected `very_good_analysis`
+- `analysis_options.yaml`: `package:flutter_lints` + hand-curated rules (no `very_good_analysis`)
   rules. `dart format --set-exit-if-changed` in CI.
 - See Language-Specific Rules § Rust for the Clippy refactor-not-suppress rule.
 

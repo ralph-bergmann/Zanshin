@@ -14,20 +14,14 @@ _bmad/config.toml
 _bmad/config.user.toml
 _bmad/custom/*.user.toml
 
-# Claude Code BMad skills (installed by BMad, not project code)
-.claude/skills/bmad-*/
-.claude
+# Claude Code
+.claude/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
 
 # Rust
 target/
-
-# Dart / Flutter (app/ lands in Story 1.2)
-app/build/
-app/.dart_tool/
-app/.flutter-plugins*
-.dart_tool/
-
-# Editor / OS
-*.swp
-.DS_Store
-._*

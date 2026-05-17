@@ -872,11 +872,11 @@ So that AR-P-8 and AR-P-9 are mechanically enforced and CI catches style violati
 **Then** it exits 0
 **And** no `pedantic` suppression is needed at this stage (empty crates trigger nothing).
 
-**Given** `app/analysis_options.yaml`
+**Given** `app/analysis_options.yaml` (landed in Story 1.2 — code-review 2026-05-17 accepted forward-pull)
 **When** inspected
 **Then** it `include`s `package:flutter_lints/flutter.yaml`
-**And** adds selected `package:very_good_analysis` rules (e.g., `always_declare_return_types`, `avoid_dynamic_calls`, `prefer_const_constructors`)
-**And** explicitly opts out of UI-centric lints that would conflict with `app/`'s minimal-bootstrap scope.
+**And** carries the hand-curated rule set already committed in Story 1.2 (no `very_good_analysis` dependency; rules listed inline)
+**And** Story 1.7 verifies the lints still pass against the by-then-grown code base and confirms `flutter_lints: ^6.0.0` is pinned in `app/pubspec.yaml`. Authoring the rule set itself is no longer Story 1.7 scope.
 
 **Given** `dart analyze` is run in `app/`
 **When** invoked against the empty `lib/main.dart` (with the SizedBox.shrink stub)
