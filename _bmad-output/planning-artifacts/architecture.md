@@ -36,17 +36,18 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 **Non-Functional Requirements — architecturally load-bearing:**
 
-- **Performance budgets (numeric, hard):**
+- **Performance budgets (design targets — soft while WIP, no CI enforcement):**
   - Repo open with full lane-cache @ 10k commits: < 2s (NFR-P-1)
   - `zanshin-graph` full lane-cache: < 1s (sub-budget of NFR-P-1)
   - `zanshin-diff` JSON output @ 5k-line file: < 500ms (NFR-P-3)
   - Watcher `op_heads` → Dart callback: < 100ms (NFR-P-4 / FR-RX-1)
   - FFI handle create/destroy: < 1ms (NFR-P-5) — validates long-running-worker pattern
   - External edit → Watchman → jj snapshot → callback: < 500ms (NFR-P-6 / FR-RX-2)
+
+  Budgets inform algorithm choice (e.g., `imara-diff` Histogram over `similar`); they are not enforced by CI perf-gates in the WIP phase.
 - **No telemetry. Ever.** (NFR 5.3) — excludes Sentry/Crashlytics/Firebase/etc. Update check is the only outbound call; User-Agent only.
-- **Licensing gate:** Apache-2.0 project; permissive-only dependencies. CI fails on GPL/AGPL/LGPL/SSPL. Enforced by `cargo-deny` (Rust) + `pana` (Dart).
-- **Reproducible builds:** byte-identical artefacts across machines (modulo codesignature). Verified by a two-build CI diff (FR-BO-8).
-- **FFI contract stability:** post-1.0, breaking `extern "C"` changes require a major bump. jj-lib churn is absorbed inside `zanshin-jj` (FR-JJ-16 — architectural invariant).
+- **Licensing posture:** Apache-2.0 project; permissive-only dependencies. `cargo-deny` runs `advisories` + `bans` checks (security backstop). License-gate (`cargo-deny licenses`) and `pana` are deferred to the release phase.
+- **FFI contract stability (post-1.0, aspirational):** once 1.0 ships, breaking `extern "C"` changes will require a major bump. While WIP (0.x), breaking changes are allowed — schemas, error codes, and FFI signatures may evolve without `_v2` suffixes; callers update. jj-lib churn is absorbed inside `zanshin-jj` (FR-JJ-16 — architectural invariant).
 - **No data loss tolerance:** all mutations go through jj-lib via `zanshin-jj`. No shelling to `jj` CLI. No string-parsing of CLI output.
 
 **Scale & Complexity:**
@@ -55,7 +56,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - Domain complexity: low (developer tooling, single-user, no multi-tenancy, no compliance regime beyond Apple notarization).
 - Technical complexity: high (FFI lifecycle management, native async bridging via `NativeCallable.listener`, OS integration via Watchman through jj, codesign/notarize pipeline, jj-lib pre-1.0 absorption layer).
 - Greenfield; no migration constraints.
-- Production-grade from day one (no MVP tier — explicit non-goal).
+- Code-quality production-grade from day one; scope/release-readiness is treated as WIP (release infrastructure deferred — see Section 4.7 deferred box in PRD). No "MVP shortcut" framing — every line of code that ships meets the project's quality bar; not every release-grade artefact ships yet.
 - Architectural components: ~8 logical components (5 Rust libraries, 1 Rust binary, 1 Dart bootstrap, build/distribution pipeline).
 
 ### Technical Constraints & Dependencies
@@ -89,7 +90,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - No UX terminology decisions, no a11y work, no i18n.
 - No Windows / Linux builds.
 - No Git-only repo support (jj-init required; jj's Git backend is fine).
-- No MVP / "good enough for now" tier. No telemetry. No third-party analytics SDKs.
+- No "good enough for now" code quality. (Scope is WIP — see code-quality vs. release-readiness clarification above.) No telemetry. No third-party analytics SDKs.
 
 ### Cross-Cutting Concerns Identified
 
@@ -99,11 +100,8 @@ These concerns span multiple components and will be explicitly decided in later 
 2. **Aggregator re-export discipline** — how `zanshin-ffi` re-exports internal crates' `extern "C"` APIs (single namespace? per-crate prefix? wrapper layer for FFI-only types?).
 3. **Watcher reactivity end-to-end** — recovery from FS disturbances (FR-RX-4), event coalescing, channel backpressure, ordering guarantees for `op_heads` vs `working_copy/checkout` events.
 4. **Same-repo concurrency model** — GUI + MCP server + external CLI simultaneously; filesystem mutation is the notification channel; no IPC; no locking choreography (FR-MCP-9, FR-RX-3).
-5. **Performance budget allocation** — NFR-P-1 (< 2s repo-open) decomposes into jj-lib repo open + lane-cache compute (< 1s sub-budget) + op-log read + bootstrap; needs explicit allocation per crate.
-6. **License compliance pipeline** — `cargo-deny` config (forbidden licenses + advisory checks) + Dart `pana` integration + CI gate that fails the build on any violation.
-7. **Codesign / notarization boundary** — which artefacts get signed in what order (cdylib → embedded `zanshin-mcp` → `.app` bundle → stapled receipt → appcast signature).
-8. **Reproducibility boundary** — sources of build non-determinism (build timestamps, path mappings, dependency hashes, codegen output) and how each is neutralized.
-9. **Diagnostics & local-only logging** — the no-telemetry constraint forces a self-service diagnostics API (FR-FFI: structured JSON of versions + OS + repo summary) and a local crash log location (`~/Library/Logs/Zanshin/`).
+5. **License compliance posture** — `cargo-deny` config for `advisories` + `bans` only in WIP. Full license-gate (`cargo-deny licenses` + Dart `pana`) is deferred to the release phase.
+6. **Diagnostics & local-only logging** — the no-telemetry constraint forces a self-service diagnostics API (`extern "C"` returns version-string + log-path; full structured-JSON diagnostics deferred) and a local crash log location (`~/Library/Logs/Zanshin/`).
 
 ## Starter Template Evaluation
 
@@ -126,7 +124,7 @@ These concerns span multiple components and will be explicitly decided in later 
 **Rationale:**
 
 1. No existing starter matches the Zanshin composition (macOS-only Flutter shell + multi-crate Cargo workspace + `zanshin-ffi` aggregator cdylib + `zanshin-mcp` binary + `cbindgen`/`ffigen` toolchain + `cargo-make` orchestration + codesign/notarize/Sparkle pipeline). Adapting any of them would leave nothing of the original.
-2. Production-grade-from-day-one (explicit non-goal of MVP tier) is incompatible with starter cruft we would need to remove (demo widgets, alternative build paths, mobile-target boilerplate).
+2. Code-quality production-grade from day one is incompatible with starter cruft we would need to remove (demo widgets, alternative build paths, mobile-target boilerplate).
 3. Flutter UI is explicitly out of scope for this architecture; a Flutter starter would force UI decisions (theming, navigation, state management) that belong in Ralph's separate UI work.
 4. Vanilla CLI commands plus a hand-maintained workspace `Cargo.toml` produce a smaller, clearer, more reviewable scaffold than any generator output.
 5. Epic A (Workspace & Build Foundation) executes this scaffolding explicitly — a starter would be redundant to and inconsistent with Epic A.
@@ -206,15 +204,13 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Rationale:** Minimal overhead; matches the worker-isolate concurrency model (PRD §3.1). `NativeFinalizer` is belt-and-suspenders against leaks during development.
 
-### AD-3: JSON Schema Versioning
+### AD-3: JSON Schemas as Wire Contract
 
-**Decision:** Every top-level JSON object emitted across the FFI boundary carries a `"schema_version": "<major>.<minor>"` field.
+**Decision:** JSON Schema files at `schemas/*.schema.json` are the source of truth for the FFI wire format. Both Rust tests (`jsonschema` crate) and Dart tests (`json_schema` package) validate fixtures against the committed schemas — schema validation in every FFI-JSON test is mandatory (correctness backstop, not versioning).
 
-- **Additive changes** (new optional field): minor bump (`1.0` → `1.1`). Same FFI function continues to work; old consumers ignore new fields.
-- **Breaking changes** (renamed/removed/retyped fields): new FFI function with `_v2` suffix (e.g., `zanshin_get_status_v2`). Old function stays callable until next major release.
-- **JSON Schema files committed** at `schemas/*.schema.json`. Both Rust tests (via `jsonschema` crate) and Dart tests (via `json_schema`) validate fixtures against the committed schemas.
+**WIP scope (0.x):** Breaking changes are allowed. Schemas are updated in place; the old shape is deleted; callers update in the same PR. No `schema_version` field on emitted JSON. No `_v2`-suffix discipline on FFI functions when shapes change. Post-1.0 stability policy is open and will be revisited.
 
-**Rationale:** AI agents reading the codebase can determine field optionality from the schema files (single source of truth). The `_v2` suffix discipline prevents accidental silent breakage at the wire level.
+**Rationale:** AI agents reading the codebase determine field shape from the schema files (single source of truth). Schema-validation in tests catches encoder/decoder drift at the boundary — this stays. The versioning *machinery* (parallel `v1`/`v2`, in-wire `schema_version`, FFI `_v2` suffixes) is release-grade scaffolding that does not earn its keep while the API is still moving.
 
 ### AD-4: Worker Isolate Command Protocol
 
@@ -250,17 +246,18 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Decision:**
 - **Versioning:** workspace-wide single version via `[workspace.package] version = "0.1.0"` in the root `Cargo.toml`. All five lib crates and the `zanshin-mcp` binary move together.
-- **External SemVer commitment** (post-1.0) is on the **`extern "C"` ABI of `zanshin-ffi`** and the **MCP tool surface of `zanshin-mcp`** — not on internal crate APIs.
+- **WIP stability (0.x):** breaking changes are allowed across the `extern "C"` ABI of `zanshin-ffi`, the MCP tool surface, and JSON schemas. Callers update in the same PR. No `_v2`-suffix discipline.
+- **Post-1.0 stability:** open. The intent is that `extern "C"` ABI and MCP tool surface become the external SemVer contract once 1.0 ships, but the exact policy is deferred and will be revisited.
 - **Crates.io publishing:** none in 0.x. Apache-2.0 license at the repo level covers reuse by source. Post-1.0, `zanshin-jj` may be published as a standalone crate for other jj-GUI builders — opt-in, not a 0.1 deliverable.
-- **JSON schemas:** committed at `schemas/*.schema.json`. Both Rust and Dart test suites validate fixtures against them. Same versioning as AD-3.
+- **JSON schemas:** committed at `schemas/*.schema.json`. Both Rust and Dart test suites validate fixtures against them (correctness backstop — see AD-3).
 
-**Rationale:** Internal crate version-skew has no benefit for a single-team mono-repo. The external contract (FFI ABI + MCP tools) is the only stability boundary that matters to users. Deferring crates.io publishing keeps the scope tight for 0.1.
+**Rationale:** Internal crate version-skew has no benefit for a single-team mono-repo. While WIP, locking the FFI/MCP/schema surface against breaking change would be premature — they're still discovering their shape.
 
 ### Decision Impact Analysis
 
 **Implementation sequence (across epics):**
-1. **Epic A** establishes workspace, versioning (AD-7), schema-dir convention (AD-3, AD-7), `cargo-deny` config.
-2. **Epic C** is where AD-1 (error envelope), AD-2 (handle lifetime), AD-3 (schema versioning), AD-4 (command protocol), AD-5 (watcher debouncer) all land in code form.
+1. **Epic A** establishes workspace, versioning (AD-7), schema-dir convention (AD-3), `cargo-deny advisories + bans` config.
+2. **Epic C** is where AD-1 (error envelope), AD-2 (handle lifetime), AD-3 (schemas as wire contract), AD-4 (command protocol), AD-5 (watcher debouncer) all land in code form.
 3. **Epic G** applies AD-6 (MCP process model).
 4. Other epics consume these patterns; nothing in B/D/E/F/H re-decides them.
 
@@ -277,8 +274,8 @@ These rules exist to prevent divergence when multiple AI implementation agents t
 ### P-1: FFI Function Naming
 - All `extern "C"` symbols use prefix `zanshin_` + snake_case.
 - Pattern: `zanshin_<noun>_<verb>` (e.g., `zanshin_repo_open`, `zanshin_diff_compute`).
-- Versioned breaking changes append `_v2`, `_v3`.
 - Constructor/destructor pairs share the noun (every `_open` has a matching `_close`).
+- **WIP (0.x):** breaking changes are in-place — rename / change signature / delete; update all callers in the same PR. No `_v2`/`_v3` suffixes while WIP. (Suffix discipline is the deferred post-1.0 stability policy.)
 
 ### P-2: JSON Field Naming
 - `snake_case` in all JSON across the FFI boundary and in committed schema files.
@@ -336,9 +333,9 @@ hook/build.dart  # native_toolchain_rust hook
 - **Fixture repos** committed at `test-fixtures/repos/` as pre-initialized `.jj/` trees (compressed `.tar.zst`):
   `tiny-3-commits/`, `medium-1k-commits/`, `large-10k-commits/`.
 - Fixtures are built by an `xtask gen-fixture` once and committed — never re-built at test time.
-- Watcher tests assert event arrival within `<200ms` (NFR-P-4 has a `<100ms` budget; the test bound absorbs CI noise).
+- Watcher tests assert functional arrival of events (filesystem mutation → callback fires). Latency assertions are deferred while WIP — NFR-P-4 (`<100ms`) remains a soft target.
 - Dart tests boot a real worker isolate; the isolate boundary is not mocked.
-- JSON outputs: `insta` snapshot tests in Rust; same JSON validated against committed schemas in both Rust + Dart test suites.
+- JSON outputs: `insta` snapshot tests in Rust; same JSON validated against committed schemas in both Rust + Dart test suites (correctness backstop — see AD-3).
 
 ### P-8: Cargo.toml Hygiene
 - Shared deps via `[workspace.dependencies]`; member crates use `serde = { workspace = true }`.
@@ -361,7 +358,7 @@ These mistakes would be silently corrosive — they pass review by individual lo
 - **Don't introduce FFI abstractions** (`flutter_rust_bridge`, `flutter_ffi_plugin`, etc.). Decided per the `flutter_rust_bridge` rejection.
 - **Don't add upload-on-error logging frameworks** (Sentry, Crashlytics, Firebase, datadog-agent). NFR 5.3.
 - **Don't add GPL/AGPL/LGPL/SSPL dependencies.** `cargo-deny` will fail CI; run `cargo deny check licenses` locally before adding deps.
-- **Don't regenerate `bindings.dart` or `zanshin_ffi.h` outside `cargo make codegen`.** CI drift-check catches it.
+- **Don't regenerate `bindings.dart` or `zanshin_ffi.h` outside `cargo make codegen`.** The CI drift-check (`cargo make verify-codegen`) is deferred while WIP; the discipline rule still applies during development.
 - **Don't use `Isolate.run` for repeated work.** Send the work as a command on the existing worker bus.
 - **Don't invent alternative JSON envelope shapes.** Faillible functions use the AD-1 envelope; infallible functions return plain types.
 - **Don't add per-call locking** (`Arc<Mutex<T>>`, `RwLock`, etc.) around handles. Concurrency model is single-threaded Rust-side (AD-2).
@@ -461,9 +458,8 @@ zanshin/                                # repo root, Cargo workspace
 │           ├── main.rs                 # dispatch
 │           └── tasks/
 │               ├── gen_fixture.rs      # P-7 fixture generation
-│               ├── verify_codegen.rs   # P-6 CI drift check
-│               ├── appcast.rs          # Sparkle appcast generation
-│               └── reproducibility.rs  # FR-BO-8 two-build diff
+│               └── verify_codegen.rs   # P-6 codegen drift check (manual in WIP)
+│               # appcast.rs, reproducibility.rs — deferred (release phase)
 │
 ├── app/                                # Flutter macOS package (minimal bootstrap)
 │   ├── pubspec.yaml                    # name: zanshin
@@ -494,24 +490,24 @@ zanshin/                                # repo root, Cargo workspace
 │   │   │   ├── AppDelegate.swift
 │   │   │   ├── Info.plist              # entitlements, hardened-runtime flags
 │   │   │   └── Resources/
-│   │   │       └── zanshin-mcp         # ← copied by `cargo make build` from target/
-│   │   ├── Sparkle/                    # Sparkle framework integration
+│   │   │       └── zanshin-mcp         # ← copied by `cargo make build` from target/ (release phase; WIP runs standalone CLI)
 │   │   └── Podfile
+│   │   # Sparkle/ — deferred (release phase)
 │   ├── test/                           # P-7 Dart unit tests
 │   │   ├── ffi/
 │   │   ├── worker/
 │   │   └── domain/
 │   └── integration_test/               # E2E worker tests (real isolate, real cdylib)
 │
-├── schemas/                            # AD-3, P-2 — single source of truth
-│   ├── README.md                       # versioning rules ("_v2" suffix discipline)
-│   ├── envelope.v1.schema.json         # AD-1 result envelope
-│   ├── status.v1.schema.json
-│   ├── change.v1.schema.json
-│   ├── op_log.v1.schema.json
-│   ├── diff.v1.schema.json
-│   ├── graph.v1.schema.json
-│   └── progress.v1.schema.json         # progress callback events
+├── schemas/                            # AD-3, P-2 — single source of truth for wire format
+│   ├── README.md                       # how schemas are used in tests + WIP-policy on breaking changes
+│   ├── envelope.schema.json            # AD-1 result envelope
+│   ├── status.schema.json
+│   ├── change.schema.json
+│   ├── op_log.schema.json
+│   ├── diff.schema.json
+│   ├── graph.schema.json
+│   └── progress.schema.json            # progress callback events
 │
 ├── test-fixtures/                      # P-7 — committed, not generated at test time
 │   ├── README.md                       # regenerate via `cargo xtask gen-fixture`
@@ -534,21 +530,12 @@ zanshin/                                # repo root, Cargo workspace
 │
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml                      # build + test + clippy + cargo-deny + pana + verify-codegen
-│   │   ├── release.yml                 # tag → cargo make release
-│   │   └── reproducibility.yml         # FR-BO-8 two-build diff
+│   │   └── ci.yml                      # build + clippy + fmt + test + dart analyze (release.yml + reproducibility.yml deferred)
 │   └── ISSUE_TEMPLATE/
 │       ├── bug.md                      # asks for diagnostics-API output
 │       └── feature.md
 │
-├── ci/
-│   └── codesign/
-│       ├── README.md                   # env-var contract (no secrets committed)
-│       └── notarize.sh                 # notarytool wrapper
-│
-├── sparkle/
-│   ├── appcast.xml                     # template / generated by xtask
-│   └── ed25519_pub.pem                 # public signing key (private in CI secret)
+# ci/codesign/, sparkle/ — deferred (release phase, alongside release.yml)
 │
 ├── target/                             # gitignored — cargo output
 └── app/build/                          # gitignored — flutter output
@@ -576,13 +563,15 @@ zanshin/                                # repo root, Cargo workspace
 | Worker isolate ↔ FFI | direct dart:ffi calls | C ABI | bindings.dart |
 | Same-repo concurrency | Filesystem only — no IPC, no locks | `op_heads` mutation is the notification | FR-MCP-9, FR-RX-3 |
 
-**Stability boundaries** (post-1.0 SemVer commitment):
+**Stability boundaries** (WIP — 0.x — breaking changes allowed; post-1.0 policy open):
 
-1. `extern "C"` ABI of `zanshin-ffi` (the C-header surface).
-2. MCP tool surface of `zanshin-mcp` (tool names + parameter schemas + return shapes).
-3. JSON schemas in `schemas/*.v1.schema.json` (additive evolution; breaking → `_v2`).
+1. `extern "C"` ABI of `zanshin-ffi` (the C-header surface) — evolves freely in WIP; callers update.
+2. MCP tool surface of `zanshin-mcp` (tool names + parameter schemas + return shapes) — same.
+3. JSON schemas in `schemas/*.schema.json` — updated in place; no `_v2` discipline, no in-wire `schema_version`.
 
-Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON test fixtures, log formats) is **not** part of the stable contract.
+Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON test fixtures, log formats) is **not** part of any contract.
+
+Post-1.0 the intent is that the three surfaces above become the external SemVer contract, but the exact policy is deferred and will be revisited when the API stabilises.
 
 ### Requirements → Structure Mapping (Epic Level)
 
@@ -595,7 +584,7 @@ Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON
 | E — `zanshin-diff` | `crates/zanshin-diff/src/*.rs`, `crates/zanshin-ffi/src/diff.rs` | `schemas/diff.v1.schema.json`, `test-fixtures/diffs/` |
 | F — Write Path & FFI Exposure | `crates/zanshin-jj/src/{mutate,conflict}.rs`, `crates/zanshin-ffi/src/repo.rs` (write surface) | `schemas/change.v1.schema.json` |
 | G — `zanshin-mcp` Binary | `crates/zanshin-mcp/src/**` | `app/macos/Runner/Resources/zanshin-mcp` (bundled via `cargo make build`) |
-| H — Distribution & Release | `.github/workflows/{release,reproducibility}.yml`, `ci/codesign/*`, `sparkle/*`, `crates/xtask/src/tasks/{appcast,reproducibility}.rs`, `app/macos/Runner/Info.plist` | Whole repo (codesign covers all binaries) |
+| H — Build Output (WIP) | `Makefile.toml` build target — produces unsigned `.app` for local development. **Deferred to release phase:** codesigning, notarization, Sparkle appcast, GitHub Releases automation, reproducibility CI, Homebrew Cask. | `app/macos/Runner/Info.plist` |
 
 ### File Organization Patterns (recap)
 
@@ -609,24 +598,16 @@ Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON
 
 **Daily development:**
 - `cargo make build` from repo root → produces `app/build/macos/Build/Products/Release/Zanshin.app` (unsigned, dev mode).
-- `cargo make test` → Rust tests + Dart tests + license compliance + codegen drift check.
-- `cargo make codegen` → regenerates `zanshin_ffi.h` and `bindings.dart`; commit the diff in the same PR as the FFI change.
+- `cargo make test` → Rust tests + Dart tests + `cargo-deny advisories + bans`.
+- `cargo make codegen` → regenerates `zanshin_ffi.h` and `bindings.dart`; commit the diff in the same PR as the FFI change (drift-gate deferred — discipline rule applies).
 - For UI work (Ralph's domain): `cd app && flutter run -d macos` after a successful `cargo make build`.
 
-**Release flow (Epic H):**
-- Tag push → `.github/workflows/release.yml` runs `cargo make release`:
-  1. `cargo build --release` (all crates + bin)
-  2. `flutter build macos --release`
-  3. Copy `target/release/zanshin-mcp` → `app/macos/Runner/Resources/`
-  4. Codesign all binaries (cdylib, mcp-binary, app)
-  5. Notarize via `notarytool`
-  6. Staple receipt
-  7. Generate Sparkle appcast entry via `cargo xtask appcast`
-  8. Upload to GitHub Release
+**Release flow (deferred):**
+Codesigning, notarization (`notarytool`), Sparkle appcast generation, GitHub Releases automation, and Homebrew Cask are deferred to the release phase. While WIP, the build output is the unsigned `.app` only.
 
-**CI gating:**
-- `ci.yml` blocks merge on: clippy/dart-analyze warnings, test failures, cargo-deny/pana license violations, codegen drift.
-- `reproducibility.yml` (separate workflow, weekly + tag): two builds, diff `.app` contents (modulo signature blob).
+**CI gating (WIP-minimal):**
+- `ci.yml` blocks merge on: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --workspace`, `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed`, `flutter test`, `cargo deny check advisories bans`.
+- Deferred until release phase: `cargo make verify-codegen` (drift check), `cargo deny check licenses`, `pana`, `mcp-tester` smoke, performance budget tests, reproducibility two-build diff.
 
 ## Architecture Validation Results
 
@@ -662,15 +643,16 @@ Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON
 **Critical:** none. Epic A scaffolding can begin.
 
 **Important (resolve during Epic A/C):**
-1. **NFR-P-1 sub-budget allocation:** the <2s repo-open target needs explicit numeric breakdown per sub-component (jj-lib open, lane-cache, op-log, bootstrap). Define in Epic A or B first story.
-2. **Diagnostics-API schema:** `schemas/diagnostics.v1.schema.json` should exist alongside the other v1 schemas to back the FFI diagnostics function (NFR 5.7).
-3. **MCP-binary tracing sink discipline:** P-5 says "no console output in release builds". For `zanshin-mcp` this must be **stricter** — file sink only in **all** build modes, never stderr/stdout, because the binary is spawned via stdio by MCP hosts and stray output corrupts the protocol. Tighten P-5 wording or specify in Epic G.
+1. **MCP-binary tracing sink discipline:** P-5 says "no console output in release builds". For `zanshin-mcp` this must be **stricter** — file sink only in **all** build modes, never stderr/stdout, because the binary is spawned via stdio by MCP hosts and stray output corrupts the protocol. Tighten P-5 wording or specify in Epic G.
 
 **Minor (refinements during natural epic touchpoints):**
-4. Schema-file inventory expansion (`bookmarks.v1`, `remotes.v1`, `revset.v1`, `settings.v1`, `diagnostics.v1`, `watchman_state.v1`) — maintained PR-style like `rust-error-codes.md`.
-5. Watcher initialization ordering: explicit "watcher starts before `zanshin_repo_open` returns".
-6. `docs/release-process.md` must document Sparkle EdDSA private-key handling in CI + local sign-tests (Epic H).
-7. FR-MCP-5 LLM-quality gate enforcement: add `mcp-tester` smoke run as Epic G acceptance criterion.
+2. Watcher initialization ordering: explicit "watcher starts before `zanshin_repo_open` returns".
+3. MCP-binary minimal smoke: a `zanshin-mcp` "boots + lists tools" smoke test, so the MCP code path doesn't silently rot. Full `mcp-tester` LLM-quality gate is deferred (release phase).
+
+**Deferred to release phase (out of WIP):**
+- NFR-P-1 sub-budget allocation (numeric breakdown of the <2s repo-open target).
+- Schema-file inventory expansion (`bookmarks`, `remotes`, `revset`, `settings`, `diagnostics`, `watchman_state`).
+- `docs/release-process.md` (Sparkle EdDSA key handling, codesign/notarize flow).
 
 ### Architecture Completeness Checklist
 
@@ -706,13 +688,14 @@ Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON
 
 **Key Strengths:**
 - Pre-validated decisions from Research/PRD/Memory cleanly translated to AD/P rules — no decision fatigue for AI implementation agents.
-- Dual stability boundary: FFI ABI **and** JSON schemas are independently versioned — additive schema changes don't break ABI.
-- Reproducibility-first: committed codegen + CI drift check + reproducibility workflow give production-grade build determinism from day one.
+- Code-quality production-grade from day one: Clippy pedantic, structured errors, `NativeFinalizer` on every handle, schema-validated JSON in tests, no shelling to `jj` CLI. The WIP framing applies to scope/release-readiness, not to per-line code quality.
 - Filesystem-as-IPC: eliminates a whole family of potential race conditions between GUI / MCP / CLI consumers.
 
-**Areas for Future Enhancement (post-0.1):**
-- Sub-budget allocation for NFR-P-1 (Important Gap #1).
-- Schema coverage expansion (Minor Gap #4).
+**Areas for Future Enhancement (release phase or post-0.1):**
+- Sub-budget allocation for NFR-P-1.
+- Schema-versioning machinery (`schema_version` field, `_v2`-suffix discipline) once the wire format stabilises.
+- Codesigning, notarization, Sparkle auto-update, GitHub Releases automation, reproducibility CI (Section 4.7 of PRD — deferred).
+- Schema coverage expansion (bookmarks, remotes, revset, settings, diagnostics, watchman_state).
 - `zanshin-jj` as a crates.io-publishable library (AD-7 opt-in, post-1.0).
 - AST-level diff in `zanshin-diff` (deferred per OD).
 - MCP Resources Surface (FR-MCP-6, deferred to 0.2 per OD-10).
@@ -726,4 +709,4 @@ Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON
 - Refer to this document for all architectural questions. New decisions emerging during implementation are recorded as ADRs in `docs/adr/`.
 
 **First Implementation Priority:**
-Epic A — Workspace & Build Foundation. First story: workspace scaffolding via the Initialization Sequence in the "Starter Template Evaluation" section, plus `Makefile.toml` with `build`, `test`, `codegen`, `verify-codegen` targets and CI workflow `ci.yml` running the full gate (clippy + dart-analyze + cargo-deny + pana + verify-codegen + tests). Once green, Epic A is done.
+Epic A — Workspace & Build Foundation. First story: workspace scaffolding via the Initialization Sequence in the "Starter Template Evaluation" section, plus `Makefile.toml` with `build`, `test`, `codegen` targets and CI workflow `ci.yml` running the WIP-minimal gate (clippy + fmt + cargo test + dart analyze + dart format + flutter test + cargo deny advisories/bans). Once green, Epic A is done.

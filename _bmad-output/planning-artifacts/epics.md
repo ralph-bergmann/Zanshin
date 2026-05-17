@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-wip-scope-rework-2026-05-17']
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/architecture.md
@@ -7,16 +7,20 @@ inputDocuments:
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-scope: 'Rust workspace + FFI + MCP server + build/distribution (Flutter UI explicitly OUT OF SCOPE)'
+last_revised: '2026-05-17'
+scope: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI explicitly OUT OF SCOPE. Distribution/release pipeline DEFERRED — see PRD § 4.7.'
+posture: 'Code quality production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
 
 # Zanshin - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Zanshin, decomposing the requirements from the PRD and Architecture decisions into implementable stories.
+This document provides the WIP-scoped epic and story breakdown for Zanshin, decomposing the requirements from the PRD and Architecture decisions into implementable stories.
 
-**Scope reminder:** This breakdown covers only the Rust workspace, FFI surface, MCP server binary, build orchestration, distribution pipeline, and the *minimal* Dart-side bootstrap (worker isolate, command bus, FFI handle management). Flutter UI (widgets, navigation, theming, accessibility, i18n) is Ralph's separate work and explicitly OUT OF SCOPE.
+**Scope reminder:** This breakdown covers only the Rust workspace, FFI surface, MCP server binary, WIP build orchestration (producing an unsigned `.app` for local development), and the *minimal* Dart-side bootstrap (worker isolate, command bus, FFI handle management). Flutter UI (widgets, navigation, theming, accessibility, i18n) is Ralph's separate work and explicitly OUT OF SCOPE.
+
+**WIP-scope rework (2026-05-17):** This document was revised to reflect the two-axes clarification — code quality stays production-grade from day 1, scope/release-readiness is treated as WIP. ~70 stories → ~38 stories. Distribution/release pipeline (Epic 8) collapsed to a single "build unsigned `.app`" story; schema-versioning machinery, performance budget enforcement, license-gate, codegen drift CI-gate, and a number of polish/quality stories are deferred. Sections below tagged with **WIP-rework** notes indicate stories that were shrunk or refocused; deleted stories are entirely removed. See the `posture` field in the frontmatter for the underlying directive.
 
 ## Requirements Inventory
 
@@ -312,15 +316,17 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 ### Epic 1: Workspace & Build Foundation
 
-**Goal:** Establish a green Cargo workspace + minimal Flutter shell + complete build/codegen/lint/license toolchain so every downstream epic begins on a clean, reproducible foundation.
+**Goal:** Establish a green Cargo workspace + minimal Flutter shell + WIP build/codegen/lint toolchain so every downstream epic begins on a clean foundation.
 
-**User outcome:** A developer (Ralph or CI) can run `cargo make build` from a fresh clone and obtain a buildable (unsigned) `.app` skeleton; `cargo make test` runs the full quality gate (clippy + dart-analyze + cargo-deny + pana + codegen-drift + tests) and is green on empty bindings.
+**User outcome:** A developer (Ralph or CI) can run `cargo make build` from a fresh clone and obtain a buildable (unsigned) `.app` skeleton; `cargo make test` runs the WIP-minimal gate (clippy + fmt + cargo test + dart analyze + dart format + flutter test + `cargo deny check advisories bans`) and is green on empty bindings.
 
 **FRs covered:** FR-FFI-1 (cdylib skeleton + re-export wiring), FR-BO-1, FR-BO-2, FR-BO-5, FR-BO-6, FR-BO-7.
 
-**NFRs:** NFR-L-1, NFR-L-2, NFR-L-3, NFR-B-1, NFR-B-2, NFR-B-3.
+**NFRs:** NFR-L-1, NFR-L-2 (informal), NFR-B-1, NFR-B-2, NFR-B-3.
 
-**Additional requirements anchored here:** AR-AD-7 (workspace versioning), AR-AD-3 (`schemas/` directory + README with `_v2` discipline), AR-P-3 (module layout for all crates), AR-P-6 (codegen location), AR-P-8 (Cargo.toml hygiene), AR-P-9 (linter/formatter configs).
+**Additional requirements anchored here:** AR-AD-7 (workspace versioning), AR-AD-3 (`schemas/` directory; WIP wire-contract — no `_v2` discipline yet), AR-P-3 (module layout for all crates), AR-P-6 (codegen location; manual regen in WIP), AR-P-8 (Cargo.toml hygiene), AR-P-9 (linter/formatter configs).
+
+**WIP-rework:** Schemas-dir versioning README (Story 1.8), full license-gate + pana (Story 1.6 partially), and codegen-drift CI-gate (Story 1.5 partially) are deferred. CI workflow (Story 1.9) shrunk to the WIP-minimal gate.
 
 **Sequencing:** First epic. No predecessors.
 
@@ -330,13 +336,15 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 **Goal:** Build the anti-corruption-layer adapter over `jj-lib` with full read-side coverage, so the rest of the workspace and the MCP binary can query a jj repository without ever seeing `jj-lib` types directly.
 
-**User outcome:** A Rust caller (later `zanshin-ffi` and `zanshin-mcp`) can open/init/clone a repo, read working-copy status, resolve revsets, read change metadata and op-log, list bookmarks and remotes — all through `zanshin-jj`'s stable public API. Fixture repos (`tiny`, `medium`, `large`) committed and used in tests.
+**User outcome:** A Rust caller (later `zanshin-ffi` and `zanshin-mcp`) can open/init/clone a repo, read working-copy status, resolve revsets, read change metadata and op-log, list bookmarks and remotes — all through `zanshin-jj`'s public API. Fixture repos (`tiny`, `medium`) committed and used in tests.
 
 **FRs covered:** FR-JJ-1, FR-JJ-2, FR-JJ-3, FR-JJ-4, FR-JJ-5, FR-JJ-6, FR-JJ-7, FR-JJ-8, FR-JJ-9, FR-JJ-16.
 
-**NFRs:** Sub-budget breakdown for NFR-P-1 defined here (jj-lib open + op-log read shares).
+**NFRs:** None enforced in WIP (NFR-P-1 sub-budget allocation deferred).
 
-**Additional requirements anchored here:** AR-G-1 (NFR-P-1 sub-budget allocation), AR-AP-1 + AR-AP-2 enforcement (no shelling, no string-parsing). Fixture-generation via `cargo xtask gen-fixture` lives here (P-7).
+**Additional requirements anchored here:** AR-AP-1 + AR-AP-2 enforcement (no shelling, no string-parsing). Fixture-generation via `cargo xtask gen-fixture` lives here (P-7) — tiny + medium only in WIP.
+
+**WIP-rework:** Story 2.2 (NFR-P-1 sub-budget allocation) deleted. Story 2.1 shrunk (large fixture + determinism guarantees deferred). Story 2.10 shrunk to rustdoc on public API (no surface-lock gate — WIP allows breaking changes).
 
 **Sequencing:** After Epic 1.
 
@@ -344,15 +352,17 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 ### Epic 3: `zanshin-ffi` & Watcher (Keystone)
 
-**Goal:** Land the load-bearing FFI infrastructure — opaque handles, JSON envelope, error model, async event delivery, watcher subsystem, Watchman detection, diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`).
+**Goal:** Land the load-bearing FFI infrastructure — opaque handles, JSON envelope, error model, async event delivery, watcher subsystem, basic diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`).
 
-**User outcome:** A Dart caller in the worker isolate can open a repo handle through committed `bindings.dart`, receive JSON-structured read responses, subscribe to async event streams (op_heads change, external edit, progress), check Watchman availability, and pull diagnostics output. No Rust panic ever crosses the FFI boundary. The full watcher path (`.jj/repo/op_heads/heads/` → callback) fires within < 100ms.
+**User outcome:** A Dart caller in the worker isolate can open a repo handle through committed `bindings.dart`, receive JSON-structured read responses, subscribe to async event streams (op_heads change, external edit, progress), and pull basic diagnostics (version + log-path). No Rust panic ever crosses the FFI boundary. The functional watcher path (`.jj/repo/op_heads/heads/` → callback) is asserted; the `< 100ms` latency target is a soft design goal in WIP.
 
-**FRs covered:** FR-FFI-2, FR-FFI-3, FR-FFI-4, FR-FFI-5, FR-FFI-6, FR-FFI-7, FR-FFI-8, FR-FFI-9, FR-FFI-10, FR-RX-1, FR-RX-2, FR-RX-4.
+**FRs covered:** FR-FFI-2, FR-FFI-3, FR-FFI-4, FR-FFI-5, FR-FFI-6 (functional only, no latency assert), FR-FFI-8, FR-FFI-9, FR-FFI-10 (build-stamp; no compat negotiation), FR-RX-1 (functional), FR-RX-2 (functional), FR-RX-4.
 
-**NFRs:** NFR-P-4, NFR-P-5, NFR-P-6, NFR-R-3, NFR-S-1, NFR-S-2, NFR-S-3.
+**NFRs:** NFR-R-3, NFR-S-3. NFR-P-4, NFR-P-5, NFR-P-6 are soft targets (no CI enforcement). NFR-S-1, NFR-S-2 shrunk (basic diagnostics only).
 
-**Additional requirements anchored here:** AR-AD-1 (envelope), AR-AD-2 (handle lifetime), AR-AD-3 (first schemas: `envelope.v1`, `progress.v1`, `watchman_state.v1`, `diagnostics.v1`), AR-AD-4 (worker isolate command protocol), AR-AD-5 (debouncer + backpressure), AR-P-1 (FFI naming), AR-P-4 (error code taxonomy), AR-P-5 (tracing/logging), AR-G-2 (diagnostics schema), AR-G-5 (watcher init ordering).
+**Additional requirements anchored here:** AR-AD-1 (envelope — no `schema_version` field in WIP), AR-AD-2 (handle lifetime), AR-AD-3 (first schemas: `envelope.schema.json`, `progress.schema.json`), AR-AD-4 (worker isolate command protocol), AR-AD-5 (debouncer + backpressure), AR-P-1 (FFI naming), AR-P-4 (error code taxonomy), AR-P-5 (tracing/logging), AR-G-5 (watcher init ordering).
+
+**WIP-rework:** Story 3.7 (Watchman availability check, FR-FFI-7) deleted. Story 3.8 (diagnostics) shrunk to version-string + log-path. Story 3.3 (tracing) shrunk (rotation tests + log-cap removed). Story 3.10 latency-assertion removed; functional event-arrival assertion retained; a watcher-storm sub-test (drop-oldest under load) appended.
 
 **Sequencing:** After Epic 2. Blocks all downstream epics (4, 5, 6, 7) that consume the envelope/handle/worker patterns.
 
@@ -362,13 +372,15 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 **Goal:** Compute commit-graph lane assignments for arbitrary jj DAGs and expose them as render-ready JSON via the FFI surface.
 
-**User outcome:** A caller (FFI consumer or test) obtains a full lane-cache for a 10k-commit fixture in < 1s, then receives O(slice-size) render-slice responses for any row range. Cache is recomputed on repo-open and on every `op_heads` change.
+**User outcome:** A caller (FFI consumer or test) obtains lane data per request (computed on demand, in-memory) and receives a render-slice response (all lanes for the revset). An algorithmic-correctness test on a ~100-commit fixture catches dumb regressions cheaply.
 
-**FRs covered:** FR-GR-1, FR-GR-2, FR-GR-3, FR-GR-4, FR-GR-5. *Deferred (P2):* FR-GR-6 — story stub for checkpoint-caching, released post-0.1.
+**FRs covered:** FR-GR-1, FR-GR-2, FR-GR-4 (return-all-lanes form, no windowing). FR-GR-3 reduced to "compute on demand" — full persistent lane-cache with op_heads-invalidation is deferred. FR-GR-5 (perf budget) is a soft target only.
 
-**NFRs:** NFR-P-1 (sub-budget consumer), NFR-P-2.
+**NFRs:** None enforced in WIP (NFR-P-1 / NFR-P-2 are soft targets).
 
-**Additional requirements anchored here:** `schemas/graph.v1.schema.json`, `test-fixtures/repos/large-10k-commits.tar.zst` consumer.
+**Additional requirements anchored here:** `schemas/graph.schema.json` (no `.v1` infix in WIP).
+
+**WIP-rework:** Story 4.5 (10k-commit perf test) deleted — algorithmic-correctness test on ~100-commit fixture absorbed into Story 4.1. Story 4.7 (P2 checkpoint caching) deleted. Story 4.3 (full lane-cache) shrunk to on-demand in-memory. Story 4.4 (render-slice) shrunk to return-all-lanes-for-revset.
 
 **Sequencing:** After Epic 3. Parallelizable with Epics 5 and 6.
 
@@ -376,15 +388,17 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 ### Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
 
-**Goal:** Produce structured diff JSON (hunks → lines → segments) with word-level differentiation inside changed lines plus tree-sitter syntax classification, served via the FFI surface.
+**Goal:** Produce structured diff JSON (hunks → lines → segments) with word-level differentiation (`imara-diff` Histogram) inside changed lines plus tree-sitter syntax classification, served via the FFI surface.
 
-**User outcome:** A caller submits two revisions (or a change) and receives JSON output for a 5k-line file diff in < 500ms. Syntax classes attach to tokens for the Kern-Set 9 languages (Rust, Dart, TS/JS, Python, Markdown, TOML, YAML, JSON, HTML); unknown extensions fall back to plain text.
+**User outcome:** A caller submits two revisions (or a change) and receives JSON diff output. Syntax classes attach to tokens for an initial 3-grammar subset (Rust, Dart, Markdown); other extensions fall back to plain text. Remaining Kern-Set languages added on demand.
 
-**FRs covered:** FR-DF-1, FR-DF-2, FR-DF-3, FR-DF-4, FR-DF-5.
+**FRs covered:** FR-DF-1, FR-DF-2, FR-DF-3, FR-DF-4. FR-DF-5 shrunk to 3 grammars (rust, dart, markdown).
 
-**NFRs:** NFR-P-3.
+**NFRs:** None enforced in WIP (NFR-P-3 is a soft target).
 
-**Additional requirements anchored here:** `schemas/diff.v1.schema.json`, `test-fixtures/diffs/rust-5k-lines.*`.
+**Additional requirements anchored here:** `schemas/diff.schema.json` (no `.v1` infix in WIP).
+
+**WIP-rework:** Story 5.7 (5k-line perf test) deleted. Story 5.3 (tree-sitter integration) shrunk (fallback strategies + incremental highlighting deferred). Story 5.4 (grammars) shrunk from Kern-Set 9 to 3 grammars.
 
 **Sequencing:** After Epic 3. Parallelizable with Epics 4 and 6.
 
@@ -392,15 +406,19 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 ### Epic 6: Write Path & `extern "C"` Mutation Exposure
 
-**Goal:** Add the mutating side of `zanshin-jj` (describe/new/edit/abandon/undo as P0; split/squash/rebase/bookmark CRUD as P1; rare ops as P2) and expose them through `zanshin-ffi`. Includes remote operations (fetch/push) with progress callbacks and conflict-resolution hand-off.
+**Goal:** Add the WIP mutating subset of `zanshin-jj` (describe/new/edit/abandon, undo, fetch-with-progress) and expose it through `zanshin-ffi`. `git fetch` is the real consumer of the FR-FFI-8 progress-callback pattern in WIP.
 
-**User outcome:** A caller (Dart worker, MCP) can safely mutate a repo: every mutation is visible and reversible in `jj op log`, indistinguishable from a CLI-initiated one. Fetch/push report progress through the standard `NativeCallable.listener` channel.
+**User outcome:** A caller (Dart worker, MCP) can safely mutate a repo with the P0 subset: every mutation is visible in `jj op log`. `git fetch` reports progress through the `NativeCallable.listener` channel. A two-thread concurrent-write smoke is appended to the mutation tests (assertions originally planned for Story 7.8).
 
-**FRs covered:** FR-JJ-10a (P0), FR-JJ-12, FR-JJ-13, FR-JJ-14a (P0). *Deferred-story (P1, 0.2):* FR-JJ-10b, FR-JJ-11, FR-JJ-15. *Deferred-story (P2):* FR-JJ-10c, FR-JJ-14b.
+**FRs covered:** FR-JJ-10a (P0), FR-JJ-13a (P0 — fetch with progress), FR-JJ-14a (P0).
 
-**NFRs:** NFR-R-1 (no data loss), NFR-R-2 (every mutation visible in op log).
+**Deferred (WIP-rework):** FR-JJ-10b, FR-JJ-10c, FR-JJ-11, FR-JJ-12 (conflict ops), FR-JJ-13b (push), FR-JJ-14b, FR-JJ-15.
 
-**Additional requirements anchored here:** `schemas/change.v1.schema.json` extension, AR-AP-1 + AR-AP-2 re-asserted on the mutation surface.
+**NFRs:** NFR-R-1 (no data loss). NFR-R-2 (op-log visibility) is asserted as a code invariant, not as a dedicated test (Story 6.7 deleted).
+
+**Additional requirements anchored here:** `schemas/change.schema.json` extension (in-place edits; no `_v2` discipline in WIP), AR-AP-1 + AR-AP-2 re-asserted on the mutation surface.
+
+**WIP-rework:** Stories 6.3 (conflict ops), 6.7 (op-log visibility test), 6.8–6.12 (deferred advanced/rare mutations + bookmark CRUD + settings + op-restore) all deleted. Story 6.4 → renamed 6.4a, narrowed to `git fetch` with progress (push deferred). Story 6.1 description extended with the two-thread concurrent-write smoke (Szenario-1 from the dropped Story 7.8). Story 6.2 (undo) shrunk to a thin `jj op restore` wrapper. Story 6.6 (schema extension) shrunk (no versioning/migration/compat shims).
 
 **Sequencing:** After Epic 3. Parallelizable with Epics 4 and 5.
 
@@ -408,33 +426,39 @@ This document provides the complete epic and story breakdown for Zanshin, decomp
 
 ### Epic 7: `zanshin-mcp` Binary
 
-**Goal:** Build the standalone MCP server binary using `rmcp`, exposing read + write tools at LLM-quality description level, bundled into the macOS `.app` and usable as a standalone CLI for testing.
+**Goal:** Build the standalone MCP server binary using `rmcp`, exposing the WIP-subset read + write tools, usable as a standalone CLI.
 
-**User outcome:** An MCP host (Claude Desktop) spawns `zanshin-mcp --repo <path>` (or via CWD walk-up) over stdio and gets a working tool catalog: read tools (`status`, `log`, `show`, `diff`, `op_log`, `bookmarks`, `remotes`) and write tools (`describe`, `new`, `edit`, `abandon`, `split`, `squash`, `rebase`, `undo`, bookmark CRUD, `git fetch`, `git push`). Same-repo concurrency with the GUI/CLI is validated through the filesystem-watcher path. `mcp-tester` smoke run is green.
+**User outcome:** An MCP host (Claude Desktop) spawns `zanshin-mcp --repo <path>` (or via CWD walk-up) over stdio and gets a working tool catalog: read tools (`status`, `log`, `show`, `diff`, `op_log`, `bookmarks`, `remotes`) and the WIP write-tool subset (`describe`, `new`). Tool descriptions and parameter docs exist (basic). A minimal "boots + lists tools" smoke prevents code-path rot.
 
-**FRs covered:** FR-MCP-1, FR-MCP-2, FR-MCP-3, FR-MCP-4, FR-MCP-5, FR-MCP-7, FR-MCP-8, FR-MCP-9, FR-RX-3. *Deferred-story (P1, 0.2 per OD-10):* FR-MCP-6 (Resources surface).
+**FRs covered:** FR-MCP-1, FR-MCP-2, FR-MCP-3, FR-MCP-8, FR-MCP-9 (architectural — no dedicated concurrency test in WIP, see Epic 6 mutation smoke).
 
-**NFRs:** NFR-R-4 (structured MCP errors, never crash).
+**Deferred (WIP-rework):** FR-MCP-4 full surface (only `describe` + `new` in WIP), FR-MCP-5 LLM-quality + `mcp-tester` quality-gate (basic descriptions only), FR-MCP-6 (Resources surface, 0.2 per OD-10), FR-MCP-7 (bundling into Zanshin.app).
 
-**Additional requirements anchored here:** AR-AD-6 (process model), AR-P-5-MCP (file-only tracing in ALL build modes, never stderr/stdout), AR-G-7 (`mcp-tester` smoke as acceptance criterion).
+**NFRs:** NFR-R-4 (structured MCP errors, never crash) — basic mapping only.
+
+**Additional requirements anchored here:** AR-AD-6 (process model), AR-P-5-MCP (file-only tracing in ALL build modes, never stderr/stdout).
+
+**WIP-rework:** Stories 7.5 (LLM-quality + mcp-tester gate), 7.6 (bundle in Zanshin.app), 7.7 (standalone CLI usability polish), 7.8 (dedicated GUI+MCP concurrency test — assertions absorbed into Story 6.1), 7.11 (MCP Resources, deferred to 0.2) all deleted. Story 7.4 (write tools) shrunk to `describe` + `new`. Story 7.9 (mcp-tester smoke) shrunk to a "boots + lists tools" smoke. Story 7.10 (structured errors) shrunk (no taxonomy-stability tests).
 
 **Sequencing:** After Epic 6 (needs the write path) and Epic 2 (needs the read path). Can start as soon as Epics 2 and 6 are done.
 
 ---
 
-### Epic 8: Distribution & Release Engineering
+### Epic 8: Build Output (WIP)
 
-**Goal:** Wire the end-to-end release pipeline: codesign all binaries, notarize via `notarytool`, generate and sign the Sparkle appcast, publish to GitHub Releases, and verify cross-machine reproducibility.
+**Goal:** Produce an unsigned, unnotarized `.app` for local development as the WIP build output. The full release pipeline (codesigning, notarization, Sparkle auto-update, GitHub Releases automation, reproducibility CI, Homebrew Cask) is **deferred to the release phase** — see PRD § 4.7.
 
-**User outcome:** A `git tag v0.1.0 && git push --tags` triggers the release workflow: every binary (`.app`, embedded `zanshin-mcp`, `libzanshin_ffi.dylib`) is signed and notarized; the stapled `.app.zip` (+ optional `.dmg`) plus checksums and a signed appcast entry are published to GitHub Releases; users on prior versions receive the Sparkle update prompt. A separate weekly + tag-triggered CI job builds the same SHA on two machines and diffs the output to confirm reproducibility (modulo codesign blob). License-compliance gates block any GPL/AGPL/LGPL/SSPL dependency from ever landing.
+**User outcome:** `cargo make build` from a fresh clone produces `app/build/macos/Build/Products/Release/Zanshin.app` (unsigned, unnotarized, dev mode) that opens a test repo, exercises the FFI surface, and fires the watcher callback. No release pipeline, no distribution channel, no auto-update.
 
-**FRs covered:** FR-BO-3, FR-BO-4, FR-BO-8, FR-DR-1, FR-DR-2, FR-DR-3, FR-DR-4, FR-DR-5. *Deferred-story (P2, post-0.1 per OD-5):* FR-DR-6 (Homebrew Cask).
+**FRs covered (WIP):** FR-BO-1 reduced to "unsigned `.app`".
 
-**NFRs:** NFR-PRIV-3, NFR-DU-1, NFR-DU-2, NFR-DU-3, NFR-DU-4, NFR-B-4.
+**Deferred to release phase:** FR-BO-3 (sign/notarize targets), FR-BO-4 (release orchestration), FR-BO-8 (reproducibility), FR-DR-1 (codesigning), FR-DR-2 (notarization), FR-DR-3 (Sparkle appcast), FR-DR-4 (update-check privacy), FR-DR-5 (GitHub Releases automation), FR-DR-6 (Homebrew Cask). Plus: AR-G-6 (`docs/release-process.md`), NFR-PRIV-3, NFR-DU-1..4, NFR-B-4.
 
-**Additional requirements anchored here:** AR-G-6 (`docs/release-process.md` covers Sparkle EdDSA key handling).
+**NFRs in WIP:** None.
 
-**Sequencing:** Last epic. Can start as soon as Epic 1 is done (signing/notarize infrastructure can be built early), but full release-pipeline validation requires all artefacts (Epics 2–7) to exist.
+**WIP-rework:** Original Epic 8 (11 stories: codesign infra, sign/notarize targets, notarytool integration, Sparkle EdDSA appcast, GitHub Pages hosting, update-check privacy, release orchestration, GitHub Releases automation, reproducibility CI, release-process.md, Homebrew Cask) collapsed into one story (8.1) for the unsigned build. All 11 originals deleted.
+
+**Sequencing:** Concurrent with Epic 1 (just the build-target definition). No downstream blocking.
 
 ---
 
@@ -444,8 +468,10 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 
 - **NFR-R-1, NFR-R-2** — no data loss, every mutation visible/reversible in op log. Review gate in Epics 2, 6, 7.
 - **NFR-PRIV-1, NFR-PRIV-2, NFR-PRIV-4** — no telemetry, no third-party analytics SDKs. Code-review gate in every epic.
-- **NFR-ST-1, NFR-ST-2** — FFI-contract stability post-1.0. Inactive pre-1.0; review gate from 1.0 onward.
+- **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
+
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns.
 
 ---
 
@@ -701,6 +727,8 @@ So that every developer and CI runs the same single-command entry points, and FR
 
 ### Story 1.5: Configure `cbindgen` and `ffigen` with committed outputs
 
+> **WIP-rework (2026-05-17):** Keep `cargo make codegen` as the source-of-truth update path and committed `zanshin_ffi.h` + `bindings.dart`. **Drop the CI drift-gate AC** (`cargo make verify-codegen` as merge-blocking) — code-review enforces the discipline rule in WIP. The drift-gate returns in the release phase.
+
 As a developer wiring the FFI codegen chain,
 I want `cbindgen.toml` at the workspace root and `ffigen.yaml` at the `app/` root configured so `cargo make codegen` produces committed-quality output,
 So that the C header and Dart bindings are reproducible and AR-P-6 / FR-BO-6 are honoured.
@@ -756,7 +784,9 @@ So that the C header and Dart bindings are reproducible and AR-P-6 / FR-BO-6 are
 
 ---
 
-### Story 1.6: Add `cargo-deny` and `pana` license-compliance gates
+### Story 1.6: Add `cargo-deny` advisories + bans (security backstop)
+
+> **WIP-rework (2026-05-17):** Shrunk significantly. Keep `cargo deny check advisories bans` (security backstop — cheap, no license-list maintenance). **Drop** the full `cargo deny check licenses` configuration (`bans`/`sources`/`licenses` lists), **drop** `pana` integration entirely. License-compliance returns in the release phase. Eyeball every new dep's license at PR-review time meanwhile (permissive only — MIT, BSD-2/3, Apache-2.0, MPL-2.0, Unlicense, CC0).
 
 As a developer enforcing license discipline,
 I want `cargo-deny` configured at the workspace root and `pana` integrated for Dart-side license checks, both gating CI,
@@ -883,61 +913,15 @@ So that AR-P-8 and AR-P-9 are mechanically enforced and CI catches style violati
 
 ---
 
-### Story 1.8: Create `schemas/` directory with versioning README
+### Story 1.8: ~~Create `schemas/` directory with versioning README~~ — DELETED (WIP-rework 2026-05-17)
 
-As a developer establishing the JSON-schema contract,
-I want a `schemas/` directory at the workspace root with a README documenting the AR-AD-3 `_v2` versioning discipline,
-So that subsequent epics that produce JSON across the FFI boundary have a clear, documented location and convention for their schema files.
-
-**Acceptance Criteria:**
-
-**Given** the workspace root
-**When** `schemas/` is created
-**Then** the directory exists with one file: `schemas/README.md`.
-
-**Given** `schemas/README.md`
-**When** read
-**Then** it explains the AR-AD-3 versioning rules:
-- Every top-level JSON object emitted across the FFI boundary carries `"schema_version": "<major>.<minor>"`.
-- Additive changes (new optional field) bump the **minor** version (e.g., `1.0` → `1.1`); the same FFI function continues to work, old consumers ignore new fields.
-- Breaking changes (renamed/removed/retyped fields) require a **new FFI function** with `_v2` suffix (e.g., `zanshin_get_status_v2`); the old function continues to work until the next major release.
-- Schema files are committed at `schemas/<name>.v<major>.schema.json`.
-- Rust tests validate fixtures via the `jsonschema` crate; Dart tests validate via the `json_schema` package.
-
-**Given** the README
-**When** it lists the schemas planned for 0.1
-**Then** the list includes: `envelope.v1`, `progress.v1`, `watchman_state.v1`, `diagnostics.v1`, `status.v1`, `change.v1`, `op_log.v1`, `bookmarks.v1`, `remotes.v1`, `revset.v1`, `settings.v1`, `diff.v1`, `graph.v1`
-**And** each entry has a one-line description naming the producing crate and the FFI function that returns objects of that shape.
-
-**Given** the schema files do not exist yet at this stage
-**When** the README is read
-**Then** it explicitly states "Schema files are created on demand by the epics that produce JSON of that shape (Epic 3 lands envelope/progress/diagnostics; Epic 4 lands graph; Epic 5 lands diff; Epic 6 extends change; etc.)".
-
-**Given** the schemas/ directory is created
-**When** Epic 3 adds `envelope.v1.schema.json` later
-**Then** that file will follow JSON Schema Draft 2020-12 (or Draft-07 if tooling demands)
-**And** include `$id`, `$schema`, `title`, `description`, `type: object`, `required`, `properties`, `additionalProperties: false`.
-
-**Given** any future schema file
-**When** added in a later epic
-**Then** the README is updated PR-style: the new entry is added under "Inventory" with the FFI function reference
-**And** the PR description links to the new schema file.
-
-**Given** the `_v2` discipline
-**When** a future story breaks a schema (e.g., renames a field in `status.v1`)
-**Then** a new file `status.v2.schema.json` is created alongside `status.v1.schema.json` (the v1 stays for the old function)
-**And** the README adds a "Migration" section noting v1 → v2 mapping.
-
-**Edge case — Tooling parity:**
-
-**Given** the Rust `jsonschema` crate and the Dart `json_schema` package
-**When** their respective Draft version support differs
-**Then** the README pins the Draft version used (e.g., "Draft 2020-12") and notes any per-language workarounds
-**And** test suites in Epic 3+ assert that both Rust and Dart validation agree on every committed schema file.
+> **Why deleted:** WIP allows breaking schema changes — no `_v2`-suffix discipline, no in-wire `schema_version` field. The `schemas/` directory itself still exists (created on-demand by the epic that lands the first schema, Epic 3) and `schemas/README.md` is replaced by a short note: "schemas are the wire contract; breaking changes are in-place edits in WIP; both Rust (`jsonschema`) and Dart (`json_schema`) tests validate fixtures against them." Versioning machinery returns in the release phase.
 
 ---
 
-### Story 1.9: GitHub Actions CI workflow with full quality gate
+### Story 1.9: GitHub Actions CI workflow — WIP-minimal gate
+
+> **WIP-rework (2026-05-17):** The "full quality gate" framing is dropped. Keep CI gates: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --workspace`, `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed`, `flutter test`, `cargo deny check advisories bans`. **Drop**: `flutter test integration_test`, `cargo deny check licenses`, `pana`, `cargo make verify-codegen` drift gate, `mcp-tester` smoke, performance budget tests, reproducibility CI. These return in the release phase.
 
 As a developer and reviewer,
 I want `.github/workflows/ci.yml` running the complete quality gate on every push and PR,
@@ -1017,6 +1001,8 @@ Build the anti-corruption-layer adapter over `jj-lib` with full read-side covera
 
 ### Story 2.1: Generate test fixture repos via `cargo xtask gen-fixture`
 
+> **WIP-rework (2026-05-17):** Keep the `cargo xtask gen-fixture` tool and committed fixtures, but **only `tiny-3-commits` + `medium-1k-commits`** (the `large-10k-commits` fixture is dropped — there are no perf tests in WIP). **Drop** determinism guarantees and fixture versioning ACs. The fixture archive format (`.tar.zst`) and the "fixtures committed, not regenerated at test time" rule still apply.
+
 As a developer running tests against jj repositories,
 I want three pre-built jj repo fixtures (`tiny-3-commits`, `medium-1k-commits`, `large-10k-commits`) committed to the repo as `.tar.zst` archives generated by `cargo xtask gen-fixture`,
 So that all subsequent stories test against deterministic, version-controlled fixtures and CI never shells to `jj` at test time (per AR-P-7).
@@ -1087,63 +1073,9 @@ So that all subsequent stories test against deterministic, version-controlled fi
 
 ---
 
-### Story 2.2: Define NFR-P-1 sub-budget allocation
+### Story 2.2: ~~Define NFR-P-1 sub-budget allocation~~ — DELETED (WIP-rework 2026-05-17)
 
-As an architect resolving AR-G-1,
-I want a concrete numeric sub-budget breakdown of the < 2s repo-open target (NFR-P-1) per component (jj-lib open, lane-cache compute, op-log read, FFI / Dart bootstrap),
-So that Epics 2, 3, and 4 each have a clear performance budget to design against and individual stories can assert their portion.
-
-**Acceptance Criteria:**
-
-**Given** the NFR-P-1 target of < 2000 ms total repo-open
-**When** `docs/perf-budgets.md` is created
-**Then** it documents the sub-budget allocation:
-- `jj-lib` `Workspace::load(...)` + initial op-log read: **< 400 ms** (Epic 2)
-- `zanshin-graph` full lane-cache for 10k commits: **< 1000 ms** (Epic 4, also bounded by FR-GR-5's < 1s)
-- `zanshin-ffi` envelope serialization + handle creation: **< 50 ms** (Epic 3)
-- Dart-side worker isolate bootstrap + first command dispatch: **< 250 ms** (Epic 3)
-- Slack / measurement noise: **< 300 ms**
-- Total: **< 2000 ms** ✓
-
-**Given** the sub-budget document
-**When** read
-**Then** each sub-budget is justified with a one-line rationale (e.g., "lane-cache dominates because it walks the entire 10k-commit DAG; jj-lib's `default_index` is the source")
-**And** the document explicitly notes that sub-budgets are upper bounds — actual performance should be substantially below.
-
-**Given** the document
-**When** referenced from `epics.md` Story sections
-**Then** Epic 2's stories that touch repo-open path reference the 400ms budget
-**And** Epic 4's lane-cache stories reference the 1000ms budget
-**And** Epic 3's bootstrap stories reference the 250ms budget.
-
-**Given** a developer measuring real performance
-**When** running benchmarks against the `large-10k-commits` fixture
-**Then** the benchmark output is logged to stdout with per-component timing
-**And** any component exceeding its sub-budget triggers a warning in the test output (and a CI failure if the test is marked `#[test]` rather than benchmark-only).
-
-**Given** the sub-budget document
-**When** a future story discovers a sub-budget is wrong (e.g., jj-lib repo open actually takes 500ms)
-**Then** the document is updated PR-style with a `## Revision history` section
-**And** the revision is justified (either the budget is relaxed because measurement was unrealistic, or the offending component is optimized).
-
-**Given** the document
-**When** the project hits 1.0
-**Then** the sub-budgets become part of the stability commitment for NFR-P-1
-**And** any change requires a benchmarked PR documenting the trade-off.
-
-**Edge case — Cold cache vs. warm cache:**
-
-**Given** the < 2s target applies to **first repo-open after process start** (cold cache)
-**When** subsequent repo-opens happen
-**Then** the budget is not formally specified for warm cache (typically faster — empirically observed)
-**And** the document notes that warm-cache numbers are out of scope for NFR-P-1.
-
-**Edge case — Hardware variance:**
-
-**Given** different developer hardware has different baselines
-**When** budgets are measured
-**Then** the document specifies the reference hardware (Apple M1 Max baseline) and notes that x86 Macs may run ~30–50% slower
-**And** CI runs on a specific GitHub Actions runner SKU (e.g., `macos-14`) — the budgets are validated against that SKU.
+> **Why deleted:** No perf-gate enforcement in WIP, so a numeric sub-budget allocation has no enforcement target. NFR-P-1 remains as a soft design goal (< 2s repo open at 10k commits). Sub-budget allocation returns in the release phase when perf-gates are enforced.
 
 ---
 
@@ -1589,7 +1521,9 @@ So that consumers can render the remote list (FR-JJ-9) and Epic 6's fetch/push s
 
 ---
 
-### Story 2.10: Document and lock the public API surface (FR-JJ-16 invariant)
+### Story 2.10: Document the public API surface (FR-JJ-16 informational)
+
+> **WIP-rework (2026-05-17):** Drop the "lock" framing — WIP explicitly allows breaking changes. Keep only the rustdoc comments on every `pub fn` (Code-quality rule). Drop any `cargo public-api` snapshot gate, drop any "API surface diff" CI check. FR-JJ-16 (anti-corruption-layer absorption of jj-lib churn) remains as an architectural invariant — but it's enforced by review and design, not by a surface-lock document.
 
 As an architect enforcing FR-JJ-16,
 I want the public API of `zanshin-jj` documented as the explicit anti-corruption boundary with a stability invariant,
@@ -1845,6 +1779,8 @@ void zanshin_string_free(char *ptr);
 ---
 
 ### Story 3.3: Tracing init with rotating file sink
+
+> **WIP-rework (2026-05-17):** Keep the tracing init + `tracing-appender` with rotating files at `~/Library/Logs/Zanshin/zanshin.log.YYYY-MM-DD`. Keep level filtering via `ZANSHIN_LOG` env. **Drop** rotation-policy tests, log-size-cap ACs, and structured-event-schema validation ACs. These return in the release phase as part of supportability hardening.
 
 As a developer setting up structured logging,
 I want `tracing` + `tracing_appender` initialized at FFI library load with a rotating file sink at `~/Library/Logs/Zanshin/zanshin.log.YYYY-MM-DD`,
@@ -2156,82 +2092,15 @@ pub type ProgressCallback = unsafe extern "C" fn(json_event: *mut c_char);
 
 ---
 
-### Story 3.7: Watchman availability check API
+### Story 3.7: ~~Watchman availability check API~~ — DELETED (WIP-rework 2026-05-17)
 
-As a Dart caller wanting to render the first-run setup dialog,
-I want `zanshin_watchman_status(repo_path)` returning whether Watchman is installed, configured in `.jj/repo/config.toml`, and `register-snapshot-trigger` is enabled (FR-FFI-7, NFR-S-1),
-So that the UI/MCP can guide the user through Watchman setup when needed.
-
-**Acceptance Criteria:**
-
-**Given** `crates/zanshin-ffi/src/watchman.rs`
-**When** created
-**Then** it defines `extern "C" fn zanshin_watchman_status(repo_path: *const c_char) -> *mut c_char` returning a JSON envelope.
-
-**Given** the envelope's `data` shape
-**When** validated against `schemas/watchman_state.v1.schema.json`
-**Then** the schema requires fields: `watchman_installed: bool`, `watchman_version: Option<String>` (`null` if not installed), `jj_fsmonitor_configured: bool`, `register_snapshot_trigger: bool`, `notes: Vec<String>` (human-readable hints), `schema_version: "1.0"`.
-
-**Given** Watchman is installed at `/opt/homebrew/bin/watchman` (or `/usr/local/bin/watchman`)
-**When** `zanshin_watchman_status` is called
-**Then** it returns `watchman_installed: true`, `watchman_version: Some("2026.05.11.00")` (parsed from `watchman --version` output via a subprocess call — NOT through jj-lib).
-
-**Given** Watchman is not on `PATH`
-**When** called
-**Then** it returns `watchman_installed: false`, `watchman_version: null`.
-
-**Given** the repo's `.jj/repo/config.toml`
-**When** parsed
-**Then** the function checks for `fsmonitor.backend = "watchman"`
-**And** sets `jj_fsmonitor_configured: true` if present.
-
-**Given** the repo's `.jj/repo/config.toml`
-**When** the watchman section has `register-snapshot-trigger = true`
-**Then** the function sets `register_snapshot_trigger: true`.
-
-**Given** the function combines all three checks
-**When** all are true
-**Then** `notes` is empty (Watchman is fully configured)
-**And** the UI/MCP renders a green-light state.
-
-**Given** Watchman is installed but `jj_fsmonitor_configured = false`
-**When** called
-**Then** `notes` includes a hint like `"To enable Watchman integration, add fsmonitor.backend = 'watchman' to .jj/repo/config.toml — see https://docs.jj-vcs.dev/latest/config/#watchman"`.
-
-**Given** the subprocess call to `watchman --version`
-**When** invoked
-**Then** it has a strict timeout (1 second)
-**And** failure modes (timeout, command-not-found, parse error) all result in `watchman_installed: false` without raising an error.
-
-**Given** the function never panics
-**When** invoked with a missing path, malformed config, or unreadable file
-**Then** it returns an envelope with appropriate `notes` rather than failing the call
-**And** if the path itself doesn't contain `.jj/`, it returns `code: "jj.path_not_found"` error envelope.
-
-**Given** unit tests
-**When** they run
-**Then** they cover: Watchman absent, Watchman present + config absent, Watchman present + config present without trigger, Watchman present + config present + trigger present.
-
-**Edge cases:**
-
-**Given** a Watchman version string in an unexpected format (e.g., `"4.9.0"` rather than `"2026.05.11.00"`)
-**When** parsed
-**Then** the function still reports `watchman_version: Some("4.9.0")`
-**And** does not error on the version format.
-
-**Given** the `.jj/repo/config.toml` file is missing
-**When** parsed
-**Then** `jj_fsmonitor_configured: false`
-**And** `notes` instructs the user to create the file.
-
-**Given** the user's system has multiple Watchman installations (Homebrew + manual)
-**When** queried
-**Then** the function reports the first on PATH (no smart resolution)
-**And** the `notes` field flags this if needed.
+> **Why deleted:** `notify-debouncer-full` covers the WIP watcher path without Watchman. Watchman-status surfacing is release-grade UX polish (first-run setup dialog). FR-FFI-7 is marked deferred in PRD § 4.4. Returns in the release phase, alongside the diagnostics expansion.
 
 ---
 
-### Story 3.8: Diagnostics API
+### Story 3.8: Diagnostics API (WIP-minimal)
+
+> **WIP-rework (2026-05-17):** Shrunk drastically. Keep `extern "C" fn zanshin_diagnostics() -> *mut c_char` returning a JSON envelope, but the `data` shape is only `{ app_version: string, git_sha: string, log_path: string }` in WIP. **Drop** all the other fields (jj_lib_version, rust_version, watchman_version, os.*, repo.*). **Drop** the dedicated `schemas/diagnostics.schema.json` validation requirement (the WIP shape is so small it doesn't earn a schema). Full structured diagnostics — and the schema — return in the release phase.
 
 As a Dart caller producing a "Copy Diagnostics" button,
 I want `zanshin_diagnostics()` returning a JSON envelope with versions, OS info, and repo summary (NFR-S-2, AR-G-2),
@@ -2386,6 +2255,8 @@ final class ChangeCommand extends WorkerCommand { final int handleId; final Stri
 ---
 
 ### Story 3.10: End-to-end watcher test — filesystem mutation → Dart callback
+
+> **WIP-rework (2026-05-17):** Keep the functional E2E pathway: real cdylib + real worker isolate, filesystem mutation triggers Dart callback. **Drop the latency assertion** (`<200ms` test bound) — NFR-P-4 is a soft target in WIP. **Add** a watcher-storm sub-test (5 rapid mutations → bounded channel drop-oldest behaviour observed; consumes the dropped Story 7.8 / Murat Szenario-2). The full latency-bounded test returns in the release phase.
 
 As a developer validating the FFI keystone end-to-end,
 I want an integration test that mutates the filesystem under `.jj/repo/op_heads/heads/` and asserts that a Dart-side callback fires within 200 ms,
@@ -2591,7 +2462,9 @@ So that the FFI surface and any downstream consumer parses the graph data with s
 
 ---
 
-### Story 4.3: Full lane-cache (`cache.rs`)
+### Story 4.3: Lane computation on demand (`cache.rs`)
+
+> **WIP-rework (2026-05-17):** Drop the "full persistent lane-cache" framing. WIP computes lanes on demand per request, in-memory, no persistence. **Drop** op_heads-driven cache invalidation ACs, **drop** the cache-warmth assertions. The lane computation should still be fast enough for development-scale repos. Persistent cache + invalidation return in the release phase.
 
 As a Rust developer caching graph state,
 I want `crates/zanshin-graph/src/cache.rs` building a full in-memory lane-cache on repo-open and on every `op_heads` change (FR-GR-3),
@@ -2645,7 +2518,9 @@ So that subsequent render-slice calls (Story 4.4) are O(slice-size) and the < 2s
 
 ---
 
-### Story 4.4: Render-slice API (`slice.rs`)
+### Story 4.4: Return-all-lanes-for-revset API (`slice.rs`)
+
+> **WIP-rework (2026-05-17):** Drop the windowing/pagination ACs. WIP returns all lanes for the resolved revset in one call. Render-slice with O(slice-size) and viewport optimization return in the release phase, once UI scroll patterns are understood.
 
 As a Rust developer serving paginated graph slices,
 I want `crates/zanshin-graph/src/slice.rs` implementing `LaneCache::render_slice(start: u32, count: u32) -> GraphSlice` in O(slice-size) time,
@@ -2700,7 +2575,13 @@ So that scrolling through the graph UI is performant regardless of repo size (FR
 
 ---
 
-### Story 4.5: 10k-commit performance test
+### Story 4.5: ~~10k-commit performance test~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** No perf-gate enforcement in WIP, and the `large-10k-commits` fixture itself is dropped (Story 2.1 SHRINK). Instead: a small algorithmic-correctness test on ~100 commits (covered as a sub-test inside Story 4.1) catches dumb regressions cheaply. Full 10k-commit perf test returns in the release phase.
+
+<!-- Original AC block (full perf benchmark, CI slack budget, hardware variance handling) removed; consult git history if re-introducing. -->
+
+### Story 4.5-OLD: 10k-commit performance test
 
 As a developer enforcing FR-GR-5 / NFR-P-1 sub-budget,
 I want an integration test that builds the lane-cache for the `large-10k-commits` fixture and asserts the build completes in < 1000 ms,
@@ -2820,7 +2701,9 @@ pub unsafe extern "C" fn zanshin_graph_close(graph_handle: *mut c_void);
 
 ---
 
-### Story 4.7: [Deferred P2] Checkpoint-caching for very large repos
+### Story 4.7: ~~[Deferred P2] Checkpoint-caching for very large repos~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked P2-deferred; with WIP scope cuts there's no reason to keep the stub.
 
 As a Rust developer planning for post-0.1 work,
 I want a story stub for FR-GR-6 (checkpoint-caching beyond the 10k baseline),
@@ -2983,6 +2866,8 @@ So that the UI/MCP can render character-precision Delta-class diffs.
 
 ### Story 5.3: tree-sitter-highlight integration (`highlight.rs`)
 
+> **WIP-rework (2026-05-17):** Keep the tree-sitter-highlight integration and the syntax-class output schema. **Drop** fallback-strategy ACs (multiple parsers per language, retry logic) and **drop** incremental-highlighting ACs. Plain-text fallback for unknown extensions stays.
+
 As a Rust developer adding syntax classes to diff segments,
 I want `crates/zanshin-diff/src/highlight.rs` using `tree-sitter-highlight` to assign a `syntax_class` to each segment,
 So that consumers can render syntax-highlighted diffs (FR-DF-2).
@@ -3047,7 +2932,9 @@ So that consumers can render syntax-highlighted diffs (FR-DF-2).
 
 ---
 
-### Story 5.4: Bundle Kern-Set 9 grammars (`grammars.rs`)
+### Story 5.4: Bundle initial 3 grammars (`grammars.rs`) — Rust / Dart / Markdown
+
+> **WIP-rework (2026-05-17):** Shrunk from Kern-Set 9 (rust, dart, ts/js, python, markdown, toml, yaml, json, html) to **3 grammars**: rust, dart, markdown. Other languages added on demand later (each is a small additive PR). Plain-text fallback for unknown extensions stays.
 
 As a Rust developer bundling the initial grammar set,
 I want `crates/zanshin-diff/src/grammars.rs` declaring the Kern-Set 9 tree-sitter grammar dependencies as Cargo deps and a language-detection function based on file extension,
@@ -3271,7 +3158,11 @@ So that the FFI wrapper (Story 5.8) and any direct Rust caller have a single ent
 
 ---
 
-### Story 5.7: 5k-line performance test
+### Story 5.7: ~~5k-line performance test~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** No perf-gate enforcement in WIP. NFR-P-3 (`< 500ms`) remains as a soft design target — algorithm choice (`imara-diff` Histogram) reflects it. Full perf test returns in the release phase.
+
+### Story 5.7-OLD: 5k-line performance test
 
 As a developer enforcing NFR-P-3,
 I want an integration test that calls `compute_diff` on a 5k-line changed file and asserts completion in < 500 ms,
@@ -3379,6 +3270,8 @@ Add the mutating side of `zanshin-jj` (describe/new/edit/abandon/undo as P0; rem
 
 ### Story 6.1: P0 essentials mutations (`mutate.rs`) — describe, new, edit, abandon
 
+> **WIP-rework (2026-05-17):** Keep all original ACs. **Append**: a two-thread concurrent-write smoke test (~80-100 lines in `zanshin-jj/tests/concurrent_writes.rs`) that boots a tempdir repo and has two threads run interleaved `describe` + `new` calls directly against the `zanshin-jj` API. Assertions: jj-lib's internal locking produces no spurious errors at the FFI boundary; the FFI envelope's error-channel doesn't misinterpret jj's stderr-style warnings. This consumes Murat's Szenario-1 from the dropped Story 7.8.
+
 As a Rust caller (FFI consumer or MCP),
 I want `crates/zanshin-jj/src/mutate.rs` exposing `Repo::describe`, `Repo::new`, `Repo::edit`, `Repo::abandon` going through jj-lib only (no CLI shelling),
 So that the four most-frequent change mutations are available and FR-JJ-10a is satisfied.
@@ -3466,6 +3359,8 @@ So that the four most-frequent change mutations are available and FR-JJ-10a is s
 
 ### Story 6.2: Op-log undo (P0)
 
+> **WIP-rework (2026-05-17):** Shrunk to a thin `jj op restore` wrapper. **Drop** undo-stack-UI-surface ACs and multi-step replay ACs. The Dart-side worker hands a single `undo` command to the FFI; the FFI calls `jj op restore` and returns. UI-level undo-stack design returns when UI is in scope.
+
 As a Rust caller wanting to undo the last operation,
 I want `crates/zanshin-jj/src/op_log.rs` (extended) exposing `Repo::undo() -> MutationResult`,
 So that the most-recent operation can be reverted (FR-JJ-14a).
@@ -3514,7 +3409,11 @@ So that the most-recent operation can be reverted (FR-JJ-14a).
 
 ---
 
-### Story 6.3: Conflict ops (`conflict.rs`)
+### Story 6.3: ~~Conflict ops (`conflict.rs`)~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Not on the WIP build/run path — Ralph can create a conflict manually in the test repo and observe via the read-path. The conflict-resolve FFI is a linear add-on to the mutation surface (6.5) — nachrüstbar ohne Rewrite. FR-JJ-12 marked deferred in PRD § 4.1.
+
+### Story 6.3-OLD: Conflict ops (`conflict.rs`)
 
 As a Rust caller wanting to handle conflicts,
 I want `crates/zanshin-jj/src/conflict.rs` exposing `Repo::list_conflicts(change_id) -> Vec<ConflictFile>` and `Repo::resolve_after_edit(change_id) -> Result<MutationResult>` (FR-JJ-12),
@@ -3567,7 +3466,9 @@ So that the UI/MCP can guide users through conflict resolution after external ed
 
 ---
 
-### Story 6.4: Remote ops with progress callbacks (fetch / push)
+### Story 6.4a: Remote op — `git fetch` with progress callback
+
+> **WIP-rework (2026-05-17):** Renamed from 6.4 to 6.4a. **Drop `git push`** entirely from WIP. Keep `git fetch` with progress callback (`NativeCallable.listener` via FR-FFI-8) — this is the real consumer of the progress-callback pattern in WIP, exercising the AD-5 / 3-6 plumbing under production-ish load (libgit2 progress events fire every N bytes during a real network fetch). `push` deferred to release phase (FR-JJ-13b in PRD) — adding it later is a linear new wrapper, no Pattern-Refactor needed.
 
 As a Rust caller wanting to sync with remotes,
 I want `crates/zanshin-jj/src/remotes.rs` (extended) exposing `Repo::git_fetch(remote, progress)` and `Repo::git_push(remote, bookmarks, progress)` accepting a progress callback (FR-JJ-13),
@@ -3699,7 +3600,9 @@ So that the worker isolate has callable endpoints for describe, new, edit, aband
 
 ---
 
-### Story 6.6: `schemas/change.v1.schema.json` extension for mutations
+### Story 6.6: `schemas/change.schema.json` extension for mutations
+
+> **WIP-rework (2026-05-17):** Extend the existing `change` schema in place to cover mutation responses (the mutate calls return the new change-id + op-id). **Drop** versioning ACs, **drop** migration ACs, **drop** backward-compat-shim ACs. Filename has no `.v1` infix in WIP. Breaking changes happen in-place; callers update.
 
 As an architect maintaining schema parity,
 I want `schemas/change.v1.schema.json` (created in Epic 2 implicitly via Change struct's serialization) extended to include the `MutationResult` shape,
@@ -3738,7 +3641,11 @@ So that mutation responses are schema-validated like all other FFI output (AR-AD
 
 ---
 
-### Story 6.7: Op-log visibility test (NFR-R-2)
+### Story 6.7: ~~Op-log visibility test (NFR-R-2)~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** NFR-R-2 (every Zanshin mutation visible+reversible in `jj op log`) remains as a code invariant, asserted via design: all mutations route through `zanshin-jj` → `jj-lib`, which produces op-log entries by construction. A dedicated test that round-trips mutation → op_log parse → assert visible was discussed (Murat KEEP, Amelia CUT); Ralph cut it. A regression here would be caught the first time anyone uses `jj op log` against a Zanshin-modified repo. Test returns in the release phase as part of the supportability-hardening pass.
+
+### Story 6.7-OLD: Op-log visibility test (NFR-R-2)
 
 As a developer enforcing NFR-R-2 (every Zanshin-initiated mutation visible/reversible in op-log, indistinguishable from CLI-initiated),
 I want an integration test that performs each P0 mutation via the FFI, then re-opens the repo and inspects op-log via the same FFI, and asserts the operations are present and correctly described,
@@ -3789,7 +3696,9 @@ So that the data-loss-prevention invariant is mechanically verified.
 
 ---
 
-### Story 6.8: [Deferred 0.2] Advanced mutations — split, squash, rebase (FR-JJ-10b)
+### Story 6.8: ~~[Deferred 0.2] Advanced mutations — split, squash, rebase~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred; with the WIP scope cuts there's no reason to keep the stub.
 
 **Status:** Deferred to 0.2 (P1 per PRD §4.1).
 
@@ -3821,7 +3730,9 @@ So that the deferred work is visible in the backlog with placeholder acceptance 
 
 ---
 
-### Story 6.9: [Deferred 0.2] Bookmark CRUD (FR-JJ-11)
+### Story 6.9: ~~[Deferred 0.2] Bookmark CRUD~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred.
 
 **Status:** Deferred to 0.2 (P1 per PRD §4.1).
 
@@ -3847,7 +3758,9 @@ So that the deferred work is visible in the backlog.
 
 ---
 
-### Story 6.10: [Deferred P1] Settings read/write (FR-JJ-15)
+### Story 6.10: ~~[Deferred P1] Settings read/write~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred.
 
 **Status:** Deferred (P1, jj's global config picks up most defaults per PRD §4.1).
 
@@ -3869,7 +3782,9 @@ So that the deferred work is visible.
 
 ---
 
-### Story 6.11: [Deferred P2] Rare mutations — duplicate, restore, backout (FR-JJ-10c)
+### Story 6.11: ~~[Deferred P2] Rare mutations~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred.
 
 **Status:** Deferred (P2 per PRD §4.1).
 
@@ -3887,7 +3802,9 @@ So that the deferred work is visible.
 
 ---
 
-### Story 6.12: [Deferred P2] Op-restore + op-diff (FR-JJ-14b)
+### Story 6.12: ~~[Deferred P2] Op-restore + op-diff~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred.
 
 **Status:** Deferred (P2 per PRD §4.1).
 
@@ -4095,7 +4012,9 @@ So that an LLM can query repo state through MCP (FR-MCP-3).
 
 ---
 
-### Story 7.4: Write tools — describe, new, edit, abandon, undo, fetch, push, etc.
+### Story 7.4: Write tools — describe, new (WIP subset)
+
+> **WIP-rework (2026-05-17):** Shrunk dramatically. Keep MCP write-tool implementations for **`describe` + `new`** only. **Drop** `edit`, `abandon`, `undo`, `fetch`, `push`, bookmark CRUD, `split`/`squash`/`rebase` — they land later as the corresponding `zanshin-jj` mutations are added beyond the P0 subset. MCP-host integration patterns are exercised by the two-tool subset.
 
 As an MCP host consumer wanting to perform mutations,
 I want the `zanshin-mcp` server registering write tools (describe, new, edit, abandon, split, squash, rebase, undo, bookmark CRUD, git fetch, git push) calling `zanshin-jj` directly (FR-MCP-4),
@@ -4149,7 +4068,9 @@ So that an LLM can drive repo mutations through MCP.
 
 ---
 
-### Story 7.5: LLM-quality tool descriptions + parameter docs + usage examples
+### Story 7.5: Basic tool descriptions + parameter docs
+
+> **WIP-rework (2026-05-17):** Shrunk. Each tool must have a non-empty one-line description and parameter docs (basic discoverability). **Drop** the "LLM-quality gate" framing, **drop** usage-example requirements, **drop** any `mcp-tester`-driven quality-bar assertions. LLM-quality iteration returns in the release phase.
 
 As an MCP host consumer relying on the LLM to pick the right tool,
 I want every tool's description, parameter doc, and at least one usage example written at high quality (FR-MCP-5, FR-MCP-5 quality gate, AR-G-7 mcp-tester smoke run),
@@ -4208,7 +4129,11 @@ So that an LLM picks tools correctly without trial-and-error.
 
 ---
 
-### Story 7.6: Bundle `zanshin-mcp` into `Zanshin.app`
+### Story 7.6: ~~Bundle `zanshin-mcp` into `Zanshin.app`~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** WIP runs `zanshin-mcp` as a standalone CLI binary (Story 7.7's standalone usability covers this — though 7.7 is also CUT for polish reasons; the binary still works standalone by virtue of being a separate binary). Bundling into the macOS `.app` re-evaluates at release-phase, alongside codesigning. FR-MCP-7 marked deferred in PRD § 4.5.
+
+### Story 7.6-OLD: Bundle `zanshin-mcp` into `Zanshin.app`
 
 As a release manager wiring the bundling,
 I want `cargo make build` (Epic 1 Story 1.4) to copy the `zanshin-mcp` binary into `app/macos/Runner/Resources/zanshin-mcp` and `flutter build macos` to include it in the final `.app/Contents/Resources/zanshin-mcp` (FR-MCP-7),
@@ -4267,7 +4192,11 @@ So that the GUI and MCP server ship together.
 
 ---
 
-### Story 7.7: Standalone CLI usability
+### Story 7.7: ~~Standalone CLI usability~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Polish-tier story (`--help` formatting, error message wording, exit-code conventions). The binary still runs standalone (it's a separate binary on disk; the `--repo`-or-CWD-walkup behaviour from Story 7.1 is the actual standalone-CLI mechanic). Polish returns in the release phase.
+
+### Story 7.7-OLD: Standalone CLI usability
 
 As a developer or advanced user wanting to test MCP without the GUI,
 I want `zanshin-mcp` to work as a standalone CLI binary invokable directly (e.g., `./zanshin-mcp --repo .`),
@@ -4321,7 +4250,11 @@ So that MCP-protocol testing and embedding in non-GUI environments is possible (
 
 ---
 
-### Story 7.8: Same-repo concurrency test (GUI + MCP) — FR-MCP-9 / FR-RX-3
+### Story 7.8: ~~Same-repo concurrency test (GUI + MCP)~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Murat's first-runde Szenario 3 (op_heads divergence stale cache) was based on an assumed cache that the architecture doesn't actually have (`zanshin-graph`'s lane-cache is rebuilt on every op_heads change). After his correction the residual concurrency risk reduced to Szenario 1 (concurrent direct-API calls produce no spurious errors), which is appended as a small two-thread smoke at the end of Story 6.1 instead. Szenario 2 (watcher-storm) wandert in Story 3.10. The dedicated GUI+MCP-binary integration test returns in the release phase.
+
+### Story 7.8-OLD: Same-repo concurrency test (GUI + MCP) — FR-MCP-9 / FR-RX-3
 
 As a developer validating FR-MCP-9 / FR-RX-3,
 I want an integration test that runs the GUI's worker isolate AND a `zanshin-mcp` binary simultaneously against the same fixture repo, performs mutations from each, and asserts both see each other's changes via the watcher path,
@@ -4384,7 +4317,9 @@ So that the no-IPC same-repo concurrency model is mechanically verified.
 
 ---
 
-### Story 7.9: `mcp-tester` smoke run integration
+### Story 7.9: MCP server boot + list-tools smoke
+
+> **WIP-rework (2026-05-17):** Shrunk from the original `mcp-tester` LLM-quality smoke to a minimal **"server boots, lists tools"** test. The test boots `zanshin-mcp --repo <fixture>`, sends the `tools/list` MCP request over stdio, and asserts the response contains the WIP tool subset. Purpose: prevent the MCP code path from silently rotting. Full `mcp-tester`-driven smoke returns in the release phase.
 
 As a developer enforcing AR-G-7,
 I want a CI step running `mcp-tester` (or equivalent) against the built `zanshin-mcp` binary as part of `cargo make test`,
@@ -4439,7 +4374,9 @@ So that protocol-level regressions are caught automatically.
 
 ---
 
-### Story 7.10: Structured MCP error responses (NFR-R-4)
+### Story 7.10: Structured MCP error responses (basic mapping)
+
+> **WIP-rework (2026-05-17):** Keep the basic mapping: `zanshin-jj` errors → `rmcp` `McpError` with structured code + message + context. **Drop** the error-taxonomy-stability tests (asserting that error codes never change across PRs) — WIP allows breaking changes; the taxonomy is informal here. Full stability tests return in the release phase.
 
 As an MCP host receiving errors,
 I want the `zanshin-mcp` binary to produce structured JSON-RPC error responses for all failure modes (input validation, jj-lib errors, panics),
@@ -4488,7 +4425,9 @@ So that the host can render or react meaningfully and the binary never crashes (
 
 ---
 
-### Story 7.11: [Deferred 0.2] MCP Resources surface (FR-MCP-6)
+### Story 7.11: ~~[Deferred 0.2] MCP Resources surface~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred to 0.2 per OD-10.
 
 **Status:** Deferred to 0.2 per OD-10 (tools-only in 0.1).
 
@@ -4512,79 +4451,63 @@ So that the deferred work is visible.
 
 ---
 
-## Epic 8: Distribution & Release Engineering
+## Epic 8: Build Output (WIP)
 
-Wire the end-to-end release pipeline: codesign all binaries, notarize via `notarytool`, generate and sign the Sparkle appcast, publish to GitHub Releases, and verify cross-machine reproducibility. After this epic, a `git tag` triggers a fully automated release.
+> **WIP-rework (2026-05-17):** The original Epic 8 (11 stories: codesign infra, sign/notarize targets, notarytool, Sparkle EdDSA appcast, GitHub Pages hosting, update-check privacy, release orchestration, GitHub Releases automation, reproducibility CI, release-process.md, Homebrew Cask) is **collapsed to a single Story 8.1**. The full release pipeline is deferred to the release phase. PRD § 4.7 deferred-box is authoritative.
 
-### Story 8.1: Codesigning infrastructure + env-var contract
+Produce an unsigned, unnotarized `.app` for local development as the WIP build output. No codesign, no notarization, no Sparkle, no GitHub Releases, no reproducibility CI.
 
-As a release manager wiring codesigning,
-I want `ci/codesign/` containing scripts and documentation for Apple Developer ID Application codesigning, with a clear env-var contract for secrets (FR-DR-1, NFR-DU-1),
-So that every release binary is signed and CI secrets are never logged or committed.
+### Story 8.1: Produce an unsigned `Zanshin.app` for local development
+
+As a developer iterating on Zanshin locally,
+I want `cargo make build` to produce an unsigned, unnotarized `.app` bundle that opens a test repo, exercises the FFI surface, and fires the watcher callback,
+So that the WIP scaffold is observable as a working macOS application without any release-grade overhead.
 
 **Acceptance Criteria:**
 
-**Given** `ci/codesign/README.md`
-**When** created
-**Then** it documents the env-var contract:
-- `APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64` — base64-encoded `.p12` certificate
-- `APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD` — password for the `.p12`
-- `APPLE_TEAM_ID` — Apple Team ID (e.g., `ABCD123456`)
-- `APPLE_KEYCHAIN_PASSWORD` — ephemeral keychain password for CI
+**Given** the workspace from Epic 1 + the artefacts from Epics 2–7
+**When** `cargo make build` is invoked from a clean checkout
+**Then** the build succeeds end-to-end (Rust workspace + Dart Hooks + Flutter macOS build)
+**And** the output is `app/build/macos/Build/Products/Release/Zanshin.app` (unsigned, unnotarized)
+**And** the build does NOT shell out to `codesign`, `notarytool`, or any signing/notarization tooling.
 
-**And** it documents:
-- How secrets are stored (GitHub Actions encrypted secrets, NOT plaintext)
-- How the script imports the cert into an ephemeral keychain
-- How the script cleans up the keychain at the end of the run
-- That secrets are never logged (no `echo $SECRET`, no `set -x` near secret usage)
+**Given** the unsigned `.app`
+**When** double-clicked on a developer's macOS machine
+**Then** macOS Gatekeeper warns the user (expected — unsigned app)
+**And** with `xattr -d com.apple.quarantine` (or right-click → Open) the app launches.
 
-**Given** `ci/codesign/import-cert.sh`
-**When** invoked
-**Then** it:
-1. Decodes `APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64` to a temp file
-2. Creates an ephemeral keychain `zanshin-build.keychain-db`
-3. Imports the cert with `security import`
-4. Sets the keychain in the default list temporarily
-5. Locks/unlocks via `APPLE_KEYCHAIN_PASSWORD`
+**Given** the running app
+**When** it opens a known test fixture repo
+**Then** the FFI surface (read path) returns valid JSON
+**And** the watcher fires at least one Dart callback when the repo's `op_heads/heads/` is mutated
+**And** the diagnostics API returns the WIP-minimal `{ app_version, git_sha, log_path }` payload.
 
-**Given** `ci/codesign/sign-binary.sh <path>`
-**When** invoked
-**Then** it signs the given binary using `codesign --sign "Developer ID Application: <team>"` with hardened-runtime flags
-**And** the signing identity is referenced by Apple Team ID (not hardcoded by name).
+**Given** the Makefile.toml `build` target
+**When** inspected
+**Then** it documents (via comments) that the `sign`, `notarize`, `release` targets are deferred — pointer to PRD § 4.7
+**And** stub targets (`cargo make sign`, `cargo make notarize`, `cargo make release`) either are absent or print a "deferred — see PRD § 4.7" message and exit non-zero.
 
-**Given** the `cargo make sign` target (Epic 1 Story 1.4 placeholder, wired in Story 8.2)
-**When** invoked
-**Then** it shells out to `ci/codesign/sign-binary.sh` for each artefact (cdylib, MCP binary, .app bundle).
+**Edge case — Hardened-runtime entitlements:**
 
-**Given** signing the `Zanshin.app` bundle
-**When** done
-**Then** the script signs nested binaries first (cdylib in Frameworks, MCP binary in Resources), then the bundle itself (per macOS codesign conventions).
+**Given** the unsigned `.app` still has `Info.plist` entitlements declared (placeholder values from Story 1.2)
+**When** launched in WIP
+**Then** the placeholder entitlements do not block local execution
+**And** real entitlement values are populated when codesigning lands in the release phase.
 
-**Given** secrets handling
-**When** the CI workflow runs
-**Then** secrets are passed via `env:` block, not `with:`, and not echoed
-**And** the workflow uses GitHub's `${{ secrets.NAME }}` syntax.
+**Edge case — `flutter run` parity:**
 
-**Given** the keychain cleanup
-**When** the workflow finishes (success or failure)
-**Then** the ephemeral keychain is deleted via a `trap`/`always()` step
-**And** no residual secret material remains.
-
-**Edge cases:**
-
-**Given** the cert is invalid or expired
-**When** signing is attempted
-**Then** `codesign` fails with a clear error
-**And** the CI fails the workflow
-
-**Given** a developer wants to sign locally for testing
-**When** they read the README
-**Then** they get clear instructions for setting up the env vars from their own developer certificate (linked to `~/Library/Keychains/`)
-**And** the local flow does NOT touch the CI's ephemeral keychain.
+**Given** Ralph also uses `flutter run -d macos` for UI iteration
+**When** that command runs (after `cargo make build` has produced the cdylib)
+**Then** the running app behaves identically to the bundled `.app`
+**And** both paths consume the same `bindings.dart` + `zanshin_ffi.dylib`.
 
 ---
 
-### Story 8.2: `cargo make sign` and `cargo make notarize` targets
+### Story 8.2: ~~`cargo make sign` and `cargo make notarize` targets~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase — see PRD § 4.7 and Story 8.1's note.
+
+### Story 8.2-OLD: `cargo make sign` and `cargo make notarize` targets
 
 As a release manager,
 I want the `Makefile.toml` `sign` and `notarize` targets fully implemented (replacing the Story 1.4 stubs) with explicit ordered steps (FR-BO-3),
@@ -4644,7 +4567,11 @@ So that signing and notarization can be invoked as discrete pipeline stages.
 
 ---
 
-### Story 8.3: `notarytool` integration + stapled receipt
+### Story 8.3: ~~`notarytool` integration + stapled receipt~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.3-OLD: `notarytool` integration + stapled receipt
 
 As a release manager,
 I want the notarization flow tested end-to-end with an actual Apple Developer account (in a sandbox/test capacity if needed) and the stapled receipt embedded in the distributed `.app` (FR-DR-2),
@@ -4690,7 +4617,11 @@ So that users opening the app on macOS get the green-light Gatekeeper acceptance
 
 ---
 
-### Story 8.4: Sparkle appcast generation + EdDSA signing
+### Story 8.4: ~~Sparkle appcast generation + EdDSA signing~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.4-OLD: Sparkle appcast generation + EdDSA signing
 
 As a release manager wiring auto-update,
 I want `crates/xtask/src/tasks/appcast.rs` generating the `appcast.xml` with Sparkle 2 EdDSA-signed entries and `sparkle/ed25519_pub.pem` in the repo (FR-DR-3, NFR-DU-3),
@@ -4755,7 +4686,11 @@ So that users on prior versions get the update prompt and the appcast is tamper-
 
 ---
 
-### Story 8.5: GitHub Pages hosting for `appcast.xml`
+### Story 8.5: ~~GitHub Pages hosting for `appcast.xml`~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.5-OLD: GitHub Pages hosting for `appcast.xml`
 
 As a release manager,
 I want `sparkle/appcast.xml` hosted on GitHub Pages at a stable URL (e.g., `https://dasralph.de/zanshin/appcast.xml` or `https://<user>.github.io/zanshin/appcast.xml`),
@@ -4801,7 +4736,11 @@ So that the app's `SUFeedURL` points at a reliable, free hosting target.
 
 ---
 
-### Story 8.6: Update-check privacy — User-Agent only (FR-DR-4, NFR-PRIV-3)
+### Story 8.6: ~~Update-check privacy — User-Agent only~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase (no update mechanism in WIP). When Sparkle is added later, the privacy invariant binding still holds (User-Agent only, no analytics).
+
+### Story 8.6-OLD: Update-check privacy — User-Agent only (FR-DR-4, NFR-PRIV-3)
 
 As a privacy-conscious user,
 I want the Sparkle update check to send no user-identifying information beyond the User-Agent string,
@@ -4850,7 +4789,11 @@ So that NFR-PRIV-3 is honoured (the update check is the only outbound connection
 
 ---
 
-### Story 8.7: `cargo make release` orchestration
+### Story 8.7: ~~`cargo make release` orchestration~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.7-OLD: `cargo make release` orchestration
 
 As a release manager invoking a single command per release,
 I want `cargo make release` orchestrating build → sign → notarize → appcast → tag-push → GitHub Release upload (FR-BO-4),
@@ -4907,7 +4850,11 @@ So that a tag push triggers the entire pipeline reliably.
 
 ---
 
-### Story 8.8: GitHub Releases automation (`release.yml`)
+### Story 8.8: ~~GitHub Releases automation (`release.yml`)~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.8-OLD: GitHub Releases automation (`release.yml`)
 
 As a release manager,
 I want `.github/workflows/release.yml` triggered on tag push, running `cargo make release` end-to-end (FR-DR-5),
@@ -4970,7 +4917,11 @@ So that creating a Git tag is the sole human action required to ship.
 
 ---
 
-### Story 8.9: Reproducibility CI (`reproducibility.yml`) — FR-BO-8
+### Story 8.9: ~~Reproducibility CI (`reproducibility.yml`) — FR-BO-8~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase.
+
+### Story 8.9-OLD: Reproducibility CI (`reproducibility.yml`) — FR-BO-8
 
 As a developer enforcing FR-BO-8 / NFR-B-4,
 I want `.github/workflows/reproducibility.yml` building the same SHA twice on two different runners (or sequentially with cache cleared) and diff-ing the output `.app` (modulo signature blob),
@@ -5034,7 +4985,11 @@ So that byte-identical builds across machines is verifiable in CI.
 
 ---
 
-### Story 8.10: `docs/release-process.md` (AR-G-6)
+### Story 8.10: ~~`docs/release-process.md` (AR-G-6)~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Deferred to release phase — the doc describes the release pipeline that doesn't exist in WIP.
+
+### Story 8.10-OLD: `docs/release-process.md` (AR-G-6)
 
 As a release manager picking up the process for the first time,
 I want `docs/release-process.md` documenting every step of cutting a release including Sparkle EdDSA key management,
@@ -5072,7 +5027,11 @@ So that AR-G-6 is resolved and the process is reproducible by a future contribut
 
 ---
 
-### Story 8.11: [Deferred post-0.1] Homebrew Cask (FR-DR-6)
+### Story 8.11: ~~[Deferred post-0.1] Homebrew Cask~~ — DELETED (WIP-rework 2026-05-17)
+
+> **Why deleted:** Already marked deferred per OD-5.
+
+### Story 8.11-OLD: [Deferred post-0.1] Homebrew Cask (FR-DR-6)
 
 **Status:** Deferred to post-0.1 per OD-5.
 

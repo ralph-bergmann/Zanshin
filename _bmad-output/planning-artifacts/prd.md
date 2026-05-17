@@ -35,6 +35,7 @@ decisionsResolved:
   OD-9-tree-sitter-grammars: [rust, dart, typescript, javascript, python, markdown, toml, yaml, json, html]
   OD-10-mcp-resources: tools-only-in-0.1
 performanceTargets:
+  # WIP: design targets only — no CI perf-gate enforcement while scope is still moving
   repo-open-10k-commit: <2s
   zanshin-diff-5k-line-file: <500ms
   watcher-op-heads-callback: <100ms
@@ -62,9 +63,9 @@ scopeBoundary: >
 # Product Requirements Document — Zanshin (Backend & Infrastructure)
 
 **Author:** Ralph
-**Date:** 2026-05-15
-**Status:** Draft (slim path)
-**Scope:** Rust workspace + FFI + MCP server + build/distribution
+**Date:** 2026-05-15 (WIP-scope rework: 2026-05-17)
+**Status:** Draft (slim path, WIP)
+**Scope:** Rust workspace + FFI + MCP server + build (unsigned). Distribution/release pipeline deferred — see Section 4.7.
 
 ---
 
@@ -90,11 +91,11 @@ The Flutter UI (graph painter widget, diff viewer, navigation, theming, terminol
 
 > **The Rust workspace + MCP binary + Dart-bootstrap is robust and complete enough that the author can build the Flutter UI on top of it without needing to touch the Rust side for missing functionality.**
 
-Sub-criteria:
+Sub-criteria (WIP-scope):
 
-- All JJ operations the author needs in daily work are reachable through `zanshin-ffi`'s `extern "C"` API.
-- The MCP binary exposes the same operations (read + write per OD-4) over the MCP protocol and is usable from Claude Desktop without GUI involvement.
-- A single command (`cargo make build`) produces a signed, notarized, ready-to-distribute `.app` bundle (Flutter shell stays minimal until Ralph fills it in).
+- All JJ read operations + the P0 mutation subset (describe/new/edit/abandon/undo + `git fetch`) are reachable through `zanshin-ffi`'s `extern "C"` API.
+- The MCP binary exposes the WIP tool subset over the MCP protocol and is usable as a standalone CLI without GUI involvement.
+- A single command (`cargo make build`) produces an **unsigned, unnotarized** `.app` bundle suitable for local development (Flutter shell stays minimal until Ralph fills it in). Release-grade `.app` (signed, notarized, distributable) is post-WIP.
 
 Adoption, stars, contributors — welcome side-effects, none required.
 
@@ -131,20 +132,16 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - Bundled inside `Zanshin.app/Contents/Resources/` (or appropriate location)
 - Reusable as a standalone CLI for testing without the GUI
 
-**Build orchestration**
+**Build orchestration (WIP)**
 - `cargo-make` with `Makefile.toml` as the single entry point
-- Targets: `cargo make build`, `cargo make test`, `cargo make sign`, `cargo make notarize`, `cargo make release`
+- Targets in WIP: `cargo make build`, `cargo make test`, `cargo make codegen`
 - Dart Hooks (`native_toolchain_rust`) wired into Flutter build
 - Generated code (`ffigen`, `cbindgen`) committed, not regenerated at build time
-- Reproducible builds: same source + same toolchain = byte-identical artefacts (modulo signature)
+- **Deferred (release phase):** `cargo make sign`, `cargo make notarize`, `cargo make release`, reproducible-builds CI
 
-**Distribution & release engineering**
-- Apple Developer ID codesigning
-- Notarization via `notarytool`
-- Sparkle-based auto-update with signed appcast served from GitHub Releases
-- GitHub Releases as primary distribution channel (Homebrew Cask deferred per OD-5)
-- License compliance CI check (`cargo-deny` + Dart-side equivalent)
-- Crash logs written **locally only** to `~/Library/Logs/Zanshin/` (no upload)
+**Distribution & release engineering — DEFERRED**
+- The entire Distribution & Release pipeline (codesigning, notarization, Sparkle auto-update, GitHub Releases automation, Homebrew Cask) is deferred to the release phase. See Section 4.7.
+- **In scope while WIP:** `cargo-deny check advisories bans` runs in CI (security backstop). Crash logs written **locally only** to `~/Library/Logs/Zanshin/` (no upload).
 
 **Dart-side bootstrap (minimum viable)**
 - Long-running worker isolate spawned at app start via manual `Isolate.spawn` + SendPort/ReceivePort
@@ -161,16 +158,29 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - **No Windows / Linux build.** macOS-only.
 - **No Git-only repo support.** Zanshin works against jj-init'd repos (which may use jj's Git backend).
 - **No PR / MR / review tooling.** Repository hosting is the user's browser.
-- **No MVP / "good enough for now" tier.** Every shipped piece is production-grade.
+- **Code quality is production-grade from day one** (Clippy pedantic, structured errors, `NativeFinalizer` on every handle, schema-validated JSON in tests, no shelling to `jj` CLI). **Scope/release-readiness is treated as WIP** — release infrastructure (codesigning, notarization, auto-update, reproducibility) is deferred. Breaking changes between WIP versions are allowed; callers update.
 - **No telemetry.** None, ever.
 
 ### 3.3 Deferred (explicit "maybe later")
 
+**Long-running deferrals (post-1.0):**
 - AST-level structural diff (difftastic class) — `zanshin-diff` stays at word-level + syntax-highlight (Delta class).
 - Multi-platform builds — revisit if a contributor adopts non-mac maintenance.
-- Homebrew Cask — ship after 0.1 stabilises (OD-5 = later).
 - Additional MCP transports (HTTP/SSE) — stdio only initially.
 - Extra crates (`zanshin-crypto` for signing keys, etc.) — designed-for but not built initially.
+
+**WIP-phase deferrals (planned to land at the release-phase transition):**
+- Entire Distribution & Release pipeline (Section 4.7): codesigning, notarization, Sparkle auto-update, GitHub Releases automation, Homebrew Cask (OD-5).
+- Reproducibility CI (FR-BO-8).
+- Full license-gate (`cargo deny check licenses`) + Dart-side `pana`.
+- Codegen drift CI-gate (`cargo make verify-codegen`).
+- Performance budget tests (NFR-P-1..6 enforcement).
+- Schema-versioning machinery (`schema_version` field, `_v2` suffixes).
+- Mutating ops beyond P0 essentials: conflict ops (FR-JJ-12), `git push` (FR-JJ-13b), `split`/`squash`/`rebase` (FR-JJ-10b), bookmark CRUD (FR-JJ-11), settings R/W (FR-JJ-15), rare mutations (FR-JJ-10c), op-restore/op-diff (FR-JJ-14b).
+- Watchman-availability check API (FR-FFI-7).
+- Full structured diagnostics surface (beyond version-string + log-path).
+- MCP: bundling into `Zanshin.app` (FR-MCP-7), LLM-quality tool-descriptions gate (FR-MCP-5 quality-bar), MCP resources surface (FR-MCP-6 / OD-10), full write-tool surface beyond `describe` + `new`.
+- Dedicated same-repo concurrency test story (assertions live in the mutation smoke).
 
 ---
 
@@ -194,8 +204,9 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR-JJ-10b | Mutating ops — advanced: `split`, `squash`, `rebase`. | P1 (0.2 — CLI/MCP bridges the gap) |
 | FR-JJ-10c | Mutating ops — rare: `duplicate`, `restore`, `backout`. | P2 |
 | FR-JJ-11 | Bookmark ops: create, move, delete, track, untrack, forget. | P1 (0.2) |
-| FR-JJ-12 | Conflict ops: report conflict files in a change; call `jj resolve` after external edit. | P0 |
-| FR-JJ-13 | Remote ops: `git fetch` and `git push` with progress callbacks. | P0 |
+| FR-JJ-12 | Conflict ops: report conflict files in a change; call `jj resolve` after external edit. Deferred — linear add-on to the FFI mutation surface; not on the WIP build/run path. | P1 (deferred) |
+| FR-JJ-13a | Remote op: `git fetch` with progress callbacks. Real consumer of the FR-FFI-8 progress-callback pattern in WIP. | P0 |
+| FR-JJ-13b | Remote op: `git push` with progress callbacks. Deferred — `fetch` covers the progress-callback consumer requirement; `push` is a linear add-on later. | P1 (deferred) |
 | FR-JJ-14a | Op-log op: `undo`. | P0 |
 | FR-JJ-14b | Op-log ops: `op restore`, op-diff. | P2 |
 | FR-JJ-15 | Settings access: read/write `user.email`, `user.name`, signing key config, defaults. | P1 (global jj config picks up most defaults) |
@@ -229,10 +240,10 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR-FFI-4 | Async signals from Rust to Dart via `NativeCallable.listener`. Same mechanism for filesystem-watcher events and progress notifications. | P0 |
 | FR-FFI-5 | `notify-rs` watcher subsystem inside `zanshin-ffi`: watches `.jj/repo/op_heads/heads/` (primary) and `.jj/repo/working_copy/checkout` (heartbeat). | P0 |
 | FR-FFI-6 | Watcher-event latency: from `op_heads` filesystem mutation to Dart callback invocation < 100ms (aligned with NFR-P-4 / FR-RX-1). | P0 |
-| FR-FFI-7 | Watchman-availability check API: callable from Dart at repo-open time. Returns: installed? configured in `.jj/repo/config.toml`? `register-snapshot-trigger` set? | P0 |
-| FR-FFI-8 | Progress callback contract: long-running ops (fetch, push, large diffs, lane-cache rebuilds) accept a `NativeCallable.listener` and emit `{operation, progress, message}` events. | P0 |
+| FR-FFI-7 | Watchman-availability check API. Deferred — `notify-debouncer-full` covers the WIP watcher path; Watchman-status surfacing is release-grade UX polish. | P1 (deferred) |
+| FR-FFI-8 | Progress callback contract: long-running ops accept a `NativeCallable.listener` and emit `{operation, progress, message}` events. Exercised in WIP by FR-JJ-13a (`git fetch`). | P0 |
 | FR-FFI-9 | Error model: every `extern "C"` function returns either success-with-handle or a structured error code + message. No panics across the FFI boundary (Rust panics are caught and converted to errors). | P0 |
-| FR-FFI-10 | Versioning: `zanshin_ffi_version()` returns the build's exact version + git SHA — required for Dart-side compatibility check at startup. | P0 |
+| FR-FFI-10 | `zanshin_ffi_version()` returns the build's exact version + git SHA. Used as build-stamp / diagnostics. No compatibility-negotiation logic — WIP allows breaking changes; callers update. | P0 |
 
 ### 4.5 `zanshin-mcp` — MCP Server Binary
 | FR | Description | Priority |
@@ -240,40 +251,43 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR-MCP-1 | Standalone Rust binary using `rmcp`. Shares `zanshin-jj` crate (no FFI involved on the MCP side — direct Rust API usage). | P0 |
 | FR-MCP-2 | Stdio transport. Spawned by MCP hosts (Claude Desktop, etc.). | P0 |
 | FR-MCP-3 | Read tools: `status`, `log`, `show <rev>`, `diff <rev>`, `op_log`, `bookmarks`, `remotes`. | P0 |
-| FR-MCP-4 | Write tools: `describe`, `new`, `edit`, `abandon`, `split`, `squash`, `rebase`, `undo`, bookmark CRUD, `git fetch`, `git push`. | P0 (OD-4 = read+write) |
-| FR-MCP-5 | Tool descriptions accurate enough that an LLM-driven host picks correctly without trial-and-error. Every tool has a concrete one-line description + parameter docs + a usage example. | P0 (quality gate) |
-| FR-MCP-6 | Structured-data resources: revset → JSON (for hosts that prefer reading resources over calling tools repeatedly). | P1 (deferred to 0.2 per OD-10 — tools-only initially) |
-| FR-MCP-7 | Bundled inside `Zanshin.app` (`Contents/Resources/zanshin-mcp` or platform-appropriate location). Path documented for MCP-host config. | P0 |
-| FR-MCP-8 | Standalone usability: `zanshin-mcp` works as a CLI binary independent of the GUI. Allows manual MCP-protocol testing and embedding in non-bundled environments. | P0 |
-| FR-MCP-9 | Same-repo concurrency: when GUI and MCP server operate on the same repo simultaneously, mutations from one are reflected in the other via the filesystem-watcher path. No IPC, no locking choreography. | P0 (architectural) |
+| FR-MCP-4 | Write tools: `describe`, `new` in WIP. `edit`, `abandon`, `split`, `squash`, `rebase`, `undo`, bookmark CRUD, `git fetch`, `git push` follow via FR-JJ-* as those land (most deferred). | P0 (subset in WIP, OD-4 = read+write) |
+| FR-MCP-5 | Tool descriptions and parameter docs exist for every tool (basic discoverability). LLM-quality iteration + `mcp-tester` smoke gate deferred to release phase. | P0 (basic), deferred (quality gate) |
+| FR-MCP-6 | Structured-data resources: revset → JSON. | P1 (deferred to 0.2 per OD-10) |
+| FR-MCP-7 | Bundled inside `Zanshin.app`. Deferred — WIP runs `zanshin-mcp` as standalone CLI; bundling re-evaluated at release phase alongside codesigning. | P1 (deferred) |
+| FR-MCP-8 | Standalone usability: `zanshin-mcp` runs as a CLI binary independent of any GUI. Allows manual MCP-protocol use without bundling. | P0 |
+| FR-MCP-9 | Same-repo concurrency: when GUI and MCP server operate on the same repo simultaneously, mutations from one are reflected in the other via the filesystem-watcher path. No IPC, no locking choreography. Concurrency assertions live in the FR-JJ-10a mutation smoke (no separate concurrency-test story while WIP). | P0 (architectural) |
 
 ### 4.6 Build Orchestration
 | FR | Description | Priority |
 |----|-------------|----------|
-| FR-BO-1 | `cargo make build` produces a complete, signed, notarized `.app` bundle in `dist/`. Single command, no manual steps. | P0 |
-| FR-BO-2 | `cargo make test` runs Rust workspace tests + Dart-bootstrap tests + license compliance check. | P0 |
-| FR-BO-3 | `cargo make sign` and `cargo make notarize` as separate explicit targets (for cases where build is in-place but signing creds are restricted). | P0 |
-| FR-BO-4 | `cargo make release` orchestrates: build → sign → notarize → assemble Sparkle appcast entry → tag git release → upload to GitHub Releases. | P0 |
+| FR-BO-1 | `cargo make build` produces an unsigned, unnotarized `.app` bundle suitable for local development. Single command, no manual steps. Signing/notarization deferred — see Section 4.7. | P0 |
+| FR-BO-2 | `cargo make test` runs Rust workspace tests + Dart-bootstrap tests + `cargo deny check advisories bans`. Full license-gate + `pana` deferred. | P0 |
+| FR-BO-3 | `cargo make sign` / `cargo make notarize` targets. | P1 (deferred — release phase) |
+| FR-BO-4 | `cargo make release` orchestration (build → sign → notarize → appcast → tag → upload). | P1 (deferred — release phase) |
 | FR-BO-5 | Dart Hooks (`native_toolchain_rust`) integrate so Flutter's normal build flow ("flutter build macos") picks up the Rust artefact correctly. | P0 |
-| FR-BO-6 | Generated code (`ffigen` output, `cbindgen` headers) is committed to the repo. Build does NOT regenerate; a separate target `cargo make codegen` does. | P0 |
+| FR-BO-6 | Generated code (`ffigen` output, `cbindgen` headers) is committed to the repo. Build does NOT regenerate; a separate target `cargo make codegen` does. CI drift-gate (`cargo make verify-codegen`) deferred — discipline rule applies during development. | P0 |
 | FR-BO-7 | Toolchain pinned: `rust-toolchain.toml` for Rust, Flutter/Dart versions documented at repo root. CI pulls exactly these versions. | P0 |
-| FR-BO-8 | Reproducibility: two builds of the same SHA on different machines produce byte-identical artefacts (modulo codesignature). Verified by a CI job that builds twice and diffs. | P0 |
+| FR-BO-8 | Reproducibility (two-build SHA diff in CI). | P1 (deferred — release phase) |
 
-### 4.7 Distribution & Release
+### 4.7 Distribution & Release — DEFERRED
+
+> **Status (2026-05-17):** Entire section is deferred to the release phase. WIP delivers the unsigned, unnotarized `.app` from FR-BO-1 for local development only. None of the items below are in scope for WIP.
+
 | FR | Description | Priority |
 |----|-------------|----------|
-| FR-DR-1 | Apple Developer ID codesigning of every binary (`.app`, embedded `zanshin-mcp`, Rust dylib). Certificate handling in CI does not leak secrets. | P0 |
-| FR-DR-2 | Notarization via `notarytool`. Build fails if notarization fails. Stapled receipt embedded in distributed `.app`. | P0 |
-| FR-DR-3 | Sparkle-based auto-update. Signed appcast (`appcast.xml`) hosted on GitHub Pages (or equivalent), points at GitHub Releases artefacts. | P0 |
-| FR-DR-4 | Update check sends no user / repo identifying data. User-Agent only. No analytics. | P0 (privacy) |
-| FR-DR-5 | GitHub Releases as primary distribution channel. Tag → CI auto-publishes release with `.app.zip` + (optional) `.dmg` + checksums + appcast update. | P0 |
-| FR-DR-6 | Homebrew Cask: deferred. (OD-5) | P2 |
+| FR-DR-1 | Apple Developer ID codesigning (`.app`, embedded `zanshin-mcp`, Rust dylib). | Deferred |
+| FR-DR-2 | Notarization via `notarytool`, stapled receipt. | Deferred |
+| FR-DR-3 | Sparkle-based auto-update with signed appcast on GitHub Pages. | Deferred |
+| FR-DR-4 | Update-check privacy (User-Agent only, no analytics). When FR-DR-3 lands, this binding remains. | Deferred (binding when DR-3 lands) |
+| FR-DR-5 | GitHub Releases automation on tag (`.app.zip` + checksums + appcast). | Deferred |
+| FR-DR-6 | Homebrew Cask. | Deferred (post-0.1, OD-5) |
 
 ### 4.8 Reactivity (cross-cutting)
 | FR | Description | Priority |
 |----|-------------|----------|
-| FR-RX-1 | `.jj/repo/op_heads/heads/` change → Dart callback fires within < 100ms. | P0 |
-| FR-RX-2 | External file edit → Watchman → jj auto-snapshot → new op → op_heads change → callback. End-to-end latency < 500ms. | P0 |
+| FR-RX-1 | `.jj/repo/op_heads/heads/` change → Dart callback fires. Latency target `< 100ms` is a soft design goal in WIP; functional pathway is asserted, no Test-Assertion on the latency bound. | P0 (functional), soft target |
+| FR-RX-2 | External file edit → Watchman → jj auto-snapshot → new op → op_heads change → callback. End-to-end target `< 500ms` is a soft design goal in WIP. | P0 (functional), soft target |
 | FR-RX-3 | MCP-server mutation → same filesystem-mutation path → same callback. GUI consumers of the FFI see no difference between GUI-origin, MCP-origin, or external-CLI-origin changes. | P0 |
 | FR-RX-4 | Watcher recovers cleanly from temporary FS disturbances (network drives unmounting, Time Machine snapshots, etc.) without process restart. | P0 |
 
@@ -282,6 +296,9 @@ Adoption, stars, contributors — welcome side-effects, none required.
 ## 5. Non-Functional Requirements
 
 ### 5.1 Performance
+
+> **WIP:** budgets below are design targets that inform algorithm choice (e.g., `imara-diff` Histogram over `similar`). They are **not** enforced by CI perf-gates while WIP. Enforcement is deferred to the release phase.
+
 | NFR | Target |
 |-----|--------|
 | NFR-P-1 | Repo open (incl. full lane-cache computation, op-log read) for a 10k-commit repo: **< 2s** |
@@ -306,28 +323,28 @@ Adoption, stars, contributors — welcome side-effects, none required.
 ### 5.4 Licensing
 - **Project license:** Apache-2.0 (OD-2 — for the patent grant).
 - **Dependency policy:** Permissive only — MIT, BSD-2/3, Apache-2.0, MPL-2.0, Unlicense, CC0. Excluded: GPL (any), AGPL, LGPL, SSPL, custom non-OSI licenses.
-- **Enforcement:** `cargo-deny` for Rust, `pana` for Dart pub dependencies (parses each package's license metadata). CI fails on any forbidden license.
+- **Enforcement (WIP):** `cargo deny check advisories bans` runs in CI (security backstop, cheap). The full license-gate (`cargo deny check licenses`) and Dart-side `pana` are deferred to the release phase.
 - **Watchman:** runtime system dependency (not bundled), so its MIT license is informational only.
 
-### 5.5 Distribution & Update
-- Codesigning: Apple Developer ID Application certificate. Stored as encrypted secret in CI. Never logged.
-- Notarization: every release passes `notarytool` before publish.
-- Update mechanism: Sparkle 2.x (OD-3). Appcast signed; auto-update on user confirmation only (no silent installs).
-- Versioning: SemVer (`MAJOR.MINOR.PATCH`). 0.x while pre-1.0; post-1.0 implies API/behaviour stability commitments for the `zanshin-ffi` extern "C" API and the MCP tool surface.
+### 5.5 Distribution & Update — DEFERRED
+
+> Distribution and update infrastructure (codesigning, notarization, Sparkle, GitHub Releases automation) is deferred to the release phase — see Section 4.7. While WIP, no distribution channel exists.
+
+- Versioning posture: SemVer (`MAJOR.MINOR.PATCH`). 0.x is WIP — breaking changes allowed. Post-1.0 SemVer stability commitments for the `extern "C"` ABI and MCP tool surface are the *intent*, but the exact policy is deferred and will be revisited at release time.
 
 ### 5.6 Build & Reproducibility
-- One command: `cargo make build`. CI runs the same command.
-- Generated code committed (FR-BO-6).
+- One command: `cargo make build`. CI runs the same command. WIP output: unsigned `.app`.
+- Generated code committed (FR-BO-6); CI drift-gate deferred (discipline rule applies).
 - Toolchain pinned (FR-BO-7).
-- Cross-machine reproducibility verified by CI (FR-BO-8).
+- Cross-machine reproducibility CI (FR-BO-8) deferred to the release phase.
 
 ### 5.7 Supportability
-- First-run / repo-open: Zanshin detects missing Watchman or missing jj-fsmonitor config and exposes the result via `extern "C"` API for the UI to render an install/setup dialog (FR-FFI-7).
-- Diagnostics API: `extern "C"` function returns a structured JSON with jj-lib version, Watchman version, app version, OS version, repo path summary — clipboard-copyable for issue reports.
+- Diagnostics API (WIP): `extern "C"` function returns version-string + log-path. Full structured-JSON diagnostics (jj-lib version, Watchman state, OS, repo summary) deferred — basic version + log-path are enough to support local development.
 - Crash on launch produces a local log in `~/Library/Logs/Zanshin/` (5.3).
+- First-run / Watchman-detection (FR-FFI-7): deferred.
 
 ### 5.8 Stability of FFI Contract
-- The `extern "C"` API of `zanshin-ffi` is the *external* contract; once 1.0 ships, breaking changes require a major version bump.
+- **WIP (0.x):** the `extern "C"` API of `zanshin-ffi`, the MCP tool surface, and the JSON schemas evolve freely. Breaking changes are allowed; callers update in the same PR. No `_v2`-suffix discipline, no in-wire `schema_version` field. The intent is that these surfaces become the external SemVer contract once 1.0 ships, but the exact policy is deferred and will be revisited at release time.
 - jj-lib's API churn is absorbed inside `zanshin-jj` (FR-JJ-16). The rest of the workspace and the FFI surface do not see jj-lib API changes directly.
 
 ---
@@ -351,31 +368,31 @@ Adoption, stars, contributors — welcome side-effects, none required.
 
 ## 7. Epic Breakdown
 
-Eight epics. Sequencing reflects dependency, not strict time order.
+Eight epics (WIP-scoped). Sequencing reflects dependency, not strict time order.
 
 1. **Epic A — Workspace & Build Foundation**
-   Cargo workspace skeleton, all five crates created as stubs (`zanshin-jj`, `zanshin-ffi`, `zanshin-diff`, `zanshin-graph`, `zanshin-mcp`). `cargo-make` Makefile.toml with `build`/`test`/`codegen` targets. Flutter project initialised with `native_toolchain_rust` Dart Hook wired. ffigen + cbindgen chain operational. CI green on empty bindings + license check. Toolchain pinned.
+   Cargo workspace skeleton, all five crates created as stubs. `cargo-make` Makefile.toml with `build`/`test`/`codegen` targets. Flutter project initialised with `native_toolchain_rust` Dart Hook wired. ffigen + cbindgen chain operational (manual regen). CI green on minimal gate: clippy/fmt/test/dart-analyze/dart-format/flutter-test/`cargo deny check advisories bans`. Toolchain pinned. **Deferred:** schemas-dir versioning README, full license-gate, pana, codegen drift CI-check.
 
 2. **Epic B — `zanshin-jj` Adapter & Read Path**
-   Repository open, status, revset queries, change-metadata read, op-log read, bookmarks read, remotes read. Adapter API stable enough that the public surface won't change as jj-lib churns. Tests against fixture repos.
+   Repository open/init/clone, status, revset queries, change-metadata read, op-log read, bookmarks read, remotes read. Adapter API absorbs jj-lib churn (FR-JJ-16). Tests against committed fixture repos (tiny + medium; large fixture deferred with perf-tests). **Deferred:** NFR-P-1 sub-budget allocation, API-surface-lock doc.
 
 3. **Epic C — `zanshin-ffi` & Watcher**
-   Opaque handles + JSON-serialized data crossing the FFI boundary. `notify-rs` watcher on `op_heads` + `working_copy/checkout`. `NativeCallable.listener` callback infrastructure for FS events and progress notifications. Error model (no panic crossings). Watchman-availability detection API. Diagnostics API. End-to-end test: filesystem mutation triggers Dart callback in the bootstrap.
+   Opaque handles + JSON-serialized data crossing the FFI boundary. AD-1 error envelope. AD-5 `notify-debouncer-full` watcher on `op_heads` + `working_copy/checkout`. `NativeCallable.listener` callback infrastructure for FS events and progress notifications. Error model (no panic crossings). Tracing init (file appender). Diagnostics API (version-string + log-path). Dart worker isolate bootstrap. End-to-end test: filesystem mutation triggers Dart callback (functional only — no latency assert). **Deferred:** Watchman-availability check (FR-FFI-7), full structured diagnostics, watcher latency-assertion.
 
 4. **Epic D — `zanshin-graph`**
-   Lane-assignment algorithm on jj-lib's `default_index` / `dag_walk`. Full lane-cache on repo-open and on `op_heads` change. Render-slice API. JSON output. Performance test against 10k-commit fixture.
+   Lane-assignment algorithm on jj-lib's `default_index` / `dag_walk`. On-demand lane computation per request (full persistent lane-cache deferred). Render-slice returns all lanes for revset (windowing deferred). JSON output. Algorithmic correctness test on ~100-commit fixture. **Deferred:** 10k-commit perf test, persistent cache + op_heads invalidation, checkpoint-caching.
 
 5. **Epic E — `zanshin-diff`**
-   `imara-diff` integration for word-level breakdown. `tree-sitter-highlight` integration for syntax classes. JSON output schema. Initial set of bundled grammars (OD-9). Performance test against 5k-line fixture.
+   Line-level hunks. Word-level breakdown via `imara-diff` (Histogram). `tree-sitter-highlight` integration. Bundled grammars: rust, dart, markdown (remaining OD-9 grammars deferred). JSON output. Diff between two revisions. **Deferred:** 5k-line perf test, fallback strategies, incremental highlighting.
 
 6. **Epic F — `zanshin-jj` Write Path & `extern "C"` Exposure**
-   `describe`, `new`, `edit`, `abandon`, `split`, `squash`, `rebase`, `undo`, bookmark CRUD, `git fetch`, `git push` with progress callbacks. Conflict-resolve handoff. All exposed through `zanshin-ffi`.
+   Mutations: `describe`, `new`, `edit`, `abandon` (FR-JJ-10a). Op-log `undo` (FR-JJ-14a — wrapper on `jj op restore`). FFI mutation surface (the wrapper convention itself). `git fetch` with progress callback — real consumer of the FR-FFI-8 progress path. Two-thread concurrent-write assertions appended to the mutation smoke (Szenario-1 from the dropped E7-8 story). **Deferred:** conflict ops (FR-JJ-12), `git push` (FR-JJ-13b), `split`/`squash`/`rebase` (FR-JJ-10b), bookmark CRUD (FR-JJ-11), settings (FR-JJ-15), rare mutations (FR-JJ-10c), op-log visibility test (NFR-R-2), op-restore/op-diff (FR-JJ-14b).
 
 7. **Epic G — `zanshin-mcp` Binary**
-   `rmcp`-based server, stdio transport. Read tools + write tools. Tool descriptions and parameter docs at LLM-quality. Bundled into `Zanshin.app`. End-to-end test with `mcp-tester` and a smoke test with Claude Desktop. Same-repo concurrency verified.
+   `rmcp`-based server, stdio transport, file-only tracing in all build modes, repo selection (`--repo` or CWD walk-up). Read tools (status/log/show/diff/op_log/bookmarks/remotes). Write tools subset: `describe` + `new`. Tool descriptions and parameter docs exist (basic). Minimal "MCP-server boots + lists tools" smoke. Structured MCP errors (basic mapping). **Deferred:** LLM-quality iteration + `mcp-tester` smoke gate, bundling into `Zanshin.app`, standalone-CLI polish, full write-tool surface, MCP resources surface (FR-MCP-6), error-taxonomy-stability tests, dedicated same-repo concurrency test story.
 
-8. **Epic H — Distribution & Release Engineering**
-   Apple Developer ID codesigning in CI. Notarization. Sparkle appcast generation and hosting. GitHub Releases automation on tag. License-compliance CI step (`cargo-deny` + Dart-side, OD-8). Reproducibility verification job (two-build diff). 0.1.0 release.
+8. **Epic H — Build Output (WIP)**
+   `cargo make build` produces an unsigned `.app` for local development. **Entire release pipeline deferred:** codesigning, notarization, Sparkle appcast, GitHub Releases automation, reproducibility CI, Homebrew Cask. See Section 4.7.
 
 > **Dart-side bootstrap** (long-running worker isolate, FFI handle management, command-bus) belongs in Epic C — the minimum viable substrate the UI plugs into.
 

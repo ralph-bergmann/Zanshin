@@ -2,13 +2,15 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
+last_revised: '2026-05-17'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
-status: 'complete'
+status: 'complete (WIP-scope rework 2026-05-17)'
 optimized_for_llm: true
 overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
-scope_reminder: 'Rust workspace + FFI + MCP + build/distribution + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work).'
+scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
+posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
 
 # Project Context for AI Agents
@@ -42,14 +44,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `hooks` (Dart Hooks runtime)
 - `json_schema` (test-only)
 - `package:flutter_lints` + selected `package:very_good_analysis` rules
-- `pana` (global, CI license gate)
+- ~~`pana`~~ — license-gate deferred to release phase
 
 **Build & distribution:**
 - `cargo-make` (`Makefile.toml` — single entry point)
 - `cbindgen` (C header generation, committed output)
-- Apple Developer ID codesigning + `notarytool` notarization
-- Sparkle `2.x` (auto-update, EdDSA-signed appcast)
-- GitHub Releases (primary distribution channel)
+- **Deferred (release phase, not WIP):** Apple Developer ID codesigning, `notarytool` notarization, Sparkle `2.x` (auto-update, EdDSA-signed appcast), GitHub Releases primary distribution channel
 
 **Platform constraints:**
 - macOS-only. Windows/Linux are explicit non-goals.
@@ -113,12 +113,14 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Strings cross as `*mut c_char` (CString). Rust owns the allocation;
   Dart calls `zanshin_string_free(ptr)` to release. Never `malloc`/`free` mismatched.
 - All faillible `extern "C"` functions return the JSON envelope (AD-1):
-  `{ "ok": bool, "data": <payload>|null, "error": {...}|null, "schema_version": "x.y" }`.
+  `{ "ok": bool, "data": <payload>|null, "error": {...}|null }`. The in-wire
+  `schema_version` field is deferred (WIP: schemas evolve freely, callers update).
 - Infallible hot-path functions (`zanshin_ffi_version`, `zanshin_string_free`) return
   plain types directly — no envelope overhead.
 - JSON field naming: `snake_case` over the wire (committed in `schemas/*.schema.json`).
   Dart side uses `@JsonKey(name: '...')` to translate to `lowerCamelCase`.
-- Schema files in `schemas/*.v1.schema.json` are the source of truth.
+- Schema files in `schemas/*.schema.json` are the source of truth (no `.v1` infix —
+  WIP doesn't carry version suffixes; breaking changes are in-place edits).
 - Every test that produces OR consumes JSON crossing the FFI boundary MUST validate
   the JSON against the relevant schema. Rust tests use the `jsonschema` crate;
   Dart tests use the `json_schema` package. A test that asserts on JSON without
@@ -126,9 +128,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   This applies to: snapshot fixtures (`insta`), golden outputs, hand-crafted
   test inputs, and any JSON returned by `extern "C"` functions under test.
   Reason: the schema is the wire contract; tests that bypass it can pass while
-  the contract is silently broken.
-- Schema-breaking change → new FFI function `_v2` suffix (e.g. `zanshin_get_status_v2`).
-  Old function stays callable until next major release.
+  the contract is silently broken. **Schema-validation in tests stays — this is
+  a correctness backstop, not versioning machinery.**
+- **WIP: breaking changes are allowed.** Update the schema in place, delete the
+  old shape, update all callers in the same PR. No `_v2` FFI-suffix discipline,
+  no in-wire `schema_version` field. Post-1.0 stability policy is deferred and
+  will be revisited at release time.
 
 ### Framework-Specific Rules
 
@@ -235,24 +240,22 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - The cdylib must be built (`cargo make build` or equivalent) before the Dart
   test suite runs. CI gates this explicitly.
 
-**Performance assertions:**
-- Performance budgets (NFR-P-*) have corresponding tests:
-  - `zanshin-graph`: 10k-commit fixture, lane-cache build < 1s (NFR-P-1 sub-budget,
-    FR-GR-5).
-  - `zanshin-diff`: 5k-line file, JSON output < 500ms (NFR-P-3).
-  - Watcher latency: filesystem mutation → callback < 200ms in tests (real budget
-    is < 100ms per NFR-P-4; test bound absorbs CI noise).
-  - Repo-open: 10k-commit fixture, full open < 2s (NFR-P-1).
-- Performance tests run on every CI build, not just release. A perf regression
-  is a CI failure, not a warning.
+**Performance assertions — DEFERRED to release phase:**
+- NFR-P-* budgets remain as soft design targets that inform algorithm choice
+  (e.g., `imara-diff` Histogram over `similar`). **No CI perf-gate enforcement
+  while WIP.**
+- One WIP exception: `zanshin-graph` should have a small algorithmic-correctness
+  test on a ~100-commit fixture (correct lane output, not timing). Catches dumb
+  O(n²) regressions cheaply without paying for a large-fixture perf-test infra.
 - Test only against committed fixtures of known size. Do not generate
   variable-size inputs at test time.
 
-**MCP server tests:**
-- Tool descriptions are validated by an `mcp-tester` smoke run in CI (FR-MCP-5).
-- Same-repo concurrency: an integration test boots the GUI worker + the MCP
-  binary against the same fixture repo and asserts that a mutation through one
-  channel propagates to the other via the watcher (FR-RX-3).
+**MCP server tests (WIP-minimal):**
+- A "MCP-server boots + lists tools" smoke runs in CI (prevents the MCP code
+  path from silently rotting).
+- **Deferred:** `mcp-tester` LLM-quality smoke (FR-MCP-5 quality gate),
+  dedicated GUI-worker + MCP-binary same-repo concurrency test
+  (concurrency assertions live in the FR-JJ-10a mutation smoke instead).
 
 **Property of every test suite:**
 - Tests do not depend on the developer's global `~/.jjconfig.toml` or
@@ -354,47 +357,49 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Development Workflow Rules
 
 **Build commands (`cargo-make` is the single entry point):**
-- `cargo make build` — full build, produces unsigned `.app` in
-  `app/build/macos/Build/Products/Release/Zanshin.app` (dev mode).
-- `cargo make test` — Rust workspace tests + Dart bootstrap tests + license
-  compliance (`cargo-deny` + `pana`) + codegen drift check.
+- `cargo make build` — full build, produces unsigned, unnotarized `.app` in
+  `app/build/macos/Build/Products/Release/Zanshin.app` (dev mode — this is the
+  WIP deliverable).
+- `cargo make test` — Rust workspace tests + Dart bootstrap tests +
+  `cargo deny check advisories bans` (full license-gate + `pana` deferred).
 - `cargo make codegen` — regenerates `zanshin_ffi.h` (cbindgen) and
   `bindings.dart` (ffigen). RUN MANUALLY whenever an `extern "C"` signature
   changes. Commit the regenerated files in the same PR.
-- `cargo make verify-codegen` — CI gate: re-runs codegen into tmpdir, diffs
-  against committed files, fails on drift.
-- `cargo make sign` / `cargo make notarize` — explicit signing/notarization
-  targets for environments with restricted creds.
-- `cargo make release` — full release pipeline (build → sign → notarize →
-  Sparkle appcast → tag → GitHub Releases upload). Tag-push triggered only.
+- `cargo make verify-codegen` — codegen drift check. **Deferred as CI gate
+  while WIP** — discipline rule applies during development.
 - `flutter run -d macos` — for UI work only (Ralph's separate scope).
   Requires a prior `cargo make build` so the cdylib is present.
+
+**Deferred targets (release phase, not WIP):**
+- `cargo make sign` / `cargo make notarize`
+- `cargo make release` (full pipeline: build → sign → notarize → Sparkle appcast → tag → GitHub Releases upload)
 
 **Codegen workflow:**
 - Generated files (`crates/zanshin-ffi/include/zanshin_ffi.h`,
   `app/lib/src/ffi/bindings.dart`) are COMMITTED to the repo.
 - Build never auto-regenerates. The only path to update them is
   `cargo make codegen` followed by an explicit commit.
-- CI's `verify-codegen` target rejects PRs where the committed generated files
-  drift from what regeneration would produce.
-- Reason: code review must see the diff of generated code, not pretend it
-  doesn't exist. Reproducibility requires that two builds of the same SHA
-  produce byte-identical artefacts (FR-BO-8), which auto-regen would break.
+- **WIP:** CI's `verify-codegen` drift-gate is deferred. The discipline rule
+  (never regenerate outside `cargo make codegen`) still applies during
+  development — code review must see the diff of generated code.
 
-**CI gates (every PR, on `main` branch protection):**
+**CI gates (WIP-minimal, every PR on `main` branch protection):**
 - `cargo clippy -- -D warnings` (workspace-wide, pedantic on)
 - `cargo fmt --check`
-- `cargo test --workspace` (Rust unit + integration + performance tests)
+- `cargo test --workspace` (Rust unit + integration tests; performance tests deferred)
 - `dart analyze --fatal-infos --fatal-warnings`
 - `dart format --set-exit-if-changed`
-- `flutter test` + `flutter test integration_test`
-- `cargo deny check licenses advisories` (NFR-L-3)
+- `flutter test`
+- `cargo deny check advisories bans` (security backstop)
+
+**Deferred CI gates (release phase):**
+- `flutter test integration_test`
+- `cargo deny check licenses`
 - `pana --no-warning` against `app/` package
-- `cargo make verify-codegen`
-- `mcp-tester` smoke run against `zanshin-mcp` (FR-MCP-5)
-- Performance budget tests (`cargo make perf` or equivalent — see Testing Rules)
-- Reproducibility check on tags + weekly (separate workflow,
-  `reproducibility.yml`).
+- `cargo make verify-codegen` (codegen drift)
+- `mcp-tester` smoke run against `zanshin-mcp` (FR-MCP-5 LLM-quality gate)
+- Performance budget tests
+- Reproducibility check (FR-BO-8 two-build diff, `reproducibility.yml`)
 
 **Git / repo conventions:**
 - Branch protection on `main`. No direct pushes; all changes via PR.
@@ -414,36 +419,33 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Every PR description references the FR-IDs / NFR-IDs / AR-IDs it implements
   or touches.
 - For FFI-surface changes: the diff MUST include both `extern "C"` source AND
-  regenerated `zanshin_ffi.h` + `bindings.dart`. CI enforces this via
-  `verify-codegen`.
-- For schema changes: the PR includes the schema diff (`schemas/*.json`) +
-  the version bump (additive → minor, breaking → new `_v2` FFI function).
+  regenerated `zanshin_ffi.h` + `bindings.dart`. (CI drift-gate deferred —
+  reviewer enforces during code review.)
+- For schema changes: the PR includes the schema diff (`schemas/*.json`).
+  WIP: in-place edit; no version bump, no `_v2` FFI suffix, no `schema_version`
+  field. Update all callers in the same PR.
 - For new error codes: `docs/rust-error-codes.md` is updated in the same PR.
 
-**Release flow (Epic H, FR-DR-1..6):**
-- Releases are tag-driven. `v0.1.0`, `v0.1.1`, `v0.2.0`, etc. (SemVer).
-- `.github/workflows/release.yml` runs on tag push: `cargo make release`.
-- Codesign credentials live in encrypted GitHub Secrets. Never printed in CI
-  logs. The signing step is the only stage that touches the secrets.
-- Sparkle EdDSA private key lives in GitHub Secrets. Public key is committed
-  at `sparkle/ed25519_pub.pem`.
-- No silent auto-updates. Sparkle prompts the user before installing.
-- No release without notarization. `notarytool` failure fails the workflow.
+**Release flow — DEFERRED (Epic H reduced to "build unsigned `.app`" in WIP):**
+- Tag-driven releases, codesigning, notarization, Sparkle appcast,
+  GitHub Releases automation are all deferred to the release phase.
+- Versioning posture in WIP (0.x): breaking changes allowed; callers update.
 
-**License compliance (NFR-L-3):**
-- `cargo deny check licenses advisories` runs in CI. Forbidden: GPL (any),
-  AGPL, LGPL, SSPL, custom non-OSI. Permitted: MIT, BSD-2/3, Apache-2.0,
-  MPL-2.0, Unlicense, CC0.
-- `pana` validates Dart `pubspec.yaml` dependencies' SPDX metadata.
-- Before adding any new dep: run `cargo deny check licenses` locally first.
-  CI as a backstop, not as the primary check.
+**License compliance (WIP-scope):**
+- `cargo deny check advisories bans` runs in CI (security backstop, cheap).
+- **Deferred to release phase:** `cargo deny check licenses` (full license-gate),
+  `pana` validation of Dart `pubspec.yaml` license metadata.
+- The dependency policy still holds informally: prefer permissive only —
+  MIT, BSD-2/3, Apache-2.0, MPL-2.0, Unlicense, CC0. Avoid GPL/AGPL/LGPL/SSPL.
+  Before adding a non-trivial dep, eyeball its license; the formal gate lands later.
 
 **No-telemetry constraint (NFR-PRIV-1..4):**
 - Adding Sentry / Crashlytics / Firebase / Datadog / any analytics SDK is a
   HARD-BLOCK at review. Not a warning, not a discussion — rejected at the
   first sight of the dependency.
-- The Sparkle update check is the ONLY outbound network call in the shipped
-  app. User-Agent only; no identifying payload.
+- Once Sparkle auto-update lands (release phase), the Sparkle update check
+  will be the ONLY outbound network call in the shipped app. User-Agent only;
+  no identifying payload. WIP has no outbound network calls.
 - Crash logs are LOCAL: `~/Library/Logs/Zanshin/`. No upload, no
   auto-collection, no opt-in dialog.
 
@@ -462,10 +464,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   The cbindgen + ffigen chain is deliberately manual.
 - **NEVER add Sentry / Crashlytics / Firebase / Datadog / analytics SDKs.**
   No telemetry. Ever. (NFR-PRIV-1)
-- **NEVER add GPL / AGPL / LGPL / SSPL dependencies.** `cargo-deny` will fail
-  CI; run `cargo deny check licenses` locally before adding any dep.
+- **NEVER add GPL / AGPL / LGPL / SSPL dependencies.** The formal `cargo deny
+  check licenses` gate is deferred to release phase; meanwhile, eyeball every
+  new dep's license at PR-review time. Permissive only.
 - **NEVER regenerate `bindings.dart` or `zanshin_ffi.h` outside
-  `cargo make codegen`.** CI drift-check catches it; don't waste the cycle.
+  `cargo make codegen`.** The CI drift-check is deferred while WIP — the
+  discipline rule still applies; code-review catches it.
 - **NEVER use `Isolate.run` for repeated work** in Dart. Send the work as a
   `WorkerCommand` on the existing worker bus.
 - **NEVER invent alternative JSON envelope shapes.** Faillible FFI functions
@@ -476,8 +480,14 @@ _This file contains critical rules and patterns that AI agents must follow when 
   protocol — file-only tracing in ALL build modes, no exceptions.
 - **NEVER write Flutter UI code in this scope.** Widgets, layout, navigation,
   theming, a11y, i18n are Ralph's separate work. Stick to API surfaces.
-- **NEVER plan with an "MVP" / "good enough for now" mindset.** Production-grade
-  from day one.
+- **NEVER plan with a "good enough for now" mindset on CODE QUALITY.** Every line
+  of code that ships meets the project's quality bar (Clippy pedantic, structured
+  errors, `NativeFinalizer`, schema-validated JSON in tests, no shelling to jj CLI,
+  etc.). **Scope / release-readiness is separately WIP** — release infrastructure
+  (codesigning, notarization, Sparkle, GitHub Releases automation, reproducibility,
+  schema versioning machinery, full license-gate, perf-gate enforcement) is
+  deliberately deferred. Don't confuse the two axes. See `[[feedback-no-mvp-shortcuts]]`
+  in memory.
 - **NEVER `--amend` a published commit or force-push without explicit
   authorization.** New commit, not amend.
 
@@ -500,15 +510,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
   (FR-MCP-9, FR-RX-3)
 - **Generated code is committed; build doesn't regenerate.** When an
   `extern "C"` signature changes, run `cargo make codegen` and commit BOTH the
-  source change and the regenerated header/bindings in the same PR. Forgetting
-  this trips CI's `verify-codegen`.
-- **JSON `schema_version` field is mandatory** on every top-level object across
-  FFI. Even a tiny status response carries it. Forgetting it breaks the
-  versioning contract silently.
-- **Watchman absence is degradation, not failure.** Repo-open succeeds without
-  Watchman; external-edit reactivity just becomes "refresh on jj operation only".
-  Don't treat the absence as an error to surface — surface it as configuration
-  guidance.
+  source change and the regenerated header/bindings in the same PR. CI's
+  `verify-codegen` drift-gate is deferred while WIP — code-review enforces.
+- **No in-wire `schema_version` field in WIP.** The envelope is
+  `{ "ok": bool, "data": ..., "error": ... }` — no version field. When you
+  change a schema, edit in place and update all callers in the same PR.
+- **Watchman detection (FR-FFI-7) is deferred.** When/if it lands later:
+  Watchman absence is degradation, not failure — repo-open succeeds without it,
+  external-edit reactivity degrades to "refresh on jj operation only". WIP
+  works without any Watchman-detection surface.
 - **`jj-lib` is sync.** Wrapping its calls in `async` / `tokio::spawn_blocking`
   obscures the call stack and serves no purpose. The worker isolate provides
   the async boundary; `zanshin-jj` itself stays synchronous.
@@ -524,8 +534,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **No panic crosses the FFI boundary.** Wrapped via `std::panic::catch_unwind`
   in `zanshin-ffi::handle`, converted to `internal.panic` error. The goal is
   to never reach the catch — but the catch exists as a backstop. (FR-FFI-9)
-- **No secrets in CI logs.** Codesign creds, Sparkle EdDSA private key,
-  notarytool credentials — all encrypted GitHub Secrets, never echoed.
+- **No secrets in CI logs.** WIP CI has no secrets to leak (release pipeline
+  deferred). When codesign / Sparkle EdDSA / notarytool credentials land later,
+  they live in encrypted GitHub Secrets, never echoed.
 - **No PII at `info` or above** in logs. Commit messages, file paths, change
   IDs are `debug`-level only and compiled out in release.
 
