@@ -14,14 +14,14 @@ _bmad/config.toml
 _bmad/config.user.toml
 _bmad/custom/*.user.toml
 
-# Claude Code
+# IDE
 .claude/
-
-# IntelliJ related
 *.iml
 *.ipr
 *.iws
 .idea/
+.mcp.json
 
 # Rust
 target/
+
