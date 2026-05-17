@@ -1,0 +1,18 @@
+# Single workspace version (AR-AD-7). Pre-1.0 — breaking changes allowed in WIP.
+
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Zanshin — macOS Flutter GUI for the Jujutsu (jj) VCS"
+homepage = "https://github.com/dasralph/zanshin"
+repository = "https://github.com/dasralph/zanshin"
+authors = ["Ralph Bergmann <ralph@dasralph.de>"]
+rust-version = "1.95.0"
+publish = false
+
+[workspace.dependencies]
