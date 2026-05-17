@@ -73,7 +73,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
   - Why we don't bundle: Watchman runs as a per-user daemon — a bundled instance would conflict with a brew-installed one (facebook/watchman#558); codesign + auto-update complexity for a daemon we don't own; Homebrew already publishes a current bottle (2026.05.11.00) built from upstream source, which is the canonical macOS install path.
 
 **Library dependencies (pinned):**
-- Flutter 3.41.9 / Dart 3.11.5 / Rust 1.95.0 (systemwide installs, no FVM).
+- Flutter `main` channel (≥ `3.44.0-1.0.pre-573`) / Dart `main` channel (≥ `3.13.0-104.0.dev`) / Rust `1.95.0` (systemwide installs, no FVM). README.md is the human source-of-truth; `app/pubspec.yaml` + `rust-toolchain.toml` are the machine-enforced pins.
 - jj-lib v0.41.0 (pre-1.0 — API churn risk absorbed inside `zanshin-jj`, FR-JJ-16).
 - `rmcp` v1.7.0, `native_toolchain_rust` v1.0.4, `imara-diff`, `tree-sitter-highlight`, `notify-rs`, `cargo-make`.
 
@@ -158,7 +158,7 @@ dart pub global activate pana
 
 **Toolchain pins** (committed at workspace root):
 - `rust-toolchain.toml` → Rust 1.95.0
-- Flutter / Dart pinned via README (no FVM) → Flutter 3.41.9 / Dart 3.11.5
+- Flutter / Dart pinned via README (no FVM) → Flutter `main` channel (≥ `3.44.0-1.0.pre-573`) / Dart `main` channel (≥ `3.13.0-104.0.dev`)
 - `native_toolchain_rust` 1.0.4, `ffigen` 20.1.1, `rmcp` 1.7.0, `jj-lib` 0.41.0 (in respective `pubspec.yaml` / `Cargo.toml`)
 
 ### Reference Implementations (consult, do not fork)

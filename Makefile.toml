@@ -1,0 +1,193 @@
+[config]
+skip_core_tasks = true
+default_to_workspace = false
+
+[tasks.default]
+description = "List all available tasks."
+command = "cargo"
+args = ["make", "--list-all-steps"]
+
+# ─── build ──────────────────────────────────────────────────────────────────
+
+[tasks.build]
+description = "Build the Rust workspace (release) and the Flutter macOS shell."
+dependencies = ["build-rust", "build-flutter"]
+
+[tasks.build-rust]
+private = true
+description = "Build the Rust production crates in release mode (skips xtask via default-members)."
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.build-flutter]
+private = true
+description = "Build the Flutter macOS app in release mode."
+command = "flutter"
+args = ["build", "macos", "--release"]
+cwd = "app"
+
+# ─── run ────────────────────────────────────────────────────────────────────
+
+[tasks.run]
+description = "Run the Flutter macOS app in debug mode (Hot-Reload). Local execution only — unsigned."
+command = "flutter"
+args = ["run", "-d", "macos"]
+cwd = "app"
+
+[tasks.run-release]
+description = "Run the Flutter macOS app in release mode (local-optimized, no Hot-Reload). Local execution only — unsigned."
+command = "flutter"
+args = ["run", "-d", "macos", "--release"]
+cwd = "app"
+
+# ─── test ───────────────────────────────────────────────────────────────────
+
+[tasks.test]
+description = "Run the WIP-minimal quality gate (cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny advisories+bans)."
+dependencies = [
+    "test-cargo",
+    "test-clippy",
+    "test-fmt",
+    "test-flutter",
+    "test-dart-analyze",
+    "test-dart-format",
+    "test-cargo-deny",
+]
+
+[tasks.test-cargo]
+private = true
+command = "cargo"
+args = ["test", "--workspace"]
+
+[tasks.test-clippy]
+private = true
+command = "cargo"
+args = ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+
+[tasks.test-fmt]
+private = true
+command = "cargo"
+args = ["fmt", "--all", "--check"]
+
+[tasks.test-flutter]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "app"
+
+[tasks.test-dart-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "app"
+
+[tasks.test-dart-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "app"
+
+[tasks.test-cargo-deny]
+private = true
+# WHY: --workspace is auto-assumed for virtual manifests (current state) but we
+# pass it explicitly so the advisory scan keeps covering xtask if the root manifest
+# ever stops being virtual, and to make the "all crates scanned" intent explicit.
+command = "cargo"
+args = ["deny", "--workspace", "check", "advisories", "bans"]
+
+# ─── codegen ────────────────────────────────────────────────────────────────
+
+[tasks.codegen]
+description = "Regenerate the FFI C header (cbindgen) and Dart bindings (ffigen)."
+dependencies = ["codegen-cbindgen", "codegen-ffigen"]
+
+[tasks.codegen-cbindgen]
+private = true
+command = "cbindgen"
+args = [
+    "--config", "cbindgen.toml",
+    "--crate", "zanshin-ffi",
+    "--output", "crates/zanshin-ffi/include/zanshin_ffi.h",
+]
+
+[tasks.codegen-ffigen]
+private = true
+command = "dart"
+args = ["run", "ffigen", "--config", "ffigen.yaml"]
+cwd = "app"
+
+# ─── verify-codegen ─────────────────────────────────────────────────────────
+
+[tasks.verify-codegen]
+description = "Re-run codegen, diff against committed files, fail on drift. Manual discipline tool — not chained into `cargo make test`."
+# Recovery if the script is killed mid-flight (e.g. SIGKILL between regenerate and restore):
+#   git checkout -- crates/zanshin-ffi/include/zanshin_ffi.h app/lib/src/ffi/bindings.dart
+script_runner = "bash"
+script = '''
+set -euo pipefail
+
+HEADER=crates/zanshin-ffi/include/zanshin_ffi.h
+BINDINGS=app/lib/src/ffi/bindings.dart
+
+# Pre-flight: both codegen outputs must already exist (Story 1.5 lands them).
+if [ ! -f "$HEADER" ] || [ ! -f "$BINDINGS" ]; then
+    echo "verify-codegen requires committed codegen outputs to be present:" >&2
+    echo "  - $HEADER" >&2
+    echo "  - $BINDINGS" >&2
+    echo "Run 'cargo make codegen' first (requires Story 1.5 configs)." >&2
+    exit 1
+fi
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+cp "$HEADER"   "$TMP/header.committed"
+cp "$BINDINGS" "$TMP/bindings.committed"
+
+cargo make codegen
+
+# diff exit codes: 0 = identical, 1 = differs, >1 = error (missing file, I/O failure).
+# Capture explicitly so we don't silently route errors into the "drift" branch.
+check_drift() {
+    local committed=$1
+    local current=$2
+    local rc=0
+    diff -q "$committed" "$current" > /dev/null || rc=$?
+    if [ "$rc" -gt 1 ]; then
+        echo "diff failed unexpectedly (exit $rc) for $current — aborting." >&2
+        exit "$rc"
+    fi
+    return "$rc"
+}
+
+drift=0
+if ! check_drift "$TMP/header.committed" "$HEADER"; then
+    diff -u "$TMP/header.committed" "$HEADER" || true
+    cp "$TMP/header.committed" "$HEADER"
+    echo "Drift in $HEADER — run 'cargo make codegen' and commit." >&2
+    drift=1
+fi
+if ! check_drift "$TMP/bindings.committed" "$BINDINGS"; then
+    diff -u "$TMP/bindings.committed" "$BINDINGS" || true
+    cp "$TMP/bindings.committed" "$BINDINGS"
+    echo "Drift in $BINDINGS — run 'cargo make codegen' and commit." >&2
+    drift=1
+fi
+exit $drift
+'''
+
+# ─── clean ──────────────────────────────────────────────────────────────────
+
+[tasks.clean]
+description = "Remove all build outputs (cargo + flutter). Generated codegen is committed and stays."
+dependencies = ["clean-cargo", "clean-flutter"]
+
+[tasks.clean-cargo]
+private = true
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean-flutter]
+private = true
+command = "flutter"
+args = ["clean"]
+cwd = "app"

@@ -552,7 +552,7 @@ So that running `flutter build macos` picks up the Rust cdylib correctly via Dar
 
 **Given** `app/pubspec.yaml`
 **When** inspected
-**Then** `name: zanshin`, `version: 0.1.0`, `environment.sdk: ">=3.11.5 <4.0.0"`, `environment.flutter: ">=3.41.9"` are set
+**Then** `name: zanshin`, `version: 0.1.0`, `environment.sdk: "^3.13.0-104.0.dev"`, `environment.flutter: "^3.44.0-1.0.pre-573"` are set (Flutter/Dart `main` channel — required for multi-window APIs)
 **And** `dependencies` includes only the Dart SDK + `flutter` SDK at this stage (no third-party deps yet — added in later stories).
 
 **Given** `app/pubspec.yaml`
@@ -622,12 +622,12 @@ profile = "minimal"
 
 **Given** `README.md` at the repo root
 **When** inspected
-**Then** a "Toolchain" section documents the exact pins: Rust 1.95.0 (auto-pinned), Flutter 3.41.9, Dart 3.11.5 (manual install — no FVM)
+**Then** a "Toolchain" section documents the exact pins: Rust `1.95.0` (auto-pinned), Flutter `main` channel ≥ `3.44.0-1.0.pre-573`, Dart `main` channel ≥ `3.13.0-104.0.dev` (manual install — no FVM)
 **And** the section links to `https://flutter.dev/docs/get-started/install` and `https://rustup.rs` for installation instructions.
 
 **Given** the README "Toolchain" section
 **When** read
-**Then** it explicitly states "No FVM. Install Flutter 3.41.9 system-wide" (per Architecture §"Library dependencies")
+**Then** it explicitly states "No FVM. Install Flutter `main` channel ≥ `3.44.0-1.0.pre-573` system-wide" (per Architecture §"Library dependencies")
 **And** it explains why pinning matters (reproducibility, byte-identical artefacts modulo signature).
 
 **Given** the toolchain pin is in place
@@ -640,7 +640,7 @@ profile = "minimal"
 
 **Given** a Flutter SDK is required by CI
 **When** Story 1.9's CI workflow setup runs
-**Then** it explicitly invokes `subosito/flutter-action@v2` with `flutter-version: '3.41.9'` and `channel: 'stable'`.
+**Then** it explicitly invokes `subosito/flutter-action@v2` with `channel: 'master'` (the action's name for Flutter's `main` channel) and the exact `flutter-version` from `app/pubspec.yaml` (currently `3.44.0-1.0.pre-573`).
 
 **Edge cases:**
 
@@ -944,7 +944,7 @@ So that no merge can land without passing build + tests + clippy + dart-analyze 
 **Then** they include in order:
 1. `actions/checkout@v4`
 2. `dtolnay/rust-toolchain@stable` (reading `rust-toolchain.toml` automatically) OR `actions-rs/toolchain` with `toolchain: stable` and `override: true`
-3. `subosito/flutter-action@v2` with `flutter-version: '3.41.9'`, `channel: 'stable'`
+3. `subosito/flutter-action@v2` with `channel: 'master'` (Flutter `main`) and `flutter-version` matching `app/pubspec.yaml` (currently `3.44.0-1.0.pre-573`)
 4. `Swatinem/rust-cache@v2` for cargo build caching
 5. `dart pub global activate cargo_make` (or install via `cargo install cargo-make` cached)
 6. `dart pub global activate pana`

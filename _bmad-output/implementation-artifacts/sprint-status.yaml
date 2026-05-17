@@ -51,6 +51,9 @@ project: Zanshin
 # Story 1-3 created (ready-for-dev): 2026-05-17
 # Story 1-3 started: 2026-05-17
 # Story 1-3 reviewed + done: 2026-05-17
+# Story 1-4 created (ready-for-dev): 2026-05-17
+# Story 1-4 started: 2026-05-17
+# Story 1-4 reviewed + done: 2026-05-17
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -61,7 +64,7 @@ development_status:
   1-1-initialize-cargo-workspace-and-create-empty-crate-skeletons: done
   1-2-initialize-flutter-macos-package-with-dart-hooks-wiring: done
   1-3-pin-rust-toolchain-and-document-flutter-dart-pins: done
-  1-4-author-makefile-toml-with-build-test-codegen-targets: backlog
+  1-4-author-makefile-toml-with-build-test-codegen-targets: done
   1-5-configure-cbindgen-and-ffigen-with-committed-outputs: backlog  # SHRINK: no CI drift-gate
   1-6-add-cargo-deny-advisories-bans-security-backstop: backlog  # renamed (SHRINK: pana + license-gate cut)
   1-7-configure-workspace-level-lint-format-and-cargo-hygiene: backlog

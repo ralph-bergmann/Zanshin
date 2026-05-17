@@ -2,6 +2,16 @@
 
 [workspace]
 members = ["crates/*"]
+# WHY: explicit list (not derived from `members`) so `cargo build --release` skips
+# xtask. New production crates MUST be added here; xtask is intentionally excluded.
+# The test gate uses `--workspace` so xtask is still linted/tested (see Makefile.toml).
+default-members = [
+    "crates/zanshin-diff",
+    "crates/zanshin-ffi",
+    "crates/zanshin-graph",
+    "crates/zanshin-jj",
+    "crates/zanshin-mcp",
+]
 resolver = "2"
 
 [workspace.package]

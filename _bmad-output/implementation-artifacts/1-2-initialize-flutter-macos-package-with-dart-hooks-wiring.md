@@ -48,7 +48,7 @@ so that **running `flutter build macos` produces an unsigned `.app` that bundles
    }
    ```
    - `assetName` matches the future ffigen output path `lib/src/ffi/bindings.dart` (without the `lib/` prefix per code-assets convention; Story 1.5 generates the file proper).
-   - `cratePath` is **package-relative**: from `app/hook/` the path `../crates/zanshin-ffi` reaches the Cargo workspace crate.
+   - `cratePath` is **package-relative**: `native_toolchain_rust` resolves it relative to the package root (where `pubspec.yaml` lives — i.e., `app/`), so `../crates/zanshin-ffi` reaches the Cargo workspace crate one level above `app/`. The literal path string is identical whether you mentally anchor at `app/hook/` or `app/`; the package-root anchor is the contractually correct one (see Dev Notes § "RustBuilder 1.0.4 API quick reference" line 316).
 
 5. **AC-5 — `app/lib/main.dart` is a UI-free stub.** `main.dart` body is exactly:
    ```dart

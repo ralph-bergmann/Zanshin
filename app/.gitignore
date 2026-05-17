@@ -13,9 +13,8 @@
 migrate_working_dir/
 
 
-# Flutter/Dart/Pub related
+# Flutter/Dart/Pub related (macOS-only project — non-macOS platform stanzas omitted)
 **/doc/api/
-**/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
 .pub-cache/
@@ -28,8 +27,3 @@ app.*.symbols
 
 # Obfuscation related
 app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release

@@ -7,14 +7,19 @@ _Items raised during code reviews that are real but intentionally not actioned n
 - **No `NOTICE` file alongside Apache-2.0 `LICENSE`** [`LICENSE`] — release phase; no downstream redistributors during WIP.
 - **No `[workspace.lints]` table for central lint enforcement** [`Cargo.toml`] — owned by Story 1.7 (lint/format config).
 - **No `[profile.release]` / `[profile.dev]` customization (LTO, codegen-units, strip)** [`Cargo.toml`] — release-phase optimization.
-- **`xtask` not excluded from default-members** [`Cargo.toml:3-5`] — `cargo build --workspace --release` builds xtask unnecessarily; ergonomic; revisit when Story 1.4/1.9 wires CI.
 
 ## Deferred from: code review of 1-2-initialize-flutter-macos-package-with-dart-hooks-wiring (2026-05-17)
 
 - **`crates/zanshin-ffi/rust-toolchain.toml` symlink fragility** [`crates/zanshin-ffi/rust-toolchain.toml`] — symlink-on-Windows, broken-symlink, `cargo package` dereference behaviour all hypothetical for the macOS-only WIP scope; revisit if CI matrix expands or `cargo package` workflow lands.
-- **`app/.gitignore` has unused `android/`, `ios/`, `web/` stanzas from `flutter create` template** [`app/.gitignore`] — cosmetic; macOS-only scope is enforced at `pubspec.yaml` platform level, the dead lines are inert.
-- **Story 1.2 doc internal inconsistency: AC-4 vs Dev Notes on `cratePath` resolution origin** [`_bmad-output/implementation-artifacts/1-2-initialize-flutter-macos-package-with-dart-hooks-wiring.md`] — documentation only; AC-4 says "from `app/hook/`", Dev Notes § "RustBuilder 1.0.4 API quick reference" says "from package root (`app/`)". Path works for current layout either way; clean up in a doc pass.
+- ~~**`app/.gitignore` has unused `android/`, `ios/`, `web/` stanzas from `flutter create` template**~~ — RESOLVED 2026-05-17 (Story 1.4 review cleanup): non-macOS platform stanzas removed; remaining lines are all macOS-applicable Flutter/Dart standard ignores.
+- ~~**Story 1.2 doc internal inconsistency: AC-4 vs Dev Notes on `cratePath` resolution origin**~~ — RESOLVED 2026-05-17 (Story 1.4 review cleanup): AC-4 prose (line 51) now aligns with Dev Notes § "RustBuilder 1.0.4 API quick reference" — `cratePath` is resolved relative to the package root (`app/`, where `pubspec.yaml` lives).
 
 ## Deferred from: code review of 1-3-pin-rust-toolchain-and-document-flutter-dart-pins (2026-05-17)
 
-- **Stale Flutter/Dart pins in planning artefacts** [`_bmad-output/planning-artifacts/architecture.md:76`, `_bmad-output/planning-artifacts/epics.md:625`] — both still list Flutter `3.41.9` / Dart `3.11.5` (stable). README + project-context.md + `app/pubspec.yaml` are now the live source-of-truth for `main`-channel pins. Story 1.3 § "Conflict raised + resolved" defers the planning-doc refresh to a separate doc pass (planning artefacts are not edited from implementation stories).
+- ~~**Stale Flutter/Dart pins in planning artefacts**~~ — RESOLVED 2026-05-17 (Story 1.4 review cleanup, deliberately overriding Story 1.3's "no planning-artefact edits from implementation stories" process rule): `architecture.md:76`, `architecture.md:161`, `epics.md:555`, `epics.md:625`, `epics.md:630`, `epics.md:643`, `epics.md:947` updated to current `main`-channel pins (Flutter ≥ `3.44.0-1.0.pre-573`, Dart ≥ `3.13.0-104.0.dev`). Research files under `_bmad-output/planning-artifacts/research/` deliberately NOT updated — they are frozen historical research snapshots from 2026-05-15.
+
+## Deferred from: code review of 1-4-author-makefile-toml-with-build-test-codegen-targets (2026-05-17)
+
+- **cargo-deny advisory DB auto-download + advisory churn fragility** [`Makefile.toml:114-117`] — `cargo deny check advisories bans` does network I/O on first run (advisory DB sync) and will hard-fail when a transitive dep gets a published RUSTSEC advisory until ignored in `deny.toml`. Owned by Story 1.6 (`deny.toml` + ignore list).
+- **`cwd = "app"` is relative — breaks under `cargo make --makefile /abs/path X` from non-repo-root CWD** [`Makefile.toml:51,59,65,99,...`] — Ralph's normal workflow runs from repo root where this resolves correctly. Cross-invocation from arbitrary CWD is an edge case; anchor to `${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}` later if it becomes a real workflow.
+- **User uncommitted edits to `zanshin_ffi.h` / `bindings.dart` silently overwritten by verify-codegen** [`Makefile.toml:142-168`] — once Story 1.5 lands and the codegen files exist, a user with manual edits running `verify-codegen` loses them (restored to committed). Mitigated by the "never regenerate outside `cargo make codegen`" discipline rule. Revisit with a `git diff --quiet` precondition when Story 1.5 is in play.

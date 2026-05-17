@@ -56,6 +56,58 @@ no hardcoded Rust version in YAML. Flutter setup in CI uses
 Flutter's `main` channel) and the exact `flutter-version` from
 `app/pubspec.yaml`.
 
+## Build & development
+
+`cargo-make` is the single entry point for all build, test, and codegen tasks.
+
+### list all available tasks
+
+```sh
+cargo make           
+```
+
+### build Rust workspace (release) + Flutter macOS shell → unsigned .app
+
+```sh 
+cargo make build     
+```
+
+### run Flutter app in debug mode (Hot-Reload, local only)
+
+```sh 
+cargo make run       
+```
+
+### run Flutter app in release mode (local-optimized, no Hot-Reload)
+
+```sh 
+cargo make run-release  
+```
+
+### WIP quality gate: cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny
+
+```sh 
+cargo make test      
+```
+
+### regenerate FFI C header (cbindgen) and Dart bindings (ffigen)
+
+```sh 
+cargo make codegen  
+```
+
+### check for codegen drift against committed files (manual discipline tool)
+
+```sh 
+cargo make verify-codegen  
+```
+
+### remove all build outputs (cargo + flutter); committed codegen stays
+
+```sh 
+cargo make clean     
+```
+
 ## Project documentation
 
 See `_bmad-output/planning-artifacts/` for PRD + architecture + epics;
