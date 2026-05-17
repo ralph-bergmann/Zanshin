@@ -62,14 +62,6 @@ The same constraint applies to `[lib] name = "..."` and any cdylib artefact name
 
 ## Rust Toolchain
 
-Story 1.1 does **not** pin the Rust toolchain — that lands in **Story 1.3** via
-`rust-toolchain.toml`. Until then, install Rust 1.95.0 (the project's minimum
-supported version) via `rustup`:
-
-```sh
-rustup install 1.95.0
-rustup default 1.95.0
-```
-
-See Story 1.3 for the permanent `rust-toolchain.toml` pin that will enforce this
-automatically.
+Rust is pinned to `1.95.0` via the workspace-root `rust-toolchain.toml`. `rustup`
+auto-applies it on every `cargo` invocation from anywhere in the repo. See the root
+`README.md` § Toolchain for install + bump policy.
