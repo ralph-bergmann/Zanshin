@@ -9,10 +9,12 @@ environment:
   flutter: ^3.44.0-1.0.pre-573 # Flutter main channel, needed for multi window support
 
 dependencies:
+  ffi: ^2.2.0
   flutter:
     sdk: flutter
   hooks: ^1.0.3
   native_toolchain_rust: 1.0.4
+  yaru: ^10.1.0
 
 dev_dependencies:
   ffigen: 20.1.1
@@ -21,3 +23,4 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
+  uses-material-design: true

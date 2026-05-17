@@ -109,7 +109,7 @@ linter:
     - unawaited_futures # Future results in async function bodies must be awaited or marked unawaited using dart:async.
     - unnecessary_await_in_return # Unnecessary await keyword in return.
     - unnecessary_breaks # Don't use explicit breaks when a break is implied.
-    - unnecessary_const_in_enum_constructor # Don't use an explicit const in a generative enum constructor.
+#    - unnecessary_const_in_enum_constructor # Don't use an explicit const in a generative enum constructor.
     - unnecessary_ignore # Don't ignore a diagnostic code that is not produced.
     - unnecessary_lambdas # Don't create a lambda when a tear-off will do.
     - unnecessary_null_checks # Unnecessary null checks.

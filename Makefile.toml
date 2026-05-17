@@ -142,13 +142,23 @@ fi
 # The snapshot-restore loop below would silently overwrite manual edits with
 # the regenerated content. Manual edits to generated files are an AR-AP-7
 # violation anyway — exit early with a clear message rather than after damage.
-if ! git diff --quiet HEAD -- "$HEADER" "$BINDINGS"; then
+#
+# git diff --quiet exit codes: 0 = clean, 1 = diff present, 128 = git error
+# (no HEAD, not in a repo, git missing). Discriminate so an env error is not
+# mislabelled as a dirty-tree refusal.
+diff_rc=0
+git diff --quiet HEAD -- "$HEADER" "$BINDINGS" || diff_rc=$?
+if [ "$diff_rc" -eq 1 ]; then
     echo "verify-codegen refuses to run with unstaged or staged edits to codegen outputs:" >&2
     echo "  - $HEADER" >&2
     echo "  - $BINDINGS" >&2
     echo "Manual edits to generated files are an AR-AP-7 violation." >&2
     echo "Run 'cargo make codegen' to regenerate, or 'git checkout -- <files>' to revert." >&2
     exit 1
+elif [ "$diff_rc" -ne 0 ]; then
+    echo "verify-codegen could not query git for uncommitted edits (git diff exit $diff_rc)." >&2
+    echo "Common causes: git not installed, not inside a git repository, or no HEAD commit yet." >&2
+    exit "$diff_rc"
 fi
 
 TMP=$(mktemp -d)
