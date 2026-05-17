@@ -108,6 +108,94 @@ cargo make verify-codegen
 cargo make clean     
 ```
 
+## How do I … ?
+
+### How the build chains together
+
+`app/hook/build.dart` is a Dart Hook that uses `native_toolchain_rust` to build
+`crates/zanshin-ffi` (the cdylib) automatically whenever Flutter touches the app
+— `flutter run`, `flutter build macos`, `flutter test` all trigger it.
+
+**You don't need to run `cargo build` manually before `flutter run`.** The hook
+handles it. The Rust workspace gets compiled in the same mode Flutter is in
+(debug → debug, release → release).
+
+`cargo make build` exists for the release path because it _also_ builds the
+non-FFI Rust artefacts (e.g. the `zanshin-mcp` binary), which the Flutter hook
+does not touch.
+
+### How do I run the app locally (Hot-Reload)?
+
+```sh
+cargo make run
+```
+
+The Dart Hook compiles `zanshin-ffi` in debug mode and links it into the app
+bundle. Change Rust code → stop the app → re-run. (Hot-Reload only covers Dart;
+Rust changes need a re-run.)
+
+### How do I run the app locally (release-optimized)?
+
+```sh
+cargo make run-release
+```
+
+Same as above but with `--release` on both sides. Useful when debugging
+perceived performance issues — Rust debug builds can be orders of magnitude
+slower than release.
+
+### How do I build a release artefact (unsigned `.app`)?
+
+```sh
+cargo make build
+```
+
+Produces `app/build/macos/Build/Products/Release/Zanshin.app`. Recommended
+to run `cargo make test` first so you don't ship a broken artefact.
+
+**Note:** the `.app` is unsigned and unnotarized. Codesigning, notarization,
+Sparkle auto-update and GitHub Releases automation are deferred to the release
+phase (see `_bmad-output/planning-artifacts/prd.md` § 4.7). For local use the
+unsigned bundle is fine; macOS will warn on first launch.
+
+### How do I run the quality gate before pushing?
+
+```sh
+cargo make test
+```
+
+Runs the WIP-minimal gate: `cargo test --workspace`, `cargo clippy -D warnings`,
+`cargo fmt --check`, `flutter test`, `dart analyze`, `dart format --check`,
+`cargo deny check advisories bans`. Same checks as CI.
+
+### How do I change an `extern "C"` function in `zanshin-ffi`?
+
+1. Edit the Rust source.
+2. Regenerate the bindings:
+   ```sh
+   cargo make codegen
+   ```
+3. Commit `crates/zanshin-ffi/include/zanshin_ffi.h` _and_
+   `app/lib/src/ffi/bindings.dart` in the same PR as the Rust change.
+4. Verify nothing drifted:
+   ```sh
+   cargo make verify-codegen
+   ```
+
+Generated code is **committed** and the build never auto-regenerates it. The
+CI drift-gate is deferred while WIP — review enforces the discipline rule.
+
+### How do I reset / start clean?
+
+```sh
+cargo make clean
+```
+
+Removes `target/` and `app/build/`. Committed codegen (`zanshin_ffi.h`,
+`bindings.dart`) stays — those are source-of-truth artefacts, not build
+outputs. If you _really_ want to reset codegen too, delete the files manually
+and run `cargo make codegen`.
+
 ## Project documentation
 
 See `_bmad-output/planning-artifacts/` for PRD + architecture + epics;
