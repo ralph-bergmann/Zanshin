@@ -138,6 +138,19 @@ if [ ! -f "$HEADER" ] || [ ! -f "$BINDINGS" ]; then
     exit 1
 fi
 
+# Pre-flight 2: reject if user has uncommitted edits to the codegen outputs.
+# The snapshot-restore loop below would silently overwrite manual edits with
+# the regenerated content. Manual edits to generated files are an AR-AP-7
+# violation anyway — exit early with a clear message rather than after damage.
+if ! git diff --quiet HEAD -- "$HEADER" "$BINDINGS"; then
+    echo "verify-codegen refuses to run with unstaged or staged edits to codegen outputs:" >&2
+    echo "  - $HEADER" >&2
+    echo "  - $BINDINGS" >&2
+    echo "Manual edits to generated files are an AR-AP-7 violation." >&2
+    echo "Run 'cargo make codegen' to regenerate, or 'git checkout -- <files>' to revert." >&2
+    exit 1
+fi
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 cp "$HEADER"   "$TMP/header.committed"
