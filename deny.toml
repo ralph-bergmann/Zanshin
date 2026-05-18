@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Workspace cargo-deny config. WIP scope: [advisories] + [bans] only.
+# License-gate ([licenses]) and source-gate ([sources]) are deferred to the
+# release phase per _bmad-output/planning-artifacts/prd.md § 5.4.
+# Project posture: permissive dep licenses (MIT, BSD-2/3, Apache-2.0,
+# MPL-2.0, Unlicense, CC0) enforced by eyeballing at PR review while WIP.
+#
+# WARNING: until the release-phase `[licenses]` table lands, do NOT run
+# `cargo deny check all` or `cargo deny check licenses` against this config —
+# with no allow-list cargo-deny rejects every crate license (including our
+# own Apache-2.0). The only invocation this config supports is
+# `cargo deny check advisories bans` (the form wired into `cargo make test`).
+
+[graph]
+# Mirror what `cargo build --release` actually links — not what could
+# conceivably be activated under every feature combination.
+all-features = false
+
+[advisories]
+# Default RustSec advisory database — official upstream.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Yanked = withdrawn from crates.io (usually for a security/correctness
+# reason). Treat as deny.
+yanked = "deny"
+# `unmaintained` is a SCOPE selector in cargo-deny v2 (`none` | `workspace` |
+# `all`), not a severity — unmaintained advisories always surface as warn
+# regardless of this value. Limit to workspace direct deps: transitive
+# unmaintained advisories are typically outside our control (the direct dep
+# owner has to pin past it or fork). Vulnerability advisories are caught
+# regardless of this filter. Re-evaluate scope in release phase.
+unmaintained = "workspace"
+# Populated case-by-case when a transitive dep takes a fresh RUSTSEC
+# advisory we can't immediately upgrade away from. Every entry requires
+# `id`, non-empty `reason`, and a comment linking the upstream tracking
+# issue. See README § "Dependency security — cargo-deny" for the operating
+# procedure.
+ignore = []
+# Surface stale ignores: when an ignored advisory stops matching a real
+# advisory, this fires a warn so the entry can be dropped. Prevents the
+# ignore list from accumulating dead weight silently.
+unused-ignored-advisory = "warn"
+
+[bans]
+# Two versions of the same crate is a code-smell (build size / time,
+# resolution surprises) but not a merge-blocker in WIP. Warn surfaces
+# the signal without blocking PRs against mainly-stable upstreams.
+multiple-versions = "warn"
+# Wildcard version requirements (`crate = "*"`) bypass the project's
+# exact-pin discipline for pre-1.0 deps (project-context.md § "Version
+# pinning rules"). Deny so a wildcard is a hard CI fail.
+wildcards = "deny"
+# No specific bans yet. The no-GPL/AGPL/LGPL/SSPL list is documented
+# (project-context.md § "Critical Don't-Miss Rules") but mechanical
+# enforcement returns with the release-phase [licenses] table.
+deny = []
+# Populated when a known-acceptable duplicate appears (e.g., two `syn`
+# versions during a major-version transition). Each entry needs a comment
+# above it naming the dep and the rationale.
+skip = []

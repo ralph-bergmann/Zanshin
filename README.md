@@ -196,6 +196,42 @@ Removes `target/` and `app/build/`. Committed codegen (`zanshin_ffi.h`,
 outputs. If you _really_ want to reset codegen too, delete the files manually
 and run `cargo make codegen`.
 
+## Dependency security — cargo-deny
+
+`cargo make test` runs `cargo deny --workspace check advisories bans` as
+the security backstop. The full license-gate (`cargo deny check licenses`)
+and Dart-side `pana` integration are deferred to the release phase
+(see `_bmad-output/planning-artifacts/prd.md` § 5.4).
+
+### First-run advisory database download
+
+On a fresh machine (and on CI cache misses), the first invocation
+fetches `https://github.com/rustsec/advisory-db` into
+`~/.cargo/advisory-dbs/`. This is a one-time ~30–60s download.
+Subsequent runs are local-only and finish in under 5s on this workspace.
+
+To pre-warm the database without running the full check:
+
+    cargo deny fetch db
+
+### Advisory ignore-list workflow
+
+When a published RUSTSEC advisory fires on a transitive dependency,
+the response is **not** to ignore it silently. The procedure:
+
+1. Investigate whether the advisory is exploitable in Zanshin's actual
+   use of the affected dep.
+2. Try `cargo update -p <crate>` to pick up a fixed version.
+3. If neither resolves it, add an entry to `[advisories.ignore]` in
+   `deny.toml` with an `id`, a non-empty `reason`, and a comment
+   linking the upstream tracking issue.
+4. The `unused-ignored-advisory = "warn"` setting surfaces stale
+   ignores automatically — when the warn fires (advisory withdrawn,
+   or dep upgraded away), drop the entry.
+
+See `deny.toml` for the live config; every key carries an inline
+comment explaining its choice.
+
 ## Project documentation
 
 See `_bmad-output/planning-artifacts/` for PRD + architecture + epics;

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 [config]
 skip_core_tasks = true
 default_to_workspace = false
