@@ -3,12 +3,21 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
+import 'package:inject_annotation/inject_annotation.dart';
 
 import '../../ffi/zanshin_version.dart';
 
+part 'home_page.factory.dart';
+
 @immutable
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  @assistedInject
+  HomePage({
+    @assisted super.key,
+    required this.zanshinFfiVersion,
+  });
+
+  ZanshinFfiVersion zanshinFfiVersion;
 
   @override
   Widget build(BuildContext context) {
