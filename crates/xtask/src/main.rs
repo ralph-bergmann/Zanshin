@@ -1,5 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Placeholder for the xtask build-helper binary. Body lands in Story 1.4+.
+mod tasks;
 
-fn main() {}
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Generate test fixture repos (.tar.zst archives)
+    GenFixture(tasks::gen_fixture::GenFixtureArgs),
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let cli = Cli::parse();
+    match cli.command {
+        Command::GenFixture(args) => tasks::gen_fixture::run(args),
+    }
+}

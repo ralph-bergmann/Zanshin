@@ -14,6 +14,13 @@ name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+clap = { workspace = true }
+jj-lib = { workspace = true }
+pollster = { workspace = true }
+tar = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+zstd = { workspace = true }
 
 [lints]
 workspace = true

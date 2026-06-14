@@ -26,6 +26,13 @@ rust-version = "1.95.0"
 publish = false
 
 [workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+jj-lib = "=0.41.0"
+pollster = "0.3"
+tar = "0.4"
+tempfile = "3"
+tokio = { version = "1", default-features = false, features = ["io-util"] } # WHY: provides AsyncRead impl for Cursor<Vec<u8>>, required for jj-lib's Store::write_file in xtask
+zstd = "0.13"
 
 [workspace.lints.clippy]
 # WHY: priority = -1 so later, individually-configured lints (level overrides
