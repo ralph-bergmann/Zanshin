@@ -2,13 +2,14 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-last_revised: '2026-05-17'
+last_revised: '2026-06-15'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
 status: 'complete (WIP-scope rework 2026-05-17)'
 optimized_for_llm: true
 overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
+  - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
 scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
@@ -36,23 +37,24 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `tree-sitter-highlight`
 - `notify` + `notify-debouncer-full` (50ms window, AD-5)
 - `tracing` + `tracing-appender`
-- `serde` / `serde_json` (workspace deps)
-- `jsonschema` (test-only, schema validation)
+- `flatbuffers` `=25.12.19` (pin exact — FFI wire transport for composite data, ADR-0001)
+- `serde` / `serde_json` (workspace deps — MCP/`rmcp` + config; NOT the FFI wire anymore)
 - `insta` (test-only, snapshots)
 - `cargo-deny` (CI license + advisory gate)
 
 **Dart shell (`app/`):**
 - `native_toolchain_rust` `1.0.4` (Dart Hook for Rust)
 - `ffigen` `20.1.1` (dev_dependency)
+- `flat_buffers` `25.9.23` (FFI wire transport for composite data, ADR-0001)
 - `hooks` (Dart Hooks runtime)
-- `json_schema` (test-only)
 - `package:flutter_lints` + a hand-curated rule set in `app/analysis_options.yaml`
   (no `very_good_analysis` dependency — rules are listed inline)
 - ~~`pana`~~ — license-gate deferred to release phase
 
 **Build & distribution:**
 - `cargo-make` (`Makefile.toml` — single entry point)
-- `cbindgen` (C header generation, committed output)
+- `cbindgen` (C header generation for the `extern "C"` surface, committed output)
+- `flatc` `25.12.19` (FlatBuffers compiler — generates Rust + Dart accessors from `schemas/*.fbs`, committed output, ADR-0001)
 - **Deferred (release phase, not WIP):** Apple Developer ID codesigning, `notarytool` notarization, Sparkle `2.x` (auto-update, EdDSA-signed appcast), GitHub Releases primary distribution channel
 
 **Platform constraints:**
@@ -62,10 +64,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 **Version pinning rules:**
 - Load-bearing pre-1.0 crates: `=x.y.z` exact pins (`jj-lib`, `rmcp`, `imara-diff`).
+- `flatbuffers` is pinned `=x.y.z` to the installed `flatc` version — generated code and runtime must match.
 - Stable crates: caret (`^x.y.z`).
 - `default-features = false` requires inline `# WHY:` comment.
 - No `[patch.crates-io]` while in 0.x.
-- Generated code (`zanshin_ffi.h`, `bindings.dart`) is COMMITTED — build never regenerates.
+- Generated code (`zanshin_ffi.h`, `bindings.dart`, and the `flatc`-generated Rust + Dart FlatBuffers accessors) is COMMITTED — build never regenerates.
 
 ## Critical Implementation Rules
 
@@ -91,7 +94,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
   Panics inside `extern "C"` are caught via `std::panic::catch_unwind` and converted
   to `error.code = "internal.panic"` — but the goal is to never reach the catch.
 - Errors: structured types per crate (`thiserror::Error`). The FFI layer translates them
-  into the JSON envelope's `error.code` (AR-P-4 taxonomy: `<domain>.<reason>`).
+  into the FlatBuffers `Envelope`'s `error.code` (AR-P-4 taxonomy: `<domain>.<reason>`).
 - Async: `tokio` only where required by a dependency (e.g. `rmcp`, `notify-debouncer-full`).
   `zanshin-jj` is sync — jj-lib's APIs are sync, do not wrap them in `async`.
 - Shared workspace deps: declare in `[workspace.dependencies]`, consume via
@@ -114,30 +117,35 @@ _This file contains critical rules and patterns that AI agents must follow when 
   Do NOT add a package-level logger (Rust owns the logs; see AR-P-5).
 
 **FFI boundary (Rust ↔ Dart):**
-- Strings cross as `*mut c_char` (CString). Rust owns the allocation;
-  Dart calls `zanshin_string_free(ptr)` to release. Never `malloc`/`free` mismatched.
-- All faillible `extern "C"` functions return the JSON envelope (AD-1):
-  `{ "ok": bool, "data": <payload>|null, "error": {...}|null }`. The in-wire
-  `schema_version` field is deferred (WIP: schemas evolve freely, callers update).
-- Infallible hot-path functions (`zanshin_ffi_version`, `zanshin_string_free`) return
-  plain types directly — no envelope overhead.
-- JSON field naming: `snake_case` over the wire (committed in `schemas/*.schema.json`).
-  Dart side uses `@JsonKey(name: '...')` to translate to `lowerCamelCase`.
-- Schema files in `schemas/*.schema.json` are the source of truth (no `.v1` infix —
-  WIP doesn't carry version suffixes; breaking changes are in-place edits).
-- Every test that produces OR consumes JSON crossing the FFI boundary MUST validate
-  the JSON against the relevant schema. Rust tests use the `jsonschema` crate;
-  Dart tests use the `json_schema` package. A test that asserts on JSON without
-  schema-validating it first is incomplete and must be rejected in review.
-  This applies to: snapshot fixtures (`insta`), golden outputs, hand-crafted
-  test inputs, and any JSON returned by `extern "C"` functions under test.
-  Reason: the schema is the wire contract; tests that bypass it can pass while
-  the contract is silently broken. **Schema-validation in tests stays — this is
-  a correctness backstop, not versioning machinery.**
-- **WIP: breaking changes are allowed.** Update the schema in place, delete the
-  old shape, update all callers in the same PR. No `_v2` FFI-suffix discipline,
-  no in-wire `schema_version` field. Post-1.0 stability policy is deferred and
-  will be revisited at release time.
+- **Transport rule (ADR-0001):** the data's TYPE decides the transport — fixed
+  scalar (`int`/`bool`/`float`) → plain C value; lone string → `*mut c_char`
+  (CString); composite (table/list/nested) → **FlatBuffers**. No JSON on the FFI wire.
+- Lone strings cross as `*mut c_char` (CString). Rust owns the allocation; Dart
+  calls `zanshin_string_free(ptr)` to release. Never `malloc`/`free` mismatched.
+- Composite data crosses as a single FlatBuffers buffer (`*mut u8` + length). Rust
+  owns the allocation; Dart releases it via `zanshin_buffer_free(ptr, len)`. One
+  allocation, one free — no per-node pointer trees.
+- All faillible `extern "C"` functions return a FlatBuffers `Envelope` table:
+  `table Envelope { ok: bool; error: FfiError; data: Payload; }` where `Payload`
+  is a union over the concrete payload types. No JSON envelope; no in-wire
+  `schema_version` field (WIP: schemas evolve freely, callers update).
+- Infallible hot-path functions (`zanshin_ffi_version`, `zanshin_string_free`,
+  `zanshin_buffer_free`) return plain types directly — no envelope overhead.
+- Field naming: `snake_case` in the `.fbs` schema (committed at `schemas/*.fbs`).
+  `flatc --dart` generates `lowerCamelCase` getters automatically — NO `@JsonKey`,
+  no hand-written mapping.
+- `schemas/*.fbs` are the wire-contract source of truth. `flatc` generates the Rust
+  (`flatc --rust`) and Dart (`flatc --dart`) accessors; generated code is COMMITTED
+  (same discipline as `zanshin_ffi.h` / `bindings.dart`).
+- Wire-contract validation in tests is built into the format: typed accessors make a
+  wrong-shape payload a COMPILE error, and the FlatBuffers `Verifier` is the runtime
+  integrity backstop. No `jsonschema` / `json_schema`. A test that reads an FFI buffer
+  without going through the generated typed accessors is incomplete.
+- **WIP: breaking changes are allowed.** Edit the `.fbs` in place, regenerate both
+  sides, update all callers in the same PR. No `_v2` FFI-suffix discipline. Post-1.0
+  stability policy is deferred and will be revisited at release time.
+- **MCP exception:** `zanshin-mcp` speaks MCP JSON-RPC (protocol-mandated). That is a
+  DIFFERENT boundary (MCP ↔ client), not the FFI wire — it stays JSON via `rmcp`.
 
 ### Framework-Specific Rules
 
@@ -165,8 +173,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
   `native_toolchain_rust` 1.0.4 (`crate_info_validator.dart:29`) and has no
   in-tree consumer. Documented with a `# WHY:` comment at the declaration.
 - Module layout: `lib.rs` (init, panic handler, `zanshin_ffi_version`),
-  `envelope.rs` (JSON envelope), `handle.rs` (`Box<T>` ↔ `*mut T`, panic-catch
-  wrapper), `ffi_strings.rs` (CString in/out), then one file per noun
+  `envelope.rs` (FlatBuffers `Envelope` build + `FfiError`), `handle.rs` (`Box<T>` ↔
+  `*mut T`, panic-catch wrapper), `ffi_strings.rs` (CString in/out + FlatBuffers
+  buffer return / `zanshin_buffer_free`), then one file per noun
   (`repo.rs`, `diff.rs`, `graph.rs`, `watcher.rs`).
 - All `extern "C"` symbols: `zanshin_<noun>_<verb>` snake_case.
   Constructor/destructor pairs share noun: every `_open` has matching `_close`.
@@ -192,8 +201,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - ONE worker isolate spawned at app start via manual `Isolate.spawn` +
   `SendPort`/`ReceivePort`. The worker holds all FFI handles for app lifetime.
 - Commands (UI → Worker): typed `sealed class WorkerCommand` subclasses.
-- Responses (Worker → UI): JSON strings — the same JSON that crossed FFI.
-  Parsed by the requesting code into typed result classes.
+- Responses (Worker → UI): FlatBuffers byte buffers — the same bytes that crossed
+  FFI. Read by the requesting code via the generated typed accessors.
 - Correlation: every command carries an incrementing `commandId`; worker echoes
   it. Main isolate holds `Map<int, Completer<String>>` to resolve futures.
 - Async events (watcher, progress): a separate `SendPort` per stream type.
@@ -232,13 +241,16 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Diff input fixtures in `test-fixtures/diffs/`; expected golden outputs in
   `test-fixtures/golden/`.
 
-**JSON / schema validation in tests:**
-- Every test that produces or consumes JSON crossing the FFI boundary MUST
-  schema-validate the JSON before any assertion on it (see Language-Specific
-  Rules § FFI boundary). Tools: `jsonschema` (Rust), `json_schema` (Dart).
-- Snapshot tests via `insta` for Rust JSON outputs. Snapshots are committed and
-  reviewed; `cargo insta accept` is a deliberate step, not automatic.
-- Test fixtures that violate the schema are a bug in the FIXTURE, not in the test.
+**FlatBuffers wire-contract validation in tests:**
+- Every test that produces or consumes a FlatBuffers buffer crossing the FFI
+  boundary reads it through the generated typed accessors (a wrong shape is a
+  compile error) and runs the FlatBuffers `Verifier` on untrusted buffers. No
+  `jsonschema` / `json_schema`.
+- Snapshot tests via `insta`: snapshot a readable projection of the decoded buffer
+  (the typed values rendered to JSON for the snapshot only, or `flatc --json`).
+  Snapshots are committed and reviewed; `cargo insta accept` is a deliberate step.
+- A test fixture that can't be parsed by the generated accessors is a bug in the
+  FIXTURE, not in the test.
 
 **Worker / isolate testing (Dart):**
 - Dart tests that exercise the worker isolate boot the REAL `Isolate.spawn` flow
@@ -292,8 +304,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
   Framework-Specific Rules).
 - Dart: types `PascalCase`, members/locals `lowerCamelCase`, library-private
   prefixed `_`. No Hungarian notation, no `m_`, no `I` prefix on interfaces.
-- JSON keys: `snake_case` over the wire. Internal Dart classes use
-  `lowerCamelCase` via `@JsonKey(name: '...')`.
+- FlatBuffers fields: `snake_case` in the `.fbs`. `flatc --dart` generates
+  `lowerCamelCase` getters automatically — no `@JsonKey`, no hand-mapping.
 - Test names describe the SCENARIO, not the function:
   `repo_open_with_invalid_path_returns_error` beats `test_open_repo_2`.
 
@@ -481,8 +493,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   discipline rule still applies; code-review catches it.
 - **NEVER use `Isolate.run` for repeated work** in Dart. Send the work as a
   `WorkerCommand` on the existing worker bus.
-- **NEVER invent alternative JSON envelope shapes.** Faillible FFI functions
-  use the AD-1 envelope; infallible functions return plain types. No exceptions.
+- **NEVER put JSON on the FFI wire, and NEVER invent alternative envelope shapes.**
+  Faillible FFI functions return the FlatBuffers `Envelope` table (ADR-0001);
+  composite data is FlatBuffers; lone strings are CString; scalars are plain types.
+  The only JSON in the project is `zanshin-mcp`'s protocol-mandated JSON-RPC.
 - **NEVER add per-call locking** (`Arc<Mutex<T>>`, `RwLock`) around handles.
   The concurrency model is single-threaded Rust-side (AD-2).
 - **NEVER let stdout/stderr leak from `zanshin-mcp`.** It corrupts MCP stdio
@@ -521,9 +535,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
   `extern "C"` signature changes, run `cargo make codegen` and commit BOTH the
   source change and the regenerated header/bindings in the same PR. CI's
   `verify-codegen` drift-gate is deferred while WIP — code-review enforces.
-- **No in-wire `schema_version` field in WIP.** The envelope is
-  `{ "ok": bool, "data": ..., "error": ... }` — no version field. When you
-  change a schema, edit in place and update all callers in the same PR.
+- **No in-wire `schema_version` field in WIP.** The FlatBuffers `Envelope`
+  (`ok` / `error` / `data`) carries no version field. When you change a `.fbs`,
+  edit in place, regenerate both sides, and update all callers in the same PR.
 - **Watchman detection (FR-FFI-7) is deferred.** When/if it lands later:
   Watchman absence is degradation, not failure — repo-open succeeds without it,
   external-edit reactivity degrades to "refresh on jj operation only". WIP
@@ -589,6 +603,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
   for what was deliberately decided here vs. inherited from architecture.
 
 **Reference documents:**
+- `docs/adr/0001-ffi-data-transport-flatbuffers.md` — FFI transport decision
+  (FlatBuffers for composite data; supersedes the JSON-envelope parts of AD-1/AD-3/AD-4)
 - `_bmad-output/planning-artifacts/architecture.md` — full architecture
   rationale (AD-1..AD-7, P-1..P-9, anti-patterns, structure)
 - `_bmad-output/planning-artifacts/prd.md` — functional + non-functional
@@ -599,4 +615,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-05-15
+Last Updated: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)

@@ -96,7 +96,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 These concerns span multiple components and will be explicitly decided in later sections:
 
-1. **FFI boundary contract** — opaque handle types, JSON for complex data, structured-error model with no panic crossings (FR-FFI-9), version handshake (FR-FFI-10), `NativeCallable.listener` shape for events and progress.
+1. **FFI boundary contract** — opaque handle types, FlatBuffers for composite data (ADR-0001), structured-error model with no panic crossings (FR-FFI-9), version handshake (FR-FFI-10), `NativeCallable.listener` shape for events and progress.
 2. **Aggregator re-export discipline** — how `zanshin-ffi` re-exports internal crates' `extern "C"` APIs (single namespace? per-crate prefix? wrapper layer for FFI-only types?).
 3. **Watcher reactivity end-to-end** — recovery from FS disturbances (FR-RX-4), event coalescing, channel backpressure, ordering guarantees for `op_heads` vs `working_copy/checkout` events.
 4. **Same-repo concurrency model** — GUI + MCP server + external CLI simultaneously; filesystem mutation is the notification channel; no IPC; no locking choreography (FR-MCP-9, FR-RX-3).
@@ -184,11 +184,19 @@ Toolchain pins, workspace layout, FFI tooling chain, async patterns, MCP framewo
 
 ### AD-1: FFI Error Model
 
-**Decision:** JSON result envelope for all faillible FFI functions:
+> **⚠️ AMENDED by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) (2026-06-15):**
+> the transport is now **FlatBuffers**, not JSON. The envelope is a FlatBuffers table
+> `Envelope { ok: bool; error: FfiError; data: Payload (union); }` returned as an owned
+> buffer (`*mut u8` + len, freed via `zanshin_buffer_free`). Lone strings stay CString
+> (`zanshin_string_free`); fixed scalars stay plain. The error model and panic-catch
+> behaviour below are unchanged — only the serialization format changed. See the ADR
+> for the spike evidence and full rationale.
+
+**Original decision (superseded — kept for history):** JSON result envelope for all faillible FFI functions:
 `{ "ok": bool, "data": <payload> | null, "error": { "code": string, "message": string, "context": object | null } | null }`
 returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_string`).
 
-**Rationale:** Consistent with FR-FFI-3 (JSON for complex types). One pattern for all calls — AI implementation agents cannot accidentally choose a divergent error-handling form. Per-call allocation cost is negligible against the <1ms FFI overhead budget (NFR-P-5).
+**Rationale (original):** Consistent with FR-FFI-3 (JSON for complex types). One pattern for all calls — AI implementation agents cannot accidentally choose a divergent error-handling form. Per-call allocation cost is negligible against the <1ms FFI overhead budget (NFR-P-5).
 
 **Exception:** Infallible, hot-path functions (e.g., `zanshin_ffi_version()`, `zanshin_free_string()`) return plain types directly — they cannot fail in a recoverable way.
 
@@ -204,9 +212,17 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Rationale:** Minimal overhead; matches the worker-isolate concurrency model (PRD §3.1). `NativeFinalizer` is belt-and-suspenders against leaks during development.
 
-### AD-3: JSON Schemas as Wire Contract
+### AD-3: Schemas as Wire Contract
 
-**Decision:** JSON Schema files at `schemas/*.schema.json` are the source of truth for the FFI wire format. Both Rust tests (`jsonschema` crate) and Dart tests (`json_schema` package) validate fixtures against the committed schemas — schema validation in every FFI-JSON test is mandatory (correctness backstop, not versioning).
+> **⚠️ AMENDED by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) (2026-06-15):**
+> the wire contract is now **FlatBuffers `.fbs` schemas** at `schemas/*.fbs`
+> (`flatc`-generated, committed accessors on both sides), not JSON Schema. The
+> correctness backstop survives in a stronger form: typed accessors make a wrong shape
+> a compile error, and the FlatBuffers `Verifier` checks buffer integrity at runtime.
+> No `jsonschema` / `json_schema`. The WIP-scope clause below (breaking changes in
+> place, no `schema_version`, no `_v2`) still holds — applied to `.fbs`.
+
+**Original decision (superseded — kept for history):** JSON Schema files at `schemas/*.schema.json` are the source of truth for the FFI wire format. Both Rust tests (`jsonschema` crate) and Dart tests (`json_schema` package) validate fixtures against the committed schemas — schema validation in every FFI-JSON test is mandatory (correctness backstop, not versioning).
 
 **WIP scope (0.x):** Breaking changes are allowed. Schemas are updated in place; the old shape is deleted; callers update in the same PR. No `schema_version` field on emitted JSON. No `_v2`-suffix discipline on FFI functions when shapes change. Post-1.0 stability policy is open and will be revisited.
 
@@ -216,11 +232,11 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Decision:**
 - **Commands (UI → Worker):** Dart `sealed class WorkerCommand` with concrete subclasses per operation (`OpenRepo`, `GetStatus`, `Describe`, etc.). Sent over `SendPort` as Dart objects.
-- **Responses (Worker → UI):** JSON strings (the same JSON that crossed the FFI boundary). Parsed by the requesting code into typed result classes.
+- **Responses (Worker → UI):** FlatBuffers byte buffers (the same bytes that crossed the FFI boundary; see [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)). Read by the requesting code via the generated typed accessors.
 - **Correlation:** each command carries a `commandId` (incrementing int); worker echoes it in the response. A `Map<int, Completer<String>>` in the main isolate resolves the appropriate future.
 - **Async events (watcher, progress):** separate `SendPort` per stream type. The worker isolate fans these out from the corresponding `NativeCallable.listener` callbacks.
 
-**Rationale:** Typed commands give compile-time safety on the easy side (Dart→Worker). JSON responses are free (already produced by Rust). One correlation mechanism, one event-stream mechanism — no special cases for AI agents to misremember.
+**Rationale:** Typed commands give compile-time safety on the easy side (Dart→Worker). Responses are the FlatBuffers buffers already produced by Rust (ADR-0001), read via typed accessors. One correlation mechanism, one event-stream mechanism — no special cases for AI agents to misremember.
 
 ### AD-5: Watcher Event Coalescing & Backpressure
 
@@ -246,10 +262,10 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Decision:**
 - **Versioning:** workspace-wide single version via `[workspace.package] version = "0.1.0"` in the root `Cargo.toml`. All five lib crates and the `zanshin-mcp` binary move together.
-- **WIP stability (0.x):** breaking changes are allowed across the `extern "C"` ABI of `zanshin-ffi`, the MCP tool surface, and JSON schemas. Callers update in the same PR. No `_v2`-suffix discipline.
+- **WIP stability (0.x):** breaking changes are allowed across the `extern "C"` ABI of `zanshin-ffi`, the MCP tool surface, and the `.fbs` wire schemas. Callers update in the same PR. No `_v2`-suffix discipline.
 - **Post-1.0 stability:** open. The intent is that `extern "C"` ABI and MCP tool surface become the external SemVer contract once 1.0 ships, but the exact policy is deferred and will be revisited.
 - **Crates.io publishing:** none in 0.x. Apache-2.0 license at the repo level covers reuse by source. Post-1.0, `zanshin-jj` may be published as a standalone crate for other jj-GUI builders — opt-in, not a 0.1 deliverable.
-- **JSON schemas:** committed at `schemas/*.schema.json`. Both Rust and Dart test suites validate fixtures against them (correctness backstop — see AD-3).
+- **Wire schemas:** FlatBuffers `.fbs` committed at `schemas/*.fbs`; `flatc`-generated accessors committed on both sides. Typed accessors + `Verifier` are the correctness backstop (see AD-3, as amended by ADR-0001).
 
 **Rationale:** Internal crate version-skew has no benefit for a single-team mono-repo. While WIP, locking the FFI/MCP/schema surface against breaking change would be premature — they're still discovering their shape.
 
@@ -262,10 +278,10 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 4. Other epics consume these patterns; nothing in B/D/E/F/H re-decides them.
 
 **Cross-component dependencies:**
-- AD-1 + AD-3 share the JSON envelope: error responses also carry `schema_version`.
+- AD-1 + AD-3 share the FlatBuffers `Envelope` (ADR-0001): error and data ride the same table. No in-wire `schema_version` in WIP.
 - AD-2 + AD-4: handles are *only* dereferenced inside the worker isolate; commands carry handle-IDs (Dart-side), the worker resolves ID → pointer.
 - AD-5 feeds AD-4: debounced watcher events become messages on the dedicated event-stream port.
-- AD-6 + AD-1: MCP error responses re-use the same envelope shape, serialized into MCP's own error structure (`McpError` from `rmcp`).
+- AD-6 + AD-1: MCP error responses re-use the same `error.code` taxonomy, mapped into MCP's own error structure (`McpError` from `rmcp`). MCP stays JSON-RPC (ADR-0001); the FlatBuffers envelope is FFI-only.
 
 ## Implementation Patterns & Consistency Rules
 
@@ -280,7 +296,7 @@ These rules exist to prevent divergence when multiple AI implementation agents t
 ### P-2: JSON Field Naming
 - `snake_case` in all JSON across the FFI boundary and in committed schema files.
 - Dart-side `@JsonKey(name: '...')` (or `json_serializable`) translates to `lowerCamelCase` on parse.
-- Schema files at `schemas/*.schema.json` are the source of truth.
+- Schema files at `schemas/*.fbs` are the source of truth (`flatc`-generated accessors committed; ADR-0001).
 
 ### P-3: Module/File Structure
 
@@ -291,9 +307,9 @@ src/
 ├── repo.rs             # zanshin_repo_* — wraps zanshin-jj
 ├── diff.rs / graph.rs  # respective zanshin_<crate>_* wrappers
 ├── watcher.rs          # zanshin_watcher_*, debouncer, callback dispatch
-├── envelope.rs         # JSON result envelope (AD-1)
+├── envelope.rs         # FlatBuffers Envelope (AD-1, ADR-0001)
 ├── handle.rs           # Box<T> ↔ *mut T helpers, panic_catch wrapper
-└── ffi_strings.rs      # CString in/out + zanshin_string_free
+└── ffi_strings.rs      # CString in/out + zanshin_string_free + zanshin_buffer_free
 ```
 Internal Rust crates stay pure `lib` — no `extern "C"` outside `zanshin-ffi`.
 
@@ -360,7 +376,7 @@ These mistakes would be silently corrosive — they pass review by individual lo
 - **Don't add GPL/AGPL/LGPL/SSPL dependencies.** `cargo-deny` will fail CI; run `cargo deny check licenses` locally before adding deps.
 - **Don't regenerate `bindings.dart` or `zanshin_ffi.h` outside `cargo make codegen`.** The CI drift-check (`cargo make verify-codegen`) is deferred while WIP; the discipline rule still applies during development.
 - **Don't use `Isolate.run` for repeated work.** Send the work as a command on the existing worker bus.
-- **Don't invent alternative JSON envelope shapes.** Faillible functions use the AD-1 envelope; infallible functions return plain types.
+- **Don't invent alternative envelope shapes or put JSON on the FFI wire.** Faillible functions return the FlatBuffers `Envelope` (AD-1 as amended by ADR-0001); infallible functions return plain types.
 - **Don't add per-call locking** (`Arc<Mutex<T>>`, `RwLock`, etc.) around handles. Concurrency model is single-threaded Rust-side (AD-2).
 
 ## Project Structure & Boundaries
@@ -433,9 +449,9 @@ zanshin/                                # repo root, Cargo workspace
 │   │   │   └── zanshin_ffi.h           # P-6 cbindgen output, COMMITTED
 │   │   └── src/                        # P-3 module breakdown
 │   │       ├── lib.rs                  # init, panic handler, zanshin_ffi_version (FR-FFI-10)
-│   │       ├── envelope.rs             # AD-1 JSON envelope, error code emission (P-4)
+│   │       ├── envelope.rs             # AD-1/ADR-0001 FlatBuffers Envelope, error code emission (P-4)
 │   │       ├── handle.rs               # Box<T> ↔ *mut T, catch_unwind wrapper
-│   │       ├── ffi_strings.rs          # CString in/out + zanshin_string_free
+│   │       ├── ffi_strings.rs          # CString in/out + zanshin_string_free + zanshin_buffer_free
 │   │       ├── repo.rs                 # zanshin_repo_*
 │   │       ├── diff.rs                 # zanshin_diff_*
 │   │       ├── graph.rs                # zanshin_graph_*
@@ -470,7 +486,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │   └── src/
 │   │       ├── ffi/
 │   │       │   ├── bindings.dart       # P-6 ffigen output, COMMITTED
-│   │       │   └── envelope.dart       # AD-1 envelope parser
+│   │       │   └── envelope.dart       # AD-1/ADR-0001 FlatBuffers envelope reader
 │   │       ├── worker/                 # AD-4 worker isolate
 │   │       │   ├── isolate.dart        # Isolate.spawn + ports
 │   │       │   ├── commands.dart       # sealed WorkerCommand classes
@@ -501,13 +517,13 @@ zanshin/                                # repo root, Cargo workspace
 │
 ├── schemas/                            # AD-3, P-2 — single source of truth for wire format
 │   ├── README.md                       # how schemas are used in tests + WIP-policy on breaking changes
-│   ├── envelope.schema.json            # AD-1 result envelope
-│   ├── status.schema.json
-│   ├── change.schema.json
-│   ├── op_log.schema.json
-│   ├── diff.schema.json
-│   ├── graph.schema.json
-│   └── progress.schema.json            # progress callback events
+│   ├── envelope.fbs                    # AD-1/ADR-0001 FlatBuffers Envelope + FfiError + Payload union
+│   ├── status.fbs
+│   ├── change.fbs
+│   ├── op_log.fbs
+│   ├── diff.fbs
+│   ├── graph.fbs
+│   └── progress.fbs                    # progress callback events
 │
 ├── test-fixtures/                      # P-7 — committed, not generated at test time
 │   ├── README.md                       # regenerate via `cargo xtask gen-fixture`
@@ -558,7 +574,7 @@ zanshin/                                # repo root, Cargo workspace
 | Boundary | Channel | Format | Reference |
 |---|---|---|---|
 | Filesystem ↔ Watcher | `notify-rs` events on `.jj/repo/op_heads/heads/` + `.jj/repo/working_copy/checkout` | Raw fsevents → debounced events | AD-5, FR-FFI-5 |
-| Watcher ↔ Dart UI | `NativeCallable.listener` callback delivering JSON | `progress.v1.schema.json` / `op_heads_changed` event | AD-4, FR-RX-1 |
+| Watcher ↔ Dart UI | `NativeCallable.listener` callback delivering a FlatBuffers buffer | `progress.fbs` / `op_heads_changed` event | AD-4, FR-RX-1 |
 | Dart UI ↔ Worker isolate | `SendPort` / `ReceivePort` | sealed `WorkerCommand` classes (in) / JSON strings (out) | AD-4 |
 | Worker isolate ↔ FFI | direct dart:ffi calls | C ABI | bindings.dart |
 | Same-repo concurrency | Filesystem only — no IPC, no locks | `op_heads` mutation is the notification | FR-MCP-9, FR-RX-3 |
@@ -567,7 +583,7 @@ zanshin/                                # repo root, Cargo workspace
 
 1. `extern "C"` ABI of `zanshin-ffi` (the C-header surface) — evolves freely in WIP; callers update.
 2. MCP tool surface of `zanshin-mcp` (tool names + parameter schemas + return shapes) — same.
-3. JSON schemas in `schemas/*.schema.json` — updated in place; no `_v2` discipline, no in-wire `schema_version`.
+3. FlatBuffers `.fbs` schemas in `schemas/*.fbs` — updated in place; no `_v2` discipline, no in-wire `schema_version` (ADR-0001).
 
 Everything else (internal crate APIs, internal Rust types, Flutter widgets, JSON test fixtures, log formats) is **not** part of any contract.
 
@@ -579,10 +595,10 @@ Post-1.0 the intent is that the three surfaces above become the external SemVer 
 |---|---|---|
 | A — Workspace & Build Foundation | `Cargo.toml`, `Makefile.toml`, `rust-toolchain.toml`, `deny.toml`, `crates/*/Cargo.toml`, `app/pubspec.yaml`, `app/hook/build.dart`, `.github/workflows/ci.yml`, `schemas/README.md` | All — establishes the scaffolding |
 | B — `zanshin-jj` Adapter & Read Path | `crates/zanshin-jj/src/{repo,status,revset,change,op_log,bookmarks,remotes}.rs` | `test-fixtures/repos/` |
-| C — `zanshin-ffi` & Watcher | `crates/zanshin-ffi/src/{lib,envelope,handle,ffi_strings,repo,watcher}.rs`, `app/lib/src/{ffi,worker}/*.dart` | `schemas/envelope.v1.schema.json`, `schemas/progress.v1.schema.json`, `docs/rust-error-codes.md`, `docs/ffi-abi.md` |
-| D — `zanshin-graph` | `crates/zanshin-graph/src/*.rs`, `crates/zanshin-ffi/src/graph.rs` | `schemas/graph.v1.schema.json`, `test-fixtures/repos/large-10k-commits.tar.zst` |
-| E — `zanshin-diff` | `crates/zanshin-diff/src/*.rs`, `crates/zanshin-ffi/src/diff.rs` | `schemas/diff.v1.schema.json`, `test-fixtures/diffs/` |
-| F — Write Path & FFI Exposure | `crates/zanshin-jj/src/{mutate,conflict}.rs`, `crates/zanshin-ffi/src/repo.rs` (write surface) | `schemas/change.v1.schema.json` |
+| C — `zanshin-ffi` & Watcher | `crates/zanshin-ffi/src/{lib,envelope,handle,ffi_strings,repo,watcher}.rs`, `app/lib/src/{ffi,worker}/*.dart` | `schemas/envelope.fbs`, `schemas/progress.fbs`, `docs/rust-error-codes.md`, `docs/ffi-abi.md` |
+| D — `zanshin-graph` | `crates/zanshin-graph/src/*.rs`, `crates/zanshin-ffi/src/graph.rs` | `schemas/graph.fbs`, `test-fixtures/repos/large-10k-commits.tar.zst` |
+| E — `zanshin-diff` | `crates/zanshin-diff/src/*.rs`, `crates/zanshin-ffi/src/diff.rs` | `schemas/diff.fbs`, `test-fixtures/diffs/` |
+| F — Write Path & FFI Exposure | `crates/zanshin-jj/src/{mutate,conflict}.rs`, `crates/zanshin-ffi/src/repo.rs` (write surface) | `schemas/change.fbs` |
 | G — `zanshin-mcp` Binary | `crates/zanshin-mcp/src/**` | `app/macos/Runner/Resources/zanshin-mcp` (bundled via `cargo make build`) |
 | H — Build Output (WIP) | `Makefile.toml` build target — produces unsigned `.app` for local development. **Deferred to release phase:** codesigning, notarization, Sparkle appcast, GitHub Releases automation, reproducibility CI, Homebrew Cask. | `app/macos/Runner/Info.plist` |
 
@@ -614,7 +630,7 @@ Codesigning, notarization (`notarytool`), Sparkle appcast generation, GitHub Rel
 ### Coherence Validation ✅
 
 **Decision Compatibility:** All seven AD decisions and nine P rules cross-reference without conflict.
-- AD-1 (JSON envelope) + AD-3 (schema versioning): envelope itself carries `schema_version`.
+- AD-1 (FlatBuffers `Envelope`) + AD-3 (`.fbs` wire contract): no in-wire `schema_version` in WIP (ADR-0001).
 - AD-2 (single-thread handle ownership) + AD-4 (worker isolate): handles only dereferenced inside the worker; no Arc/Mutex overhead.
 - AD-5 (50ms debounce) + NFR-P-4 (<100ms): 50ms headroom.
 - AD-6 (single-repo MCP) + FR-MCP-9 (same-repo concurrency): consistent — concurrency lives in the filesystem, not in process state.

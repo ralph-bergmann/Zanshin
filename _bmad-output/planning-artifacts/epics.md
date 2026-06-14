@@ -179,10 +179,10 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 #### Architectural Decisions (binding)
 
-- **AR-AD-1 (Error Envelope)**: All faillible FFI functions return a JSON envelope `{ "ok": bool, "data": <payload> | null, "error": { "code": string, "message": string, "context": object | null } | null }` as `*mut c_char` (owned by Rust, freed via `zanshin_string_free`). Rust panics caught via `std::panic::catch_unwind` and converted to `error.code = "internal.panic"`.
+- **AR-AD-1 (Error Envelope)** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: All faillible FFI functions return a FlatBuffers `Envelope { ok: bool; error: FfiError; data: Payload (union); }` as an owned buffer (`*mut u8` + len, freed via `zanshin_buffer_free`). Lone strings stay CString (`zanshin_string_free`); fixed scalars stay plain. Rust panics caught via `std::panic::catch_unwind` and converted to `error.code = "internal.panic"`.
 - **AR-AD-2 (Handle Lifetime)**: Rust owns handles via `Box<T>`; Dart holds raw `*mut c_void` pointers. Lifecycle pairs `zanshin_X_open(...) -> *mut X` / `zanshin_X_close(ptr)`. Dart-side wrappers register `NativeFinalizer`. Single-threaded Rust-side access (no `Arc<Mutex<T>>`).
-- **AR-AD-3 (Schema Versioning)**: Every top-level JSON object emitted across FFI carries `"schema_version": "<major>.<minor>"`. Additive changes → minor bump. Breaking changes → new FFI function with `_v2` suffix. JSON Schema files at `schemas/*.schema.json` validated in both Rust (`jsonschema`) and Dart (`json_schema`) tests.
-- **AR-AD-4 (Worker Isolate Command Protocol)**: Commands (UI → Worker) are Dart `sealed class WorkerCommand` subclasses sent over `SendPort`. Responses are JSON strings parsed into typed result classes. Correlation via `commandId` (incrementing int) + `Map<int, Completer<String>>`. Async events (watcher, progress) get separate `SendPort` per stream type.
+- **AR-AD-3 (Wire Contract)** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: FlatBuffers `.fbs` files at `schemas/*.fbs` are the wire contract; `flatc`-generated accessors are committed on both sides. Typed accessors + the FlatBuffers `Verifier` are the correctness backstop. WIP: breaking changes in place, no in-wire `schema_version`, no `_v2` suffix.
+- **AR-AD-4 (Worker Isolate Command Protocol)**: Commands (UI → Worker) are Dart `sealed class WorkerCommand` subclasses sent over `SendPort`. Responses are FlatBuffers byte buffers read via the generated typed accessors (ADR-0001). Correlation via `commandId` (incrementing int) + `Map<int, Completer<String>>`. Async events (watcher, progress) get separate `SendPort` per stream type.
 - **AR-AD-5 (Watcher Coalescing & Backpressure)**: Use `notify-debouncer-full` with 50ms debounce window. Single bounded `tokio::mpsc` channel (capacity 256) → `NativeCallable.listener` dispatch. On channel-full: drop-oldest with `tracing::warn!`. Debouncer auto-rescans when watched path disappears/reappears.
 - **AR-AD-6 (MCP Server Process Model)**: `zanshin-mcp` is a single-repo process. Repo selected via `--repo <path>` CLI arg or CWD ancestor walk for `.jj/`. No runtime switching; no multi-repo within one process.
 - **AR-AD-7 (Workspace Versioning)**: Workspace-wide single version (`[workspace.package] version = "0.1.0"`). External SemVer commitment (post-1.0) on `extern "C"` ABI of `zanshin-ffi` and MCP tool surface — not on internal crate APIs. No crates.io publishing in 0.x.
@@ -190,13 +190,13 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 #### Implementation Patterns (binding)
 
 - **AR-P-1 (FFI Naming)**: All `extern "C"` symbols use prefix `zanshin_` + snake_case, pattern `zanshin_<noun>_<verb>`. Constructor/destructor pairs share noun. Breaking changes append `_v2`, `_v3`.
-- **AR-P-2 (JSON Naming)**: `snake_case` in all JSON across FFI and in committed schema files. Dart parses with `@JsonKey` translation to `lowerCamelCase`. Schemas at `schemas/*.schema.json` are source of truth.
+- **AR-P-2 (Field Naming)** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: `snake_case` in the `.fbs` schemas. `flatc --dart` generates `lowerCamelCase` getters automatically — no `@JsonKey`. Schemas at `schemas/*.fbs` are source of truth.
 - **AR-P-3 (Module Structure)**: `zanshin-ffi` layout per architecture document (lib.rs, repo.rs, diff.rs, graph.rs, watcher.rs, envelope.rs, handle.rs, ffi_strings.rs). Internal Rust crates stay pure `lib`. Dart shell layout: `lib/src/{ffi,worker,domain}/`, `hook/build.dart`.
 - **AR-P-4 (Error Code Taxonomy)**: `error.code` is dotted lowercase string `<domain>.<reason>` (e.g., `jj.repo_not_found`, `internal.panic`). Registered in `docs/rust-error-codes.md`. Reasons never change after release.
 - **AR-P-5 (Tracing / Logging)**: Rust uses `tracing` + `tracing_appender`. Sink: rotating files at `~/Library/Logs/Zanshin/zanshin.log.YYYY-MM-DD`. No console output in release builds. Spans per FFI call. `ZANSHIN_LOG=info` env override.
 - **AR-P-5-MCP (MCP tracing discipline — Important Gap #3)**: `zanshin-mcp` MUST sink tracing to file only in **all** build modes, never stderr/stdout, because the binary is spawned via stdio by MCP hosts and stray output corrupts the protocol.
 - **AR-P-6 (Generated Code Location)**: `crates/zanshin-ffi/include/zanshin_ffi.h` (cbindgen output, committed); `app/lib/src/ffi/bindings.dart` (ffigen output, committed). Regeneration only via `cargo make codegen`. CI gate `cargo make verify-codegen` re-runs codegen into tmpdir and fails on drift.
-- **AR-P-7 (Test Layout)**: Rust unit tests inline; integration tests in each crate's `tests/`. Fixture repos committed at `test-fixtures/repos/` as `.tar.zst` (`tiny-3-commits`, `medium-1k-commits`, `large-10k-commits`), built once via `cargo xtask gen-fixture`. Watcher tests assert event arrival within 200ms. Dart tests boot a real worker isolate. JSON outputs validated via `insta` snapshots in Rust + JSON-schema validation in both languages.
+- **AR-P-7 (Test Layout)**: Rust unit tests inline; integration tests in each crate's `tests/`. Fixture repos committed at `test-fixtures/repos/` as `.tar.zst` (`tiny-3-commits`, `medium-1k-commits`, `large-10k-commits`), built once via `cargo xtask gen-fixture`. Watcher tests assert event arrival within 200ms. Dart tests boot a real worker isolate. FlatBuffers outputs checked via the generated typed accessors + `Verifier`; `insta` snapshots use a readable projection of the decoded buffer (ADR-0001).
 - **AR-P-8 (Cargo.toml Hygiene)**: Shared deps via `[workspace.dependencies]`. Explicit `=x.y.z` pins for load-bearing pre-1.0 deps (`jj-lib`, `rmcp`, `imara-diff`). Caret for stable deps. `default-features = false` requires `# WHY:` comment. No `[patch.crates-io]` in 0.x.
 - **AR-P-9 (Linter/Formatter)**: `rustfmt.toml` at workspace root (`max_width = 100`). `clippy::pedantic` crate-wide; CI runs `cargo clippy -- -D warnings`. Dart `analysis_options.yaml` based on `package:flutter_lints` + selected `very_good_analysis` rules. `dart format` enforced. No per-file license headers.
 
@@ -210,14 +210,14 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 - **AR-AP-6**: Don't add GPL/AGPL/LGPL/SSPL dependencies.
 - **AR-AP-7**: Don't regenerate `bindings.dart` or `zanshin_ffi.h` outside `cargo make codegen`.
 - **AR-AP-8**: Don't use `Isolate.run` for repeated work — send the work as a command on the existing worker bus.
-- **AR-AP-9**: Don't invent alternative JSON envelope shapes.
+- **AR-AP-9** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: Don't put JSON on the FFI wire or invent alternative envelope shapes; faillible functions return the FlatBuffers `Envelope`.
 - **AR-AP-10**: Don't add per-call locking (`Arc<Mutex<T>>`, `RwLock`) around handles.
 
 #### Important Gaps (resolve during Epic A/C)
 
 - **AR-G-1 (NFR-P-1 sub-budget allocation)**: The < 2s repo-open target needs explicit numeric breakdown per sub-component (jj-lib open, lane-cache, op-log, bootstrap). Define in Epic A or B first story.
-- **AR-G-2 (Diagnostics schema)**: `schemas/diagnostics.v1.schema.json` must exist alongside the other v1 schemas, backing the FFI diagnostics function (NFR-S-2).
-- **AR-G-4 (Schema inventory expansion)**: Schema files for `bookmarks.v1`, `remotes.v1`, `revset.v1`, `settings.v1`, `diagnostics.v1`, `watchman_state.v1` — added PR-style like `rust-error-codes.md`.
+- **AR-G-2 (Diagnostics)** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: the FFI diagnostics function returns a FlatBuffers `Envelope` (NFR-S-2). WIP: the shape is small; no dedicated schema beyond the shared `.fbs`.
+- **AR-G-4 (Schema inventory expansion)** — *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*: `.fbs` schemas for `bookmarks`, `remotes`, `revset`, `settings`, `diagnostics`, `watchman_state` — added PR-style like `rust-error-codes.md`.
 - **AR-G-5 (Watcher init ordering)**: Watcher must start before `zanshin_repo_open` returns.
 - **AR-G-6 (Release-process doc)**: `docs/release-process.md` must document Sparkle EdDSA private-key handling in CI + local sign-tests.
 - **AR-G-7 (MCP LLM-quality gate enforcement)**: Add `mcp-tester` smoke run as Epic G acceptance criterion.
@@ -226,7 +226,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 - Cargo workspace at repo root; Flutter package at `app/`.
 - `crates/{zanshin-jj, zanshin-diff, zanshin-graph, zanshin-ffi, zanshin-mcp, xtask}/`.
-- `schemas/*.v1.schema.json`, `test-fixtures/repos/*.tar.zst`, `docs/{rust-error-codes,ffi-abi,release-process,watchman-setup}.md`.
+- `schemas/*.fbs`, `test-fixtures/repos/*.tar.zst`, `docs/{rust-error-codes,ffi-abi,release-process,watchman-setup}.md`.
 - CI workflows: `.github/workflows/{ci.yml, release.yml, reproducibility.yml}`.
 - Macros / tool configs at repo root: `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`, `cbindgen.toml`, `deny.toml`, `Makefile.toml`, `.cargo/config.toml`.
 
@@ -1593,7 +1593,9 @@ So that future jj-lib upgrades absorb their churn inside this crate without leak
 
 ## Epic 3: `zanshin-ffi` & Watcher (Keystone)
 
-Land the load-bearing FFI infrastructure: opaque handles, JSON envelope, error model, async event delivery, watcher subsystem, Watchman detection, diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`). This epic is the architectural keystone; every downstream epic (4, 5, 6, 7) consumes these patterns.
+Land the load-bearing FFI infrastructure: opaque handles, FlatBuffers envelope (ADR-0001), error model, async event delivery, watcher subsystem, Watchman detection, diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`). This epic is the architectural keystone; every downstream epic (4, 5, 6, 7) consumes these patterns.
+
+> **⚠️ Transport amendment ([ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md), 2026-06-15):** all FFI composite data — envelope, graph slice, diff, status, op-log, change, progress/watcher events — is **FlatBuffers**, not JSON. Lone strings stay CString; fixed scalars stay plain; MCP keeps JSON-RPC (different boundary). The detailed per-story GWT in Epics 3–6 still says "JSON" / `*.schema.json` in places — that text is superseded. See the **FlatBuffers transport migration story** (`3-0`) for the foundational tooling + the full per-story rework list.
 
 > **WIP re-sequencing (2026-06-15) — interleave FFI infra with Epic 2 to unblock Flutter early.**
 > The Flutter dev (Ralph) needs to exercise the Rust read-path from Flutter without waiting for all of Epic 2 + 3. open/init/clone are one-shot operations that need no file-watching, so the **watcher is deferred**.
@@ -1606,8 +1608,10 @@ Land the load-bearing FFI infrastructure: opaque handles, JSON envelope, error m
 
 ### Story 3.1: FFI core — envelope, error codes, panic catch
 
+> **⚠️ Scope-correction (binding — [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md), 2026-06-15):** the envelope is **FlatBuffers**, not JSON. Build a FlatBuffers `Envelope { ok: bool; error: FfiError; data: Payload (union); }` returned as an owned buffer (`*mut u8` + len) freed by `zanshin_buffer_free`; lone strings stay CString. The detailed JSON GWT below is superseded — the FlatBuffers tooling lands in migration story `3-0`. Error-code taxonomy (AR-P-4) and panic-catch behaviour are unchanged.
+
 As a Rust developer implementing the FFI surface,
-I want `crates/zanshin-ffi/src/envelope.rs` with the AR-AD-1 JSON envelope, AR-P-4 error-code taxonomy, and panic-catch wrapper helpers,
+I want `crates/zanshin-ffi/src/envelope.rs` with the AR-AD-1 FlatBuffers envelope, AR-P-4 error-code taxonomy, and panic-catch wrapper helpers,
 So that every fallible FFI function in subsequent stories follows the canonical envelope shape with no duplication.
 
 **Acceptance Criteria:**

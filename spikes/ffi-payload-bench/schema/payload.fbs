@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Shared FlatBuffers schema for the JSON-vs-FlatBuffers FFI payload spike.
+// Single source of truth for BOTH the Rust (`flatc --rust`) and the Dart
+// (`flatc --dart`) code generation, so the two sides agree on the wire shape.
+//
+// Models two representative Rust -> Dart payloads:
+//   * GraphSlice — a graph render slice: int-heavy with a couple of
+//     variable-length id strings and a small parent-index array per node.
+//   * Diff       — deeply nested and string-heavy (files -> hunks -> lines).
+
+namespace zanshin.bench;
+
+// ---------------------------------------------------------------- Graph slice
+
+table GraphNode {
+  row:uint;
+  lane:uint;
+  color:uint;
+  change_id:string;
+  commit_id:string;
+  parents:[uint];
+  is_working_copy:bool;
+  is_immutable:bool;
+  summary:string;
+}
+
+table GraphSlice {
+  nodes:[GraphNode];
+}
+
+// ---------------------------------------------------------------------- Diff
+
+enum LineOrigin:byte { Context = 0, Add = 1, Remove = 2 }
+enum FileStatus:byte { Added = 0, Modified = 1, Deleted = 2, Renamed = 3 }
+
+table DiffLine {
+  origin:LineOrigin;
+  old_lineno:uint;
+  new_lineno:uint;
+  content:string;
+}
+
+table DiffHunk {
+  old_start:uint;
+  old_lines:uint;
+  new_start:uint;
+  new_lines:uint;
+  header:string;
+  lines:[DiffLine];
+}
+
+table DiffFile {
+  path:string;
+  old_path:string;
+  status:FileStatus;
+  hunks:[DiffHunk];
+}
+
+table Diff {
+  files:[DiffFile];
+}
+
+root_type GraphSlice;

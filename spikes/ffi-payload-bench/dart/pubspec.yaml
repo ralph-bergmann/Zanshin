@@ -1,0 +1,9 @@
+name: ffi_payload_bench
+description: JSON vs FlatBuffers parse/access bench (Dart consumer side).
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flat_buffers: ^25.9.23

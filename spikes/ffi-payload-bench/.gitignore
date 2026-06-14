@@ -1,0 +1,7 @@
+# Generated / build artifacts for this detached spike.
+/artifacts/
+/rust/target/
+/dart/.dart_tool/
+/dart/pubspec.lock
+# flatc-generated Dart (regenerate with `flatc --dart -o dart/lib schema/payload.fbs`)
+/dart/lib/payload_zanshin.bench_generated.dart

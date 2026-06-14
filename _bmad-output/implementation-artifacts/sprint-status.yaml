@@ -45,7 +45,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-06-15  # re-sequencing: 3-4 split into 3-4a/3-4b; watcher (3-5/3-6/3-10) deferred
+last_updated: 2026-06-15  # re-sequencing: 3-4 split into 3-4a/3-4b; watcher deferred; 3-0 FlatBuffers transport added (ADR-0001)
 project: Zanshin
 # Story 1-1 started: 2026-05-17
 # Story 1-1 reviewed + done: 2026-05-17
@@ -108,7 +108,8 @@ development_status:
 
 
 ## Phase 1 — FFI-Fundament + Repo-Durchstich (am Stück):
-##   3-1  FFI-Core (Envelope/Error/Panic)
+##   3-0  FlatBuffers-Transport-Fundament (ADR-0001) — vor allem anderen
+##   3-1  FFI-Core (Envelope/Error/Panic) — jetzt FlatBuffers-Envelope
 ##   3-2  Handle + ffi_strings + version
 ##   3-3  Tracing file sink
 ##   3-4a Repo-Wrappers (open/init/clone/close)
@@ -133,11 +134,12 @@ development_status:
 
   # Epic 3: zanshin-ffi & Watcher (Keystone)
   # WIP re-sequencing (2026-06-15): FFI infra pulled forward + interleaved with Epic 2 so the
-  # Flutter dev can call open/init/clone early. Work order: 3-1 → 3-2 → 3-3 → 3-4a → 3-9 → 3-8,
+  # Flutter dev can call open/init/clone early. Work order: 3-0 (FlatBuffers transport, ADR-0001) → 3-1 → 3-2 → 3-3 → 3-4a → 3-9 → 3-8,
   # then 3-4b wrappers per finished Epic 2 noun. Watcher (3-5/3-6/3-10) DEFERRED — zero rework
   # (event sink is process-global in worker_init; repo_open signature unaffected). See epics.md.
-  epic-3: backlog
-  3-1-ffi-core-envelope-error-codes-panic-catch: backlog
+  epic-3: in-progress  # 3-0 created (ready-for-dev) 2026-06-15
+  3-0-adopt-flatbuffers-ffi-transport: ready-for-dev  # NEW (2026-06-15, ADR-0001): FlatBuffers transport foundation; lands before 3-1
+  3-1-ffi-core-envelope-error-codes-panic-catch: backlog  # now FlatBuffers Envelope (ADR-0001)
   3-2-handle-module-ffi-strings-zanshin-ffi-version: backlog
   3-3-tracing-init-with-rotating-file-sink: backlog  # SHRINK: rotation tests + log-cap cut
   3-4a-repo-ffi-wrappers-zanshin-repo-open-init-clone-close: backlog  # NEW (2026-06-15): split from old 3-4; unblocks Flutter open/init/clone; watcher NOT armed here
