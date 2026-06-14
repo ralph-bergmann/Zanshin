@@ -10,6 +10,14 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+gix = { workspace = true }
+jj-lib = { workspace = true }
+pollster = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
 [lints]
 workspace = true

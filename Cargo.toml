@@ -31,6 +31,8 @@ jj-lib = "=0.41.0"
 pollster = "0.3"
 tar = "0.4"
 tempfile = "3"
+gix = { version = "0.83.0", default-features = false } # WHY: gix::remote::fetch::Tags required by jj_lib::git::add_remote; gix is already a jj-lib transitive dep
+thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["io-util"] } # WHY: provides AsyncRead impl for Cursor<Vec<u8>>, required for jj-lib's Store::write_file in xtask
 zstd = "0.13"
 

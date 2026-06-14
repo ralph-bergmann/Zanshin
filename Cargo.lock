@@ -2931,6 +2931,14 @@ version = "0.1.0"
 [[package]]
 name = "zanshin-jj"
 version = "0.1.0"
+dependencies = [
+ "gix",
+ "jj-lib",
+ "pollster 0.3.0",
+ "tempfile",
+ "test-helpers",
+ "thiserror",
+]
 
 [[package]]
 name = "zanshin-mcp"

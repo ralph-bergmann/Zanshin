@@ -41,7 +41,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-06-14  # Story 2-1 → done
+last_updated: 2026-06-14  # Story 2-3 → done (code review: all fixes applied)
 project: Zanshin
 # Story 1-1 started: 2026-05-17
 # Story 1-1 reviewed + done: 2026-05-17
@@ -67,6 +67,7 @@ project: Zanshin
 # Story 1-7 review: 2026-06-13
 # Story 2-1 created (ready-for-dev): 2026-06-14
 # Story 2-1 reviewed + done: 2026-06-14
+# Story 2-3 created (ready-for-dev): 2026-06-14
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -89,7 +90,7 @@ development_status:
   epic-2: in-progress
   2-1-generate-test-fixture-repos-via-cargo-xtask-gen-fixture: done  # SHRINK: tiny + medium only
   # 2-2-define-nfr-p-1-sub-budget-allocation: DELETED (WIP-rework 2026-05-17)
-  2-3-implement-repo-rs-open-init-clone: backlog
+  2-3-implement-repo-rs-open-init-clone: done  # code review: all 6 fixes applied incl. D4 (full AC-12 working-copy update)
   2-4-implement-status-rs-working-copy-status: backlog
   2-5-implement-revset-rs-revset-resolution: backlog
   2-6-implement-change-rs-change-metadata-read: backlog
