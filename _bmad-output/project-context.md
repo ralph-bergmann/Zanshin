@@ -409,7 +409,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Reproducibility check (FR-BO-8 two-build diff, `reproducibility.yml`)
 
 **Git / repo conventions:**
-- Branch protection on `main`. No direct pushes; all changes via PR.
+- Direct commits to `main` are allowed (solo project — Ralph's call, 2026-06-15). No
+  mandatory per-change branch or PR; create a branch only when it genuinely adds value
+  or when Ralph asks.
 - Branch naming: `<type>/<short-slug>` where `<type>` ∈
   `{feat, fix, refactor, perf, docs, build, ci, chore, release}`.
   Example: `feat/zanshin-jj-bookmarks`.
