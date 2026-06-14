@@ -10,6 +10,10 @@
 # Deleted stories are removed from this file; see epics.md for the per-story rationale.
 # Renames: 6-4 → 6-4a (fetch with progress, no push).
 # Epic 8 collapsed to a single Story 8-1 (unsigned .app for local development).
+#
+# WIP re-sequencing (2026-06-15): Epic 3 FFI infra pulled forward + interleaved with Epic 2
+# so the Flutter dev can call open/init/clone early. Story 3-4 split into 3-4a (repo wrappers)
+# + 3-4b (remaining read wrappers). Watcher (3-5/3-6/3-10) deferred — zero rework. See epics.md.
 
 # STATUS DEFINITIONS:
 # ==================
@@ -41,7 +45,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-06-14  # Story 2-3 → done (code review: all fixes applied)
+last_updated: 2026-06-15  # re-sequencing: 3-4 split into 3-4a/3-4b; watcher (3-5/3-6/3-10) deferred
 project: Zanshin
 # Story 1-1 started: 2026-05-17
 # Story 1-1 reviewed + done: 2026-05-17
@@ -68,13 +72,14 @@ project: Zanshin
 # Story 2-1 created (ready-for-dev): 2026-06-14
 # Story 2-1 reviewed + done: 2026-06-14
 # Story 2-3 created (ready-for-dev): 2026-06-14
+# Re-sequencing (2026-06-15, party-mode planning): 3-4 → 3-4a + 3-4b; watcher 3-5/3-6/3-10 deferred
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
   # Epic 1: Workspace & Build Foundation (WIP-shrunk)
-  epic-1: backlog
+  epic-1: in-progress  # 7/8 stories done; 1-9 (CI workflow) remaining
   1-1-initialize-cargo-workspace-and-create-empty-crate-skeletons: done
   1-2-initialize-flutter-macos-package-with-dart-hooks-wiring: done
   1-3-pin-rust-toolchain-and-document-flutter-dart-pins: done
@@ -100,18 +105,50 @@ development_status:
   2-10-document-the-public-api-surface-fr-jj-16-informational: backlog  # renamed (SHRINK: no lock-gate)
   epic-2-retrospective: optional
 
+
+
+## Phase 1 — FFI-Fundament + Repo-Durchstich (am Stück):
+##   3-1  FFI-Core (Envelope/Error/Panic)
+##   3-2  Handle + ffi_strings + version
+##   3-3  Tracing file sink
+##   3-4a Repo-Wrappers (open/init/clone/close)
+##   3-9  Dart Worker-Isolate
+## └─ 🎯 ab hier: open/init/clone aus Flutter aufrufbar
+##   3-8  Diagnostics (version + log-path)
+##
+## Phase 2 — weiter mit Epic 2, aber verzahnt:
+##
+## Hier der eine Feinschliff: „weiter mit Epic 2" heißt nicht „erst ganz Epic 2 in Rust, Wrapper später". Sondern jedes fertige Noun bekommt sofort seinen dünnen 3-4b-Wrapper, damit du es direkt aus Flutter ausprobieren kannst:
+##
+##   2-4 status    → 3-4b(zanshin_status)      → aus Flutter testbar
+##   2-6 change    → 3-4b(zanshin_change)      → aus Flutter testbar
+##   2-7 op_log    → 3-4b(zanshin_op_log)      → aus Flutter testbar
+##   2-8 bookmarks → 3-4b(zanshin_bookmarks)   → aus Flutter testbar
+##   2-9 remotes   → 3-4b(zanshin_remotes)     → aus Flutter testbar
+##   (2-5 revset fließt in die anderen ein, 2-10 ist nur Doku — kein eigener Wrapper.)
+##
+## So bleibst du nach Phase 1 nie wieder blockiert: jeder weitere Schritt liefert dir sofort etwas, das du in Flutter anfassen kannst. Genau das war ja dein Ziel.
+##
+## Deferred (kommt ohne Rework später): 3-5 Watcher · 3-6 Event-Kanal · 3-10 E2E-Watcher-Test.
+
   # Epic 3: zanshin-ffi & Watcher (Keystone)
+  # WIP re-sequencing (2026-06-15): FFI infra pulled forward + interleaved with Epic 2 so the
+  # Flutter dev can call open/init/clone early. Work order: 3-1 → 3-2 → 3-3 → 3-4a → 3-9 → 3-8,
+  # then 3-4b wrappers per finished Epic 2 noun. Watcher (3-5/3-6/3-10) DEFERRED — zero rework
+  # (event sink is process-global in worker_init; repo_open signature unaffected). See epics.md.
   epic-3: backlog
   3-1-ffi-core-envelope-error-codes-panic-catch: backlog
   3-2-handle-module-ffi-strings-zanshin-ffi-version: backlog
   3-3-tracing-init-with-rotating-file-sink: backlog  # SHRINK: rotation tests + log-cap cut
-  3-4-read-path-ffi-wrappers-zanshin-repo-zanshin-status-zanshin-log-etc: backlog
-  3-5-watcher-subsystem-with-notify-debouncer-full: backlog
-  3-6-nativecallable-listener-dispatch-events-progress-callbacks: backlog
-  # 3-7-watchman-availability-check-api: DELETED (WIP-rework 2026-05-17)
+  3-4a-repo-ffi-wrappers-zanshin-repo-open-init-clone-close: backlog  # NEW (2026-06-15): split from old 3-4; unblocks Flutter open/init/clone; watcher NOT armed here
+  3-9-dart-worker-isolate-bootstrap-isolate-spawn-ports-correlation: backlog  # event sink reserved as no-op stub (worker_init signature final)
   3-8-diagnostics-api-wip-minimal: backlog  # renamed (SHRINK: version-string + log-path only)
-  3-9-dart-worker-isolate-bootstrap-isolate-spawn-ports-correlation: backlog
-  3-10-end-to-end-watcher-test-filesystem-mutation-dart-callback: backlog  # SHRINK: no latency assert; + storm sub-test
+  3-4b-read-path-ffi-wrappers-zanshin-status-zanshin-change-zanshin-op-log-zanshin-bookmarks-zanshin-remotes: backlog  # split from old 3-4; lands per Epic 2 noun: status<-2-4, change<-2-6, op_log<-2-7, bookmarks<-2-8, remotes<-2-9
+  # --- DEFERRED (2026-06-15): watcher subsystem, postponed past the early read-path; rebuilds with zero rework ---
+  3-5-watcher-subsystem-with-notify-debouncer-full: backlog  # DEFERRED: added internally to repo_open later; extern "C" signature unchanged
+  3-6-nativecallable-listener-dispatch-events-progress-callbacks: backlog  # DEFERRED with watcher; command/response needs no events
+  # 3-7-watchman-availability-check-api: DELETED (WIP-rework 2026-05-17)
+  3-10-end-to-end-watcher-test-filesystem-mutation-dart-callback: backlog  # DEFERRED with watcher; net-new test code later (SHRINK: no latency assert; + storm sub-test)
   epic-3-retrospective: optional
 
   # Epic 4: zanshin-graph — DAG Lane Assignment

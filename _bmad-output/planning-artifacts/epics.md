@@ -346,7 +346,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **WIP-rework:** Story 2.2 (NFR-P-1 sub-budget allocation) deleted. Story 2.1 shrunk (large fixture + determinism guarantees deferred). Story 2.10 shrunk to rustdoc on public API (no surface-lock gate — WIP allows breaking changes).
 
-**Sequencing:** After Epic 1.
+**Sequencing:** After Epic 1. **WIP re-sequencing (2026-06-15):** Epic 2 is now interleaved with Epic 3's FFI infrastructure so the Flutter dev can exercise each read-path noun from Flutter as it lands, instead of waiting for all of Epic 2 to finish. See the re-sequencing banner under the Epic 3 detail section for the authoritative work order.
 
 ---
 
@@ -364,7 +364,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **WIP-rework:** Story 3.7 (Watchman availability check, FR-FFI-7) deleted. Story 3.8 (diagnostics) shrunk to version-string + log-path. Story 3.3 (tracing) shrunk (rotation tests + log-cap removed). Story 3.10 latency-assertion removed; functional event-arrival assertion retained; a watcher-storm sub-test (drop-oldest under load) appended.
 
-**Sequencing:** After Epic 2. Blocks all downstream epics (4, 5, 6, 7) that consume the envelope/handle/worker patterns.
+**Sequencing:** After Epic 1, interleaved with Epic 2 (WIP re-sequencing 2026-06-15). The FFI infrastructure is pulled forward in the order `3.1 → 3.2 → 3.3 → 3.4a → 3.9 → 3.8` to unblock the Flutter dev early; the watcher (Stories 3.5, 3.6, 3.10) is **deferred** — open/init/clone are one-shot operations that need no file-watching, and the watcher rebuilds later with zero rework (the async event sink is process-global in `zanshin_worker_init`, so `zanshin_repo_open`'s signature is unaffected). After Story 3.9, each remaining read wrapper (Story 3.4b) lands as its Epic 2 noun completes. Still blocks downstream epics (4, 5, 6, 7) that consume the envelope/handle/worker patterns.
 
 ---
 
@@ -1595,6 +1595,15 @@ So that future jj-lib upgrades absorb their churn inside this crate without leak
 
 Land the load-bearing FFI infrastructure: opaque handles, JSON envelope, error model, async event delivery, watcher subsystem, Watchman detection, diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`). This epic is the architectural keystone; every downstream epic (4, 5, 6, 7) consumes these patterns.
 
+> **WIP re-sequencing (2026-06-15) — interleave FFI infra with Epic 2 to unblock Flutter early.**
+> The Flutter dev (Ralph) needs to exercise the Rust read-path from Flutter without waiting for all of Epic 2 + 3. open/init/clone are one-shot operations that need no file-watching, so the **watcher is deferred**.
+>
+> **New work order:** `3.1 → 3.2 → 3.3 → `**`3.4a`**` (repo open/init/clone/close) → 3.9 → 3.8`, then per finished Epic 2 noun a thin **3.4b** wrapper (`2.4→status`, `2.6→change`, `2.7→op_log`, `2.8→bookmarks`, `2.9→remotes`).
+>
+> **Deferred (zero rework):** Story 3.5 (watcher), Story 3.6 (NativeCallable event channel), Story 3.10 (E2E watcher test).
+>
+> **Why zero rework:** the async event sink is process-global, registered once in `zanshin_worker_init` (Story 3.9), NOT per-`repo_open`. So `zanshin_repo_open`'s `extern "C"` signature is identical with or without the watcher; arming is added later purely inside `repo_open`'s body (Story 3.5). Story 3.9 reserves the sink as a no-op stub so `worker_init`'s signature is final now. Nothing is deleted — only re-ordered, plus the old Story 3.4 split into 3.4a / 3.4b.
+
 ### Story 3.1: FFI core — envelope, error codes, panic catch
 
 As a Rust developer implementing the FFI surface,
@@ -1853,7 +1862,63 @@ So that every FFI call and watcher event is traceable per AR-P-5, with no stdout
 
 ---
 
-### Story 3.4: Read-path FFI wrappers — `zanshin_repo_*`, `zanshin_status`, `zanshin_log`, etc.
+### Story 3.4a: Repo FFI wrappers — `zanshin_repo_open/init/clone/close`
+
+> **WIP re-sequencing (2026-06-15):** Carved out of the former monolithic Story 3.4 so the repo open/init/clone path — the only finished Epic 2 noun (Story 2.3) — can be exercised from Flutter immediately, ahead of the remaining read-path nouns and the watcher. The rest of the old Story 3.4 lives on as Story 3.4b.
+
+As a Dart caller (worker isolate),
+I want `extern "C"` functions wrapping the Epic 2 `repo` path (open, init, clone, close) returning JSON envelopes,
+So that I can open/init/clone a repository from Flutter as soon as the FFI infrastructure is in place — without waiting for the rest of the read path or the watcher.
+
+**Acceptance Criteria:**
+
+**Given** `crates/zanshin-ffi/src/repo.rs`
+**When** created
+**Then** it defines `zanshin_repo_open`, `zanshin_repo_init`, `zanshin_repo_clone`, `zanshin_repo_close` as `#[no_mangle] pub unsafe extern "C"` functions
+**And** each fallible function is wrapped via `envelope::catch(|| { ... })` (Story 3.1).
+
+**Given** `zanshin_repo_open(path)`
+**When** called with a valid jj repo path
+**Then** it returns the AR-AD-1 envelope (`*mut c_char`) with `data = { "handle": "<hex ptr>" }` on success (consistent envelope reporting — no NULL-plus-out-of-band-error pattern)
+**And** `zanshin_repo_close(handle)` takes the raw handle and drops the `Box<Repo>` (Story 3.2 handle helpers).
+
+**Given** `zanshin_repo_open(path)` with an invalid / non-repo path
+**Then** it returns `{ok:false, error:{code:"jj.repo_not_found"|"jj.path_not_found", ...}}` — never a crash, never NULL.
+
+**Given** `zanshin_repo_init(path, backend)`
+**When** called in an empty directory
+**Then** it initializes a repo and returns a valid handle
+**And** calling `init` again at the same location returns a defined error code (no panic).
+
+**Given** `zanshin_repo_clone(url, target_path)`
+**When** called with a local source fixture into a temp target
+**Then** it returns a valid handle envelope.
+
+**Given** `zanshin_repo_close`
+**When** called twice on the same handle, or on an unknown handle
+**Then** it returns a defined `ffi.invalid_handle` error (no use-after-free, no panic).
+
+**Given** the watcher is deferred (Stories 3.5 / 3.6)
+**When** `zanshin_repo_open` returns
+**Then** it does NOT arm a filesystem watcher yet. **Watcher arming is added later in Story 3.5 as an internal-only change to `repo_open`'s body — the `extern "C"` signature is unchanged, so no codegen / caller rework results.** (This is the load-bearing assumption behind the 2026-06-15 re-sequencing.)
+
+**Given** `cargo make codegen` runs after this story
+**Then** `zanshin_ffi.h` and `bindings.dart` contain the four `zanshin_repo_*` functions, committed in the same PR.
+
+**Given** Rust integration tests in `crates/zanshin-ffi/tests/repo_ffi.rs`
+**When** they run
+**Then** for each of open/init/clone/close they exercise a success case and an error case
+**And** they **schema-validate both the request and the response JSON against the relevant `schemas/*.schema.json` before asserting on any field** (`jsonschema` crate — the schema is the wire contract, per project-context Testing Rules).
+
+**Given** a forced panic inside a wrapper body
+**When** triggered in a test
+**Then** the call returns `{ok:false, error:{code:"internal.panic"}}` (catch_unwind backstop, Story 3.1) — proving no panic crosses the boundary.
+
+---
+
+### Story 3.4b: Read-path FFI wrappers — `zanshin_status`, `zanshin_change`, `zanshin_op_log`, `zanshin_bookmarks`, `zanshin_remotes`
+
+> **WIP re-sequencing (2026-06-15):** Was Story 3.4. The `zanshin_repo_open/init/clone/close` functions moved to Story 3.4a, so the `zanshin_repo_*` acceptance criteria below are **superseded by Story 3.4a**. This story now covers the non-repo read wrappers only, and each wrapper lands as its Epic 2 noun completes: `status` ← 2.4, `revset`/`change` ← 2.5 / 2.6, `op_log` ← 2.7, `bookmarks` ← 2.8, `remotes` ← 2.9. Not on the "open/init/clone early" critical path — sequence freely after Story 3.9.
 
 As a Dart caller (worker isolate),
 I want `extern "C"` functions wrapping the Epic 2 read-path (open, init, clone, status, op-log, change, bookmarks, remotes) returning JSON envelopes,
@@ -1954,6 +2019,8 @@ where the envelope's `data` field contains `{"handle": "<hex ptr>"}` on success.
 
 ### Story 3.5: Watcher subsystem with `notify-debouncer-full`
 
+> **WIP re-sequencing (2026-06-15): DEFERRED.** The watcher is not needed for the open/init/clone path (one-shot operations). It is rebuilt later as an internal addition to `zanshin_repo_open` (signature unchanged) plus the deferred event channel (Story 3.6). Zero rework — nothing here is deleted, only postponed past the early read-path slices.
+
 As a Rust developer implementing the watcher,
 I want `crates/zanshin-ffi/src/watcher.rs` using `notify-debouncer-full` with a 50ms debounce window and bounded mpsc channel (AR-AD-5),
 So that filesystem changes on `.jj/repo/op_heads/heads/` (primary) and `.jj/repo/working_copy/checkout` (heartbeat) deliver to the dispatch loop with backpressure handling.
@@ -2024,6 +2091,8 @@ So that filesystem changes on `.jj/repo/op_heads/heads/` (primary) and `.jj/repo
 ---
 
 ### Story 3.6: NativeCallable.listener dispatch — events + progress callbacks
+
+> **WIP re-sequencing (2026-06-15): DEFERRED with the watcher (Story 3.5).** Command/response in the worker isolate (Story 3.9) uses `SendPort`/`ReceivePort` + `commandId` correlation and needs no `NativeCallable` events. The event channel is only for async Rust→Dart pushes (watcher / progress), which are deferred. Story 3.9 reserves the process-global event sink as a no-op stub so `zanshin_worker_init`'s signature is final and won't churn when this lands. (Progress callbacks for Epic 6 fetch/push also ride this channel — they arrive with it.)
 
 As a Rust developer wiring async signals,
 I want the watcher event stream (Story 3.5) and progress callback contract (FR-FFI-8) both delivered to Dart via `NativeCallable.listener`,
@@ -2165,6 +2234,8 @@ So that users can paste self-describing diagnostics into bug reports without lea
 
 ### Story 3.9: Dart worker isolate bootstrap — `Isolate.spawn` + ports + correlation
 
+> **WIP re-sequencing (2026-06-15):** Brought forward (runs right after Story 3.4a) so open/init/clone are callable from Flutter early. Since the watcher / event channel (Stories 3.5 / 3.6) is deferred, register the process-global async event sink in `zanshin_worker_init` as a **no-op stub now** (reserved slot) — this keeps `worker_init`'s signature final so it won't churn when events land later. The dedicated event-stream port (see the "Async events from FFI" edge case below) is wired but carries no traffic until Story 3.6.
+
 As a Dart developer setting up the worker isolate,
 I want `app/lib/src/worker/isolate.dart` + `commands.dart` + `correlation.dart` implementing AR-AD-4 (sealed `WorkerCommand`, `SendPort`-based dispatch, `commandId` correlation),
 So that the main isolate can issue typed commands and receive JSON-parsed results, with `NativeFinalizer` registered for handle lifetimes (AR-AD-2).
@@ -2255,6 +2326,8 @@ final class ChangeCommand extends WorkerCommand { final int handleId; final Stri
 ---
 
 ### Story 3.10: End-to-end watcher test — filesystem mutation → Dart callback
+
+> **WIP re-sequencing (2026-06-15): DEFERRED with the watcher.** This test validates the reactive feature (filesystem mutation → Dart callback), which is not shipped in the early open/init/clone slice. It returns when the watcher (Stories 3.5 / 3.6) is rebuilt — as net-new test code, no rework.
 
 > **WIP-rework (2026-05-17):** Keep the functional E2E pathway: real cdylib + real worker isolate, filesystem mutation triggers Dart callback. **Drop the latency assertion** (`<200ms` test bound) — NFR-P-4 is a soft target in WIP. **Add** a watcher-storm sub-test (5 rapid mutations → bounded channel drop-oldest behaviour observed; consumes the dropped Story 7.8 / Murat Szenario-2). The full latency-bounded test returns in the release phase.
 
