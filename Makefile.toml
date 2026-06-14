@@ -45,7 +45,7 @@ cwd = "app"
 # ─── test ───────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run the WIP-minimal quality gate (cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny advisories+bans)."
+description = "Run the WIP-minimal quality gate (cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny advisories+bans + cargo hygiene)."
 dependencies = [
     "test-cargo",
     "test-clippy",
@@ -54,6 +54,7 @@ dependencies = [
     "test-dart-analyze",
     "test-dart-format",
     "test-cargo-deny",
+    "test-cargo-hygiene",
 ]
 
 [tasks.test-cargo]
@@ -96,6 +97,53 @@ private = true
 # ever stops being virtual, and to make the "all crates scanned" intent explicit.
 command = "cargo"
 args = ["deny", "--workspace", "check", "advisories", "bans"]
+
+[tasks.test-cargo-hygiene]
+private = true
+description = "Enforce the inline `# WHY:` backstop for `default-features = false` across all tracked Cargo.toml manifests (AR-P-8)."
+script_runner = "bash"
+script = '''
+set -euo pipefail
+
+# Enforce the inline `# WHY:` backstop for `default-features = false`
+# (project-context.md § "Cargo.toml hygiene"; crates/README.md). Every tracked
+# Cargo.toml that sets `default-features = false` must justify it with a `# WHY:`
+# comment on the SAME line — the documented form (no preceding-line variant).
+# ci.yml is Story 1.9's deliverable; landing the check here means `cargo make
+# test` (the single entry point) gates it now and 1.9 inherits it for free.
+
+manifests=$(git ls-files '*Cargo.toml')
+count=$(git ls-files '*Cargo.toml' | wc -l | tr -d '[:space:]')
+
+# Sanity: the workspace manifest set is fixed (root + six crates). A count
+# mismatch means a crate was added or removed without anyone revisiting this
+# gate — surface it rather than silently checking a different set.
+if [ "$count" -ne 7 ]; then
+    echo "test-cargo-hygiene: expected 7 tracked Cargo.toml files, found $count:" >&2
+    echo "$manifests" >&2
+    exit 1
+fi
+
+violations=0
+while IFS= read -r manifest; do
+    # grep -n → file-relative line numbers; -E + [[:space:]] keep it portable to
+    # macOS BSD grep (no -P). `|| true` so a no-match (grep exit 1) doesn't trip
+    # `set -e`.
+    matches=$(grep -nE 'default-features[[:space:]]*=[[:space:]]*false' "$manifest" || true)
+    [ -z "$matches" ] && continue
+    while IFS= read -r line; do
+        case "$line" in
+            *'# WHY:'*) ;;  # justified inline — OK
+            *) printf '  %s:%s\n' "$manifest" "$line" >&2; violations=$((violations + 1)) ;;
+        esac
+    done <<< "$matches"
+done <<< "$manifests"
+
+if [ "$violations" -ne 0 ]; then
+    echo "test-cargo-hygiene: $violations occurrence(s) of \`default-features = false\` lack an inline \`# WHY:\` comment (see crates/README.md)." >&2
+    exit 1
+fi
+'''
 
 # ─── codegen ────────────────────────────────────────────────────────────────
 

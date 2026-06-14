@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
-import 'package:zanshin/src/shared/data/mock_data.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import '../../shared/data/mock_data.dart';
+import '../../shared/theme/zanshin_colors.dart';
+import '../../shared/widgets/zanshin_icon.dart';
 
 class HistoryColumn extends StatefulWidget {
-  const HistoryColumn({super.key, required this.openBranches});
+  const HistoryColumn({required this.openBranches, super.key});
   final List<String> openBranches;
 
   @override
@@ -21,9 +21,9 @@ class _HistoryColumnState extends State<HistoryColumn> {
   List<({MockCommit commit, Color color, String branch})> _buildRows() {
     final seen = <String>{};
     final rows = <({MockCommit commit, Color color, String branch})>[];
-    for (final b in kBookmarks) {
-      final commits = kCommitsByBranch[b.name] ?? [];
-      final color = branchColor(b.name);
+    for (final MockBookmark b in kBookmarks) {
+      final List<MockCommit> commits = kCommitsByBranch[b.name] ?? [];
+      final Color color = branchColor(b.name);
       for (final c in commits) {
         if (!seen.contains(c.changeId)) {
           seen.add(c.changeId);
@@ -36,8 +36,8 @@ class _HistoryColumnState extends State<HistoryColumn> {
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
-    final rows = _buildRows();
+    final ZanshinColors zc = context.zc;
+    final List<({String branch, Color color, MockCommit commit})> rows = _buildRows();
 
     return Container(
       width: 400,
@@ -60,7 +60,10 @@ class _HistoryColumnState extends State<HistoryColumn> {
               spacing: 6,
               children: [
                 ZanshinIcon(ZI.history, size: 13, color: zc.textDim),
-                Text('History', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary)),
+                Text(
+                  'History',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),
+                ),
                 Text('${rows.length} commits', style: TextStyle(fontSize: 11, color: zc.textDim)),
               ],
             ),
@@ -68,17 +71,23 @@ class _HistoryColumnState extends State<HistoryColumn> {
           // Lane legend
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: zc.border))),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: zc.border)),
+            ),
             child: Wrap(
               spacing: 10,
               runSpacing: 4,
               children: kBookmarks.map((b) {
-                final c = branchColor(b.name);
+                final Color c = branchColor(b.name);
                 return Row(
                   mainAxisSize: MainAxisSize.min,
                   spacing: 4,
                   children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                    ),
                     Text(b.name, style: TextStyle(fontSize: 10, color: zc.textMuted)),
                   ],
                 );
@@ -91,9 +100,9 @@ class _HistoryColumnState extends State<HistoryColumn> {
               padding: EdgeInsets.zero,
               itemCount: rows.length,
               itemBuilder: (context, i) {
-                final row = rows[i];
+                final ({String branch, Color color, MockCommit commit}) row = rows[i];
                 final isSelected = _selectedId == row.commit.changeId;
-                final isHovered = _hoveredId == row.commit.changeId && !isSelected;
+                final bool isHovered = _hoveredId == row.commit.changeId && !isSelected;
                 return _HistoryRow(
                   commit: row.commit,
                   laneColor: row.color,
@@ -169,7 +178,11 @@ class _HistoryRow extends StatelessWidget {
                 width: 56,
                 child: Text(
                   commit.changeId,
-                  style: TextStyle(fontSize: 10.5, color: isSelected ? zc.textPrimary : zc.textDim, fontFamily: 'monospace'),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isSelected ? zc.textPrimary : zc.textDim,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
               // Subject + badges
@@ -178,7 +191,10 @@ class _HistoryRow extends StatelessWidget {
                   spacing: 6,
                   children: [
                     if (commit.isEmpty)
-                      Text('(empty)', style: TextStyle(fontSize: 11, color: zc.textFaint, fontStyle: FontStyle.italic)),
+                      Text(
+                        '(empty)',
+                        style: TextStyle(fontSize: 11, color: zc.textFaint, fontStyle: FontStyle.italic),
+                      ),
                     Expanded(
                       child: Text(
                         commit.subject,
@@ -186,10 +202,8 @@ class _HistoryRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (commit.isWorkingCopy)
-                      _Badge(label: '@', color: laneColor),
-                    if (commit.version != null)
-                      _Badge(label: commit.version!, color: const Color(0xFFfbbf24)),
+                    if (commit.isWorkingCopy) _Badge(label: '@', color: laneColor),
+                    if (commit.version != null) _Badge(label: commit.version!, color: const Color(0xFFfbbf24)),
                   ],
                 ),
               ),
@@ -207,15 +221,16 @@ class _Badge extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(35),
-        border: Border.all(color: color.withAlpha(100)),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace')),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withAlpha(35),
+      border: Border.all(color: color.withAlpha(100)),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace'),
+    ),
+  );
 }

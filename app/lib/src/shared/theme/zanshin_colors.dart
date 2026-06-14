@@ -50,7 +50,7 @@ class ZanshinColors extends ThemeExtension<ZanshinColors> {
   final Color hunk;
   final Color accent;
 
-  static const ZanshinColors dark = ZanshinColors(
+  static const dark = ZanshinColors(
     bg: Color(0xFF0a0a0a),
     bgWindow: Color(0xFF0d0d0d),
     bgSidebar: Color(0xFF0d0d0d),
@@ -72,7 +72,7 @@ class ZanshinColors extends ThemeExtension<ZanshinColors> {
     accent: Color(0xFF3b82f6),
   );
 
-  static const ZanshinColors light = ZanshinColors(
+  static const light = ZanshinColors(
     bg: Color(0xFFf4f4f5),
     bgWindow: Color(0xFFfafafa),
     bgSidebar: Color(0xFFffffff),
@@ -115,32 +115,33 @@ class ZanshinColors extends ThemeExtension<ZanshinColors> {
     Color? remBg,
     Color? hunk,
     Color? accent,
-  }) =>
-      ZanshinColors(
-        bg: bg ?? this.bg,
-        bgWindow: bgWindow ?? this.bgWindow,
-        bgSidebar: bgSidebar ?? this.bgSidebar,
-        bgCard: bgCard ?? this.bgCard,
-        bgCard2: bgCard2 ?? this.bgCard2,
-        bgElevated: bgElevated ?? this.bgElevated,
-        bgHistory: bgHistory ?? this.bgHistory,
-        border: border ?? this.border,
-        borderStrong: borderStrong ?? this.borderStrong,
-        textPrimary: textPrimary ?? this.textPrimary,
-        textMuted: textMuted ?? this.textMuted,
-        textDim: textDim ?? this.textDim,
-        textFaint: textFaint ?? this.textFaint,
-        add: add ?? this.add,
-        addBg: addBg ?? this.addBg,
-        rem: rem ?? this.rem,
-        remBg: remBg ?? this.remBg,
-        hunk: hunk ?? this.hunk,
-        accent: accent ?? this.accent,
-      );
+  }) => ZanshinColors(
+    bg: bg ?? this.bg,
+    bgWindow: bgWindow ?? this.bgWindow,
+    bgSidebar: bgSidebar ?? this.bgSidebar,
+    bgCard: bgCard ?? this.bgCard,
+    bgCard2: bgCard2 ?? this.bgCard2,
+    bgElevated: bgElevated ?? this.bgElevated,
+    bgHistory: bgHistory ?? this.bgHistory,
+    border: border ?? this.border,
+    borderStrong: borderStrong ?? this.borderStrong,
+    textPrimary: textPrimary ?? this.textPrimary,
+    textMuted: textMuted ?? this.textMuted,
+    textDim: textDim ?? this.textDim,
+    textFaint: textFaint ?? this.textFaint,
+    add: add ?? this.add,
+    addBg: addBg ?? this.addBg,
+    rem: rem ?? this.rem,
+    remBg: remBg ?? this.remBg,
+    hunk: hunk ?? this.hunk,
+    accent: accent ?? this.accent,
+  );
 
   @override
   ZanshinColors lerp(ZanshinColors? other, double t) {
-    if (other == null) return this;
+    if (other == null) {
+      return this;
+    }
     return ZanshinColors(
       bg: Color.lerp(bg, other.bg, t)!,
       bgWindow: Color.lerp(bgWindow, other.bgWindow, t)!,

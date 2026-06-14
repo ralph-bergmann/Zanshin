@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
-import 'package:zanshin/src/features/commits/commit_detail.dart';
-import 'package:zanshin/src/shared/data/mock_data.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
-import 'package:zanshin/src/shared/widgets/commit_tags.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+
+import '../../shared/data/mock_data.dart';
+import '../../shared/theme/zanshin_colors.dart';
+import '../../shared/widgets/commit_tags.dart';
+import '../../shared/widgets/zanshin_icon.dart';
+import 'commit_detail.dart';
 
 class BranchPanel extends StatefulWidget {
   const BranchPanel({
-    super.key,
     required this.branchName,
     required this.onClose,
+    super.key,
   });
 
   final String branchName;
@@ -26,11 +27,11 @@ class _BranchPanelState extends State<BranchPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
-    final color = branchColor(widget.branchName);
-    final commits = kCommitsByBranch[widget.branchName] ?? [];
-    final bookmark = kBookmarks.where((b) => b.name == widget.branchName).firstOrNull;
-    final selectedCommit = commits.where((c) => c.changeId == _selectedChangeId).firstOrNull;
+    final ZanshinColors zc = context.zc;
+    final Color color = branchColor(widget.branchName);
+    final List<MockCommit> commits = kCommitsByBranch[widget.branchName] ?? [];
+    final MockBookmark? bookmark = kBookmarks.where((b) => b.name == widget.branchName).firstOrNull;
+    final MockCommit? selectedCommit = commits.where((c) => c.changeId == _selectedChangeId).firstOrNull;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -58,7 +59,7 @@ class _BranchPanelState extends State<BranchPanel> {
                   padding: EdgeInsets.zero,
                   itemCount: commits.length,
                   itemBuilder: (context, i) {
-                    final commit = commits[i];
+                    final MockCommit commit = commits[i];
                     final isSelected = commit.changeId == _selectedChangeId;
                     return _CommitCard(
                       commit: commit,
@@ -102,36 +103,37 @@ class _BranchHeader extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: zc.bgCard,
-        border: Border(
-          bottom: BorderSide(color: zc.border),
-          top: BorderSide(color: color.withAlpha(80), width: 2),
+  Widget build(BuildContext context) => Container(
+    height: 36,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: zc.bgCard,
+      border: Border(
+        bottom: BorderSide(color: zc.border),
+        top: BorderSide(color: color.withAlpha(80), width: 2),
+      ),
+    ),
+    child: Row(
+      children: [
+        ZanshinIcon(ZI.branch, size: 13, color: color),
+        const SizedBox(width: 6),
+        Text(
+          name,
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: zc.textPrimary),
         ),
-      ),
-      child: Row(
-        children: [
-          ZanshinIcon(ZI.branch, size: 13, color: color),
-          const SizedBox(width: 6),
-          Text(name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: zc.textPrimary)),
-          const Spacer(),
-          if ((bookmark?.ahead ?? 0) > 0) ...[
-            _Pill(label: '↑${bookmark!.ahead}', color: zc.add, zc: zc),
-            const SizedBox(width: 4),
-          ],
-          if (bookmark?.current == true) ...[
-            _Pill(label: '@', color: color, zc: zc),
-            const SizedBox(width: 4),
-          ],
-          _CloseBtn(onClose: onClose, zc: zc),
+        const Spacer(),
+        if ((bookmark?.ahead ?? 0) > 0) ...[
+          _Pill(label: '↑${bookmark!.ahead}', color: zc.add, zc: zc),
+          const SizedBox(width: 4),
         ],
-      ),
-    );
-  }
+        if (bookmark?.current == true) ...[
+          _Pill(label: '@', color: color, zc: zc),
+          const SizedBox(width: 4),
+        ],
+        _CloseBtn(onClose: onClose, zc: zc),
+      ],
+    ),
+  );
 }
 
 class _Pill extends StatelessWidget {
@@ -141,16 +143,17 @@ class _Pill extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(30),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace')),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withAlpha(30),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace'),
+    ),
+  );
 }
 
 class _CloseBtn extends StatefulWidget {
@@ -163,28 +166,28 @@ class _CloseBtn extends StatefulWidget {
 }
 
 class _CloseBtnState extends State<_CloseBtn> {
-  bool _hovered = false;
+  var _hovered = false;
 
   @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onClose,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: _hovered ? widget.zc.bgCard2 : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Center(child: ZanshinIcon(ZI.close, size: 11, color: _hovered ? widget.zc.textPrimary : widget.zc.textDim)),
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: GestureDetector(
+      onTap: widget.onClose,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          color: _hovered ? widget.zc.bgCard2 : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Center(
+          child: ZanshinIcon(ZI.close, size: 11, color: _hovered ? widget.zc.textPrimary : widget.zc.textDim),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _CommitCard extends StatefulWidget {
@@ -206,13 +209,13 @@ class _CommitCard extends StatefulWidget {
 }
 
 class _CommitCardState extends State<_CommitCard> {
-  bool _hovered = false;
+  var _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final zc = widget.zc;
-    final commit = widget.commit;
-    final isWc = commit.isWorkingCopy;
+    final ZanshinColors zc = widget.zc;
+    final MockCommit commit = widget.commit;
+    final bool isWc = commit.isWorkingCopy;
 
     Color bg;
     Color borderColor;
@@ -240,9 +243,7 @@ class _CommitCardState extends State<_CommitCard> {
             color: bg,
             border: Border.all(color: borderColor),
             borderRadius: BorderRadius.circular(7),
-            boxShadow: widget.isSelected
-                ? [BoxShadow(color: widget.branchColor.withAlpha(40), blurRadius: 8, spreadRadius: 0)]
-                : null,
+            boxShadow: widget.isSelected ? [BoxShadow(color: widget.branchColor.withAlpha(40), blurRadius: 8)] : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -260,16 +261,25 @@ class _CommitCardState extends State<_CommitCard> {
                   child: Row(
                     spacing: 6,
                     children: [
-                      Container(width: 6, height: 6, decoration: BoxDecoration(color: widget.branchColor, shape: BoxShape.circle)),
-                      Text('@ Checked out', style: TextStyle(fontSize: 10, color: widget.branchColor, fontWeight: FontWeight.w500)),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(color: widget.branchColor, shape: BoxShape.circle),
+                      ),
+                      Text(
+                        '@ Checked out',
+                        style: TextStyle(fontSize: 10, color: widget.branchColor, fontWeight: FontWeight.w500),
+                      ),
                       const Spacer(),
-                      Text('code changes go here', style: TextStyle(fontSize: 10, color: widget.branchColor.withAlpha(180))),
+                      Text(
+                        'code changes go here',
+                        style: TextStyle(fontSize: 10, color: widget.branchColor.withAlpha(180)),
+                      ),
                     ],
                   ),
                 ),
               // Tags
               CommitTagRow(
-                isWorkingCopy: false, // wc handled by ribbon above
                 isEmpty: commit.isEmpty,
                 isMerge: commit.isMerge,
                 hasConflict: commit.hasConflict,
@@ -285,15 +295,26 @@ class _CommitCardState extends State<_CommitCard> {
               Row(
                 spacing: 8,
                 children: [
-                  Text(commit.changeId, style: TextStyle(fontSize: 10, color: zc.textDim, fontFamily: 'monospace')),
-                  Row(mainAxisSize: MainAxisSize.min, spacing: 3, children: [
-                    ZanshinIcon(ZI.user, size: 11, color: zc.textDim),
-                    Text(commit.author.split(' ').first, style: TextStyle(fontSize: 10, color: zc.textDim)),
-                  ]),
-                  Row(mainAxisSize: MainAxisSize.min, spacing: 3, children: [
-                    ZanshinIcon(ZI.calendar, size: 11, color: zc.textDim),
-                    Text(commit.date, style: TextStyle(fontSize: 10, color: zc.textDim)),
-                  ]),
+                  Text(
+                    commit.changeId,
+                    style: TextStyle(fontSize: 10, color: zc.textDim, fontFamily: 'monospace'),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 3,
+                    children: [
+                      ZanshinIcon(ZI.user, size: 11, color: zc.textDim),
+                      Text(commit.author.split(' ').first, style: TextStyle(fontSize: 10, color: zc.textDim)),
+                    ],
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 3,
+                    children: [
+                      ZanshinIcon(ZI.calendar, size: 11, color: zc.textDim),
+                      Text(commit.date, style: TextStyle(fontSize: 10, color: zc.textDim)),
+                    ],
+                  ),
                   if (commit.stats.added > 0 || commit.stats.removed > 0) ...[
                     const Spacer(),
                     DiffStatBadge(added: commit.stats.added, removed: commit.stats.removed),

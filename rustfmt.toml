@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Workspace-wide rustfmt configuration (AR-P-9). `cargo fmt` reads the edition
+# from Cargo.toml; `edition` here only matters for direct `rustfmt` invocations,
+# but we set it so both entry points agree.
+max_width = 120
+edition = "2021"
+
+# WHY: `imports_granularity` / `group_imports` are nightly-only in the rustfmt
+# shipped with the pinned stable 1.95.0 toolchain (rustfmt 1.9.0-stable). Left
+# active, they emit a warning on every `cargo fmt` run and otherwise do nothing:
+#   Warning: can't set `imports_granularity = Crate`, unstable features are only available in nightly channel.
+#   Warning: can't set `group_imports = StdExternalCrate`, unstable features are only available in nightly channel.
+# Keep them here, commented out, so the intent survives until they stabilize on a
+# future toolchain bump (uncomment + reformat in that same PR — see Story 1.7
+# edge case). Import grouping is enforced by review convention meanwhile. Do NOT
+# add a nightly toolchain just for `cargo +nightly fmt`: the single pinned stable
+# toolchain is a project invariant (rust-toolchain.toml, Story 1.3).
+# imports_granularity = "Crate"
+# group_imports = "StdExternalCrate"

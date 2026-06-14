@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Advisory editor configuration. Editors pick this up automatically; nothing in
+# the `cargo make test` gate parses it (rustfmt/dart format own the enforced
+# formatting). See https://editorconfig.org.
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.dart]
+indent_size = 2
+
+# WHY: Markdown uses two trailing spaces as a hard line break. Trimming trailing
+# whitespace would silently corrupt docs under docs/ and _bmad-output/, so it is
+# disabled for Markdown specifically.
+[*.md]
+trim_trailing_whitespace = false

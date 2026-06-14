@@ -58,6 +58,11 @@ Future<void> main() async {
 abstract class MainComponent {
   static const g.MainComponent$Component Function() create = g.MainComponent$Component.create;
 
+  // WHY: inject_generator reads this @inject abstract getter as the DI contract
+  // and emits its concrete override in main.inject.dart. The analyzer's
+  // unreachable_from_main check can't see the generated override, so it reports
+  // the declaration as dead — it is load-bearing for codegen. Suppress the false
+  // positive (mirrors the Rust crate-level #[allow] + // WHY: discipline).
   @inject
-  ZanshinAppFactory get zanshinAppFactory;
+  ZanshinAppFactory get zanshinAppFactory; // ignore: unreachable_from_main
 }

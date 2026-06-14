@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
-import 'package:zanshin/src/shared/data/mock_data.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import '../../shared/data/mock_data.dart';
+import '../../shared/theme/zanshin_colors.dart';
+import '../../shared/widgets/zanshin_icon.dart';
 
 enum DiffMode { inline, split }
 
 class DiffBlock extends StatefulWidget {
   const DiffBlock({
-    super.key,
     required this.filePath,
+    super.key,
     this.mode = DiffMode.inline,
     this.onModeChanged,
   });
@@ -24,11 +24,11 @@ class DiffBlock extends StatefulWidget {
 }
 
 class _DiffBlockState extends State<DiffBlock> {
-  bool _viewed = false;
+  var _viewed = false;
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
+    final ZanshinColors zc = context.zc;
     return Container(
       decoration: BoxDecoration(
         color: zc.bgHistory,
@@ -83,23 +83,33 @@ class _ModeToggle extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: zc.bgCard2,
-        border: Border.all(color: zc.border),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _SegBtn(label: 'Inline', icon: ZI.splitInline, active: mode == DiffMode.inline, onTap: () => onChanged?.call(DiffMode.inline), zc: zc),
-          _SegBtn(label: 'Split', icon: ZI.splitSide, active: mode == DiffMode.split, onTap: () => onChanged?.call(DiffMode.split), zc: zc),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(2),
+    decoration: BoxDecoration(
+      color: zc.bgCard2,
+      border: Border.all(color: zc.border),
+      borderRadius: BorderRadius.circular(5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _SegBtn(
+          label: 'Inline',
+          icon: ZI.splitInline,
+          active: mode == DiffMode.inline,
+          onTap: () => onChanged?.call(DiffMode.inline),
+          zc: zc,
+        ),
+        _SegBtn(
+          label: 'Split',
+          icon: ZI.splitSide,
+          active: mode == DiffMode.split,
+          onTap: () => onChanged?.call(DiffMode.split),
+          zc: zc,
+        ),
+      ],
+    ),
+  );
 }
 
 class _SegBtn extends StatelessWidget {
@@ -111,27 +121,25 @@ class _SegBtn extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-          color: active ? zc.bgElevated : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 4,
-          children: [
-            ZanshinIcon(icon, size: 11, color: active ? zc.textPrimary : zc.textDim),
-            Text(label, style: TextStyle(fontSize: 11, color: active ? zc.textPrimary : zc.textDim)),
-          ],
-        ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: active ? zc.bgElevated : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
       ),
-    );
-  }
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 4,
+        children: [
+          ZanshinIcon(icon, size: 11, color: active ? zc.textPrimary : zc.textDim),
+          Text(label, style: TextStyle(fontSize: 11, color: active ? zc.textPrimary : zc.textDim)),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ViewedToggle extends StatelessWidget {
@@ -141,29 +149,27 @@ class _ViewedToggle extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: 5,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              color: viewed ? zc.accent : Colors.transparent,
-              border: Border.all(color: viewed ? zc.accent : zc.borderStrong),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: viewed ? Center(child: ZanshinIcon(ZI.check, size: 10, color: Colors.white)) : null,
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 5,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: viewed ? zc.accent : Colors.transparent,
+            border: Border.all(color: viewed ? zc.accent : zc.borderStrong),
+            borderRadius: BorderRadius.circular(3),
           ),
-          Text('Viewed', style: TextStyle(fontSize: 11, color: viewed ? zc.textPrimary : zc.textMuted)),
-        ],
-      ),
-    );
-  }
+          child: viewed ? const Center(child: ZanshinIcon(ZI.check, size: 10, color: Colors.white)) : null,
+        ),
+        Text('Viewed', style: TextStyle(fontSize: 11, color: viewed ? zc.textPrimary : zc.textMuted)),
+      ],
+    ),
+  );
 }
 
 class _CollapsedDiff extends StatelessWidget {
@@ -172,22 +178,22 @@ class _CollapsedDiff extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onExpand,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          spacing: 8,
-          children: [
-            ZanshinIcon(ZI.check, size: 11, color: zc.add),
-            Text('Reviewed — diff hidden. Click to expand.',
-                style: TextStyle(fontSize: 12, color: zc.textDim, fontStyle: FontStyle.italic)),
-          ],
-        ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onExpand,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        spacing: 8,
+        children: [
+          ZanshinIcon(ZI.check, size: 11, color: zc.add),
+          Text(
+            'Reviewed — diff hidden. Click to expand.',
+            style: TextStyle(fontSize: 12, color: zc.textDim, fontStyle: FontStyle.italic),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _InlineDiff extends StatelessWidget {
@@ -195,46 +201,55 @@ class _InlineDiff extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: kSampleDiff.map((line) {
-          if (line.type == 'hunk') {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              child: Text(line.text, style: TextStyle(fontSize: 11, color: zc.hunk, fontFamily: 'monospace')),
-            );
-          }
-          final isAdd = line.type == 'add';
-          final isRem = line.type == 'remove';
-          return Container(
-            color: isAdd ? zc.addBg : (isRem ? zc.remBg : Colors.transparent),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 14,
-                  child: Text(
-                    isAdd ? '+' : (isRem ? '−' : ' '),
-                    style: TextStyle(fontSize: 11, color: isAdd ? zc.add : (isRem ? zc.rem : zc.textDim), fontFamily: 'monospace'),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    line.text,
-                    style: TextStyle(fontSize: 11, color: isAdd ? zc.add : (isRem ? zc.rem : zc.textMuted), fontFamily: 'monospace'),
-                  ),
-                ),
-              ],
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: kSampleDiff.map((line) {
+        if (line.type == 'hunk') {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            child: Text(
+              line.text,
+              style: TextStyle(fontSize: 11, color: zc.hunk, fontFamily: 'monospace'),
             ),
           );
-        }).toList(),
-      ),
-    );
-  }
+        }
+        final isAdd = line.type == 'add';
+        final isRem = line.type == 'remove';
+        return Container(
+          color: isAdd ? zc.addBg : (isRem ? zc.remBg : Colors.transparent),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 14,
+                child: Text(
+                  isAdd ? '+' : (isRem ? '−' : ' '),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isAdd ? zc.add : (isRem ? zc.rem : zc.textDim),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  line.text,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isAdd ? zc.add : (isRem ? zc.rem : zc.textMuted),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    ),
+  );
 }
 
 class _SplitDiff extends StatelessWidget {
@@ -247,7 +262,7 @@ class _SplitDiff extends StatelessWidget {
     final rows = <({DiffLine? left, DiffLine? right, String? hunk})>[];
     var i = 0;
     while (i < kSampleDiff.length) {
-      final l = kSampleDiff[i];
+      final DiffLine l = kSampleDiff[i];
       if (l.type == 'hunk') {
         rows.add((left: null, right: null, hunk: l.text));
         i++;
@@ -273,15 +288,22 @@ class _SplitDiff extends StatelessWidget {
           if (row.hunk != null) {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              child: Text(row.hunk!, style: TextStyle(fontSize: 11, color: zc.hunk, fontFamily: 'monospace')),
+              child: Text(
+                row.hunk!,
+                style: TextStyle(fontSize: 11, color: zc.hunk, fontFamily: 'monospace'),
+              ),
             );
           }
           return IntrinsicHeight(
             child: Row(
               children: [
-                Expanded(child: _SplitSide(line: row.left, zc: zc)),
+                Expanded(
+                  child: _SplitSide(line: row.left, zc: zc),
+                ),
                 Container(width: 1, color: zc.border),
-                Expanded(child: _SplitSide(line: row.right, zc: zc)),
+                Expanded(
+                  child: _SplitSide(line: row.right, zc: zc),
+                ),
               ],
             ),
           );
@@ -298,7 +320,9 @@ class _SplitSide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (line == null) return Container(color: zc.bgCard2, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1));
+    if (line == null) {
+      return Container(color: zc.bgCard2, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1));
+    }
     final isAdd = line!.type == 'add';
     final isRem = line!.type == 'remove';
     return Container(
@@ -306,7 +330,11 @@ class _SplitSide extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
       child: Text(
         line!.text,
-        style: TextStyle(fontSize: 11, color: isAdd ? zc.add : (isRem ? zc.rem : zc.textMuted), fontFamily: 'monospace'),
+        style: TextStyle(
+          fontSize: 11,
+          color: isAdd ? zc.add : (isRem ? zc.rem : zc.textMuted),
+          fontFamily: 'monospace',
+        ),
       ),
     );
   }

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 // ── Branch colours ──────────────────────────────────────────────────────────
 
-const Map<String, Color> kBranchColors = {
+const kBranchColors = <String, Color>{
   'main': Color(0xFF3b82f6),
   'develop': Color(0xFF22c55e),
   'feature/new-ui': Color(0xFFa855f7),
@@ -41,9 +41,10 @@ class MockCommit {
   const MockCommit({
     required this.changeId,
     required this.subject,
-    this.description = '',
     required this.author,
     required this.date,
+    required this.stats,
+    this.description = '',
     this.isWorkingCopy = false,
     this.isEmpty = false,
     this.isMerge = false,
@@ -52,7 +53,6 @@ class MockCommit {
     this.bookmarks = const [],
     this.parents = const [],
     this.files = const [],
-    required this.stats,
   });
 
   final String changeId;
@@ -222,7 +222,6 @@ final kCommitsByBranch = <String, List<MockCommit>>{
       subject: 'feat: status bar shows current branch',
       author: 'Charlie',
       date: '30m ago',
-      isWorkingCopy: false,
       files: _kFiles2,
       stats: MockCommitStats(added: 140, removed: 34, files: 2),
     ),
@@ -355,11 +354,11 @@ final kCommitsByBranch = <String, List<MockCommit>>{
 };
 
 const kBookmarks = [
-  MockBookmark(name: 'main', ahead: 0, behind: 0, current: false, head: 'a7c8d9e'),
-  MockBookmark(name: 'develop', ahead: 2, behind: 0, current: false, head: 'b3f8a21'),
-  MockBookmark(name: 'feature/new-ui', ahead: 6, behind: 0, current: true, head: 'kpwzlmq'),
-  MockBookmark(name: 'fix/ios-keyboard', ahead: 2, behind: 1, current: false, head: 'vtxnbqr'),
-  MockBookmark(name: 'exp/riverpod-3', ahead: 7, behind: 12, current: false, head: 'mqlbxzn'),
+  MockBookmark(name: 'main', head: 'a7c8d9e'),
+  MockBookmark(name: 'develop', ahead: 2, head: 'b3f8a21'),
+  MockBookmark(name: 'feature/new-ui', ahead: 6, current: true, head: 'kpwzlmq'),
+  MockBookmark(name: 'fix/ios-keyboard', ahead: 2, behind: 1, head: 'vtxnbqr'),
+  MockBookmark(name: 'exp/riverpod-3', ahead: 7, behind: 12, head: 'mqlbxzn'),
 ];
 
 const kRemoteBranches = [
@@ -376,9 +375,43 @@ const kInitialOpenBranches = ['main', 'develop', 'feature/new-ui'];
 // ── Projects (home dialog) ───────────────────────────────────────────────────
 
 const kProjects = [
-  MockProject(id: 'p_myapp', name: 'myapp', path: '~/code/myapp', status: 'ahead', branch: 'feature/new-ui', ahead: 6, lastOpened: 'just now'),
-  MockProject(id: 'p_ripjj', name: 'ripjj', path: '~/code/ripjj', status: 'clean', branch: 'main', lastOpened: '2h ago'),
-  MockProject(id: 'p_docs', name: 'docs', path: '~/code/docs', status: 'dirty', branch: 'main', lastOpened: 'yesterday'),
-  MockProject(id: 'p_design', name: 'design', path: '~/code/design', status: 'behind', branch: 'main', behind: 3, lastOpened: 'Dec 10'),
-  MockProject(id: 'p_api', name: 'backend-api', path: '~/code/backend-api', status: 'clean', branch: 'develop', lastOpened: 'Dec 8'),
+  MockProject(
+    id: 'p_myapp',
+    name: 'myapp',
+    path: '~/code/myapp',
+    status: 'ahead',
+    branch: 'feature/new-ui',
+    ahead: 6,
+    lastOpened: 'just now',
+  ),
+  MockProject(
+    id: 'p_ripjj',
+    name: 'ripjj',
+    path: '~/code/ripjj',
+    status: 'clean',
+    lastOpened: '2h ago',
+  ),
+  MockProject(
+    id: 'p_docs',
+    name: 'docs',
+    path: '~/code/docs',
+    status: 'dirty',
+    lastOpened: 'yesterday',
+  ),
+  MockProject(
+    id: 'p_design',
+    name: 'design',
+    path: '~/code/design',
+    status: 'behind',
+    behind: 3,
+    lastOpened: 'Dec 10',
+  ),
+  MockProject(
+    id: 'p_api',
+    name: 'backend-api',
+    path: '~/code/backend-api',
+    status: 'clean',
+    branch: 'develop',
+    lastOpened: 'Dec 8',
+  ),
 ];

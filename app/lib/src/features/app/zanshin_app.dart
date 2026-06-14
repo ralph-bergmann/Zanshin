@@ -2,11 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:inject_annotation/inject_annotation.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
+import '../../shared/theme/zanshin_colors.dart';
 
 import '../home/home_page.dart';
 
 part 'zanshin_app.factory.dart';
+
 class ZanshinApp extends StatelessWidget {
   @assistedInject
   const ZanshinApp({
@@ -53,11 +54,11 @@ class ZanshinApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Zanshin',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(ZanshinColors.light, Brightness.light),
-        darkTheme: _buildTheme(ZanshinColors.dark, Brightness.dark),
-        themeMode: ThemeMode.dark,
-        home: _homePageFactory.create(),
-      );
+    title: 'Zanshin',
+    debugShowCheckedModeBanner: false,
+    theme: _buildTheme(ZanshinColors.light, Brightness.light),
+    darkTheme: _buildTheme(ZanshinColors.dark, Brightness.dark),
+    themeMode: ThemeMode.dark,
+    home: _homePageFactory.create(),
+  );
 }

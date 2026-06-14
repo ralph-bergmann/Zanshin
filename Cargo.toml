@@ -26,3 +26,9 @@ rust-version = "1.95.0"
 publish = false
 
 [workspace.dependencies]
+
+[workspace.lints.clippy]
+# WHY: priority = -1 so later, individually-configured lints (level overrides
+# for single pedantic lints) take precedence over the group without a
+# Cargo "ambiguous lint priority" warning.
+pedantic = { level = "warn", priority = -1 }

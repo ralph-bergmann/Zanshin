@@ -12,8 +12,8 @@ part 'home_page.factory.dart';
 class HomePage extends StatelessWidget {
   @assistedInject
   const HomePage({
-    @assisted super.key,
     required this.zanshinFfiVersion,
+    @assisted super.key,
   });
 
   final ZanshinFfiVersion zanshinFfiVersion;

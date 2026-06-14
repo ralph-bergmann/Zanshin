@@ -14,7 +14,8 @@ class ZanshinIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? IconTheme.of(context).color ?? Theme.of(context).iconTheme.color ?? Colors.white;
+    final Color effectiveColor =
+        color ?? IconTheme.of(context).color ?? Theme.of(context).iconTheme.color ?? Colors.white;
     return SvgPicture.asset(
       'assets/icons/svg/$name.svg',
       width: size,

@@ -2,17 +2,17 @@
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import '../../shared/theme/zanshin_colors.dart';
+import '../../shared/widgets/zanshin_icon.dart';
 
 enum AppThemeMode { light, dark, system }
 
 class WindowTitleBar extends StatelessWidget {
   const WindowTitleBar({
-    super.key,
     required this.projectName,
     required this.themeMode,
     required this.onThemeMode,
+    super.key,
   });
 
   final String projectName;
@@ -21,7 +21,7 @@ class WindowTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
+    final ZanshinColors zc = context.zc;
     return DragToMoveArea(
       child: Container(
         height: 44,
@@ -56,26 +56,24 @@ class _TitleBarButtonGroup extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: zc.bgCard,
-        border: Border.all(color: zc.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _HeaderBtn(icon: ZI.fetch, label: 'Fetch', zc: zc),
-          _HeaderBtn(icon: ZI.pull, label: 'Pull', zc: zc),
-          _HeaderBtn(icon: ZI.push, label: 'Push', zc: zc),
-          Container(width: 1, height: 14, color: zc.border, margin: const EdgeInsets.symmetric(horizontal: 4)),
-          _HeaderBtn(icon: ZI.plus, label: 'New', zc: zc),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(3),
+    decoration: BoxDecoration(
+      color: zc.bgCard,
+      border: Border.all(color: zc.border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _HeaderBtn(icon: ZI.fetch, label: 'Fetch', zc: zc),
+        _HeaderBtn(icon: ZI.pull, label: 'Pull', zc: zc),
+        _HeaderBtn(icon: ZI.push, label: 'Push', zc: zc),
+        Container(width: 1, height: 14, color: zc.border, margin: const EdgeInsets.symmetric(horizontal: 4)),
+        _HeaderBtn(icon: ZI.plus, label: 'New', zc: zc),
+      ],
+    ),
+  );
 }
 
 class _HeaderBtn extends StatefulWidget {
@@ -89,37 +87,35 @@ class _HeaderBtn extends StatefulWidget {
 }
 
 class _HeaderBtnState extends State<_HeaderBtn> {
-  bool _hovered = false;
+  var _hovered = false;
 
   @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          height: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: _hovered ? widget.zc.bgCard2 : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 6,
-            children: [
-              ZanshinIcon(widget.icon, size: 13, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
-              Text(
-                widget.label,
-                style: TextStyle(fontSize: 12, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: GestureDetector(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: _hovered ? widget.zc.bgCard2 : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 6,
+          children: [
+            ZanshinIcon(widget.icon, size: 13, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
+            Text(
+              widget.label,
+              style: TextStyle(fontSize: 12, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _ThemeSwitch extends StatelessWidget {
@@ -129,24 +125,37 @@ class _ThemeSwitch extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: zc.bgCard,
-        border: Border.all(color: zc.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _ThemeBtn(icon: ZI.sun, active: mode == AppThemeMode.light, onTap: () => onChanged(AppThemeMode.light), zc: zc),
-          _ThemeBtn(icon: ZI.moon, active: mode == AppThemeMode.dark, onTap: () => onChanged(AppThemeMode.dark), zc: zc),
-          _ThemeBtn(icon: ZI.auto, active: mode == AppThemeMode.system, onTap: () => onChanged(AppThemeMode.system), zc: zc),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(2),
+    decoration: BoxDecoration(
+      color: zc.bgCard,
+      border: Border.all(color: zc.border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ThemeBtn(
+          icon: ZI.sun,
+          active: mode == AppThemeMode.light,
+          onTap: () => onChanged(AppThemeMode.light),
+          zc: zc,
+        ),
+        _ThemeBtn(
+          icon: ZI.moon,
+          active: mode == AppThemeMode.dark,
+          onTap: () => onChanged(AppThemeMode.dark),
+          zc: zc,
+        ),
+        _ThemeBtn(
+          icon: ZI.auto,
+          active: mode == AppThemeMode.system,
+          onTap: () => onChanged(AppThemeMode.system),
+          zc: zc,
+        ),
+      ],
+    ),
+  );
 }
 
 class _ThemeBtn extends StatelessWidget {
@@ -157,19 +166,17 @@ class _ThemeBtn extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 26,
-        height: 22,
-        decoration: BoxDecoration(
-          color: active ? zc.bgCard2 : Colors.transparent,
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Center(child: ZanshinIcon(icon, size: 14, color: active ? zc.textPrimary : zc.textDim)),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 26,
+      height: 22,
+      decoration: BoxDecoration(
+        color: active ? zc.bgCard2 : Colors.transparent,
+        borderRadius: BorderRadius.circular(5),
       ),
-    );
-  }
+      child: Center(child: ZanshinIcon(icon, size: 14, color: active ? zc.textPrimary : zc.textDim)),
+    ),
+  );
 }

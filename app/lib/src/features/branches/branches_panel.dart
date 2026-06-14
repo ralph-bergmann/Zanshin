@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
-import 'package:zanshin/src/shared/data/mock_data.dart';
-import 'package:zanshin/src/shared/theme/zanshin_colors.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import '../../shared/data/mock_data.dart';
+import '../../shared/theme/zanshin_colors.dart';
+import '../../shared/widgets/zanshin_icon.dart';
 
 class BranchesPanel extends StatefulWidget {
-  const BranchesPanel({super.key, required this.openBranches, required this.onToggle});
+  const BranchesPanel({required this.openBranches, required this.onToggle, super.key});
   final List<String> openBranches;
   final ValueChanged<String> onToggle;
 
@@ -15,14 +15,16 @@ class BranchesPanel extends StatefulWidget {
 }
 
 class _BranchesPanelState extends State<BranchesPanel> {
-  String _query = '';
+  var _query = '';
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
-    final q = _query.trim().toLowerCase();
-    final local = kBookmarks.where((b) => q.isEmpty || b.name.toLowerCase().contains(q)).toList();
-    final remote = kRemoteBranches.where((b) => q.isEmpty || b.name.toLowerCase().contains(q)).toList();
+    final ZanshinColors zc = context.zc;
+    final String q = _query.trim().toLowerCase();
+    final List<MockBookmark> local = kBookmarks.where((b) => q.isEmpty || b.name.toLowerCase().contains(q)).toList();
+    final List<MockRemoteBranch> remote = kRemoteBranches
+        .where((b) => q.isEmpty || b.name.toLowerCase().contains(q))
+        .toList();
 
     return Container(
       width: 280,
@@ -37,19 +39,27 @@ class _BranchesPanelState extends State<BranchesPanel> {
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: zc.bgCard, border: Border(bottom: BorderSide(color: zc.border))),
+            decoration: BoxDecoration(
+              color: zc.bgCard,
+              border: Border(bottom: BorderSide(color: zc.border)),
+            ),
             child: Row(
               spacing: 8,
               children: [
                 ZanshinIcon(ZI.branch, size: 13, color: zc.textDim),
-                Text('Branches', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary)),
+                Text(
+                  'Branches',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),
+                ),
               ],
             ),
           ),
           // Search
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: zc.border))),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: zc.border)),
+            ),
             child: Container(
               height: 28,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -88,18 +98,17 @@ class _BranchesPanelState extends State<BranchesPanel> {
                 if (local.isEmpty)
                   _EmptyLabel(zc: zc)
                 else
-                  ...local.map((b) => _LocalBranchRow(
-                        bookmark: b,
-                        isOpen: widget.openBranches.contains(b.name),
-                        onTap: () => widget.onToggle(b.name),
-                        zc: zc,
-                      )),
+                  ...local.map(
+                    (b) => _LocalBranchRow(
+                      bookmark: b,
+                      isOpen: widget.openBranches.contains(b.name),
+                      onTap: () => widget.onToggle(b.name),
+                      zc: zc,
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 _SectionHeader(label: 'Remote', count: remote.length, zc: zc),
-                if (remote.isEmpty)
-                  _EmptyLabel(zc: zc)
-                else
-                  ...remote.map((b) => _RemoteBranchRow(branch: b, zc: zc)),
+                if (remote.isEmpty) _EmptyLabel(zc: zc) else ...remote.map((b) => _RemoteBranchRow(branch: b, zc: zc)),
               ],
             ),
           ),
@@ -116,18 +125,22 @@ class _SectionHeader extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-      child: Row(
-        children: [
-          Text(label.toUpperCase(), style: TextStyle(fontSize: 10, letterSpacing: 0.1, fontWeight: FontWeight.w600, color: zc.textFaint)),
-          const Spacer(),
-          Text('$count', style: TextStyle(fontSize: 10, color: zc.textDim, fontFamily: 'monospace')),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+    child: Row(
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(fontSize: 10, letterSpacing: 0.1, fontWeight: FontWeight.w600, color: zc.textFaint),
+        ),
+        const Spacer(),
+        Text(
+          '$count',
+          style: TextStyle(fontSize: 10, color: zc.textDim, fontFamily: 'monospace'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _EmptyLabel extends StatelessWidget {
@@ -135,12 +148,14 @@ class _EmptyLabel extends StatelessWidget {
   final ZanshinColors zc;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: Text('no match', style: TextStyle(fontSize: 12, color: zc.textDim, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(18),
+    child: Text(
+      'no match',
+      style: TextStyle(fontSize: 12, color: zc.textDim, fontStyle: FontStyle.italic),
+      textAlign: TextAlign.center,
+    ),
+  );
 }
 
 class _LocalBranchRow extends StatefulWidget {
@@ -155,13 +170,13 @@ class _LocalBranchRow extends StatefulWidget {
 }
 
 class _LocalBranchRowState extends State<_LocalBranchRow> {
-  bool _hovered = false;
+  var _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final zc = widget.zc;
-    final color = branchColor(widget.bookmark.name);
-    final bg = widget.isOpen ? color.withAlpha(25) : (_hovered ? zc.bgCard2 : Colors.transparent);
+    final ZanshinColors zc = widget.zc;
+    final Color color = branchColor(widget.bookmark.name);
+    final Color bg = widget.isOpen ? color.withAlpha(25) : (_hovered ? zc.bgCard2 : Colors.transparent);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -176,7 +191,11 @@ class _LocalBranchRowState extends State<_LocalBranchRow> {
           child: Row(
             spacing: 8,
             children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
               Expanded(
                 child: Text(
                   '${widget.bookmark.name}${widget.bookmark.current ? ' @' : ''}',
@@ -185,9 +204,15 @@ class _LocalBranchRowState extends State<_LocalBranchRow> {
                 ),
               ),
               if (widget.bookmark.ahead > 0)
-                Text('↑${widget.bookmark.ahead}', style: TextStyle(fontSize: 10, color: zc.add, fontFamily: 'monospace')),
+                Text(
+                  '↑${widget.bookmark.ahead}',
+                  style: TextStyle(fontSize: 10, color: zc.add, fontFamily: 'monospace'),
+                ),
               if (widget.bookmark.behind > 0)
-                Text('↓${widget.bookmark.behind}', style: TextStyle(fontSize: 10, color: zc.rem, fontFamily: 'monospace')),
+                Text(
+                  '↓${widget.bookmark.behind}',
+                  style: TextStyle(fontSize: 10, color: zc.rem, fontFamily: 'monospace'),
+                ),
             ],
           ),
         ),
@@ -203,21 +228,38 @@ class _RemoteBranchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = branch.trackedBy != null ? branchColor(branch.trackedBy!) : zc.textDim;
+    final Color color = branch.trackedBy != null ? branchColor(branch.trackedBy!) : zc.textDim;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       margin: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
         spacing: 8,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color.withAlpha(branch.trackedBy != null ? 255 : 100), shape: BoxShape.circle)),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: color.withAlpha(branch.trackedBy != null ? 255 : 100),
+              shape: BoxShape.circle,
+            ),
+          ),
           Expanded(
-            child: Text(branch.name, style: TextStyle(fontSize: 12.5, color: branch.trackedBy != null ? zc.textMuted : zc.textDim), overflow: TextOverflow.ellipsis),
+            child: Text(
+              branch.name,
+              style: TextStyle(fontSize: 12.5, color: branch.trackedBy != null ? zc.textMuted : zc.textDim),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           if (branch.aheadOfLocal > 0)
-            Text('↑${branch.aheadOfLocal}', style: TextStyle(fontSize: 10, color: zc.add, fontFamily: 'monospace')),
+            Text(
+              '↑${branch.aheadOfLocal}',
+              style: TextStyle(fontSize: 10, color: zc.add, fontFamily: 'monospace'),
+            ),
           if (branch.behindLocal > 0)
-            Text('↓${branch.behindLocal}', style: TextStyle(fontSize: 10, color: zc.rem, fontFamily: 'monospace')),
+            Text(
+              '↓${branch.behindLocal}',
+              style: TextStyle(fontSize: 10, color: zc.rem, fontFamily: 'monospace'),
+            ),
         ],
       ),
     );
@@ -227,14 +269,14 @@ class _RemoteBranchRow extends StatelessWidget {
 // ── Side panels for workstream / reviews / undo ──────────────────────────────
 
 class SidePanel extends StatelessWidget {
-  const SidePanel({super.key, required this.title, required this.icon, required this.child});
+  const SidePanel({required this.title, required this.icon, required this.child, super.key});
   final String title;
   final String icon;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
+    final ZanshinColors zc = context.zc;
     return Container(
       width: 280,
       decoration: BoxDecoration(
@@ -247,12 +289,18 @@ class SidePanel extends StatelessWidget {
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: zc.bgCard, border: Border(bottom: BorderSide(color: zc.border))),
+            decoration: BoxDecoration(
+              color: zc.bgCard,
+              border: Border(bottom: BorderSide(color: zc.border)),
+            ),
             child: Row(
               spacing: 8,
               children: [
                 ZanshinIcon(icon, size: 13, color: zc.textDim),
-                Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary)),
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),
+                ),
               ],
             ),
           ),
@@ -268,7 +316,7 @@ class UndoPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final zc = context.zc;
+    final ZanshinColors zc = context.zc;
     const ops = [
       ('describe -m "wip: refactor"', '8 min ago', true),
       ('new -A @', '12 min ago', false),
@@ -303,7 +351,10 @@ class UndoPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     spacing: 2,
                     children: [
-                      Text(label, style: TextStyle(fontSize: 12, color: zc.textPrimary, fontFamily: 'monospace')),
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 12, color: zc.textPrimary, fontFamily: 'monospace'),
+                      ),
                       Text(time, style: TextStyle(fontSize: 10, color: zc.textDim)),
                     ],
                   ),
