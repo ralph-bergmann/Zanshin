@@ -45,7 +45,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-06-15  # 3-2 done (code review passed): handle.rs + cstr_to_string + real version/build.rs; cargo make test green; 3-1 FFI-core done; 3-0 done; watcher deferred (ADR-0001)
+last_updated: 2026-06-15  # 3-3 done (code review passed): tracing_init.rs file sink + 4 review patches; 3-2 done (code review passed): handle.rs + cstr_to_string + real version/build.rs; cargo make test green; 3-1 FFI-core done; 3-0 done; watcher deferred (ADR-0001)
 project: Zanshin
 # Story 1-1 started: 2026-05-17
 # Story 1-1 reviewed + done: 2026-05-17
@@ -141,7 +141,7 @@ development_status:
   3-0-adopt-flatbuffers-ffi-transport: done  # NEW (2026-06-15, ADR-0001): FlatBuffers transport foundation; lands before 3-1; code review passed 2026-06-15 (6 patches + 3 discovered gate fixes applied, cargo make test green)
   3-1-ffi-core-envelope-error-codes-panic-catch: done  # created 2026-06-15; FlatBuffers Envelope builders on 3-0 foundation (ADR-0001); code review passed 2026-06-15 (2 patches applied incl. full panic-backstop hardening; 1 defer; cargo test -p zanshin-ffi 21/21 green)
   3-2-handle-module-ffi-strings-zanshin-ffi-version: done  # created 2026-06-15; net-new handle.rs (Box<T>↔*mut T + validate_handle) + ffi_strings::cstr_to_string (input dir) + real zanshin_ffi_version (build.rs git-SHA); ffi.* consts emitted from envelope.rs; reconciles epic 3.2 w/ post-3-0/3-1 reality; codegen re-runs (version signature *const→*mut c_char); code review passed 2026-06-15 (Acceptance Auditor: spec-conformant; 0 patch, 2 LOW build.rs defers, cargo make test green)
-  3-3-tracing-init-with-rotating-file-sink: backlog  # SHRINK: rotation tests + log-cap cut
+  3-3-tracing-init-with-rotating-file-sink: done  # code review passed 2026-06-15 (4 patches applied: panic-guard via fallible appender builder, release stderr-warning clamp, empty-$HOME fallback, doc fix; 4 deferred; Rust gate green: 36 tests, clippy pedantic, fmt, cargo deny). created 2026-06-15; SHRINK: rotation tests + log-cap cut. Internal pub fn init_tracing() (tracing + tracing-appender daily sink ~/Library/Logs/Zanshin, ZANSHIN_LOG default info, debug-only stderr, release_max_level_info); NO extern symbol → no codegen, no error-registry change; unwired like 3-2 (3-9/3-4a call it)
   3-4a-repo-ffi-wrappers-zanshin-repo-open-init-clone-close: backlog  # NEW (2026-06-15): split from old 3-4; unblocks Flutter open/init/clone; watcher NOT armed here
   3-9-dart-worker-isolate-bootstrap-isolate-spawn-ports-correlation: backlog  # event sink reserved as no-op stub (worker_init signature final)
   3-8-diagnostics-api-wip-minimal: backlog  # renamed (SHRINK: version-string + log-path only)

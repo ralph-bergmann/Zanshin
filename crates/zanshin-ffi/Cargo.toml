@@ -19,6 +19,9 @@ name = "zanshin_ffi"
 
 [dependencies]
 flatbuffers = { workspace = true }
+tracing = { workspace = true, features = ["release_max_level_info"] }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true
