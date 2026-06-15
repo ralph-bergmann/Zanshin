@@ -123,8 +123,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Lone strings cross as `*mut c_char` (CString). Rust owns the allocation; Dart
   calls `zanshin_string_free(ptr)` to release. Never `malloc`/`free` mismatched.
 - Composite data crosses as a single FlatBuffers buffer (`*mut u8` + length). Rust
-  owns the allocation; Dart releases it via `zanshin_buffer_free(ptr, len)`. One
-  allocation, one free — no per-node pointer trees.
+  owns the allocation; Dart releases it either via `zanshin_buffer_free(ptr, len)`
+  (synchronous call sites) or via the `NativeFinalizer`-backed token path
+  (`zanshin_buffer_free_token`, used by `FfiBuffer` — `NativeFinalizer` needs a
+  single-pointer callback). Both reclaim the identical allocation — one allocation,
+  one free, no per-node pointer trees.
 - All faillible `extern "C"` functions return a FlatBuffers `Envelope` table:
   `table Envelope { ok: bool; error: FfiError; data: Payload; }` where `Payload`
   is a union over the concrete payload types. No JSON envelope; no in-wire
@@ -346,6 +349,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   that drove the Apache-2.0 choice (OD-2). No full Apache boilerplate — SPDX +
   repo-root `LICENSE` is the canonical pattern.
   Note: this OVERRIDES `architecture.md` § P-9, which predates this decision.
+  **Exception — committed generated files are EXEMPT** from the SPDX-first-line
+  rule: the generator owns the file's leading banner and the file is regenerated
+  wholesale, so a hand-added SPDX line would be clobbered. This covers `flatc`
+  output (`*_generated.rs`, `*.ffi_generated.dart`), cbindgen output
+  (`zanshin_ffi.h`), and ffigen output (`bindings.dart`). The repo-root `LICENSE`
+  still governs them.
 - Doc comments (`///` in Rust, `///` in Dart) on every `pub`/exported item in
   library crates. `extern "C"` functions in `zanshin-ffi` are doc-commented for
   cbindgen to lift into the generated header.

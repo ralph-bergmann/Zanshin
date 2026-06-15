@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Core FFI envelope schema — the carrier for every fallible composite FFI call.
+//
+// Transport rule (ADR-0001):
+//   fixed scalar              → plain C value
+//   lone string               → *mut c_char (CString, freed by zanshin_string_free)
+//   composite (table/list/…)  → FlatBuffers buffer (freed by zanshin_buffer_free)
+//
+// Every fallible extern "C" function that returns composite data returns an
+// Envelope.  Infallible hot-path functions (zanshin_ffi_version,
+// zanshin_string_free, zanshin_buffer_free) return plain types — no envelope.
+//
+// WIP: no in-wire schema_version field.  Breaking changes are in-place edits;
+// callers update in the same PR.  Versioning discipline lands at 1.0.
+
+namespace zanshin.ffi;
+
+// ── Error ─────────────────────────────────────────────────────────────────────
+
+/// Error detail carried when Envelope.ok == false.
+/// error.code follows the AR-P-4 dotted-lowercase taxonomy:
+///   <domain>.<reason>  (e.g. "jj.repo_not_found", "internal.panic")
+/// Registry: docs/rust-error-codes.md.
+/// Never put user data (paths, IDs) in code — those go in context.
+table FfiError {
+  code: string;
+  context: string;
+}
+
+// ── Payload union ─────────────────────────────────────────────────────────────
+// Closed registry of composite FFI return types.
+// Extend this union — and regenerate both sides — as each noun lands:
+//   Story 3-4a : RepoOpenResult
+//   Story 3-4b : status, change, op_log, bookmarks, remotes
+//   Story 4-6  : GraphSlice
+//   Story 5-8  : Diff
+//   Story 6-5  : mutation results
+
+/// Placeholder so the union compiles before any real payload type exists.
+/// Remove when the first real Payload member is added (Story 3-4a).
+table Empty {}
+
+union Payload {
+  Empty,
+}
+
+// ── Envelope ──────────────────────────────────────────────────────────────────
+
+/// Root FlatBuffers type for every fallible FFI call that returns composite data.
+///
+/// ok == true  → data is set to the concrete Payload variant; error is absent.
+/// ok == false → error is set (code + context); data is absent (Payload::NONE).
+///
+/// Dart reads the buffer via the generated typed accessors. It is released by
+/// reclaiming the exact Rust allocation through one of two equivalent paths:
+/// zanshin_buffer_free(ptr, len) for synchronous call sites, or the
+/// NativeFinalizer-backed token path (zanshin_buffer_free_token) used by the
+/// FfiBuffer wrapper as a belt-and-suspenders backstop
+/// (see app/lib/src/ffi/ffi_buffer.dart).
+table Envelope {
+  ok: bool;
+  error: FfiError;
+  data: Payload;
+}
+
+root_type Envelope;

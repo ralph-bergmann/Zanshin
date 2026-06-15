@@ -14,6 +14,7 @@ overrides.**
 | Rust    | `1.95.0`                               | `rust-toolchain.toml` (auto-applied by `rustup` on `cargo` invocation)   |
 | Flutter | `main` channel, ≥ `3.44.0-1.0.pre-573` | `app/pubspec.yaml` → `environment.flutter`; this README is the human pin |
 | Dart    | `main` channel, ≥ `3.13.0-104.0.dev`   | `app/pubspec.yaml` → `environment.sdk`; bundled with Flutter `main`      |
+| `flatc` | `25.12.19`                             | `docs/development-setup.md`; FlatBuffers FFI-wire compiler (ADR-0001)    |
 
 **Why these versions:**
 
@@ -30,6 +31,10 @@ overrides.**
   Revisit then.
 - **Dart `main` channel** — bundled with Flutter `main`; tracks in lockstep. No
   independent Dart pin.
+- **`flatc 25.12.19`** — the FlatBuffers compiler that generates the Rust and
+  Dart FFI-wire accessors (ADR-0001). It must stay on the same `25.x` line as
+  the `flatbuffers` crate (`=25.12.19`) and the `flat_buffers` Dart package
+  (`^25.9.23`); move all three together. See `docs/development-setup.md`.
 
 **One-time install (per machine):**
 
@@ -47,7 +52,18 @@ flutter upgrade
 
 # cargo-make (used by Story 1.4+ build/test entry points):
 cargo install cargo-make
+
+# FlatBuffers compiler — generates the Rust + Dart FFI-wire accessors (ADR-0001).
+# Keep it on the same 25.x line as the flatbuffers crate + flat_buffers package:
+brew install flatbuffers
+flatc --version   # must print 25.12.19
+
+# Codegen tools for the C header (cbindgen) and Dart FFI bindings (ffigen):
+cargo install cbindgen
+dart pub global activate ffigen
 ```
+
+See `docs/development-setup.md` for the full prerequisites and version-pin table.
 
 **CI note:** GitHub Actions workflow (Story 1.9) reads `rust-toolchain.toml` via
 `dtolnay/rust-toolchain@master` (or equivalent action that respects the file) —
@@ -63,49 +79,49 @@ Flutter's `main` channel) and the exact `flutter-version` from
 ### list all available tasks
 
 ```sh
-cargo make           
+cargo make
 ```
 
 ### build Rust workspace (release) + Flutter macOS shell → unsigned .app
 
-```sh 
-cargo make build     
+```sh
+cargo make build
 ```
 
 ### run Flutter app in debug mode (Hot-Reload, local only)
 
-```sh 
-cargo make run       
+```sh
+cargo make run
 ```
 
 ### run Flutter app in release mode (local-optimized, no Hot-Reload)
 
-```sh 
-cargo make run-release  
+```sh
+cargo make run-release
 ```
 
-### WIP quality gate: cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny
+### WIP quality gate: cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny + cargo hygiene
 
-```sh 
-cargo make test      
+```sh
+cargo make test
 ```
 
-### regenerate FFI C header (cbindgen) and Dart bindings (ffigen)
+### regenerate FlatBuffers accessors (flatc) + FFI C header (cbindgen) + Dart bindings (ffigen)
 
-```sh 
-cargo make codegen  
+```sh
+cargo make codegen
 ```
 
 ### check for codegen drift against committed files (manual discipline tool)
 
-```sh 
-cargo make verify-codegen  
+```sh
+cargo make verify-codegen
 ```
 
 ### remove all build outputs (cargo + flutter); committed codegen stays
 
-```sh 
-cargo make clean     
+```sh
+cargo make clean
 ```
 
 ## How do I … ?
@@ -166,24 +182,52 @@ cargo make test
 
 Runs the WIP-minimal gate: `cargo test --workspace`, `cargo clippy -D warnings`,
 `cargo fmt --check`, `flutter test`, `dart analyze`, `dart format --check`,
-`cargo deny check advisories bans`. Same checks as CI.
+`cargo deny check advisories bans`, and a `Cargo.toml` hygiene check (every
+`default-features = false` needs an inline `# WHY:`). Same checks as CI.
+
+### The FFI wire format (ADR-0001)
+
+Data crossing the Rust ↔ Dart boundary is shaped by its **type**, not by a
+one-size envelope:
+
+- **fixed scalar** (`int` / `bool` / `float`) → plain C value;
+- **lone string** → `*mut c_char` (a `CString`; Dart frees it with
+  `zanshin_string_free`);
+- **composite** (table / list / nested) → a single **FlatBuffers** buffer; Dart
+  releases it with `zanshin_buffer_free(ptr, len)` or, for the GC-backed
+  `FfiBuffer` wrapper, the equivalent `zanshin_buffer_free_token`.
+
+The wire schemas live in [`schemas/*.fbs`](schemas/README.md) and are the
+source of truth. `flatc` generates the typed Rust and Dart accessors from them;
+those accessors — like the C header and Dart bindings — are **committed** and
+the build never regenerates them. (The only JSON in the project is
+`zanshin-mcp`'s protocol-mandated JSON-RPC, a different boundary.) Full
+rationale: [ADR-0001](docs/adr/0001-ffi-data-transport-flatbuffers.md).
 
 ### How do I change an `extern "C"` function in `zanshin-ffi`?
 
 1. Edit the Rust source.
-2. Regenerate the bindings:
-   ```sh
-   cargo make codegen
-   ```
+2. Regenerate: `cargo make codegen`.
 3. Commit `crates/zanshin-ffi/include/zanshin_ffi.h` _and_
    `app/lib/src/ffi/bindings.dart` in the same PR as the Rust change.
-4. Verify nothing drifted:
-   ```sh
-   cargo make verify-codegen
-   ```
+4. Verify nothing drifted: `cargo make verify-codegen`.
 
-Generated code is **committed** and the build never auto-regenerates it. The
-CI drift-gate is deferred while WIP — review enforces the discipline rule.
+### How do I change a wire schema (`.fbs`)?
+
+1. Edit the `.fbs` in `schemas/`. (WIP: breaking changes are in-place edits — no
+   `_v2` suffix, no in-wire `schema_version` field; update all callers in the
+   same PR.)
+2. Regenerate both sides: `cargo make codegen`. This runs `flatc --rust` +
+   `flatc --dart` (normalising the output with `rustfmt` / `dart format`), then
+   `cbindgen` + `ffigen`.
+3. Commit the schema diff **and** the regenerated accessors
+   (`crates/zanshin-ffi/src/*_generated.rs`,
+   `app/lib/src/ffi/*.ffi_generated.dart`) in the same PR. The typed accessors
+   turn a wrong-shape payload into a compile error, so update every caller.
+
+Generated code is **committed** and the build never auto-regenerates it. The CI
+drift-gate (`verify-codegen`) is deferred while WIP — review enforces the
+discipline rule.
 
 ### How do I reset / start clean?
 
@@ -192,9 +236,9 @@ cargo make clean
 ```
 
 Removes `target/` and `app/build/`. Committed codegen (`zanshin_ffi.h`,
-`bindings.dart`) stays — those are source-of-truth artefacts, not build
-outputs. If you _really_ want to reset codegen too, delete the files manually
-and run `cargo make codegen`.
+`bindings.dart`, the `flatc` accessors) stays — those are source-of-truth
+artefacts, not build outputs. If you _really_ want to reset codegen too, delete
+the files manually and run `cargo make codegen`.
 
 ## Dependency security — cargo-deny
 
@@ -234,5 +278,8 @@ comment explaining its choice.
 
 ## Project documentation
 
-See `_bmad-output/planning-artifacts/` for PRD + architecture + epics;
-`_bmad-output/project-context.md` is the AI-agent rule set.
+- `docs/development-setup.md` — full toolchain prerequisites (incl. `flatc`) + install commands
+- `docs/adr/0001-ffi-data-transport-flatbuffers.md` — the FFI transport decision (FlatBuffers)
+- `schemas/README.md` — FlatBuffers wire-contract schemas + regeneration discipline
+- `_bmad-output/planning-artifacts/` — PRD + architecture + epics
+- `_bmad-output/project-context.md` — the AI-agent rule set

@@ -13,6 +13,17 @@
 #include <stdbool.h>
 
 /**
+ * Opaque ownership token for a FlatBuffers buffer returned across the FFI
+ * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
+ * `NativeFinalizer(zanshin_buffer_free_token)` so the GC can release the
+ * buffer even if the Dart owner is collected without an explicit `dispose()`.
+ */
+typedef struct {
+  uint8_t *ptr;
+  uintptr_t len;
+} ZanshinBuf;
+
+/**
  * Build-stamp version string. WIP-placeholder: returns a static C-string pointer
  * to the crate version. Story 3.2 replaces this with a heap-allocated
  * `<version> (<git-sha>)` string via `ffi_strings::string_to_cstring` and a
@@ -24,5 +35,47 @@
  * `zanshin_string_free`; the placeholder does not.
  */
 const char *zanshin_ffi_version(void);
+
+/**
+ * Release a C string that was allocated by `string_to_cstring`.
+ *
+ * Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
+ * produced by `string_to_cstring` is undefined behaviour.
+ *
+ * # Safety
+ * `ptr` must be a pointer previously returned by `string_to_cstring`, or
+ * `ptr::null_mut()`.
+ */
+void zanshin_string_free(char *ptr);
+
+/**
+ * Free both the FlatBuffers buffer and the `ZanshinBuf` token struct.
+ *
+ * This is the `NativeFinalizer` callback registered in Dart's `FfiBuffer`.
+ * Also called directly by `FfiBuffer.dispose()` (which detaches the finalizer
+ * first to prevent a double-free).
+ *
+ * Passing `null` is a no-op.
+ *
+ * # Safety
+ * `token` must be a non-null pointer produced by `vec_into_token` that has
+ * not been freed before.
+ */
+void zanshin_buffer_free_token(ZanshinBuf *token);
+
+/**
+ * Release a FlatBuffers buffer allocated by a Rust FFI function.
+ *
+ * Every fallible `extern "C"` function returning composite data produces an
+ * owned buffer via `vec_into_ffi_buf`.  Dart MUST call this to release it —
+ * no other free function is correct.
+ *
+ * Passing `ptr::null_mut()` or `len == 0` is a no-op.
+ *
+ * # Safety
+ * `ptr` and `len` must be the exact pair returned by a `zanshin_*` FFI
+ * function.  The buffer must not have been freed before.
+ */
+void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
 
 #endif  /* ZANSHIN_FFI_H */

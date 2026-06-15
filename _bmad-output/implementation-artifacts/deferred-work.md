@@ -42,3 +42,9 @@ _Items raised during code reviews that are real but intentionally not actioned n
 - **Happy-path clone test asserts only `is_ok()` + re-open — no cloned-content/ref assertion; depends on `git` ≥ 2.28 on PATH** [`crates/zanshin-jj/tests/repo.rs:138-161`] — strengthen the assertion (verify a fetched ref/commit) when the working-copy update lands (Epic 6 Story 6.4a).
 - **Untested clone/init boundaries: empty url, `file://` to missing/non-git dir, init/clone into already-initialized or missing-parent dir** [`crates/zanshin-jj/src/repo.rs:90-185`] — error classification for these is unverified; the AC-13 mandatory invalid-URL path is covered.
 - **`copy_dir_all` test helper ignores symlinks and file permissions** [`crates/zanshin-jj/tests/repo.rs`] — latent; only bites if a fixture ever contains a symlink inside `.jj/`.
+
+## Deferred from: code review of 3-0-adopt-flatbuffers-ffi-transport (2026-06-15)
+
+- **`verify-codegen` is single-file-hardcoded while codegen is glob-driven** [`Makefile.toml`] — generation loops `for fbs in schemas/*.fbs`, but `verify-codegen` only drift-checks `envelope_generated.rs` + `envelope_zanshin.ffi_generated.dart`. A second schema's generated files won't be drift-checked. Deferred: the `verify-codegen` gate is itself WIP-deferred; only bites when `graph.fbs`/`diff.fbs` land — generalise `verify-codegen` to glob then.
+- **`cbindgen.toml` `[export] exclude` list is hand-maintained per symbol** [`cbindgen.toml`] — new schemas generating fresh `VT_*`/`ENUM_*` consts will leak into `zanshin_ffi.h` until manually excluded. Deferred: surfaces as visible header churn at codegen/review (not a runtime bug); revisit when the second schema lands.
+- **`max_width` doc/config divergence** [`rustfmt.toml`] — `project-context.md` states `max_width = 100`, but `rustfmt.toml` has long set `120` (pre-existing; not changed by this story). Deferred, pre-existing: reconcile the authoritative value (doc vs. config) separately.

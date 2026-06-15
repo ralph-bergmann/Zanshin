@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": {
+    "code": "jj.repo_not_found",
+    "context": "/no/such/path"
+  }
+}

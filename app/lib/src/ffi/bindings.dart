@@ -18,3 +18,60 @@ import 'dart:ffi' as ffi;
 /// `zanshin_string_free`; the placeholder does not.
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> zanshin_ffi_version();
+
+/// Release a C string that was allocated by `string_to_cstring`.
+///
+/// Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
+/// produced by `string_to_cstring` is undefined behaviour.
+///
+/// # Safety
+/// `ptr` must be a pointer previously returned by `string_to_cstring`, or
+/// `ptr::null_mut()`.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>()
+external void zanshin_string_free(
+  ffi.Pointer<ffi.Char> ptr,
+);
+
+/// Free both the FlatBuffers buffer and the `ZanshinBuf` token struct.
+///
+/// This is the `NativeFinalizer` callback registered in Dart's `FfiBuffer`.
+/// Also called directly by `FfiBuffer.dispose()` (which detaches the finalizer
+/// first to prevent a double-free).
+///
+/// Passing `null` is a no-op.
+///
+/// # Safety
+/// `token` must be a non-null pointer produced by `vec_into_token` that has
+/// not been freed before.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ZanshinBuf>)>()
+external void zanshin_buffer_free_token(
+  ffi.Pointer<ZanshinBuf> token,
+);
+
+/// Release a FlatBuffers buffer allocated by a Rust FFI function.
+///
+/// Every fallible `extern "C"` function returning composite data produces an
+/// owned buffer via `vec_into_ffi_buf`.  Dart MUST call this to release it —
+/// no other free function is correct.
+///
+/// Passing `ptr::null_mut()` or `len == 0` is a no-op.
+///
+/// # Safety
+/// `ptr` and `len` must be the exact pair returned by a `zanshin_*` FFI
+/// function.  The buffer must not have been freed before.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external void zanshin_buffer_free(
+  ffi.Pointer<ffi.Uint8> ptr,
+  int len,
+);
+
+/// Opaque ownership token for a FlatBuffers buffer returned across the FFI
+/// boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
+/// `NativeFinalizer(zanshin_buffer_free_token)` so the GC can release the
+/// buffer even if the Dart owner is collected without an explicit `dispose()`.
+final class ZanshinBuf extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> ptr;
+
+  @ffi.UintPtr()
+  external int len;
+}

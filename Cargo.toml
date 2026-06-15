@@ -27,6 +27,7 @@ publish = false
 
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
+flatbuffers = "=25.12.19"
 jj-lib = "=0.41.0"
 pollster = "0.3"
 tar = "0.4"

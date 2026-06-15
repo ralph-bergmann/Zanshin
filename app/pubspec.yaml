@@ -10,6 +10,7 @@ environment:
 
 dependencies:
   ffi: ^2.2.0
+  flat_buffers: ^25.9.23
   flutter:
     sdk: flutter
   flutter_svg: ^2.3.0

@@ -18,3 +18,10 @@ edition = "2021"
 # toolchain is a project invariant (rust-toolchain.toml, Story 1.3).
 # imports_granularity = "Crate"
 # group_imports = "StdExternalCrate"
+
+# NOTE: flatc-generated accessors (*_generated.rs) are normalised by `rustfmt`
+# inside the `codegen-flatc-rust` Makefile task — mirroring the `dart format`
+# step for the Dart accessors — so they satisfy `cargo fmt --check` like any
+# other file. A rustfmt `ignore` list was tried and removed: `ignore` is a
+# nightly-only directive (same category as the imports_granularity note above),
+# inert on the pinned stable toolchain, so it could not actually exclude them.

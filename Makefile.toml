@@ -112,8 +112,11 @@ set -euo pipefail
 # ci.yml is Story 1.9's deliverable; landing the check here means `cargo make
 # test` (the single entry point) gates it now and 1.9 inherits it for free.
 
-manifests=$(git ls-files '*Cargo.toml')
-count=$(git ls-files '*Cargo.toml' | wc -l | tr -d '[:space:]')
+# The detached spike workspace (spikes/, ADR-0001) is deliberately NOT part of
+# CI per AC-7 and carries its own Cargo.lock — exclude it so its Cargo.toml
+# neither inflates the count nor gets hygiene-checked with the real members.
+manifests=$(git ls-files '*Cargo.toml' ':(exclude)spikes/')
+count=$(git ls-files '*Cargo.toml' ':(exclude)spikes/' | wc -l | tr -d '[:space:]')
 
 # Sanity: the workspace manifest set is fixed (root + seven crates). A count
 # mismatch means a crate was added or removed without anyone revisiting this
@@ -148,8 +151,46 @@ fi
 # ─── codegen ────────────────────────────────────────────────────────────────
 
 [tasks.codegen]
-description = "Regenerate the FFI C header (cbindgen) and Dart bindings (ffigen)."
-dependencies = ["codegen-cbindgen", "codegen-ffigen"]
+description = "Regenerate FFI C header (cbindgen), Dart bindings (ffigen), and FlatBuffers accessors (flatc) for all schemas/*.fbs. Run after any .fbs or extern \"C\" change; commit the result."
+# WHY: flatc must run before cbindgen/ffigen so the Rust types from the
+# generated accessors are present when cbindgen reads the crate (even though
+# the FlatBuffers types don't appear in the extern "C" signatures directly,
+# keeping the order deterministic avoids surprises if that ever changes).
+dependencies = ["codegen-flatc-rust", "codegen-flatc-dart", "codegen-cbindgen", "codegen-ffigen"]
+
+[tasks.codegen-flatc-rust]
+private = true
+description = "Generate Rust FlatBuffers accessors from schemas/*.fbs into crates/zanshin-ffi/src/ and format them."
+script_runner = "bash"
+script = '''
+set -euo pipefail
+for fbs in schemas/*.fbs; do
+    flatc --rust -o crates/zanshin-ffi/src/ "$fbs"
+done
+# WHY: flatc emits 2-space-indented Rust in a style that differs from ours, so
+# `cargo fmt --check` (run by `cargo make test`) would flag the committed
+# generated file. Normalise it with rustfmt — the exact mirror of the
+# `dart format` step in codegen-flatc-dart. A rustfmt.toml `ignore` entry was
+# tried instead and removed: `ignore` is nightly-only and inert on the pinned
+# stable toolchain (rust-toolchain.toml). The `#[allow(warnings)]` on the
+# `mod envelope_generated` declaration still suppresses clippy for the contents.
+rustfmt crates/zanshin-ffi/src/*_generated.rs
+'''
+
+[tasks.codegen-flatc-dart]
+private = true
+description = "Generate Dart FlatBuffers accessors from schemas/*.fbs into app/lib/src/ffi/ and format them."
+script_runner = "bash"
+script = '''
+set -euo pipefail
+for fbs in schemas/*.fbs; do
+    flatc --dart -o app/lib/src/ffi/ "$fbs"
+done
+# WHY: flatc generates code in its own style; dart format normalises it so
+# that `cargo make test` (which runs dart format --set-exit-if-changed) does
+# not flag the committed generated files as unformatted.
+dart format app/lib/src/ffi/
+'''
 
 [tasks.codegen-cbindgen]
 private = true
@@ -178,13 +219,19 @@ set -euo pipefail
 
 HEADER=crates/zanshin-ffi/include/zanshin_ffi.h
 BINDINGS=app/lib/src/ffi/bindings.dart
+FLATC_RUST=crates/zanshin-ffi/src/envelope_generated.rs
+FLATC_DART=app/lib/src/ffi/envelope_zanshin.ffi_generated.dart
 
-# Pre-flight: both codegen outputs must already exist (Story 1.5 lands them).
-if [ ! -f "$HEADER" ] || [ ! -f "$BINDINGS" ]; then
-    echo "verify-codegen requires committed codegen outputs to be present:" >&2
-    echo "  - $HEADER" >&2
-    echo "  - $BINDINGS" >&2
-    echo "Run 'cargo make codegen' first (requires Story 1.5 configs)." >&2
+# Pre-flight: all codegen outputs must already exist.
+missing=0
+for f in "$HEADER" "$BINDINGS" "$FLATC_RUST" "$FLATC_DART"; do
+    if [ ! -f "$f" ]; then
+        echo "verify-codegen: missing committed codegen output: $f" >&2
+        missing=1
+    fi
+done
+if [ "$missing" -ne 0 ]; then
+    echo "Run 'cargo make codegen' first." >&2
     exit 1
 fi
 
@@ -197,11 +244,10 @@ fi
 # (no HEAD, not in a repo, git missing). Discriminate so an env error is not
 # mislabelled as a dirty-tree refusal.
 diff_rc=0
-git diff --quiet HEAD -- "$HEADER" "$BINDINGS" || diff_rc=$?
+git diff --quiet HEAD -- "$HEADER" "$BINDINGS" "$FLATC_RUST" "$FLATC_DART" || diff_rc=$?
 if [ "$diff_rc" -eq 1 ]; then
     echo "verify-codegen refuses to run with unstaged or staged edits to codegen outputs:" >&2
-    echo "  - $HEADER" >&2
-    echo "  - $BINDINGS" >&2
+    for f in "$HEADER" "$BINDINGS" "$FLATC_RUST" "$FLATC_DART"; do echo "  - $f" >&2; done
     echo "Manual edits to generated files are an AR-AP-7 violation." >&2
     echo "Run 'cargo make codegen' to regenerate, or 'git checkout -- <files>' to revert." >&2
     exit 1
@@ -213,8 +259,10 @@ fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-cp "$HEADER"   "$TMP/header.committed"
-cp "$BINDINGS" "$TMP/bindings.committed"
+cp "$HEADER"     "$TMP/header.committed"
+cp "$BINDINGS"   "$TMP/bindings.committed"
+cp "$FLATC_RUST" "$TMP/flatc_rust.committed"
+cp "$FLATC_DART" "$TMP/flatc_dart.committed"
 
 cargo make codegen
 
@@ -243,6 +291,18 @@ if ! check_drift "$TMP/bindings.committed" "$BINDINGS"; then
     diff -u "$TMP/bindings.committed" "$BINDINGS" || true
     cp "$TMP/bindings.committed" "$BINDINGS"
     echo "Drift in $BINDINGS — run 'cargo make codegen' and commit." >&2
+    drift=1
+fi
+if ! check_drift "$TMP/flatc_rust.committed" "$FLATC_RUST"; then
+    diff -u "$TMP/flatc_rust.committed" "$FLATC_RUST" || true
+    cp "$TMP/flatc_rust.committed" "$FLATC_RUST"
+    echo "Drift in $FLATC_RUST — run 'cargo make codegen' and commit." >&2
+    drift=1
+fi
+if ! check_drift "$TMP/flatc_dart.committed" "$FLATC_DART"; then
+    diff -u "$TMP/flatc_dart.committed" "$FLATC_DART" || true
+    cp "$TMP/flatc_dart.committed" "$FLATC_DART"
+    echo "Drift in $FLATC_DART — run 'cargo make codegen' and commit." >&2
     drift=1
 fi
 exit $drift
