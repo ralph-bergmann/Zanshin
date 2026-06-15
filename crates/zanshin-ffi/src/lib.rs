@@ -2,13 +2,13 @@
 
 //! `zanshin-ffi` — single cdylib FFI boundary for the Zanshin Rust core.
 //!
-//! WIP scope (Story 1.5): only the `zanshin_ffi_version()` build-stamp symbol is
-//! declared here, so `cargo make codegen` has at least one `extern "C"` function
-//! to lift into `include/zanshin_ffi.h` and `app/lib/src/ffi/bindings.dart`. The
-//! full FFI surface (envelope, handle helpers, panic-catch wrapper, repo/diff/
-//! graph/watcher wrappers) lands in Epic 3. The full `zanshin_ffi_version()`
-//! implementation with `build.rs` git-SHA injection and `CString` allocation
-//! lands in Story 3.2.
+//! Exposes the FFI surface to Dart via `extern "C"` symbols. Generated bindings
+//! live in `crates/zanshin-ffi/include/zanshin_ffi.h` and
+//! `app/lib/src/ffi/bindings.dart`; regenerate with `cargo make codegen`.
+//!
+//! `zanshin_ffi_version()` returns a heap-allocated `"<version> (<git-sha>)"`
+//! build-stamp; the caller must free it via `zanshin_string_free`. The SHA is
+//! injected by `build.rs` at compile time (`ZANSHIN_GIT_SHA`).
 
 use core::ffi::c_char;
 
@@ -21,21 +21,22 @@ pub mod envelope;
 pub use envelope::*;
 
 pub mod ffi_strings;
+pub mod handle;
 
-/// Build-stamp version string. WIP-placeholder: returns a static C-string pointer
-/// to the crate version. Story 3.2 replaces this with a heap-allocated
-/// `<version> (<git-sha>)` string via `ffi_strings::string_to_cstring` and a
-/// `build.rs` that injects `ZANSHIN_GIT_SHA` at compile time.
+/// Build-stamp version string.
 ///
-/// # Safety
-/// The returned pointer is a `'static` literal — the caller MUST NOT free it.
-/// Story 3.2's replacement returns a heap pointer and pairs with
-/// `zanshin_string_free`; the placeholder does not.
+/// Returns a heap-allocated `"<crate version> (<git sha>)"` C string, e.g.
+/// `"0.1.0 (5d7577e06a76)"`. The git SHA is injected at compile time by `build.rs`
+/// via the `ZANSHIN_GIT_SHA` env var; source-tarball builds without a git checkout
+/// stamp as `unknown`.
+///
+/// The caller **MUST** free the returned pointer via `zanshin_string_free`. The
+/// pointer is heap-allocated (not a `'static` literal) and is not safe to use after
+/// `zanshin_string_free` is called on it.
 #[no_mangle]
-pub extern "C" fn zanshin_ffi_version() -> *const c_char {
-    // WHY: c"" literal (stable Rust 1.77+) — null terminator guaranteed by the
-    // compiler, no manual \0, no allocation, no build.rs. Replaced wholesale in 3.2.
-    c"0.1.0".as_ptr()
+pub extern "C" fn zanshin_ffi_version() -> *mut c_char {
+    let version = format!("{} ({})", env!("CARGO_PKG_VERSION"), env!("ZANSHIN_GIT_SHA"));
+    ffi_strings::string_to_cstring(version)
 }
 
 #[cfg(test)]
@@ -72,5 +73,27 @@ mod tests {
         // SAFETY: ptr+len are the exact pair from vec_into_ffi_buf; bytes borrow
         // ends before we free.
         unsafe { crate::ffi_strings::zanshin_buffer_free(ptr, len) };
+    }
+
+    #[test]
+    fn ffi_version_has_version_and_sha_format() {
+        let ptr = crate::zanshin_ffi_version();
+        assert!(!ptr.is_null());
+        // SAFETY: zanshin_ffi_version returns a valid heap-allocated NUL-terminated
+        // C string; we read it before freeing.
+        let version_str = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap().to_owned() };
+        // Must start with the crate version.
+        assert!(
+            version_str.starts_with(env!("CARGO_PKG_VERSION")),
+            "version string '{version_str}' must start with CARGO_PKG_VERSION"
+        );
+        // Must match the "<version> (<sha>)" shape.
+        assert!(
+            version_str.contains(" (") && version_str.ends_with(')'),
+            "version string '{version_str}' must match '<version> (<sha>)' shape"
+        );
+        // Free the heap pointer via the canonical free function.
+        // SAFETY: ptr is the exact pointer from zanshin_ffi_version; freed exactly once.
+        unsafe { crate::ffi_strings::zanshin_string_free(ptr) };
     }
 }

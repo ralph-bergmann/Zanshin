@@ -13,7 +13,7 @@
 #include <stdbool.h>
 
 /**
- * Opaque ownership token for a FlatBuffers buffer returned across the FFI
+ * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
  * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
  * `NativeFinalizer(zanshin_buffer_free_token)` so the GC can release the
  * buffer even if the Dart owner is collected without an explicit `dispose()`.
@@ -24,17 +24,18 @@ typedef struct {
 } ZanshinBuf;
 
 /**
- * Build-stamp version string. WIP-placeholder: returns a static C-string pointer
- * to the crate version. Story 3.2 replaces this with a heap-allocated
- * `<version> (<git-sha>)` string via `ffi_strings::string_to_cstring` and a
- * `build.rs` that injects `ZANSHIN_GIT_SHA` at compile time.
+ * Build-stamp version string.
  *
- * # Safety
- * The returned pointer is a `'static` literal — the caller MUST NOT free it.
- * Story 3.2's replacement returns a heap pointer and pairs with
- * `zanshin_string_free`; the placeholder does not.
+ * Returns a heap-allocated `"<crate version> (<git sha>)"` C string, e.g.
+ * `"0.1.0 (5d7577e06a76)"`. The git SHA is injected at compile time by `build.rs`
+ * via the `ZANSHIN_GIT_SHA` env var; source-tarball builds without a git checkout
+ * stamp as `unknown`.
+ *
+ * The caller **MUST** free the returned pointer via `zanshin_string_free`. The
+ * pointer is heap-allocated (not a `'static` literal) and is not safe to use after
+ * `zanshin_string_free` is called on it.
  */
-const char *zanshin_ffi_version(void);
+char *zanshin_ffi_version(void);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.
@@ -49,7 +50,7 @@ const char *zanshin_ffi_version(void);
 void zanshin_string_free(char *ptr);
 
 /**
- * Free both the FlatBuffers buffer and the `ZanshinBuf` token struct.
+ * Free both the `FlatBuffers` buffer and the `ZanshinBuf` token struct.
  *
  * This is the `NativeFinalizer` callback registered in Dart's `FfiBuffer`.
  * Also called directly by `FfiBuffer.dispose()` (which detaches the finalizer
@@ -64,11 +65,14 @@ void zanshin_string_free(char *ptr);
 void zanshin_buffer_free_token(ZanshinBuf *token);
 
 /**
- * Release a FlatBuffers buffer allocated by a Rust FFI function.
+ * Release a `FlatBuffers` buffer allocated by a Rust FFI function, given the
+ * raw `(ptr, len)` pair produced by `vec_into_ffi_buf`.
  *
- * Every fallible `extern "C"` function returning composite data produces an
- * owned buffer via `vec_into_ffi_buf`.  Dart MUST call this to release it —
- * no other free function is correct.
+ * This is the direct release path for synchronous read-then-free call sites.
+ * The GC-backed alternative is the token path (`vec_into_token` +
+ * `zanshin_buffer_free_token`), which Dart's `FfiBuffer`/`NativeFinalizer`
+ * uses; both reclaim the identical Rust allocation. Never call `free()` on the
+ * pointer directly — it was allocated by the Rust allocator, not `malloc`.
  *
  * Passing `ptr::null_mut()` or `len == 0` is a no-op.
  *

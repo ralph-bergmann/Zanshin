@@ -36,9 +36,9 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 |---------------------------------|------------|----------------------------------------------------------------------|-------------------------------------|
 | `internal.panic`                | `internal` | A Rust panic was caught by `envelope::catch`; message in `context`. | **Emitted — Story 3.1** (`envelope.rs::INTERNAL_PANIC`) |
 | `internal.serialization_failed` | `internal` | JSON serialisation failure (pre-FlatBuffers era).                    | **Reserved / legacy** — FlatBuffers in-memory builder does not fail the way `serde_json::to_string` did; this code is documented for completeness but is not currently emitted. Do not invent a synthetic failure path to use it. |
-| `ffi.invalid_handle`            | `ffi`      | A repo/object handle value is not in the live handle table.          | Reserved — Story 3.2               |
-| `ffi.null_pointer`              | `ffi`      | A required pointer argument was null.                                | Reserved — Story 3.2               |
-| `ffi.utf8_error`                | `ffi`      | A `*const c_char` argument contained invalid UTF-8.                 | Reserved — Story 3.2               |
+| `ffi.invalid_handle`            | `ffi`      | A repo/object handle value is not in the live handle table.          | **Emitted — Story 3.2** (`envelope.rs::FFI_INVALID_HANDLE`) |
+| `ffi.null_pointer`              | `ffi`      | A required pointer argument was null.                                | **Emitted — Story 3.2** (`envelope.rs::FFI_NULL_POINTER`) |
+| `ffi.utf8_error`                | `ffi`      | A `*const c_char` argument contained invalid UTF-8.                 | **Emitted — Story 3.2** (`envelope.rs::FFI_UTF8_ERROR`) |
 | `jj.repo_not_found`             | `jj`       | No jj repo found at or above the given path.                         | Reserved — Story 3.4a              |
 | `jj.path_not_found`             | `jj`       | A path argument does not exist on disk.                              | Reserved — Story 3.4a              |
 | `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | Reserved — Story 3.4a              |

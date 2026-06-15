@@ -16,7 +16,8 @@
 //! - Both allocate with the Rust allocator and free with the same — never mix
 //!   `malloc`/`free` across runtimes.
 
-use std::ffi::{c_char, CString};
+use crate::envelope::{FfiErrorObj, FFI_NULL_POINTER, FFI_UTF8_ERROR};
+use std::ffi::{c_char, CStr, CString};
 
 /// Convert a Rust `String` into a heap-allocated null-terminated C string.
 ///
@@ -31,6 +32,29 @@ pub fn string_to_cstring(s: String) -> *mut c_char {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
+}
+
+/// Convert a NUL-terminated C string (input direction) into an owned Rust `String`.
+///
+/// # Safety
+/// `ptr` must be null or a valid NUL-terminated C string that stays valid for this call.
+///
+/// # Errors
+/// - Returns `Err(FFI_NULL_POINTER)` when `ptr` is null.
+/// - Returns `Err(FFI_UTF8_ERROR)` when the byte sequence is not valid UTF-8.
+pub unsafe fn cstr_to_string(ptr: *const c_char) -> Result<String, FfiErrorObj> {
+    if ptr.is_null() {
+        return Err(FfiErrorObj {
+            code: FFI_NULL_POINTER.to_owned(),
+            context: None,
+        });
+    }
+    // SAFETY: caller guarantees ptr is a valid NUL-terminated C string for the call.
+    let cstr = unsafe { CStr::from_ptr(ptr) };
+    cstr.to_str().map(ToOwned::to_owned).map_err(|_| FfiErrorObj {
+        code: FFI_UTF8_ERROR.to_owned(),
+        context: None,
+    })
 }
 
 /// Release a C string that was allocated by `string_to_cstring`.
@@ -221,6 +245,32 @@ mod tests {
         assert_eq!(len, 0);
         // SAFETY: len == 0 triggers the early return in zanshin_buffer_free.
         unsafe { zanshin_buffer_free(ptr, len) };
+    }
+
+    #[test]
+    fn cstr_to_string_valid_returns_ok() {
+        let c = CString::new("hello FFI").unwrap();
+        // SAFETY: c.as_ptr() is a valid NUL-terminated C string that lives for this call.
+        let result = unsafe { cstr_to_string(c.as_ptr()) };
+        assert_eq!(result.unwrap(), "hello FFI");
+    }
+
+    #[test]
+    fn cstr_to_string_null_returns_null_pointer_error() {
+        // SAFETY: null is the documented null-return path.
+        let result = unsafe { cstr_to_string(std::ptr::null()) };
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, "ffi.null_pointer");
+    }
+
+    #[test]
+    fn cstr_to_string_invalid_utf8_returns_utf8_error() {
+        // 0xFF 0xFE are not valid UTF-8; 0x00 terminates the C string.
+        let raw: [u8; 3] = [0xFF, 0xFE, 0x00];
+        // SAFETY: raw is a valid NUL-terminated byte slice that lives for this call.
+        let result = unsafe { cstr_to_string(raw.as_ptr().cast::<c_char>()) };
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, "ffi.utf8_error");
     }
 
     #[test]

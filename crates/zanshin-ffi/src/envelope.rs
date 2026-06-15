@@ -14,6 +14,13 @@ use std::panic::{catch_unwind, UnwindSafe};
 /// AR-P-4 single-emission-point: the canonical `catch_unwind` panic error code.
 pub const INTERNAL_PANIC: &str = "internal.panic";
 
+/// AR-P-4: emitted by `handle::validate_handle` when a Dart-supplied handle pointer is null.
+pub const FFI_INVALID_HANDLE: &str = "ffi.invalid_handle";
+/// AR-P-4: emitted by `ffi_strings::cstr_to_string` when a required `*const c_char` is null.
+pub const FFI_NULL_POINTER: &str = "ffi.null_pointer";
+/// AR-P-4: emitted by `ffi_strings::cstr_to_string` when a `*const c_char` contains invalid UTF-8.
+pub const FFI_UTF8_ERROR: &str = "ffi.utf8_error";
+
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///
 /// Last-resort backstop for [`catch`]: returned only if building a normal error `Envelope`
