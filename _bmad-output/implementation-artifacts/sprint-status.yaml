@@ -45,7 +45,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-06-15  # 3-0 FlatBuffers transport: code review passed → done; re-sequencing: 3-4 split into 3-4a/3-4b; watcher deferred (ADR-0001)
+last_updated: 2026-06-15  # 3-1 FFI-core (envelope builders/error-codes/panic-catch) implemented + code review passed → done; 3-0 done; watcher deferred (ADR-0001)
 project: Zanshin
 # Story 1-1 started: 2026-05-17
 # Story 1-1 reviewed + done: 2026-05-17
@@ -139,7 +139,7 @@ development_status:
   # (event sink is process-global in worker_init; repo_open signature unaffected). See epics.md.
   epic-3: in-progress  # 3-0 created (ready-for-dev) 2026-06-15
   3-0-adopt-flatbuffers-ffi-transport: done  # NEW (2026-06-15, ADR-0001): FlatBuffers transport foundation; lands before 3-1; code review passed 2026-06-15 (6 patches + 3 discovered gate fixes applied, cargo make test green)
-  3-1-ffi-core-envelope-error-codes-panic-catch: backlog  # now FlatBuffers Envelope (ADR-0001)
+  3-1-ffi-core-envelope-error-codes-panic-catch: done  # created 2026-06-15; FlatBuffers Envelope builders on 3-0 foundation (ADR-0001); code review passed 2026-06-15 (2 patches applied incl. full panic-backstop hardening; 1 defer; cargo test -p zanshin-ffi 21/21 green)
   3-2-handle-module-ffi-strings-zanshin-ffi-version: backlog
   3-3-tracing-init-with-rotating-file-sink: backlog  # SHRINK: rotation tests + log-cap cut
   3-4a-repo-ffi-wrappers-zanshin-repo-open-init-clone-close: backlog  # NEW (2026-06-15): split from old 3-4; unblocks Flutter open/init/clone; watcher NOT armed here
