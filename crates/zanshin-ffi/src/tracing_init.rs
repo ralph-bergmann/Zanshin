@@ -10,6 +10,13 @@
 //!   unconditional layer is the live dev view. Dart-origin logs forwarded via
 //!   [`crate::logging::zanshin_log`] appear here too.
 //!
+//! **Path / App-Sandbox caveat:** under the macOS App Sandbox
+//! (`com.apple.security.app-sandbox`, currently enabled in the Flutter entitlements) `$HOME`
+//! is redirected, so the file actually lands at
+//! `~/Library/Containers/<bundle-id>/Data/Library/Logs/Zanshin/`. Unsandboxed it is the
+//! literal `~/Library/Logs/Zanshin/`. Whether Zanshin ships sandboxed is an open release-phase
+//! decision (it also governs filesystem access to arbitrary repos) — see `deferred-work.md`.
+//!
 //! The sole init-time `eprintln!` is a single line if the log directory cannot be created
 //! (AC-5.11) — never a panic.
 //!

@@ -75,8 +75,9 @@ pub unsafe extern "C" fn zanshin_log(level: i32, target: *const c_char, message:
 }
 
 /// Install the process-wide `tracing` subscriber (AR-P-5) so that both forwarded
-/// Dart records and Rust-origin logs reach the sink (rotating file at
-/// `~/Library/Logs/Zanshin/`, plus stderr in debug builds).
+/// Dart records and Rust-origin logs reach the sinks — the rotating file plus the
+/// always-on console layer. See [`crate::tracing_init`] for the file path (and its
+/// App-Sandbox caveat) and the layer/level details.
 ///
 /// Idempotent (a second call is a no-op via the inner `Once`) and never panics.
 /// Call once at startup **before** logging — the Dart façade does this from
