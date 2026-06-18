@@ -104,4 +104,16 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  */
 void zanshin_log(int32_t level, const char *target, const char *message);
 
+/**
+ * Install the process-wide `tracing` subscriber (AR-P-5) so that both forwarded
+ * Dart records and Rust-origin logs reach the sink (rotating file at
+ * `~/Library/Logs/Zanshin/`, plus stderr in debug builds).
+ *
+ * Idempotent (a second call is a no-op via the inner `Once`) and never panics.
+ * Call once at startup **before** logging — the Dart façade does this from
+ * `initLogForwarding`. A later worker-isolate bootstrap (Story 3-9) may drive the
+ * same underlying init instead; the `Once` makes the overlap harmless.
+ */
+void zanshin_logging_init(void);
+
 #endif  /* ZANSHIN_FFI_H */

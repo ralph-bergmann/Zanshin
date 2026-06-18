@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Process-wide `tracing` initialization for the `zanshin-ffi` cdylib (AR-P-5).
 //!
-//! [`init_tracing`] installs a global subscriber: a daily-rotating file sink at
-//! `~/Library/Logs/Zanshin/zanshin.log.YYYY-MM-DD`, level from `ZANSHIN_LOG` (`RUST_LOG`
-//! syntax, default `info`), plus a stderr layer **only** in debug builds. During normal
-//! operation release builds emit nothing to stdout/stderr; the sole exception is a single
-//! init-time `eprintln!` if the log directory cannot be created (AC-5.11). `debug`/`trace`
-//! are compiled out via the crate's `release_max_level_info` feature on `tracing`.
+//! [`init_tracing`] installs a global subscriber with two layers:
+//! - a daily-rotating **file** sink at `~/Library/Logs/Zanshin/zanshin.log.YYYY-MM-DD`,
+//!   filtered by `ZANSHIN_LOG` (`RUST_LOG` syntax, default `info`); and
+//! - an always-on **console** sink (native stderr) at `trace`. The cdylib is built in the
+//!   `release` profile even for `flutter run` debug runs, so a `cfg!(debug_assertions)`
+//!   gate would compile it out; `flutter run` forwards the app's native stderr, so an
+//!   unconditional layer is the live dev view. Dart-origin logs forwarded via
+//!   [`crate::logging::zanshin_log`] appear here too.
+//!
+//! The sole init-time `eprintln!` is a single line if the log directory cannot be created
+//! (AC-5.11) — never a panic.
+//!
+//! **WIP deviation (tracked in `deferred-work.md`, logging sink, 2026-06-18):** AR-P-5
+//! mandates "no console output in release builds". The always-on console layer breaks that
+//! for the shipped app and is deliberate only for the dev loop; re-gate it (env var) and
+//! restore the `info` default before ship. `release_max_level_info` was removed from the
+//! `tracing` dep so `debug`/`trace` compile in for the console.
 //!
 //! No log retention/size-cap in 0.1: old daily files persist until the user prunes them.
 //! Size/age-cap rotation returns in the release-phase supportability hardening.
-//!
-//! Note: In a release build with `release_max_level_info` active, `ZANSHIN_LOG=debug` is
-//! clamped to `info` — `debug`/`trace` call sites are compiled out entirely, and the level
-//! filter is capped at the static max so `tracing-subscriber` emits no stderr warning about
-//! the statically-disabled levels.
 
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -23,7 +29,7 @@ use tracing::level_filters::{LevelFilter, STATIC_MAX_LEVEL};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, Layer};
 
 const LOG_ENV: &str = "ZANSHIN_LOG";
 const DEFAULT_LEVEL: &str = "info";
@@ -40,26 +46,34 @@ pub fn init_tracing() {
 fn init_with_dir(dir: &Path) {
     INIT.call_once(|| {
         if let Err(e) = std::fs::create_dir_all(dir) {
-            // Acceptable at init time only: one stderr line, never a panic. Later FFI
-            // calls produce no stderr (the file sink takes over).
+            // Acceptable at init time only: one stderr line, never a panic.
             eprintln!("zanshin: could not create log dir {}: {e}", dir.display());
         }
 
+        // File sink: `ZANSHIN_LOG` / default `info` (AR-P-5 disciplined default).
         // `Option`-wrapped: `None` (a no-op `Layer`) when the log file cannot be opened, so a
         // broken/unwritable dir degrades to "no file sink" instead of panicking (see
-        // `build_file_appender`).
-        let file_layer = build_file_appender(dir)
-            .map(|appender| tracing_subscriber::fmt::layer().with_ansi(false).with_writer(appender));
+        // `build_file_appender`). The per-layer filter keeps the file at `info` while the
+        // console below stays at `trace`.
+        let file_layer = build_file_appender(dir).map(|appender| {
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(appender)
+                .with_filter(env_filter())
+        });
 
-        // Debug builds also log to stderr; release builds get `None` (a no-op `Layer`).
-        let stderr_layer =
-            cfg!(debug_assertions).then(|| tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
+        // Console sink: ALWAYS on, everything down to `trace`. See the module docs — the
+        // release-profile cdylib makes a `cfg!(debug_assertions)` gate compile this out, and
+        // `flutter run` forwards native stderr, so this unconditional layer is the live dev
+        // view. WIP deviation from AR-P-5 ("no console in release"); re-gate before ship.
+        let console_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_filter(LevelFilter::TRACE);
 
         // try_init (not init): idempotent + never panics if a global is already set.
         let _ = tracing_subscriber::registry()
-            .with(env_filter())
             .with(file_layer)
-            .with(stderr_layer)
+            .with(console_layer)
             .try_init();
     });
 }
@@ -83,12 +97,11 @@ fn env_filter() -> EnvFilter {
 /// Pure: build the level filter from an explicit value (testable without env mutation).
 ///
 /// A bare level (`info`, `debug`, …) is clamped to `STATIC_MAX_LEVEL` before the filter is
-/// built. In a release build `release_max_level_info` lowers that cap to `info`, and building
-/// an `EnvFilter` whose level exceeds the cap makes `tracing-subscriber` `eprintln!` a
-/// multi-line warning to stderr — which would break "no console output in release" (AR-P-5).
-/// `debug`/`trace` are compiled out in release anyway, so clamping loses no real output. In
-/// debug builds the cap is `trace`, so the clamp is a no-op and full `RUST_LOG` directive
-/// syntax is honored verbatim.
+/// built, so the filter can never request a level above what is compiled in (which would make
+/// `tracing-subscriber` `eprintln!` a multi-line warning to stderr). With
+/// `release_max_level_info` removed, `STATIC_MAX_LEVEL` is `trace` in every profile, so the
+/// clamp is currently a harmless no-op and full `RUST_LOG` directive syntax is honored
+/// verbatim. Complex directive sets fall through to `try_new`.
 fn env_filter_from(raw: Option<String>) -> EnvFilter {
     match raw {
         Some(v) if !v.trim().is_empty() => {

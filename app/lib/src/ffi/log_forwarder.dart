@@ -29,7 +29,15 @@ StreamSubscription<LogRecord>? _subscription;
 /// isolate: `zanshin_log` is handle-free and `tracing`'s subscriber is thread-safe.
 void initLogForwarding({Level level = Level.INFO}) {
   Logger.root.level = level;
-  _subscription ??= Logger.root.onRecord.listen(forwardLogRecord);
+  if (_subscription != null) {
+    return;
+  }
+  try {
+    bindings.zanshin_logging_init();
+  } catch (_) {
+    // cdylib not loaded yet — forwardLogRecord degrades to dart:developer.
+  }
+  _subscription = Logger.root.onRecord.listen(forwardLogRecord);
 }
 
 /// Detach the forwarding listener. Mainly for tests and clean teardown.
@@ -62,9 +70,11 @@ int ffiLogLevel(Level level) {
 /// Forward a single record across the FFI boundary.
 ///
 /// Dart allocates the two C strings and frees them after the call (the reverse of
-/// the outbound `zanshin_string_free` rule). On any failure — e.g. the cdylib not
-/// yet loaded during bootstrap — it degrades to `dart:developer` so logging never
-/// throws back into the caller.
+/// the outbound `zanshin_string_free` rule). The record then flows through the Rust
+/// `tracing` subscriber — to the rotating file and, during dev, to the console
+/// (see `tracing_init.rs`); there is no Dart-side echo, so console lines are not
+/// duplicated. On forwarding failure (e.g. the cdylib not loaded) it degrades to
+/// `dart:developer` so logging never throws back into the caller.
 void forwardLogRecord(LogRecord record) {
   final int levelInt = ffiLogLevel(record.level);
   final String message = _composeMessage(record);

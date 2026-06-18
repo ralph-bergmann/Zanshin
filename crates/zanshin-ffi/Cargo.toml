@@ -19,7 +19,9 @@ name = "zanshin_ffi"
 
 [dependencies]
 flatbuffers = { workspace = true }
-tracing = { workspace = true, features = ["release_max_level_info"] }
+# WHY: no release_max_level_info — debug/trace must compile in for the always-on
+# console layer (WIP dev visibility, see tracing_init.rs); re-add before ship (deferred-work).
+tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 

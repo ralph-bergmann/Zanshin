@@ -94,6 +94,17 @@ external void zanshin_log(
   ffi.Pointer<ffi.Char> message,
 );
 
+/// Install the process-wide `tracing` subscriber (AR-P-5) so that both forwarded
+/// Dart records and Rust-origin logs reach the sink (rotating file at
+/// `~/Library/Logs/Zanshin/`, plus stderr in debug builds).
+///
+/// Idempotent (a second call is a no-op via the inner `Once`) and never panics.
+/// Call once at startup **before** logging — the Dart façade does this from
+/// `initLogForwarding`. A later worker-isolate bootstrap (Story 3-9) may drive the
+/// same underlying init instead; the `Once` makes the overlap harmless.
+@ffi.Native<ffi.Void Function()>()
+external void zanshin_logging_init();
+
 /// Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
 /// boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
 /// `NativeFinalizer(zanshin_buffer_free_token)` so the GC can release the

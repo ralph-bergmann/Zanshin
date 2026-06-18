@@ -74,6 +74,21 @@ pub unsafe extern "C" fn zanshin_log(level: i32, target: *const c_char, message:
     }));
 }
 
+/// Install the process-wide `tracing` subscriber (AR-P-5) so that both forwarded
+/// Dart records and Rust-origin logs reach the sink (rotating file at
+/// `~/Library/Logs/Zanshin/`, plus stderr in debug builds).
+///
+/// Idempotent (a second call is a no-op via the inner `Once`) and never panics.
+/// Call once at startup **before** logging — the Dart façade does this from
+/// `initLogForwarding`. A later worker-isolate bootstrap (Story 3-9) may drive the
+/// same underlying init instead; the `Once` makes the overlap harmless.
+#[no_mangle]
+pub extern "C" fn zanshin_logging_init() {
+    // init_tracing is itself idempotent + panic-safe; the wrapper is belt-and-
+    // suspenders so no unwind can ever cross the C ABI.
+    let _ = catch_unwind(crate::tracing_init::init_tracing);
+}
+
 /// Re-emit a forwarded record at the mapped `tracing` level. Split out from the
 /// `extern "C"` shell so it is unit-testable against a scoped subscriber.
 fn emit(level: i32, logger: &str, message: &str) {
