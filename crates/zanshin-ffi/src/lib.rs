@@ -22,6 +22,7 @@ pub use envelope::*;
 
 pub mod ffi_strings;
 pub mod handle;
+pub mod logging;
 pub mod tracing_init;
 
 /// Build-stamp version string.

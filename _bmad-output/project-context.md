@@ -2,7 +2,7 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-last_revised: '2026-06-15'
+last_revised: '2026-06-17'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
 status: 'complete (WIP-scope rework 2026-05-17)'
@@ -113,8 +113,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `NativeFinalizer` MUST be attached to every Dart wrapper holding a Rust handle.
   Even though explicit `close()` is the canonical lifecycle, the finalizer is the
   belt-and-suspenders against forgotten closes during development.
-- Logging on Dart side: `dart:developer` `log()` only for isolate-spawn failures.
-  Do NOT add a package-level logger (Rust owns the logs; see AR-P-5).
+- Logging on Dart side: a thin logging façade forwards to Rust via the infallible
+  `zanshin_log(level, target, message)` FFI call — Rust stays the single sink (no
+  second Dart log file, no package-level logger that owns its own sink). Use
+  `dart:developer` `log()` ONLY as the bootstrap fallback (records emitted before
+  tracing/FFI is up, e.g. isolate-spawn failures). See `zanshin_log` contract under
+  Logging discipline below (AR-P-5, revised 2026-06-17).
 
 **FFI boundary (Rust ↔ Dart):**
 - **Transport rule (ADR-0001):** the data's TYPE decides the transport — fixed
@@ -331,6 +335,17 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **MCP exception (binding):** `zanshin-mcp` MUST sink tracing to file ONLY in
   ALL build modes. Stray stdout/stderr corrupts the MCP stdio protocol — a hard
   failure mode, not a warning.
+- **Dart → Rust log forwarding (AR-P-5, revised 2026-06-17):** Dart never owns a
+  log sink. A thin Dart logging façade forwards each record across FFI via the
+  infallible `extern "C" zanshin_log(level: i32, target: *const c_char,
+  message: *const c_char)` → `void`. Two lone strings = two CStrings (NOT
+  FlatBuffers; ADR-0001: lone string → CString). **Inbound-string ownership is the
+  REVERSE of the outbound rule:** Dart allocates AND frees; Rust only borrows for
+  the call. `catch_unwind`-wrapped (no panic across FFI); no `Envelope` (infallible
+  — a dropped line is the worst case). Handle-free, so it is **exempt from the
+  single-consumer rule (AD-2)** and callable from any isolate (`tracing`'s global
+  subscriber is thread-safe). `dart:developer` `log()` is the bootstrap fallback
+  ONLY (records before tracing/FFI is ready).
 - Levels: `error` (boundary violation), `warn` (degraded mode), `info` (lifecycle
   events), `debug` (per-call entry/exit — compiled out in release), `trace`
   (off in release).
@@ -624,4 +639,5 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)
+Last Updated: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)
+Previously: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)

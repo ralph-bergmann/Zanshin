@@ -82,4 +82,26 @@ void zanshin_buffer_free_token(ZanshinBuf *token);
  */
 void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
 
+/**
+ * Forward a single log record from Dart into the Rust `tracing` sink (AR-P-5).
+ *
+ * Infallible by contract: a null/invalid argument or an internal panic **drops
+ * the record** rather than surfacing an error — logging must never break the
+ * caller, and no panic may cross the C ABI.
+ *
+ * `level` maps onto a `tracing` level (1=error … 5=trace; see the module table).
+ * `target` is the originating logger name (recorded as the `logger` field) and
+ * `message` is the formatted line. Both are borrowed for the duration of the
+ * call only: **Dart owns and frees both C strings** (the reverse of the outbound
+ * `zanshin_string_free` ownership rule).
+ *
+ * Handle-free, so it is exempt from the single-consumer rule (AD-2) and may be
+ * called from any isolate — `tracing`'s global subscriber is thread-safe.
+ *
+ * # Safety
+ * `target` and `message` must each be null or a valid NUL-terminated C string
+ * that stays valid for the duration of this call.
+ */
+void zanshin_log(int32_t level, const char *target, const char *message);
+
 #endif  /* ZANSHIN_FFI_H */

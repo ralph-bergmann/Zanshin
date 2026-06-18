@@ -335,7 +335,7 @@ hook/build.dart  # native_toolchain_rust hook
 - **Levels:** `error` (boundary violation), `warn` (degraded mode), `info` (lifecycle events), `debug` (per-call entry/exit — compiled out in release), `trace` (off in release).
 - **Spans:** one per FFI call, fields `fn_name`, `command_id?`, `handle_id?`.
 - **Verbosity:** `ZANSHIN_LOG=info` env override; default `info`.
-- **Dart side:** `dart:developer` `log()` only for isolate-spawn errors. No package-level logger.
+- **Dart side (revised 2026-06-17 — supersedes the original "no Dart logger" clause):** A thin Dart logging façade forwards *every* record to the Rust `tracing` sink via the infallible `extern "C" zanshin_log(level, target, message)`. Rust stays the **single** log sink — no package-level Dart logger, no second log file. `dart:developer` `log()` survives ONLY as the bootstrap fallback, for records emitted before tracing/FFI is available (e.g. isolate-spawn failures). `zanshin_log` carries two lone strings as CStrings (ADR-0001: lone string → CString, not FlatBuffers); inbound-string ownership is the reverse of the outbound rule (Dart allocates + frees, Rust borrows for the call); it is `catch_unwind`-wrapped, returns `void` (no `Envelope`), is handle-free, and is therefore exempt from the single-consumer rule (AD-2) — callable from any isolate because `tracing`'s global subscriber is thread-safe.
 
 ### P-6: Generated Code Location & Regeneration
 - `zanshin-ffi/include/zanshin_ffi.h` — cbindgen output, committed.
