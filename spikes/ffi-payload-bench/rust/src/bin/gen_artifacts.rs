@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // Writes the JSON and FlatBuffers encodings of every swept payload to
 // ../artifacts/ plus a manifest.json, so the Dart side reads byte-identical

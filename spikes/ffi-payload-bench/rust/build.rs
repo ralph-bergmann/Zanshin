@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // Generates Rust FlatBuffers accessors from the shared schema by invoking the
 // official `flatc` compiler. Output lands in OUT_DIR and is `include!`d by

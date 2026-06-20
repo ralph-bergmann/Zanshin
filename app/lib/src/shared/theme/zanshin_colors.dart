@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Theme extension carrying Zanshin design tokens.
 // Dependency theme_tailor_annotation is declared for future @TailorMixin() migration.

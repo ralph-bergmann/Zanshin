@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // criterion bench: serialize time of serde_json vs FlatBuffers for both
 // payloads across the size sweep. Wire sizes are printed once up front so the

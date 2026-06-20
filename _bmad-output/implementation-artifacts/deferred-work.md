@@ -4,7 +4,7 @@ _Items raised during code reviews that are real but intentionally not actioned n
 
 ## Deferred from: code review of 1-1-initialize-cargo-workspace-and-create-empty-crate-skeletons (2026-05-17)
 
-- **No `NOTICE` file alongside Apache-2.0 `LICENSE`** [`LICENSE`] — release phase; no downstream redistributors during WIP.
+- ~~**No `NOTICE` file alongside Apache-2.0 `LICENSE`** [`LICENSE`] — release phase; no downstream redistributors during WIP.~~ — OBSOLETE 2026-06-20: project relicensed Apache-2.0 → MIT (OD-2). `NOTICE` is an Apache-2.0 concept; MIT has no equivalent, so this item no longer applies.
 - ~~**No `[workspace.lints]` table for central lint enforcement** [`Cargo.toml`]~~ — RESOLVED 2026-06-13 (Story 1.7): `[workspace.lints.clippy] pedantic = { level = "warn", priority = -1 }` at workspace root, all six member crates opt in via `[lints] workspace = true`; replaces the per-crate `#![warn(clippy::pedantic)]` attribute form from the original epics AC.
 - **No `[profile.release]` / `[profile.dev]` customization (LTO, codegen-units, strip)** [`Cargo.toml`] — release-phase optimization.
 

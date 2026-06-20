@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';

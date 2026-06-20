@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 # Workspace-wide rustfmt configuration (AR-P-9). `cargo fmt` reads the edition
 # from Cargo.toml; `edition` here only matters for direct `rustfmt` invocations,

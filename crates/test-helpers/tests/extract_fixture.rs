@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 /// Verifies the tiny fixture can be extracted and has a well-formed jj workspace layout.
 #[test]

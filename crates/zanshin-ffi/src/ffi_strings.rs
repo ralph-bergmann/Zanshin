@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 //! `CString` helpers for lone-string FFI returns and the `FlatBuffers` buffer
 //! ownership contract.

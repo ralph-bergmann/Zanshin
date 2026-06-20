@@ -359,9 +359,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 **Documentation:**
 - Every source file (Rust `.rs`, Dart `.dart`) starts with an SPDX license
   identifier on the FIRST line:
-    `// SPDX-License-Identifier: Apache-2.0`
-  Single line, machine-readable, satisfies the patent-grant-visibility rationale
-  that drove the Apache-2.0 choice (OD-2). No full Apache boilerplate — SPDX +
+    `// SPDX-License-Identifier: MIT`
+  Single line, machine-readable, makes the license visible per-file (OD-2).
+  No license boilerplate in-file — SPDX +
   repo-root `LICENSE` is the canonical pattern.
   Note: this OVERRIDES `architecture.md` § P-9, which predates this decision.
   **Exception — committed generated files are EXEMPT** from the SPDX-first-line
@@ -639,5 +639,6 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)
+Last Updated: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
+Previously: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)
 Previously: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)

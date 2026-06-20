@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // Synthetic, deterministically-seeded data models shaped like real Zanshin
 // payloads. Field names are snake_case to match the project's JSON wire

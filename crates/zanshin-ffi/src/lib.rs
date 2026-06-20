@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 //! `zanshin-ffi` — single cdylib FFI boundary for the Zanshin Rust core.
 //!

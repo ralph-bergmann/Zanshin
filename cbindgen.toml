@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 # Workspace-level cbindgen configuration for the zanshin-ffi cdylib boundary.
 # Output: crates/zanshin-ffi/include/zanshin_ffi.h (committed; regenerate via

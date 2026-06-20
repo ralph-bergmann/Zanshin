@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Dart → Rust log forwarding (AR-P-5).
 //!
 //! Dart never owns a log sink. A thin Dart logging façade (`package:logging`)

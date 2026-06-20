@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 # Workspace cargo-deny config. WIP scope: [advisories] + [bans] only.
 # License-gate ([licenses]) and source-gate ([sources]) are deferred to the
@@ -9,7 +9,7 @@
 # WARNING: until the release-phase `[licenses]` table lands, do NOT run
 # `cargo deny check all` or `cargo deny check licenses` against this config —
 # with no allow-list cargo-deny rejects every crate license (including our
-# own Apache-2.0). The only invocation this config supports is
+# own MIT). The only invocation this config supports is
 # `cargo deny check advisories bans` (the form wired into `cargo make test`).
 
 [graph]

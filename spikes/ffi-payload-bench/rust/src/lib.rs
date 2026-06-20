@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // JSON-vs-FlatBuffers payload spike (Rust producer side).
 //

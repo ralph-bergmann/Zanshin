@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // FlatBuffers serialization of the synthetic models — the candidate transport.
 // Children (strings, scalar vectors, nested tables) are built first, then their

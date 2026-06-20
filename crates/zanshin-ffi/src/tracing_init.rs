@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Process-wide `tracing` initialization for the `zanshin-ffi` cdylib (AR-P-5).
 //!
 //! [`init_tracing`] installs a global subscriber with two layers:

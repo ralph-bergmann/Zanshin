@@ -26,7 +26,7 @@ classification:
     - zanshin_mcp_binary
     - build_orchestration
 decisionsResolved:
-  OD-2-license: Apache-2.0
+  OD-2-license: MIT
   OD-3-update-mechanism: Sparkle
   OD-4-mcp-tool-surface: read-and-write
   OD-5-homebrew-cask: later
@@ -321,7 +321,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - No third-party SDKs that contradict the above (Sentry, Crashlytics, Firebase, etc. are excluded).
 
 ### 5.4 Licensing
-- **Project license:** Apache-2.0 (OD-2 — for the patent grant).
+- **Project license:** MIT (OD-2 — chosen for simplicity; solo project with no software patents to grant, so Apache-2.0's patent clause added length without benefit. Attribution (name retained) is the one condition. Relicensed Apache-2.0 → MIT 2026-06-20).
 - **Dependency policy:** Permissive only — MIT, BSD-2/3, Apache-2.0, MPL-2.0, Unlicense, CC0. Excluded: GPL (any), AGPL, LGPL, SSPL, custom non-OSI licenses.
 - **Enforcement (WIP):** `cargo deny check advisories bans` runs in CI (security backstop, cheap). The full license-gate (`cargo deny check licenses`) and Dart-side `pana` are deferred to the release phase.
 - **Watchman:** runtime system dependency (not bundled), so its MIT license is informational only.
@@ -353,7 +353,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 
 | # | Decision | Status | Resolution |
 |---|----------|--------|------------|
-| OD-2 | Project license | ✅ Resolved | **Apache-2.0** |
+| OD-2 | Project license | ✅ Resolved | **MIT** (was Apache-2.0; relicensed 2026-06-20) |
 | OD-3 | Update mechanism | ✅ Resolved | **Sparkle 2.x** |
 | OD-4 | MCP tool surface | ✅ Resolved | **Read + Write** |
 | OD-5 | Homebrew Cask from day one | ✅ Resolved | **Later** (post-0.1 stabilisation) |

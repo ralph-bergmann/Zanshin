@@ -144,7 +144,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 #### Licensing (Section 5.4)
 
-- **NFR-L-1**: Project license — Apache-2.0 (OD-2, for patent grant).
+- **NFR-L-1**: Project license — MIT (OD-2; relicensed Apache-2.0 → MIT 2026-06-20).
 - **NFR-L-2**: Dependency policy — permissive only (MIT, BSD-2/3, Apache-2.0, MPL-2.0, Unlicense, CC0). Excluded: GPL (any), AGPL, LGPL, SSPL, custom non-OSI licenses.
 - **NFR-L-3**: Enforcement — `cargo-deny` (Rust) + `pana` (Dart). CI fails on any forbidden license.
 
@@ -500,7 +500,7 @@ So that subsequent epics can implement crate contents against an already-wired w
 
 **Given** the root `Cargo.toml`
 **When** the `[workspace.package]` table is inspected
-**Then** `version = "0.1.0"`, `edition = "2021"`, `license = "Apache-2.0"`, `repository`, and `authors` are set at workspace level (per AR-AD-7)
+**Then** `version = "0.1.0"`, `edition = "2021"`, `license = "MIT"`, `repository`, and `authors` are set at workspace level (per AR-AD-7)
 **And** every member crate's `Cargo.toml` inherits via `package.version.workspace = true`, `package.edition.workspace = true`, `package.license.workspace = true`.
 
 **Given** the `[workspace.dependencies]` table
@@ -902,7 +902,7 @@ So that AR-P-8 and AR-P-9 are mechanically enforced and CI catches style violati
 **Given** no per-file license headers are required (per AR-P-9)
 **When** any contributor adds a new source file
 **Then** the file contains no `// Copyright ...` header
-**And** the `LICENSE` file at the repo root (Apache-2.0) is the sole license declaration.
+**And** the `LICENSE` file at the repo root (MIT) is the sole license declaration.
 
 **Edge case — Pedantic noise:**
 

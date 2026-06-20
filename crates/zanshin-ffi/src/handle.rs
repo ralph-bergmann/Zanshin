@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //! AD-2 opaque-handle helpers: Rust owns every handle as `Box<T>`; Dart holds the raw
 //! `*mut c_void`. `zanshin_X_open` leaks a `Box` via [`handle_into_raw`]; `zanshin_X_close`
 //! reclaims it via [`handle_drop`]. Single-threaded worker-isolate access (AD-2) — no locking.

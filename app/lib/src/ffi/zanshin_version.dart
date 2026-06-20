@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 import 'package:ffi/ffi.dart';
 import 'package:inject_annotation/inject_annotation.dart';

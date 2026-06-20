@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // Dart consumer-side bench: JSON vs FlatBuffers parse/access on the artifacts
 // produced by the Rust `gen_artifacts` binary. Mirrors the real FFI direction

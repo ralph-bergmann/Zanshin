@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';

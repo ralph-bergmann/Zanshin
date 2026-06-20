@@ -46,7 +46,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
   Budgets inform algorithm choice (e.g., `imara-diff` Histogram over `similar`); they are not enforced by CI perf-gates in the WIP phase.
 - **No telemetry. Ever.** (NFR 5.3) — excludes Sentry/Crashlytics/Firebase/etc. Update check is the only outbound call; User-Agent only.
-- **Licensing posture:** Apache-2.0 project; permissive-only dependencies. `cargo-deny` runs `advisories` + `bans` checks (security backstop). License-gate (`cargo-deny licenses`) and `pana` are deferred to the release phase.
+- **Licensing posture:** MIT project; permissive-only dependencies. `cargo-deny` runs `advisories` + `bans` checks (security backstop). License-gate (`cargo-deny licenses`) and `pana` are deferred to the release phase.
 - **FFI contract stability (post-1.0, aspirational):** once 1.0 ships, breaking `extern "C"` changes will require a major bump. While WIP (0.x), breaking changes are allowed — schemas, error codes, and FFI signatures may evolve without `_v2` suffixes; callers update. jj-lib churn is absorbed inside `zanshin-jj` (FR-JJ-16 — architectural invariant).
 - **No data loss tolerance:** all mutations go through jj-lib via `zanshin-jj`. No shelling to `jj` CLI. No string-parsing of CLI output.
 
@@ -264,7 +264,7 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 - **Versioning:** workspace-wide single version via `[workspace.package] version = "0.1.0"` in the root `Cargo.toml`. All five lib crates and the `zanshin-mcp` binary move together.
 - **WIP stability (0.x):** breaking changes are allowed across the `extern "C"` ABI of `zanshin-ffi`, the MCP tool surface, and the `.fbs` wire schemas. Callers update in the same PR. No `_v2`-suffix discipline.
 - **Post-1.0 stability:** open. The intent is that `extern "C"` ABI and MCP tool surface become the external SemVer contract once 1.0 ships, but the exact policy is deferred and will be revisited.
-- **Crates.io publishing:** none in 0.x. Apache-2.0 license at the repo level covers reuse by source. Post-1.0, `zanshin-jj` may be published as a standalone crate for other jj-GUI builders — opt-in, not a 0.1 deliverable.
+- **Crates.io publishing:** none in 0.x. MIT license at the repo level covers reuse by source. Post-1.0, `zanshin-jj` may be published as a standalone crate for other jj-GUI builders — opt-in, not a 0.1 deliverable.
 - **Wire schemas:** FlatBuffers `.fbs` committed at `schemas/*.fbs`; `flatc`-generated accessors committed on both sides. Typed accessors + `Verifier` are the correctness backstop (see AD-3, as amended by ADR-0001).
 
 **Rationale:** Internal crate version-skew has no benefit for a single-team mono-repo. While WIP, locking the FFI/MCP/schema surface against breaking change would be premature — they're still discovering their shape.
@@ -362,7 +362,7 @@ hook/build.dart  # native_toolchain_rust hook
 ### P-9: Linter / Formatter Configs
 - **Rust:** `rustfmt.toml` at workspace root (`max_width = 100`). `clippy::pedantic` enabled crate-wide; CI runs `cargo clippy -- -D warnings`. Suppressions only at crate root with documented rationale.
 - **Dart:** `analysis_options.yaml` based on `package:flutter_lints` + selected `package:very_good_analysis` rules. `dart format` enforced in CI.
-- **SPDX license identifier on the first line of every source file:** `// SPDX-License-Identifier: Apache-2.0` for Rust and Dart. Single line, machine-readable, makes the patent-grant visible to anyone reading a file in isolation — the rationale that drove the Apache-2.0 choice (OD-2). Repo-root `LICENSE` is still authoritative; SPDX is the per-file pointer. No full Apache boilerplate. (Decided 2026-05-15, supersedes earlier "no per-file headers" rule.)
+- **SPDX license identifier on the first line of every source file:** `// SPDX-License-Identifier: MIT` for Rust and Dart. Single line, machine-readable, makes the license visible to anyone reading a file in isolation (OD-2). Repo-root `LICENSE` is still authoritative; SPDX is the per-file pointer. No license boilerplate in-file. (Decided 2026-05-15; relicensed Apache-2.0 → MIT 2026-06-20. Supersedes earlier "no per-file headers" rule.)
 
 ### Anti-Patterns
 
@@ -392,7 +392,7 @@ Rationale: `cargo make build` is the FR-BO-1 single entry point; the Rust worksp
 ```
 zanshin/                                # repo root, Cargo workspace
 ├── README.md
-├── LICENSE                             # Apache-2.0
+├── LICENSE                             # MIT
 ├── CHANGELOG.md
 ├── .gitignore
 ├── .gitattributes                      # binary detection for *.tar.zst fixtures
