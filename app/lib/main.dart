@@ -6,10 +6,12 @@ import 'dart:developer' as developer;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
+import 'package:logging/logging.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'main.inject.dart' as g;
 import 'src/features/app/zanshin_app.dart';
+import 'src/ffi/log_forwarder.dart';
 import 'src/ffi/zanshin_version.dart';
 
 Future<void> main() async {
@@ -19,11 +21,17 @@ Future<void> main() async {
       WidgetsFlutterBinding.ensureInitialized();
       SemanticsBinding.instance.ensureSemantics();
 
+      initLogForwarding(level: .ALL);
+
       FlutterError.onError = (details) {
-        developer.log(
-          'FlutterError: ${details.exceptionAsString()}',
-          stackTrace: details.stack,
-          name: 'zanshin',
+        forwardLogRecord(
+          LogRecord(
+            .SEVERE,
+            details.exception.toString(),
+            details.library ?? 'FlutterError',
+            details.exception,
+            details.stack,
+          ),
         );
         FlutterError.presentError(details);
       };
