@@ -108,15 +108,15 @@ Adoption, stars, contributors — welcome side-effects, none required.
 **Cargo workspace (Rust)**
 - `zanshin-jj` — Adapter crate over `jj-lib`. Anti-corruption layer that shields the rest of the workspace from jj-lib's pre-1.0 API churn. Plain `lib` crate.
 - `zanshin-ffi` — The single `cdylib` crate. Re-exports `extern "C"` API of all internal crates. Dart Hooks build only this crate.
-- `zanshin-diff` — Word-level diff with syntax highlighting (`imara-diff` + `tree-sitter-highlight`). Plain `lib` crate. Output: structured JSON.
-- `zanshin-graph` — DAG lane-assignment for commit-graph rendering. Plain `lib` crate. Output: structured JSON.
+- `zanshin-diff` — Word-level diff with syntax highlighting (`imara-diff` + `tree-sitter-highlight`). Plain `lib` crate. Output: structured data (crosses the FFI boundary as FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)).
+- `zanshin-graph` — DAG lane-assignment for commit-graph rendering. Plain `lib` crate. Output: structured data (crosses the FFI boundary as FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)).
 - `zanshin-mcp` — Standalone Rust binary using `rmcp`. Depends on `zanshin-jj`. Spawned by MCP hosts via stdio.
 - Future crates (e.g. `zanshin-crypto` for signing) follow the same pattern: plain `lib`, re-exported through `zanshin-ffi`.
 
 **FFI surface**
 - C ABI via `extern "C"` functions in `zanshin-ffi`
 - Opaque pointer types for repository / change / operation handles
-- Primitives and JSON strings for data that crosses the boundary (no C struct mapping for complex types)
+- Primitives (plain), lone strings (CString), and **FlatBuffers** for composite data crossing the boundary — no C struct mapping for complex types. *Amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) — originally "Primitives and JSON strings".*
 - `cbindgen`-generated C header committed to the repo
 - `ffigen`-generated Dart bindings committed to the repo
 - Async Rust→Dart signals exclusively via `NativeCallable.listener` (filesystem-watcher events and progress notifications use the same pattern)
@@ -158,7 +158,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - **No Windows / Linux build.** macOS-only.
 - **No Git-only repo support.** Zanshin works against jj-init'd repos (which may use jj's Git backend).
 - **No PR / MR / review tooling.** Repository hosting is the user's browser.
-- **Code quality is production-grade from day one** (Clippy pedantic, structured errors, `NativeFinalizer` on every handle, schema-validated JSON in tests, no shelling to `jj` CLI). **Scope/release-readiness is treated as WIP** — release infrastructure (codesigning, notarization, auto-update, reproducibility) is deferred. Breaking changes between WIP versions are allowed; callers update.
+- **Code quality is production-grade from day one** (Clippy pedantic, structured errors, `NativeFinalizer` on every handle, schema-validated FlatBuffers in tests (typed accessors + `Verifier` per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON), no shelling to `jj` CLI). **Scope/release-readiness is treated as WIP** — release infrastructure (codesigning, notarization, auto-update, reproducibility) is deferred. Breaking changes between WIP versions are allowed; callers update.
 - **No telemetry.** None, ever.
 
 ### 3.3 Deferred (explicit "maybe later")
@@ -220,7 +220,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 |----|-------------|----------|
 | FR-DF-1 | Compute line-level hunks for a change (delegate to jj-lib), then enrich with word-level diff inside changed lines using `imara-diff` (Histogram algorithm). | P0 |
 | FR-DF-2 | Emit syntax-highlight metadata per token using `tree-sitter-highlight`. Language detection from file extension; fallback to plain text for unknown extensions. | P0 |
-| FR-DF-3 | Output: structured JSON. Hunks → lines → segments. Each segment has `kind` (Equal / Added / Removed) and optional `syntax_class`. | P0 |
+| FR-DF-3 | Output: structured data — Hunks → lines → segments; each segment has `kind` (Equal / Added / Removed) and optional `syntax_class`. Crosses the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). | P0 |
 | FR-DF-4 | Diff between any two revisions (revset-resolved). | P0 |
 | FR-DF-5 | Bundled tree-sitter grammars (initial Kern-Set, ~9): **Rust, Dart, TypeScript/JavaScript, Python, Markdown, TOML, YAML, JSON, HTML**. Unknown extensions fall back to plain text. Additional grammars added on demand. | P0 |
 
@@ -228,7 +228,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR | Description | Priority |
 |----|-------------|----------|
 | FR-GR-1 | Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). | P0 |
-| FR-GR-2 | Output: structured JSON. Rows with `lane`, `edges_below`, `color_idx`. | P0 |
+| FR-GR-2 | Output: structured data — rows with `lane`, `edges_below`, `color_idx`. Crosses the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). | P0 |
 | FR-GR-3 | Full lane-cache computed on repo-open and on every `op_heads` change. | P0 |
 | FR-GR-4 | Render-slice API: given a row range, return the slice of rows in O(slice-size). | P0 |
 | FR-GR-5 | Performance: a 10k-commit repo produces a full lane-cache in < 1s (sub-budget of NFR-P-1's < 2s repo-open). | P0 |
@@ -239,7 +239,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 |----|-------------|----------|
 | FR-FFI-1 | Single cdylib crate that re-exports `extern "C"` API of all internal crates. Dart Hooks build only this crate. | P0 |
 | FR-FFI-2 | Opaque handle types: repository handle, change-iterator handle, operation handle. Lifetime managed via `extern "C"` constructor/destructor pairs. | P0 |
-| FR-FFI-3 | JSON-serialized data for complex types crossing the boundary. No C struct mapping for graphs / diffs / change-metadata. | P0 |
+| FR-FFI-3 | Composite data for complex types crosses the boundary as **FlatBuffers** (single buffer); lone strings stay CString, scalars stay plain; no C struct mapping for graphs / diffs / change-metadata. *Amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) — originally "JSON-serialized data".* | P0 |
 | FR-FFI-4 | Async signals from Rust to Dart via `NativeCallable.listener`. Same mechanism for filesystem-watcher events and progress notifications. | P0 |
 | FR-FFI-5 | `notify-rs` watcher subsystem inside `zanshin-ffi`: watches `.jj/repo/op_heads/heads/` (primary) and `.jj/repo/working_copy/checkout` (heartbeat). | P0 |
 | FR-FFI-6 | Watcher-event latency: from `op_heads` filesystem mutation to Dart callback invocation < 100ms (aligned with NFR-P-4 / FR-RX-1). | P0 |
@@ -306,7 +306,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 |-----|--------|
 | NFR-P-1 | Repo open (incl. full lane-cache computation, op-log read) for a 10k-commit repo: **< 2s** |
 | NFR-P-2 | `zanshin-graph` render-slice API: O(slice-size), no scan of the full lane-cache per call |
-| NFR-P-3 | `zanshin-diff` JSON output for a 5k-line changed file: **< 500ms** |
+| NFR-P-3 | `zanshin-diff` output (FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON) for a 5k-line changed file: **< 500ms** |
 | NFR-P-4 | Watcher latency `op_heads → callback`: **< 100ms** (FR-RX-1) |
 | NFR-P-5 | FFI handle creation/destruction overhead: negligible (< 1ms per call) so the long-running-worker pattern stays the right choice |
 | NFR-P-6 | External-edit end-to-end refresh (Watchman → jj-snapshot → callback): **< 500ms** (FR-RX-2) |
@@ -342,7 +342,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - Cross-machine reproducibility CI (FR-BO-8) deferred to the release phase.
 
 ### 5.7 Supportability
-- Diagnostics API (WIP): `extern "C"` function returns version-string + log-path. Full structured-JSON diagnostics (jj-lib version, Watchman state, OS, repo summary) deferred — basic version + log-path are enough to support local development.
+- Diagnostics API (WIP): `extern "C"` function returns version-string + log-path as a FlatBuffers `Envelope` (per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md), not JSON). Full structured diagnostics (jj-lib version, Watchman state, OS, repo summary) deferred — basic version + log-path are enough to support local development.
 - Crash on launch produces a local log in `~/Library/Logs/Zanshin/` (5.3).
 - First-run / Watchman-detection (FR-FFI-7): deferred.
 
@@ -380,13 +380,13 @@ Eight epics (WIP-scoped). Sequencing reflects dependency, not strict time order.
    Repository open/init/clone, repo-kind detection (FR-JJ-17), colocated Git→jj conversion (FR-JJ-18a), status, revset queries, change-metadata read, op-log read, bookmarks read, remotes read. Adapter API absorbs jj-lib churn (FR-JJ-16). Tests against committed fixture repos (tiny + medium; large fixture deferred with perf-tests). **Deferred:** NFR-P-1 sub-budget allocation, API-surface-lock doc, external-git-import conversion (FR-JJ-18b → 0.2 fast-follow).
 
 3. **Epic C — `zanshin-ffi` & Watcher**
-   Opaque handles + JSON-serialized data crossing the FFI boundary. AD-1 error envelope. AD-5 `notify-debouncer-full` watcher on `op_heads` + `working_copy/checkout`. `NativeCallable.listener` callback infrastructure for FS events and progress notifications. Error model (no panic crossings). Tracing init (file appender). Diagnostics API (version-string + log-path). Dart worker isolate bootstrap. End-to-end test: filesystem mutation triggers Dart callback (functional only — no latency assert). **Deferred:** Watchman-availability check (FR-FFI-7), full structured diagnostics, watcher latency-assertion.
+   Opaque handles + composite data crossing the FFI boundary as FlatBuffers; AD-1 error envelope (both *amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)* — originally JSON). AD-5 `notify-debouncer-full` watcher on `op_heads` + `working_copy/checkout`. `NativeCallable.listener` callback infrastructure for FS events and progress notifications. Error model (no panic crossings). Tracing init (file appender). Diagnostics API (version-string + log-path). Dart worker isolate bootstrap. End-to-end test: filesystem mutation triggers Dart callback (functional only — no latency assert). **Deferred:** Watchman-availability check (FR-FFI-7), full structured diagnostics, watcher latency-assertion.
 
 4. **Epic D — `zanshin-graph`**
-   Lane-assignment algorithm on jj-lib's `default_index` / `dag_walk`. On-demand lane computation per request (full persistent lane-cache deferred). Render-slice returns all lanes for revset (windowing deferred). JSON output. Algorithmic correctness test on ~100-commit fixture. **Deferred:** 10k-commit perf test, persistent cache + op_heads invalidation, checkpoint-caching.
+   Lane-assignment algorithm on jj-lib's `default_index` / `dag_walk`. On-demand lane computation per request (full persistent lane-cache deferred). Render-slice returns all lanes for revset (windowing deferred). FlatBuffers output ([ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)). Algorithmic correctness test on ~100-commit fixture. **Deferred:** 10k-commit perf test, persistent cache + op_heads invalidation, checkpoint-caching.
 
 5. **Epic E — `zanshin-diff`**
-   Line-level hunks. Word-level breakdown via `imara-diff` (Histogram). `tree-sitter-highlight` integration. Bundled grammars: rust, dart, markdown (remaining OD-9 grammars deferred). JSON output. Diff between two revisions. **Deferred:** 5k-line perf test, fallback strategies, incremental highlighting.
+   Line-level hunks. Word-level breakdown via `imara-diff` (Histogram). `tree-sitter-highlight` integration. Bundled grammars: rust, dart, markdown (remaining OD-9 grammars deferred). FlatBuffers output ([ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)). Diff between two revisions. **Deferred:** 5k-line perf test, fallback strategies, incremental highlighting.
 
 6. **Epic F — `zanshin-jj` Write Path & `extern "C"` Exposure**
    Mutations: `describe`, `new`, `edit`, `abandon` (FR-JJ-10a). Op-log `undo` (FR-JJ-14a — wrapper on `jj op restore`). FFI mutation surface (the wrapper convention itself). `git fetch` with progress callback — real consumer of the FR-FFI-8 progress path. Two-thread concurrent-write assertions appended to the mutation smoke (Szenario-1 from the dropped E7-8 story). **Deferred:** conflict ops (FR-JJ-12), `git push` (FR-JJ-13b), `split`/`squash`/`rebase` (FR-JJ-10b), bookmark CRUD (FR-JJ-11), settings (FR-JJ-15), rare mutations (FR-JJ-10c), op-log visibility test (NFR-R-2), op-restore/op-diff (FR-JJ-14b).

@@ -52,14 +52,14 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 - **FR-DF-1** (P0): Compute line-level hunks for a change (via jj-lib), then enrich with word-level diff using `imara-diff` (Histogram algorithm).
 - **FR-DF-2** (P0): Emit syntax-highlight metadata per token using `tree-sitter-highlight`; language detection from file extension; plain-text fallback.
-- **FR-DF-3** (P0): Output structured JSON. Hunks → lines → segments. Each segment has `kind` (Equal / Added / Removed) and optional `syntax_class`.
+- **FR-DF-3** (P0): Output structured data (Hunks → lines → segments; each segment has `kind` (Equal / Added / Removed) and optional `syntax_class`), crossing the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON").
 - **FR-DF-4** (P0): Diff between any two revisions (revset-resolved).
 - **FR-DF-5** (P0): Bundled tree-sitter grammars (Kern-Set, ~9): Rust, Dart, TS/JS, Python, Markdown, TOML, YAML, JSON, HTML. Unknown extensions fall back to plain text.
 
 #### `zanshin-graph` — Commit-Graph Lane Assignment (Section 4.3)
 
 - **FR-GR-1** (P0): Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style).
-- **FR-GR-2** (P0): Output structured JSON. Rows with `lane`, `edges_below`, `color_idx`.
+- **FR-GR-2** (P0): Output structured data (rows with `lane`, `edges_below`, `color_idx`), crossing the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON").
 - **FR-GR-3** (P0): Full lane-cache computed on repo-open and on every `op_heads` change.
 - **FR-GR-4** (P0): Render-slice API: given a row range, return the slice in O(slice-size).
 - **FR-GR-5** (P0): Performance: 10k-commit repo produces full lane-cache in < 1s (sub-budget of NFR-P-1).
@@ -69,7 +69,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 - **FR-FFI-1** (P0): Single cdylib crate that re-exports `extern "C"` API of all internal crates. Dart Hooks build only this crate.
 - **FR-FFI-2** (P0): Opaque handle types: repository handle, change-iterator handle, operation handle. Lifetime via `extern "C"` constructor/destructor pairs.
-- **FR-FFI-3** (P0): JSON-serialized data for complex types crossing the boundary. No C struct mapping.
+- **FR-FFI-3** (P0): Composite data for complex types crosses the boundary as **FlatBuffers** (single buffer; lone strings stay CString, scalars plain). No C struct mapping. *Amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) — originally "JSON-serialized data".*
 - **FR-FFI-4** (P0): Async signals from Rust to Dart via `NativeCallable.listener` (same mechanism for watcher events and progress notifications).
 - **FR-FFI-5** (P0): `notify-rs` watcher subsystem inside `zanshin-ffi`: watches `.jj/repo/op_heads/heads/` (primary) and `.jj/repo/working_copy/checkout` (heartbeat).
 - **FR-FFI-6** (P0): Watcher-event latency < 100ms (aligned with NFR-P-4 / FR-RX-1).
@@ -123,7 +123,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 - **NFR-P-1**: Repo open (incl. full lane-cache, op-log read) for a 10k-commit repo: **< 2s**.
 - **NFR-P-2**: `zanshin-graph` render-slice API: O(slice-size), no full-cache scan per call.
-- **NFR-P-3**: `zanshin-diff` JSON output for a 5k-line changed file: **< 500ms**.
+- **NFR-P-3**: `zanshin-diff` output (FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON) for a 5k-line changed file: **< 500ms**.
 - **NFR-P-4**: Watcher latency `op_heads → callback`: **< 100ms** (FR-RX-1).
 - **NFR-P-5**: FFI handle create/destroy overhead: **< 1ms** per call.
 - **NFR-P-6**: External-edit end-to-end refresh (Watchman → jj-snapshot → callback): **< 500ms** (FR-RX-2).
@@ -165,7 +165,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 #### Supportability (Section 5.7)
 
 - **NFR-S-1**: First-run / repo-open — Zanshin detects missing Watchman or missing jj-fsmonitor config and exposes the result via `extern "C"` API (FR-FFI-7).
-- **NFR-S-2**: Diagnostics API — `extern "C"` function returns structured JSON with jj-lib version, Watchman version, app version, OS version, repo path summary — clipboard-copyable.
+- **NFR-S-2**: Diagnostics API — `extern "C"` function returns a structured FlatBuffers `Envelope` (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON") with jj-lib version, Watchman version, app version, OS version, repo path summary — clipboard-copyable.
 - **NFR-S-3**: Crash on launch produces a local log in `~/Library/Logs/Zanshin/`.
 
 #### Stability of FFI Contract (Section 5.8)
@@ -261,18 +261,18 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 | FR-JJ-16 | 2 | Adapter-stability invariant established with read path |
 | FR-DF-1 | 5 | line hunks → word-level via imara-diff |
 | FR-DF-2 | 5 | tree-sitter-highlight syntax classes |
-| FR-DF-3 | 5 | structured JSON output |
+| FR-DF-3 | 5 | structured output, FlatBuffers (ADR-0001) |
 | FR-DF-4 | 5 | diff between any two revisions |
 | FR-DF-5 | 5 | bundled tree-sitter Kern-Set-9 grammars |
 | FR-GR-1 | 4 | lane-assignment algorithm on jj-lib default_index |
-| FR-GR-2 | 4 | JSON output (lane, edges_below, color_idx) |
+| FR-GR-2 | 4 | FlatBuffers output (lane, edges_below, color_idx) — ADR-0001 |
 | FR-GR-3 | 4 | full lane-cache on open + op_heads change |
 | FR-GR-4 | 4 | render-slice API O(slice-size) |
 | FR-GR-5 | 4 | 10k-commit lane-cache < 1s |
 | FR-GR-6 | 4 | checkpoint-caching (P2 — story marked deferred post-0.1) |
 | FR-FFI-1 | 1, 3 | cdylib skeleton + re-export wiring (1); substance (3) |
 | FR-FFI-2 | 3 | opaque handle types |
-| FR-FFI-3 | 3 | JSON-serialized boundary types |
+| FR-FFI-3 | 3 | FlatBuffers boundary types (ADR-0001) |
 | FR-FFI-4 | 3 | NativeCallable.listener for async signals |
 | FR-FFI-5 | 3 | notify-rs watcher subsystem |
 | FR-FFI-6 | 3 | watcher event latency < 100ms |
@@ -352,9 +352,9 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 ### Epic 3: `zanshin-ffi` & Watcher (Keystone)
 
-**Goal:** Land the load-bearing FFI infrastructure — opaque handles, JSON envelope, error model, async event delivery, watcher subsystem, basic diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`).
+**Goal:** Land the load-bearing FFI infrastructure — opaque handles, FlatBuffers envelope (ADR-0001), error model, async event delivery, watcher subsystem, basic diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`).
 
-**User outcome:** A Dart caller in the worker isolate can open a repo handle through committed `bindings.dart`, receive JSON-structured read responses, subscribe to async event streams (op_heads change, external edit, progress), and pull basic diagnostics (version + log-path). No Rust panic ever crosses the FFI boundary. The functional watcher path (`.jj/repo/op_heads/heads/` → callback) is asserted; the `< 100ms` latency target is a soft design goal in WIP.
+**User outcome:** A Dart caller in the worker isolate can open a repo handle through committed `bindings.dart`, receive FlatBuffers-structured read responses (ADR-0001), subscribe to async event streams (op_heads change, external edit, progress), and pull basic diagnostics (version + log-path). No Rust panic ever crosses the FFI boundary. The functional watcher path (`.jj/repo/op_heads/heads/` → callback) is asserted; the `< 100ms` latency target is a soft design goal in WIP.
 
 **FRs covered:** FR-FFI-2, FR-FFI-3, FR-FFI-4, FR-FFI-5, FR-FFI-6 (functional only, no latency assert), FR-FFI-8, FR-FFI-9, FR-FFI-10 (build-stamp; no compat negotiation), FR-RX-1 (functional), FR-RX-2 (functional), FR-RX-4.
 
@@ -370,7 +370,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 ### Epic 4: `zanshin-graph` — DAG Lane Assignment
 
-**Goal:** Compute commit-graph lane assignments for arbitrary jj DAGs and expose them as render-ready JSON via the FFI surface.
+**Goal:** Compute commit-graph lane assignments for arbitrary jj DAGs and expose them as render-ready FlatBuffers (ADR-0001) via the FFI surface.
 
 **User outcome:** A caller (FFI consumer or test) obtains lane data per request (computed on demand, in-memory) and receives a render-slice response (all lanes for the revset). An algorithmic-correctness test on a ~100-commit fixture catches dumb regressions cheaply.
 
@@ -2030,53 +2030,69 @@ So that every FFI call and watcher event is traceable per AR-P-5, with no stdout
 
 > **WIP re-sequencing (2026-06-15):** Carved out of the former monolithic Story 3.4 so the repo open/init/clone path — the only finished Epic 2 noun (Story 2.3) — can be exercised from Flutter immediately, ahead of the remaining read-path nouns and the watcher. The rest of the old Story 3.4 lives on as Story 3.4b.
 
-As a Dart caller (worker isolate),
-I want `extern "C"` functions wrapping the Epic 2 `repo` path (open, init, clone, close) returning JSON envelopes,
+> **Transport reconciled to FlatBuffers (2026-06-20):** These ACs originally described the pre-ADR-0001 JSON transport (`*mut c_char` envelope, hex-string handle, `jsonschema` validation). **ADR-0001** (`docs/adr/0001-ffi-data-transport-flatbuffers.md`) and the `project-context.md` `overrides:` block retire that; the committed code (Stories 3-0…3-3) implements the FlatBuffers `Envelope` only. The ACs below are now FlatBuffers-native, matching the sibling Story 3.4c. Three implementation decisions were locked on 2026-06-20 (see the inline notes): `close` detects only the null handle; an out-of-range `init` backend yields `ffi.invalid_argument`; tracing-init stays out of `repo_open`.
+
+As a Dart caller (the worker isolate),
+I want `extern "C"` functions wrapping the Epic 2 `repo` path (open, init, clone, close) that return the FlatBuffers `Envelope` (ADR-0001),
 So that I can open/init/clone a repository from Flutter as soon as the FFI infrastructure is in place — without waiting for the rest of the read path or the watcher.
 
 **Acceptance Criteria:**
 
 **Given** `crates/zanshin-ffi/src/repo.rs`
 **When** created
-**Then** it defines `zanshin_repo_open`, `zanshin_repo_init`, `zanshin_repo_clone`, `zanshin_repo_close` as `#[no_mangle] pub unsafe extern "C"` functions
-**And** each fallible function is wrapped via `envelope::catch(|| { ... })` (Story 3.1).
+**Then** it defines `zanshin_repo_open`, `zanshin_repo_init`, `zanshin_repo_clone`, `zanshin_repo_close` as `#[no_mangle] pub unsafe extern "C"` functions, each returning `*mut ZanshinBuf` (an owned FlatBuffers `Envelope` token — `ptr`+`len`, freed via `zanshin_buffer_free_token`, consumed by the existing `FfiBuffer.fromToken`)
+**And** each function body is wrapped via `envelope::catch(|| { ... })` (Story 3.1)
+**And** `crates/zanshin-ffi/Cargo.toml` gains `zanshin-jj = { workspace = true }` (the crate has no such dependency yet).
+
+**Given** the wire schema
+**When** updated
+**Then** `schemas/envelope.fbs` gains `table RepoHandle { handle: ulong; }` added to the `Payload` union (the `Empty` placeholder is removed), where `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer
+**And** `cargo make codegen` regenerates the Rust + Dart FlatBuffers accessors, `zanshin_ffi.h`, and `bindings.dart`, all committed in the same PR.
 
 **Given** `zanshin_repo_open(path)`
 **When** called with a valid jj repo path
-**Then** it returns the AR-AD-1 envelope (`*mut c_char`) with `data = { "handle": "<hex ptr>" }` on success (consistent envelope reporting — no NULL-plus-out-of-band-error pattern)
-**And** `zanshin_repo_close(handle)` takes the raw handle and drops the `Box<Repo>` (Story 3.2 handle helpers).
+**Then** it returns a success `Envelope` whose `Payload` is `RepoHandle { handle }` (consistent envelope reporting — no NULL-plus-out-of-band-error pattern)
+**And** `zanshin_repo_close(handle: u64)` takes that same handle integer and drops the `Box<Repo>` (Story 3.2 handle helpers).
 
 **Given** `zanshin_repo_open(path)` with an invalid / non-repo path
-**Then** it returns `{ok:false, error:{code:"jj.repo_not_found"|"jj.path_not_found", ...}}` — never a crash, never NULL.
+**Then** it returns an error `Envelope` (`ok:false`) with `error.code = "jj.repo_not_found"` (path is not a jj repo) or `"jj.path_not_found"` (path does not exist), detail in `error.context` — never a crash, never NULL.
 
-**Given** `zanshin_repo_init(path, backend)`
+**Given** `zanshin_repo_init(path, backend: i32)`
 **When** called in an empty directory
-**Then** it initializes a repo and returns a valid handle
-**And** calling `init` again at the same location returns a defined error code (no panic).
+**Then** it initializes a repo (`backend`: `0 → jj native`, `1 → git`) and returns a `RepoHandle` envelope
+**And** calling `init` again at the same location returns `jj.jj_lib_error` (no panic)
+**And** an out-of-range `backend` value returns `ffi.invalid_argument` (new code, added to the registry) rather than silently defaulting. **(Decided 2026-06-20.)**
 
 **Given** `zanshin_repo_clone(url, target_path)`
-**When** called with a local source fixture into a temp target
-**Then** it returns a valid handle envelope.
+**When** called with a local `file://` source fixture into a temp target
+**Then** it returns a `RepoHandle` envelope
+**And** a clone failure returns `jj.jj_lib_error` and leaves no usable partial workspace (rollback is already inside `zanshin-jj::Repo::clone`).
 
-**Given** `zanshin_repo_close`
-**When** called twice on the same handle, or on an unknown handle
-**Then** it returns a defined `ffi.invalid_handle` error (no use-after-free, no panic).
+**Given** `zanshin_repo_close(handle)`
+**When** called with the null handle (`0`)
+**Then** it returns a defined `ffi.invalid_handle` error (no panic). **Scope (decided 2026-06-20):** the null handle is the only defined-detectable invalid handle — there is no handle table (AD-2: raw `Box` pointers, single isolate). Double-close of the same non-zero value is UB owned by the Dart contract (null the handle after `close`; `NativeFinalizer` fires at most once); the test asserts on `close(0)` and never re-passes a freed pointer.
 
 **Given** the watcher is deferred (Stories 3.5 / 3.6)
 **When** `zanshin_repo_open` returns
 **Then** it does NOT arm a filesystem watcher yet. **Watcher arming is added later in Story 3.5 as an internal-only change to `repo_open`'s body — the `extern "C"` signature is unchanged, so no codegen / caller rework results.** (This is the load-bearing assumption behind the 2026-06-15 re-sequencing.)
 
 **Given** `cargo make codegen` runs after this story
-**Then** `zanshin_ffi.h` and `bindings.dart` contain the four `zanshin_repo_*` functions, committed in the same PR.
+**Then** `zanshin_ffi.h` and `bindings.dart` contain the four `zanshin_repo_*` functions, committed in the same PR
+**And** `docs/rust-error-codes.md` flips `jj.repo_not_found` / `jj.path_not_found` / `jj.jj_lib_error` from `Reserved` to `Emitted — Story 3.4a` and registers the new `ffi.invalid_argument`.
 
 **Given** Rust integration tests in `crates/zanshin-ffi/tests/repo_ffi.rs`
 **When** they run
 **Then** for each of open/init/clone/close they exercise a success case and an error case
-**And** they **schema-validate both the request and the response JSON against the relevant `schemas/*.schema.json` before asserting on any field** (`jsonschema` crate — the schema is the wire contract, per project-context Testing Rules).
+**And** they read every returned buffer through the **generated typed accessors** (`fbs::Envelope`, `env.data_as_repo_handle()`) and run the FlatBuffers `Verifier` before asserting on any field — a wrong-shape payload is a compile error, not a runtime assert. **No `jsonschema`, no hand-parsing** (per project-context Testing Rules + ADR-0001)
+**And** they pin `JJ_CONFIG` / `GIT_CONFIG_GLOBAL` and use committed fixtures with no network access.
 
 **Given** a forced panic inside a wrapper body
 **When** triggered in a test
-**Then** the call returns `{ok:false, error:{code:"internal.panic"}}` (catch_unwind backstop, Story 3.1) — proving no panic crosses the boundary.
+**Then** the call returns an error `Envelope` with `error.code = "internal.panic"` (catch_unwind backstop, Story 3.1) — proving no panic crosses the boundary.
+
+**Given** tracing initialization
+**When** `zanshin_repo_open` runs
+**Then** it does NOT call `init_tracing()` — tracing-init is owned by `zanshin_logging_init()` / the Story 3.9 worker bootstrap; the repo wrappers only add `tracing` spans. **(Decided 2026-06-20.)**
 
 ---
 
@@ -2132,9 +2148,11 @@ So that Flutter can classify a path and, on the user's confirmation, convert a G
 
 > **WIP re-sequencing (2026-06-15):** Was Story 3.4. The `zanshin_repo_open/init/clone/close` functions moved to Story 3.4a, so the `zanshin_repo_*` acceptance criteria below are **superseded by Story 3.4a**. This story now covers the non-repo read wrappers only, and each wrapper lands as its Epic 2 noun completes: `status` ← 2.4, `revset`/`change` ← 2.5 / 2.6, `op_log` ← 2.7, `bookmarks` ← 2.8, `remotes` ← 2.9. Not on the "open/init/clone early" critical path — sequence freely after Story 3.9.
 
-As a Dart caller (worker isolate),
-I want `extern "C"` functions wrapping the Epic 2 read-path (open, init, clone, status, op-log, change, bookmarks, remotes) returning JSON envelopes,
-So that the Dart side has working endpoints to test the FFI scaffolding against real data.
+> **Transport reconciled to FlatBuffers (2026-06-20):** Everything below predates [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and is superseded by it + the `project-context.md` `overrides:` block. **The `zanshin_repo_open/init/clone/close` signatures and ACs here are fully superseded by Story 3.4a** — this story is read-path nouns only. Binding contract per read wrapper: returns `*mut ZanshinBuf` (a FlatBuffers `Envelope` token, freed via `zanshin_buffer_free_token`, consumed by `FfiBuffer.fromToken`); the success payload is a per-noun table added to `schemas/envelope.fbs`'s `Payload` union and regenerated via `cargo make codegen`. **No JSON-string inputs** (ADR-0001): a `limit` is a plain scalar, a `change_id` / revset `expr` is a lone string (CString) — drop the `*_json` wrappers and the `internal.serialization_failed` code (use `ffi.invalid_handle` / `ffi.null_pointer` / `ffi.utf8_error` / `ffi.invalid_argument`). Tests read the buffer through generated typed accessors + the FlatBuffers `Verifier` — no `jsonschema`. Per-noun details are finalized at create-story time (cf. Story 3.4a).
+
+As a Dart caller (the worker isolate),
+I want `extern "C"` read-path wrappers (`zanshin_status`, `zanshin_op_log`, `zanshin_change`, `zanshin_bookmarks`, `zanshin_remotes`, `zanshin_revset_resolve`) returning the FlatBuffers `Envelope` (ADR-0001),
+So that the Dart side has working read endpoints to exercise the FFI scaffolding against real data.
 
 **Acceptance Criteria:**
 
@@ -2383,6 +2401,8 @@ pub type ProgressCallback = unsafe extern "C" fn(json_event: *mut c_char);
 
 > **WIP-rework (2026-05-17):** Shrunk drastically. Keep `extern "C" fn zanshin_diagnostics() -> *mut c_char` returning a JSON envelope, but the `data` shape is only `{ app_version: string, git_sha: string, log_path: string }` in WIP. **Drop** all the other fields (jj_lib_version, rust_version, watchman_version, os.*, repo.*). **Drop** the dedicated `schemas/diagnostics.schema.json` validation requirement (the WIP shape is so small it doesn't earn a schema). Full structured diagnostics — and the schema — return in the release phase.
 
+> **Transport reconciled to FlatBuffers (2026-06-20):** The `*mut c_char` JSON-envelope return and the `schemas/diagnostics.v1.schema.json` / `jsonschema` ACs below predate [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and are superseded. `zanshin_diagnostics` returns `*mut ZanshinBuf` (a FlatBuffers `Envelope` token); the WIP `data` shape `{ app_version, git_sha, log_path }` is a `Diagnostics` table in `schemas/envelope.fbs`'s `Payload` union (regenerated via `cargo make codegen`). The WIP-rework already drops the dedicated schema; tests assert via the generated typed accessors + the `Verifier`, not `jsonschema`. No `schema_version` field.
+
 As a Dart caller producing a "Copy Diagnostics" button,
 I want `zanshin_diagnostics()` returning a JSON envelope with versions, OS info, and repo summary (NFR-S-2, AR-G-2),
 So that users can paste self-describing diagnostics into bug reports without leaking sensitive data.
@@ -2618,7 +2638,7 @@ So that FR-RX-1 (< 100 ms budget with 100 ms CI slack), FR-RX-2 (external edit p
 
 ## Epic 4: `zanshin-graph` — DAG Lane Assignment
 
-Compute commit-graph lane assignments for arbitrary jj DAGs and expose render-ready JSON via the FFI surface. Hit the < 1s lane-cache budget (FR-GR-5 / NFR-P-1 sub-budget) on the 10k-commit fixture and provide O(slice-size) render-slice responses.
+Compute commit-graph lane assignments for arbitrary jj DAGs and expose render-ready FlatBuffers (ADR-0001) via the FFI surface. Hit the < 1s lane-cache budget (FR-GR-5 / NFR-P-1 sub-budget) on the 10k-commit fixture and provide O(slice-size) render-slice responses.
 
 ### Story 4.1: Lane-assignment algorithm (`lane.rs`)
 
@@ -2693,6 +2713,8 @@ So that the resulting rows correctly position commits in lanes for GitKraken/Sou
 ---
 
 ### Story 4.2: JSON output + `graph.v1.schema.json`
+
+> **Transport reconciled to FlatBuffers (2026-06-20):** This story's premise — `serde`-JSON output validated against `schemas/graph.v1.schema.json` with `jsonschema`/`json_schema`, `additionalProperties:false`, and minor-version bumps — predates [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and is superseded. The graph crosses the FFI boundary as a FlatBuffers `GraphSlice` table (rows with `change_id`, `lane`, `edges_below`, `color_idx`, `parents`, plus `total_rows`) added to `schemas/envelope.fbs`'s `Payload` union — defined in `schemas/*.fbs`, **not** JSON Schema; no `schema_version`, no `.v1` infix, no version-bump rule (WIP: edit in place, regenerate via `cargo make codegen`, callers update). Drop `serde::Serialize`; the wire contract is the typed FlatBuffers accessors + the `Verifier` (compile-time wrong-shape detection). The < 5 MB / < 200 ms numbers remain soft design targets (perf-gate deferred). This story effectively merges into the FlatBuffers schema work consumed by Story 4.6.
 
 As a Rust developer producing serializable output,
 I want `crates/zanshin-graph/src/output.rs` serializing rows to JSON conforming to `schemas/graph.v1.schema.json`,
@@ -2926,6 +2948,8 @@ So that performance regressions are caught at PR time, not at release time.
 ---
 
 ### Story 4.6: FFI wrapper (`zanshin-ffi/src/graph.rs`)
+
+> **Transport reconciled to FlatBuffers (2026-06-20):** The `*mut c_char` signatures, `data = {"graph_handle":"<hex>","total_rows":n}`, and `schemas/graph.v1.schema.json` / `jsonschema` ACs below predate [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and are superseded. `zanshin_graph_build` / `zanshin_graph_slice` return `*mut ZanshinBuf` (FlatBuffers `Envelope` token, freed via `zanshin_buffer_free_token`); handles cross inside the payload as `ulong` scalar fields (`graph_handle`, `total_rows`); `zanshin_graph_close(graph_handle: u64)`. The slice is the `GraphSlice` payload (Story 4.2, now `.fbs`). `start` / `count` stay plain `u32` scalars. Tests read via generated typed accessors + the `Verifier` — no `jsonschema`.
 
 As a Dart caller wanting to fetch graph data,
 I want `crates/zanshin-ffi/src/graph.rs` exposing `zanshin_graph_build` (called at repo-open) and `zanshin_graph_slice(handle, start, count)` returning JSON envelopes,
@@ -3305,6 +3329,8 @@ So that FR-DF-5 (bundled grammars) is satisfied and unknown extensions fall back
 
 ### Story 5.5: JSON output + `diff.v1.schema.json`
 
+> **Transport reconciled to FlatBuffers (2026-06-20):** The `serde`-JSON output + `schemas/diff.v1.schema.json` + `jsonschema`/`json_schema` premise below predates [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and is superseded. The diff crosses as a FlatBuffers `Diff` table (the file/hunk/line/segment shape shown below maps 1:1 to nested FlatBuffers tables) added to `schemas/envelope.fbs`'s `Payload` union — defined in `schemas/*.fbs`, not JSON Schema; no `schema_version`, no `.v1` infix, no version-bump rule. Drop `serde::Serialize`; the contract is typed accessors + the `Verifier`. The < 500 ms number stays a soft design target. Merges into the FlatBuffers schema work consumed by Story 5.8.
+
 As a Rust developer producing serializable diff output,
 I want `crates/zanshin-diff/src/output.rs` serializing diffs to JSON conforming to `schemas/diff.v1.schema.json` (FR-DF-3, AR-AD-3),
 So that the FFI surface and consumers parse diffs with schema validation.
@@ -3498,6 +3524,8 @@ So that diff-performance regressions are caught at PR time.
 ---
 
 ### Story 5.8: FFI wrapper (`zanshin-ffi/src/diff.rs`)
+
+> **Transport reconciled to FlatBuffers (2026-06-20):** The `*mut c_char` signature, the JSON `{"id":"<hex>"}` inputs, and the `schemas/diff.v1.schema.json` / `jsonschema` ACs below predate [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and are superseded. `zanshin_diff_compute(repo_handle: u64, from_id: *const c_char, to_id: *const c_char) -> *mut ZanshinBuf`: change-ids are lone strings (CString) per ADR-0001 — **not** JSON-wrapped (`from_id_json` / `to_id_json` go away). The result is the `Diff` payload (Story 5.5, now `.fbs`); large diffs ride the buffer+len token, not a CString. Tests read via generated typed accessors + the `Verifier` — no `jsonschema`.
 
 As a Dart caller wanting to fetch diff data,
 I want `crates/zanshin-ffi/src/diff.rs` exposing `zanshin_diff_compute(repo_handle, from_id, to_id)` returning a JSON envelope with the `DiffOutput`,
@@ -3819,6 +3847,8 @@ pub fn git_push(&mut self, remote_name: &str, bookmark_names: &[&str], progress:
 
 ### Story 6.5: FFI mutation surface — `zanshin-ffi/src/repo.rs` (write extensions)
 
+> **Transport reconciled to FlatBuffers (2026-06-20):** The `*mut c_char` signatures, the `args_json` JSON-string inputs, the `internal.serialization_failed` code, and `schemas/change.v1.schema.json` below predate [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md) and are superseded. Each mutation returns `*mut ZanshinBuf` (FlatBuffers `Envelope` token). Composite inputs cross as FlatBuffers (a per-call request table) or decompose to scalars + lone strings (CString) per ADR-0001 — **no `args_json`**; malformed/missing inputs yield `ffi.invalid_argument` / `ffi.null_pointer` / `ffi.utf8_error` (drop `internal.serialization_failed`). The success payload is the `MutationResult` table in `schemas/envelope.fbs`'s `Payload` union (Story 6.6, now `.fbs`), regenerated via `cargo make codegen`. `op_id` stays a plain `u64` scalar. Tests read via typed accessors + the `Verifier` — no `jsonschema`.
+
 As a Dart caller wanting to perform mutations,
 I want `crates/zanshin-ffi/src/repo.rs` extended with write-side functions wrapping the Epic 6.1–6.4 mutations,
 So that the worker isolate has callable endpoints for describe, new, edit, abandon, undo, fetch, push, conflict-resolve.
@@ -3888,6 +3918,8 @@ So that the worker isolate has callable endpoints for describe, new, edit, aband
 ### Story 6.6: `schemas/change.schema.json` extension for mutations
 
 > **WIP-rework (2026-05-17):** Extend the existing `change` schema in place to cover mutation responses (the mutate calls return the new change-id + op-id). **Drop** versioning ACs, **drop** migration ACs, **drop** backward-compat-shim ACs. Filename has no `.v1` infix in WIP. Breaking changes happen in-place; callers update.
+
+> **Transport reconciled to FlatBuffers (2026-06-20):** This whole story is recast from JSON Schema to FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md). There is no `schemas/change.v1.schema.json`; the `Change` and `MutationResult` shapes become FlatBuffers tables in `schemas/*.fbs` (added to the `Envelope` `Payload` union), regenerated via `cargo make codegen` and committed. **Drop every versioning AC** (`schema_version`, `.v1` / `.v2` filenames, `_v2` suffixes, minor-bump / `additionalProperties` rules, and the `schemas/README.md` reference to the deleted Story 1.8): WIP edits the `.fbs` in place and updates all callers in the same PR (project-context FFI rules). Validation is the typed accessors + the `Verifier`, both sides — no `jsonschema` / `json_schema`.
 
 As an architect maintaining schema parity,
 I want `schemas/change.v1.schema.json` (created in Epic 2 implicitly via Change struct's serialization) extended to include the `MutationResult` shape,
