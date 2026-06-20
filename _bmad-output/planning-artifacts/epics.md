@@ -336,9 +336,9 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **Goal:** Build the anti-corruption-layer adapter over `jj-lib` with full read-side coverage, so the rest of the workspace and the MCP binary can query a jj repository without ever seeing `jj-lib` types directly.
 
-**User outcome:** A Rust caller (later `zanshin-ffi` and `zanshin-mcp`) can open/init/clone a repo, read working-copy status, resolve revsets, read change metadata and op-log, list bookmarks and remotes — all through `zanshin-jj`'s public API. Fixture repos (`tiny`, `medium`) committed and used in tests.
+**User outcome:** A Rust caller (later `zanshin-ffi` and `zanshin-mcp`) can open/init/clone a repo, **detect what kind of repository (if any) lives at a path and convert an existing Git project to colocated jj**, read working-copy status, resolve revsets, read change metadata and op-log, list bookmarks and remotes — all through `zanshin-jj`'s public API. Fixture repos (`tiny`, `medium`) committed and used in tests.
 
-**FRs covered:** FR-JJ-1, FR-JJ-2, FR-JJ-3, FR-JJ-4, FR-JJ-5, FR-JJ-6, FR-JJ-7, FR-JJ-8, FR-JJ-9, FR-JJ-16.
+**FRs covered:** FR-JJ-1, FR-JJ-2, FR-JJ-3, FR-JJ-4, FR-JJ-5, FR-JJ-6, FR-JJ-7, FR-JJ-8, FR-JJ-9, FR-JJ-16, FR-JJ-17 (detection), FR-JJ-18a (colocated conversion). FR-JJ-18b (external-git import) is a P1 fast-follow — see Story 2.13.
 
 **NFRs:** None enforced in WIP (NFR-P-1 sub-budget allocation deferred).
 
@@ -1591,6 +1591,166 @@ So that future jj-lib upgrades absorb their churn inside this crate without leak
 
 ---
 
+### Story 2.11: Implement `detect.rs` — repository-kind detection
+
+> **Added 2026-06-20:** Powers the open-project flow. `Repo::open` (Story 2.3) only answers "is this a loadable jj repo?" and collapses "empty folder", "random folder", and "a Git repo" all into `NotARepo`. To offer the user a *"convert this Git project to jj?"* dialog, the UI first needs to know which of those it is — that is this story. Non-paternalistic by design: the backend classifies, the UI (Ralph's scope) decides what to offer.
+
+As a Rust caller powering the open-project flow,
+I want `zanshin-jj` to classify a filesystem path as a jj workspace, a (convertible) Git repo, neither, or a missing path,
+So that the Flutter UI can open directly, offer a "convert this Git project to jj?" dialog, or report "not a repository" — without the backend deciding for the user (FR-JJ-17).
+
+**Acceptance Criteria:**
+
+**Given** `crates/zanshin-jj/src/detect.rs`
+**When** created
+**Then** it defines `pub enum RepoKind { Jj, Git, Neither, Missing }` and `pub fn detect(path: &Path) -> RepoKind` (FR-JJ-17)
+**And** `RepoKind` derives `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`.
+
+**Given** `detect(path)`
+**When** the path does not exist
+**Then** it returns `RepoKind::Missing`.
+
+**Given** `detect(path)`
+**When** the path contains a `.jj/` directory (whether or not a `.git/` is also present — a colocated repo IS a jj repo)
+**Then** it returns `RepoKind::Jj`.
+
+**Given** `detect(path)`
+**When** the path contains a `.git/` entry but no `.jj/`
+**Then** it returns `RepoKind::Git`.
+
+**Given** `detect(path)`
+**When** the path exists but contains neither `.jj/` nor `.git/`
+**Then** it returns `RepoKind::Neither`.
+
+**Given** `detect`
+**When** called on any path
+**Then** it is stat-only — it never loads the workspace, never creates or modifies anything on disk, and never panics
+**And** it is cheap enough to call on every folder the user browses in a file picker.
+
+**Given** the public API
+**When** inspected
+**Then** `RepoKind` and `detect` are re-exported from `lib.rs`
+**And** no `jj_lib` type appears in the signature.
+
+**Given** unit tests in `crates/zanshin-jj/tests/detect.rs`
+**When** they run
+**Then** they assert: the `tiny-3-commits` fixture → `Jj`; a bare `git init` dir (fixture-setup may shell to `git`, AR-AP-1 applies to production code only) → `Git`; an empty tmpdir → `Neither`; a nonexistent path → `Missing`; a colocated dir (`.jj/` + `.git/`) → `Jj`.
+
+**Edge cases:**
+
+**Given** a `.jj` that is a regular file, not a directory (corruption)
+**When** `detect` is called
+**Then** it does not classify the path as `Jj` (falls through to `Git` or `Neither` by the `.git` check)
+**And** the behaviour is documented — `detect` reports *structural presence*, not integrity; integrity is `Repo::open`'s job.
+
+**Given** a `.git` that is a file containing a `gitdir:` pointer (git worktree / submodule)
+**When** `detect` is called
+**Then** it still returns `RepoKind::Git` (it is a git working tree).
+
+**Given** `.jj` or `.git` is a symlink
+**When** `detect` is called
+**Then** the link is followed and the path is classified by the target.
+
+---
+
+### Story 2.12: Implement `convert.rs` — colocated Git → jj conversion
+
+> **Added 2026-06-20:** The history-preserving conversion the user picks from the dialog. NOT the same as `Repo::init(.., Some(Backend::Git))` (Story 2.3) — that creates a *fresh, internal* jj-git store and ignores existing history. "Start fresh (ignore history)" reuses that existing `init` as-is (a separate, clearly-labelled, warned action in the UI), so it needs no new backend work here.
+
+As a Rust caller acting on the user's explicit choice,
+I want `zanshin-jj` to convert an existing Git repository into a colocated jj workspace,
+So that a user who chose "use this Git project with jj, keep git too" gets a `.jj/` alongside their untouched `.git/`, with full history and a working `git` CLI (FR-JJ-18a).
+
+**Acceptance Criteria:**
+
+**Given** `crates/zanshin-jj/src/convert.rs`
+**When** created
+**Then** it defines `pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError>` (FR-JJ-18a)
+**And** `RepoError` gains variants `AlreadyJjRepo { path }`, `NotAGitRepo { path }`, `ConvertFailed { reason }`.
+
+**Given** `convert_colocated(path)`
+**When** called on a path where `detect(path) == RepoKind::Git`
+**Then** it performs jj's colocated init (the jj-lib equivalent of `jj git init --colocate`; the exact jj-lib call is absorbed inside `convert.rs` per FR-JJ-16)
+**And** on success a `.jj/` exists next to the existing `.git/`
+**And** the existing Git history is imported and visible (the Git HEAD commit is reachable in the resulting jj repo)
+**And** it returns a `Repo` handle (a subsequent `Repo::open(path)` and `detect(path) == Jj` both succeed).
+
+**Given** `convert_colocated(path)`
+**When** called on a path where `detect(path) == RepoKind::Jj`
+**Then** it returns `Err(RepoError::AlreadyJjRepo { path })` and changes nothing on disk.
+
+**Given** `convert_colocated(path)`
+**When** called on a path where `detect(path)` is `Neither` or `Missing`
+**Then** it returns `Err(RepoError::NotAGitRepo { path })`.
+
+**Given** the conversion is additive and reversible
+**When** it completes (or fails)
+**Then** the existing `.git/` is never destructively modified (HEAD and refs are unchanged — asserted before/after in a test)
+**And** removing the created `.jj/` restores the plain Git repo
+**And** on failure any partially-created `.jj/` is rolled back (mirrors the `Repo::clone` rollback discipline in Story 2.3).
+
+**Given** any jj-lib failure during conversion
+**When** it occurs
+**Then** it is wrapped as `RepoError::ConvertFailed { reason }` (the jj-lib error flattened to its Display — no new jj_lib type leak)
+**And** the call never panics.
+
+**Given** the error-code registry
+**When** this story lands
+**Then** `docs/rust-error-codes.md` registers `jj.already_jj_repo`, `jj.not_a_git_repo`, and `jj.convert_failed` in the same PR (project-context Error-code-taxonomy rule).
+
+**Given** unit tests in `crates/zanshin-jj/tests/convert.rs`
+**When** they run
+**Then** they assert: `git init` + one commit → `convert_colocated` → `Ok`, then `detect == Jj`, the committed file is reachable in jj, and `git log` (via fixture-setup git, test-only) still shows the commit; converting a jj repo → `AlreadyJjRepo`; converting an empty dir → `NotAGitRepo`; a forced mid-conversion failure leaves no partial `.jj/`.
+
+**Edge cases:**
+
+**Given** a Git repo with a dirty working tree (uncommitted changes)
+**When** `convert_colocated` is called
+**Then** jj snapshots the working-copy state into `@` (documented behaviour) — no changes are lost.
+
+**Given** a Git repo on an unborn branch (initialised, zero commits)
+**When** `convert_colocated` is called
+**Then** it succeeds, producing a colocated repo with empty history (no panic).
+
+**Given** a bare Git repo (no working tree)
+**When** `convert_colocated` is called
+**Then** it returns a documented `ConvertFailed` (colocated conversion targets working repos) — bare-repo handling, if ever wanted, is out of scope.
+
+---
+
+### Story 2.13: Implement external-git-import conversion (`convert_import`) — fast-follow
+
+> **Added 2026-06-20 — P1 fast-follow (0.2), deferred.** The *second* user-selectable conversion mode: convert a Git repo into a **jj-native** workspace (jj leads; the existing `.git/` becomes the backing store) rather than colocated. Deferred deliberately — Story 2.12 (colocated) covers the common case, and shipping one well-tested conversion path first keeps the v1 block lean (Ralph's call, 2026-06-20). Sequence after Story 2.12 and after the detect/convert FFI exposure (Story 3.4c).
+
+As a Rust caller acting on the user's choice of a jj-native workflow,
+I want `zanshin-jj` to convert a Git repo into a jj-native workspace backed by the existing `.git/` via import,
+So that users who prefer jj-leading (not colocated) can pick that mode from the dialog (FR-JJ-18b).
+
+**Acceptance Criteria:**
+
+**Given** `crates/zanshin-jj/src/convert.rs`
+**When** extended
+**Then** it defines `pub fn convert_import(path: &Path) -> Result<Repo, RepoError>` (FR-JJ-18b), using jj's external-git-init/import path (exact jj-lib call absorbed per FR-JJ-16).
+
+**Given** `convert_import(path)`
+**When** called on a `RepoKind::Git` path
+**Then** it produces a jj-native workspace whose history is imported from the existing `.git/`
+**And** returns a `Repo` handle; `detect(path) == Jj` afterwards.
+
+**Given** the precondition / failure / rollback / no-panic behaviour
+**When** compared to Story 2.12
+**Then** it matches (`AlreadyJjRepo`, `NotAGitRepo`, `ConvertFailed`, additive, reversible, rolled back on failure).
+
+**Given** the docs
+**When** this story lands
+**Then** `crates/zanshin-jj/README.md` (or rustdoc on `convert.rs`) documents the **colocated vs. import** trade-off so callers — and the UI — can describe the choice accurately to the user.
+
+**Given** tests in `crates/zanshin-jj/tests/convert.rs`
+**When** they run
+**Then** they cover the import path symmetrically to the colocated tests (success + history import, `AlreadyJjRepo`, `NotAGitRepo`, rollback).
+
+---
+
 ## Epic 3: `zanshin-ffi` & Watcher (Keystone)
 
 Land the load-bearing FFI infrastructure: opaque handles, FlatBuffers envelope (ADR-0001), error model, async event delivery, watcher subsystem, Watchman detection, diagnostics — plus the minimal Dart-side bootstrap (long-running worker isolate, command bus, `NativeFinalizer`). This epic is the architectural keystone; every downstream epic (4, 5, 6, 7) consumes these patterns.
@@ -1917,6 +2077,54 @@ So that I can open/init/clone a repository from Flutter as soon as the FFI infra
 **Given** a forced panic inside a wrapper body
 **When** triggered in a test
 **Then** the call returns `{ok:false, error:{code:"internal.panic"}}` (catch_unwind backstop, Story 3.1) — proving no panic crosses the boundary.
+
+---
+
+### Story 3.4c: Repo detect + convert FFI wrappers — `zanshin_repo_detect` / `zanshin_repo_convert`
+
+> **Added 2026-06-20.** Exposes Story 2.11 (detection) and Story 2.12 (colocated conversion) across the FFI boundary so the Flutter open-project dialog can drive them. **FlatBuffers-native from the start** (ADR-0001) — no legacy JSON envelope here. Sequence right after Story 3.4a (same `repo.rs`, same bootstrap path). External-git import (FR-JJ-18b / Story 2.13) is intentionally NOT exposed here — it ships with its own wrapper in the 0.2 fast-follow.
+
+As a Dart caller (worker isolate) powering the open-project dialog,
+I want `extern "C"` functions wrapping `zanshin-jj`'s `detect` and `convert_colocated`,
+So that Flutter can classify a path and, on the user's confirmation, convert a Git project to colocated jj — all through the FlatBuffers envelope (FR-JJ-17, FR-JJ-18a).
+
+**Acceptance Criteria:**
+
+**Given** `crates/zanshin-ffi/src/repo.rs`
+**When** extended
+**Then** it adds `zanshin_repo_detect(path: *const c_char) -> *mut u8` and `zanshin_repo_convert(path: *const c_char) -> *mut u8` as `#[no_mangle] pub unsafe extern "C"` functions returning owned FlatBuffers `Envelope` buffers (`*mut u8` + length, freed via `zanshin_buffer_free`, per Story 3.1 / ADR-0001)
+**And** each is wrapped via `envelope::catch(|| { ... })`.
+
+**Given** the wire schema
+**When** updated
+**Then** the relevant `schemas/*.fbs` gains a `enum RepoKind : byte { Jj, Git, Neither, Missing }` and the detect/convert payload tables, added to the `Payload` union
+**And** `cargo make codegen` regenerates the Rust + Dart accessors, `zanshin_ffi.h`, and `bindings.dart`, all committed in the same PR.
+
+**Given** `zanshin_repo_detect(path)`
+**When** called with any path (existing, missing, or garbage)
+**Then** it returns a well-formed success `Envelope` whose payload carries the `RepoKind` — detection is a *classification*, so "missing" / "neither" are normal results, NOT errors
+**And** only a genuine I/O failure (e.g. permission denied while stat-ing) yields an error envelope `jj.detect_failed`.
+
+**Given** `zanshin_repo_convert(path)`
+**When** called on a `RepoKind::Git` path
+**Then** it performs the colocated conversion and returns a success `Envelope` whose payload carries a freshly-opened `Repo` handle (so the UI can proceed straight into the now-colocated repo without a second open call).
+
+**Given** `zanshin_repo_convert(path)`
+**When** the precondition fails
+**Then** it returns an error envelope with `jj.already_jj_repo` (path is already jj) or `jj.not_a_git_repo` (neither/missing), and `jj.convert_failed` on a jj-lib failure — never a crash, never NULL.
+
+**Given** a forced panic inside either wrapper
+**When** triggered in a test
+**Then** the call returns an `internal.panic` error envelope (catch_unwind backstop, Story 3.1).
+
+**Given** Rust integration tests in `crates/zanshin-ffi/tests/repo_ffi.rs`
+**When** they run
+**Then** they read every returned buffer through the generated typed accessors (a wrong shape is a compile error; no hand-parsing) and run the FlatBuffers `Verifier`
+**And** assert: detect on the `tiny` fixture → `Jj`; on a `git init` dir → `Git`; on an empty tmpdir → `Neither`; on a nonexistent path → `Missing`; convert on a `git init` dir → success handle, then detect on the same path → `Jj`; convert on a jj repo → `jj.already_jj_repo`.
+
+**Given** `docs/ffi-abi.md`
+**When** this story lands
+**Then** it documents `zanshin_repo_detect` / `zanshin_repo_convert` and the `RepoKind` enum mapping.
 
 ---
 
