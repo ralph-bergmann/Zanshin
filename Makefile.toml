@@ -61,6 +61,10 @@ dependencies = [
 private = true
 command = "cargo"
 args = ["test", "--workspace"]
+# WHY: redirect the tracing file sink to a throwaway dir so any test that boots the cdylib and
+# triggers zanshin_logging_init never writes into the developer's real ~/Library/Logs/Zanshin
+# (test-isolation). No Rust test inits tracing today, but this future-proofs cheaply.
+env = { ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-clippy]
 private = true
@@ -82,7 +86,10 @@ cwd = "app"
 # runner vs a developer's machine — matching the Rust suites' empty-env
 # convention (project-context "Property of every test suite"; Story 3.9 AC-16).
 # Dart cannot set process env in-process, so it is pinned here at the task level.
-env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "" }
+# ZANSHIN_LOG_DIR redirects the cdylib's tracing file sink to a throwaway dir: the worker-isolate
+# tests boot a real worker which calls zanshin_logging_init -> init_tracing, which would otherwise
+# write into the developer's real ~/Library/Logs/Zanshin (test-isolation leak, fixed 2026-06-21).
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-dart-analyze]
 private = true

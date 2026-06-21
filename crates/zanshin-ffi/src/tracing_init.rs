@@ -10,12 +10,14 @@
 //!   unconditional layer is the live dev view. Dart-origin logs forwarded via
 //!   [`crate::logging::zanshin_log`] appear here too.
 //!
-//! **Path / App-Sandbox caveat:** under the macOS App Sandbox
-//! (`com.apple.security.app-sandbox`, currently enabled in the Flutter entitlements) `$HOME`
-//! is redirected, so the file actually lands at
-//! `~/Library/Containers/<bundle-id>/Data/Library/Logs/Zanshin/`. Unsandboxed it is the
-//! literal `~/Library/Logs/Zanshin/`. Whether Zanshin ships sandboxed is an open release-phase
-//! decision (it also governs filesystem access to arbitrary repos) — see `deferred-work.md`.
+//! **Path / overrides:** Zanshin ships **unsandboxed** (App Sandbox disabled in both
+//! `DebugProfile.entitlements` and `Release.entitlements`, decided 2026-06-21 — a jj/git GUI
+//! needs arbitrary-repo filesystem access and `zanshin-mcp` rules out the App Store; see
+//! `deferred-work.md`). So `$HOME` is the real home and the file lands at the literal
+//! `~/Library/Logs/Zanshin/`. The `ZANSHIN_LOG_DIR` env var overrides the directory outright —
+//! the test suites set it to a throwaway dir (so tests never pollute the real log dir) and
+//! operators can relocate logs without touching `$HOME`. (Were the sandbox ever re-enabled,
+//! `$HOME` would be redirected to `~/Library/Containers/<bundle-id>/Data/…` automatically.)
 //!
 //! The sole init-time `eprintln!` is a single line if the log directory cannot be created
 //! (AC-5.11) — never a panic.
@@ -29,6 +31,7 @@
 //! No log retention/size-cap in 0.1: old daily files persist until the user prunes them.
 //! Size/age-cap rotation returns in the release-phase supportability hardening.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 
@@ -39,6 +42,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
 const LOG_ENV: &str = "ZANSHIN_LOG";
+const LOG_DIR_ENV: &str = "ZANSHIN_LOG_DIR"; // explicit log-dir override (tests + ops); wins over $HOME
 const DEFAULT_LEVEL: &str = "info";
 const LOG_SUBDIR: &str = "Library/Logs/Zanshin"; // joined onto $HOME
 const LOG_PREFIX: &str = "zanshin.log"; // → files named `zanshin.log.YYYY-MM-DD`
@@ -124,7 +128,22 @@ fn env_filter_from(raw: Option<String>) -> EnvFilter {
 }
 
 fn resolve_log_dir() -> PathBuf {
-    log_dir_from_home(std::env::var_os("HOME").map(PathBuf::from))
+    log_dir_from_env(
+        std::env::var_os(LOG_DIR_ENV),
+        std::env::var_os("HOME").map(PathBuf::from),
+    )
+}
+
+/// Pure: an explicit `ZANSHIN_LOG_DIR` override wins; otherwise fall back to
+/// `$HOME/Library/Logs/Zanshin` (or the temp dir). The override lets the test suites redirect
+/// the file sink to a throwaway dir so `cargo make test` / `flutter test` never write into the
+/// developer's real `~/Library/Logs/Zanshin`, and lets operators relocate logs without touching
+/// `$HOME`. An empty value is ignored (treated as unset), mirroring the empty-`$HOME` handling.
+fn log_dir_from_env(override_dir: Option<OsString>, home: Option<PathBuf>) -> PathBuf {
+    match override_dir {
+        Some(d) if !d.is_empty() => PathBuf::from(d),
+        _ => log_dir_from_home(home),
+    }
 }
 
 /// Pure: `$HOME/Library/Logs/Zanshin`, or a temp fallback when `$HOME` is unavailable.
@@ -234,6 +253,20 @@ mod tests {
         let dir = log_dir_from_home(Some(PathBuf::from("")));
         assert!(dir.starts_with(std::env::temp_dir()));
         assert!(dir.to_string_lossy().contains("Zanshin"));
+    }
+
+    #[test]
+    fn log_dir_from_env_override_wins_over_home() {
+        // ZANSHIN_LOG_DIR redirects the sink wholesale — used by tests + ops.
+        let dir = log_dir_from_env(Some("/tmp/zanshin-logs".into()), Some(PathBuf::from("/Users/x")));
+        assert_eq!(dir, PathBuf::from("/tmp/zanshin-logs"));
+    }
+
+    #[test]
+    fn log_dir_from_env_empty_override_falls_back_to_home() {
+        // An empty override is treated as unset, so $HOME wins.
+        let dir = log_dir_from_env(Some(OsString::new()), Some(PathBuf::from("/Users/x")));
+        assert!(dir.ends_with("Library/Logs/Zanshin"));
     }
 
     #[test]
