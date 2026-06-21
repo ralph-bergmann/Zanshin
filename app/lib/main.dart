@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'main.inject.dart' as g;
 import 'src/features/app/zanshin_app.dart';
+import 'src/ffi/diagnostics.dart';
 import 'src/ffi/log_forwarder.dart';
 import 'src/ffi/zanshin_version.dart';
 import 'src/worker/isolate.dart';
@@ -68,7 +69,7 @@ Future<void> main() async {
   );
 }
 
-@Component([ZanshinFfiModule, WorkerModule])
+@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule])
 abstract class MainComponent {
   // ignore: specify_nonobvious_property_types
   static const create = g.MainComponent$Component.create;

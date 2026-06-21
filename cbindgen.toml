@@ -35,10 +35,18 @@ exclude = [
     # FlatBuffers vtable offset constants (associated consts in *_generated impl blocks;
     # cbindgen generates them as TypeName_CONST_NAME in the C header but matches them
     # by their Rust associated-constant name in this exclude list).
+    # FfiError
     "VT_CODE",
     "VT_CONTEXT",
+    # Envelope
     "VT_OK",
     "VT_ERROR",
     "VT_DATA_TYPE",
     "VT_DATA",
+    # RepoHandle (Story 3-4a)
+    "VT_HANDLE",
+    # Diagnostics (Story 3-8)
+    "VT_APP_VERSION",
+    "VT_GIT_SHA",
+    "VT_LOG_PATH",
 ]

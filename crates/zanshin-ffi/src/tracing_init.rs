@@ -134,6 +134,16 @@ fn resolve_log_dir() -> PathBuf {
     )
 }
 
+/// Returns the absolute directory where the tracing file sink writes its logs.
+///
+/// This is the single source of truth for `diagnostics.rs` — it reports exactly
+/// the same directory the sink resolved (whether that came from `ZANSHIN_LOG_DIR`,
+/// `$HOME/Library/Logs/Zanshin`, or the temp fallback).
+#[must_use]
+pub fn log_dir() -> PathBuf {
+    resolve_log_dir()
+}
+
 /// Pure: an explicit `ZANSHIN_LOG_DIR` override wins; otherwise fall back to
 /// `$HOME/Library/Logs/Zanshin` (or the temp dir). The override lets the test suites redirect
 /// the file sink to a throwaway dir so `cargo make test` / `flutter test` never write into the
@@ -276,5 +286,12 @@ mod tests {
         // regression guard for AC-5.11 ("never panic", no `Once` poisoning). macOS-only
         // target, so `/dev/null` always exists. Pure: no global `Once`, no real log dir.
         assert!(build_file_appender(Path::new("/dev/null/zanshin-cannot-exist")).is_none());
+    }
+
+    #[test]
+    fn log_dir_accessor_returns_non_empty_absolute_path() {
+        let dir = log_dir();
+        assert!(dir.is_absolute(), "log_dir() must return an absolute path");
+        assert!(!dir.as_os_str().is_empty(), "log_dir() must return a non-empty path");
     }
 }

@@ -93,6 +93,38 @@ pub fn ok_repo_handle(handle: u64) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
+/// Build a success `Envelope` with a `Diagnostics` payload and return the finished buffer.
+///
+/// Sets `ok = true`, `data_type = Payload::Diagnostics`, and populates the three
+/// diagnostic fields. All fields are compile-time constants or infallibly resolved
+/// values; this builder has no fallible path.
+#[must_use]
+pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let app_version_off = b.create_string(app_version);
+    let git_sha_off = b.create_string(git_sha);
+    let log_path_off = b.create_string(log_path);
+    let diag = fbs::Diagnostics::create(
+        &mut b,
+        &fbs::DiagnosticsArgs {
+            app_version: Some(app_version_off),
+            git_sha: Some(git_sha_off),
+            log_path: Some(log_path_off),
+        },
+    );
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type: fbs::Payload::Diagnostics,
+            data: Some(diag.as_union_value()),
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
+}
+
 /// Build an error `Envelope` and return the finished buffer.
 ///
 /// Sets `ok = false`, `data_type = Payload::NONE`, and populates `FfiError { code, context }`.
@@ -194,6 +226,19 @@ mod tests {
         assert_eq!(env.data_type(), fbs::Payload::RepoHandle);
         let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
         assert_eq!(rh.handle(), 0xdead_beef_cafe_1234);
+    }
+
+    #[test]
+    fn ok_diagnostics_produces_diagnostics_envelope() {
+        let buf = ok_diagnostics("1.2.3", "abc123", "/tmp/Logs/Zanshin");
+        let env = verified_envelope(&buf);
+        assert!(env.ok());
+        assert!(env.error().is_none());
+        assert_eq!(env.data_type(), fbs::Payload::Diagnostics);
+        let diag = env.data_as_diagnostics().expect("Diagnostics payload must be present");
+        assert_eq!(diag.app_version(), Some("1.2.3"));
+        assert_eq!(diag.git_sha(), Some("abc123"));
+        assert_eq!(diag.log_path(), Some("/tmp/Logs/Zanshin"));
     }
 
     #[test]

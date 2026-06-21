@@ -23,8 +23,6 @@ typedef struct {
   uintptr_t len;
 } ZanshinBuf;
 
-#define RepoHandle_VT_HANDLE 4
-
 /**
  * Build-stamp version string.
  *
@@ -38,6 +36,26 @@ typedef struct {
  * `zanshin_string_free` is called on it.
  */
 char *zanshin_ffi_version(void);
+
+/**
+ * Return a FlatBuffers `Envelope` carrying build-stamp and log-location
+ * diagnostics.
+ *
+ * Fields:
+ * - `app_version` — `CARGO_PKG_VERSION` from the shared `[workspace.package]`.
+ * - `git_sha`     — `ZANSHIN_GIT_SHA` injected by `build.rs` at compile time
+ *                   (`unknown` in a no-git build).
+ * - `log_path`    — the absolute directory the tracing file sink writes to,
+ *                   as resolved by `tracing_init::log_dir()`.
+ *
+ * The function is infallible (two compile-time constants + one path resolution
+ * with a temp fallback). The `envelope::catch` wrapper still provides the
+ * `internal.panic` backstop.
+ *
+ * The returned `*mut ZanshinBuf` **must** be freed exactly once via
+ * `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_diagnostics(void);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.

@@ -8,7 +8,8 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 
 enum PayloadTypeId {
   NONE(0),
-  RepoHandle(1);
+  RepoHandle(1),
+  Diagnostics(2);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -19,6 +20,8 @@ enum PayloadTypeId {
         return PayloadTypeId.NONE;
       case 1:
         return PayloadTypeId.RepoHandle;
+      case 2:
+        return PayloadTypeId.Diagnostics;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -27,7 +30,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 1;
+  static const int maxValue = 2;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -202,6 +205,101 @@ class RepoHandleObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Diagnostics payload returned by zanshin_diagnostics().
+///  All three fields are compile-time or infallibly-resolved values.
+class Diagnostics {
+  Diagnostics._(this._bc, this._bcOffset);
+  factory Diagnostics(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Diagnostics> reader = _DiagnosticsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get appVersion => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get gitSha => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get logPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'Diagnostics{appVersion: ${appVersion}, gitSha: ${gitSha}, logPath: ${logPath}}';
+  }
+}
+
+class _DiagnosticsReader extends fb.TableReader<Diagnostics> {
+  const _DiagnosticsReader();
+
+  @override
+  Diagnostics createObject(fb.BufferContext bc, int offset) => Diagnostics._(bc, offset);
+}
+
+class DiagnosticsBuilder {
+  DiagnosticsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addAppVersionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitShaOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLogPathOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DiagnosticsObjectBuilder extends fb.ObjectBuilder {
+  final String? _appVersion;
+  final String? _gitSha;
+  final String? _logPath;
+
+  DiagnosticsObjectBuilder({
+    String? appVersion,
+    String? gitSha,
+    String? logPath,
+  }) : _appVersion = appVersion,
+       _gitSha = gitSha,
+       _logPath = logPath;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? appVersionOffset = _appVersion == null ? null : fbBuilder.writeString(_appVersion!);
+    final int? gitShaOffset = _gitSha == null ? null : fbBuilder.writeString(_gitSha!);
+    final int? logPathOffset = _logPath == null ? null : fbBuilder.writeString(_logPath!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, appVersionOffset);
+    fbBuilder.addOffset(1, gitShaOffset);
+    fbBuilder.addOffset(2, logPathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -233,6 +331,8 @@ class Envelope {
     switch (dataType?.value) {
       case 1:
         return RepoHandle.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 2:
+        return Diagnostics.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

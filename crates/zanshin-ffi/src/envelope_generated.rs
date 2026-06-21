@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 1;
+        pub const ENUM_MAX_PAYLOAD: u8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 2] = [Payload::NONE, Payload::RepoHandle];
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 3] = [Payload::NONE, Payload::RepoHandle, Payload::Diagnostics];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
@@ -32,15 +32,17 @@ pub mod zanshin {
         impl Payload {
             pub const NONE: Self = Self(0);
             pub const RepoHandle: Self = Self(1);
+            pub const Diagnostics: Self = Self(2);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle];
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle, Self::Diagnostics];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::NONE => Some("NONE"),
                     Self::RepoHandle => Some("RepoHandle"),
+                    Self::Diagnostics => Some("Diagnostics"),
                     _ => None,
                 }
             }
@@ -329,6 +331,158 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum DiagnosticsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Diagnostics payload returned by zanshin_diagnostics().
+        /// All three fields are compile-time or infallibly-resolved values.
+        pub struct Diagnostics<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Diagnostics<'a> {
+            type Inner = Diagnostics<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Diagnostics<'a> {
+            pub const VT_APP_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_GIT_SHA: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LOG_PATH: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Diagnostics { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiagnosticsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Diagnostics<'bldr>> {
+                let mut builder = DiagnosticsBuilder::new(_fbb);
+                if let Some(x) = args.log_path {
+                    builder.add_log_path(x);
+                }
+                if let Some(x) = args.git_sha {
+                    builder.add_git_sha(x);
+                }
+                if let Some(x) = args.app_version {
+                    builder.add_app_version(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn app_version(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diagnostics::VT_APP_VERSION, None)
+                }
+            }
+            #[inline]
+            pub fn git_sha(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diagnostics::VT_GIT_SHA, None)
+                }
+            }
+            #[inline]
+            pub fn log_path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diagnostics::VT_LOG_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Diagnostics<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("app_version", Self::VT_APP_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("git_sha", Self::VT_GIT_SHA, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("log_path", Self::VT_LOG_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DiagnosticsArgs<'a> {
+            pub app_version: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub git_sha: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub log_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for DiagnosticsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiagnosticsArgs {
+                    app_version: None,
+                    git_sha: None,
+                    log_path: None,
+                }
+            }
+        }
+
+        pub struct DiagnosticsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiagnosticsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_app_version(&mut self, app_version: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diagnostics::VT_APP_VERSION, app_version);
+            }
+            #[inline]
+            pub fn add_git_sha(&mut self, git_sha: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diagnostics::VT_GIT_SHA, git_sha);
+            }
+            #[inline]
+            pub fn add_log_path(&mut self, log_path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diagnostics::VT_LOG_PATH, log_path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiagnosticsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiagnosticsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Diagnostics<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Diagnostics<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Diagnostics");
+                ds.field("app_version", &self.app_version());
+                ds.field("git_sha", &self.git_sha());
+                ds.field("log_path", &self.log_path());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -436,6 +590,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_diagnostics(&self) -> Option<Diagnostics<'a>> {
+                if self.data_type() == Payload::Diagnostics {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Diagnostics::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -457,6 +626,11 @@ pub mod zanshin {
                             Payload::RepoHandle => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoHandle>>(
                                     "Payload::RepoHandle",
+                                    pos,
+                                ),
+                            Payload::Diagnostics => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<Diagnostics>>(
+                                    "Payload::Diagnostics",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -532,6 +706,13 @@ pub mod zanshin {
                 match self.data_type() {
                     Payload::RepoHandle => {
                         if let Some(x) = self.data_as_repo_handle() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Diagnostics => {
+                        if let Some(x) = self.data_as_diagnostics() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

@@ -32,6 +32,7 @@ table FfiError {
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
+//   Story 3-8  : Diagnostics ✓
 //   Story 3-4b : status, change, op_log, bookmarks, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
@@ -44,8 +45,17 @@ table RepoHandle {
   handle: ulong;
 }
 
+/// Diagnostics payload returned by zanshin_diagnostics().
+/// All three fields are compile-time or infallibly-resolved values.
+table Diagnostics {
+  app_version: string;
+  git_sha: string;
+  log_path: string;
+}
+
 union Payload {
   RepoHandle,
+  Diagnostics,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
