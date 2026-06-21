@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: MIT
+
+import 'isolate.dart';
+import 'responses.dart';
+
+/// Main-isolate wrapper around an open jj repository (Model A, Story 3.9).
+///
+/// Holds an opaque [handleId] that the worker resolves to its internal
+/// `*mut Repo` pointer. Raw handles never leave the worker — this class
+/// contains only integers.
+///
+/// Lifecycle:
+/// - Created by [ZanshinWorker.openRepo] / [ZanshinWorker.initRepo] /
+///   [ZanshinWorker.cloneRepo].
+/// - Closed explicitly via [close], or implicitly when GC runs the
+///   Dart [Finalizer] (belt-and-suspenders).
+///
+/// The `NativeFinalizer` rule in project-context applies to wrappers whose
+/// callback is a C function pointer. This class frees a resource across the
+/// isolate boundary via a Dart call — a Dart [Finalizer] is correct (R4).
+final class RepoHandle {
+  /// Wrap `handleId` returned by the worker for the given `worker`.
+  RepoHandle(this._worker, this._handleId) {
+    _finalizer.attach(this, (_worker, _handleId), detach: this);
+  }
+
+  final ZanshinWorker _worker;
+  final int _handleId;
+  var _closed = false;
+
+  /// The opaque dense id in the worker's handle table.
+  ///
+  /// 3.4b read commands pass this to [ZanshinWorker.send] as the handle
+  /// discriminant, e.g. `StatusCommand(commandId: id, handleId: handleId)`.
+  int get handleId => _handleId;
+
+  /// Close the repository on the worker and release the handle table entry.
+  ///
+  /// Idempotent: subsequent calls are silently no-ops.
+  ///
+  /// Swallows `StateError('Worker is closed')` — a closed worker has already
+  /// released all handles with the process. A genuine `ffi.invalid_handle`
+  /// surfaces as [ZanshinFfiException] (it would signal a bug in the table).
+  Future<void> close() async {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    _finalizer.detach(this);
+    try {
+      await _worker.closeRepo(_handleId);
+    } catch (e) {
+      // WHY: During closeRepo, if the worker shuts down concurrently,
+      // correlator.failAll propagates StateError('Worker is closed') through
+      // the awaited future. Swallowing it is correct — the OS reclaims FFI
+      // handles at process exit. All other exceptions are re-thrown.
+      if (e is! StateError) {
+        rethrow;
+      }
+    }
+  }
+
+  // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the
+  // worker. Best-effort: the callback fires on the event loop so the worker
+  // might be gone; all errors are swallowed (a GC-time throw is unacceptable).
+  //
+  // WHY Dart Finalizer, not NativeFinalizer: NativeFinalizer requires a C
+  // function pointer taking a single Pointer<Void>. Closing a repo requires
+  // a Dart async call across the isolate boundary — Dart Finalizer is the
+  // correct mechanism (R4, Story 3.9).
+  static final _finalizer = Finalizer<(ZanshinWorker, int)>((token) {
+    final (worker, handleId) = token;
+    // WHY: Finalizer callbacks are synchronous; closeRepo is best-effort GC
+    // cleanup. .catchError swallows all failures; .ignore() discards the future
+    // intentionally (suppresses discarded_futures lint).
+    worker.closeRepo(handleId).catchError((_) {}).ignore();
+  });
+}

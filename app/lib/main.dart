@@ -13,6 +13,8 @@ import 'main.inject.dart' as g;
 import 'src/features/app/zanshin_app.dart';
 import 'src/ffi/log_forwarder.dart';
 import 'src/ffi/zanshin_version.dart';
+import 'src/worker/isolate.dart';
+import 'src/worker/worker_module.dart';
 
 Future<void> main() async {
   // All initialization inside the same zone as runApp to avoid zone mismatch.
@@ -48,7 +50,11 @@ Future<void> main() async {
         },
       );
 
-      final g.MainComponent$Component mainComponent = MainComponent.create();
+      // ignore: specify_nonobvious_local_variable_types
+      final mainComponent = MainComponent.create();
+      // Start the worker and trigger the ProvisionListener (which wires the
+      // AppLifecycleListener for graceful shutdown on macOS).
+      await mainComponent.worker;
       final ZanshinApp app = mainComponent.zanshinAppFactory.create();
       runApp(app);
     },
@@ -62,15 +68,18 @@ Future<void> main() async {
   );
 }
 
-@Component([ZanshinFfiModule])
+@Component([ZanshinFfiModule, WorkerModule])
 abstract class MainComponent {
-  static const g.MainComponent$Component Function() create = g.MainComponent$Component.create;
+  // ignore: specify_nonobvious_property_types
+  static const create = g.MainComponent$Component.create;
 
-  // WHY: inject_generator reads this @inject abstract getter as the DI contract
-  // and emits its concrete override in main.inject.dart. The analyzer's
-  // unreachable_from_main check can't see the generated override, so it reports
-  // the declaration as dead — it is load-bearing for codegen. Suppress the false
-  // positive (mirrors the Rust crate-level #[allow] + // WHY: discipline).
+  // WHY: inject_generator reads these @inject abstract getters as the DI
+  // contract and emits concrete overrides in main.inject.dart. The analyzer's
+  // unreachable_from_main check can't see the generated overrides — they are
+  // load-bearing for codegen. Suppress the false positive.
   @inject
   ZanshinAppFactory get zanshinAppFactory; // ignore: unreachable_from_main
+
+  @inject
+  Future<ZanshinWorker> get worker; // ignore: unreachable_from_main
 }

@@ -77,6 +77,12 @@ private = true
 command = "flutter"
 args = ["test"]
 cwd = "app"
+# WHY: pin jj/git global config so the Dart suite (which now drives real
+# zanshin_repo_init/open through the cdylib) is deterministic on a clean CI
+# runner vs a developer's machine — matching the Rust suites' empty-env
+# convention (project-context "Property of every test suite"; Story 3.9 AC-16).
+# Dart cannot set process env in-process, so it is pinned here at the task level.
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "" }
 
 [tasks.test-dart-analyze]
 private = true
