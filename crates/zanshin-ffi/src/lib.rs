@@ -17,12 +17,22 @@ use core::ffi::c_char;
 #[allow(warnings)]
 pub(crate) mod envelope_generated;
 
+/// Re-export of the flatc-generated `FlatBuffers` accessors for `schemas/envelope.fbs`.
+///
+/// Integration tests and Dart-side consumers that read `ZanshinBuf` buffers use these
+/// generated typed accessors (`Envelope`, `Payload`, `RepoHandle`, …) and the
+/// `flatbuffers::root` verifier to parse and validate FFI return values.
+// WHY: pub(crate) on the module itself prevents cluttering the public API with the
+// raw module path; this re-export provides a stable, doc-visible alias.
+pub use envelope_generated::zanshin::ffi as fbs;
+
 pub mod envelope;
 pub use envelope::*;
 
 pub mod ffi_strings;
 pub mod handle;
 pub mod logging;
+pub mod repo;
 pub mod tracing_init;
 
 /// Build-stamp version string.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 //
 // Core FFI envelope schema — the carrier for every fallible composite FFI call.
 //
@@ -31,18 +31,21 @@ table FfiError {
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
-//   Story 3-4a : RepoOpenResult
+//   Story 3-4a : RepoHandle  ✓
 //   Story 3-4b : status, change, op_log, bookmarks, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
 
-/// Placeholder so the union compiles before any real payload type exists.
-/// Remove when the first real Payload member is added (Story 3-4a).
-table Empty {}
+/// Opaque handle to an open Repo.
+/// `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+/// Dart passes it back verbatim to zanshin_repo_close.
+table RepoHandle {
+  handle: ulong;
+}
 
 union Payload {
-  Empty,
+  RepoHandle,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

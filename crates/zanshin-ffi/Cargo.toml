@@ -13,8 +13,10 @@ rust-version.workspace = true
 # WHY: native_toolchain_rust 1.0.4 hard-requires both staticlib and cdylib
 # (crate_info_validator.dart:29 enforces `['staticlib', 'cdylib'].every(types.contains)`).
 # The cdylib is the actual FFI boundary; the staticlib is a tool-mandated artefact
-# with no in-tree consumer. Revisit if upstream relaxes the constraint.
-crate-type = ["staticlib", "cdylib"]
+# with no in-tree consumer. "lib" (rlib) is added so that integration tests in
+# tests/ can link against the crate as an external Rust dependency (Cargo does not
+# produce an implicit rlib when both staticlib and cdylib are present).
+crate-type = ["lib", "staticlib", "cdylib"]
 name = "zanshin_ffi"
 
 [dependencies]
@@ -24,6 +26,11 @@ flatbuffers = { workspace = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
+zanshin-jj = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
 [lints]
 workspace = true

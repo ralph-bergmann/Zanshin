@@ -39,9 +39,10 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `ffi.invalid_handle`            | `ffi`      | A repo/object handle value is not in the live handle table.          | **Emitted — Story 3.2** (`envelope.rs::FFI_INVALID_HANDLE`) |
 | `ffi.null_pointer`              | `ffi`      | A required pointer argument was null.                                | **Emitted — Story 3.2** (`envelope.rs::FFI_NULL_POINTER`) |
 | `ffi.utf8_error`                | `ffi`      | A `*const c_char` argument contained invalid UTF-8.                 | **Emitted — Story 3.2** (`envelope.rs::FFI_UTF8_ERROR`) |
-| `jj.repo_not_found`             | `jj`       | No jj repo found at or above the given path.                         | Reserved — Story 3.4a              |
-| `jj.path_not_found`             | `jj`       | A path argument does not exist on disk.                              | Reserved — Story 3.4a              |
-| `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | Reserved — Story 3.4a              |
+| `jj.repo_not_found`             | `jj`       | No jj repo found at or above the given path.                         | **Emitted — Story 3.4a** (`envelope.rs::JJ_REPO_NOT_FOUND`, `repo.rs`) |
+| `jj.path_not_found`             | `jj`       | A path argument does not exist on disk.                              | **Emitted — Story 3.4a** (`envelope.rs::JJ_PATH_NOT_FOUND`, `repo.rs`) |
+| `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | **Emitted — Story 3.4a** (`envelope.rs::JJ_JJ_LIB_ERROR`, `repo.rs`) |
+| `ffi.invalid_argument`          | `ffi`      | A required argument value is out of the accepted range.              | **Emitted — Story 3.4a** (`envelope.rs::FFI_INVALID_ARGUMENT`, `repo.rs`) |
 | `watcher.io_error`              | `watcher`  | An I/O error in the filesystem-watch subsystem.                      | Reserved — deferred watcher stories |
 | `watcher.watchman_not_configured` | `watcher` | Watchman is not installed or not on `$PATH`.                        | Reserved — deferred watcher stories |
 

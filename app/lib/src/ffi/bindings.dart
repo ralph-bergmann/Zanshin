@@ -95,8 +95,9 @@ external void zanshin_log(
 );
 
 /// Install the process-wide `tracing` subscriber (AR-P-5) so that both forwarded
-/// Dart records and Rust-origin logs reach the sink (rotating file at
-/// `~/Library/Logs/Zanshin/`, plus stderr in debug builds).
+/// Dart records and Rust-origin logs reach the sinks — the rotating file plus the
+/// always-on console layer. See [`crate::tracing_init`] for the file path (and its
+/// App-Sandbox caveat) and the layer/level details.
 ///
 /// Idempotent (a second call is a no-op via the inner `Once`) and never panics.
 /// Call once at startup **before** logging — the Dart façade does this from
@@ -104,6 +105,90 @@ external void zanshin_log(
 /// same underlying init instead; the `Once` makes the overlap harmless.
 @ffi.Native<ffi.Void Function()>()
 external void zanshin_logging_init();
+
+/// Open an existing jj repository at `path`.
+///
+/// Returns a success `Envelope` whose payload is `RepoHandle { handle }` on success,
+/// or an error `Envelope` on failure. The handle is an opaque integer the Dart caller
+/// must pass back to `zanshin_repo_close` when done.
+///
+/// # Errors
+/// - `jj.path_not_found` — `path` does not exist on disk.
+/// - `jj.repo_not_found` — `path` exists but is not a jj repo.
+/// - `ffi.null_pointer` — `path` is a null pointer.
+/// - `ffi.utf8_error` — `path` contains invalid UTF-8.
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null (null is detected and
+/// returned as `ffi.null_pointer`). The returned `*mut ZanshinBuf` is heap-allocated
+/// and must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_open(
+  ffi.Pointer<ffi.Char> path,
+);
+
+/// Initialise a new jj repository at `path`.
+///
+/// `backend` selects the storage backend: `0` → native/simple, `1` → Git.
+/// Any other value returns `ffi.invalid_argument`.
+///
+/// Returns a `RepoHandle` envelope on success.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — `backend` is not `0` or `1`.
+/// - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
+/// - `jj.jj_lib_error` — init failed (e.g. repo already exists).
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null. The returned token
+/// must be freed via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Char>, ffi.Int32)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_init(
+  ffi.Pointer<ffi.Char> path,
+  int backend,
+);
+
+/// Clone a jj repository from `url` into `target_path`.
+///
+/// Uses a `file://` local source in tests — no network access is needed or allowed.
+/// On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone`.
+///
+/// Returns a `RepoHandle` envelope on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
+/// - `jj.jj_lib_error` — clone failed; detail in `context`.
+///
+/// # Safety
+/// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
+/// The returned token must be freed via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_clone(
+  ffi.Pointer<ffi.Char> url,
+  ffi.Pointer<ffi.Char> target_path,
+);
+
+/// Close an open repository and release its resources.
+///
+/// `handle` is the opaque integer returned by `zanshin_repo_open`, `zanshin_repo_init`,
+/// or `zanshin_repo_clone`. After this call the handle is invalid; the Dart caller
+/// must null its local copy.
+///
+/// Returns a no-payload success `Envelope` on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null).
+///
+/// # Safety
+/// `handle` must be a value previously returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` call that has not yet been closed.
+/// Passing a freed non-zero handle is undefined behaviour; the Dart contract is to
+/// null the local handle after `close` (AD-2: no handle table, single-isolate model).
+/// The returned token must be freed via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
+  int handle,
+);
 
 /// Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
 /// boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
@@ -115,3 +200,5 @@ final class ZanshinBuf extends ffi.Struct {
   @ffi.UintPtr()
   external int len;
 }
+
+const int RepoHandle_VT_HANDLE = 4;

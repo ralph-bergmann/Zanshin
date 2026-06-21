@@ -3074,9 +3074,12 @@ name = "zanshin-ffi"
 version = "0.1.0"
 dependencies = [
  "flatbuffers",
+ "tempfile",
+ "test-helpers",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "zanshin-jj",
 ]
 
 [[package]]

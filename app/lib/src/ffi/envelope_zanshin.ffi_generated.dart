@@ -8,7 +8,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 
 enum PayloadTypeId {
   NONE(0),
-  Empty(1);
+  RepoHandle(1);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -18,7 +18,7 @@ enum PayloadTypeId {
       case 0:
         return PayloadTypeId.NONE;
       case 1:
-        return PayloadTypeId.Empty;
+        return PayloadTypeId.RepoHandle;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -129,40 +129,67 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Placeholder so the union compiles before any real payload type exists.
-///  Remove when the first real Payload member is added (Story 3-4a).
-class Empty {
-  Empty._(this._bc, this._bcOffset);
-  factory Empty(List<int> bytes) {
+///  Opaque handle to an open Repo.
+///  `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+///  Dart passes it back verbatim to zanshin_repo_close.
+class RepoHandle {
+  RepoHandle._(this._bc, this._bcOffset);
+  factory RepoHandle(List<int> bytes) {
     final rootRef = fb.BufferContext.fromBytes(bytes);
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<Empty> reader = _EmptyReader();
+  static const fb.Reader<RepoHandle> reader = _RepoHandleReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
 
+  int get handle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+
   @override
   String toString() {
-    return 'Empty{}';
+    return 'RepoHandle{handle: ${handle}}';
   }
 }
 
-class _EmptyReader extends fb.TableReader<Empty> {
-  const _EmptyReader();
+class _RepoHandleReader extends fb.TableReader<RepoHandle> {
+  const _RepoHandleReader();
 
   @override
-  Empty createObject(fb.BufferContext bc, int offset) => Empty._(bc, offset);
+  RepoHandle createObject(fb.BufferContext bc, int offset) => RepoHandle._(bc, offset);
 }
 
-class EmptyObjectBuilder extends fb.ObjectBuilder {
-  EmptyObjectBuilder();
+class RepoHandleBuilder {
+  RepoHandleBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addHandle(int? handle) {
+    fbBuilder.addUint64(0, handle);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RepoHandleObjectBuilder extends fb.ObjectBuilder {
+  final int? _handle;
+
+  RepoHandleObjectBuilder({
+    int? handle,
+  }) : _handle = handle;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    fbBuilder.startTable(0);
+    fbBuilder.startTable(1);
+    fbBuilder.addUint64(0, _handle);
     return fbBuilder.endTable();
   }
 
@@ -205,7 +232,7 @@ class Envelope {
   dynamic get data {
     switch (dataType?.value) {
       case 1:
-        return Empty.reader.vTableGetNullable(_bc, _bcOffset, 10);
+        return RepoHandle.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

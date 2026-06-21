@@ -20,6 +20,15 @@ pub const FFI_INVALID_HANDLE: &str = "ffi.invalid_handle";
 pub const FFI_NULL_POINTER: &str = "ffi.null_pointer";
 /// AR-P-4: emitted by `ffi_strings::cstr_to_string` when a `*const c_char` contains invalid UTF-8.
 pub const FFI_UTF8_ERROR: &str = "ffi.utf8_error";
+/// AR-P-4: emitted when a required argument value is out of the accepted range (e.g. unknown backend discriminant).
+pub const FFI_INVALID_ARGUMENT: &str = "ffi.invalid_argument";
+
+/// AR-P-4: emitted by `repo.rs` when a path argument does not exist on disk.
+pub const JJ_PATH_NOT_FOUND: &str = "jj.path_not_found";
+/// AR-P-4: emitted by `repo.rs` when no jj repo is found at the given path.
+pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
+/// AR-P-4: emitted by `repo.rs` for unclassified jj-lib errors; detail in `context`.
+pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///
@@ -56,6 +65,28 @@ pub fn ok_empty() -> Vec<u8> {
             error: None,
             data_type: fbs::Payload::NONE,
             data: None,
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
+}
+
+/// Build a success `Envelope` with a `RepoHandle` payload and return the finished buffer.
+///
+/// Sets `ok = true`, `data_type = Payload::RepoHandle`, `data.handle = handle`.
+/// `handle` is the raw `*mut Repo` cast to `u64` via `handle_into_raw`; Dart stores it
+/// and passes it back verbatim to `zanshin_repo_close`.
+#[must_use]
+pub fn ok_repo_handle(handle: u64) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(128);
+    let h = fbs::RepoHandle::create(&mut b, &fbs::RepoHandleArgs { handle });
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type: fbs::Payload::RepoHandle,
+            data: Some(h.as_union_value()),
         },
     );
     b.finish(envelope, None);
@@ -152,6 +183,17 @@ mod tests {
         let opts = VerifierOptions::default();
         flatbuffers::root_with_opts::<fbs::Envelope>(&opts, bytes)
             .expect("FlatBuffers Verifier must pass for a well-formed Envelope buffer")
+    }
+
+    #[test]
+    fn ok_repo_handle_produces_repo_handle_envelope() {
+        let buf = ok_repo_handle(0xdead_beef_cafe_1234);
+        let env = verified_envelope(&buf);
+        assert!(env.ok());
+        assert!(env.error().is_none());
+        assert_eq!(env.data_type(), fbs::Payload::RepoHandle);
+        let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
+        assert_eq!(rh.handle(), 0xdead_beef_cafe_1234);
     }
 
     #[test]

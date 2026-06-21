@@ -23,7 +23,7 @@ pub mod zanshin {
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 2] = [Payload::NONE, Payload::Empty];
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 2] = [Payload::NONE, Payload::RepoHandle];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
@@ -31,16 +31,16 @@ pub mod zanshin {
         #[allow(non_upper_case_globals)]
         impl Payload {
             pub const NONE: Self = Self(0);
-            pub const Empty: Self = Self(1);
+            pub const RepoHandle: Self = Self(1);
 
             pub const ENUM_MIN: u8 = 0;
             pub const ENUM_MAX: u8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::Empty];
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::NONE => Some("NONE"),
-                    Self::Empty => Some("Empty"),
+                    Self::RepoHandle => Some("RepoHandle"),
                     _ => None,
                 }
             }
@@ -230,17 +230,18 @@ pub mod zanshin {
                 ds.finish()
             }
         }
-        pub enum EmptyOffset {}
+        pub enum RepoHandleOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// Placeholder so the union compiles before any real payload type exists.
-        /// Remove when the first real Payload member is added (Story 3-4a).
-        pub struct Empty<'a> {
+        /// Opaque handle to an open Repo.
+        /// `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+        /// Dart passes it back verbatim to zanshin_repo_close.
+        pub struct RepoHandle<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for Empty<'a> {
-            type Inner = Empty<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for RepoHandle<'a> {
+            type Inner = RepoHandle<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -249,62 +250,82 @@ pub mod zanshin {
             }
         }
 
-        impl<'a> Empty<'a> {
+        impl<'a> RepoHandle<'a> {
+            pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
+
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                Empty { _tab: table }
+                RepoHandle { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                _args: &'args EmptyArgs,
-            ) -> ::flatbuffers::WIPOffset<Empty<'bldr>> {
-                let mut builder = EmptyBuilder::new(_fbb);
+                args: &'args RepoHandleArgs,
+            ) -> ::flatbuffers::WIPOffset<RepoHandle<'bldr>> {
+                let mut builder = RepoHandleBuilder::new(_fbb);
+                builder.add_handle(args.handle);
                 builder.finish()
+            }
+
+            #[inline]
+            pub fn handle(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RepoHandle::VT_HANDLE, Some(0)).unwrap() }
             }
         }
 
-        impl ::flatbuffers::Verifiable for Empty<'_> {
+        impl ::flatbuffers::Verifiable for RepoHandle<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?.finish();
+                v.visit_table(pos)?
+                    .visit_field::<u64>("handle", Self::VT_HANDLE, false)?
+                    .finish();
                 Ok(())
             }
         }
-        pub struct EmptyArgs {}
-        impl<'a> Default for EmptyArgs {
+        pub struct RepoHandleArgs {
+            pub handle: u64,
+        }
+        impl<'a> Default for RepoHandleArgs {
             #[inline]
             fn default() -> Self {
-                EmptyArgs {}
+                RepoHandleArgs { handle: 0 }
             }
         }
 
-        pub struct EmptyBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct RepoHandleBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EmptyBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepoHandleBuilder<'a, 'b, A> {
             #[inline]
-            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EmptyBuilder<'a, 'b, A> {
+            pub fn add_handle(&mut self, handle: u64) {
+                self.fbb_.push_slot::<u64>(RepoHandle::VT_HANDLE, handle, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoHandleBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                EmptyBuilder {
+                RepoHandleBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<Empty<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RepoHandle<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for Empty<'_> {
+        impl ::core::fmt::Debug for RepoHandle<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("Empty");
+                let mut ds = f.debug_struct("RepoHandle");
+                ds.field("handle", &self.handle());
                 ds.finish()
             }
         }
@@ -403,13 +424,13 @@ pub mod zanshin {
             }
             #[inline]
             #[allow(non_snake_case)]
-            pub fn data_as_empty(&self) -> Option<Empty<'a>> {
-                if self.data_type() == Payload::Empty {
+            pub fn data_as_repo_handle(&self) -> Option<RepoHandle<'a>> {
+                if self.data_type() == Payload::RepoHandle {
                     self.data().map(|t| {
                         // Safety:
                         // Created from a valid Table for this object
                         // Which contains a valid union in this slot
-                        unsafe { Empty::init_from_table(t) }
+                        unsafe { RepoHandle::init_from_table(t) }
                     })
                 } else {
                     None
@@ -433,9 +454,11 @@ pub mod zanshin {
                         Self::VT_DATA,
                         false,
                         |key, v, pos| match key {
-                            Payload::Empty => {
-                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Empty>>("Payload::Empty", pos)
-                            }
+                            Payload::RepoHandle => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoHandle>>(
+                                    "Payload::RepoHandle",
+                                    pos,
+                                ),
                             _ => Ok(()),
                         },
                     )?
@@ -507,8 +530,8 @@ pub mod zanshin {
                 ds.field("error", &self.error());
                 ds.field("data_type", &self.data_type());
                 match self.data_type() {
-                    Payload::Empty => {
-                        if let Some(x) = self.data_as_empty() {
+                    Payload::RepoHandle => {
+                        if let Some(x) = self.data_as_repo_handle() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
