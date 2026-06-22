@@ -145,6 +145,23 @@ void main() {
         ),
       );
     });
+
+    test('repo_handle_double_close_is_idempotent', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // First close releases the worker-side handle-table entry.
+      await handle.close();
+
+      // Second + third close via the public RepoHandle API must be silent
+      // no-ops: the `_closed` guard short-circuits before reaching the worker,
+      // so they do NOT surface the `ffi.invalid_handle` the raw worker path
+      // returns (cf. worker_close_unknown_handle_id_returns_invalid_handle).
+      // Together those two tests secure the double-close / stale-handle path:
+      // no crash and no FFI call with a freed pointer (Model-A use-after-free
+      // guarantee, ADR-0002).
+      await expectLater(handle.close(), completes);
+      await expectLater(handle.close(), completes);
+    });
   });
 
   // ── Command after close ───────────────────────────────────────────────────
