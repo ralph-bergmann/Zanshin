@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import '../ffi/status.dart' show WorkingCopyStatus;
 import 'isolate.dart';
 import 'responses.dart';
 
@@ -58,6 +59,18 @@ final class RepoHandle {
         rethrow;
       }
     }
+  }
+
+  /// Read the working-copy status for this repository.
+  ///
+  /// Throws [StateError] if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.no_working_copy`, `jj.jj_lib_error`).
+  Future<WorkingCopyStatus> status() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.status(_handleId);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

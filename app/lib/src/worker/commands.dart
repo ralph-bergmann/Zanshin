@@ -64,3 +64,15 @@ final class CloseRepoCommand extends WorkerCommand {
   /// Opaque dense handle id previously assigned by the worker on open/init/clone.
   final int handleId;
 }
+
+/// Read the working-copy status of the repo identified by [handleId].
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_status`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<Status>` bytes.
+final class StatusCommand extends WorkerCommand {
+  const StatusCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}

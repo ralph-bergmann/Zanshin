@@ -34,6 +34,7 @@ pub mod ffi_strings;
 pub mod handle;
 pub mod logging;
 pub mod repo;
+pub mod status;
 pub mod tracing_init;
 
 /// Build-stamp version string.

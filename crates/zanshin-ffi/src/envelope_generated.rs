@@ -12,18 +12,125 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_CHANGE_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 2;
+        pub const ENUM_MAX_CHANGE_KIND: i8 = 4;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 3] = [Payload::NONE, Payload::RepoHandle, Payload::Diagnostics];
+        pub const ENUM_VALUES_CHANGE_KIND: [ChangeKind; 5] = [
+            ChangeKind::Added,
+            ChangeKind::Modified,
+            ChangeKind::Removed,
+            ChangeKind::Renamed,
+            ChangeKind::Copied,
+        ];
+
+        /// How a working-copy file changed between @- and @.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ChangeKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl ChangeKind {
+            pub const Added: Self = Self(0);
+            pub const Modified: Self = Self(1);
+            pub const Removed: Self = Self(2);
+            pub const Renamed: Self = Self(3);
+            pub const Copied: Self = Self(4);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 4;
+            pub const ENUM_VALUES: &'static [Self] =
+                &[Self::Added, Self::Modified, Self::Removed, Self::Renamed, Self::Copied];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Added => Some("Added"),
+                    Self::Modified => Some("Modified"),
+                    Self::Removed => Some("Removed"),
+                    Self::Renamed => Some("Renamed"),
+                    Self::Copied => Some("Copied"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ChangeKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ChangeKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ChangeKind {
+            type Output = ChangeKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ChangeKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ChangeKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ChangeKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 3;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 4] = [
+            Payload::NONE,
+            Payload::RepoHandle,
+            Payload::Diagnostics,
+            Payload::Status,
+        ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
@@ -33,16 +140,18 @@ pub mod zanshin {
             pub const NONE: Self = Self(0);
             pub const RepoHandle: Self = Self(1);
             pub const Diagnostics: Self = Self(2);
+            pub const Status: Self = Self(3);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 2;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle, Self::Diagnostics];
+            pub const ENUM_MAX: u8 = 3;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle, Self::Diagnostics, Self::Status];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::NONE => Some("NONE"),
                     Self::RepoHandle => Some("RepoHandle"),
                     Self::Diagnostics => Some("Diagnostics"),
+                    Self::Status => Some("Status"),
                     _ => None,
                 }
             }
@@ -483,6 +592,329 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum FileChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One changed file. `from_path` is set ONLY for Renamed/Copied (the source
+        /// path); it is absent for Added/Modified/Removed.
+        pub struct FileChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileChange<'a> {
+            type Inner = FileChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileChange<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM_PATH: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileChange<'bldr>> {
+                let mut builder = FileChangeBuilder::new(_fbb);
+                if let Some(x) = args.from_path {
+                    builder.add_from_path(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileChange::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> ChangeKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ChangeKind>(FileChange::VT_KIND, Some(ChangeKind::Added))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn from_path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileChange::VT_FROM_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<ChangeKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from_path", Self::VT_FROM_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileChangeArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: ChangeKind,
+            pub from_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FileChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileChangeArgs {
+                    path: None,
+                    kind: ChangeKind::Added,
+                    from_path: None,
+                }
+            }
+        }
+
+        pub struct FileChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileChange::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: ChangeKind) {
+                self.fbb_
+                    .push_slot::<ChangeKind>(FileChange::VT_KIND, kind, ChangeKind::Added);
+            }
+            #[inline]
+            pub fn add_from_path(&mut self, from_path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileChange::VT_FROM_PATH, from_path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileChange");
+                ds.field("path", &self.path());
+                ds.field("kind", &self.kind());
+                ds.field("from_path", &self.from_path());
+                ds.finish()
+            }
+        }
+        pub enum StatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Working-copy status: files changed between @ and @-, plus both change ids
+        /// in jj's reverse-hex display form.
+        pub struct Status<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Status<'a> {
+            type Inner = Status<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Status<'a> {
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PARENT_CHANGE_ID: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Status { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args StatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Status<'bldr>> {
+                let mut builder = StatusBuilder::new(_fbb);
+                if let Some(x) = args.parent_change_id {
+                    builder.add_parent_change_id(x);
+                }
+                if let Some(x) = args.working_copy_change_id {
+                    builder.add_working_copy_change_id(x);
+                }
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn files(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>(Status::VT_FILES, None)
+                }
+            }
+            #[inline]
+            pub fn working_copy_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Status::VT_WORKING_COPY_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn parent_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Status::VT_PARENT_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Status<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>("files", Self::VT_FILES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "working_copy_change_id",
+                        Self::VT_WORKING_COPY_CHANGE_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent_change_id",
+                        Self::VT_PARENT_CHANGE_ID,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct StatusArgs<'a> {
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>>,
+            >,
+            pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub parent_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for StatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                StatusArgs {
+                    files: None,
+                    working_copy_change_id: None,
+                    parent_change_id: None,
+                }
+            }
+        }
+
+        pub struct StatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> StatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Status::VT_FILES, files);
+            }
+            #[inline]
+            pub fn add_working_copy_change_id(&mut self, working_copy_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Status::VT_WORKING_COPY_CHANGE_ID,
+                    working_copy_change_id,
+                );
+            }
+            #[inline]
+            pub fn add_parent_change_id(&mut self, parent_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Status::VT_PARENT_CHANGE_ID, parent_change_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> StatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                StatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Status<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Status<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Status");
+                ds.field("files", &self.files());
+                ds.field("working_copy_change_id", &self.working_copy_change_id());
+                ds.field("parent_change_id", &self.parent_change_id());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -605,6 +1037,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_status(&self) -> Option<Status<'a>> {
+                if self.data_type() == Payload::Status {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Status::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -633,6 +1080,9 @@ pub mod zanshin {
                                     "Payload::Diagnostics",
                                     pos,
                                 ),
+                            Payload::Status => {
+                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Status>>("Payload::Status", pos)
+                            }
                             _ => Ok(()),
                         },
                     )?
@@ -713,6 +1163,13 @@ pub mod zanshin {
                     }
                     Payload::Diagnostics => {
                         if let Some(x) = self.data_as_diagnostics() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Status => {
+                        if let Some(x) = self.data_as_status() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

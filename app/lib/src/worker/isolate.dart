@@ -11,6 +11,7 @@ import 'package:logging/logging.dart';
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/log_forwarder.dart';
 import '../ffi/repo.dart' as repo_ffi;
+import '../ffi/status.dart' as repo_ffi_status;
 
 import 'commands.dart';
 import 'correlation.dart';
@@ -339,6 +340,20 @@ class ZanshinWorker {
         break;
     }
   }
+
+  /// Read the working-copy status for the repo identified by [handleId].
+  ///
+  /// Sends a [StatusCommand] via the existing [send] path and decodes the
+  /// returned FlatBuffers `Envelope<Status>` bytes into a `WorkingCopyStatus`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.no_working_copy`). Throws [StateError] synchronously after [close].
+  Future<repo_ffi_status.WorkingCopyStatus> status(int handleId) async {
+    final Uint8List bytes = await send(
+      StatusCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_status.decodeStatusEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -403,6 +418,23 @@ void _workerEntry(_WorkerInit init) {
           } else {
             final Uint8List bytes = repo_ffi.zanshinRepoClose(raw);
             log.fine('Worker: closed handleId $handleId');
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case StatusCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: StatusCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_status.zanshinStatus(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
       }

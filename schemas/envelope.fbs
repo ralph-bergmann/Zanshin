@@ -33,7 +33,7 @@ table FfiError {
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
-//   Story 3-4b : status, change, op_log, bookmarks, remotes
+//   Story 3-4b : status ✓, change, op_log, bookmarks, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
@@ -53,9 +53,29 @@ table Diagnostics {
   log_path: string;
 }
 
+/// How a working-copy file changed between @- and @.
+enum ChangeKind : byte { Added, Modified, Removed, Renamed, Copied }
+
+/// One changed file. `from_path` is set ONLY for Renamed/Copied (the source
+/// path); it is absent for Added/Modified/Removed.
+table FileChange {
+  path: string;
+  kind: ChangeKind;
+  from_path: string;
+}
+
+/// Working-copy status: files changed between @ and @-, plus both change ids
+/// in jj's reverse-hex display form.
+table Status {
+  files: [FileChange];
+  working_copy_change_id: string;
+  parent_change_id: string;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
+  Status,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -29,6 +29,8 @@ pub const JJ_PATH_NOT_FOUND: &str = "jj.path_not_found";
 pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
 /// AR-P-4: emitted by `repo.rs` for unclassified jj-lib errors; detail in `context`.
 pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
+/// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@).
+pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///

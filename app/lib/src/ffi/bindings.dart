@@ -20,15 +20,13 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> zanshin_ffi_version();
 
-/// Return a FlatBuffers `Envelope` carrying build-stamp and log-location
+/// Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
 /// diagnostics.
 ///
-/// Fields:
-/// - `app_version` — `CARGO_PKG_VERSION` from the shared `[workspace.package]`.
-/// - `git_sha`     — `ZANSHIN_GIT_SHA` injected by `build.rs` at compile time
-/// (`unknown` in a no-git build).
-/// - `log_path`    — the absolute directory the tracing file sink writes to,
-/// as resolved by `tracing_init::log_dir()`.
+/// Returns a `FlatBuffers` `Envelope` with three diagnostic fields:
+/// `app_version` (`CARGO_PKG_VERSION`), `git_sha` (`ZANSHIN_GIT_SHA` from
+/// `build.rs`, `unknown` in a no-git build), and `log_path` (the absolute
+/// log directory from `tracing_init::log_dir()`).
 ///
 /// The function is infallible (two compile-time constants + one path resolution
 /// with a temp fallback). The `envelope::catch` wrapper still provides the
@@ -202,10 +200,34 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_clone(
 /// `handle` must be a value previously returned by a successful `zanshin_repo_open`,
 /// `zanshin_repo_init`, or `zanshin_repo_clone` call that has not yet been closed.
 /// Passing a freed non-zero handle is undefined behaviour; the Dart contract is to
-/// null the local handle after `close` (AD-2: no handle table, single-isolate model).
+/// null the local handle after `close`. There is no handle table in Rust (AD-2,
+/// single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
+/// the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
+/// loader, not a state cache — reads re-resolve to head (ADR-0002).
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
 external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
+  int handle,
+);
+
+/// Read the working-copy status of the repo identified by `handle`.
+///
+/// Returns a FlatBuffers `Envelope` carrying a `Status` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.no_working_copy` — the workspace has no working-copy commit (@).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_status(
   int handle,
 );
 
@@ -219,3 +241,19 @@ final class ZanshinBuf extends ffi.Struct {
   @ffi.UintPtr()
   external int len;
 }
+
+const int ENUM_MIN_CHANGE_KIND = 0;
+
+const int ENUM_MAX_CHANGE_KIND = 4;
+
+const int FileChange_VT_PATH = 4;
+
+const int FileChange_VT_KIND = 6;
+
+const int FileChange_VT_FROM_PATH = 8;
+
+const int Status_VT_FILES = 4;
+
+const int Status_VT_WORKING_COPY_CHANGE_ID = 6;
+
+const int Status_VT_PARENT_CHANGE_ID = 8;

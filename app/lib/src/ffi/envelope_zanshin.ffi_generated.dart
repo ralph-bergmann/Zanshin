@@ -6,10 +6,56 @@ library zanshin.ffi;
 import 'dart:typed_data' show Uint8List;
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
+///  How a working-copy file changed between @- and @.
+enum ChangeKind {
+  Added(0),
+  Modified(1),
+  Removed(2),
+  Renamed(3),
+  Copied(4);
+
+  final int value;
+  const ChangeKind(this.value);
+
+  factory ChangeKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ChangeKind.Added;
+      case 1:
+        return ChangeKind.Modified;
+      case 2:
+        return ChangeKind.Removed;
+      case 3:
+        return ChangeKind.Renamed;
+      case 4:
+        return ChangeKind.Copied;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ChangeKind? _createOrNull(int? value) => value == null ? null : ChangeKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<ChangeKind> reader = _ChangeKindReader();
+}
+
+class _ChangeKindReader extends fb.Reader<ChangeKind> {
+  const _ChangeKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ChangeKind read(fb.BufferContext bc, int offset) => ChangeKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
-  Diagnostics(2);
+  Diagnostics(2),
+  Status(3);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -22,6 +68,8 @@ enum PayloadTypeId {
         return PayloadTypeId.RepoHandle;
       case 2:
         return PayloadTypeId.Diagnostics;
+      case 3:
+        return PayloadTypeId.Status;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -30,7 +78,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 2;
+  static const int maxValue = 3;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -300,6 +348,200 @@ class DiagnosticsObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One changed file. `from_path` is set ONLY for Renamed/Copied (the source
+///  path); it is absent for Added/Modified/Removed.
+class FileChange {
+  FileChange._(this._bc, this._bcOffset);
+  factory FileChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileChange> reader = _FileChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  ChangeKind get kind => ChangeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  String? get fromPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'FileChange{path: ${path}, kind: ${kind}, fromPath: ${fromPath}}';
+  }
+}
+
+class _FileChangeReader extends fb.TableReader<FileChange> {
+  const _FileChangeReader();
+
+  @override
+  FileChange createObject(fb.BufferContext bc, int offset) => FileChange._(bc, offset);
+}
+
+class FileChangeBuilder {
+  FileChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addKind(ChangeKind? kind) {
+    fbBuilder.addInt8(1, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addFromPathOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final ChangeKind? _kind;
+  final String? _fromPath;
+
+  FileChangeObjectBuilder({
+    String? path,
+    ChangeKind? kind,
+    String? fromPath,
+  }) : _path = path,
+       _kind = kind,
+       _fromPath = fromPath;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? fromPathOffset = _fromPath == null ? null : fbBuilder.writeString(_fromPath!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addInt8(1, _kind?.value);
+    fbBuilder.addOffset(2, fromPathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Working-copy status: files changed between @ and @-, plus both change ids
+///  in jj's reverse-hex display form.
+class Status {
+  Status._(this._bc, this._bcOffset);
+  factory Status(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Status> reader = _StatusReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<FileChange>? get files =>
+      const fb.ListReader<FileChange>(FileChange.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  String? get workingCopyChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get parentChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'Status{files: ${files}, workingCopyChangeId: ${workingCopyChangeId}, parentChangeId: ${parentChangeId}}';
+  }
+}
+
+class _StatusReader extends fb.TableReader<Status> {
+  const _StatusReader();
+
+  @override
+  Status createObject(fb.BufferContext bc, int offset) => Status._(bc, offset);
+}
+
+class StatusBuilder {
+  StatusBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addFilesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopyChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addParentChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class StatusObjectBuilder extends fb.ObjectBuilder {
+  final List<FileChangeObjectBuilder>? _files;
+  final String? _workingCopyChangeId;
+  final String? _parentChangeId;
+
+  StatusObjectBuilder({
+    List<FileChangeObjectBuilder>? files,
+    String? workingCopyChangeId,
+    String? parentChangeId,
+  }) : _files = files,
+       _workingCopyChangeId = workingCopyChangeId,
+       _parentChangeId = parentChangeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? filesOffset = _files == null
+        ? null
+        : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? workingCopyChangeIdOffset = _workingCopyChangeId == null
+        ? null
+        : fbBuilder.writeString(_workingCopyChangeId!);
+    final int? parentChangeIdOffset = _parentChangeId == null ? null : fbBuilder.writeString(_parentChangeId!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, filesOffset);
+    fbBuilder.addOffset(1, workingCopyChangeIdOffset);
+    fbBuilder.addOffset(2, parentChangeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -333,6 +575,8 @@ class Envelope {
         return RepoHandle.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 2:
         return Diagnostics.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 3:
+        return Status.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

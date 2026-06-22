@@ -43,6 +43,7 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `jj.path_not_found`             | `jj`       | A path argument does not exist on disk.                              | **Emitted — Story 3.4a** (`envelope.rs::JJ_PATH_NOT_FOUND`, `repo.rs`) |
 | `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | **Emitted — Story 3.4a** (`envelope.rs::JJ_JJ_LIB_ERROR`, `repo.rs`) |
 | `ffi.invalid_argument`          | `ffi`      | A required argument value is out of the accepted range.              | **Emitted — Story 3.4a** (`envelope.rs::FFI_INVALID_ARGUMENT`, `repo.rs`) |
+| `jj.no_working_copy`            | `jj`       | The workspace has no working-copy commit (@).                        | **Emitted — Story 3.4b** (`envelope.rs::JJ_NO_WORKING_COPY`, `status.rs`) |
 | `watcher.io_error`              | `watcher`  | An I/O error in the filesystem-watch subsystem.                      | Reserved — deferred watcher stories |
 | `watcher.watchman_not_configured` | `watcher` | Watchman is not installed or not on `$PATH`.                        | Reserved — deferred watcher stories |
 
