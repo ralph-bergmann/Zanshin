@@ -3090,6 +3090,7 @@ version = "0.1.0"
 name = "zanshin-jj"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "gix",
  "jj-lib",
  "pollster 0.3.0",

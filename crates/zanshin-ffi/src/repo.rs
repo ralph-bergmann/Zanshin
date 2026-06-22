@@ -154,7 +154,10 @@ pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *co
 /// `handle` must be a value previously returned by a successful `zanshin_repo_open`,
 /// `zanshin_repo_init`, or `zanshin_repo_clone` call that has not yet been closed.
 /// Passing a freed non-zero handle is undefined behaviour; the Dart contract is to
-/// null the local handle after `close` (AD-2: no handle table, single-isolate model).
+/// null the local handle after `close`. There is no handle table in Rust (AD-2,
+/// single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
+/// the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
+/// loader, not a state cache — reads re-resolve to head (ADR-0002).
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 #[no_mangle]
 pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
@@ -168,8 +171,9 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
         }
         // SAFETY: handle is a non-zero value that originated from handle_into_raw in
         // zanshin_repo_open/init/clone (a Box<Repo> leaked to Dart). The single-isolate
-        // model (AD-2) guarantees no concurrent access. Dart is responsible for calling
-        // close at most once per handle (NativeFinalizer fires at most once).
+        // model (AD-2) guarantees no concurrent access. The Dart worker removes the
+        // handleId mapping on close (Model A, Story 3.9), and the explicit close + Dart
+        // Finalizer backstop fire at most once, so a freed handle is not re-passed.
         unsafe { crate::handle::handle_drop::<Repo>(handle as *mut Repo) };
         Ok(ok_empty())
     });

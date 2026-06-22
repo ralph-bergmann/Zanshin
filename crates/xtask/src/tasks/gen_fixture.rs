@@ -33,7 +33,8 @@ pub struct GenFixtureArgs {
     /// Size of fixture to generate
     #[arg(long, value_enum, group = "mode")]
     size: Option<FixtureSize>,
-    /// Generate all fixtures (tiny + medium)
+    /// Generate the default fixture set (tiny + medium). `large` is opt-in via `--size large`
+    /// (heavy, regenerated deliberately for perf work — see test-fixtures/repos/README.md).
     #[arg(long, group = "mode")]
     all: bool,
 }
@@ -42,6 +43,7 @@ pub struct GenFixtureArgs {
 enum FixtureSize {
     Tiny,
     Medium,
+    Large,
 }
 
 pub fn run(args: GenFixtureArgs) -> Result<(), BoxError> {
@@ -62,6 +64,7 @@ fn fixture_name(size: FixtureSize) -> &'static str {
     match size {
         FixtureSize::Tiny => "tiny-3-commits",
         FixtureSize::Medium => "medium-1k-commits",
+        FixtureSize::Large => "large-10k-commits",
     }
 }
 
@@ -78,6 +81,7 @@ fn generate(size: FixtureSize) -> Result<(), BoxError> {
     match size {
         FixtureSize::Tiny => build_tiny(&repo)?,
         FixtureSize::Medium => build_medium(&repo)?,
+        FixtureSize::Large => build_large(&repo)?,
     }
 
     let out_dir = output_dir();
@@ -259,6 +263,70 @@ fn build_medium(repo: &Arc<ReadonlyRepo>) -> Result<(), BoxError> {
     }
 
     pollster::block_on(tx.commit("gen-fixture: medium-1k-commits"))?;
+    Ok(())
+}
+
+// Same shape as `build_medium`, scaled 10×: 2000 linear → 3×660 branches → merge → 6019
+// linear = 10 000 commits. Bookmarks every 200 commits plus the named branch/merge/tip refs.
+fn build_large(repo: &Arc<ReadonlyRepo>) -> Result<(), BoxError> {
+    let store = repo.store().clone();
+    let root_id = store.root_commit_id().clone();
+    let mut tx = repo.start_transaction();
+    let mut idx: u32 = 0; // global commit counter (for tree file names + timestamps)
+    let mut bookmarks: Vec<(String, CommitId)> = Vec::new();
+
+    // ── Phase 1: 2000 linear commits ─────────────────────────────────────────
+    let mut head = root_id;
+    for _ in 0u32..2000 {
+        idx += 1;
+        head = write_commit(&store, &mut tx, vec![head], idx, format!("Linear-{idx}"))?;
+        if idx.is_multiple_of(200) {
+            bookmarks.push((format!("bookmark-{}", bookmarks.len() + 1), head.clone()));
+        }
+    }
+    let branch_base = head.clone();
+
+    // ── Branches A / B / C: 660 commits each (parent = branch_base) ───────────
+    let mut tips: Vec<CommitId> = Vec::with_capacity(3);
+    for (label, name) in [
+        ("BranchA", "branch-a"),
+        ("BranchB", "branch-b"),
+        ("BranchC", "branch-c"),
+    ] {
+        let mut h = branch_base.clone();
+        for i in 0u32..660 {
+            idx += 1;
+            h = write_commit(&store, &mut tx, vec![h], idx, format!("{label}-{i}"))?;
+        }
+        bookmarks.push((name.to_owned(), h.clone()));
+        tips.push(h);
+    }
+
+    // ── Merge commit (parents: A, B, C) ──────────────────────────────────────
+    idx += 1;
+    head = write_commit(&store, &mut tx, tips, idx, "Merge branches A, B, and C")?;
+    bookmarks.push(("merge".to_owned(), head.clone()));
+
+    // ── Phase 2: 6019 linear commits ─────────────────────────────────────────
+    for _ in 0u32..6019 {
+        idx += 1;
+        head = write_commit(&store, &mut tx, vec![head], idx, format!("Linear-{idx}"))?;
+        if idx.is_multiple_of(200) {
+            bookmarks.push((format!("bookmark-{}", bookmarks.len() + 1), head.clone()));
+        }
+    }
+    bookmarks.push(("tip".to_owned(), head.clone()));
+
+    // ── Apply bookmarks ───────────────────────────────────────────────────────
+    {
+        let mut_repo = tx.repo_mut();
+        for (name, commit_id) in bookmarks {
+            let ref_name: RefNameBuf = name.into();
+            mut_repo.set_local_bookmark_target(&ref_name, RefTarget::normal(commit_id));
+        }
+    }
+
+    pollster::block_on(tx.commit("gen-fixture: large-10k-commits"))?;
     Ok(())
 }
 

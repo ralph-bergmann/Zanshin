@@ -2,7 +2,7 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-last_revised: '2026-06-17'
+last_revised: '2026-06-22'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
 status: 'complete (WIP-scope rework 2026-05-17)'
@@ -10,6 +10,7 @@ optimized_for_llm: true
 overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
   - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
+  - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k'
 scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
@@ -187,7 +188,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - All `extern "C"` symbols: `zanshin_<noun>_<verb>` snake_case.
   Constructor/destructor pairs share noun: every `_open` has matching `_close`.
 - Single-threaded Rust-side access. NO `Arc<Mutex<T>>` / `RwLock` around handles.
-  The Dart worker isolate is the sole consumer (AD-2).
+  The Dart worker isolate is the sole consumer (AD-2). The app holds 0..N handles
+  (multi-repo / project overview); one isolate serializes all access, so still no
+  `Arc<Mutex>`. The repo handle is a warm `Workspace` loader + op-heads-watcher owner,
+  not a state cache — reads re-resolve to head (ADR-0002).
 - Async Rust→Dart signals: `NativeCallable.listener` ONLY. Same mechanism for
   watcher events AND progress notifications — no special-case channels.
 
@@ -589,9 +593,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 **Performance gotchas:**
 
-- **Lane-cache rebuild on EVERY `op_heads` change**, not just on repo-open.
-  Don't add staleness checks that skip rebuilds — the cache becomes wrong
-  silently. The whole rebuild fits in NFR-P-1's < 1s sub-budget at 10k commits.
+- **Lane state is re-derived (streamed) on every `op_heads` change**, not held as a
+  long-lived materialized cache (ADR-0002 AC-4 resolved: full graph derive ~3 ms @ 10k,
+  first render page ~27 µs). The op-heads watcher is the coherency trigger (op-id compare);
+  the graph is re-derived via a lazy revset stream (`stream_graph` + `TopoGroupedGraph`, GG
+  model) and never trusted across an op-id advance. **Don't reintroduce a materialized lane
+  cache** — it buys nothing here (re-derive ≪ NFR-P-1's < 1s @ 10k) and brings back staleness.
 - **`zanshin-graph` render-slice is O(slice-size), not O(full-cache).**
   Hand-rolled iteration over the cache per render call would tank UI scrolling
   performance. Use the slice API.
@@ -627,6 +634,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   for what was deliberately decided here vs. inherited from architecture.
 
 **Reference documents:**
+- `docs/adr/0002-repository-state-model-warm-loader-reload-per-operation.md` — repository
+  state model (warm loader + re-resolve-per-operation; refines AD-2/AD-4/AD-5; resolves the
+  FR-GR-3 lane-cache decision → lazy revset stream, no materialized cache)
+- `_bmad-output/planning-artifacts/research/technical-vcs-gui-repo-state-cache-vs-reload-research-2026-06-22.md`
+  — research backing ADR-0002 (29-agent survey of 13 Git/jj GUIs; coherency patterns; jj cost model)
 - `docs/adr/0001-ffi-data-transport-flatbuffers.md` — FFI transport decision
   (FlatBuffers for composite data; supersedes the JSON-envelope parts of AD-1/AD-3/AD-4)
 - `_bmad-output/planning-artifacts/architecture.md` — full architecture
@@ -639,6 +651,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
+Last Updated: 2026-06-22 (ADR-0002 adopted: the repo handle is a warm `Workspace` loader + op-heads-watcher owner that re-resolves per operation, NOT an authoritative state cache; app is multi-repo (0..N handles); FR-GR-3 lane-cache decision resolved (AC-4): the lane graph is streamed (GG model), no materialized cache — full derive ~3 ms @ 10k (Story 3.11). Performance-gotchas + handle-semantics sections reconciled.)
+Previously: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
 Previously: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)
 Previously: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)

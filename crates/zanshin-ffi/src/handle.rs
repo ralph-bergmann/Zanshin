@@ -28,8 +28,8 @@ pub unsafe fn handle_from_raw<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
 ///
 /// # Safety
 /// `ptr` must be null or a live pointer from [`handle_into_raw`]; it must not be dropped twice.
-/// Double-drop is UB at the C ABI; Dart's `NativeFinalizer` detach-then-close pattern (a later
-/// story) prevents accidental double-free from Dart.
+/// Double-drop is UB at the C ABI; Dart's `Finalizer` detach-then-close pattern (Story 3.9)
+/// prevents accidental double-free from Dart.
 pub unsafe fn handle_drop<T>(ptr: *mut T) {
     if ptr.is_null() {
         return;

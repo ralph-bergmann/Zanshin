@@ -9,9 +9,12 @@ via `test_helpers::extract_fixture(name)` — they are **never rebuilt** during 
 |---|---|---|
 | `tiny-3-commits.tar.zst` | 3 linear commits, single author, fixed timestamps | < 50 KB |
 | `medium-1k-commits.tar.zst` | 1 000 commits: 200 linear → 3 parallel branches (66 each) → merge → 601 linear; ~30 bookmarks | < 5 MB |
+| `large-10k-commits.tar.zst` | 10 000 commits: 2 000 linear → 3 parallel branches (660 each) → merge → 6 019 linear; ~45 bookmarks | ~5 MB |
 
-> **Deferred:** `large-10k-commits` is not included in the WIP build. It will be added in the
-> release phase when performance tests are re-enabled.
+> **`large-10k` is opt-in:** it is *not* produced by `--all`. Generate it deliberately with
+> `cargo xtask gen-fixture --size large` (drives the `bench_repo_state_large` decision benchmark,
+> Story 3.11 / ADR-0002). Whether the archive is committed in-tree is a separate call — the
+> generator (`xtask` `build_large`) is the reviewable recipe.
 
 ## Regenerating
 

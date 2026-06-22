@@ -304,3 +304,161 @@ fn make_settings() -> Result<UserSettings, RepoError> {
     );
     UserSettings::from_config(config).map_err(|e| RepoError::Backend(e.to_string()))
 }
+
+// ── Decision-input benchmark (ADR-0002 / Story 3.11) ──────────────────────────
+//
+// NOT a CI gate (perf-gates stay deferred while WIP). These `#[ignore]`d tests
+// measure the two numbers the warm-loader-vs-held-cache decision rests on:
+//   1. `Workspace::load` (the warm-load cost paid once when a repo becomes active)
+//   2. `repo_loader().load_at_head()` (the per-read re-resolution cost — the number
+//      that decides whether reload-per-operation is cheap enough; ADR-0002).
+// The working-copy SNAPSHOT cost is deliberately NOT measured here: it is paid
+// whether you hold or reload (orthogonal to the decision) and needs the
+// working-copy mutation path; it is addressed by fsmonitor/Watchman separately.
+//
+// Run (release, single-threaded, show output):
+//   cargo test -p zanshin-jj --release bench_repo_state -- --ignored --nocapture --test-threads=1
+#[cfg(test)]
+mod bench {
+    use std::sync::{Arc, LazyLock};
+    use std::time::{Duration, Instant};
+    use std::{env, hint};
+
+    use futures::executor::block_on;
+    use futures::StreamExt as _;
+    use jj_lib::backend::CommitId;
+    use jj_lib::graph::TopoGroupedGraph;
+    use jj_lib::repo::{ReadonlyRepo, Repo as JjRepo};
+    use jj_lib::revset::ResolvedRevsetExpression;
+    use test_helpers::extract_fixture;
+
+    use super::Repo;
+
+    static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
+        // SAFETY: set once before any repo load, mirroring `tests/repo.rs`; empty
+        // values pin jj-lib/git off the developer's globals for reproducible timing.
+        unsafe {
+            env::set_var("JJ_CONFIG", "");
+            env::set_var("GIT_CONFIG_GLOBAL", "");
+        }
+    });
+
+    fn pin_env() {
+        LazyLock::force(&ENV_GUARD);
+    }
+
+    /// Returns `(min, median)` over `iters` timed runs after `warmup` untimed runs.
+    /// `min` is the least-noisy floor (no scheduler interference / page faults);
+    /// `median` is robust to a single outlier. Per-fixture warmup neutralises the
+    /// cross-test process warmup, so the result is independent of test-run order.
+    fn measure<F: FnMut()>(warmup: u32, iters: u32, mut f: F) -> (Duration, Duration) {
+        for _ in 0..warmup {
+            f();
+        }
+        let mut samples: Vec<Duration> = (0..iters)
+            .map(|_| {
+                let t = Instant::now();
+                f();
+                t.elapsed()
+            })
+            .collect();
+        samples.sort_unstable();
+        (samples[0], samples[samples.len() / 2])
+    }
+
+    fn bench_fixture(name: &str) {
+        pin_env();
+        let fixture = extract_fixture(name).expect("fixture must extract");
+        let path = &fixture.path;
+
+        // 1. Workspace::load — fresh open each iteration (the warm-load cost).
+        let (load_min, load_med) = measure(5, 51, || {
+            let repo = Repo::open(path).expect("open must succeed");
+            hint::black_box(&repo);
+        });
+
+        // 2. load_at_head() — re-resolve the head operation on an already-open
+        //    workspace (the per-read cost under reload-per-operation).
+        let repo = Repo::open(path).expect("open must succeed");
+        let (res_min, res_med) = measure(5, 51, || {
+            let resolved =
+                pollster::block_on(repo.workspace.repo_loader().load_at_head()).expect("load_at_head must succeed");
+            hint::black_box(&resolved);
+        });
+
+        eprintln!("[bench {name}] load: min {load_min:?} / med {load_med:?}  |  load_at_head: min {res_min:?} / med {res_med:?}");
+    }
+
+    #[test]
+    #[ignore = "decision-input benchmark; run with --ignored --nocapture in --release"]
+    fn bench_repo_state_tiny() {
+        bench_fixture("tiny-3-commits");
+    }
+
+    #[test]
+    #[ignore = "decision-input benchmark; run with --ignored --nocapture in --release"]
+    fn bench_repo_state_medium() {
+        bench_fixture("medium-1k-commits");
+    }
+
+    #[test]
+    #[ignore = "decision-input benchmark; requires `cargo xtask gen-fixture --size large` first; run with --ignored --nocapture in --release"]
+    fn bench_repo_state_large() {
+        bench_fixture("large-10k-commits");
+    }
+
+    // ── Graph build/derive cost (ADR-0002 AC-4: materialized lane cache vs. lazy stream) ──
+    // Walks the whole commit graph in topological order (children-before-parents — the
+    // lane-drawable order GG consumes) via jj-lib's Stream-based revset graph API. This is
+    // the derive cost a materialized lane cache OR a stream must pay on an op_heads change;
+    // `first-100` is the streamed initial-render-slice cost (the GG `QuerySession` page).
+    type BenchErr = Box<dyn std::error::Error>;
+
+    fn walk_graph(repo: &Arc<ReadonlyRepo>, limit: Option<usize>) -> Result<usize, BenchErr> {
+        // `all()` carries no symbols, so it needs no resolver/extensions/prefix-context.
+        let expr = ResolvedRevsetExpression::all();
+        let repo_dyn: &dyn JjRepo = repo.as_ref();
+        let revset = expr.evaluate(repo_dyn)?;
+        // identity id-mapper, annotated for HRTB inference (mirrors GG's commit_id_identity).
+        let as_id: for<'a> fn(&'a CommitId) -> &'a CommitId = |id| id;
+        let mut stream = Box::pin(TopoGroupedGraph::new(revset.stream_graph(), as_id).stream());
+        let mut count = 0usize;
+        while let Some(item) = block_on(stream.next()) {
+            item?; // GraphNode<CommitId> = (CommitId, Vec<GraphEdge<CommitId>>)
+            count += 1;
+            if limit.is_some_and(|n| count >= n) {
+                break;
+            }
+        }
+        Ok(count)
+    }
+
+    fn bench_graph(name: &str) {
+        pin_env();
+        let fixture = extract_fixture(name).expect("fixture must extract");
+        let handle = Repo::open(&fixture.path).expect("open must succeed");
+        let repo = pollster::block_on(handle.workspace.repo_loader().load_at_head()).expect("load_at_head");
+
+        let nodes = walk_graph(&repo, None).expect("walk must succeed");
+        let (full_min, full_med) = measure(2, 7, || {
+            hint::black_box(walk_graph(&repo, None).expect("walk must succeed"));
+        });
+        let (page_min, page_med) = measure(3, 21, || {
+            hint::black_box(walk_graph(&repo, Some(100)).expect("walk must succeed"));
+        });
+
+        eprintln!("[graph {name}] nodes={nodes} | full-walk: min {full_min:?} / med {full_med:?} | first-100: min {page_min:?} / med {page_med:?}");
+    }
+
+    #[test]
+    #[ignore = "decision-input benchmark (AC-4); requires `cargo xtask gen-fixture --size large`; run with --ignored --nocapture in --release"]
+    fn bench_graph_large() {
+        bench_graph("large-10k-commits");
+    }
+
+    #[test]
+    #[ignore = "decision-input benchmark (AC-4); run with --ignored --nocapture in --release"]
+    fn bench_graph_medium() {
+        bench_graph("medium-1k-commits");
+    }
+}

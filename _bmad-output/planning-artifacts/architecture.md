@@ -206,11 +206,13 @@ returned as a `*mut c_char` (owned by Rust, freed via dedicated `zanshin_free_st
 
 **Decision:** Rust owns all opaque handles via `Box<T>`; Dart holds raw `*mut c_void` pointers. Lifecycle pairs: `zanshin_X_open(...) -> *mut X` / `zanshin_X_close(ptr)`.
 
-**Dart-side safety net:** Every handle-wrapping Dart class registers a `NativeFinalizer` pointing at the corresponding `_close` function — guards against forgotten explicit close.
+Per [ADR-0002](../../docs/adr/0002-repository-state-model-warm-loader-reload-per-operation.md), the repo handle is a **warm `Workspace` loader and owner of the op-heads watcher**, not a cache of repo state — reads re-resolve to the latest operation per call (cheap: ~100–250µs at ≤1k commits, benchmarked Story 3.11). The app is **multi-repo** (holds 0..N handles concurrently); the single-threaded model holds for N repos (one worker isolate serializes all access).
+
+**Dart-side safety net:** Every handle-wrapping Dart class registers a finalizer pointing at the corresponding `_close` (a `NativeFinalizer` for synchronous frees like `FfiBuffer`; a Dart `Finalizer` for the repo handle whose close is async across the isolate) — guards against forgotten explicit close. The Dart worker also keeps a `handleId → raw pointer` table (Story 3.9), which removes the mapping on close so a stale handle never reaches Rust.
 
 **Concurrency assumption:** Single-threaded Rust-side access. The long-running worker isolate is the sole consumer; no `Arc<Mutex<T>>` overhead. If a second consumer ever appears (e.g., a UI-thread diagnostic call), it goes through the worker via the command bus, not directly to the handle.
 
-**Rationale:** Minimal overhead; matches the worker-isolate concurrency model (PRD §3.1). `NativeFinalizer` is belt-and-suspenders against leaks during development.
+**Rationale:** Minimal overhead; matches the worker-isolate concurrency model (PRD §3.1). The finalizer is belt-and-suspenders against leaks during development. Reads re-resolving to head eliminate the coherency bugs that plague held-cache models and align Zanshin with jj's lock-free design (ADR-0002).
 
 ### AD-3: Schemas as Wire Contract
 
@@ -439,7 +441,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── lane.rs                 # FR-GR-1 algorithm
-│   │       ├── cache.rs                # FR-GR-3 full lane-cache on open / op_heads
+│   │       ├── cache.rs                # FR-GR-3 → lazy revset stream, NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k)
 │   │       ├── slice.rs                # FR-GR-4 render-slice API
 │   │       └── output.rs               # FR-GR-2 JSON
 │   │
