@@ -7,5 +7,7 @@
 //! none appear in any public signature (FR-JJ-16).
 
 mod repo;
+pub(crate) mod status;
 
 pub use repo::{Backend, Repo, RepoError};
+pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};

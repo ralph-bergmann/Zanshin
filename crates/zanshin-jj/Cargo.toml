@@ -10,13 +10,13 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+futures = { workspace = true }
 gix = { workspace = true }
 jj-lib = { workspace = true }
 pollster = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-futures = { workspace = true }
 tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers", version = "0.1.0" }
 

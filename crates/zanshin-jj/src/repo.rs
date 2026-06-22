@@ -60,6 +60,19 @@ impl Repo {
         self.workspace.workspace_root()
     }
 
+    /// Returns the working-copy status: files changed between `@` and `@-`.
+    ///
+    /// Re-resolves to head on every call (ADR-0002). Read-only — does not snapshot
+    /// the working copy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StatusError::NoWorkingCopy`] if the workspace has no
+    /// working-copy commit, or [`crate::StatusError::Backend`] on jj-lib failure.
+    pub fn status(&self) -> Result<crate::Status, crate::StatusError> {
+        crate::status::working_copy_status(&self.workspace)
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors
