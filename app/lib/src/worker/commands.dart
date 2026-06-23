@@ -76,3 +76,23 @@ final class StatusCommand extends WorkerCommand {
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   final int handleId;
 }
+
+/// Read full change metadata for the change identified by [changeId] in the
+/// repo identified by [handleId].
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_change`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<Change>` bytes.
+final class GetChangeCommand extends WorkerCommand {
+  const GetChangeCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.changeId,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// jj reverse-hex change identifier (sendable across the isolate port).
+  final String changeId;
+}

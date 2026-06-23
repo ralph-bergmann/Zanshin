@@ -33,7 +33,7 @@ table FfiError {
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
-//   Story 3-4b : status ✓, change, op_log, bookmarks, remotes
+//   Story 3-4b : status ✓, change ✓, op_log, bookmarks, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
@@ -72,10 +72,38 @@ table Status {
   parent_change_id: string;
 }
 
+/// A commit signature: who authored/committed and when (raw jj timestamp).
+table Signature {
+  name: string;
+  email: string;
+  timestamp_millis: long;     // millis since the Unix epoch
+  tz_offset_minutes: int;     // timezone offset, minutes east of UTC
+}
+
+/// Whether a change is conflict-free. `conflicted_paths` is populated only when Conflicted.
+enum ConflictState : byte { Clean, Conflicted }
+
+/// Full metadata for one change (FR-JJ-6). Authored/committed times live on the
+/// author/committer signatures (authored_at == author.timestamp_millis, etc.).
+table Change {
+  id: string;                  // ChangeId reverse-hex (stable across rebases)
+  commit_id: string;           // CommitId hex (Git SHA; changes on rebase)
+  parents: [string];           // parent ChangeIds reverse-hex; empty for the root change
+  description: string;         // always present, may be empty
+  author: Signature;
+  committer: Signature;
+  is_signed: bool;             // cryptographic signature present (presence-only; 2.6 D3)
+  conflict: ConflictState;
+  conflicted_paths: [string];  // populated only when conflict == Conflicted
+  is_anonymous: bool;
+  divergent: bool;             // change id resolved to >1 visible commit (2.6 D4)
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
   Status,
+  Change,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

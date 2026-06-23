@@ -20,6 +20,35 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> zanshin_ffi_version();
 
+/// Read full metadata for the change identified by `change_id` in the repo
+/// referenced by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `Change` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
+/// - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// `change_id` must be a NUL-terminated UTF-8 C string owned by the caller
+/// (Dart allocates it via `toNativeUtf8()` and frees it with `calloc.free()`
+/// after this call returns — AR-P-5 inbound rule). Rust only borrows it for
+/// the duration of the call; it is never freed on the Rust side.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_change(
+  int handle,
+  ffi.Pointer<ffi.Char> change_id,
+);
+
 /// Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
 /// diagnostics.
 ///
@@ -212,7 +241,7 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 
 /// Read the working-copy status of the repo identified by `handle`.
 ///
-/// Returns a FlatBuffers `Envelope` carrying a `Status` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -246,6 +275,10 @@ const int ENUM_MIN_CHANGE_KIND = 0;
 
 const int ENUM_MAX_CHANGE_KIND = 4;
 
+const int ENUM_MIN_CONFLICT_STATE = 0;
+
+const int ENUM_MAX_CONFLICT_STATE = 1;
+
 const int FileChange_VT_PATH = 4;
 
 const int FileChange_VT_KIND = 6;
@@ -257,3 +290,33 @@ const int Status_VT_FILES = 4;
 const int Status_VT_WORKING_COPY_CHANGE_ID = 6;
 
 const int Status_VT_PARENT_CHANGE_ID = 8;
+
+const int Signature_VT_NAME = 4;
+
+const int Signature_VT_EMAIL = 6;
+
+const int Signature_VT_TIMESTAMP_MILLIS = 8;
+
+const int Signature_VT_TZ_OFFSET_MINUTES = 10;
+
+const int Change_VT_ID = 4;
+
+const int Change_VT_COMMIT_ID = 6;
+
+const int Change_VT_PARENTS = 8;
+
+const int Change_VT_DESCRIPTION = 10;
+
+const int Change_VT_AUTHOR = 12;
+
+const int Change_VT_COMMITTER = 14;
+
+const int Change_VT_IS_SIGNED = 16;
+
+const int Change_VT_CONFLICT = 18;
+
+const int Change_VT_CONFLICTED_PATHS = 20;
+
+const int Change_VT_IS_ANONYMOUS = 22;
+
+const int Change_VT_DIVERGENT = 24;

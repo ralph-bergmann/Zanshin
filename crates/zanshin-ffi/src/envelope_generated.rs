@@ -114,22 +114,112 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_CONFLICT_STATE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 3;
+        pub const ENUM_MAX_CONFLICT_STATE: i8 = 1;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 4] = [
+        pub const ENUM_VALUES_CONFLICT_STATE: [ConflictState; 2] = [ConflictState::Clean, ConflictState::Conflicted];
+
+        /// Whether a change is conflict-free. `conflicted_paths` is populated only when Conflicted.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ConflictState(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl ConflictState {
+            pub const Clean: Self = Self(0);
+            pub const Conflicted: Self = Self(1);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Clean, Self::Conflicted];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Clean => Some("Clean"),
+                    Self::Conflicted => Some("Conflicted"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ConflictState {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ConflictState {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ConflictState {
+            type Output = ConflictState;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ConflictState {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ConflictState {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ConflictState {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 4;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 5] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
             Payload::Status,
+            Payload::Change,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -141,10 +231,17 @@ pub mod zanshin {
             pub const RepoHandle: Self = Self(1);
             pub const Diagnostics: Self = Self(2);
             pub const Status: Self = Self(3);
+            pub const Change: Self = Self(4);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 3;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::RepoHandle, Self::Diagnostics, Self::Status];
+            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::NONE,
+                Self::RepoHandle,
+                Self::Diagnostics,
+                Self::Status,
+                Self::Change,
+            ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
@@ -152,6 +249,7 @@ pub mod zanshin {
                     Self::RepoHandle => Some("RepoHandle"),
                     Self::Diagnostics => Some("Diagnostics"),
                     Self::Status => Some("Status"),
+                    Self::Change => Some("Change"),
                     _ => None,
                 }
             }
@@ -915,6 +1013,502 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum SignatureOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A commit signature: who authored/committed and when (raw jj timestamp).
+        pub struct Signature<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Signature<'a> {
+            type Inner = Signature<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Signature<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EMAIL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TIMESTAMP_MILLIS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TZ_OFFSET_MINUTES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Signature { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SignatureArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Signature<'bldr>> {
+                let mut builder = SignatureBuilder::new(_fbb);
+                builder.add_timestamp_millis(args.timestamp_millis);
+                builder.add_tz_offset_minutes(args.tz_offset_minutes);
+                if let Some(x) = args.email {
+                    builder.add_email(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Signature::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn email(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Signature::VT_EMAIL, None)
+                }
+            }
+            #[inline]
+            pub fn timestamp_millis(&self) -> i64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<i64>(Signature::VT_TIMESTAMP_MILLIS, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn tz_offset_minutes(&self) -> i32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<i32>(Signature::VT_TZ_OFFSET_MINUTES, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Signature<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("email", Self::VT_EMAIL, false)?
+                    .visit_field::<i64>("timestamp_millis", Self::VT_TIMESTAMP_MILLIS, false)?
+                    .visit_field::<i32>("tz_offset_minutes", Self::VT_TZ_OFFSET_MINUTES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SignatureArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub email: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub timestamp_millis: i64,
+            pub tz_offset_minutes: i32,
+        }
+        impl<'a> Default for SignatureArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SignatureArgs {
+                    name: None,
+                    email: None,
+                    timestamp_millis: 0,
+                    tz_offset_minutes: 0,
+                }
+            }
+        }
+
+        pub struct SignatureBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SignatureBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Signature::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_email(&mut self, email: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Signature::VT_EMAIL, email);
+            }
+            #[inline]
+            pub fn add_timestamp_millis(&mut self, timestamp_millis: i64) {
+                self.fbb_
+                    .push_slot::<i64>(Signature::VT_TIMESTAMP_MILLIS, timestamp_millis, 0);
+            }
+            #[inline]
+            pub fn add_tz_offset_minutes(&mut self, tz_offset_minutes: i32) {
+                self.fbb_
+                    .push_slot::<i32>(Signature::VT_TZ_OFFSET_MINUTES, tz_offset_minutes, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SignatureBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SignatureBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Signature<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Signature<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Signature");
+                ds.field("name", &self.name());
+                ds.field("email", &self.email());
+                ds.field("timestamp_millis", &self.timestamp_millis());
+                ds.field("tz_offset_minutes", &self.tz_offset_minutes());
+                ds.finish()
+            }
+        }
+        pub enum ChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Full metadata for one change (FR-JJ-6). Authored/committed times live on the
+        /// author/committer signatures (authored_at == author.timestamp_millis, etc.).
+        pub struct Change<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Change<'a> {
+            type Inner = Change<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Change<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PARENTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 10;
+            pub const VT_AUTHOR: ::flatbuffers::VOffsetT = 12;
+            pub const VT_COMMITTER: ::flatbuffers::VOffsetT = 14;
+            pub const VT_IS_SIGNED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_CONFLICTED_PATHS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_IS_ANONYMOUS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_DIVERGENT: ::flatbuffers::VOffsetT = 24;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Change { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Change<'bldr>> {
+                let mut builder = ChangeBuilder::new(_fbb);
+                if let Some(x) = args.conflicted_paths {
+                    builder.add_conflicted_paths(x);
+                }
+                if let Some(x) = args.committer {
+                    builder.add_committer(x);
+                }
+                if let Some(x) = args.author {
+                    builder.add_author(x);
+                }
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                if let Some(x) = args.parents {
+                    builder.add_parents(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_divergent(args.divergent);
+                builder.add_is_anonymous(args.is_anonymous);
+                builder.add_conflict(args.conflict);
+                builder.add_is_signed(args.is_signed);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Change::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Change::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn parents(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Change::VT_PARENTS, None)
+                }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Change::VT_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn author(&self) -> Option<Signature<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Signature>>(Change::VT_AUTHOR, None)
+                }
+            }
+            #[inline]
+            pub fn committer(&self) -> Option<Signature<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Signature>>(Change::VT_COMMITTER, None)
+                }
+            }
+            #[inline]
+            pub fn is_signed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Change::VT_IS_SIGNED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn conflict(&self) -> ConflictState {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConflictState>(Change::VT_CONFLICT, Some(ConflictState::Clean))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn conflicted_paths(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Change::VT_CONFLICTED_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn is_anonymous(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Change::VT_IS_ANONYMOUS, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn divergent(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Change::VT_DIVERGENT, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Change<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parents", Self::VT_PARENTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<Signature>>("author", Self::VT_AUTHOR, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<Signature>>("committer", Self::VT_COMMITTER, false)?
+     .visit_field::<bool>("is_signed", Self::VT_IS_SIGNED, false)?
+     .visit_field::<ConflictState>("conflict", Self::VT_CONFLICT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("conflicted_paths", Self::VT_CONFLICTED_PATHS, false)?
+     .visit_field::<bool>("is_anonymous", Self::VT_IS_ANONYMOUS, false)?
+     .visit_field::<bool>("divergent", Self::VT_DIVERGENT, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ChangeArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub parents:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author: Option<::flatbuffers::WIPOffset<Signature<'a>>>,
+            pub committer: Option<::flatbuffers::WIPOffset<Signature<'a>>>,
+            pub is_signed: bool,
+            pub conflict: ConflictState,
+            pub conflicted_paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub is_anonymous: bool,
+            pub divergent: bool,
+        }
+        impl<'a> Default for ChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ChangeArgs {
+                    id: None,
+                    commit_id: None,
+                    parents: None,
+                    description: None,
+                    author: None,
+                    committer: None,
+                    is_signed: false,
+                    conflict: ConflictState::Clean,
+                    conflicted_paths: None,
+                    is_anonymous: false,
+                    divergent: false,
+                }
+            }
+        }
+
+        pub struct ChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Change::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Change::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_parents(
+                &mut self,
+                parents: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Change::VT_PARENTS, parents);
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Change::VT_DESCRIPTION, description);
+            }
+            #[inline]
+            pub fn add_author(&mut self, author: ::flatbuffers::WIPOffset<Signature<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Signature>>(Change::VT_AUTHOR, author);
+            }
+            #[inline]
+            pub fn add_committer(&mut self, committer: ::flatbuffers::WIPOffset<Signature<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Signature>>(Change::VT_COMMITTER, committer);
+            }
+            #[inline]
+            pub fn add_is_signed(&mut self, is_signed: bool) {
+                self.fbb_.push_slot::<bool>(Change::VT_IS_SIGNED, is_signed, false);
+            }
+            #[inline]
+            pub fn add_conflict(&mut self, conflict: ConflictState) {
+                self.fbb_
+                    .push_slot::<ConflictState>(Change::VT_CONFLICT, conflict, ConflictState::Clean);
+            }
+            #[inline]
+            pub fn add_conflicted_paths(
+                &mut self,
+                conflicted_paths: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Change::VT_CONFLICTED_PATHS, conflicted_paths);
+            }
+            #[inline]
+            pub fn add_is_anonymous(&mut self, is_anonymous: bool) {
+                self.fbb_
+                    .push_slot::<bool>(Change::VT_IS_ANONYMOUS, is_anonymous, false);
+            }
+            #[inline]
+            pub fn add_divergent(&mut self, divergent: bool) {
+                self.fbb_.push_slot::<bool>(Change::VT_DIVERGENT, divergent, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Change<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Change<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Change");
+                ds.field("id", &self.id());
+                ds.field("commit_id", &self.commit_id());
+                ds.field("parents", &self.parents());
+                ds.field("description", &self.description());
+                ds.field("author", &self.author());
+                ds.field("committer", &self.committer());
+                ds.field("is_signed", &self.is_signed());
+                ds.field("conflict", &self.conflict());
+                ds.field("conflicted_paths", &self.conflicted_paths());
+                ds.field("is_anonymous", &self.is_anonymous());
+                ds.field("divergent", &self.divergent());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -1052,6 +1646,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_change(&self) -> Option<Change<'a>> {
+                if self.data_type() == Payload::Change {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Change::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -1082,6 +1691,9 @@ pub mod zanshin {
                                 ),
                             Payload::Status => {
                                 v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Status>>("Payload::Status", pos)
+                            }
+                            Payload::Change => {
+                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Change>>("Payload::Change", pos)
                             }
                             _ => Ok(()),
                         },
@@ -1170,6 +1782,13 @@ pub mod zanshin {
                     }
                     Payload::Status => {
                         if let Some(x) = self.data_as_status() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Change => {
+                        if let Some(x) = self.data_as_change() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

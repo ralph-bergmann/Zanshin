@@ -31,6 +31,8 @@ pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
 pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 /// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@).
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
+/// AR-P-4: emitted by `change.rs` when no change exists for the given id.
+pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
 
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///

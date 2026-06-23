@@ -29,6 +29,7 @@ pub use envelope_generated::zanshin::ffi as fbs;
 pub mod envelope;
 pub use envelope::*;
 
+pub mod change;
 pub mod diagnostics;
 pub mod ffi_strings;
 pub mod handle;

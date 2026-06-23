@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import '../ffi/change.dart' show Change;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import 'isolate.dart';
 import 'responses.dart';
@@ -71,6 +72,18 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.status(_handleId);
+  }
+
+  /// Read full change metadata for the change identified by [changeId].
+  ///
+  /// Throws [StateError] if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.jj_lib_error`).
+  Future<Change> getChange(String changeId) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.getChange(_handleId, changeId);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

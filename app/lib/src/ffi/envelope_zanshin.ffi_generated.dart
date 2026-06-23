@@ -51,11 +51,49 @@ class _ChangeKindReader extends fb.Reader<ChangeKind> {
   ChangeKind read(fb.BufferContext bc, int offset) => ChangeKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  Whether a change is conflict-free. `conflicted_paths` is populated only when Conflicted.
+enum ConflictState {
+  Clean(0),
+  Conflicted(1);
+
+  final int value;
+  const ConflictState(this.value);
+
+  factory ConflictState.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ConflictState.Clean;
+      case 1:
+        return ConflictState.Conflicted;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ConflictState? _createOrNull(int? value) => value == null ? null : ConflictState.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<ConflictState> reader = _ConflictStateReader();
+}
+
+class _ConflictStateReader extends fb.Reader<ConflictState> {
+  const _ConflictStateReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ConflictState read(fb.BufferContext bc, int offset) =>
+      ConflictState.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
   Diagnostics(2),
-  Status(3);
+  Status(3),
+  Change(4);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -70,6 +108,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Diagnostics;
       case 3:
         return PayloadTypeId.Status;
+      case 4:
+        return PayloadTypeId.Change;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -78,7 +118,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 3;
+  static const int maxValue = 4;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -542,6 +582,293 @@ class StatusObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  A commit signature: who authored/committed and when (raw jj timestamp).
+class Signature {
+  Signature._(this._bc, this._bcOffset);
+  factory Signature(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Signature> reader = _SignatureReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get email => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get timestampMillis => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get tzOffsetMinutes => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'Signature{name: ${name}, email: ${email}, timestampMillis: ${timestampMillis}, tzOffsetMinutes: ${tzOffsetMinutes}}';
+  }
+}
+
+class _SignatureReader extends fb.TableReader<Signature> {
+  const _SignatureReader();
+
+  @override
+  Signature createObject(fb.BufferContext bc, int offset) => Signature._(bc, offset);
+}
+
+class SignatureBuilder {
+  SignatureBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEmailOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTimestampMillis(int? timestampMillis) {
+    fbBuilder.addInt64(2, timestampMillis);
+    return fbBuilder.offset;
+  }
+
+  int addTzOffsetMinutes(int? tzOffsetMinutes) {
+    fbBuilder.addInt32(3, tzOffsetMinutes);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SignatureObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _email;
+  final int? _timestampMillis;
+  final int? _tzOffsetMinutes;
+
+  SignatureObjectBuilder({
+    String? name,
+    String? email,
+    int? timestampMillis,
+    int? tzOffsetMinutes,
+  }) : _name = name,
+       _email = email,
+       _timestampMillis = timestampMillis,
+       _tzOffsetMinutes = tzOffsetMinutes;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? emailOffset = _email == null ? null : fbBuilder.writeString(_email!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, emailOffset);
+    fbBuilder.addInt64(2, _timestampMillis);
+    fbBuilder.addInt32(3, _tzOffsetMinutes);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Full metadata for one change (FR-JJ-6). Authored/committed times live on the
+///  author/committer signatures (authored_at == author.timestamp_millis, etc.).
+class Change {
+  Change._(this._bc, this._bcOffset);
+  factory Change(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Change> reader = _ChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get id => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get parents => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  Signature? get author => Signature.reader.vTableGetNullable(_bc, _bcOffset, 12);
+  Signature? get committer => Signature.reader.vTableGetNullable(_bc, _bcOffset, 14);
+  bool get isSigned => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  ConflictState get conflict => ConflictState.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 18, 0));
+  List<String>? get conflictedPaths =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 20);
+  bool get isAnonymous => const fb.BoolReader().vTableGet(_bc, _bcOffset, 22, false);
+  bool get divergent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 24, false);
+
+  @override
+  String toString() {
+    return 'Change{id: ${id}, commitId: ${commitId}, parents: ${parents}, description: ${description}, author: ${author}, committer: ${committer}, isSigned: ${isSigned}, conflict: ${conflict}, conflictedPaths: ${conflictedPaths}, isAnonymous: ${isAnonymous}, divergent: ${divergent}}';
+  }
+}
+
+class _ChangeReader extends fb.TableReader<Change> {
+  const _ChangeReader();
+
+  @override
+  Change createObject(fb.BufferContext bc, int offset) => Change._(bc, offset);
+}
+
+class ChangeBuilder {
+  ChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(11);
+  }
+
+  int addIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addParentsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitterOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIsSigned(bool? isSigned) {
+    fbBuilder.addBool(6, isSigned);
+    return fbBuilder.offset;
+  }
+
+  int addConflict(ConflictState? conflict) {
+    fbBuilder.addInt8(7, conflict?.value);
+    return fbBuilder.offset;
+  }
+
+  int addConflictedPathsOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIsAnonymous(bool? isAnonymous) {
+    fbBuilder.addBool(9, isAnonymous);
+    return fbBuilder.offset;
+  }
+
+  int addDivergent(bool? divergent) {
+    fbBuilder.addBool(10, divergent);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _id;
+  final String? _commitId;
+  final List<String>? _parents;
+  final String? _description;
+  final SignatureObjectBuilder? _author;
+  final SignatureObjectBuilder? _committer;
+  final bool? _isSigned;
+  final ConflictState? _conflict;
+  final List<String>? _conflictedPaths;
+  final bool? _isAnonymous;
+  final bool? _divergent;
+
+  ChangeObjectBuilder({
+    String? id,
+    String? commitId,
+    List<String>? parents,
+    String? description,
+    SignatureObjectBuilder? author,
+    SignatureObjectBuilder? committer,
+    bool? isSigned,
+    ConflictState? conflict,
+    List<String>? conflictedPaths,
+    bool? isAnonymous,
+    bool? divergent,
+  }) : _id = id,
+       _commitId = commitId,
+       _parents = parents,
+       _description = description,
+       _author = author,
+       _committer = committer,
+       _isSigned = isSigned,
+       _conflict = conflict,
+       _conflictedPaths = conflictedPaths,
+       _isAnonymous = isAnonymous,
+       _divergent = divergent;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? idOffset = _id == null ? null : fbBuilder.writeString(_id!);
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? parentsOffset = _parents == null
+        ? null
+        : fbBuilder.writeList(_parents!.map(fbBuilder.writeString).toList());
+    final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
+    final int? authorOffset = _author?.getOrCreateOffset(fbBuilder);
+    final int? committerOffset = _committer?.getOrCreateOffset(fbBuilder);
+    final int? conflictedPathsOffset = _conflictedPaths == null
+        ? null
+        : fbBuilder.writeList(_conflictedPaths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(11);
+    fbBuilder.addOffset(0, idOffset);
+    fbBuilder.addOffset(1, commitIdOffset);
+    fbBuilder.addOffset(2, parentsOffset);
+    fbBuilder.addOffset(3, descriptionOffset);
+    fbBuilder.addOffset(4, authorOffset);
+    fbBuilder.addOffset(5, committerOffset);
+    fbBuilder.addBool(6, _isSigned);
+    fbBuilder.addInt8(7, _conflict?.value);
+    fbBuilder.addOffset(8, conflictedPathsOffset);
+    fbBuilder.addBool(9, _isAnonymous);
+    fbBuilder.addBool(10, _divergent);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -577,6 +904,8 @@ class Envelope {
         return Diagnostics.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 3:
         return Status.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 4:
+        return Change.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
 
+import '../ffi/change.dart' as repo_ffi_change;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/log_forwarder.dart';
@@ -347,12 +348,28 @@ class ZanshinWorker {
   /// returned FlatBuffers `Envelope<Status>` bytes into a `WorkingCopyStatus`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.no_working_copy`). Throws [StateError] synchronously after [close].
+  /// `jj.no_working_copy`). Completes with a [StateError] after [close] (this
+  /// method is `async`, so the close-guard error is delivered via the Future).
   Future<repo_ffi_status.WorkingCopyStatus> status(int handleId) async {
     final Uint8List bytes = await send(
       StatusCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
     return repo_ffi_status.decodeStatusEnvelopeInternal(bytes);
+  }
+
+  /// Read full change metadata for [changeId] in the repo identified by [handleId].
+  ///
+  /// Sends a [GetChangeCommand] via the existing [send] path and decodes the
+  /// returned FlatBuffers `Envelope<Change>` bytes into a [repo_ffi_change.Change].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.change_not_found`). Completes with a [StateError] after [close] (this
+  /// method is `async`, so the close-guard error is delivered via the Future).
+  Future<repo_ffi_change.Change> getChange(int handleId, String changeId) async {
+    final Uint8List bytes = await send(
+      GetChangeCommand(commandId: _correlator.allocateId(), handleId: handleId, changeId: changeId),
+    );
+    return repo_ffi_change.decodeChangeEnvelopeInternal(bytes);
   }
 }
 
@@ -435,6 +452,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_status.zanshinStatus(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GetChangeCommand(:final int handleId, :final String changeId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GetChangeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_change.zanshinChange(raw, changeId);
             responseSP.send((commandId, BufferResult(bytes)));
           }
       }
