@@ -1,0 +1,12 @@
+# Analysis config for the pure-Dart zanshin_core bridge package. Uses package:lints
+# (not flutter_lints — no Flutter here). Generated FFI code is excluded from the lint bar.
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    - lib/src/ffi/bindings.dart # ffigen output
+    - lib/src/ffi/*.ffi_generated.dart # flatc output
+
+formatter:
+  page_width: 120
+  trailing_commas: preserve

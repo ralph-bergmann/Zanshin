@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:ffi' as ffi;
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:inject_annotation/inject_annotation.dart';
+import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
 import 'bindings.dart';

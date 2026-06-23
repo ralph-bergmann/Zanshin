@@ -12,11 +12,11 @@
 
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/ffi/status.dart';
-import 'package:zanshin/src/worker/handle.dart';
-import 'package:zanshin/src/worker/isolate.dart';
-import 'package:zanshin/src/worker/responses.dart';
+import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/status.dart';
+import 'package:zanshin_core/src/worker/handle.dart';
+import 'package:zanshin_core/src/worker/isolate.dart';
+import 'package:zanshin_core/src/worker/responses.dart';
 
 void main() {
   // ── Round-trip ────────────────────────────────────────────────────────────

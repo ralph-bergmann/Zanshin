@@ -11,12 +11,11 @@ include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
-    # Committed but generated FFI code is not subject to our lint bar — the
-    # generator owns the file and it is regenerated wholesale. Mirrors the Rust
-    # `#[allow(warnings)]` on `mod envelope_generated` and the generated-file
-    # SPDX exemption documented in `_bmad-output/project-context.md`.
-    - lib/src/ffi/bindings.dart # ffigen output
-    - lib/src/ffi/*.ffi_generated.dart # flatc output
+    # Committed but generated code is not subject to our lint bar — the generator
+    # owns the file and it is regenerated wholesale. The FFI generated code now lives
+    # in package:zanshin_core; the app keeps only the inject_generator output, which
+    # imports zanshin_core internals (and would otherwise trip implementation_imports).
+    - lib/main.inject.dart # inject_generator output
 
 formatter:
   page_width: 120

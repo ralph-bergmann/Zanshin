@@ -1,0 +1,9 @@
+# Dart / Pub
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# Coverage marker — transient, created/removed by `cargo make coverage`. Tracked here so an
+# interrupted run never leaves a committed file that silently instruments every build.
+coverage.on

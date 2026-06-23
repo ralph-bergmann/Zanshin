@@ -53,6 +53,9 @@ dependencies = [
     "test-flutter",
     "test-dart-analyze",
     "test-dart-format",
+    "test-core",
+    "test-core-analyze",
+    "test-core-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
 ]
@@ -102,6 +105,29 @@ private = true
 command = "dart"
 args = ["format", "--output=none", "--set-exit-if-changed", "."]
 cwd = "app"
+
+[tasks.test-core]
+private = true
+description = "Run the pure-Dart zanshin_core bridge suite (real worker isolate + real cdylib) under `dart test`."
+command = "dart"
+args = ["test"]
+cwd = "packages/zanshin_core"
+# WHY: pin jj/git global config + redirect the tracing sink so the worker-isolate tests
+# (which drive real zanshin_repo_init/open through the cdylib and call zanshin_logging_init)
+# are deterministic on a clean CI runner and never write into ~/Library/Logs/Zanshin.
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+
+[tasks.test-core-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_core"
+
+[tasks.test-core-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_core"
 
 [tasks.test-cargo-deny]
 private = true
@@ -192,17 +218,17 @@ rustfmt crates/zanshin-ffi/src/*_generated.rs
 
 [tasks.codegen-flatc-dart]
 private = true
-description = "Generate Dart FlatBuffers accessors from schemas/*.fbs into app/lib/src/ffi/ and format them."
+description = "Generate Dart FlatBuffers accessors from schemas/*.fbs into packages/zanshin_core/lib/src/ffi/ and format them."
 script_runner = "bash"
 script = '''
 set -euo pipefail
 for fbs in schemas/*.fbs; do
-    flatc --dart -o app/lib/src/ffi/ "$fbs"
+    flatc --dart -o packages/zanshin_core/lib/src/ffi/ "$fbs"
 done
 # WHY: flatc generates code in its own style; dart format normalises it so
 # that `cargo make test` (which runs dart format --set-exit-if-changed) does
 # not flag the committed generated files as unformatted.
-dart format app/lib/src/ffi/
+dart format packages/zanshin_core/lib/src/ffi/
 '''
 
 [tasks.codegen-cbindgen]
@@ -218,22 +244,22 @@ args = [
 private = true
 command = "dart"
 args = ["run", "ffigen", "--config", "ffigen.yaml"]
-cwd = "app"
+cwd = "packages/zanshin_core"
 
 # ─── verify-codegen ─────────────────────────────────────────────────────────
 
 [tasks.verify-codegen]
 description = "Re-run codegen, diff against committed files, fail on drift. Manual discipline tool — not chained into `cargo make test`."
 # Recovery if the script is killed mid-flight (e.g. SIGKILL between regenerate and restore):
-#   git checkout -- crates/zanshin-ffi/include/zanshin_ffi.h app/lib/src/ffi/bindings.dart
+#   git checkout -- crates/zanshin-ffi/include/zanshin_ffi.h packages/zanshin_core/lib/src/ffi/bindings.dart
 script_runner = "bash"
 script = '''
 set -euo pipefail
 
 HEADER=crates/zanshin-ffi/include/zanshin_ffi.h
-BINDINGS=app/lib/src/ffi/bindings.dart
+BINDINGS=packages/zanshin_core/lib/src/ffi/bindings.dart
 FLATC_RUST=crates/zanshin-ffi/src/envelope_generated.rs
-FLATC_DART=app/lib/src/ffi/envelope_zanshin.ffi_generated.dart
+FLATC_DART=packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart
 
 # Pre-flight: all codegen outputs must already exist.
 missing=0
@@ -319,6 +345,78 @@ if ! check_drift "$TMP/flatc_dart.committed" "$FLATC_DART"; then
     drift=1
 fi
 exit $drift
+'''
+
+# ─── coverage ───────────────────────────────────────────────────────────────
+
+[tasks.coverage]
+description = "Unified cross-FFI + Rust coverage (report-first, no gate). Instruments the cdylib via the zanshin_core hook marker, runs `dart test` (clean-exit atexit flush = native FFI-path coverage) and an instrumented `cargo test`, merges, and writes target/coverage/coverage.lcov. macOS + rust-toolchain llvm-tools only."
+# WHY this shape (proven by spike, 2026-06-23): cargo-llvm-cov's `show-env` cannot reach the
+# cdylib build (the Flutter/Dart hooks-runner scrubs the hook env), so instrumentation is
+# triggered by a marker FILE the hook reads. `flutter test` hard-kills its tester so the LLVM
+# atexit writer never fires — but `dart test` exits cleanly, so the FFI-path coverage flushes
+# with NO explicit dump. `cargo llvm-cov report` has no --object, so the .dart_tool-built cdylib
+# is merged via raw llvm-profdata + llvm-cov export -object.
+script_runner = "bash"
+script = '''
+set -euo pipefail
+
+ROOT="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
+CORE="$ROOT/packages/zanshin_core"
+COV="$ROOT/target/coverage"
+TRIPLE="$(rustc -vV | awk '/host:/{print $2}')"
+LLVM_BIN="$(rustc --print sysroot)/lib/rustlib/$TRIPLE/bin"
+
+for t in llvm-profdata llvm-cov; do
+    if [ ! -x "$LLVM_BIN/$t" ]; then
+        echo "coverage: missing $LLVM_BIN/$t — run 'rustup component add llvm-tools-preview'." >&2
+        exit 1
+    fi
+done
+
+rm -rf "$COV"; mkdir -p "$COV"
+
+# 1) FFI-path coverage: instrument the cdylib via the hook marker, then run `dart test`.
+#    The marker FILE is the trigger (hook env is scrubbed); the hooks-runner cache ignores it,
+#    so force a clean rebuild. `dart test` exits cleanly => LLVM atexit flushes .profraw.
+: > "$CORE/coverage.on"
+trap 'rm -f "$CORE/coverage.on"' EXIT
+rm -rf "$CORE/.dart_tool/hooks_runner"
+( cd "$CORE" \
+  && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
+     LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
+     dart test )
+
+# 2) Rust-side coverage: instrument the workspace cargo tests.
+( cd "$ROOT" \
+  && RUSTFLAGS="-C instrument-coverage" \
+     LLVM_PROFILE_FILE="$COV/rust-%p-%m.profraw" \
+     ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
+     cargo test --workspace )
+
+# 3) Merge all .profraw + export one lcov. The cdylib `dart test` loaded lives under
+#    .dart_tool (outside cargo's target), so pass it explicitly as -object alongside the
+#    instrumented cargo-test binaries. Toolchain-own llvm tools => no profdata version skew.
+DYL="$(find "$CORE/.dart_tool/hooks_runner" -path '*release/libzanshin_ffi.dylib' | head -1)"
+if [ -z "$DYL" ]; then
+    echo "coverage: instrumented cdylib not found under $CORE/.dart_tool" >&2
+    exit 1
+fi
+RUST_OBJS=$(find "$ROOT/target" -maxdepth 3 -path '*/deps/*' -type f -perm +111 \
+    ! -name '*.d' ! -name '*.dylib' 2>/dev/null \
+    | grep -E '/(zanshin_ffi|zanshin_jj|zanshin_diff|zanshin_graph|zanshin_mcp|test_helpers)-[0-9a-f]+$' \
+    | sed 's/^/-object /' || true)
+
+"$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/merged.profdata" "$COV"/*.profraw
+
+# shellcheck disable=SC2086
+"$LLVM_BIN/llvm-cov" export -format=lcov -instr-profile "$COV/merged.profdata" \
+    -ignore-filename-regex='(_generated\.rs$|/\.cargo/registry/|/rustc/|/\.pub-cache/)' \
+    "$DYL" $RUST_OBJS > "$COV/coverage.lcov"
+
+echo "Unified coverage written: $COV/coverage.lcov"
+echo "Per-region view of an untaken arm, e.g.:"
+echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/merged.profdata\" --show-line-counts --show-regions \"$DYL\" crates/zanshin-jj/src/change.rs"
 '''
 
 # ─── clean ──────────────────────────────────────────────────────────────────

@@ -1,0 +1,25 @@
+name: zanshin_core
+description: >-
+  Pure-Dart Rust↔Dart bridge for Zanshin — FFI bindings to the zanshin-ffi cdylib plus
+  the worker-isolate orchestration. No Flutter dependency, so it is testable under `dart test`.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  ffi: ^2.2.0
+  flat_buffers: ^25.9.23
+  # hooks + native_toolchain_rust drive hook/build.dart, which builds the zanshin-ffi cdylib
+  # as a code asset that dependents (the app) and `dart test` both consume.
+  hooks: ^2.0.2
+  inject_annotation: ^1.1.0
+  logging: ^1.3.0
+  meta: ^1.16.0
+  native_toolchain_rust: ^1.0.4+0
+
+dev_dependencies:
+  ffigen: 20.1.1
+  lints: ^5.0.0
+  test: ^1.25.0

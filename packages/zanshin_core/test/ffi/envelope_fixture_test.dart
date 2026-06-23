@@ -3,8 +3,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/ffi/envelope_zanshin.ffi_generated.dart';
+import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart';
 
 /// Cross-side wire-contract check (AC-5): a committed FlatBuffers buffer produced
 /// by the `flatc` toolchain (`flatc --binary`, the same compiler that generates
@@ -50,7 +50,7 @@ void main() {
 /// Locate a fixture under `test-fixtures/ffi/` whether the test runner's CWD is
 /// the Flutter package (`app/`, the `cargo make test` path) or the repo root.
 Uint8List _readFixture(String name) {
-  const dirs = ['../test-fixtures/ffi', 'test-fixtures/ffi'];
+  const dirs = ['../../test-fixtures/ffi', '../test-fixtures/ffi', 'test-fixtures/ffi'];
   for (final dir in dirs) {
     final file = File('$dir/$name');
     if (file.existsSync()) {

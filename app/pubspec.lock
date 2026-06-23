@@ -260,7 +260,7 @@ packages:
     source: hosted
     version: "2.3.2"
   hooks:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: hooks
       sha256: "9a62a50b50b769a737bc0a8ff381f333529df3ab746b2f6b02e83760231455ba"
@@ -404,7 +404,7 @@ packages:
     source: hosted
     version: "2.0.0"
   native_toolchain_rust:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: native_toolchain_rust
       sha256: faa57d2258a3b0fd2a634054f54e4496c9fcbd971977e7d2b7e6916d56892857
@@ -736,6 +736,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.4"
+  zanshin_core:
+    dependency: "direct main"
+    description:
+      path: "../packages/zanshin_core"
+      relative: true
+    source: path
+    version: "0.1.0"
 sdks:
   dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0 <4.0.0"

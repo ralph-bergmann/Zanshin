@@ -8,14 +8,11 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:zanshin_core/zanshin_core.dart';
 
 import 'main.inject.dart' as g;
+import 'src/app/worker_lifecycle_module.dart';
 import 'src/features/app/zanshin_app.dart';
-import 'src/ffi/diagnostics.dart';
-import 'src/ffi/log_forwarder.dart';
-import 'src/ffi/zanshin_version.dart';
-import 'src/worker/isolate.dart';
-import 'src/worker/worker_module.dart';
 
 Future<void> main() async {
   // All initialization inside the same zone as runApp to avoid zone mismatch.
@@ -69,7 +66,7 @@ Future<void> main() async {
   );
 }
 
-@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule])
+@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule, WorkerLifecycleModule])
 abstract class MainComponent {
   // ignore: specify_nonobvious_property_types
   static const create = g.MainComponent$Component.create;

@@ -3,10 +3,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/ffi/diagnostics.dart';
-import 'package:zanshin/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin/src/worker/responses.dart';
+import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/diagnostics.dart';
+import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import 'package:zanshin_core/src/worker/responses.dart';
 
 /// Tests the [ZanshinDiagnosticsModule] seam against the real compiled cdylib.
 ///

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:logging/logging.dart';
-import 'package:zanshin/src/ffi/log_forwarder.dart';
+import 'package:zanshin_core/src/ffi/log_forwarder.dart';
 
 /// Unit-tests the pure `package:logging` → FFI level mapping (the side that needs
 /// no cdylib). The full forward path (`zanshin_log` → Rust `tracing`) is exercised

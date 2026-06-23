@@ -3,7 +3,7 @@
 import 'dart:ffi' as ffi;
 import 'dart:typed_data'; // ignore: unnecessary_import — explicit for Uint8List clarity
 
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
 import 'bindings.dart';

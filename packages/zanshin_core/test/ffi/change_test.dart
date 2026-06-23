@@ -8,10 +8,10 @@
 
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/ffi/change.dart';
-import 'package:zanshin/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin/src/worker/responses.dart';
+import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/change.dart';
+import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import 'package:zanshin_core/src/worker/responses.dart';
 
 fbs.SignatureObjectBuilder _makeSignatureBuilder({
   String name = 'Alice',
