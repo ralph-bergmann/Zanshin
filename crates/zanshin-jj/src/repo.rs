@@ -79,6 +79,20 @@ impl Repo {
         crate::status::working_copy_status(&self.workspace)
     }
 
+    /// Returns full metadata for the change identified by `id` (jj reverse-hex form).
+    ///
+    /// Re-resolves to head on every call (ADR-0002). Read-only.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::ChangeError::NotFound`] — `id` is malformed (not valid reverse-hex),
+    ///   absent from the index, or only points to hidden/abandoned commits.
+    /// - [`crate::ChangeError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn get_change(&self, id: &crate::ChangeId) -> Result<crate::Change, crate::ChangeError> {
+        crate::change::get_change(&self.workspace, id)
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors
