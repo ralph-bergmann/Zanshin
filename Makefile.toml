@@ -350,13 +350,16 @@ exit $drift
 # ─── coverage ───────────────────────────────────────────────────────────────
 
 [tasks.coverage]
-description = "Unified cross-FFI + Rust coverage (report-first, no gate). Instruments the cdylib via the zanshin_core hook marker, runs `dart test` (clean-exit atexit flush = native FFI-path coverage) and an instrumented `cargo test`, merges, and writes target/coverage/coverage.lcov. macOS + rust-toolchain llvm-tools only."
+description = "Unified cross-FFI + Rust coverage (report-first, no gate). Instruments the cdylib via the zanshin_core hook marker, runs `dart test` (clean-exit atexit flush = native FFI-path coverage) + cargo-llvm-cov, and unions the two lcovs into target/coverage/coverage.lcov. macOS + rust-toolchain llvm-tools + cargo-llvm-cov only."
 # WHY this shape (proven by spike, 2026-06-23): cargo-llvm-cov's `show-env` cannot reach the
 # cdylib build (the Flutter/Dart hooks-runner scrubs the hook env), so instrumentation is
 # triggered by a marker FILE the hook reads. `flutter test` hard-kills its tester so the LLVM
 # atexit writer never fires — but `dart test` exits cleanly, so the FFI-path coverage flushes
-# with NO explicit dump. `cargo llvm-cov report` has no --object, so the .dart_tool-built cdylib
-# is merged via raw llvm-profdata + llvm-cov export -object.
+# with NO explicit dump. The cdylib is --release while cargo's test bins are debug (different
+# function hashes), and a hand-rolled `-object` list misses the integration-test binaries
+# (revset-<hash>, *_ffi-<hash>) that carry most of the zanshin-jj coverage. So the two sides are
+# produced separately — the cdylib via raw llvm-cov export, the Rust side via cargo-llvm-cov
+# (which enumerates ALL test binaries) — and unioned at the source level by `cargo xtask lcov-union`.
 script_runner = "bash"
 script = '''
 set -euo pipefail
@@ -373,12 +376,17 @@ for t in llvm-profdata llvm-cov; do
         exit 1
     fi
 done
+if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+    echo "coverage: cargo-llvm-cov not installed — 'brew install cargo-llvm-cov' (or cargo install cargo-llvm-cov)." >&2
+    exit 1
+fi
 
 rm -rf "$COV"; mkdir -p "$COV"
 
 # 1) FFI-path coverage: instrument the cdylib via the hook marker, then run `dart test`.
 #    The marker FILE is the trigger (hook env is scrubbed); the hooks-runner cache ignores it,
-#    so force a clean rebuild. `dart test` exits cleanly => LLVM atexit flushes .profraw.
+#    so force a clean rebuild. `dart test` exits cleanly => LLVM atexit flushes .profraw. Export
+#    the cdylib alone => ffi.lcov (the coverage reachable through the real worker/FFI path).
 : > "$CORE/coverage.on"
 trap 'rm -f "$CORE/coverage.on"' EXIT
 rm -rf "$CORE/.dart_tool/hooks_runner"
@@ -386,37 +394,32 @@ rm -rf "$CORE/.dart_tool/hooks_runner"
   && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
      dart test )
-
-# 2) Rust-side coverage: instrument the workspace cargo tests.
-( cd "$ROOT" \
-  && RUSTFLAGS="-C instrument-coverage" \
-     LLVM_PROFILE_FILE="$COV/rust-%p-%m.profraw" \
-     ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
-     cargo test --workspace )
-
-# 3) Merge all .profraw + export one lcov. The cdylib `dart test` loaded lives under
-#    .dart_tool (outside cargo's target), so pass it explicitly as -object alongside the
-#    instrumented cargo-test binaries. Toolchain-own llvm tools => no profdata version skew.
 DYL="$(find "$CORE/.dart_tool/hooks_runner" -path '*release/libzanshin_ffi.dylib' | head -1)"
 if [ -z "$DYL" ]; then
     echo "coverage: instrumented cdylib not found under $CORE/.dart_tool" >&2
     exit 1
 fi
-RUST_OBJS=$(find "$ROOT/target" -maxdepth 3 -path '*/deps/*' -type f -perm +111 \
-    ! -name '*.d' ! -name '*.dylib' 2>/dev/null \
-    | grep -E '/(zanshin_ffi|zanshin_jj|zanshin_diff|zanshin_graph|zanshin_mcp|test_helpers)-[0-9a-f]+$' \
-    | sed 's/^/-object /' || true)
-
-"$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/merged.profdata" "$COV"/*.profraw
-
-# shellcheck disable=SC2086
-"$LLVM_BIN/llvm-cov" export -format=lcov -instr-profile "$COV/merged.profdata" \
+"$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/ffi.profdata" "$COV"/ffi-*.profraw
+"$LLVM_BIN/llvm-cov" export -format=lcov -instr-profile "$COV/ffi.profdata" \
     -ignore-filename-regex='(_generated\.rs$|/\.cargo/registry/|/rustc/|/\.pub-cache/)' \
-    "$DYL" $RUST_OBJS > "$COV/coverage.lcov"
+    "$DYL" > "$COV/ffi.lcov"
 
-echo "Unified coverage written: $COV/coverage.lcov"
+# 2) Rust-side coverage via cargo-llvm-cov, which enumerates ALL test binaries — including the
+#    integration tests named after their test file (revset-<hash>, change-<hash>, *_ffi-<hash>)
+#    that carry most of the zanshin-jj coverage and that a hand-rolled -object list would miss.
+( cd "$ROOT" \
+  && ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
+     cargo llvm-cov --workspace --lcov --output-path "$COV/cargo.lcov" \
+       --ignore-filename-regex='(_generated\.rs$|/tests/)' )
+
+# 3) Union the two lcovs at the source level (a line is covered if covered in EITHER). Release
+#    cdylib vs debug cargo bins => different function hashes => a single export cannot attribute
+#    one to the other, so union the lcovs (max count per line). See xtask/src/tasks/lcov_union.rs.
+( cd "$ROOT" && cargo run -q -p xtask -- lcov-union "$COV/ffi.lcov" "$COV/cargo.lcov" --output "$COV/coverage.lcov" )
+
+echo "Unified coverage written: $COV/coverage.lcov  (ffi.lcov + cargo.lcov unioned)"
 echo "Per-region view of an untaken arm, e.g.:"
-echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/merged.profdata\" --show-line-counts --show-regions \"$DYL\" crates/zanshin-jj/src/change.rs"
+echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/ffi.profdata\" --show-line-counts --show-regions \"$DYL\" crates/zanshin-jj/src/change.rs"
 '''
 
 # ─── clean ──────────────────────────────────────────────────────────────────

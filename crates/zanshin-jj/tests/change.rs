@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MIT
 
+use std::io::Cursor;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::{env, fs};
 
+use jj_lib::backend::{CopyId, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{Repo as _, StoreFactories};
+use jj_lib::repo_path::RepoPathBuf;
+use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::settings::UserSettings;
+use jj_lib::store::Store;
+use jj_lib::tree_builder::TreeBuilder;
 use jj_lib::workspace::{default_working_copy_factories, Workspace};
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
@@ -120,6 +127,81 @@ fn make_divergent_change(workspace_root: &Path) -> String {
     pollster::block_on(tx.commit("test: create divergent change")).unwrap();
 
     commit_a.change_id().reverse_hex()
+}
+
+/// Builds a single-file tree (`path` → `content`). TEST SETUP ONLY.
+fn tree_with_file(store: &Arc<Store>, path: &RepoPathBuf, content: &[u8]) -> MergedTree {
+    let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
+    let mut cursor = Cursor::new(content.to_vec());
+    let file_id = pollster::block_on(store.write_file(path, &mut cursor)).unwrap();
+    builder.set(
+        path.clone(),
+        TreeValue::File {
+            id: file_id,
+            executable: false,
+            copy_id: CopyId::placeholder(),
+        },
+    );
+    let tree_id = pollster::block_on(builder.write_tree()).unwrap();
+    MergedTree::resolved(store.clone(), tree_id)
+}
+
+/// Creates a genuinely conflicted merge commit: two children of root edit the same file
+/// differently, then a merge of both auto-resolves to a conflict on that path. Returns its
+/// reverse-hex change id.
+///
+/// TEST SETUP ONLY — drives the `commit.has_conflict()` true branch in `get_change` that
+/// builds `ConflictState::Conflicted { paths }` (D7).
+fn make_conflicted_change(workspace_root: &Path) -> String {
+    let settings = make_test_settings();
+    let workspace = Workspace::load(
+        &settings,
+        workspace_root,
+        &StoreFactories::default(),
+        &default_working_copy_factories(),
+    )
+    .unwrap();
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let store = repo.store().clone();
+    let root_id = store.root_commit_id().clone();
+
+    let path = RepoPathBuf::from_internal_string("conflicted.txt").unwrap();
+    let tree_a = tree_with_file(&store, &path, b"side a\n");
+    let tree_b = tree_with_file(&store, &path, b"side b\n");
+
+    let mut tx = repo.start_transaction();
+    let commit_a = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(vec![root_id.clone()], tree_a)
+            .set_description("side a")
+            .write(),
+    )
+    .unwrap();
+    let commit_b = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(vec![root_id], tree_b)
+            .set_description("side b")
+            .write(),
+    )
+    .unwrap();
+
+    // Auto-merge the two sides (common ancestor = root/empty) → a tree that conflicts on `path`.
+    let merged = pollster::block_on(merge_commit_trees(tx.repo_mut(), &[commit_a.clone(), commit_b.clone()])).unwrap();
+    let merge_commit = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(vec![commit_a.id().clone(), commit_b.id().clone()], merged)
+            .set_description("conflicting merge")
+            .write(),
+    )
+    .unwrap();
+    assert!(
+        merge_commit.has_conflict(),
+        "constructed merge commit must carry a conflict"
+    );
+    pollster::block_on(tx.repo_mut().add_head(&merge_commit)).unwrap();
+    pollster::block_on(tx.commit("test: create conflicted merge commit")).unwrap();
+
+    merge_commit.change_id().reverse_hex()
 }
 
 // ── AC-6: valid id → metadata equality ──────────────────────────────────────
@@ -478,14 +560,37 @@ fn change_on_clean_commit_returns_clean_conflict() {
     );
 }
 
-// Note on ConflictState::Conflicted integration test:
-// Constructing a genuinely conflicted commit programmatically via jj-lib (by creating a
-// merge of two commits that edit the same file differently) requires low-level tree
-// manipulation that is not exposed via the public jj-lib API at the Commit/Store level.
-// The `ConflictState::Conflicted` mapping is therefore exercised by the FlatBuffers builder
-// unit tests in `crates/zanshin-ffi/src/change.rs` (`#[cfg(test)]`) and the Dart
-// decode-contract tests in `app/test/ffi/change_test.dart` (Story 3.4b), which construct
-// synthetic Change values covering both conflict states.
+#[test]
+fn change_on_conflicted_commit_returns_conflicted_paths() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), None).unwrap();
+
+    // Construct a genuine add/add conflict on `conflicted.txt` via jj-lib (no jj CLI).
+    let conflicted_change_id = ChangeId(make_conflicted_change(tmp.path()));
+
+    let repo = Repo::open(tmp.path()).unwrap();
+    let change = repo.get_change(&conflicted_change_id).unwrap();
+
+    // D7: a commit jj reports as conflicted must surface ConflictState::Conflicted with the
+    // conflicted file path(s) — the `commit.has_conflict()` true branch in get_change that
+    // walks `commit.tree().conflicts()`. Only ConflictState::Clean was covered before.
+    match &change.conflict {
+        ConflictState::Conflicted { paths } => {
+            assert!(
+                !paths.is_empty(),
+                "conflicted commit must list at least one conflicted path"
+            );
+            assert!(
+                paths.iter().any(|p| p.ends_with("conflicted.txt")),
+                "conflicted path list must include the file in conflict, got: {paths:?}"
+            );
+        }
+        ConflictState::Clean => {
+            panic!("conflicted merge commit must yield ConflictState::Conflicted, got Clean")
+        }
+    }
+}
 
 // ── AC-25 / Backend error variant ────────────────────────────────────────────
 

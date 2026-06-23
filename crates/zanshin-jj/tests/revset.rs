@@ -404,3 +404,24 @@ fn revset_on_at_without_working_copy_returns_resolution_error() {
         "@ with no working-copy commit must return ResolutionError, got: {result:?}"
     );
 }
+
+// ── Internal jj-lib failure → JjLibError ─────────────────────────────────────
+
+#[test]
+fn revset_on_corrupt_repo_returns_jj_lib_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // Corrupt AFTER open: resolve_revset re-resolves to head on every call (ADR-0002), so
+    // removing op_heads makes load_at_head() fail → RevsetError::JjLibError (the internal
+    // jj-lib-failure arm, distinct from the Parse/Resolution arms exercised above).
+    let op_heads = fx.path.join(".jj").join("repo").join("op_heads");
+    std::fs::remove_dir_all(&op_heads).unwrap();
+
+    let result = resolve_revset(&repo, "all()");
+    assert!(
+        matches!(result, Err(RevsetError::JjLibError(_))),
+        "corrupt op_heads must yield RevsetError::JjLibError, got: {result:?}"
+    );
+}
