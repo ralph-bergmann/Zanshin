@@ -3,11 +3,14 @@ _bmad/
 .claude/
 .serena/
 
+# Dart
+.dart_tool/
+
 # IDE
 *.iml
-*.ipr
-*.iws
 .idea/
+.flutter-plugins
+.flutter-plugins-dependencies
 .mcp.json
 
 # Rust

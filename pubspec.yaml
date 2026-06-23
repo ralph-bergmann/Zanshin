@@ -1,0 +1,17 @@
+name: zanshin_workspace
+description: Workspace for the Zanshin JJ VCS GUI.
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+  flutter: ^3.44.0
+
+workspace:
+  - app
+  - packages/*
+
+dev_dependencies:
+  melos: ^7.8.1
+
+melos:
+
