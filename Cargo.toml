@@ -26,6 +26,7 @@ rust-version = "1.95.0"
 publish = false
 
 [workspace.dependencies]
+chrono = { version = "=0.4.45", features = ["clock"] }  # WHY: pinned to jj-lib's exact transitive version; DatePatternContext requires From<DateTime<Local>>
 clap = { version = "4", features = ["derive"] }
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: dev/bench-only — consume jj-lib's Stream-based revset graph API in the zanshin-jj graph benchmark (ADR-0002 AC-4)

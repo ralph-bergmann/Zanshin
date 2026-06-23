@@ -38,10 +38,6 @@ pub enum Backend {
 
 pub struct Repo {
     workspace: Workspace,
-    // WHY(allow dead_code): stored per Decision D4 for read-stories 2.4-2.9
-    // (repo_loader().load_at_head(), transactions); Story 2.3 never reads it, so the
-    // constructed-but-unread field would otherwise trip `-D warnings`.
-    #[allow(dead_code)]
     settings: UserSettings,
 }
 
@@ -58,6 +54,16 @@ impl Repo {
     #[must_use]
     pub fn workspace_root(&self) -> &Path {
         self.workspace.workspace_root()
+    }
+
+    /// Returns a reference to the underlying jj workspace (crate-internal use only).
+    pub(crate) fn workspace(&self) -> &Workspace {
+        &self.workspace
+    }
+
+    /// Returns the user settings used to open this workspace (crate-internal use only).
+    pub(crate) fn settings(&self) -> &UserSettings {
+        &self.settings
     }
 
     /// Returns the working-copy status: files changed between `@` and `@-`.
