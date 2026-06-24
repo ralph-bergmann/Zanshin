@@ -435,6 +435,35 @@ echo "Unified coverage written: $COV/coverage.lcov  (ffi.lcov + cargo.lcov union
 echo "Per-region view of an untaken arm, e.g.:"
 echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/ffi.profdata\" --show-line-counts --show-regions \"$DYL\" crates/zanshin-jj/src/change.rs"
 
+# 5) Extern-fn coverage guard (defense-in-depth on the per-file ratchet): every
+#    `extern "C"` fn in zanshin-ffi must show as covered in the unified lcov. A
+#    #[no_mangle] extern fn is NOT credited by cargo-llvm-cov (release-cdylib vs
+#    debug-cargo function-hash split), so its only coverage source is a
+#    packages/zanshin_core dart test calling it through the cdylib. Without this
+#    guard an uncovered extern fn stays invisible while its file's floor is < 100%,
+#    and a transient cargo attribution can let the ratchet auto-raise that floor and
+#    freeze a non-reproducible high (root cause of the 2026-06-24 lib.rs red, where
+#    485e289 auto-raised lib.rs 86.67 -> 100 with no test justifying it).
+#    EXTERN_COV_ALLOW holds conscious, reviewed exceptions (like a coverage exclude).
+EXTERN_COV_ALLOW="zanshin_buffer_free"  # sync buffer-free: the live Dart bridge frees via the NativeFinalizer token path (zanshin_buffer_free_token), so this variant is exercised only by the Rust cargo test envelope_buffer_ffi_roundtrip — deliberate, reviewed exception.
+extern_uncovered=""
+for name in $(grep -rhoE 'extern "C" fn [a-z0-9_]+' "$ROOT/crates/zanshin-ffi/src" | grep -oE '[a-z0-9_]+$' | sort -u); do
+    case " $EXTERN_COV_ALLOW " in *" $name "*) continue ;; esac
+    # FNDA:<count>,<name> is unique per #[no_mangle] extern fn and max-merged by the
+    # union, so an FNDA:0,<name> line means genuinely uncovered. (Checking DA by line
+    # number would be wrong: line numbers repeat across files' SF sections.)
+    if grep -qxE "FNDA:0,${name}" "$COV/coverage.lcov"; then
+        extern_uncovered="$extern_uncovered $name"
+    fi
+done
+if [ -n "$extern_uncovered" ]; then
+    echo "extern-coverage: FAIL — uncovered extern \"C\" fn(s) in zanshin-ffi:$extern_uncovered" >&2
+    echo "  cargo-llvm-cov does not credit #[no_mangle] extern fns; add a packages/zanshin_core" >&2
+    echo "  test that calls each through the cdylib, or add a reviewed name to EXTERN_COV_ALLOW." >&2
+    exit 1
+fi
+echo "extern-coverage: OK — every zanshin-ffi extern \"C\" fn is covered (allow: $EXTERN_COV_ALLOW)."
+
 # Success marker: only reached when the gate above passed (set -e). The Stop-hook
 # reminder (.claude/hooks/coverage-gate-reminder.sh) compares source mtimes against
 # this file to decide whether the gate still needs to run.

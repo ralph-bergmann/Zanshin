@@ -103,6 +103,29 @@ fn op_log_with_limit_zero_returns_empty() {
     assert!(ops.is_empty(), "limit 0 must return empty Vec");
 }
 
+#[test]
+fn op_log_with_limit_over_count_equals_full_history() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let all = repo.op_log(None).unwrap();
+    // A limit larger than the op count must terminate via stream exhaustion
+    // (the `out.len() >= n` break never trips), returning the full history.
+    let over = repo.op_log(Some(all.len() + 100)).unwrap();
+
+    assert_eq!(
+        over.len(),
+        all.len(),
+        "an over-large limit must return the full history"
+    );
+    assert_eq!(
+        over.iter().map(|o| o.id.0.clone()).collect::<Vec<_>>(),
+        all.iter().map(|o| o.id.0.clone()).collect::<Vec<_>>(),
+        "an over-large limit must equal op_log(None) op-for-op",
+    );
+}
+
 // ── AC-5, AC-6: root op shape ─────────────────────────────────────────────────
 
 #[test]

@@ -81,15 +81,12 @@ void main() {
         reason: 'limit-1 head id must equal full-log head id (oracle equality)',
       );
 
-      // user/host are non-empty (set by external JJ_CONFIG / env in Makefile.toml).
-      // We do NOT hard-code identity strings; derive expectations from the data.
+      // Cross-call equality: user/host must be stable across re-resolves. We do
+      // NOT assert isNotNull on the non-nullable String fields (vacuously true,
+      // F20) nor hard-code identity strings — the independent jj-lib oracle
+      // equality check lives in the Rust integration test
+      // (zanshin-jj/tests/op_log.rs::op_log_head_op_matches_oracle).
       final Operation head = all.first;
-      // The init op is created by our settings; user and host are always set
-      // (jj-lib stores them as String — never absent). The exact value comes from
-      // the JJ_CONFIG pinned externally by the test harness.
-      expect(head.user, isNotNull);
-      expect(head.host, isNotNull);
-      // Check structural consistency: limit-1 result matches full-log head by id.
       expect(limited.first.user, equals(head.user), reason: 'user must be stable across calls');
       expect(limited.first.host, equals(head.host), reason: 'host must be stable across calls');
 

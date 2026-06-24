@@ -79,12 +79,15 @@ pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<
     let mut out = Vec::new();
     pollster::block_on(async {
         let mut stream = Box::pin(op_walk::walk_ancestors(std::slice::from_ref(&head_op)));
-        while let Some(item) = stream.next().await {
-            if let Some(n) = limit {
-                if out.len() >= n {
-                    break;
-                }
+        loop {
+            // Check the limit BEFORE pulling the next item: a limited walk never
+            // fetches — and so never silently discards — the (n+1)th op's Result.
+            if limit.is_some_and(|n| out.len() >= n) {
+                break;
             }
+            let Some(item) = stream.next().await else {
+                break;
+            };
             let op = item.map_err(be)?;
             let md = op.metadata();
             let end = md.time.end;

@@ -4,7 +4,7 @@ baseline_commit: 485e289
 
 # Story 2.7: Implement `op_log.rs` — operation log read
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -399,3 +399,11 @@ claude-sonnet-4-6
 4. **OQ4 — `is_snapshot: bool` field (default = include).** Added beyond the epic struct, free, lets the UI/MCP distinguish pure working-copy-snapshot ops. Override to drop it (trivial removal; it widens the 3.4b wire by one bool).
 5. **OQ5 — No hard-coded fixture op count (default = oracle-derived structural asserts).** The tiny fixture's exact op count is not statically knowable; tests assert structure (root-last, parents-empty, head-first) against an oracle. No action needed unless you want a pinned count (discouraged).
 6. **OQ6 — `parent_ids` ordering for forks.** For a DAG fork (multi-parent op) the order is jj's `parent_ids()` order. Default preserves it verbatim. Confirm no sort is desired.
+
+## Review Findings (code review 2026-06-24)
+
+_Adversarial multi-lens review of commit `e9b2aff` (7 lenses + per-finding verification): 9 raw findings → 5 verified real, 4 refuted. **No AC violation, no production bug**; coverage ratchet correctly raised (`op_log.rs` 100 %, `repo.rs` 90.96 → 91.12, nothing lowered). All findings are nit/low. Two refuted false-positives were caught by reading the jj-lib 0.41 source: (a) "reverse-chron unverified for forks" — `walk_ancestors` orders by `OperationByEndTime`, and the contract is the pinned "head-first/root-last" invariant per AC-3; (b) "root-op-last is unguarded" — it is asserted by integration tests at all three layers and `root_op` is a walk-termination-independent identity compare._
+
+- [x] [Review][Patch] ✅ APPLIED — **Limited walk fetches op n+1 and drops its `Result`** — the `out.len() >= n` guard runs *after* `stream.next().await`, so a limited call does one extra lazy op-store load and silently drops a possible `Err` on the (n+1)th op (`op_log(Some(n))` returns `Ok` where `op_log(None)` would `Err` over the same corrupt repo). Spec-sanctioned short-circuit (AC-4), benign for the requested window. Recommended: hoist the guard above `stream.next()` (no wasted load, consistent error surfacing). [crates/zanshin-jj/src/op_log.rs:82-88]
+- [x] [Review][Patch] ✅ APPLIED — **Over-large-limit equivalence untested** — add an assertion that `op_log(Some(total + 100))` returns exactly `total` ops and equals `op_log(None)` (locks the natural-exhaustion termination path; currently only `Some(0)`/`Some(1)`/`Some(total-1)` are exercised). [crates/zanshin-jj/tests/op_log.rs]
+- [x] [Review][Defer] **Real-repo multi-parent (DAG fork) extraction not exercised** — `parent_ids.len() > 1` is covered only by synthetic buffers (ffi unit + Dart decode tests); no forked-op-store fixture drives the real `op_walk` path. Spec-sanctioned deferral (2.7 note 15 / test-recipe item 9) — no action this slice. [crates/zanshin-jj/tests/op_log.rs]

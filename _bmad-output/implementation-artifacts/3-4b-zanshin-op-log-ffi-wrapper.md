@@ -4,7 +4,7 @@
 baseline_commit: 485e289
 ---
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -527,3 +527,12 @@ claude-sonnet-4-6
 3. **OQ3 — `OpLog` payload table name (default = `OpLog { operations: [Operation] }`).** A wrapping list table (not `Operation` directly in the union — the payload is the list). Confirm the name `OpLog` vs. `Operations`.
 4. **OQ4 — Dart return type (default = `List<Operation>`).** `RepoHandle.opLog()` returns `Future<List<Operation>>` directly (no `OpLog` Dart wrapper class). Override if you want a wrapper carrying e.g. a `truncated` flag.
 5. **OQ5 — `is_snapshot` on the wire (default = include, tracks 2.7 OQ4).** If 2.7 drops `is_snapshot`, drop the `Operation.is_snapshot` field here too (the wire mirrors the domain type).
+
+## Review Findings (code review 2026-06-24)
+
+_Adversarial multi-lens review of commit `e9b2aff` (7 lenses + per-finding verification). The **AC-auditor, Dart-bridge, and codegen-drift lenses returned zero findings**: all 9 ACs satisfied, the `.h`/`bindings.dart` ABI types match the Rust extern (`u64`/`i64`), `OpLog` is appended (not reordered) to the `Payload` union, the handle is borrowed not consumed, and `usize::try_from(limit).ok()` maps the sentinel cleanly. All findings below are nit/low._
+
+- [x] [Review][Patch] ✅ APPLIED — **Vacuous `isNotNull` on non-nullable `String` (F20 violation)** — `expect(head.user, isNotNull)` / `expect(head.host, isNotNull)` are always-true (`Operation.user`/`.host` are non-nullable `final String`, coalesced `?? ''`). This is the exact banned pattern the change wrapper already fixed (sprint-status:71). The following `limited.first.user == head.user` equality asserts already cover plumbing — delete the two lines, or replace with a real jj-lib oracle read per AC-23. [packages/zanshin_core/test/worker/op_log_test.dart:90-91]
+- [x] [Review][Patch] ✅ APPLIED — **FFI scalar extreme untested** — add an assertion that `zanshin_op_log(handle, i64::MAX)` equals the `-1` (all) result, exercising the upper bound of the `usize::try_from(limit).ok()` mapping. [crates/zanshin-ffi/tests/op_log_ffi.rs]
+- [x] [Review][Defer] **Duplicated invalid-handle envelope block** — the `ffi.invalid_handle` error-`EnvelopeObjectBuilder` is repeated verbatim 4× in the worker dispatch (Close/Status/GetChange/OpLog). Pre-existing sibling pattern, not introduced by this slice; optional future DRY extraction into a helper. [packages/zanshin_core/lib/src/worker/isolate.dart]
+- [x] [Review][Coverage] ✅ APPLIED (pre-existing gap surfaced by the gate, NOT from the op-log slice) — **`zanshin_ffi_version` was uncovered in the coverage harness.** Proven via `git stash` + `cargo make coverage`: pristine HEAD also measured `zanshin-ffi/src/lib.rs` at 86.67% (`zanshin_ffi_version` lines 53–56 = 0 hits). Cause: that `extern "C"` fn is exercised only by `app/test/native_asset_smoke_test.dart`, but the coverage harness runs only `packages/zanshin_core` Dart tests + cargo tests, and the cargo test's call to the `#[no_mangle]` symbol isn't attributed to the union. Fix (never lowers baseline): added `packages/zanshin_core/test/ffi/zanshin_version_test.dart` calling `zanshinFfiVersion()` through the real cdylib → `lib.rs` restored to 100%, gate green. [packages/zanshin_core/test/ffi/zanshin_version_test.dart; crates/zanshin-ffi/src/lib.rs:53-56]

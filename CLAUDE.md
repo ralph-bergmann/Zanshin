@@ -32,9 +32,15 @@ line coverage** against the committed `coverage-baseline.txt`:
 - Coverage is **Rust-only** (the cdylib FFI path unioned with cargo tests);
   Dart-side lines are not measured.
 
-Intentionally-uncovered code (benchmarks, test scaffolding) belongs in `benches/`
-or `tests/` (out of scope), **not** inline in `src/`. Production code that truly
-can't be unit-tested gets a deliberate, reviewed `exclude_prefix` in the baseline.
+**Test placement.** Rust **unit tests** for a module's private items go **inline**
+(`#[cfg(test)] mod tests` at the bottom of that `src/` module) — they run and **do**
+count toward coverage. **Integration tests** (need a real repo fixture, or exercise
+only the public API) go in the crate's `tests/` directory. **Intentionally-uncovered,
+non-running scaffolding** (benchmarks, perf harnesses) goes in `benches/` (or `tests/`)
+and **never** inline in `src/`, where dead/ignored code drags per-file coverage.
+Moving a *running* unit test out of `src/` gains nothing for coverage — never do it to
+dodge the ratchet. Production code that truly can't be unit-tested gets a deliberate,
+reviewed `exclude_prefix` in the baseline.
 
 Details and knobs: `docs/coverage.md`. **Never lower the baseline or add an
 `exclude_prefix` to dodge an untested file you could test** — that is a

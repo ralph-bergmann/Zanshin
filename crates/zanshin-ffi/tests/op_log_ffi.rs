@@ -160,3 +160,52 @@ fn op_log_zero_handle_returns_ffi_invalid_handle() {
         "error.code must be ffi.invalid_handle"
     );
 }
+
+/// `i64::MAX` limit maps to `Some(huge)` via `usize::try_from(limit).ok()` and must
+/// return the same op count as `-1` (all) — exercising the upper bound of the scalar.
+#[test]
+fn op_log_i64_max_limit_equals_all() {
+    pin_env();
+
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
+
+    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
+    let open_bytes = unsafe { read_and_free(open_token) };
+    let open_env = parse_envelope(&open_bytes);
+    assert!(open_env.ok(), "repo open must succeed");
+    let handle = open_env
+        .data_as_repo_handle()
+        .expect("data_as_repo_handle must succeed")
+        .handle();
+
+    let all_token = unsafe { zanshin_op_log(handle, -1) };
+    let all_bytes = unsafe { read_and_free(all_token) };
+    let all_env = parse_envelope(&all_bytes);
+    let all_len = all_env
+        .data_as_op_log()
+        .expect("data_as_op_log must succeed")
+        .operations()
+        .map_or(0, |o| o.len());
+
+    let max_token = unsafe { zanshin_op_log(handle, i64::MAX) };
+    let max_bytes = unsafe { read_and_free(max_token) };
+    let max_env = parse_envelope(&max_bytes);
+    assert!(max_env.ok(), "i64::MAX limit must succeed");
+    let max_len = max_env
+        .data_as_op_log()
+        .expect("data_as_op_log must succeed")
+        .operations()
+        .map_or(0, |o| o.len());
+
+    assert_eq!(
+        max_len, all_len,
+        "i64::MAX limit must return the same op count as -1 (all)"
+    );
+
+    let close_token = unsafe { zanshin_repo_close(handle) };
+    let close_bytes = unsafe { read_and_free(close_token) };
+    assert!(parse_envelope(&close_bytes).ok(), "repo close must succeed");
+
+    drop(fixture);
+}
