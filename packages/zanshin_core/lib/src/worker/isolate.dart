@@ -11,6 +11,7 @@ import '../ffi/change.dart' as repo_ffi_change;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/log_forwarder.dart';
+import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/status.dart' as repo_ffi_status;
 
@@ -371,6 +372,22 @@ class ZanshinWorker {
     );
     return repo_ffi_change.decodeChangeEnvelopeInternal(bytes);
   }
+
+  /// Read the operation log for the repo identified by [handleId].
+  ///
+  /// `limit < 0` returns all operations; `limit >= 0` returns at most [limit]
+  /// most-recent operations. Sends an [OpLogCommand] via [send] and decodes the
+  /// returned FlatBuffers `Envelope<OpLog>` bytes into a `List<Operation>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  /// The close-guard [StateError] is delivered synchronously by [RepoHandle.opLog].
+  Future<List<repo_ffi_op_log.Operation>> opLog(int handleId, int limit) async {
+    final Uint8List bytes = await send(
+      OpLogCommand(commandId: _correlator.allocateId(), handleId: handleId, limit: limit),
+    );
+    return repo_ffi_op_log.decodeOpLogEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -469,6 +486,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_change.zanshinChange(raw, changeId);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpLogCommand(:final int handleId, :final int limit):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpLogCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpLog(raw, limit);
             responseSP.send((commandId, BufferResult(bytes)));
           }
       }

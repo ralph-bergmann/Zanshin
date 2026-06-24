@@ -77,6 +77,25 @@ final class StatusCommand extends WorkerCommand {
   final int handleId;
 }
 
+/// Read the operation log for the repo identified by [handleId].
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_op_log(handle, limit)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<OpLog>` bytes.
+final class OpLogCommand extends WorkerCommand {
+  const OpLogCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.limit,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Max operations to return; `< 0` means all.
+  final int limit;
+}
+
 /// Read full change metadata for the change identified by [changeId] in the
 /// repo identified by [handleId].
 ///

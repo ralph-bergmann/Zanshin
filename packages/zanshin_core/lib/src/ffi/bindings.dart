@@ -66,6 +66,25 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function()>()
 external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
 
+/// Read the operation log of the repo identified by `handle`.
+///
+/// `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Int64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_op_log(
+  int handle,
+  int limit,
+);
+
 /// Release a C string that was allocated by `string_to_cstring`.
 ///
 /// Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
@@ -320,3 +339,15 @@ const int Change_VT_CONFLICTED_PATHS = 20;
 const int Change_VT_IS_ANONYMOUS = 22;
 
 const int Change_VT_DIVERGENT = 24;
+
+const int Operation_VT_PARENT_IDS = 6;
+
+const int Operation_VT_USER = 12;
+
+const int Operation_VT_HOST = 14;
+
+const int Operation_VT_ROOT_OP = 18;
+
+const int Operation_VT_IS_SNAPSHOT = 20;
+
+const int OpLog_VT_OPERATIONS = 4;

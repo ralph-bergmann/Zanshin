@@ -93,7 +93,8 @@ enum PayloadTypeId {
   RepoHandle(1),
   Diagnostics(2),
   Status(3),
-  Change(4);
+  Change(4),
+  OpLog(5);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -110,6 +111,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Status;
       case 4:
         return PayloadTypeId.Change;
+      case 5:
+        return PayloadTypeId.OpLog;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -118,7 +121,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 4;
+  static const int maxValue = 5;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -869,6 +872,239 @@ class ChangeObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One entry in jj's operation log (FR-JJ-7).
+class Operation {
+  Operation._(this._bc, this._bcOffset);
+  factory Operation(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Operation> reader = _OperationReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get id => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get parentIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  int get timestampMillis => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get tzOffsetMinutes => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  String? get user => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  String? get host => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+  String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
+  bool get rootOp => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  bool get isSnapshot => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
+
+  @override
+  String toString() {
+    return 'Operation{id: ${id}, parentIds: ${parentIds}, timestampMillis: ${timestampMillis}, tzOffsetMinutes: ${tzOffsetMinutes}, user: ${user}, host: ${host}, description: ${description}, rootOp: ${rootOp}, isSnapshot: ${isSnapshot}}';
+  }
+}
+
+class _OperationReader extends fb.TableReader<Operation> {
+  const _OperationReader();
+
+  @override
+  Operation createObject(fb.BufferContext bc, int offset) => Operation._(bc, offset);
+}
+
+class OperationBuilder {
+  OperationBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(9);
+  }
+
+  int addIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addParentIdsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTimestampMillis(int? timestampMillis) {
+    fbBuilder.addInt64(2, timestampMillis);
+    return fbBuilder.offset;
+  }
+
+  int addTzOffsetMinutes(int? tzOffsetMinutes) {
+    fbBuilder.addInt32(3, tzOffsetMinutes);
+    return fbBuilder.offset;
+  }
+
+  int addUserOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHostOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRootOp(bool? rootOp) {
+    fbBuilder.addBool(7, rootOp);
+    return fbBuilder.offset;
+  }
+
+  int addIsSnapshot(bool? isSnapshot) {
+    fbBuilder.addBool(8, isSnapshot);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OperationObjectBuilder extends fb.ObjectBuilder {
+  final String? _id;
+  final List<String>? _parentIds;
+  final int? _timestampMillis;
+  final int? _tzOffsetMinutes;
+  final String? _user;
+  final String? _host;
+  final String? _description;
+  final bool? _rootOp;
+  final bool? _isSnapshot;
+
+  OperationObjectBuilder({
+    String? id,
+    List<String>? parentIds,
+    int? timestampMillis,
+    int? tzOffsetMinutes,
+    String? user,
+    String? host,
+    String? description,
+    bool? rootOp,
+    bool? isSnapshot,
+  }) : _id = id,
+       _parentIds = parentIds,
+       _timestampMillis = timestampMillis,
+       _tzOffsetMinutes = tzOffsetMinutes,
+       _user = user,
+       _host = host,
+       _description = description,
+       _rootOp = rootOp,
+       _isSnapshot = isSnapshot;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? idOffset = _id == null ? null : fbBuilder.writeString(_id!);
+    final int? parentIdsOffset = _parentIds == null
+        ? null
+        : fbBuilder.writeList(_parentIds!.map(fbBuilder.writeString).toList());
+    final int? userOffset = _user == null ? null : fbBuilder.writeString(_user!);
+    final int? hostOffset = _host == null ? null : fbBuilder.writeString(_host!);
+    final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
+    fbBuilder.startTable(9);
+    fbBuilder.addOffset(0, idOffset);
+    fbBuilder.addOffset(1, parentIdsOffset);
+    fbBuilder.addInt64(2, _timestampMillis);
+    fbBuilder.addInt32(3, _tzOffsetMinutes);
+    fbBuilder.addOffset(4, userOffset);
+    fbBuilder.addOffset(5, hostOffset);
+    fbBuilder.addOffset(6, descriptionOffset);
+    fbBuilder.addBool(7, _rootOp);
+    fbBuilder.addBool(8, _isSnapshot);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The operation log: reverse-chronological (head op first, root op last).
+class OpLog {
+  OpLog._(this._bc, this._bcOffset);
+  factory OpLog(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpLog> reader = _OpLogReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<Operation>? get operations =>
+      const fb.ListReader<Operation>(Operation.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'OpLog{operations: ${operations}}';
+  }
+}
+
+class _OpLogReader extends fb.TableReader<OpLog> {
+  const _OpLogReader();
+
+  @override
+  OpLog createObject(fb.BufferContext bc, int offset) => OpLog._(bc, offset);
+}
+
+class OpLogBuilder {
+  OpLogBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addOperationsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpLogObjectBuilder extends fb.ObjectBuilder {
+  final List<OperationObjectBuilder>? _operations;
+
+  OpLogObjectBuilder({
+    List<OperationObjectBuilder>? operations,
+  }) : _operations = operations;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationsOffset = _operations == null
+        ? null
+        : fbBuilder.writeList(_operations!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, operationsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -906,6 +1142,8 @@ class Envelope {
         return Status.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 4:
         return Change.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 5:
+        return OpLog.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

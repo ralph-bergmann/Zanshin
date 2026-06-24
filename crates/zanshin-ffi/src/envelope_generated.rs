@@ -208,18 +208,19 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 4;
+        pub const ENUM_MAX_PAYLOAD: u8 = 5;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 5] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 6] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
             Payload::Status,
             Payload::Change,
+            Payload::OpLog,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -232,15 +233,17 @@ pub mod zanshin {
             pub const Diagnostics: Self = Self(2);
             pub const Status: Self = Self(3);
             pub const Change: Self = Self(4);
+            pub const OpLog: Self = Self(5);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_MAX: u8 = 5;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
                 Self::Diagnostics,
                 Self::Status,
                 Self::Change,
+                Self::OpLog,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -250,6 +253,7 @@ pub mod zanshin {
                     Self::Diagnostics => Some("Diagnostics"),
                     Self::Status => Some("Status"),
                     Self::Change => Some("Change"),
+                    Self::OpLog => Some("OpLog"),
                     _ => None,
                 }
             }
@@ -1509,6 +1513,396 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum OperationOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One entry in jj's operation log (FR-JJ-7).
+        pub struct Operation<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Operation<'a> {
+            type Inner = Operation<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Operation<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PARENT_IDS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TIMESTAMP_MILLIS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TZ_OFFSET_MINUTES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_USER: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HOST: ::flatbuffers::VOffsetT = 14;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 16;
+            pub const VT_ROOT_OP: ::flatbuffers::VOffsetT = 18;
+            pub const VT_IS_SNAPSHOT: ::flatbuffers::VOffsetT = 20;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Operation { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OperationArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Operation<'bldr>> {
+                let mut builder = OperationBuilder::new(_fbb);
+                builder.add_timestamp_millis(args.timestamp_millis);
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                if let Some(x) = args.host {
+                    builder.add_host(x);
+                }
+                if let Some(x) = args.user {
+                    builder.add_user(x);
+                }
+                builder.add_tz_offset_minutes(args.tz_offset_minutes);
+                if let Some(x) = args.parent_ids {
+                    builder.add_parent_ids(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_is_snapshot(args.is_snapshot);
+                builder.add_root_op(args.root_op);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Operation::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn parent_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Operation::VT_PARENT_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn timestamp_millis(&self) -> i64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<i64>(Operation::VT_TIMESTAMP_MILLIS, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn tz_offset_minutes(&self) -> i32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<i32>(Operation::VT_TZ_OFFSET_MINUTES, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn user(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Operation::VT_USER, None)
+                }
+            }
+            #[inline]
+            pub fn host(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Operation::VT_HOST, None)
+                }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Operation::VT_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn root_op(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Operation::VT_ROOT_OP, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn is_snapshot(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Operation::VT_IS_SNAPSHOT, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Operation<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parent_ids", Self::VT_PARENT_IDS, false)?
+     .visit_field::<i64>("timestamp_millis", Self::VT_TIMESTAMP_MILLIS, false)?
+     .visit_field::<i32>("tz_offset_minutes", Self::VT_TZ_OFFSET_MINUTES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("user", Self::VT_USER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("host", Self::VT_HOST, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
+     .visit_field::<bool>("root_op", Self::VT_ROOT_OP, false)?
+     .visit_field::<bool>("is_snapshot", Self::VT_IS_SNAPSHOT, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct OperationArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub parent_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub timestamp_millis: i64,
+            pub tz_offset_minutes: i32,
+            pub user: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub host: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub root_op: bool,
+            pub is_snapshot: bool,
+        }
+        impl<'a> Default for OperationArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OperationArgs {
+                    id: None,
+                    parent_ids: None,
+                    timestamp_millis: 0,
+                    tz_offset_minutes: 0,
+                    user: None,
+                    host: None,
+                    description: None,
+                    root_op: false,
+                    is_snapshot: false,
+                }
+            }
+        }
+
+        pub struct OperationBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OperationBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_parent_ids(
+                &mut self,
+                parent_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_PARENT_IDS, parent_ids);
+            }
+            #[inline]
+            pub fn add_timestamp_millis(&mut self, timestamp_millis: i64) {
+                self.fbb_
+                    .push_slot::<i64>(Operation::VT_TIMESTAMP_MILLIS, timestamp_millis, 0);
+            }
+            #[inline]
+            pub fn add_tz_offset_minutes(&mut self, tz_offset_minutes: i32) {
+                self.fbb_
+                    .push_slot::<i32>(Operation::VT_TZ_OFFSET_MINUTES, tz_offset_minutes, 0);
+            }
+            #[inline]
+            pub fn add_user(&mut self, user: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_USER, user);
+            }
+            #[inline]
+            pub fn add_host(&mut self, host: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_HOST, host);
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_DESCRIPTION, description);
+            }
+            #[inline]
+            pub fn add_root_op(&mut self, root_op: bool) {
+                self.fbb_.push_slot::<bool>(Operation::VT_ROOT_OP, root_op, false);
+            }
+            #[inline]
+            pub fn add_is_snapshot(&mut self, is_snapshot: bool) {
+                self.fbb_
+                    .push_slot::<bool>(Operation::VT_IS_SNAPSHOT, is_snapshot, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OperationBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OperationBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Operation<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Operation<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Operation");
+                ds.field("id", &self.id());
+                ds.field("parent_ids", &self.parent_ids());
+                ds.field("timestamp_millis", &self.timestamp_millis());
+                ds.field("tz_offset_minutes", &self.tz_offset_minutes());
+                ds.field("user", &self.user());
+                ds.field("host", &self.host());
+                ds.field("description", &self.description());
+                ds.field("root_op", &self.root_op());
+                ds.field("is_snapshot", &self.is_snapshot());
+                ds.finish()
+            }
+        }
+        pub enum OpLogOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The operation log: reverse-chronological (head op first, root op last).
+        pub struct OpLog<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpLog<'a> {
+            type Inner = OpLog<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpLog<'a> {
+            pub const VT_OPERATIONS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpLog { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpLogArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpLog<'bldr>> {
+                let mut builder = OpLogBuilder::new(_fbb);
+                if let Some(x) = args.operations {
+                    builder.add_operations(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn operations(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation>>,
+                    >>(OpLog::VT_OPERATIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpLog<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Operation>>,
+                    >>("operations", Self::VT_OPERATIONS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpLogArgs<'a> {
+            pub operations: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation<'a>>>>,
+            >,
+        }
+        impl<'a> Default for OpLogArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpLogArgs { operations: None }
+            }
+        }
+
+        pub struct OpLogBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpLogBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_operations(
+                &mut self,
+                operations: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Operation<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpLog::VT_OPERATIONS, operations);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpLogBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpLogBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpLog<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpLog<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpLog");
+                ds.field("operations", &self.operations());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -1661,6 +2055,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_op_log(&self) -> Option<OpLog<'a>> {
+                if self.data_type() == Payload::OpLog {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { OpLog::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -1694,6 +2103,9 @@ pub mod zanshin {
                             }
                             Payload::Change => {
                                 v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Change>>("Payload::Change", pos)
+                            }
+                            Payload::OpLog => {
+                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpLog>>("Payload::OpLog", pos)
                             }
                             _ => Ok(()),
                         },
@@ -1789,6 +2201,13 @@ pub mod zanshin {
                     }
                     Payload::Change => {
                         if let Some(x) = self.data_as_change() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::OpLog => {
+                        if let Some(x) = self.data_as_op_log() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

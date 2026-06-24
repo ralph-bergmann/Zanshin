@@ -93,6 +93,21 @@ impl Repo {
         crate::change::get_change(&self.workspace, id)
     }
 
+    /// Returns the operation log in reverse-chronological order (most-recent first, root op last).
+    ///
+    /// `limit = None` returns the full history; `Some(n)` returns at most the `n` most-recent
+    /// operations. Re-resolves to the head operation per call (ADR-0002). Read-only; never shells
+    /// to `jj op log` (AR-AP-1).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::OpLogError::Backend`] — `load_at_head` or the op-store walk failed; the
+    ///   jj-lib reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_log(&self, limit: Option<usize>) -> Result<Vec<crate::Operation>, crate::OpLogError> {
+        crate::op_log::op_log(self.workspace(), limit)
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors

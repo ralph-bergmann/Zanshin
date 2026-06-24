@@ -33,7 +33,7 @@ table FfiError {
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
-//   Story 3-4b : status ✓, change ✓, op_log, bookmarks, remotes
+//   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
@@ -99,11 +99,30 @@ table Change {
   divergent: bool;             // change id resolved to >1 visible commit (2.6 D4)
 }
 
+/// One entry in jj's operation log (FR-JJ-7).
+table Operation {
+  id: string;                  // op id, plain forward hex (NOT reverse-hex)
+  parent_ids: [string];        // parent op ids; empty for the root op; >1 for a DAG fork
+  timestamp_millis: long;      // op end-time, millis since the Unix epoch
+  tz_offset_minutes: int;      // timezone offset, minutes east of UTC
+  user: string;                // metadata.username; may be empty
+  host: string;                // metadata.hostname; may be empty
+  description: string;         // jj's user-friendly summary; always present, may be empty
+  root_op: bool;               // true iff the op-store root operation
+  is_snapshot: bool;           // pure working-copy-snapshot op (2.7 D6)
+}
+
+/// The operation log: reverse-chronological (head op first, root op last).
+table OpLog {
+  operations: [Operation];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
   Status,
   Change,
+  OpLog,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

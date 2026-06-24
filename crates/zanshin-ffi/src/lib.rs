@@ -34,6 +34,7 @@ pub mod diagnostics;
 pub mod ffi_strings;
 pub mod handle;
 pub mod logging;
+pub mod op_log;
 pub mod repo;
 pub mod status;
 pub mod tracing_init;

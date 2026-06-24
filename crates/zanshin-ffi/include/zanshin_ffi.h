@@ -73,6 +73,18 @@ typedef struct {
 
 #define Change_VT_DIVERGENT 24
 
+#define Operation_VT_PARENT_IDS 6
+
+#define Operation_VT_USER 12
+
+#define Operation_VT_HOST 14
+
+#define Operation_VT_ROOT_OP 18
+
+#define Operation_VT_IS_SNAPSHOT 20
+
+#define OpLog_VT_OPERATIONS 4
+
 /**
  * Build-stamp version string.
  *
@@ -131,6 +143,23 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_diagnostics(void);
+
+/**
+ * Read the operation log of the repo identified by `handle`.
+ *
+ * `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+ * `0` is detected and returned as `ffi.invalid_handle`.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.

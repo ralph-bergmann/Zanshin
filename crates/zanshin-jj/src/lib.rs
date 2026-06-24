@@ -7,11 +7,13 @@
 //! none appear in any public signature (FR-JJ-16).
 
 pub(crate) mod change;
+pub(crate) mod op_log;
 mod repo;
 pub(crate) mod revset;
 pub(crate) mod status;
 
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
+pub use op_log::{OpLogError, Operation, OperationId};
 pub use repo::{Backend, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
