@@ -21,5 +21,13 @@ thiserror = { workspace = true }
 tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
+# WHY: harness = false — the graph blueprint times manually (libtest `#[bench]` is
+# nightly-only). Run with `cargo bench -p zanshin-jj --bench graph_blueprint`. It is a
+# runnable reference for the jj-lib Stream graph walk (Story 3.11) and is excluded from
+# coverage (benches are not run by `cargo make coverage`; see docs/coverage.md).
+[[bench]]
+name = "graph_blueprint"
+harness = false
+
 [lints]
 workspace = true

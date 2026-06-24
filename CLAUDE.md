@@ -32,5 +32,10 @@ line coverage** against the committed `coverage-baseline.txt`:
 - Coverage is **Rust-only** (the cdylib FFI path unioned with cargo tests);
   Dart-side lines are not measured.
 
+Intentionally-uncovered code (benchmarks, test scaffolding) belongs in `benches/`
+or `tests/` (out of scope), **not** inline in `src/`. Production code that truly
+can't be unit-tested gets a deliberate, reviewed `exclude_prefix` in the baseline.
+
 Details and knobs: `docs/coverage.md`. **Never lower the baseline or add an
-`exclude_prefix` to dodge an untested file** — that is a review-blocking change.
+`exclude_prefix` to dodge an untested file you could test** — that is a
+review-blocking change.

@@ -84,6 +84,28 @@ baseline to make the gate pass** — that defeats the ratchet. Lowering
 `new_file_floor_pct` or adding an `exclude_prefix` is a deliberate, reviewed
 change to `coverage-baseline.txt`, not a routine fix.
 
+## Intentionally-uncovered code (the escape hatches)
+
+Some code legitimately can't or shouldn't be covered. Put it where the ratchet
+won't fail you — deliberately, never by lowering the floor:
+
+- **Benchmarks → `benches/`.** Bench code is not run by `cargo make coverage` and
+  is dropped by the scope filter, so it never counts. (Example:
+  `crates/zanshin-jj/benches/graph_blueprint.rs`.) Do **not** put `#[ignore]`
+  benchmarks inline in `src/` — they drag the file's coverage down, or in a new
+  file trip the floor. (This is exactly why the graph blueprint lives in
+  `benches/` and not in `repo.rs`.)
+- **Test scaffolding → `tests/`.** Integration tests and test-only helpers under
+  `tests/` are excluded by the scope filter.
+- **Generated code** (`*_generated.rs`, `bindings.dart`, …) is excluded automatically.
+- **Production code that genuinely can't be unit-tested** (a thin binary `main.rs`
+  entrypoint, FFI glue exercised only via integration): add a deliberate, reviewed
+  `exclude_prefix` to `coverage-baseline.txt`. That is a visible line in the diff,
+  not a silent dodge — and it should be rare.
+
+The floor never *blocks* low-coverage code; it forces you to choose one of the
+above consciously instead of letting an untested file slip in unnoticed.
+
 ## Toolchain prerequisites
 
 macOS + the rust-toolchain `llvm-tools` component + `cargo-llvm-cov`

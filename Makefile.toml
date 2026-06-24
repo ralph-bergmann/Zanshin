@@ -417,7 +417,7 @@ fi
 ( cd "$ROOT" \
   && ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      cargo llvm-cov --workspace --lcov --output-path "$COV/cargo.lcov" \
-       --ignore-filename-regex='(_generated\.rs$|/tests/)' )
+       --ignore-filename-regex='(_generated\.rs$|/tests/|/benches/)' )
 
 # 3) Union the two lcovs at the source level (a line is covered if covered in EITHER). Release
 #    cdylib vs debug cargo bins => different function hashes => a single export cannot attribute
