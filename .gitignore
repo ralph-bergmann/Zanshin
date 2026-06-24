@@ -15,3 +15,8 @@ _bmad/
 
 # Rust
 target/
+
+# Coverage: the instrumentation marker is transient (created/removed by
+# `cargo make coverage`); never commit it. The committed ratchet baseline is
+# coverage-baseline.txt (tracked on purpose).
+coverage.on

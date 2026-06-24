@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:test/test.dart';
 import 'package:logging/logging.dart';
+import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/log_forwarder.dart';
 
 /// Unit-tests the pure `package:logging` → FFI level mapping (the side that needs

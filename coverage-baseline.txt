@@ -1,0 +1,28 @@
+# Zanshin Rust coverage ratchet baseline.
+#
+# Per-file line coverage (percent). AUTO-RAISED by `cargo make coverage`; never
+# lowered. When a run raises a value, this file changes — commit it with the code
+# that earned the coverage. A drop beyond epsilon_pct fails the gate; add tests.
+# Rust-only (cdylib FFI path + cargo tests, unioned). See docs/coverage.md.
+#
+epsilon_pct = 0.10
+new_file_floor_pct = 80.00
+exclude_prefix = crates/xtask/
+exclude_prefix = crates/test-helpers/
+#
+# path = pct
+crates/zanshin-ffi/src/change.rs = 100.00
+crates/zanshin-ffi/src/diagnostics.rs = 100.00
+crates/zanshin-ffi/src/envelope.rs = 100.00
+crates/zanshin-ffi/src/ffi_strings.rs = 87.93
+crates/zanshin-ffi/src/handle.rs = 97.92
+crates/zanshin-ffi/src/lib.rs = 86.67
+crates/zanshin-ffi/src/logging.rs = 96.20
+crates/zanshin-ffi/src/repo.rs = 100.00
+crates/zanshin-ffi/src/status.rs = 100.00
+crates/zanshin-ffi/src/tracing_init.rs = 94.96
+crates/zanshin-jj/src/change.rs = 100.00
+crates/zanshin-jj/src/repo.rs = 60.64
+crates/zanshin-jj/src/revset.rs = 100.00
+crates/zanshin-jj/src/status.rs = 88.89
+crates/zanshin-mcp/src/main.rs = 0.00

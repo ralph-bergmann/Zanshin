@@ -58,6 +58,7 @@ dependencies = [
     "test-core-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
+    "coverage",
 ]
 
 [tasks.test-cargo]
@@ -350,7 +351,7 @@ exit $drift
 # ─── coverage ───────────────────────────────────────────────────────────────
 
 [tasks.coverage]
-description = "Unified cross-FFI + Rust coverage (report-first, no gate). Instruments the cdylib via the zanshin_core hook marker, runs `dart test` (clean-exit atexit flush = native FFI-path coverage) + cargo-llvm-cov, and unions the two lcovs into target/coverage/coverage.lcov. macOS + rust-toolchain llvm-tools + cargo-llvm-cov only."
+description = "Unified cross-FFI + Rust coverage WITH the ratchet gate. Instruments the cdylib via the zanshin_core hook marker, runs `dart test` (clean-exit atexit flush = native FFI-path coverage) + cargo-llvm-cov, unions the two lcovs into target/coverage/coverage.lcov, then gates per-file coverage against coverage-baseline.txt (no file may drop; new files must meet the floor; improvements raise the baseline in place). macOS + rust-toolchain llvm-tools + cargo-llvm-cov only."
 # WHY this shape (proven by spike, 2026-06-23): cargo-llvm-cov's `show-env` cannot reach the
 # cdylib build (the Flutter/Dart hooks-runner scrubs the hook env), so instrumentation is
 # triggered by a marker FILE the hook reads. `flutter test` hard-kills its tester so the LLVM
@@ -389,19 +390,25 @@ rm -rf "$COV"; mkdir -p "$COV"
 #    the cdylib alone => ffi.lcov (the coverage reachable through the real worker/FFI path).
 : > "$CORE/coverage.on"
 trap 'rm -f "$CORE/coverage.on"' EXIT
-rm -rf "$CORE/.dart_tool/hooks_runner"
+# Force an instrumented rebuild: build.dart declares coverage.on as a build dependency, so the
+# marker toggling on re-runs the hook with `-C instrument-coverage`. We also drop the previously
+# built asset as a belt-and-suspenders against a cached non-instrumented dylib being reused.
+# (The old `.dart_tool/hooks_runner` cache path no longer exists in current Dart native-assets;
+# the asset now lands at .dart_tool/lib/libzanshin_ffi.dylib per .dart_tool/native_assets.yaml.)
+rm -rf "$CORE/.dart_tool/lib" "$CORE/.dart_tool/native_assets.yaml"
 ( cd "$CORE" \
   && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
      dart test )
-DYL="$(find "$CORE/.dart_tool/hooks_runner" -path '*release/libzanshin_ffi.dylib' | head -1)"
-if [ -z "$DYL" ]; then
-    echo "coverage: instrumented cdylib not found under $CORE/.dart_tool" >&2
+DYL="$CORE/.dart_tool/lib/libzanshin_ffi.dylib"
+[ -f "$DYL" ] || DYL="$(find "$CORE/.dart_tool" -name 'libzanshin_ffi.dylib' -type f 2>/dev/null | head -1)"
+if [ -z "$DYL" ] || [ ! -f "$DYL" ]; then
+    echo "coverage: instrumented cdylib not found at $CORE/.dart_tool/lib/libzanshin_ffi.dylib" >&2
     exit 1
 fi
 "$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/ffi.profdata" "$COV"/ffi-*.profraw
 "$LLVM_BIN/llvm-cov" export -format=lcov -instr-profile "$COV/ffi.profdata" \
-    -ignore-filename-regex='(_generated\.rs$|/\.cargo/registry/|/rustc/|/\.pub-cache/)' \
+    -ignore-filename-regex='(_generated\.rs$|/\.cargo/registry/|/rustc/|/\.rustup/|/\.pub-cache/)' \
     "$DYL" > "$COV/ffi.lcov"
 
 # 2) Rust-side coverage via cargo-llvm-cov, which enumerates ALL test binaries — including the
@@ -418,8 +425,20 @@ fi
 ( cd "$ROOT" && cargo run -q -p xtask -- lcov-union "$COV/ffi.lcov" "$COV/cargo.lcov" --output "$COV/coverage.lcov" )
 
 echo "Unified coverage written: $COV/coverage.lcov  (ffi.lcov + cargo.lcov unioned)"
+
+# 4) Ratchet gate over the UNION (the two halves are already merged at the source level, so
+#    a line covered by EITHER the FFI path or the cargo tests counts). Per-file Rust coverage
+#    may not drop; new files must meet the floor; improvements raise coverage-baseline.txt in
+#    place (commit it). Exits non-zero on a regression. See xtask/src/tasks/coverage_check.rs.
+( cd "$ROOT" && cargo run -q -p xtask -- coverage-check "$COV/coverage.lcov" \
+    --baseline "$ROOT/coverage-baseline.txt" --workspace-root "$ROOT" )
 echo "Per-region view of an untaken arm, e.g.:"
 echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/ffi.profdata\" --show-line-counts --show-regions \"$DYL\" crates/zanshin-jj/src/change.rs"
+
+# Success marker: only reached when the gate above passed (set -e). The Stop-hook
+# reminder (.claude/hooks/coverage-gate-reminder.sh) compares source mtimes against
+# this file to decide whether the gate still needs to run.
+touch "$COV/.gate-ok"
 '''
 
 # ─── clean ──────────────────────────────────────────────────────────────────

@@ -16,6 +16,8 @@ enum Command {
     GenFixture(tasks::gen_fixture::GenFixtureArgs),
     /// Union two or more LCOV tracefiles (max hit count per line) into one
     LcovUnion(tasks::lcov_union::LcovUnionArgs),
+    /// Gate per-file Rust coverage against a committed ratchet baseline
+    CoverageCheck(tasks::coverage_check::CoverageCheckArgs),
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -23,5 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     match cli.command {
         Command::GenFixture(args) => tasks::gen_fixture::run(args),
         Command::LcovUnion(args) => tasks::lcov_union::run(&args),
+        Command::CoverageCheck(args) => tasks::coverage_check::run(&args),
     }
 }

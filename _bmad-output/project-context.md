@@ -243,6 +243,25 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - No `#[ignore]` / `skip:` on tests for "flakiness" reasons. Either the test is
   deterministic or it's deleted.
 
+**Coverage ratchet (local-only; part of `cargo make test`):**
+- `cargo make coverage` measures **Rust** line coverage — the source-level union
+  of the FFI-path coverage (the instrumented `zanshin-ffi` cdylib exercised by
+  `packages/zanshin_core`'s `dart test`) and the cargo-test coverage
+  (`cargo-llvm-cov`). A line counts if covered by EITHER. It then gates per-file
+  coverage against the committed `coverage-baseline.txt`.
+- `cargo make test` runs `coverage` as its final step, so the ratchet is part of
+  the standard gate (Rust is rebuilt instrumented + `dart test` re-runs — this is
+  the slow part; folded in deliberately, revisit if it bites). After a run that
+  raised coverage, commit the updated `coverage-baseline.txt` with the code that
+  earned it (improvements raise the baseline in place; it never lowers).
+- A regression (a tracked file dropping below baseline, or a new file under the
+  `new_file_floor_pct`) FAILS the gate. The fix is to ADD TESTS — never lower the
+  baseline to pass. Lowering the floor or adding an `exclude_prefix` is a
+  deliberate, reviewed edit to `coverage-baseline.txt`.
+- Coverage is **Rust-only** — Dart-side lines are not measured (heavy logic is
+  Rust; the Dart bridge is thin, the UI is out of scope). Mechanism + knobs:
+  `docs/coverage.md`, `crates/xtask/src/tasks/{lcov_union,coverage_check}.rs`.
+
 **Fixtures:**
 - Repository fixtures live at `test-fixtures/repos/` as compressed
   `.tar.zst` archives: `tiny-3-commits/`, `medium-1k-commits/`, `large-10k-commits/`.
@@ -408,7 +427,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   `app/build/macos/Build/Products/Release/Zanshin.app` (dev mode — this is the
   WIP deliverable).
 - `cargo make test` — Rust workspace tests + Dart bootstrap tests +
-  `cargo deny check advisories bans` (full license-gate + `pana` deferred).
+  `cargo deny check advisories bans` + the **coverage ratchet** (runs
+  `cargo make coverage`; gates per-file Rust coverage, see `docs/coverage.md`).
+  (Full license-gate + `pana` deferred.)
+- `cargo make coverage` — measure unified Rust coverage (FFI-path + cargo tests)
+  and gate it against `coverage-baseline.txt`; raises the baseline on improvement.
+  Standalone form of the ratchet that `cargo make test` also runs.
 - `cargo make codegen` — regenerates `zanshin_ffi.h` (cbindgen) and
   `bindings.dart` (ffigen). RUN MANUALLY whenever an `extern "C"` signature
   changes. Commit the regenerated files in the same PR.
@@ -541,6 +565,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   in memory.
 - **NEVER `--amend` a published commit or force-push without explicit
   authorization.** New commit, not amend.
+- **NEVER lower the coverage baseline to make the gate pass.** Coverage is a
+  ratchet (`coverage-baseline.txt`, part of `cargo make test`) — a regression
+  means ADD TESTS, not edit the floor down. Lowering `new_file_floor_pct` or
+  adding an `exclude_prefix` to dodge an untested file is a review-blocking
+  change. (See `docs/coverage.md`.)
 
 **Edge cases agents typically miss:**
 

@@ -5,8 +5,8 @@ import 'dart:developer' as developer;
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
-import 'package:meta/meta.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 import 'bindings.dart' as bindings;
 

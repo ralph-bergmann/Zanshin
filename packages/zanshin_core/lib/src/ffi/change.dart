@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:ffi' as ffi;
-import 'dart:typed_data'; // ignore: unnecessary_import — explicit for Uint8List clarity
+import 'dart:typed_data'; // explicit for Uint8List clarity
 
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
