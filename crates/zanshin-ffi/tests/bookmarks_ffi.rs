@@ -9,6 +9,10 @@
 //! - `bookmarks_tiny_returns_empty_list` — ok + Bookmarks payload, empty
 //! - `bookmarks_medium_returns_29_local_entries` — 29 entries, all Local, names sorted
 //! - `bookmarks_invalid_handle_returns_ffi_error` — handle 0 → `ffi.invalid_handle`
+//!
+//! No null/utf8 tests: `zanshin_bookmarks` is handle-only (no `CString` arg), so
+//! there is no null-pointer or UTF-8-decoding failure path — a deliberate
+//! asymmetry vs. `change_ffi.rs` (which carries a lone-string `change_id`).
 
 use std::env;
 use std::ffi::CString;

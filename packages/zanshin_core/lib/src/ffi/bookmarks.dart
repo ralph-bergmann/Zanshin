@@ -48,8 +48,11 @@ final class LocalBookmark extends BookmarkKind {
 final class RemoteBookmark extends BookmarkKind {
   const RemoteBookmark(this.remoteName);
 
-  /// The remote this bookmark tracks (e.g. `"origin"`); never empty for a
-  /// `Tracked` remote ref (jj guarantees a non-empty remote name).
+  /// The remote this bookmark tracks (e.g. `"origin"`). Always present for a
+  /// `Remote` entry — an absent wire field is rejected as `ffi.unknown`
+  /// corruption, never silently coerced to `''`. May be the empty string only in
+  /// the theoretical empty-remote edge case (jj does not forbid an empty remote
+  /// name).
   final String remoteName;
 }
 
@@ -106,5 +109,10 @@ Bookmark _mapBookmark(fbs.Bookmark b) => Bookmark(
 
 BookmarkKind _mapKind(fbs.BookmarkKind kind, String? remoteName) => switch (kind) {
   fbs.BookmarkKind.Local => const LocalBookmark(),
-  fbs.BookmarkKind.Remote => RemoteBookmark(remoteName ?? ''),
+  fbs.BookmarkKind.Remote => switch (remoteName) {
+    // A Remote entry must carry its remote name (its identity). An absent wire
+    // field is corruption, not a legitimate null — reject it, never fabricate ''.
+    null => throw const ZanshinFfiException('ffi.unknown', 'Remote bookmark missing remote_name'),
+    final String name => RemoteBookmark(name),
+  },
 };

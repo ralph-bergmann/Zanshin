@@ -8,7 +8,7 @@
 // A freshly-init'd jj repo has NO bookmarks; the test asserts bookmarks.isEmpty
 // (the real expected shape, F20 oracle-equality rule — not vacuous isNotEmpty).
 //
-// JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-flutter]
+// JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-core]
 // in Makefile.toml (project-context "Property of every test suite").
 
 import 'dart:io';
@@ -50,28 +50,19 @@ void main() {
       await handle.close();
     });
 
-    test('bookmarks_oracle_equality_two_calls_produce_equal_results', () async {
+    test('bookmarks_stable_across_two_calls_on_fresh_repo', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 
+      // A fresh repo has no bookmarks, and this read-only slice exposes no
+      // bookmark-mutation FFI, so both calls must return the real expected shape
+      // (empty) — asserted concretely, not via a vacuous per-element loop (F20).
+      // Populated per-field equality is covered Rust-side
+      // (bookmarks_medium_returns_29_local_entries) and by the synthetic decode
+      // contract test (test/ffi/bookmarks_test.dart).
       final List<Bookmark> first = await handle.bookmarks();
       final List<Bookmark> second = await handle.bookmarks();
-
-      // Oracle equality: two consecutive calls must yield the same result
-      // (ADR-0002 re-resolves to the same head if no mutation occurred).
-      expect(
-        first.length,
-        equals(second.length),
-        reason: 'bookmark count must be stable across two calls',
-      );
-      for (var i = 0; i < first.length; i++) {
-        expect(first[i].name, equals(second[i].name), reason: 'bookmark[$i].name must be equal');
-        expect(first[i].target, equals(second[i].target), reason: 'bookmark[$i].target must be equal');
-        expect(
-          first[i].kind.runtimeType,
-          equals(second[i].kind.runtimeType),
-          reason: 'bookmark[$i].kind must be equal',
-        );
-      }
+      expect(first, isEmpty, reason: 'fresh repo: first call must be empty');
+      expect(second, isEmpty, reason: 'fresh repo: second call must be empty');
 
       await handle.close();
     });

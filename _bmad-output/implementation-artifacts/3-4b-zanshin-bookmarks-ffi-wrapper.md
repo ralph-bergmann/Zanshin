@@ -4,7 +4,7 @@
 baseline_commit: 66a7503
 ---
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -254,6 +254,22 @@ Grouped by deliverable. Each item is a checkable contract. The 9-group structure
   - [x] Confirm `bookmarks.rs` (ffi) clears the floor (target 100 %): builder+map unit tests (cargo) + the Dart worker round-trip (cdylib) for the extern entry + invalid-handle branch. Commit the auto-raised `coverage-baseline.txt`.
 - [x] **T8 — Gate** (AC: 25, 26)
   - [x] `cargo make test` green end-to-end (Rust + Dart + deny + coverage); clippy pedantic; fmt; `dart analyze`/`format` clean; SPDX on new files.
+
+## Review Findings
+
+_Code review 2026-06-25 — bmad-code-review: 6 parallel adversarial finder layers (Opus 4.8) + 6-agent adversarial verification + completeness critic. **Verdict: 24 ACs PASS, 2 PARTIAL, 0 FAIL**; FlatBuffers wire / codegen drift CLEAN (Bookmarks appended at Payload discriminant 6, no reorder, all 5 artifacts consistent, no hand-edit); `cargo make test` independently re-run green (`crates/zanshin-ffi/src/bookmarks.rs` = 100%, coverage-baseline only raised). No correctness / safety / wire / AC-functional defects. Items below are optional hardening + small doc nits — none block `done`._
+
+- [x] [Review][Patch] Empty/missing `remote_name` — drop `?? ''`, throw on corrupt, align docs (DECISION RESOLVED 2026-06-25 by Ralph: keep the flat model; do NOT coerce null→'') [packages/zanshin_core/lib/src/ffi/bookmarks.dart:51-53,107-110; crates/zanshin-jj/src/bookmarks.rs:23-24; schemas/envelope.fbs:130] — Today the Rust/schema docs say `remote_name` CAN be `""` while the Dart doc says "never empty", and `_mapKind` coerces a missing wire value via `remoteName ?? ''`, materializing `RemoteBookmark('')`. RESOLUTION: Dart `_mapKind` drops `remoteName ?? ''` → `RemoteBookmark(remoteName)`; a `Remote` entry whose `remote_name` is null/absent (only reachable via a malformed/foreign buffer — the Rust builder always writes it) throws `ZanshinFfiException('ffi.unknown', 'Remote bookmark missing remote_name')` (corruption ≠ a legitimate null, per [[feedback-null-for-absence]]); align Rust + schema + Dart docs to "`remote_name` is always present for a `Remote` entry".
+- [x] [Review][Patch] Vacuous worker "oracle equality" test — loop never runs on an empty fresh repo [packages/zanshin_core/test/worker/bookmarks_test.dart:53-77] — AC-8 #23. A populated round-trip is NOT achievable Dart-side (no bookmark-mutation FFI; read-only story). Fix: delete the test (it duplicates `bookmarks_on_fresh_init_returns_empty_list` with false "oracle" framing — the populated Remote-arm decode is already covered synthetically in test/ffi/bookmarks_test.dart and Rust-side), OR keep it but drop the per-element framing and add a comment that the loop is dormant pending a mutation FFI.
+- [x] [Review][Defer] Remote-kind entry never crosses the live FFI boundary [crates/zanshin-ffi/tests/bookmarks_ffi.rs] — DEFERRED 2026-06-25 (architectural): the clean fix requires importing `jj_lib` into `zanshin-ffi` or `test-helpers`, violating the "`zanshin-jj` is the ONLY crate importing `jj_lib`" invariant; the only other route is a new committed remote-bearing fixture (a separate, reviewed change). The `Remote` arm is already covered piecewise — zanshin-jj integration test (`bookmarks_local_and_remote_tracking_yields_two_entries`), the zanshin-ffi builder unit test (`bookmarks_to_envelope_roundtrips_both_kinds`), and the Dart synthetic decode-contract test. Reopen only if accepting the jj_lib-importer cost or adding a new fixture.
+- [x] [Review][Patch] Builder unit test uses identical name+target for both kind arms [crates/zanshin-ffi/src/bookmarks.rs (tests::bookmarks_to_envelope_roundtrips_both_kinds)] — AC-6 #13 ("distinct name/target"). Both entries use name "main"/target "zxqpvuts", so a cross-wired-offset builder bug would not be caught. Fix: give the two entries distinct name+target and assert per-index.
+- [x] [Review][Patch] Missing AC-mandated "no null/utf8 tests" asymmetry comment [crates/zanshin-ffi/tests/bookmarks_ffi.rs] — AC-6 #15. Add a one-line comment noting null/utf8 tests are omitted because `zanshin_bookmarks` is handle-only (no CString arg) — the deliberate asymmetry vs change_ffi.rs.
+- [x] [Review][Patch] Loosen-able Rust roundtrip assertion [crates/zanshin-ffi/src/bookmarks.rs (tests)] — The Local-arm assertion `remote_name().is_none() || == Some("")` has a dead disjunct (the builder always passes None for Local). Tighten to `assert_eq!(fbs_local.remote_name(), None)` to assert the exact invariant.
+- [x] [Review][Patch] Test header cites the wrong cargo-make task [packages/zanshin_core/test/worker/bookmarks_test.dart:11-12] — Comment says env is pinned by `[tasks.test-flutter]`; this suite runs under `[tasks.test-core]`. Doc-only fix.
+
+_Dismissed in triage:_
+- _Decode message "expected Bookmarks payload, got Bookmarks" when an ok envelope has `dataType==Bookmarks` but a null data slot → cosmetic; only reachable via a malformed/foreign buffer the Rust producer never emits; behavior (throws `ffi.unknown`) is correct._
+- _Dual decode entry points (`decodeBookmarksEnvelope` @visibleForTesting vs `decodeBookmarksEnvelopeInternal`) → intentional cross-noun symmetry, matches the op_log/change/status slices._
 
 ## Dev Notes
 

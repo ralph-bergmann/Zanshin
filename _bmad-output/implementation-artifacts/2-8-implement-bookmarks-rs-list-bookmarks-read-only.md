@@ -4,7 +4,7 @@ baseline_commit: 66a7503
 
 # Story 2.8: Implement `bookmarks.rs` — list bookmarks (read-only)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -128,6 +128,19 @@ Grouped by deliverable. Each item is a checkable contract. Source is `epics.md#S
   - [x] Mirror `tests/op_log.rs` scaffolding (ENV_GUARD/pin_env, make_test_settings, `oracle_workspace`, `extract_fixture`). Empty (tiny), local-oracle (medium), in-test local+remote pair, in-test absent/untracked skip, sort, Backend-error. Oracle equality; no hard-coded remote counts; no timing assert.
 - [x] **T8 — Green gate** (AC: 22)
   - [x] `cargo make test` green incl. coverage ratchet; clippy pedantic; fmt; cargo deny. Committed the auto-raised `coverage-baseline.txt`. Public surface: no `jj_lib::` in any `bookmarks` public signature.
+
+## Review Findings
+
+_Code review 2026-06-25 — bmad-code-review: 6 parallel adversarial finder layers (Opus 4.8) + 6-agent adversarial verification + completeness critic. **Verdict: 22/22 ACs PASS**, all 7 scope-corrections honored, `cargo make test` independently re-run green (coverage 94.12% ≥ 80% floor). No correctness / safety / AC-functional defects. Items below are optional test-hardening — none block `done`._
+
+- [x] [Review][Patch] Conflicted/divergent `RefTarget` first-added selection is unproven by tests [crates/zanshin-jj/tests/bookmarks.rs] — AC-5 #11. Code is CORRECT (`added_ids().next()` yields the first present add for normal AND conflicted targets, verified vs jj-lib op_store.rs:127 / merge.rs:288), but every test builds targets only via `RefTarget::normal`/`absent`, so a one-add target never proves "first-of-many". Fix: construct a divergent local bookmark via `RefTarget::from_legacy_form([], [id_a, id_b])` (or `from_merge`) from two distinct fixture `CommitId`s, then assert exactly one entry whose target == id_a's change id. ⚠️ Do NOT mirror `change.rs::make_conflicted_change` — that is a *tree* conflict, not a *RefTarget* conflict, and would not exercise this path.
+- [x] [Review][Patch] Non-ASCII bookmark name + codepoint-order sort untested [crates/zanshin-jj/tests/bookmarks.rs] — AC-4 #10. Add a non-ASCII-named bookmark in the existing in-test transaction; assert the name round-trips byte-identical and sorts by codepoint vs an ASCII neighbor.
+- [x] [Review][Patch] `BookmarkKind::Remote` doc reconciliation (DECISION RESOLVED 2026-06-25 by Ralph: flat model kept) [crates/zanshin-jj/src/bookmarks.rs:23-24] — align this doc-comment with the Dart side: `remote_name` is always PRESENT for a `Remote` entry (the empty-string edge stays only a theoretical value, never fabricated). Pairs with Story 3.4b Finding I.
+
+_Dismissed in triage (recorded so future reviews don't re-litigate):_
+- _`get_commit` in-loop error arm "uncovered" → misdiagnosed: `get_commit` is fully covered (151 hits). The only uncovered lines (91, 107) are the `if let Some` None-arms, provably unreachable (jj-lib guarantees a present local target has ≥1 added id; the local map is absent-pruned, view.rs:176-187). 94.12% ≥ 80% floor — gate passes; reaching 100% would require testing unreachable defensive code._
+- _"Local bookmark with empty `added_ids` silently dropped" → provably unreachable (same invariants). The asymmetry vs the remote loop's explicit `is_present()/is_tracked()` filter is correct: `all_remote_bookmarks()` is NOT pre-pruned, `local_bookmarks()` is._
+- _`to_change` closure dropped the explicit `&CommitId` annotation → cosmetic; the spec skeleton is non-binding, the inferred form is idiomatic and clippy-clean._
 
 ## Dev Notes
 

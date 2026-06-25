@@ -20,8 +20,10 @@ use crate::ChangeId;
 pub enum BookmarkKind {
     /// A bookmark local to this repository.
     Local,
-    /// A tracked remote bookmark; `remote_name` is always present (never `None`),
-    /// and is the empty string only in the theoretical empty-remote edge case.
+    /// A tracked remote bookmark. `remote_name` is always present for a `Remote`
+    /// entry (never `None`); it may be the empty string only in the theoretical
+    /// empty-remote edge case (jj does not forbid an empty remote name). It is
+    /// never fabricated — an absent value across the FFI wire is corruption.
     Remote {
         /// The remote this bookmark tracks (e.g. `"origin"`).
         remote_name: String,

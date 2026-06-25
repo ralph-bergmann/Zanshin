@@ -117,8 +117,8 @@ mod tests {
     fn bookmarks_to_envelope_roundtrips_both_kinds() {
         let local = make_bookmark("main", "zxqpvuts", BookmarkKind::Local);
         let remote = make_bookmark(
-            "main",
-            "zxqpvuts",
+            "feature",
+            "qpmxrolk",
             BookmarkKind::Remote {
                 remote_name: "origin".to_owned(),
             },
@@ -134,20 +134,22 @@ mod tests {
         let fbs_bms = payload.bookmarks().expect("bookmarks must be present");
         assert_eq!(fbs_bms.len(), 2, "must have 2 bookmark entries");
 
-        // Local entry
+        // Local entry — distinct name/target from the Remote entry, so a
+        // cross-wired offset-vector bug would fail this test.
         let fbs_local = fbs_bms.get(0);
         assert_eq!(fbs_local.name(), Some("main"), "local name");
         assert_eq!(fbs_local.target(), Some("zxqpvuts"), "local target");
         assert_eq!(fbs_local.kind(), fbs::BookmarkKind::Local, "local kind");
-        assert!(
-            fbs_local.remote_name().is_none() || fbs_local.remote_name() == Some(""),
-            "local remote_name must be absent or empty"
+        assert_eq!(
+            fbs_local.remote_name(),
+            None,
+            "local remote_name must be absent (never serialized for Local)"
         );
 
         // Remote entry
         let fbs_remote = fbs_bms.get(1);
-        assert_eq!(fbs_remote.name(), Some("main"), "remote name");
-        assert_eq!(fbs_remote.target(), Some("zxqpvuts"), "remote target");
+        assert_eq!(fbs_remote.name(), Some("feature"), "remote name");
+        assert_eq!(fbs_remote.target(), Some("qpmxrolk"), "remote target");
         assert_eq!(fbs_remote.kind(), fbs::BookmarkKind::Remote, "remote kind");
         assert_eq!(fbs_remote.remote_name(), Some("origin"), "remote_name must be 'origin'");
     }

@@ -294,3 +294,110 @@ fn bookmarks_on_corrupt_repo_returns_backend_error() {
         "corrupt repo must yield Backend error, got: {result:?}"
     );
 }
+
+// ── AC-5 #11: conflicted/divergent target → first added_ids() change id ───────
+
+#[test]
+fn bookmarks_conflicted_target_uses_first_added_change_id() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let (oracle_ws, _) = oracle_workspace(&fx.path);
+    let base = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+
+    // Collect three distinct commit ids from the fixture's local bookmarks to
+    // build a divergent (multi-add) RefTarget. `added_ids()` preserves add order,
+    // so the FIRST add must be the change id `list_bookmarks` reports (AC-5 #11).
+    let mut commit_ids = Vec::new();
+    for (_, target) in base.view().local_bookmarks() {
+        if let Some(cid) = target.added_ids().next() {
+            if !commit_ids.contains(cid) {
+                commit_ids.push(cid.clone());
+            }
+            if commit_ids.len() >= 3 {
+                break;
+            }
+        }
+    }
+    assert!(
+        commit_ids.len() >= 3,
+        "medium fixture must have >=3 distinct bookmark targets; got {}",
+        commit_ids.len()
+    );
+    let first_add = commit_ids[0].clone();
+    let second_add = commit_ids[1].clone();
+    let removed = commit_ids[2].clone();
+
+    // Expected: the divergent bookmark resolves to the FIRST added id's change id.
+    let expected_change = base.store().get_commit(&first_add).unwrap().change_id().reverse_hex();
+
+    let mut tx = base.start_transaction();
+    let mr = tx.repo_mut();
+    // Divergent local bookmark: two adds + one remove (a merge has adds = removes + 1).
+    mr.set_local_bookmark_target(
+        "divergent".as_ref(),
+        RefTarget::from_legacy_form([removed], [first_add, second_add]),
+    );
+    pollster::block_on(tx.commit("test: add divergent local bookmark")).unwrap();
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let bms = repo.list_bookmarks().unwrap();
+
+    let divergent: Vec<_> = bms.iter().filter(|b| b.name == "divergent").collect();
+    assert_eq!(
+        divergent.len(),
+        1,
+        "a divergent bookmark must yield exactly one entry; got {divergent:?}"
+    );
+    assert_eq!(divergent[0].kind, BookmarkKind::Local, "divergent entry must be Local");
+    assert_eq!(
+        divergent[0].target.0, expected_change,
+        "divergent bookmark must resolve to the FIRST added_ids() change id"
+    );
+}
+
+// ── AC-4 #10: non-ASCII name preserved verbatim + codepoint-order sort ─────────
+
+#[test]
+fn bookmarks_preserve_non_ascii_name_and_sort_by_codepoint() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let (oracle_ws, _) = oracle_workspace(&fx.path);
+    let base = pollster::block_on(oracle_ws.repo_loader().load_at_head()).unwrap();
+    let commit_id = base
+        .view()
+        .local_bookmarks()
+        .find_map(|(_, target)| target.added_ids().next().cloned())
+        .expect("medium fixture has at least one local bookmark");
+
+    let mut tx = base.start_transaction();
+    let mr = tx.repo_mut();
+    // Shared "zzz-" prefix → both sort after the fixture's lowercase ASCII names
+    // and adjacent to each other. At the 5th char 'a' (U+0061) < 'é' (U+00E9), so
+    // codepoint order is "zzz-ascii" < "zzz-éclair".
+    mr.set_local_bookmark_target("zzz-ascii".as_ref(), RefTarget::normal(commit_id.clone()));
+    mr.set_local_bookmark_target("zzz-éclair".as_ref(), RefTarget::normal(commit_id.clone()));
+    pollster::block_on(tx.commit("test: non-ASCII bookmark name")).unwrap();
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let bms = repo.list_bookmarks().unwrap();
+
+    // Verbatim UTF-8 preservation of the non-ASCII name.
+    assert!(
+        bms.iter().any(|b| b.name == "zzz-éclair"),
+        "non-ASCII bookmark name must be preserved verbatim"
+    );
+
+    // Codepoint-order sort: "zzz-ascii" must precede "zzz-éclair".
+    let i_ascii = bms
+        .iter()
+        .position(|b| b.name == "zzz-ascii")
+        .expect("zzz-ascii present");
+    let i_nonascii = bms
+        .iter()
+        .position(|b| b.name == "zzz-éclair")
+        .expect("zzz-éclair present");
+    assert!(
+        i_ascii < i_nonascii,
+        "codepoint order: 'zzz-ascii' (#{i_ascii}) must precede 'zzz-éclair' (#{i_nonascii})"
+    );
+}
