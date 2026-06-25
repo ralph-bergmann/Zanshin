@@ -88,13 +88,51 @@ class _ConflictStateReader extends fb.Reader<ConflictState> {
       ConflictState.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  Whether a bookmark is local-only or a tracked remote bookmark.
+///  `remote_name` is populated ONLY when kind == Remote (empty for Local).
+enum BookmarkKind {
+  Local(0),
+  Remote(1);
+
+  final int value;
+  const BookmarkKind(this.value);
+
+  factory BookmarkKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return BookmarkKind.Local;
+      case 1:
+        return BookmarkKind.Remote;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static BookmarkKind? _createOrNull(int? value) => value == null ? null : BookmarkKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<BookmarkKind> reader = _BookmarkKindReader();
+}
+
+class _BookmarkKindReader extends fb.Reader<BookmarkKind> {
+  const _BookmarkKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  BookmarkKind read(fb.BufferContext bc, int offset) => BookmarkKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
   Diagnostics(2),
   Status(3),
   Change(4),
-  OpLog(5);
+  OpLog(5),
+  Bookmarks(6);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -113,6 +151,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Change;
       case 5:
         return PayloadTypeId.OpLog;
+      case 6:
+        return PayloadTypeId.Bookmarks;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -121,7 +161,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 5;
+  static const int maxValue = 6;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1105,6 +1145,185 @@ class OpLogObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
+///  appears as TWO entries: one Local, one Remote.
+class Bookmark {
+  Bookmark._(this._bc, this._bcOffset);
+  factory Bookmark(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Bookmark> reader = _BookmarkReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  BookmarkKind get kind => BookmarkKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get remoteName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'Bookmark{name: ${name}, target: ${target}, kind: ${kind}, remoteName: ${remoteName}}';
+  }
+}
+
+class _BookmarkReader extends fb.TableReader<Bookmark> {
+  const _BookmarkReader();
+
+  @override
+  Bookmark createObject(fb.BufferContext bc, int offset) => Bookmark._(bc, offset);
+}
+
+class BookmarkBuilder {
+  BookmarkBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTargetOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addKind(BookmarkKind? kind) {
+    fbBuilder.addInt8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteNameOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _target;
+  final BookmarkKind? _kind;
+  final String? _remoteName;
+
+  BookmarkObjectBuilder({
+    String? name,
+    String? target,
+    BookmarkKind? kind,
+    String? remoteName,
+  }) : _name = name,
+       _target = target,
+       _kind = kind,
+       _remoteName = remoteName;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
+    final int? remoteNameOffset = _remoteName == null ? null : fbBuilder.writeString(_remoteName!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, targetOffset);
+    fbBuilder.addInt8(2, _kind?.value);
+    fbBuilder.addOffset(3, remoteNameOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The bookmark list: local + tracked-remote entries, sorted by name then kind.
+class Bookmarks {
+  Bookmarks._(this._bc, this._bcOffset);
+  factory Bookmarks(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Bookmarks> reader = _BookmarksReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<Bookmark>? get bookmarks => const fb.ListReader<Bookmark>(Bookmark.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'Bookmarks{bookmarks: ${bookmarks}}';
+  }
+}
+
+class _BookmarksReader extends fb.TableReader<Bookmarks> {
+  const _BookmarksReader();
+
+  @override
+  Bookmarks createObject(fb.BufferContext bc, int offset) => Bookmarks._(bc, offset);
+}
+
+class BookmarksBuilder {
+  BookmarksBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarksObjectBuilder extends fb.ObjectBuilder {
+  final List<BookmarkObjectBuilder>? _bookmarks;
+
+  BookmarksObjectBuilder({
+    List<BookmarkObjectBuilder>? bookmarks,
+  }) : _bookmarks = bookmarks;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? bookmarksOffset = _bookmarks == null
+        ? null
+        : fbBuilder.writeList(_bookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, bookmarksOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1144,6 +1363,8 @@ class Envelope {
         return Change.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 5:
         return OpLog.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 6:
+        return Bookmarks.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

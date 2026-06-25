@@ -108,6 +108,21 @@ impl Repo {
         crate::op_log::op_log(self.workspace(), limit)
     }
 
+    /// Lists local + tracked-remote bookmarks, sorted by name then kind (FR-JJ-8).
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells
+    /// to `jj bookmark list` (AR-AP-1). A conflicted target resolves to the first added
+    /// commit's change id (listing scope only).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::BookmarkError::Backend`] — `load_at_head` or a store read failed; the
+    ///   jj-lib reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_bookmarks(&self) -> Result<Vec<crate::Bookmark>, crate::BookmarkError> {
+        crate::bookmarks::list_bookmarks(self.workspace())
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors

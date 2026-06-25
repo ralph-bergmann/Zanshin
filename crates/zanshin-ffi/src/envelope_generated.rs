@@ -203,24 +203,115 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_BOOKMARK_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 5;
+        pub const ENUM_MAX_BOOKMARK_KIND: i8 = 1;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 6] = [
+        pub const ENUM_VALUES_BOOKMARK_KIND: [BookmarkKind; 2] = [BookmarkKind::Local, BookmarkKind::Remote];
+
+        /// Whether a bookmark is local-only or a tracked remote bookmark.
+        /// `remote_name` is populated ONLY when kind == Remote (empty for Local).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct BookmarkKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl BookmarkKind {
+            pub const Local: Self = Self(0);
+            pub const Remote: Self = Self(1);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Local, Self::Remote];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Local => Some("Local"),
+                    Self::Remote => Some("Remote"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for BookmarkKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for BookmarkKind {
+            type Output = BookmarkKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for BookmarkKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for BookmarkKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for BookmarkKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 6;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 7] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
             Payload::Status,
             Payload::Change,
             Payload::OpLog,
+            Payload::Bookmarks,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -234,9 +325,10 @@ pub mod zanshin {
             pub const Status: Self = Self(3);
             pub const Change: Self = Self(4);
             pub const OpLog: Self = Self(5);
+            pub const Bookmarks: Self = Self(6);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 5;
+            pub const ENUM_MAX: u8 = 6;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -244,6 +336,7 @@ pub mod zanshin {
                 Self::Status,
                 Self::Change,
                 Self::OpLog,
+                Self::Bookmarks,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -254,6 +347,7 @@ pub mod zanshin {
                     Self::Status => Some("Status"),
                     Self::Change => Some("Change"),
                     Self::OpLog => Some("OpLog"),
+                    Self::Bookmarks => Some("Bookmarks"),
                     _ => None,
                 }
             }
@@ -1903,6 +1997,291 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum BookmarkOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
+        /// appears as TWO entries: one Local, one Remote.
+        pub struct Bookmark<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Bookmark<'a> {
+            type Inner = Bookmark<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Bookmark<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGET: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REMOTE_NAME: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Bookmark { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Bookmark<'bldr>> {
+                let mut builder = BookmarkBuilder::new(_fbb);
+                if let Some(x) = args.remote_name {
+                    builder.add_remote_name(x);
+                }
+                if let Some(x) = args.target {
+                    builder.add_target(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Bookmark::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn target(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Bookmark::VT_TARGET, None)
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> BookmarkKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<BookmarkKind>(Bookmark::VT_KIND, Some(BookmarkKind::Local))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn remote_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Bookmark::VT_REMOTE_NAME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Bookmark<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target", Self::VT_TARGET, false)?
+                    .visit_field::<BookmarkKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote_name", Self::VT_REMOTE_NAME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub target: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: BookmarkKind,
+            pub remote_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for BookmarkArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkArgs {
+                    name: None,
+                    target: None,
+                    kind: BookmarkKind::Local,
+                    remote_name: None,
+                }
+            }
+        }
+
+        pub struct BookmarkBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Bookmark::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Bookmark::VT_TARGET, target);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: BookmarkKind) {
+                self.fbb_
+                    .push_slot::<BookmarkKind>(Bookmark::VT_KIND, kind, BookmarkKind::Local);
+            }
+            #[inline]
+            pub fn add_remote_name(&mut self, remote_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Bookmark::VT_REMOTE_NAME, remote_name);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BookmarkBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Bookmark<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Bookmark<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Bookmark");
+                ds.field("name", &self.name());
+                ds.field("target", &self.target());
+                ds.field("kind", &self.kind());
+                ds.field("remote_name", &self.remote_name());
+                ds.finish()
+            }
+        }
+        pub enum BookmarksOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The bookmark list: local + tracked-remote entries, sorted by name then kind.
+        pub struct Bookmarks<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Bookmarks<'a> {
+            type Inner = Bookmarks<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Bookmarks<'a> {
+            pub const VT_BOOKMARKS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Bookmarks { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarksArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Bookmarks<'bldr>> {
+                let mut builder = BookmarksBuilder::new(_fbb);
+                if let Some(x) = args.bookmarks {
+                    builder.add_bookmarks(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn bookmarks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Bookmark<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Bookmark>>,
+                    >>(Bookmarks::VT_BOOKMARKS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Bookmarks<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Bookmark>>>>("bookmarks", Self::VT_BOOKMARKS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarksArgs<'a> {
+            pub bookmarks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Bookmark<'a>>>>,
+            >,
+        }
+        impl<'a> Default for BookmarksArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarksArgs { bookmarks: None }
+            }
+        }
+
+        pub struct BookmarksBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarksBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_bookmarks(
+                &mut self,
+                bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Bookmark<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Bookmarks::VT_BOOKMARKS, bookmarks);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BookmarksBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarksBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Bookmarks<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Bookmarks<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Bookmarks");
+                ds.field("bookmarks", &self.bookmarks());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2070,6 +2449,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_bookmarks(&self) -> Option<Bookmarks<'a>> {
+                if self.data_type() == Payload::Bookmarks {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Bookmarks::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -2107,6 +2501,10 @@ pub mod zanshin {
                             Payload::OpLog => {
                                 v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpLog>>("Payload::OpLog", pos)
                             }
+                            Payload::Bookmarks => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Bookmarks>>(
+                                "Payload::Bookmarks",
+                                pos,
+                            ),
                             _ => Ok(()),
                         },
                     )?
@@ -2208,6 +2606,13 @@ pub mod zanshin {
                     }
                     Payload::OpLog => {
                         if let Some(x) = self.data_as_op_log() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Bookmarks => {
+                        if let Some(x) = self.data_as_bookmarks() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

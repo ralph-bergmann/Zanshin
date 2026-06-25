@@ -20,6 +20,10 @@
 
 #define ENUM_MAX_CONFLICT_STATE 1
 
+#define ENUM_MIN_BOOKMARK_KIND 0
+
+#define ENUM_MAX_BOOKMARK_KIND 1
+
 /**
  * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
  * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
@@ -85,6 +89,12 @@ typedef struct {
 
 #define OpLog_VT_OPERATIONS 4
 
+#define Bookmark_VT_TARGET 6
+
+#define Bookmark_VT_REMOTE_NAME 10
+
+#define Bookmarks_VT_BOOKMARKS 4
+
 /**
  * Build-stamp version string.
  *
@@ -98,6 +108,25 @@ typedef struct {
  * `zanshin_string_free` is called on it.
  */
 char *zanshin_ffi_version(void);
+
+/**
+ * List local + tracked-remote bookmarks of the repo identified by `handle`.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+ * `0` is detected and returned as `ffi.invalid_handle`.
+ * A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+ * handle table (Story 3.9) makes a stale handle unreachable.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_bookmarks(uint64_t handle);
 
 /**
  * Read full metadata for the change identified by `change_id` in the repo
@@ -143,23 +172,6 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_diagnostics(void);
-
-/**
- * Read the operation log of the repo identified by `handle`.
- *
- * `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
- *
- * # Errors
- * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
- * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
- *
- * # Safety
- * `handle` must be a value returned by a successful `zanshin_repo_open`,
- * `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
- * `0` is detected and returned as `ffi.invalid_handle`.
- * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
- */
-ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.
@@ -240,6 +252,23 @@ void zanshin_log(int32_t level, const char *target, const char *message);
  * same underlying init instead; the `Once` makes the overlap harmless.
  */
 void zanshin_logging_init(void);
+
+/**
+ * Read the operation log of the repo identified by `handle`.
+ *
+ * `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+ * `0` is detected and returned as `ffi.invalid_handle`.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 
 /**
  * Open an existing jj repository at `path`.

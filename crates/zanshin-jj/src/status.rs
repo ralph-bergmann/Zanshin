@@ -44,7 +44,7 @@ pub enum ChangeKind {
 
 /// A jj change identifier in jj's canonical reverse-hex (`z-k`) display form —
 /// the `qpvuntsm`-style id shown by `jj log`. `jj_lib`-type-free (FR-JJ-16).
-/// Reused by Story 2.6 (`change.rs`) and 2.7 (`op_log.rs`).
+/// Reused by Story 2.6 (`change.rs`), 2.7 (`op_log.rs`), and 2.8 (`bookmarks.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangeId(pub String);
 

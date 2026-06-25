@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
 
+import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
@@ -388,6 +389,21 @@ class ZanshinWorker {
     );
     return repo_ffi_op_log.decodeOpLogEnvelopeInternal(bytes);
   }
+
+  /// Read local + tracked-remote bookmarks for the repo identified by [handleId].
+  ///
+  /// Sends a [BookmarksCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<Bookmarks>` bytes into a `List<Bookmark>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  /// The close-guard [StateError] is delivered synchronously by [RepoHandle.bookmarks].
+  Future<List<repo_ffi_bookmarks.Bookmark>> bookmarks(int handleId) async {
+    final Uint8List bytes = await send(
+      BookmarksCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_bookmarks.decodeBookmarksEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -503,6 +519,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_op_log.zanshinOpLog(raw, limit);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarksCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarksCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmarks.zanshinBookmarks(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
       }

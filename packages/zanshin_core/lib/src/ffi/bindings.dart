@@ -20,6 +20,26 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> zanshin_ffi_version();
 
+/// List local + tracked-remote bookmarks of the repo identified by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmarks(
+  int handle,
+);
+
 /// Read full metadata for the change identified by `change_id` in the repo
 /// referenced by `handle`.
 ///
@@ -65,25 +85,6 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
 /// `zanshin_buffer_free_token`.
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function()>()
 external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
-
-/// Read the operation log of the repo identified by `handle`.
-///
-/// `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
-///
-/// # Errors
-/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
-/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
-///
-/// # Safety
-/// `handle` must be a value returned by a successful `zanshin_repo_open`,
-/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
-/// `0` is detected and returned as `ffi.invalid_handle`.
-/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
-@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Int64)>()
-external ffi.Pointer<ZanshinBuf> zanshin_op_log(
-  int handle,
-  int limit,
-);
 
 /// Release a C string that was allocated by `string_to_cstring`.
 ///
@@ -170,6 +171,25 @@ external void zanshin_log(
 /// same underlying init instead; the `Once` makes the overlap harmless.
 @ffi.Native<ffi.Void Function()>()
 external void zanshin_logging_init();
+
+/// Read the operation log of the repo identified by `handle`.
+///
+/// `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Int64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_op_log(
+  int handle,
+  int limit,
+);
 
 /// Open an existing jj repository at `path`.
 ///
@@ -298,6 +318,10 @@ const int ENUM_MIN_CONFLICT_STATE = 0;
 
 const int ENUM_MAX_CONFLICT_STATE = 1;
 
+const int ENUM_MIN_BOOKMARK_KIND = 0;
+
+const int ENUM_MAX_BOOKMARK_KIND = 1;
+
 const int FileChange_VT_PATH = 4;
 
 const int FileChange_VT_KIND = 6;
@@ -351,3 +375,9 @@ const int Operation_VT_ROOT_OP = 18;
 const int Operation_VT_IS_SNAPSHOT = 20;
 
 const int OpLog_VT_OPERATIONS = 4;
+
+const int Bookmark_VT_TARGET = 6;
+
+const int Bookmark_VT_REMOTE_NAME = 10;
+
+const int Bookmarks_VT_BOOKMARKS = 4;

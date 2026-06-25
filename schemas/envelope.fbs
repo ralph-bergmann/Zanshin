@@ -33,7 +33,7 @@ table FfiError {
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
-//   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks, remotes
+//   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
@@ -117,12 +117,31 @@ table OpLog {
   operations: [Operation];
 }
 
+/// Whether a bookmark is local-only or a tracked remote bookmark.
+/// `remote_name` is populated ONLY when kind == Remote (empty for Local).
+enum BookmarkKind : byte { Local, Remote }
+
+/// One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
+/// appears as TWO entries: one Local, one Remote.
+table Bookmark {
+  name: string;          // bookmark name (UTF-8)
+  target: string;        // target ChangeId, reverse-hex (stable across rebases)
+  kind: BookmarkKind;
+  remote_name: string;   // populated only when kind == Remote; empty for Local
+}
+
+/// The bookmark list: local + tracked-remote entries, sorted by name then kind.
+table Bookmarks {
+  bookmarks: [Bookmark];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
   Status,
   Change,
   OpLog,
+  Bookmarks,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

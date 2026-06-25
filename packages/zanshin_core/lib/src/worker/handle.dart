@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -100,6 +101,18 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.opLog(_handleId, limit);
+  }
+
+  /// Read local + tracked-remote bookmarks for this repository.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.jj_lib_error`).
+  Future<List<Bookmark>> bookmarks() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarks(_handleId);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the
