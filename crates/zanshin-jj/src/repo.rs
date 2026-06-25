@@ -123,6 +123,21 @@ impl Repo {
         crate::bookmarks::list_bookmarks(self.workspace())
     }
 
+    /// Lists configured git remotes with fetch URLs, sorted by name (FR-JJ-9).
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never
+    /// shells to `jj git remote list` (AR-AP-1). A non-git (native) backend, or a
+    /// git-backed repo with no remotes, yields `Ok(vec![])`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::RemoteError::Backend`] — `load_at_head` failed; the jj-lib
+    ///   reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_remotes(&self) -> Result<Vec<crate::Remote>, crate::RemoteError> {
+        crate::remotes::list_remotes(self.workspace())
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors

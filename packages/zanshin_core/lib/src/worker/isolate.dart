@@ -13,6 +13,7 @@ import '../ffi/change.dart' as repo_ffi_change;
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/log_forwarder.dart';
 import '../ffi/op_log.dart' as repo_ffi_op_log;
+import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/status.dart' as repo_ffi_status;
 
@@ -404,6 +405,21 @@ class ZanshinWorker {
     );
     return repo_ffi_bookmarks.decodeBookmarksEnvelopeInternal(bytes);
   }
+
+  /// Read the configured git remotes for the repo identified by [handleId].
+  ///
+  /// Sends a [RemotesCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<Remotes>` bytes into a `List<Remote>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  /// The close-guard [StateError] is delivered synchronously by [RepoHandle.remotes].
+  Future<List<repo_ffi_remotes.Remote>> remotes(int handleId) async {
+    final Uint8List bytes = await send(
+      RemotesCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_remotes.decodeRemotesEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -536,6 +552,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmarks.zanshinBookmarks(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RemotesCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RemotesCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_remotes.zanshinRemotes(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
       }

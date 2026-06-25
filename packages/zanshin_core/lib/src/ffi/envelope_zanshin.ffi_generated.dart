@@ -132,7 +132,8 @@ enum PayloadTypeId {
   Status(3),
   Change(4),
   OpLog(5),
-  Bookmarks(6);
+  Bookmarks(6),
+  Remotes(7);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -153,6 +154,8 @@ enum PayloadTypeId {
         return PayloadTypeId.OpLog;
       case 6:
         return PayloadTypeId.Bookmarks;
+      case 7:
+        return PayloadTypeId.Remotes;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -161,7 +164,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 6;
+  static const int maxValue = 7;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1324,6 +1327,164 @@ class BookmarksObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One configured git remote (FR-JJ-9). `url` is the fetch URL, verbatim —
+///  credentials are NOT scrubbed and SSH is NOT rewritten to HTTPS.
+class Remote {
+  Remote._(this._bc, this._bcOffset);
+  factory Remote(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Remote> reader = _RemoteReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'Remote{name: ${name}, url: ${url}}';
+  }
+}
+
+class _RemoteReader extends fb.TableReader<Remote> {
+  const _RemoteReader();
+
+  @override
+  Remote createObject(fb.BufferContext bc, int offset) => Remote._(bc, offset);
+}
+
+class RemoteBuilder {
+  RemoteBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUrlOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RemoteObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _url;
+
+  RemoteObjectBuilder({
+    String? name,
+    String? url,
+  }) : _name = name,
+       _url = url;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, urlOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The remote list: configured git remotes, sorted by name.
+class Remotes {
+  Remotes._(this._bc, this._bcOffset);
+  factory Remotes(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Remotes> reader = _RemotesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<Remote>? get remotes => const fb.ListReader<Remote>(Remote.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'Remotes{remotes: ${remotes}}';
+  }
+}
+
+class _RemotesReader extends fb.TableReader<Remotes> {
+  const _RemotesReader();
+
+  @override
+  Remotes createObject(fb.BufferContext bc, int offset) => Remotes._(bc, offset);
+}
+
+class RemotesBuilder {
+  RemotesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RemotesObjectBuilder extends fb.ObjectBuilder {
+  final List<RemoteObjectBuilder>? _remotes;
+
+  RemotesObjectBuilder({
+    List<RemoteObjectBuilder>? remotes,
+  }) : _remotes = remotes;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, remotesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1365,6 +1526,8 @@ class Envelope {
         return OpLog.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 6:
         return Bookmarks.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 7:
+        return Remotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

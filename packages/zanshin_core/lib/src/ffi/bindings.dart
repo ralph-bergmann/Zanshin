@@ -191,6 +191,26 @@ external ffi.Pointer<ZanshinBuf> zanshin_op_log(
   int limit,
 );
 
+/// List the configured git remotes of the repo identified by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `Remotes` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_remotes(
+  int handle,
+);
+
 /// Open an existing jj repository at `path`.
 ///
 /// Returns a success `Envelope` whose payload is `RepoHandle { handle }` on success,
@@ -381,3 +401,7 @@ const int Bookmark_VT_TARGET = 6;
 const int Bookmark_VT_REMOTE_NAME = 10;
 
 const int Bookmarks_VT_BOOKMARKS = 4;
+
+const int Remote_VT_URL = 6;
+
+const int Remotes_VT_REMOTES = 4;

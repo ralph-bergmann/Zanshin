@@ -33,7 +33,7 @@ table FfiError {
 // Extend this union — and regenerate both sides — as each noun lands:
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
-//   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes
+//   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes ✓
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
@@ -135,6 +135,18 @@ table Bookmarks {
   bookmarks: [Bookmark];
 }
 
+/// One configured git remote (FR-JJ-9). `url` is the fetch URL, verbatim —
+/// credentials are NOT scrubbed and SSH is NOT rewritten to HTTPS.
+table Remote {
+  name: string;   // remote name, e.g. "origin" (UTF-8)
+  url: string;    // fetch URL, verbatim
+}
+
+/// The remote list: configured git remotes, sorted by name.
+table Remotes {
+  remotes: [Remote];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -142,6 +154,7 @@ union Payload {
   Change,
   OpLog,
   Bookmarks,
+  Remotes,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@
 pub(crate) mod bookmarks;
 pub(crate) mod change;
 pub(crate) mod op_log;
+pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
 pub(crate) mod status;
@@ -16,6 +17,7 @@ pub(crate) mod status;
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use op_log::{OpLogError, Operation, OperationId};
+pub use remotes::{Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};

@@ -298,13 +298,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 6;
+        pub const ENUM_MAX_PAYLOAD: u8 = 7;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 7] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 8] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -312,6 +312,7 @@ pub mod zanshin {
             Payload::Change,
             Payload::OpLog,
             Payload::Bookmarks,
+            Payload::Remotes,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -326,9 +327,10 @@ pub mod zanshin {
             pub const Change: Self = Self(4);
             pub const OpLog: Self = Self(5);
             pub const Bookmarks: Self = Self(6);
+            pub const Remotes: Self = Self(7);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 6;
+            pub const ENUM_MAX: u8 = 7;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -337,6 +339,7 @@ pub mod zanshin {
                 Self::Change,
                 Self::OpLog,
                 Self::Bookmarks,
+                Self::Remotes,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -348,6 +351,7 @@ pub mod zanshin {
                     Self::Change => Some("Change"),
                     Self::OpLog => Some("OpLog"),
                     Self::Bookmarks => Some("Bookmarks"),
+                    Self::Remotes => Some("Remotes"),
                     _ => None,
                 }
             }
@@ -2282,6 +2286,242 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum RemoteOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One configured git remote (FR-JJ-9). `url` is the fetch URL, verbatim —
+        /// credentials are NOT scrubbed and SSH is NOT rewritten to HTTPS.
+        pub struct Remote<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Remote<'a> {
+            type Inner = Remote<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Remote<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_URL: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Remote { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RemoteArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Remote<'bldr>> {
+                let mut builder = RemoteBuilder::new(_fbb);
+                if let Some(x) = args.url {
+                    builder.add_url(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Remote::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Remote::VT_URL, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Remote<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RemoteArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for RemoteArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RemoteArgs { name: None, url: None }
+            }
+        }
+
+        pub struct RemoteBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemoteBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Remote::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Remote::VT_URL, url);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemoteBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RemoteBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Remote<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Remote<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Remote");
+                ds.field("name", &self.name());
+                ds.field("url", &self.url());
+                ds.finish()
+            }
+        }
+        pub enum RemotesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The remote list: configured git remotes, sorted by name.
+        pub struct Remotes<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Remotes<'a> {
+            type Inner = Remotes<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Remotes<'a> {
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Remotes { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RemotesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Remotes<'bldr>> {
+                let mut builder = RemotesBuilder::new(_fbb);
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Remote<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Remote>>,
+                    >>(Remotes::VT_REMOTES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Remotes<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Remote>>>>("remotes", Self::VT_REMOTES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RemotesArgs<'a> {
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Remote<'a>>>>>,
+        }
+        impl<'a> Default for RemotesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RemotesArgs { remotes: None }
+            }
+        }
+
+        pub struct RemotesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemotesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Remote<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Remotes::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemotesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RemotesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Remotes<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Remotes<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Remotes");
+                ds.field("remotes", &self.remotes());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2464,6 +2704,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_remotes(&self) -> Option<Remotes<'a>> {
+                if self.data_type() == Payload::Remotes {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Remotes::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -2503,6 +2758,10 @@ pub mod zanshin {
                             }
                             Payload::Bookmarks => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Bookmarks>>(
                                 "Payload::Bookmarks",
+                                pos,
+                            ),
+                            Payload::Remotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Remotes>>(
+                                "Payload::Remotes",
                                 pos,
                             ),
                             _ => Ok(()),
@@ -2613,6 +2872,13 @@ pub mod zanshin {
                     }
                     Payload::Bookmarks => {
                         if let Some(x) = self.data_as_bookmarks() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Remotes => {
+                        if let Some(x) = self.data_as_remotes() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
