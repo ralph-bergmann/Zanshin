@@ -9,7 +9,7 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (24 types, AC-1 table) --------
+// --- Type-path aliases: one alias per public type (26 types, AC-1 table) --------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -49,6 +49,10 @@ type _BookmarkError = zanshin_jj::BookmarkError;
 type _Remote = zanshin_jj::Remote;
 type _RemoteError = zanshin_jj::RemoteError;
 
+// detect
+type _RepoKind = zanshin_jj::RepoKind;
+type _DetectError = zanshin_jj::DetectError;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 #[test]
@@ -76,4 +80,9 @@ fn api_surface_resolves() {
     _ = zanshin_jj::ChangeId(String::new());
     _ = zanshin_jj::OperationId(String::new());
     _ = zanshin_jj::CommitId(String::new());
+
+    // detect
+    _ = zanshin_jj::detect_repo as fn(&std::path::Path) -> Result<zanshin_jj::RepoKind, zanshin_jj::DetectError>;
+    _ = zanshin_jj::RepoKind::Jj;
+    _ = zanshin_jj::DetectError::Io(String::new());
 }

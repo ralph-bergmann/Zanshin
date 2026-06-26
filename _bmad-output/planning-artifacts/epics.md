@@ -1603,52 +1603,52 @@ So that the Flutter UI can open directly, offer a "convert this Git project to j
 
 **Given** `crates/zanshin-jj/src/detect.rs`
 **When** created
-**Then** it defines `pub enum RepoKind { Jj, Git, Neither, Missing }` and `pub fn detect(path: &Path) -> RepoKind` (FR-JJ-17)
+**Then** it defines `pub enum RepoKind { Jj, Git, Neither, PathNotFound }` and `pub fn detect_repo(path: &Path) -> Result<RepoKind, DetectError>` plus a `DetectError` error type (FR-JJ-17)
 **And** `RepoKind` derives `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`.
 
-**Given** `detect(path)`
+**Given** `detect_repo(path)`
 **When** the path does not exist
-**Then** it returns `RepoKind::Missing`.
+**Then** it returns `RepoKind::PathNotFound`.
 
-**Given** `detect(path)`
+**Given** `detect_repo(path)`
 **When** the path contains a `.jj/` directory (whether or not a `.git/` is also present — a colocated repo IS a jj repo)
 **Then** it returns `RepoKind::Jj`.
 
-**Given** `detect(path)`
+**Given** `detect_repo(path)`
 **When** the path contains a `.git/` entry but no `.jj/`
 **Then** it returns `RepoKind::Git`.
 
-**Given** `detect(path)`
+**Given** `detect_repo(path)`
 **When** the path exists but contains neither `.jj/` nor `.git/`
 **Then** it returns `RepoKind::Neither`.
 
-**Given** `detect`
+**Given** `detect_repo`
 **When** called on any path
 **Then** it is stat-only — it never loads the workspace, never creates or modifies anything on disk, and never panics
 **And** it is cheap enough to call on every folder the user browses in a file picker.
 
 **Given** the public API
 **When** inspected
-**Then** `RepoKind` and `detect` are re-exported from `lib.rs`
+**Then** `RepoKind` and `detect_repo` are re-exported from `lib.rs`
 **And** no `jj_lib` type appears in the signature.
 
 **Given** unit tests in `crates/zanshin-jj/tests/detect.rs`
 **When** they run
-**Then** they assert: the `tiny-3-commits` fixture → `Jj`; a bare `git init` dir (fixture-setup may shell to `git`, AR-AP-1 applies to production code only) → `Git`; an empty tmpdir → `Neither`; a nonexistent path → `Missing`; a colocated dir (`.jj/` + `.git/`) → `Jj`.
+**Then** they assert: the `tiny-3-commits` fixture → `Jj`; a bare `git init` dir (fixture-setup may shell to `git`, AR-AP-1 applies to production code only) → `Git`; an empty tmpdir → `Neither`; a nonexistent path → `PathNotFound`; a colocated dir (`.jj/` + `.git/`) → `Jj`.
 
 **Edge cases:**
 
 **Given** a `.jj` that is a regular file, not a directory (corruption)
-**When** `detect` is called
+**When** `detect_repo` is called
 **Then** it does not classify the path as `Jj` (falls through to `Git` or `Neither` by the `.git` check)
-**And** the behaviour is documented — `detect` reports *structural presence*, not integrity; integrity is `Repo::open`'s job.
+**And** the behaviour is documented — `detect_repo` reports *structural presence*, not integrity; integrity is `Repo::open`'s job.
 
 **Given** a `.git` that is a file containing a `gitdir:` pointer (git worktree / submodule)
-**When** `detect` is called
+**When** `detect_repo` is called
 **Then** it still returns `RepoKind::Git` (it is a git working tree).
 
 **Given** `.jj` or `.git` is a symlink
-**When** `detect` is called
+**When** `detect_repo` is called
 **Then** the link is followed and the path is classified by the target.
 
 ---
@@ -1669,18 +1669,18 @@ So that a user who chose "use this Git project with jj, keep git too" gets a `.j
 **And** `RepoError` gains variants `AlreadyJjRepo { path }`, `NotAGitRepo { path }`, `ConvertFailed { reason }`.
 
 **Given** `convert_colocated(path)`
-**When** called on a path where `detect(path) == RepoKind::Git`
+**When** called on a path where `detect_repo(path) == RepoKind::Git`
 **Then** it performs jj's colocated init (the jj-lib equivalent of `jj git init --colocate`; the exact jj-lib call is absorbed inside `convert.rs` per FR-JJ-16)
 **And** on success a `.jj/` exists next to the existing `.git/`
 **And** the existing Git history is imported and visible (the Git HEAD commit is reachable in the resulting jj repo)
-**And** it returns a `Repo` handle (a subsequent `Repo::open(path)` and `detect(path) == Jj` both succeed).
+**And** it returns a `Repo` handle (a subsequent `Repo::open(path)` and `detect_repo(path) == Jj` both succeed).
 
 **Given** `convert_colocated(path)`
-**When** called on a path where `detect(path) == RepoKind::Jj`
+**When** called on a path where `detect_repo(path) == RepoKind::Jj`
 **Then** it returns `Err(RepoError::AlreadyJjRepo { path })` and changes nothing on disk.
 
 **Given** `convert_colocated(path)`
-**When** called on a path where `detect(path)` is `Neither` or `Missing`
+**When** called on a path where `detect_repo(path)` is `Neither` or `PathNotFound`
 **Then** it returns `Err(RepoError::NotAGitRepo { path })`.
 
 **Given** the conversion is additive and reversible
@@ -1700,7 +1700,7 @@ So that a user who chose "use this Git project with jj, keep git too" gets a `.j
 
 **Given** unit tests in `crates/zanshin-jj/tests/convert.rs`
 **When** they run
-**Then** they assert: `git init` + one commit → `convert_colocated` → `Ok`, then `detect == Jj`, the committed file is reachable in jj, and `git log` (via fixture-setup git, test-only) still shows the commit; converting a jj repo → `AlreadyJjRepo`; converting an empty dir → `NotAGitRepo`; a forced mid-conversion failure leaves no partial `.jj/`.
+**Then** they assert: `git init` + one commit → `convert_colocated` → `Ok`, then `detect_repo == Jj`, the committed file is reachable in jj, and `git log` (via fixture-setup git, test-only) still shows the commit; converting a jj repo → `AlreadyJjRepo`; converting an empty dir → `NotAGitRepo`; a forced mid-conversion failure leaves no partial `.jj/`.
 
 **Edge cases:**
 
@@ -1735,7 +1735,7 @@ So that users who prefer jj-leading (not colocated) can pick that mode from the 
 **Given** `convert_import(path)`
 **When** called on a `RepoKind::Git` path
 **Then** it produces a jj-native workspace whose history is imported from the existing `.git/`
-**And** returns a `Repo` handle; `detect(path) == Jj` afterwards.
+**And** returns a `Repo` handle; `detect_repo(path) == Jj` afterwards.
 
 **Given** the precondition / failure / rollback / no-panic behaviour
 **When** compared to Story 2.12
@@ -2101,7 +2101,7 @@ So that I can open/init/clone a repository from Flutter as soon as the FFI infra
 > **Added 2026-06-20.** Exposes Story 2.11 (detection) and Story 2.12 (colocated conversion) across the FFI boundary so the Flutter open-project dialog can drive them. **FlatBuffers-native from the start** (ADR-0001) — no legacy JSON envelope here. Sequence right after Story 3.4a (same `repo.rs`, same bootstrap path). External-git import (FR-JJ-18b / Story 2.13) is intentionally NOT exposed here — it ships with its own wrapper in the 0.2 fast-follow.
 
 As a Dart caller (worker isolate) powering the open-project dialog,
-I want `extern "C"` functions wrapping `zanshin-jj`'s `detect` and `convert_colocated`,
+I want `extern "C"` functions wrapping `zanshin-jj`'s `detect_repo` and `convert_colocated`,
 So that Flutter can classify a path and, on the user's confirmation, convert a Git project to colocated jj — all through the FlatBuffers envelope (FR-JJ-17, FR-JJ-18a).
 
 **Acceptance Criteria:**
@@ -2113,7 +2113,7 @@ So that Flutter can classify a path and, on the user's confirmation, convert a G
 
 **Given** the wire schema
 **When** updated
-**Then** the relevant `schemas/*.fbs` gains a `enum RepoKind : byte { Jj, Git, Neither, Missing }` and the detect/convert payload tables, added to the `Payload` union
+**Then** the relevant `schemas/*.fbs` gains a `enum RepoKind : byte { Jj, Git, Neither, PathNotFound }` and the detect/convert payload tables, added to the `Payload` union
 **And** `cargo make codegen` regenerates the Rust + Dart accessors, `zanshin_ffi.h`, and `bindings.dart`, all committed in the same PR.
 
 **Given** `zanshin_repo_detect(path)`
@@ -2136,7 +2136,7 @@ So that Flutter can classify a path and, on the user's confirmation, convert a G
 **Given** Rust integration tests in `crates/zanshin-ffi/tests/repo_ffi.rs`
 **When** they run
 **Then** they read every returned buffer through the generated typed accessors (a wrong shape is a compile error; no hand-parsing) and run the FlatBuffers `Verifier`
-**And** assert: detect on the `tiny` fixture → `Jj`; on a `git init` dir → `Git`; on an empty tmpdir → `Neither`; on a nonexistent path → `Missing`; convert on a `git init` dir → success handle, then detect on the same path → `Jj`; convert on a jj repo → `jj.already_jj_repo`.
+**And** assert: detect on the `tiny` fixture → `Jj`; on a `git init` dir → `Git`; on an empty tmpdir → `Neither`; on a nonexistent path → `PathNotFound`; convert on a `git init` dir → success handle, then detect on the same path → `Jj`; convert on a jj repo → `jj.already_jj_repo`.
 
 **Given** `docs/ffi-abi.md`
 **When** this story lands
