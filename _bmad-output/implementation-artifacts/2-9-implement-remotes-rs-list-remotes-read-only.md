@@ -294,7 +294,7 @@ Reuse the scaffolding from `tests/bookmarks.rs` / `tests/op_log.rs:1-57`:
   ```rust
   // imports: jj_lib::git; gix::remote::fetch::Tags;
   let tmp = TempDir::new().unwrap();
-  let _repo = Repo::init(tmp.path(), None).unwrap(); // None => Backend::Git
+  let _repo = Repo::init(tmp.path(), Some(Backend::Git)).unwrap(); // Git backend — git::add_remote needs it
   let (ws, _settings) = oracle_workspace(tmp.path());
   let base = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
   let mut tx = base.start_transaction();
@@ -332,7 +332,7 @@ Reuse the scaffolding from `tests/bookmarks.rs` / `tests/op_log.rs:1-57`:
 4. **One clippy-pedantic fix per story is normal — refactor, don't `#[allow]`.** Watch `doc_markdown` (backtick-wrap `gix`, `jj_lib`, `to_bstring`, `Direction` in doc comments) — bit 2.7/2.8.
 5. **`cargo fmt --check` enforces the committed `rustfmt.toml` `max_width = 120`** (rustfmt.toml:6), not the `100` quoted in project-context.md (tracked doc drift, `[[deferred-work]]`). Let `cargo fmt` decide.
 6. **`pollster::block_on` is the only async bridge**; the public API is sync (jj-lib is sync — do NOT wrap in `async`/`tokio`).
-7. **`Repo::init(path, None)` defaults to `Backend::Git`** (used by the 2.8 corrupt test). Both `None` and `Some(Backend::Git)` produce a git-backed repo whose `store.backend_impl::<GitBackend>()` is `Some` — required for `add_remote` and for `get_all_remote_names` to return `Ok`.
+7. **`Repo::init(path, None)` selects jj's NATIVE backend (`init_simple`); `Some(Backend::Git)` the git backend (`init_internal_git`)** [verified: repo.rs:173-182; 2-3 story]. The corrupt-repo test uses `init(.., None)` and that is fine — it is backend-agnostic (it asserts `load_at_head` failure, not a git op). But the **populated** tests (those calling `git::add_remote`, and needing `get_all_remote_names` to return `Ok`) MUST use `Some(Backend::Git)` — a native backend yields `UnexpectedGitBackendError`. (Corrects an earlier draft of this note that wrongly claimed `None` defaults to Git; the shipped tests already use the correct backends.)
 
 ### Files this story touches
 
