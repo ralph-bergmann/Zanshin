@@ -4,7 +4,7 @@ baseline_commit: 989c0f1
 
 # Story 2.9: Implement `remotes.rs` — list remotes (read-only)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -406,6 +406,18 @@ claude-sonnet-4-6
 |-------|----------|
 | 2026-06-25 | create-story: comprehensive context engineered (jj-lib 0.41 `git::get_all_remote_names`/`get_git_repo` + gix 0.83 `try_find_remote`/`url`/`to_bstring` source-verified via 2 focused agent passes). PURE zanshin-jj Rust (remotes.rs, Repo::list_remotes). 6 scope-corrections: `Vec`→`Result<_,RemoteError>`; `to_bstring()` not Display (credential-redaction trap); `Backend::Git`-only → native path collapsed via `unwrap_or_default` (no dead arm, 100% line cov reachable); remotes CONSTRUCTED IN-TEST via `git::add_remote` (fixtures have ZERO remotes); `Remote` re-export deferred from 2.8 lands here; gix already a dep (no Cargo.toml change). Status → ready-for-dev. |
 | 2026-06-25 | dev-story (claude-sonnet-4-6): implemented T1–T8. New files: `remotes.rs` (Remote, RemoteError, list_remotes) + `tests/remotes.rs` (5 tests incl. credential-preservation + SSH guard). Updated lib.rs + repo.rs. rustfmt applied (trailing-comma style). `cargo make test` green: clippy pedantic, fmt, cargo deny, 100% coverage on remotes.rs, repo.rs raised 91.43%, coverage-baseline.txt auto-raised. Status → review. |
+
+## Code Review Findings (2026-06-26)
+
+Adversarial multi-layer review (8 review agents — Blind / Edge-Case / Acceptance — + 14 per-finding adversarial verifications) plus an independent `cargo make test` gate run. **Verdict: no blockers — 0 critical / 0 high / 0 medium; gate green, coverage 97.72 % held, `remotes.rs` 100 %.** 4 low/nit patches applied (zanshin-jj scope):
+
+- [x] [Review][Patch] Correct the "unreachable via the public API" comment — the native-backend collapse IS reachable via `Repo::init(path, None)` → `init_simple` [crates/zanshin-jj/src/remotes.rs:65]
+- [x] [Review][Patch] Add a healthy-native green-path test (`init(None)` → `Ok([])`) guarding the `unwrap_or_default` collapse [crates/zanshin-jj/tests/remotes.rs `remotes_on_native_backend_returns_empty`]
+- [x] [Review][Patch] SSH edge test now uses the scp-like `git@host:path` form (AC-6 #13 / AC-9 #18), exercising gix's alternative-form serialisation branch [crates/zanshin-jj/tests/remotes.rs `remotes_keep_ssh_form`]
+- [x] [Review][Patch] Add exact-equality assertion on origin's https URL (AC-9 #18) — gate confirms gix round-trips it verbatim [crates/zanshin-jj/tests/remotes.rs `remotes_lists_configured_remotes_sorted_by_name`]
+- [ ] [Review][Note] AC-6 #14 (remote with no fetch URL is skipped) has no behavioural test — left to structural review per Decision D5; constructing a url-less remote needs `.git/config` surgery (jj-lib `add_remote` always writes a url).
+
+**Spec correction (Dev Notes point 7):** the claim "`Repo::init(path, None)` defaults to `Backend::Git`" is **incorrect** — `None` selects jj's native `init_simple` backend. Verified at `crates/zanshin-jj/src/repo.rs:173-182`. No functional impact (the corrupt-repo test is backend-agnostic), but the inline comment in `remotes.rs` was reworded to stop propagating the error.
 
 ## Open Questions for Ralph (non-blocking — defaults chosen, override before dev if desired)
 

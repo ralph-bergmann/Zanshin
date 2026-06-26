@@ -119,7 +119,8 @@ mod tests {
         let payload = env.data_as_remotes().expect("expected Remotes payload");
         let items = payload.remotes().expect("remotes vector");
         assert_eq!(items.len(), 2);
-        // index 0: creds (sorted position from our test vec — we store in insertion order)
+        // index 0: origin — remotes_to_envelope preserves insertion order (no sort here;
+        // sorting lives upstream in zanshin-jj::list_remotes).
         assert_eq!(items.get(0).name(), Some("origin"));
         assert_eq!(items.get(0).url(), Some("https://github.com/user/repo.git"));
         // index 1: creds with embedded credentials — must NOT be scrubbed

@@ -62,9 +62,9 @@ pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteE
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(re)?;
     let store = readonly.store();
 
-    // `unwrap_or_default` collapses the non-git-backend `UnexpectedGitBackendError`
-    // to "no remotes"; `Backend::Git` is the only variant today, so that branch is
-    // unreachable via the public API but stays correct (FR-JJ-9 native-backend AC).
+    // `unwrap_or_default` collapses the native-backend `UnexpectedGitBackendError`
+    // to "no remotes". A native repo (`Repo::init(path, None)` -> `init_simple`) is a
+    // live, reachable path; it correctly yields an empty list (FR-JJ-9 native-backend AC).
     let names = git::get_all_remote_names(store).unwrap_or_default();
     if names.is_empty() {
         return Ok(Vec::new());

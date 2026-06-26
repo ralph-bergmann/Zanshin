@@ -4,7 +4,7 @@ baseline_commit: 989c0f1
 
 # Story 3.4b — `zanshin_remotes` FFI wrapper + Dart remotes seam (remotes slice)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -538,6 +538,14 @@ claude-sonnet-4-6
 |-------|----------|
 | 2026-06-25 | create-story: comprehensive context engineered (mirrors the done bookmarks slice; handle-only marshalling, plain two-string `Remote` table — NO sum-type kind, no sealed class — `Remotes` appended at Payload discriminant 7, no-new-code `jj.jj_lib_error`, the cross-FFI coverage trap, the populated-live-round-trip deferral inherited from bookmarks, and `packages/zanshin_core` paths). Status → ready-for-dev (HARD-GATED on 2.9 `done`). |
 | 2026-06-25 | dev: implemented Stories 2.9 + 3.4b (remotes slice). Rust: Remote struct + RemoteError + Repo::list_remotes() + remotes_to_envelope + zanshin_remotes extern + unit + integration tests. Dart: RemotesCommand + worker dispatch + ffi/remotes.dart adapter + decode + handle.dart guard + worker + ffi decode-contract tests. cargo make test green; remotes.rs 100% coverage; baseline raised. Status → review. |
+
+## Code Review Findings (2026-06-26)
+
+Combined 2.9 + 3.4b adversarial multi-layer review + independent `cargo make test` gate run. **Verdict: no blockers; gate green, `crates/zanshin-ffi/src/remotes.rs` 100 % coverage, `zanshin_remotes` extern-coverage OK.** 1 nit patch applied (zanshin-ffi scope):
+
+- [x] [Review][Patch] Fix the self-contradictory comment in the `remotes_to_envelope` unit test — it labelled index 0 as "creds" while the assertion checks "origin", and falsely implied the FFI builder sorts (sorting lives upstream in `zanshin-jj::list_remotes`; the builder preserves insertion order) [crates/zanshin-ffi/src/remotes.rs:122]
+
+No FFI- or Dart-side defects found: credential-verbatim wire, `Payload` union append-only (`Remotes` = discriminant 7), handle borrowed-not-consumed, `# Safety` / `# Errors` docs, and cross-FFI coverage attribution (the `#[no_mangle]` symbol earns its floor via the Dart worker round-trip) all verified correct. 4 false positives dropped during verification (incl. "worker test uses backend: 0 vs AC-mandated 1" and "remotes not added in one transaction" — both zero behavioural/coverage impact).
 
 ## Open Questions for Ralph (non-blocking — defaults chosen, override before dev if desired)
 

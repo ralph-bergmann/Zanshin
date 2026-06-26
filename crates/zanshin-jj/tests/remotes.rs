@@ -84,6 +84,26 @@ fn remotes_on_tiny_returns_empty() {
     assert!(remotes.is_empty(), "tiny fixture has no remotes; got {remotes:?}");
 }
 
+// ── Empty on a healthy native backend ─────────────────────────────────────────
+
+#[test]
+fn remotes_on_native_backend_returns_empty() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    // `Repo::init(.., None)` uses jj's native backend (`init_simple`). A non-git
+    // backend has no git remotes: `get_all_remote_names` yields
+    // `UnexpectedGitBackendError`, which `unwrap_or_default` collapses to an empty
+    // list — `Ok(vec![])`, not an error (FR-JJ-9 native-backend AC).
+    Repo::init(tmp.path(), None).unwrap();
+
+    let repo = Repo::open(tmp.path()).unwrap();
+    let remotes = repo.list_remotes().unwrap();
+    assert!(
+        remotes.is_empty(),
+        "native backend has no git remotes → empty list; got {remotes:?}"
+    );
+}
+
 // ── Lists remotes sorted by name ──────────────────────────────────────────────
 
 #[test]
@@ -111,6 +131,10 @@ fn remotes_lists_configured_remotes_sorted_by_name() {
         ["creds", "origin", "upstream"],
         "remotes must be sorted by name; got {names:?}"
     );
+
+    // AC-9 #18: origin's url matches the configured https URL verbatim.
+    // Sorted order is [creds, origin, upstream] → origin is index 1.
+    assert_eq!(remotes[1].url, "https://github.com/origin/repo.git");
 }
 
 // ── Embedded credentials are preserved verbatim ───────────────────────────────
@@ -150,7 +174,10 @@ fn remotes_keep_ssh_form() {
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
 
-    add_remotes(tmp.path(), &[("origin", "ssh://git@github.com/user/repo.git")]);
+    // scp-like form (`git@host:path`) — the AC-named case (AC-6 #13 / AC-9 #18);
+    // exercises gix's alternative-form serialisation branch (must stay ssh-ish,
+    // never become https).
+    add_remotes(tmp.path(), &[("origin", "git@github.com:user/repo.git")]);
 
     let repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
