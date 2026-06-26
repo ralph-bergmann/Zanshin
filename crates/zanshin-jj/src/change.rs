@@ -22,8 +22,11 @@ pub struct CommitId(pub String);
 /// jj allows empty `name` and `email` strings — do not assume they are non-empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature {
+    /// Author or committer name (may be empty).
     pub name: String,
+    /// Author or committer email address (may be empty).
     pub email: String,
+    /// Timestamp of this signature.
     pub timestamp: Timestamp,
 }
 
@@ -34,7 +37,9 @@ pub struct Signature {
 /// coupling in the public API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timestamp {
+    /// Milliseconds since the Unix epoch (UTC).
     pub millis_since_epoch: i64,
+    /// Timezone offset in minutes east of UTC (jj-lib `tz_offset` convention).
     pub tz_offset_minutes: i32,
 }
 
@@ -46,7 +51,9 @@ pub struct Timestamp {
 /// `Timestamps` struct as exhaustive requirements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timestamps {
+    /// When the change was first authored.
     pub authored_at: Timestamp,
+    /// When the change was last committed (rebases update this).
     pub committed_at: Timestamp,
 }
 
@@ -56,8 +63,13 @@ pub struct Timestamps {
 /// conflict-resolution flow).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConflictState {
+    /// No conflicts — the working tree is clean.
     Clean,
-    Conflicted { paths: Vec<PathBuf> },
+    /// One or more files have unresolved conflicts.
+    Conflicted {
+        /// Repository-relative paths of the conflicted files.
+        paths: Vec<PathBuf>,
+    },
 }
 
 /// Full metadata for one change (FR-JJ-6).
@@ -74,7 +86,9 @@ pub struct Change {
     pub parents: Vec<ChangeId>,
     /// Commit description; always present but may be empty (jj convention).
     pub description: String,
+    /// Who authored this change (name, email, timestamp).
     pub author: Signature,
+    /// Who last committed this change (may differ from `author` after a rebase).
     pub committer: Signature,
     /// Canonical authored/committed timestamp pair (mirrors `author.timestamp`
     /// and `committer.timestamp` respectively).
@@ -82,6 +96,7 @@ pub struct Change {
     /// `true` if a cryptographic (GPG/SSH) signature is present (presence-only —
     /// Decision D3; validation via `Commit::verification()` is never performed).
     pub is_signed: bool,
+    /// Whether the change tree has unresolved conflicts.
     pub conflict: ConflictState,
     /// `true` when the description is empty **and** no local bookmark targets this
     /// commit (Decision D5 — local bookmarks only).
@@ -101,7 +116,10 @@ pub enum ChangeError {
     /// hidden/abandoned commits. These cases are indistinguishable to callers
     /// (Decision D6); `id` is the reverse-hex string that was passed in.
     #[error("change not found: {id}")]
-    NotFound { id: String },
+    NotFound {
+        /// The reverse-hex change id that could not be resolved.
+        id: String,
+    },
     /// An underlying jj-lib failure (index, backend, or loader error),
     /// opaque-string-wrapped so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]

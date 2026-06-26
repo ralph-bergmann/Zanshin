@@ -16,11 +16,17 @@ use crate::{ChangeId, Repo};
 pub enum RevsetError {
     /// The expression is syntactically invalid or names an unknown function.
     #[error("invalid revset: {reason}")]
-    ParseError { reason: String },
+    ParseError {
+        /// Human-readable parse failure from jj-lib.
+        reason: String,
+    },
     /// The expression is well-formed but a symbol could not be resolved
     /// (unknown bookmark/tag, missing working copy, ambiguous/divergent id).
     #[error("cannot resolve revset: {reason}")]
-    ResolutionError { reason: String },
+    ResolutionError {
+        /// Human-readable resolution failure from jj-lib.
+        reason: String,
+    },
     /// An underlying jj-lib failure (evaluation/backend), opaque-string-wrapped
     /// so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]

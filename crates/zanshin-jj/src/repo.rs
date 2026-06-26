@@ -14,16 +14,33 @@ use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
 use jj_lib::workspace::{default_working_copy_factories, Workspace};
 
+/// Errors returned by [`Repo::open`], [`Repo::init`], and [`Repo::clone`].
 #[derive(Debug, thiserror::Error)]
 pub enum RepoError {
+    /// The supplied path does not exist on the filesystem.
     #[error("path not found: {path}")]
-    PathNotFound { path: PathBuf },
+    PathNotFound {
+        /// The path that does not exist.
+        path: PathBuf,
+    },
+    /// The path exists but is not a jj workspace (`.jj/` is absent).
     #[error("not a jj repository: {path}")]
-    NotARepo { path: PathBuf },
+    NotARepo {
+        /// The path that lacks a `.jj/` directory.
+        path: PathBuf,
+    },
+    /// jj workspace initialisation failed.
     #[error("init failed: {reason}")]
-    InitFailed { reason: String },
+    InitFailed {
+        /// Human-readable failure reason from jj-lib.
+        reason: String,
+    },
+    /// jj workspace clone failed (init, remote registration, fetch, or import).
     #[error("clone failed: {reason}")]
-    CloneFailed { reason: String },
+    CloneFailed {
+        /// Human-readable failure reason from jj-lib.
+        reason: String,
+    },
     /// Underlying `jj_lib` failure, flattened to its Display so no `jj_lib` type escapes the public API.
     #[error("jj-lib error: {0}")]
     Backend(String),
@@ -36,6 +53,11 @@ pub enum Backend {
     Git,
 }
 
+/// Handle to an open jj workspace (FR-JJ-16 adapter).
+///
+/// Created via [`Repo::open`], [`Repo::init`], or [`Repo::clone`]. The handle
+/// is a warm `Workspace` loader that re-resolves to the operation-log head on
+/// every call (ADR-0002) — it is not an authoritative state cache.
 pub struct Repo {
     workspace: Workspace,
     settings: UserSettings,

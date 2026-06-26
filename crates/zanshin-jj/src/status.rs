@@ -22,22 +22,29 @@ pub struct Status {
 /// A single changed file in the working copy.
 #[derive(Debug)]
 pub struct FileChange {
+    /// Repository-relative path of the changed file.
     pub path: PathBuf,
+    /// How the file changed between `@-` and `@`.
     pub kind: ChangeKind,
 }
 
 /// How the file changed between `@-` and `@`.
 #[derive(Debug)]
 pub enum ChangeKind {
+    /// The file was added in `@` (not present in `@-`).
     Added,
+    /// The file was modified in `@` (present in both `@-` and `@` with different content).
     Modified,
+    /// The file was removed from `@` (present in `@-` but absent in `@`).
     Removed,
     /// The file was renamed; `from` is the previous path.
     Renamed {
+        /// The path the file was renamed from.
         from: PathBuf,
     },
     /// The file was copied; `from` is the source path.
     Copied {
+        /// The path the file was copied from.
         from: PathBuf,
     },
 }

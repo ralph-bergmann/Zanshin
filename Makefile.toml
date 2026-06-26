@@ -58,6 +58,7 @@ dependencies = [
     "test-core-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
+    "test-jj-adapter-hygiene",
     "coverage",
 ]
 
@@ -184,6 +185,38 @@ done <<< "$manifests"
 
 if [ "$violations" -ne 0 ]; then
     echo "test-cargo-hygiene: $violations occurrence(s) of \`default-features = false\` lack an inline \`# WHY:\` comment (see crates/README.md)." >&2
+    exit 1
+fi
+'''
+
+[tasks.test-jj-adapter-hygiene]
+private = true
+description = "Enforce the no-jj_lib-re-export invariant (AC-4 / FR-JJ-16): `pub use jj_lib::…` is forbidden in crates/zanshin-jj/src/."
+script_runner = "bash"
+script = '''
+set -euo pipefail
+
+# Every `pub use jj_lib::` line in crates/zanshin-jj/src/ would leak a jj_lib
+# type into the public API, breaking the anti-corruption layer (FR-JJ-16).
+# Grep tracked source files only (git ls-files); untracked/generated files are
+# excluded so the check is deterministic.
+
+sources=$(git ls-files 'crates/zanshin-jj/src/')
+
+violations=0
+while IFS= read -r src; do
+    # Exclude comment lines (//!, ///, //) — only flag actual code.
+    matches=$(grep -nE 'pub[[:space:]]+use[[:space:]]+jj_lib' "$src" | grep -vE '^[0-9]+:[[:space:]]*//' || true)
+    [ -z "$matches" ] && continue
+    while IFS= read -r line; do
+        printf '  %s:%s\n' "$src" "$line" >&2
+        violations=$((violations + 1))
+    done <<< "$matches"
+done <<< "$sources"
+
+if [ "$violations" -ne 0 ]; then
+    echo "test-jj-adapter-hygiene: $violations occurrence(s) of \`pub use jj_lib::\` found." \
+         "This would leak a jj_lib type into the public API (FR-JJ-16)." >&2
     exit 1
 fi
 '''

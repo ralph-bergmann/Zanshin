@@ -161,8 +161,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - ALL jj access goes through `zanshin-jj` → `jj-lib`. No shelling to the `jj` CLI.
   No string-parsing of `jj` output. Fixture-setup scripts may shell out; production
   code may not. (FR-JJ-16, NFR-R-1)
-- `zanshin-jj` is the ONLY crate that imports `jj_lib`. Other internal crates
-  consume `zanshin-jj`'s typed API, not jj-lib directly.
+- `zanshin-jj` is the ONLY production/library crate that imports `jj_lib`. Other
+  internal crates consume `zanshin-jj`'s typed API, not jj-lib directly. (The
+  `xtask` fixture generator also imports `jj_lib`, but only as a build-time tool —
+  not part of the shipped surface.)
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).

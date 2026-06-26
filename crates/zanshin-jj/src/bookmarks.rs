@@ -15,7 +15,7 @@ use crate::ChangeId;
 /// Whether a bookmark is local or a tracked remote bookmark.
 ///
 /// `PartialOrd`/`Ord` order `Local` before `Remote`, then remotes by
-/// `remote_name` — the secondary sort key for [`list_bookmarks`] (FR-JJ-8).
+/// `remote_name` — the secondary sort key for [`crate::Repo::list_bookmarks`] (FR-JJ-8).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BookmarkKind {
     /// A bookmark local to this repository.
