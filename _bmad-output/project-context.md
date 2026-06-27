@@ -177,6 +177,21 @@ _This file contains critical rules and patterns that AI agents must follow when 
   `View` access. A shared support module re-ports the `cli_util` orchestration jj-lib does
   NOT expose (immutable-heads check, insert-location resolution, message-combine,
   selected-tree plumbing). Granularity tracks the CLI verb set, re-evaluated at each pin bump.
+- **CLI behavior is the semantic reference (NFR-R-2, ADR-0003).** Mirror the jj CLI's
+  *observable behavior* — which verbs exist, their preconditions, error/refusal conditions,
+  arg arity, op-log effect, default revset/config resolution — read as prior-art from `../jj`
+  at the pinned tag. A user of both jj CLI and Zanshin gets the behavior they rightly expect.
+  Replicate WHAT the CLI does, not HOW: Zanshin is a GUI/headless backend, so it REPLACES the
+  CLI's terminal UX (no TUI/`$EDITOR`/diff-editor/pager/prompts/colored-templated stdout/`ui.status`
+  chatter). Interactive verbs (diffedit/resolve/split) take a GUI-supplied selection (`TreeId`),
+  never a terminal editor. When the CLI errors/refuses, surface an equivalent error — don't invent
+  a "nicer" outcome. (Parity is via jj-lib, never by shelling/scraping the CLI.)
+- **Pass CLI parameters through; never decide for the user (FR-JJ-17).** Where the jj CLI leaves
+  a path/revset/destination/flag to the user (e.g. `jj git init --git-repo=<repo> <dest>` — two
+  paths, both user-chosen), the typed verb + FFI/MCP surface PASSES IT THROUGH so Ralph's UI can
+  offer the choice. NO hidden/baked-in default that silently decides. Mirroring a CLI default the
+  CLI itself applies (dest `.`, config-driven revset) is fine — surface it as a pre-filled,
+  user-editable parameter, not a silent one. The backend classifies/offers; the UI decides.
 
 **Dart Hooks + `native_toolchain_rust`:**
 - `app/hook/build.dart` is the ONLY Dart Hook. It points at `zanshin-ffi`:
@@ -542,6 +557,13 @@ _This file contains critical rules and patterns that AI agents must follow when 
   production code may not. (NFR-R-1, FR-JJ-16)
 - **NEVER parse `jj` CLI output strings.** Even for "just a quick lookup".
   Structured access through the adapter is the WHOLE POINT.
+- **NEVER diverge from the jj CLI's observable behavior** for a given input — same verbs,
+  preconditions, refusals, op-log effect. The CLI is the semantic oracle (read at the pinned
+  tag in `../jj`), but only for behavior: Zanshin REPLACES its terminal UX (no TUI/`$EDITOR`/
+  pager/prompts/templated stdout); interactive verbs take a GUI-supplied `TreeId`. (NFR-R-2, ADR-0003)
+- **NEVER bake in a default path or silently pick a parameter the jj CLI leaves to the user.**
+  Pass every such CLI parameter through the typed verb + FFI/MCP surface so the UI offers it.
+  (Pre-filling a CLI-applied default as a user-editable field is fine; deciding for the user is not.) (FR-JJ-17)
 - **NEVER add `extern "C"` functions outside `crates/zanshin-ffi/`.** Internal
   crates stay pure-Rust `lib`. The single-cdylib boundary is non-negotiable.
 - **NEVER adopt `flutter_rust_bridge`** or any comparable FFI abstraction.

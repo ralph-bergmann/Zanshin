@@ -19,6 +19,11 @@ CLI (`cli/`, `cli_util`) is the high-value part — it is **not** a cargo depend
 is the prior-art for the operation API (ADR-0003 / Epic 9). `../jj` already caught a
 wrong jj-lib entry-point guess once.
 
+**Replicate the CLI's _observable behavior_** (verbs, preconditions, refusals, op-log
+effect, default resolution) — **not** its terminal UX (the GUI replaces the TUI/`$EDITOR`/
+pager; interactive verbs take a GUI-supplied `TreeId`) — and pass CLI parameters through
+rather than baking in defaults. See project-context.md § zanshin-jj for the canonical rules.
+
 - **Read at the pinned tag, not the working tree:** `git -C ../jj show vX.Y.Z:<path>`
   (currently `v0.42.0`, matching the `jj-lib =0.42.0` pin in the root `Cargo.toml`) — e.g.
   `git -C ../jj show v0.42.0:lib/src/workspace.rs` or `:cli/src/commands/git/init.rs`.
