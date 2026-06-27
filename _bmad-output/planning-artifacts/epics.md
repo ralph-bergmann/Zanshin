@@ -338,7 +338,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **User outcome:** A Rust caller (later `zanshin-ffi` and `zanshin-mcp`) can open/init/clone a repo, **detect what kind of repository (if any) lives at a path and convert an existing Git project to colocated jj**, read working-copy status, resolve revsets, read change metadata and op-log, list bookmarks and remotes — all through `zanshin-jj`'s public API. Fixture repos (`tiny`, `medium`) committed and used in tests.
 
-**FRs covered:** FR-JJ-1, FR-JJ-2, FR-JJ-3, FR-JJ-4, FR-JJ-5, FR-JJ-6, FR-JJ-7, FR-JJ-8, FR-JJ-9, FR-JJ-16, FR-JJ-17 (detection), FR-JJ-18a (colocated conversion). FR-JJ-18b (external-git import) is a P1 fast-follow — see Story 2.13.
+**FRs covered:** FR-JJ-1, FR-JJ-2, FR-JJ-3, FR-JJ-4, FR-JJ-5, FR-JJ-6, FR-JJ-7, FR-JJ-8, FR-JJ-9, FR-JJ-16, FR-JJ-17 (detection), FR-JJ-18a (colocated conversion). FR-JJ-18b (jj-native import: a *separate* jj-native workspace at a chosen destination backed by the source's existing `.git/`, source left standalone — not an in-place convert) is a P1 fast-follow — see Story 2.13.
 
 **NFRs:** None enforced in WIP (NFR-P-1 sub-budget allocation deferred).
 
@@ -1738,34 +1738,52 @@ So that a user who chose "use this Git project with jj, keep git too" gets a `.j
 
 ### Story 2.13: Implement external-git-import conversion (`convert_import`) — fast-follow
 
-> **Added 2026-06-20 — P1 fast-follow (0.2), deferred.** The *second* user-selectable conversion mode: convert a Git repo into a **jj-native** workspace (jj leads; the existing `.git/` becomes the backing store) rather than colocated. Deferred deliberately — Story 2.12 (colocated) covers the common case, and shipping one well-tested conversion path first keeps the v1 block lean (Ralph's call, 2026-06-20). Sequence after Story 2.12 and after the detect/convert FFI exposure (Story 3.4c).
+> **Added 2026-06-20 — P1 fast-follow (0.2), deferred.** The *second* user-selectable conversion mode: produce a **jj-native** workspace (jj leads; not colocated) at a separate, user-chosen destination, backed by the source's existing `.git/` (shared object store). The original Git repo stays a plain, standalone Git repo. Deferred deliberately — Story 2.12 (colocated) covers the common case, and shipping one well-tested conversion path first keeps the v1 block lean (Ralph's call, 2026-06-20). Sequence after Story 2.12; its FFI wrapper ships in 0.2 (NOT in Story 3.4c, which is colocated-only).
+
+> **Reshaped 2026-06-27 — two-path signature (epic prose predated the jj-0.42 discovery).** The original AC described an *in-place, single-path* `convert_import(path)` that would turn the existing repo into a jj-native one. That is **impossible on jj 0.42**: there is no in-place jj-native conversion of an existing Git repo — `jj git init --no-colocate` over an existing `.git/` is a hard error (confirmed against `do_init` @ `v0.42.0` in `../jj/cli/src/commands/git/init.rs`). The supported shape is `jj git init --git-repo=<repo> <dest>`: a **new, separate** jj-native workspace at `<dest>` sharing the source repo's object store. So the API takes **two** paths — source git repo + destination workspace — and the source is left untouched. This is the same "epic prose predates discovery" pattern as Story 2.12's reconciliation.
 
 As a Rust caller acting on the user's choice of a jj-native workflow,
-I want `zanshin-jj` to convert a Git repo into a jj-native workspace backed by the existing `.git/` via import,
-So that users who prefer jj-leading (not colocated) can pick that mode from the dialog (FR-JJ-18b).
+I want `zanshin-jj` to create a jj-native workspace at a chosen destination backed by an existing Git repo's object store,
+So that users who prefer jj-leading (not colocated) can pick that mode from the dialog while their original Git repo stays standalone (FR-JJ-18b).
 
 **Acceptance Criteria:**
 
 **Given** `crates/zanshin-jj/src/convert.rs`
 **When** extended
-**Then** it defines `pub fn convert_import(path: &Path) -> Result<Repo, RepoError>` (FR-JJ-18b), using jj's external-git-init/import path (exact jj-lib call absorbed per FR-JJ-16).
+**Then** it defines `pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError>` (FR-JJ-18b), mirroring `jj git init --git-repo=<repo> <dest>` (exact jj-lib call absorbed per FR-JJ-16).
 
-**Given** `convert_import(path)`
-**When** called on a `RepoKind::Git` path
-**Then** it produces a jj-native workspace whose history is imported from the existing `.git/`
-**And** returns a `Repo` handle; `detect_repo(path) == Jj` afterwards.
+**Given** `convert_import(git_repo_path, workspace_path)`
+**When** called with `git_repo_path` a Git repo and `workspace_path` a separate destination
+**Then** it produces a **non-colocated, jj-native** workspace at `workspace_path` backed by the source repo's existing `.git/` (shared object store)
+**And** the source's history is reachable in the resulting jj repo (jj leads)
+**And** the original `git_repo_path` stays a plain, standalone Git repo (its user-visible refs and HEAD are unchanged — asserted before/after in a test)
+**And** it returns a `Repo` handle; `detect_repo(workspace_path) == Jj` afterwards.
 
-**Given** the precondition / failure / rollback / no-panic behaviour
-**When** compared to Story 2.12
-**Then** it matches (`AlreadyJjRepo`, `NotAGitRepo`, `ConvertFailed`, additive, reversible, rolled back on failure).
+**Given** preconditions and error taxonomy
+**When** they are evaluated
+**Then** `Err(RepoError::AlreadyJjRepo { path })` if `workspace_path` is already a jj repo **or** `git_repo_path` is already a jj repo
+**And** `Err(RepoError::NotAGitRepo { path })` if `git_repo_path` is not a Git repo
+**And** a **bare** source Git repo is **supported** (NOT rejected) — replicating jj CLI behavior, which accepts a bare `--git-repo`; this is the one precondition that differs from the colocated path (Story 2.12 rejects bare)
+**And** a `dest == source` call (both the same Git repo) produces a *colocated* result (jj detects it as colocated), not this jj-native mode — see Story 2.13 Decision D5
+**And** any jj-lib failure (or a detect I/O error during the precondition check) is wrapped as `Err(RepoError::ConvertFailed { reason })` (flattened to its Display — no `jj_lib` type leak) and the call never panics.
+
+**Given** the conversion is additive and reversible
+**When** it completes (or fails)
+**Then** the source repo is never destructively modified — jj only **adds** objects to the shared store; the source's user-visible refs and HEAD are untouched
+**And** removing the created destination workspace restores the standalone source Git repo
+**And** on failure any partially-created destination is rolled back (mirrors the rollback discipline in Story 2.12).
+
+**Given** the error-code registry
+**When** this story lands
+**Then** the `jj.already_jj_repo`, `jj.not_a_git_repo`, and `jj.convert_failed` codes already registered by Story 2.12 cover this path (no new codes) — `docs/rust-error-codes.md` is amended only if the dest/source distinction needs a registry note.
 
 **Given** the docs
 **When** this story lands
-**Then** `crates/zanshin-jj/README.md` (or rustdoc on `convert.rs`) documents the **colocated vs. import** trade-off so callers — and the UI — can describe the choice accurately to the user.
+**Then** `crates/zanshin-jj/README.md` (or rustdoc on `convert.rs`) documents the **colocated (Story 2.12) vs. jj-native import (Story 2.13)** trade-off — including that import **shares the source's object store (not a clone; the source must remain)** — so callers and the UI can describe the choice accurately to the user.
 
 **Given** tests in `crates/zanshin-jj/tests/convert.rs`
 **When** they run
-**Then** they cover the import path symmetrically to the colocated tests (success + history import, `AlreadyJjRepo`, `NotAGitRepo`, rollback).
+**Then** they cover the import path symmetrically to the colocated tests: `git init` + one commit at the source → `convert_import(source, dest)` → `Ok`, `detect_repo(dest) == Jj`, the committed file reachable in jj, and the source still a standalone Git repo (HEAD/refs unchanged); converting where the dest is already jj → `AlreadyJjRepo`; a `dest == source` call → a colocated workspace (the colocated-guard case); a **bare** source repo → `Ok` (bare-source case); a non-Git source → `NotAGitRepo`; a forced mid-conversion failure leaves no partial destination (rollback).
 
 ---
 
