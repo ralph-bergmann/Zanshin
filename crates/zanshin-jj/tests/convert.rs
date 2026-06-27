@@ -455,9 +455,10 @@ fn convert_import_destination_already_jj_returns_already_jj_repo() {
     let dst_fixture = extract_fixture("tiny-3-commits").expect("fixture");
 
     let result = convert_import(src.path(), &dst_fixture.path);
+    // AC-3 / Test-recipe row 4: the offending `path` is the DESTINATION.
     assert!(
-        matches!(result, Err(RepoError::AlreadyJjRepo { .. })),
-        "expected AlreadyJjRepo for jj-repo destination, got: {result:?}"
+        matches!(&result, Err(RepoError::AlreadyJjRepo { path }) if path == &dst_fixture.path),
+        "expected AlreadyJjRepo with path==dest, got: {result:?}"
     );
 }
 
@@ -472,9 +473,10 @@ fn convert_import_source_already_jj_returns_already_jj_repo() {
     let dst = dst_parent.path().join("workspace");
 
     let result = convert_import(&src_fixture.path, &dst);
+    // AC-3 / Test-recipe row 5: the offending `path` is the SOURCE.
     assert!(
-        matches!(result, Err(RepoError::AlreadyJjRepo { .. })),
-        "expected AlreadyJjRepo for jj-repo source, got: {result:?}"
+        matches!(&result, Err(RepoError::AlreadyJjRepo { path }) if path == &src_fixture.path),
+        "expected AlreadyJjRepo with path==source, got: {result:?}"
     );
 }
 
@@ -530,6 +532,46 @@ fn convert_import_unborn_branch_source_succeeds() {
         zanshin_jj::detect_repo(&dst).expect("detect"),
         RepoKind::Jj,
         "must detect as Jj even with unborn branch source"
+    );
+    // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1).
+    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, "git_head()")
+            .expect("resolve git_head()")
+            .len(),
+        0,
+        "unborn source must import no HEAD commit"
+    );
+}
+
+// ── Test 8b: bare + unborn source → Ok, empty history (AC-10 bare-unborn arm) ─
+
+#[test]
+fn convert_import_bare_unborn_source_succeeds() {
+    pin_env();
+    // Bare repo with NO commits: HEAD (→ refs/heads/main, unborn) + objects/ + refs/
+    // → is_bare_git_dir true, git_head None. The one AC-10 arm not otherwise tested
+    // (Test 3 is bare-WITH-history; Test 8 is normal-unborn).
+    let bare = TempDir::new().expect("tempdir bare");
+    git(&["init", "--bare", "--initial-branch=main"], bare.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(bare.path(), &dst);
+    assert!(result.is_ok(), "bare unborn source must succeed, got: {result:?}");
+    assert_eq!(
+        zanshin_jj::detect_repo(&dst).expect("detect"),
+        RepoKind::Jj,
+        "must detect as Jj for bare unborn source"
+    );
+    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, "git_head()")
+            .expect("resolve git_head()")
+            .len(),
+        0,
+        "bare unborn source must import no HEAD commit"
     );
 }
 
@@ -677,19 +719,32 @@ fn convert_import_into_same_dir_is_colocated() {
     pin_env();
     let src = TempDir::new().expect("tempdir src");
     init_git_repo_with_commit(src.path());
-    // Canonicalize so the path comparison inside is_colocated() matches what
-    // gix reports for the git work-dir (gix normalises to the real path).
-    let root = src.path().canonicalize().expect("canonicalize");
 
-    // D5 default (b): passing the same directory as both source and dest lets
-    // jj create a colocated workspace (is_colocated() returns true → check_out
-    // step skipped). The caller gets a colocated jj workspace.
-    let result = convert_import(&root, &root);
+    // D5 default (b): passing the same directory as both source and dest lets jj
+    // create a colocated workspace (is_colocated() returns true → check_out step
+    // skipped). The path is passed RAW (not canonicalized) on purpose:
+    // is_colocated() compares against `workspace.workspace_root()`, which jj-lib
+    // canonicalizes, so the colocated detection must hold even for a non-canonical
+    // caller path (macOS /var → /private/var). A prior version canonicalized the
+    // input here, which MASKED the raw-path behaviour.
+    let result = convert_import(src.path(), src.path());
     assert!(
         result.is_ok(),
         "same-dir must produce a colocated result, got: {result:?}"
     );
     // Colocated: both .jj/ and .git/ present.
-    assert!(root.join(".jj").is_dir(), ".jj/ must exist");
-    assert!(root.join(".git").exists(), ".git/ must still exist (colocated)");
+    assert!(src.path().join(".jj").is_dir(), ".jj/ must exist");
+    assert!(src.path().join(".git").exists(), ".git/ must still exist (colocated)");
+
+    // The colocated skip must have fired: no jj-native `@` was created on top of
+    // the imported HEAD. If is_colocated() had wrongly returned false (the raw-path
+    // bug), check_out would have run and git_head() would gain a strict descendant.
+    let repo = zanshin_jj::Repo::open(src.path()).expect("Repo::open");
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, "descendants(git_head()) ~ git_head()")
+            .expect("resolve revset")
+            .len(),
+        0,
+        "colocated skip: imported HEAD must have no fresh jj-native child commit"
+    );
 }

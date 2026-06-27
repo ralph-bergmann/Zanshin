@@ -4,7 +4,7 @@ baseline_commit: 19638d9738cf15cdd843d04c0f5038d799678798
 
 # Story 2.13: Implement external-git-import conversion (`convert_import`) — fast-follow
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -465,6 +465,7 @@ claude-sonnet-4-6
 ### Change Log
 
 - 2026-06-27: Story implemented; all ACs satisfied; `cargo make test` green; status → review
+- 2026-06-27: Code review (bmad-code-review, ultracode multi-agent: 8 finder lenses → dedup → per-finding adversarial verify, 29 agents). 0 production defects on the primary two-path flow. 1 decision (Option A: `is_colocated` canonical fix via `workspace.workspace_root()` + Test 12 de-mask) + 2 test patches (bare-unborn test + Test 8 empty-history; AlreadyJjRepo `path` asserts) applied; 2 deferred (Test-14 `.jj`-rollback mutation-insensitivity; nested-dest orphan parent dirs), 5 dismissed. `cargo make test` green, coverage held 98.22%; status → done
 
 ## Open Questions for Ralph (non-blocking — defaults chosen)
 
@@ -477,3 +478,30 @@ claude-sonnet-4-6
 
 - **prd.md FR-JJ-18b** (line 216) and **epics.md Story 2.13** (+ the FRs-covered note) were reconciled to the two-path / jj-native-at-a-separate-dest shape (verified blocks). The "in-place jj-native" wording is gone from the upstream docs, so this story no longer fights its own epic.
 - **Bare-source support (OQ2 — resolved):** supported, per the canonical "replicate jj CLI behavior" rule (D9). **`trunk()` alias (OQ3 — resolved):** out of scope (cosmetic UX, D10).
+
+## Review Findings (bmad-code-review, 2026-06-27)
+
+> Adversarial multi-layer review (Opus, ultracode): 8 finder lenses (blind / edge / auditor + jj-lib-API / safety / tests / docs / regression) → consolidate+dedup (17 raw → 10 unique) → per-finding refutation from 2 diverse lenses (code-grounded + spec/jj-lib-grounded), 29 agents. **0 production data-loss/correctness defects on the primary two-path flow.** The no-data-loss invariant (source never destructively written; rollback removes only the destination) and the jj-lib-0.42 API port (`init_external_git` → `import_refs` → `import_head` → guarded `check_out` → materialise) were verified faithful to `do_init`'s `External` branch. Triage: **1 decision-needed, 2 patch, 2 defer, 5 dismissed.**
+
+### Decision-needed
+
+- [x] [Review][Decision] **[RESOLVED 2026-06-27 — Option A applied]** `is_colocated()` compares the raw caller path against gix's canonicalized `git_workdir`; a non-canonical `dest == source` path misclassifies as non-colocated [crates/zanshin-jj/src/convert.rs:189 (raw `==`); call site :266 (raw `workspace_path`)] — The port keeps only the first clause of the CLI's `is_colocated_git_workspace` and drops its `dunce::canonicalize` fallback; `git_backend.git_workdir()` is already canonical (gix), but the call site passes the **raw** `workspace_path`. For a non-canonical `dest == source` path (the common macOS `/var`→`/private/var` symlink case), `is_colocated` returns false, so the request takes the non-colocated `check_out` arm instead of the D5(b)-promised colocated result. The tests mask this by pre-`.canonicalize()`-ing inputs (integration Test 12 + the inline unit test), so the raw-path production behavior is never exercised green (Dev Debug Log line 445 records "fixing" the TEST inputs, not the function). The two adversarial verifiers **split on the data-loss tail**: code-lens read `local_working_copy::check_out` and found existing dirty files are SKIPPED (`create_new(true)`→`AlreadyExists`), so NO overwrite (worst case: an uncommitted *deletion* reverted from HEAD); spec-lens read it as a genuine source-working-copy write. Either way the dest==source result diverges from D5(b)/the CLI on raw paths and the tests hide it. Blast radius is bounded to the degenerate dest==source input (distinct dirs never compare equal → the primary two-path flow is provably unaffected). **Options:** (A) **Harden** — pass `workspace.workspace_root()` (already canonicalized by `Workspace::new`, no new dep) to `is_colocated`, and de-mask Test 12 with a raw same-dir path (this also resolves the dismissed "Test 12 doesn't pin the skip" finding); (B) **Accept** as a documented secondary-edge limitation (dest==source is explicitly out-of-intended-use; OQ1 deferred `dunce`; primary flow safe) + a rustdoc note. **Recommended: (A).**
+  - **Resolved (Option A applied, 2026-06-27):** the call site now passes `workspace.workspace_root()` (canonical — `Workspace::new`/`init_external_git` dunce-canonicalize it; **no new dep**); `is_colocated`'s rustdoc documents the canonical-comparison requirement; Test 12 de-masked (raw same-dir path + a mutation-sensitive `descendants(git_head()) ~ git_head()` == 0 assertion — also resolves the dismissed "Test 12 doesn't pin the skip" item). `cargo make test` green; coverage held 98.22%.
+
+### Patches
+
+- [x] [Review][Patch] **[APPLIED]** AC-10's bare-unborn-source arm has no test; Test 8 omits the empty-history assertion [crates/zanshin-jj/tests/convert.rs:515-534 (Test 8); helper `git_bare_clone` :325] — AC-10 enumerates "unborn-branch source (normal **and** bare) → Ok (empty history, no panic)". Only normal-unborn (Test 8) and bare-WITH-history (Test 3 — `git_bare_clone` always clones a commit) exist; the bare-unborn arm is asserted nowhere. Add a bare-unborn test (`git init --bare`, no commits → `is_bare_git_dir` true, `git_head` None) asserting `Ok` + `detect_repo==Jj` + `resolve_revset(&repo,"git_head()").len()==0`; and add the same `git_head().len()==0` assertion to Test 8 (currently only `Ok`+`Jj`), symmetric to Test 1's `len()==1`. Test-only; production is correct (the unconditional empty `tx.commit` is sanctioned by D4). Both verify lenses agree the missing test is real.
+- [x] [Review][Patch] **[APPLIED]** AlreadyJjRepo tests discard the `path` field, so source-vs-dest disambiguation is untested [crates/zanshin-jj/tests/convert.rs:448-462 (Test 4), 466-479 (Test 5)] — AC-3 + Test-recipe rows 4/5 mandate `path==dest` / `path==source`, and OQ3 reuses the one variant precisely because "`path` disambiguates". Both tests assert only `matches!(.., AlreadyJjRepo { .. })`, so swapping the two `path:` payloads (convert.rs:111 source vs :129 dest) would pass. Tighten Test 4 to assert `path == &dst_fixture.path` and Test 5 to `path == &src_fixture.path` (raw args — the code does `to_owned()` on the raw arg, no canonicalization). Both verify lenses: real / patch.
+
+### Deferred (pre-existing / cosmetic — recorded in deferred-work.md)
+
+- [x] [Review][Defer] Test 14's `.jj`-only rollback branch (`created_dir==false`) is mutation-insensitive [crates/zanshin-jj/tests/convert.rs (Test 14); crates/zanshin-jj/src/convert.rs:143-145] — deferred, same fault-injection-seam gap 2.12 already deferred. Line-covered but no constructible failure leaves a `.jj/` on disk to roll back (jj-lib self-cleans on init failure), so the line isn't mutation-pinned. The *dangerous* mutation (removing the whole pre-existing dest) is already caught by Test 14's `assert!(dst.exists())`.
+- [x] [Review][Defer] Nested-destination rollback leaves orphaned empty parent dirs [crates/zanshin-jj/src/convert.rs:137-145 vs `create_dir_all` :236] — deferred, cosmetic, no data loss. `create_dir_all` builds the whole missing chain but rollback removes only the leaf `workspace_path` (D7 is verbatim-locked to "remove only the destination", NFR-R-2). The jj CLI uses single-level `fs::create_dir` (errors on a missing parent instead).
+
+### Dismissed (5) — refuted by both verify lenses
+
+1. **Destination that is an existing normal Git repo is not rejected** — CLI-faithful: `do_init` does zero such check on the `--git-repo` path; `init_external_git` points at the SOURCE's `.git`, never opens the dest's. A guard would invent a refusal the CLI lacks (FR-JJ-17).
+2. **`import_head` runs in the colocated (dest==source) path where the CLI skips it** — sanctioned by D4 (unconditional `import_head` in the skeleton) + D5(b) + D10 (op-log effect, not CLI-identical); no data loss; out-of-intended-use edge.
+3. **`is_bare_git_dir` accepts any HEAD+objects+refs dir** — a bare repo and a `.git` dir are structurally identical and both valid backing dirs; D3 sanctions the stat-only heuristic; real validation is delegated to `init_external_git`→`ConvertFailed`; Test 15 requires `.git` acceptance.
+4. **Test 12 doesn't pin the is_colocated skip** — recipe-conformant (row 12 specifies exactly the `.jj/`+`.git/` coexistence asserts); no AC requires mutation-sensitivity; the helper is pinned by 2 inline unit tests. (Subsumed by the decision-needed item if option A is chosen.)
+5. **Single-tx-vs-CLI-two-ops disclosure (D4) lives only in the private `import_into` rustdoc** — D4 says "the rustdoc" (satisfied); no doc implies CLI-identical op-log (the negative obligation is met); AC-9 doesn't require op-log disclosure. Placement preference, not a gap.

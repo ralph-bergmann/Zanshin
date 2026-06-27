@@ -179,6 +179,11 @@ fn resolve_git_repo_path(arg: &Path) -> PathBuf {
 /// when the workspace is NOT colocated (i.e. when `workspace_root ≠ git workdir`).
 /// For the intended two-path use this is always false, but if a caller passes
 /// `workspace_path == git_repo_path` jj silently creates a colocated result (D5).
+///
+/// Pass a **canonicalized** `workspace_root` (e.g. `Workspace::workspace_root()`).
+/// `git_backend.git_workdir()` is already canonicalized by gix, so comparing it
+/// against a raw caller path would spuriously differ on macOS (`/var` →
+/// `/private/var`) and miss the colocated case.
 fn is_colocated(repo: &impl jj_lib::repo::Repo, workspace_root: &Path) -> bool {
     let Ok(git_backend) = jj_lib::git::get_git_backend(repo.store()) else {
         return false;
@@ -263,7 +268,7 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     //    Skip entirely if: (a) colocated (dest == source path), or (b) HEAD is
     //    unborn (git_head().as_normal() == None — e.g. fresh `git init` with no
     //    commits). This mirrors `clone_into` (repo.rs:~346–371).
-    let new_wc_commit = if is_colocated(tx.repo(), workspace_path) {
+    let new_wc_commit = if is_colocated(tx.repo(), workspace.workspace_root()) {
         None
     } else if let Some(git_head_id) = tx.repo().view().git_head().as_normal().cloned() {
         let mut_repo = tx.repo_mut();
