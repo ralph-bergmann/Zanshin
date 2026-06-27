@@ -273,7 +273,7 @@ impl Repo {
             .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
 
         let import_options = GitImportOptions {
-            auto_local_bookmark: false,
+            record_synthetic_predecessors: false,
             abandon_unreachable_commits: true,
             remote_auto_track_bookmarks: std::collections::HashMap::new(),
         };

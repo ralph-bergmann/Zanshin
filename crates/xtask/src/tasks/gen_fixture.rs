@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -139,8 +138,10 @@ fn make_tree(store: &Arc<Store>, commit_index: u32) -> Result<MergedTree, BoxErr
     let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
     let path = RepoPathBuf::from_internal_string(format!("commit-{commit_index}.txt"))?;
     let content = format!("commit {commit_index}\n");
-    let mut cursor = Cursor::new(content.into_bytes());
-    let file_id = pollster::block_on(store.write_file(&path, &mut cursor))?;
+    // WHY: &[u8] implements futures AsyncRead, which jj-lib 0.42's Store::write_file wants;
+    // no Cursor / tokio wrapper needed (the tokio io-util dep was dropped with this change).
+    let mut reader = content.as_bytes();
+    let file_id = pollster::block_on(store.write_file(&path, &mut reader))?;
     builder.set(
         path,
         TreeValue::File {

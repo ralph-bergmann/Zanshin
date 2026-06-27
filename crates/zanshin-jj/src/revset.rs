@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use futures::TryStreamExt as _;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
@@ -92,11 +93,14 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
         .evaluate(repo_dyn)
         .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
 
-    // 4. Iterate → reverse-hex → dedup (preserve first-seen topological order) → materialize.
+    // 4. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
+    //    synchronously via pollster, mirroring the `load_at_head` call above), then
+    //    reverse-hex → dedup (preserve first-seen topological order) → materialize.
+    let pairs: Vec<_> = pollster::block_on(set.commit_change_ids().try_collect())
+        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
     let mut out: Vec<ChangeId> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for item in set.commit_change_ids() {
-        let (_commit_id, change_id) = item.map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+    for (_commit_id, change_id) in pairs {
         let rev_hex = change_id.reverse_hex();
         if seen.insert(rev_hex.clone()) {
             out.push(ChangeId(rev_hex));
@@ -122,7 +126,7 @@ fn build_aliases_map() -> Result<RevsetAliasesMap, RevsetError> {
         remote_bookmarks(exact:\"trunk\") | \
         root()\
     )";
-    map.insert("trunk()", trunk_def)
+    map.insert("trunk()", trunk_def, None)
         .map_err(|e| RevsetError::ParseError { reason: e.to_string() })?;
     Ok(map)
 }

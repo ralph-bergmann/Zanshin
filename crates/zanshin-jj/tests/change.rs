@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use std::io::Cursor;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 use std::{env, fs};
@@ -132,8 +131,9 @@ fn make_divergent_change(workspace_root: &Path) -> String {
 /// Builds a single-file tree (`path` → `content`). TEST SETUP ONLY.
 fn tree_with_file(store: &Arc<Store>, path: &RepoPathBuf, content: &[u8]) -> MergedTree {
     let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
-    let mut cursor = Cursor::new(content.to_vec());
-    let file_id = pollster::block_on(store.write_file(path, &mut cursor)).unwrap();
+    // WHY: &[u8] implements futures AsyncRead directly (jj-lib 0.42 Store::write_file) — no Cursor.
+    let mut reader = content;
+    let file_id = pollster::block_on(store.write_file(path, &mut reader)).unwrap();
     builder.set(
         path.clone(),
         TreeValue::File {
