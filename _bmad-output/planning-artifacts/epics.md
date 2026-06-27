@@ -462,6 +462,24 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 ---
 
+### Epic 9: jj Operation Surface Build-Out (ADR-0003)
+
+**Goal:** Build the full jj operation surface as typed verb-level operations in `zanshin-jj` (ADR-0003) — beyond Epic 6's WIP-minimal write subset — composing each verb against jj-lib and exposing it via `zanshin-ffi` and (optionally) `zanshin-mcp`. **Supersedes** the deferred Stories 6.8 (squash/split/rebase) and 6.9 (bookmark CRUD); picks up the Epic-6-deferred FR-JJ-10b/10c/11/12/13b/14b/15.
+
+**User outcome:** A caller (Dart worker, MCP) reaches operation parity with the jj CLI's meaningful verbs — every verb a typed, transaction-bounded `zanshin-jj` call; the consumer names the verb, never composes primitives.
+
+**Backed by:** ADR-0003 + the jj-0.42 feasibility map (`research/technical-jj-operation-api-cli-vs-lib-surface-research-2026-06-27.md`) — the authoritative per-operation breakdown (backing jj-lib helper, thickness, typed-API sketch). 69 operations mapped + adversarially verified.
+
+**FRs covered:** FR-JJ-10b, FR-JJ-10c, FR-JJ-11, FR-JJ-12 (conflict ops), FR-JJ-13b (push), FR-JJ-14b, FR-JJ-15 — plus the new operation-support layer (Story 9.1) and `eval_revset` read primitive (Story 9.2).
+
+**Additional requirements anchored here:** AR-AP-1 + AR-AP-2 re-asserted per verb; the transaction boundary stays Rust-side (ADR-0003); each verb's `.fbs` edited in place (no `_v2`, WIP).
+
+**Precedence / scope:** **Post-WIP-minimal build-out — scheduling is Ralph's call.** Stories are at backlog granularity; full acceptance criteria are authored per story (via bmad-create-story) when scheduled. Each verb follows the surfacing chain: `.fbs` → `zanshin-jj` typed op (tx Rust-side) → `zanshin-ffi` `extern "C"` + `cargo make codegen` → Dart `WorkerCommand` → optional MCP tool → tests (zanshin-jj integration + FFI-path Dart test for coverage attribution + Verifier + ratchet).
+
+**Sequencing:** Step 9.0 (pin bump 0.41→0.42) precedes all operation work; Story 9.1 (operation-support layer) unblocks Tier C. Then Tier A (cheap) → Tier B (medium) → Tier C (thick) by feasibility-map thickness. Reuses Epic 6's `mutate.rs` (6.1) + FFI mutation surface (6.5) patterns; the interactive thick verbs additionally need the Flutter diff/merge editor (Ralph's UI scope) to supply a selected `TreeId`.
+
+---
+
 ### Cross-Cutting Concerns (no dedicated epic)
 
 These are reviewed in every epic's acceptance criteria rather than implemented once:
@@ -471,7 +489,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
-> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns.
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD).
 
 ---
 
@@ -5380,5 +5398,101 @@ So that the deferred work is visible.
 **And** updates flow through brew (in addition to Sparkle for users who installed via GitHub).
 
 **Out of 0.1 scope:** No implementation work in this story until post-0.1.
+
+---
+
+## Epic 9: jj Operation Surface Build-Out (ADR-0003)
+
+> **Granularity:** backlog-level. These stories enumerate the operation surface derived from
+> ADR-0003 + the jj-0.42 feasibility map; full acceptance criteria are authored per story (via
+> `bmad-create-story`) when scheduled. Per-operation detail (backing jj-lib helper, exact
+> thickness, typed-API sketch, special concerns) lives in the feasibility map — not duplicated
+> here. **Already covered elsewhere (NOT re-listed in Epic 9):** reads `status`/`revset`/`change`/
+> `op_log`/`bookmark list`/`remotes` (Epic 2), graph + `log` (Epic 4), `diff` (Epic 5); mutations
+> `describe`/`new`/`edit`/`abandon` (6.1), `undo` (6.2), `git fetch` (6.4a). Tag `[M]` = mutation,
+> `[R]` = read.
+
+### Precursors
+
+### Story 9.0: Bump `jj-lib` 0.41.0 → 0.42.0 (precursor)
+Edit the `=0.41.0` pins to `=0.42.0`, absorb any API diff inside `zanshin-jj`, regenerate codegen if an `extern "C"` signature changed, `cargo make test` green (incl. coverage ratchet). One reviewed change before any operation work, so the surface is built on current. *(Executed in the 2026-06-27 session.)*
+
+### Story 9.1: Operation-support layer (`zanshin-jj/src/op_support.rs`)
+Re-port the orchestration jj-lib does NOT expose (lives in jj-cli's `cli_util`): the immutable-heads / `check_rewritable` guard, `compute_commit_location` (insert `-A`/`-B`/`--onto`), description combination (`combine_messages` + trailers), and the `SelectedTree` plumbing that replaces the CLI's interactive `DiffSelector`. Shared by every thick verb + MCP. **Blocks Tier C.**
+
+### Story 9.2: `eval_revset` generic read primitive + `View` read helpers (extends 2.5)
+A typed `eval_revset(&str) -> Stream<Commit>` over the verified parse→resolve→evaluate path (lazy `Box<dyn Revset>`, streamed per ADR-0002, never `try_collect`-ed); plus direct `View` reads (bookmarks/tags/heads/wc) so the GUI does not route everything through revsets. Preserve the 3-stage parse/resolution/evaluation error taxonomy.
+
+### Tier A — cheap (start here)
+
+### Story 9.3: Content ops — `restore`, `absorb` [M]
+`restore` via `rewrite::restore_tree` (whole-file; interactive selection out of scope); `absorb` via `lib/src/absorb.rs` (`split_hunks_to_trees` + `absorb_hunks`). Both cheap.
+
+### Story 9.4: File reads — `file list`, `file show`, `file annotate`, `file search` [R]
+`MergedTree::entries_matching` / `path_value` + `conflicts::materialize_tree_value`; blame via `annotate::FileAnnotator`.
+
+### Story 9.5: Git local sync + remote config — `git import`, `git export`, `git remote add`/`remove`/`rename`/`set-url` [M]
+Thin wraps over `git::{import_refs,import_head,export_refs,add_remote,remove_remote,rename_remote,set_remote_urls}`. Remote remove/rename also rewrite the repo config file (outside the tx), mirroring Story 2.9's pattern.
+
+### Story 9.6: Read views — `show`, `evolog`, `interdiff` [R]
+`show` (`Commit::parent_tree` + `MergedTree::diff_stream`); `evolog` (`evolution::walk_predecessors`); `interdiff` (`rewrite::rebase_to_dest_parent`).
+
+### Story 9.7: Workspace reads — `workspace list`, `workspace root` [R]
+`View::wc_commit_ids` + `WorkspaceStore::get_workspace_path`.
+
+### Story 9.8: Bookmark CRUD (cheap start) — `bookmark create`, `bookmark delete` [M]
+`MutableRepo::set_local_bookmark_target` (+ `RefTarget::normal`/`absent`). Supersedes part of deferred 6.9.
+
+### Tier B — medium
+
+### Story 9.9: `metaedit`, `duplicate`, `fix` [M]
+`metaedit` (`CommitBuilder` setters + `transform_descendants`); `duplicate` (`rewrite::duplicate_commits{,_onto_parents}`, needs 9.1 location-compute); `fix` (`fix::fix_files` + tool-config/subprocess closure).
+
+### Story 9.10: Working-copy movement — `next`, `prev` [M]
+Shared `movement_util` orchestration over `MutableRepo::check_out`/`edit`; revset target computation + ambiguity resolution (GUI picks, no terminal prompt).
+
+### Story 9.11: Bookmark tracking — `bookmark set`, `forget`, `track`, `untrack` [M]
+`set_local_bookmark_target` + `track_remote_bookmark`/`untrack_remote_bookmark`/`merge_local_bookmark`; pattern matching + fast-forward guard.
+
+### Story 9.12: Operation edits — `op restore`, `op revert` [M]
+`MutableRepo::set_view` / `MutableRepo::merge` over `op_walk::resolve_op_with_repo`; partial-view (`--what`) reassembly.
+
+### Story 9.13: `file chmod`; `workspace forget`, `workspace rename` [M]
+`MergedTreeBuilder` + `rewrite_commit`; `MutableRepo::remove_wc_commit`/`rename_workspace` + `WorkspaceStore` (metadata write outside tx).
+
+### Story 9.14: `simplify-parents` [M]
+`CommitRewriter::simplify_ancestor_merge` via `transform_descendants`; default revset from settings.
+
+### Tier C — thick (needs Story 9.1; interactive verbs need the Flutter diff/merge editor)
+
+### Story 9.15: `squash`, `split` (partial-file) — *supersedes deferred 6.8 part; FR-JJ-10b/10c* [M]
+Tree math via `rewrite::squash_commits` / `CommitWithSelection` / `restore_tree`; message-combine + selected-tree from Story 9.1; GUI supplies the selected `TreeId` (no editor spawn). `split` has no lib primitive — assemble two builders + parallel-tree math.
+
+### Story 9.16: `rebase`, `parallelize`, `arrange` — *supersedes deferred 6.8 part* [M]
+`rebase` via `rewrite::{MoveCommitsTarget,compute_move_commits,ComputedMoveCommits::apply}` + 9.1 target/dest resolution; `parallelize` ports the two-map parent recompute; `arrange` exposes only a headless `arrange_apply(plan)` (the CLI's ratatui TUI is replaced by the GUI).
+
+### Story 9.17: `commit`, `resolve`, `diffedit` (GUI-editor-backed) — *FR-JJ-11/12 conflict ops* [M]
+Backend wraps pub tree helpers + conflict materialization (`conflicts::*`, `MergedTree::conflicts*`); the diff/merge editor is GUI-native and feeds a selected/edited `TreeId`. Expose context+apply pairs for `resolve`/`diffedit`.
+
+### Story 9.18: `revert` — *no lib helper* [M]
+Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase from CLI logic over `merge_commit_trees` / `MergedTree::merge` / conflict labels. The only genuine algorithm port with zero lib helper.
+
+### Story 9.19: Bookmark thick + list filters — `bookmark move`, `advance`, `rename`; `bookmark list` filters — *supersedes deferred 6.9 part* [M/R]
+`--from` revset membership, dynamic revset with injected `to`, tracking-state transfer; typed filtered rows (replace the CLI template matrix).
+
+### Story 9.20: `git push`, `git clone`, `git init` — *FR-JJ-13b push* [M]
+`git::push_refs` (+ safety/classification pipeline), `Workspace::init_*_git` + `GitFetch`; network + multi-tx filesystem setup; progress via typed callback (the 6.4a pattern).
+
+### Story 9.21: Operation-log surface — `op log`, `op show`, `op diff`, `op abandon`, `redo` [M/R]
+`op_walk::{walk_ancestors,resolve_op_with_repo,reparent_range}` + `RepoLoader::merge_operations`; typed op entries + cross-op diff; redo stack semantics (beyond 6.2 undo).
+
+### Story 9.22: `file track`, `file untrack` (locked-WC lifecycle) [M]
+`LockedWorkingCopy::{snapshot,reset}` + `SnapshotOptions`; multi-phase reset/resnapshot reconciliation.
+
+### Story 9.23: `workspace add`, `workspace update-stale` [M]
+`Workspace::init_workspace_with_existing_repo` + sparse mutation; `WorkingCopyFreshness::check_stale` + `create_and_check_out_recovery_commit`.
+
+### MCP exposure (cross-cut with Epic 7)
+Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
 ---

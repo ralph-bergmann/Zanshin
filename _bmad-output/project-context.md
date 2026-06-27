@@ -2,7 +2,7 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-last_revised: '2026-06-22'
+last_revised: '2026-06-27'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
 status: 'complete (WIP-scope rework 2026-05-17)'
@@ -168,6 +168,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).
+- **Operation surface = typed verb-level API (ADR-0003).** `zanshin-jj` exposes the jj
+  CLI's *operation set* as typed verb calls (`new`, `squash`, `rebase`, …) implemented
+  against jj-lib — WE compose; consumers name the verb. The transaction boundary stays
+  entirely Rust-side; NO mutation primitives cross FFI (impossible anyway — borrowed
+  handles/locks + the `write()`-time `has_rewrites()` panic-assert). Reads also get one
+  generic `eval_revset` joker (lazy `Box<dyn Revset>`, streamed per ADR-0002) + direct
+  `View` access. A shared support module re-ports the `cli_util` orchestration jj-lib does
+  NOT expose (immutable-heads check, insert-location resolution, message-combine,
+  selected-tree plumbing). Granularity tracks the CLI verb set, re-evaluated at each pin bump.
 
 **Dart Hooks + `native_toolchain_rust`:**
 - `app/hook/build.dart` is the ONLY Dart Hook. It points at `zanshin-ffi`:
@@ -553,6 +562,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   The only JSON in the project is `zanshin-mcp`'s protocol-mandated JSON-RPC.
 - **NEVER add per-call locking** (`Arc<Mutex<T>>`, `RwLock`) around handles.
   The concurrency model is single-threaded Rust-side (AD-2).
+- **NEVER push jj operation orchestration into the consumer** (Flutter/MCP), and NEVER
+  expose jj-lib mutation primitives across FFI. Compose verbs inside `zanshin-jj`; the
+  transaction runs start-to-finish Rust-side (ADR-0003). Primitive-level FFI is impossible
+  (borrowed handles + on-disk locks), not merely discouraged.
 - **NEVER let stdout/stderr leak from `zanshin-mcp`.** It corrupts MCP stdio
   protocol — file-only tracing in ALL build modes, no exceptions.
 - **NEVER write Flutter UI code in this scope.** Widgets, layout, navigation,
@@ -672,6 +685,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   — research backing ADR-0002 (29-agent survey of 13 Git/jj GUIs; coherency patterns; jj cost model)
 - `docs/adr/0001-ffi-data-transport-flatbuffers.md` — FFI transport decision
   (FlatBuffers for composite data; supersedes the JSON-envelope parts of AD-1/AD-3/AD-4)
+- `docs/adr/0003-jj-operation-api-surface.md` — the operation API surface (CLI-operation-set
+  as a typed verb-level API over jj-lib; we compose; no mutation primitives over FFI; revset
+  read joker; refines AD-2/AD-4)
+- `_bmad-output/planning-artifacts/research/technical-jj-operation-api-cli-vs-lib-surface-research-2026-06-27.md`
+  — research backing ADR-0003 (30-agent jj-0.42 feasibility map; 69 ops mapped+verified; prior art GG/JayJay/VisualJJ)
 - `_bmad-output/planning-artifacts/architecture.md` — full architecture
   rationale (AD-1..AD-7, P-1..P-9, anti-patterns, structure)
 - `_bmad-output/planning-artifacts/prd.md` — functional + non-functional
@@ -682,7 +700,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-06-22 (ADR-0002 adopted: the repo handle is a warm `Workspace` loader + op-heads-watcher owner that re-resolves per operation, NOT an authoritative state cache; app is multi-repo (0..N handles); FR-GR-3 lane-cache decision resolved (AC-4): the lane graph is streamed (GG model), no materialized cache — full derive ~3 ms @ 10k (Story 3.11). Performance-gotchas + handle-semantics sections reconciled.)
+Last Updated: 2026-06-27 (ADR-0003 adopted: `zanshin-jj` exposes the jj CLI's operation set as a typed verb-level API over jj-lib — we compose, consumers name the verb; no mutation primitives cross FFI (impossible — borrowed handles/locks; transaction stays Rust-side); reads add a generic `eval_revset` joker + direct `View`; a shared support module re-ports the `cli_util` orchestration jj-lib doesn't expose. Backed by the jj-0.42 feasibility map (69 ops mapped+verified). Pin bump 0.41→0.42 is the first impl step.)
+Previously: 2026-06-22 (ADR-0002 adopted: the repo handle is a warm `Workspace` loader + op-heads-watcher owner that re-resolves per operation, NOT an authoritative state cache; app is multi-repo (0..N handles); FR-GR-3 lane-cache decision resolved (AC-4): the lane graph is streamed (GG model), no materialized cache — full derive ~3 ms @ 10k (Story 3.11). Performance-gotchas + handle-semantics sections reconciled.)
 Previously: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
 Previously: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)
 Previously: 2026-06-15 (ADR-0001: FlatBuffers FFI transport supersedes the JSON envelope)
