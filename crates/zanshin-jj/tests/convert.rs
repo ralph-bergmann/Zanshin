@@ -5,7 +5,7 @@ use std::{env, fs};
 
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
-use zanshin_jj::{convert_colocated, RepoError, RepoKind};
+use zanshin_jj::{convert_colocated, convert_import, RepoError, RepoKind};
 
 /// Env-var pin: same rationale as tests/repo.rs — defence-in-depth against
 /// local `JJ_CONFIG` / `GIT_CONFIG_GLOBAL` interfering with jj-lib init calls.
@@ -314,4 +314,382 @@ fn convert_path_under_regular_file_returns_convert_failed() {
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for a detect_repo I/O error, got: {result:?}"
     );
+}
+
+// =============================================================================
+// convert_import tests (Story 2.13, AC-2..AC-11)
+// =============================================================================
+
+/// Clone a normal Git repo as a bare repo (returns the bare repo path inside
+/// `parent`). Shells to `git clone --bare` which is allowed in tests.
+fn git_bare_clone(src: &std::path::Path, parent: &std::path::Path) -> std::path::PathBuf {
+    let bare = parent.join("bare.git");
+    git(
+        &["clone", "--bare", &src.to_string_lossy(), &bare.to_string_lossy()],
+        parent,
+    );
+    bare
+}
+
+// ── Test 1: happy path — normal source + fresh dest ──────────────────────────
+
+#[test]
+fn convert_import_git_repo_with_commit_returns_jj_native() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(src.path(), &dst);
+    assert!(result.is_ok(), "expected Ok, got: {result:?}");
+
+    // jj-native: detect_repo sees Jj; .jj/ present; NO .git/ in dest.
+    assert_eq!(
+        zanshin_jj::detect_repo(&dst).expect("detect"),
+        RepoKind::Jj,
+        "detect_repo must return Jj"
+    );
+    assert!(dst.join(".jj").is_dir(), ".jj/ must exist");
+    assert!(!dst.join(".git").exists(), "no .git/ in jj-native workspace");
+
+    // Working-copy materialised: README.md from the source commit is present.
+    assert_eq!(
+        fs::read_to_string(dst.join("README.md")).expect("README in dest"),
+        "hello",
+        "working copy must be materialised with HEAD's tree"
+    );
+
+    // Repo::open succeeds and can resolve git_head().
+    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    let head = zanshin_jj::resolve_revset(&repo, "git_head()").expect("resolve git_head()");
+    assert_eq!(head.len(), 1, "imported HEAD commit must be reachable via git_head()");
+}
+
+// ── Test 2: source refs/HEAD unchanged after import ──────────────────────────
+
+#[test]
+fn convert_import_does_not_modify_source_git() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let head_before = git_stdout(&["rev-parse", "HEAD"], src.path());
+    let refs_before = git_stdout(
+        &[
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/heads",
+            "refs/tags",
+        ],
+        src.path(),
+    );
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+    convert_import(src.path(), &dst).expect("convert_import");
+
+    let head_after = git_stdout(&["rev-parse", "HEAD"], src.path());
+    let refs_after = git_stdout(
+        &[
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/heads",
+            "refs/tags",
+        ],
+        src.path(),
+    );
+
+    assert_eq!(head_before, head_after, "git HEAD SHA must be unchanged");
+    assert_eq!(
+        refs_before, refs_after,
+        "git user-visible refs (heads/tags) must be unchanged"
+    );
+}
+
+// ── Test 3: bare source is supported (AC-4 / D9) ─────────────────────────────
+
+#[test]
+fn convert_import_bare_source_returns_jj_native() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let bare_parent = TempDir::new().expect("tempdir bare parent");
+    let bare = git_bare_clone(src.path(), bare_parent.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(&bare, &dst);
+    assert!(result.is_ok(), "bare source must succeed, got: {result:?}");
+
+    assert_eq!(
+        zanshin_jj::detect_repo(&dst).expect("detect"),
+        RepoKind::Jj,
+        "detect_repo must return Jj after bare-source import"
+    );
+    assert!(
+        !dst.join(".git").exists(),
+        "no .git/ in jj-native workspace from bare source"
+    );
+
+    // Working copy materialised from bare source.
+    assert_eq!(
+        fs::read_to_string(dst.join("README.md")).expect("README from bare"),
+        "hello",
+        "working copy must be materialised from the bare source's HEAD tree"
+    );
+}
+
+// ── Test 4: destination already a jj repo → AlreadyJjRepo ────────────────────
+
+#[test]
+fn convert_import_destination_already_jj_returns_already_jj_repo() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    // Destination is a pre-existing jj repo (from fixture).
+    let dst_fixture = extract_fixture("tiny-3-commits").expect("fixture");
+
+    let result = convert_import(src.path(), &dst_fixture.path);
+    assert!(
+        matches!(result, Err(RepoError::AlreadyJjRepo { .. })),
+        "expected AlreadyJjRepo for jj-repo destination, got: {result:?}"
+    );
+}
+
+// ── Test 5: source already a jj repo → AlreadyJjRepo ─────────────────────────
+
+#[test]
+fn convert_import_source_already_jj_returns_already_jj_repo() {
+    pin_env();
+    let src_fixture = extract_fixture("tiny-3-commits").expect("fixture");
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(&src_fixture.path, &dst);
+    assert!(
+        matches!(result, Err(RepoError::AlreadyJjRepo { .. })),
+        "expected AlreadyJjRepo for jj-repo source, got: {result:?}"
+    );
+}
+
+// ── Test 6: non-git source (empty dir) → NotAGitRepo ─────────────────────────
+
+#[test]
+fn convert_import_empty_source_returns_not_a_git_repo() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(src.path(), &dst);
+    assert!(
+        matches!(result, Err(RepoError::NotAGitRepo { .. })),
+        "expected NotAGitRepo for empty source, got: {result:?}"
+    );
+}
+
+// ── Test 7: nonexistent source → NotAGitRepo ─────────────────────────────────
+
+#[test]
+fn convert_import_nonexistent_source_returns_not_a_git_repo() {
+    pin_env();
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(std::path::Path::new("/nonexistent/zanshin-import-test-abc123"), &dst);
+    assert!(
+        matches!(result, Err(RepoError::NotAGitRepo { .. })),
+        "expected NotAGitRepo for nonexistent source, got: {result:?}"
+    );
+}
+
+// ── Test 8: unborn branch source → Ok (no check_out, no panic) ───────────────
+
+#[test]
+fn convert_import_unborn_branch_source_succeeds() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    git(&["init", "--initial-branch=main"], src.path());
+    git(&["config", "user.email", "test@zanshin.test"], src.path());
+    git(&["config", "user.name", "Fixture"], src.path());
+    // No commits — unborn branch; git_head() will be None.
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(src.path(), &dst);
+    assert!(result.is_ok(), "unborn branch source must succeed, got: {result:?}");
+    assert_eq!(
+        zanshin_jj::detect_repo(&dst).expect("detect"),
+        RepoKind::Jj,
+        "must detect as Jj even with unborn branch source"
+    );
+}
+
+// ── Test 9: rollback on failure — created_dir removed ────────────────────────
+
+#[test]
+fn convert_import_failure_rolls_back() {
+    pin_env();
+    // Source: empty `.git` dir — detect_repo classifies as Git (child dir exists),
+    // but Workspace::init_external_git fails (no HEAD/objects). Dest is fresh.
+    let src = TempDir::new().expect("tempdir src");
+    fs::create_dir(src.path().join(".git")).expect("create empty .git dir");
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let result = convert_import(src.path(), &dst);
+    assert!(
+        matches!(result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for invalid source, got: {result:?}"
+    );
+    assert!(
+        !dst.exists(),
+        "failed convert must roll back — created dest dir must be removed"
+    );
+}
+
+// ── Test 10: detect_repo I/O error → ConvertFailed ───────────────────────────
+
+#[test]
+fn convert_import_detect_io_error_returns_convert_failed() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let file = tmp.path().join("not-a-dir");
+    fs::write(&file, "regular file").expect("write");
+
+    // Path under a regular file → ENOTDIR → detect_repo returns Err → ConvertFailed.
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+    let result = convert_import(&file.join("child"), &dst);
+    assert!(
+        matches!(result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for detect_repo I/O error, got: {result:?}"
+    );
+}
+
+// ── Test 11: removing dest restores source as a standalone Git repo ───────────
+
+#[test]
+fn convert_import_then_remove_dest_restores_source() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    convert_import(src.path(), &dst).expect("convert_import");
+    fs::remove_dir_all(&dst).expect("remove dest");
+
+    // Source remains a healthy standalone Git repo.
+    assert_eq!(
+        zanshin_jj::detect_repo(src.path()).expect("detect source after removal"),
+        RepoKind::Git,
+        "source must remain a Git repo after dest is removed"
+    );
+    // git rev-parse HEAD must still work (AC-5 addendum).
+    let _ = git_stdout(&["rev-parse", "HEAD"], src.path());
+}
+
+// ── Test 13: detect I/O error on dest → ConvertFailed (line 133) ─────────────
+
+#[test]
+fn convert_import_dest_detect_io_error_returns_convert_failed() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let tmp = TempDir::new().expect("tempdir");
+    let file = tmp.path().join("not-a-dir");
+    fs::write(&file, "regular file").expect("write regular file");
+
+    // workspace_path under a regular file → ENOTDIR → detect_repo Err → ConvertFailed.
+    let result = convert_import(src.path(), &file.join("child"));
+    assert!(
+        matches!(result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for I/O error on dest detect, got: {result:?}"
+    );
+}
+
+// ── Test 14: failure with pre-existing dest → only .jj/ rolled back ──────────
+
+#[test]
+fn convert_import_failure_with_pre_existing_dest_removes_jj_only() {
+    pin_env();
+    // Source: empty `.git` dir (init_external_git fails; no commits/objects).
+    let src = TempDir::new().expect("tempdir src");
+    fs::create_dir(src.path().join(".git")).expect("create empty .git dir");
+
+    // Dest: pre-existing empty dir → created_dir = false.
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+    fs::create_dir(&dst).expect("create pre-existing dest");
+
+    let result = convert_import(src.path(), &dst);
+    assert!(
+        matches!(result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for invalid source, got: {result:?}"
+    );
+    // Pre-existing dir survives; only .jj/ (if created) is removed.
+    assert!(dst.exists(), "pre-existing dest dir must survive rollback");
+    assert!(!dst.join(".jj").exists(), "no partial .jj/ after rollback");
+}
+
+// ── Test 15: git_repo_path ending in .git is accepted (resolve_git_repo_path) ─
+
+#[test]
+fn convert_import_dot_git_path_succeeds() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    // Passing src/.git directly: resolve_git_repo_path returns it as-is
+    // (arg.ends_with(".git") is true).
+    let dot_git = src.path().join(".git");
+    let result = convert_import(&dot_git, &dst);
+    assert!(
+        result.is_ok(),
+        "passing .git path directly must succeed, got: {result:?}"
+    );
+    assert_eq!(
+        zanshin_jj::detect_repo(&dst).expect("detect"),
+        RepoKind::Jj,
+        "result must be a jj workspace"
+    );
+}
+
+// ── Test 12: dest == source → colocated result (D5 default (b)) ──────────────
+
+#[test]
+fn convert_import_into_same_dir_is_colocated() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    // Canonicalize so the path comparison inside is_colocated() matches what
+    // gix reports for the git work-dir (gix normalises to the real path).
+    let root = src.path().canonicalize().expect("canonicalize");
+
+    // D5 default (b): passing the same directory as both source and dest lets
+    // jj create a colocated workspace (is_colocated() returns true → check_out
+    // step skipped). The caller gets a colocated jj workspace.
+    let result = convert_import(&root, &root);
+    assert!(
+        result.is_ok(),
+        "same-dir must produce a colocated result, got: {result:?}"
+    );
+    // Colocated: both .jj/ and .git/ present.
+    assert!(root.join(".jj").is_dir(), ".jj/ must exist");
+    assert!(root.join(".git").exists(), ".git/ must still exist (colocated)");
 }

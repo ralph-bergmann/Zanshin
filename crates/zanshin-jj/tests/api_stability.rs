@@ -86,8 +86,10 @@ fn api_surface_resolves() {
     _ = zanshin_jj::RepoKind::Jj;
     _ = zanshin_jj::DetectError::Io(String::new());
 
-    // convert (free fn + new RepoError variants — no new *type* exported; count unchanged)
+    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 26)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
+    _ = zanshin_jj::convert_import
+        as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
     _ = zanshin_jj::RepoError::AlreadyJjRepo {
         path: std::path::PathBuf::new(),
     };

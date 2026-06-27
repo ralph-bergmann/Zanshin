@@ -37,6 +37,49 @@ To expose a new jj concept (a new "noun"):
 5. Re-export the new types from `lib.rs` with `pub use <noun>::{…}`.
 6. **Never** add `pub use jj_lib::…` to `lib.rs`.
 
+## Conversion modes
+
+Two functions convert an existing Git repository into a jj workspace:
+
+### `convert_colocated` — in-place, colocated (FR-JJ-18a)
+
+```rust
+convert_colocated(path: &Path) -> Result<Repo, RepoError>
+```
+
+Creates a jj workspace **inside** the existing Git repo: `.jj/` is added
+alongside `.git/`, and the two share the same directory and the same object
+store.  The Git CLI continues to work; jj leads on the snapshot schedule.
+Deleting `.jj/` fully restores the plain Git repo.
+
+Mirrors `jj git init --colocate` over an existing `.git/`.  **Bare repos are
+not supported** (returns `NotAGitRepo`).
+
+### `convert_import` — jj-native at a separate destination (FR-JJ-18b)
+
+```rust
+convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError>
+```
+
+Creates a **separate**, non-colocated jj workspace at a **user-chosen
+destination**.  The destination gets a `.jj/` and **no** `.git/`; jj leads
+exclusively.  **Bare repos are supported.**
+
+**⚠ This is NOT a clone.** The new workspace shares the source's Git object
+store (`git_target` → `<source>/.git`).  The source repo must continue to
+exist — moving or deleting it corrupts the jj workspace.  Use `Repo::clone`
+if you need a self-contained copy of the objects.
+
+Mirrors `jj git init --git-repo=<source> <destination>`.
+
+#### In-place jj-native conversion is impossible in jj 0.42
+
+`jj git init --no-colocate` over an existing `.git/` is a hard error in jj
+0.42 — a genuinely non-colocated result always requires a **separate**
+destination directory.  The two-parameter signature of `convert_import`
+reflects this constraint; the destination is always caller-supplied (no
+baked-in default).
+
 ## Integration-test fixture pattern
 
 Integration tests that need a real jj repository use the pre-built fixtures:
