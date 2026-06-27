@@ -14,7 +14,8 @@ use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
 use jj_lib::workspace::{default_working_copy_factories, Workspace};
 
-/// Errors returned by [`Repo::open`], [`Repo::init`], and [`Repo::clone`].
+/// Errors returned by [`Repo::open`], [`Repo::init`], [`Repo::clone`], and
+/// [`crate::convert_colocated`].
 #[derive(Debug, thiserror::Error)]
 pub enum RepoError {
     /// The supplied path does not exist on the filesystem.
@@ -39,6 +40,24 @@ pub enum RepoError {
     #[error("clone failed: {reason}")]
     CloneFailed {
         /// Human-readable failure reason from jj-lib.
+        reason: String,
+    },
+    /// The path is already a jj workspace (`.jj/` is present).
+    #[error("already a jj repository: {path}")]
+    AlreadyJjRepo {
+        /// The path that is already a jj workspace.
+        path: PathBuf,
+    },
+    /// The path is not a Git repository (no `.git/`), or does not exist.
+    #[error("not a git repository: {path}")]
+    NotAGitRepo {
+        /// The path that is neither a Git repo nor exists.
+        path: PathBuf,
+    },
+    /// Colocated conversion failed; the partially-created `.jj/` has been rolled back.
+    #[error("convert failed: {reason}")]
+    ConvertFailed {
+        /// Human-readable failure reason from jj-lib or `detect_repo`.
         reason: String,
     },
     /// Underlying `jj_lib` failure, flattened to its Display so no `jj_lib` type escapes the public API.
@@ -386,7 +405,7 @@ impl GitSubprocessCallback for NoopCallback {
     }
 }
 
-fn make_settings() -> Result<UserSettings, RepoError> {
+pub(crate) fn make_settings() -> Result<UserSettings, RepoError> {
     let mut config = StackedConfig::with_defaults();
     config.add_layer(
         ConfigLayer::parse(

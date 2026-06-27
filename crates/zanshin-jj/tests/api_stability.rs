@@ -85,4 +85,14 @@ fn api_surface_resolves() {
     _ = zanshin_jj::detect_repo as fn(&std::path::Path) -> Result<zanshin_jj::RepoKind, zanshin_jj::DetectError>;
     _ = zanshin_jj::RepoKind::Jj;
     _ = zanshin_jj::DetectError::Io(String::new());
+
+    // convert (free fn + new RepoError variants — no new *type* exported; count unchanged)
+    _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
+    _ = zanshin_jj::RepoError::AlreadyJjRepo {
+        path: std::path::PathBuf::new(),
+    };
+    _ = zanshin_jj::RepoError::NotAGitRepo {
+        path: std::path::PathBuf::new(),
+    };
+    _ = zanshin_jj::RepoError::ConvertFailed { reason: String::new() };
 }

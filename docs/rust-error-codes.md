@@ -45,6 +45,9 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `ffi.invalid_argument`          | `ffi`      | A required argument value is out of the accepted range.              | **Emitted — Story 3.4a** (`envelope.rs::FFI_INVALID_ARGUMENT`, `repo.rs`) |
 | `jj.no_working_copy`            | `jj`       | The workspace has no working-copy commit (@).                        | **Emitted — Story 3.4b** (`envelope.rs::JJ_NO_WORKING_COPY`, `status.rs`) |
 | `jj.change_not_found`           | `jj`       | No change found for the given id.                                    | **Emitted — Story 3.4b (change)** (`envelope.rs::JJ_CHANGE_NOT_FOUND`, `change.rs`) |
+| `jj.already_jj_repo`            | `jj`       | The path is already a jj workspace (`.jj/` present); convert skipped. | Reserved — Story 2.12 (`RepoError::AlreadyJjRepo`); emitted by Story 3.4c (`envelope.rs`) |
+| `jj.not_a_git_repo`             | `jj`       | The path is not a Git repository (no `.git/`) or does not exist.     | Reserved — Story 2.12 (`RepoError::NotAGitRepo`); emitted by Story 3.4c (`envelope.rs`) |
+| `jj.convert_failed`             | `jj`       | A jj-lib failure occurred during colocated conversion; detail in `context`. | Reserved — Story 2.12 (`RepoError::ConvertFailed`); emitted by Story 3.4c (`envelope.rs`) |
 | `watcher.io_error`              | `watcher`  | An I/O error in the filesystem-watch subsystem.                      | Reserved — deferred watcher stories |
 | `watcher.watchman_not_configured` | `watcher` | Watchman is not installed or not on `$PATH`.                        | Reserved — deferred watcher stories |
 

@@ -33,12 +33,19 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
             code: JJ_REPO_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
-        RepoError::InitFailed { reason } | RepoError::CloneFailed { reason } | RepoError::Backend(reason) => {
-            FfiErrorObj {
-                code: JJ_JJ_LIB_ERROR.to_owned(),
-                context: Some(reason),
-            }
-        }
+        RepoError::InitFailed { reason }
+        | RepoError::CloneFailed { reason }
+        | RepoError::ConvertFailed { reason }
+        | RepoError::Backend(reason) => FfiErrorObj {
+            code: JJ_JJ_LIB_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        // AlreadyJjRepo + NotAGitRepo get dedicated codes in Story 3.4c (jj.already_jj_repo /
+        // jj.not_a_git_repo). Until then they surface as JJ_JJ_LIB_ERROR with path context.
+        RepoError::AlreadyJjRepo { path } | RepoError::NotAGitRepo { path } => FfiErrorObj {
+            code: JJ_JJ_LIB_ERROR.to_owned(),
+            context: Some(path.display().to_string()),
+        },
     }
 }
 
@@ -230,6 +237,33 @@ mod tests {
     fn map_repo_err_backend_maps_to_jj_lib_error() {
         let e = map_repo_err(RepoError::Backend("underlying".into()));
         assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+    }
+
+    #[test]
+    fn map_repo_err_convert_failed_maps_to_jj_lib_error() {
+        let e = map_repo_err(RepoError::ConvertFailed {
+            reason: "init failed".into(),
+        });
+        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(e.context.unwrap(), "init failed");
+    }
+
+    #[test]
+    fn map_repo_err_already_jj_repo_maps_to_jj_lib_error() {
+        let e = map_repo_err(RepoError::AlreadyJjRepo {
+            path: "/some/path".into(),
+        });
+        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert!(e.context.unwrap().contains("/some/path"));
+    }
+
+    #[test]
+    fn map_repo_err_not_a_git_repo_maps_to_jj_lib_error() {
+        let e = map_repo_err(RepoError::NotAGitRepo {
+            path: "/no/git/here".into(),
+        });
+        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert!(e.context.unwrap().contains("/no/git/here"));
     }
 
     #[test]
