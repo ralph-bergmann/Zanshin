@@ -11,6 +11,26 @@ code here (tech stack, FFI transport, error taxonomy, testing, anti-patterns).
 **Read it before writing code.** When a rule there conflicts with an older doc,
 project-context.md wins.
 
+## jj source reference (local, read-only)
+
+A checkout of the upstream **jj** monorepo lives at `../jj` (sibling of this repo).
+It contains **both** crates: `../jj/lib/` (jj-lib) and `../jj/cli/` (the jj CLI). The
+CLI (`cli/`, `cli_util`) is the high-value part — it is **not** a cargo dependency and
+is the prior-art for the operation API (ADR-0003 / Epic 9). `../jj` already caught a
+wrong jj-lib entry-point guess once.
+
+- **Read at the pinned tag, not the working tree:** `git -C ../jj show vX.Y.Z:<path>`
+  (currently `v0.42.0`, matching the `jj-lib =0.42.0` pin in the root `Cargo.toml`) — e.g.
+  `git -C ../jj show v0.42.0:lib/src/workspace.rs` or `:cli/src/commands/git/init.rs`.
+  The working tree may sit on `main`, ahead of the pin — those APIs need not match what
+  we build against. Bump the reference tag in lockstep when the `jj-lib` pin moves.
+- **jj-lib shortcut:** the same crate is also vendored version-exact at
+  `~/.cargo/registry/src/*/jj-lib-<version>/src/…` — literally the released code cargo
+  compiles, so `Read` it directly (no `git show`, no tag-drift risk). Handy for library
+  reads; the **CLI** exists *only* in `../jj`.
+- **Optional convenience only** — the build never depends on `../jj`. If absent, fall
+  back to the vendored crate + the jj source on GitHub at the tag.
+
 ## The quality gate is the definition of done
 
 `cargo make test` is the single local quality gate (there is no CI — GitHub is
