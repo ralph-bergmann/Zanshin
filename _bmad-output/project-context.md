@@ -223,7 +223,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 **Watcher subsystem (inside `zanshin-ffi`):**
 - Watch TWO paths: `.jj/repo/op_heads/heads/` (primary, real state mutations) and
-  `.jj/repo/working_copy/checkout` (heartbeat, fires on any jj activity).
+  `.jj/working_copy/checkout` (heartbeat, fires on any jj activity). NOTE: the
+  heartbeat file is at `.jj/working_copy/`, NOT `.jj/repo/working_copy/` — corrected
+  in Story 3.5 per jj-lib 0.42.0 `workspace.rs` (`working_copy_state_path =
+  <workspace_root>/.jj/working_copy`, per-workspace). The op_heads store is resolved
+  through the `.jj/repo` indirection (a FILE in secondary workspaces). prd.md/epics.md/
+  architecture.md still carry the stale `.jj/repo/working_copy/checkout` path — fix on next touch.
 - Use `notify-debouncer-full` with a 50ms debounce window. Bounded `tokio::mpsc`
   channel, capacity 256. On full: drop-oldest with `tracing::warn!`. NEVER panic
   or block the watcher thread. (AD-5)

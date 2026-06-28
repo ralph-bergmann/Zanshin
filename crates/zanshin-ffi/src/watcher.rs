@@ -9,6 +9,8 @@
 //! Call [`Watcher::new`] to arm; receive [`WatcherEvent`]s on the returned
 //! [`Receiver`]. Drop the [`Watcher`] or call [`Watcher::stop`] to disarm.
 
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::time::Duration;
@@ -84,7 +86,58 @@ fn send_or_drop(tx: &SyncSender<WatcherEvent>, event: WatcherEvent) {
     if let Err(mpsc::TrySendError::Full(_)) = tx.try_send(event) {
         tracing::warn!("watcher channel full, dropping oldest");
     }
-    // Disconnected: consumer dropped the Receiver; silently stop sending.
+    // Disconnected (receiver gone): this send no-ops; the debouncer thread keeps
+    // running until the Watcher is dropped or stopped.
+}
+
+/// Resolve the jj repo directory, following the `.jj/repo` indirection.
+///
+/// In the default workspace `.jj/repo` is a directory. In a *secondary* workspace
+/// it is a FILE whose bytes are the primary repo dir's path, relative to `.jj/`
+/// (jj-lib 0.42.0 `workspace.rs` `DefaultWorkspaceLoader`); the authoritative
+/// `op_heads` live under the resolved primary repo dir, not under the secondary
+/// workspace's own `.jj/`. Mirrors jj-lib: read the file, `jj_dir.join(..)`,
+/// canonicalize.
+fn resolve_repo_dir(jj_dir: &Path) -> Result<PathBuf, WatcherError> {
+    let repo_link = jj_dir.join("repo");
+    if repo_link.is_file() {
+        let buf = std::fs::read(&repo_link)?;
+        let rel = Path::new(OsStr::from_bytes(&buf));
+        Ok(jj_dir.join(rel).canonicalize()?)
+    } else {
+        Ok(repo_link)
+    }
+}
+
+// Route a debounced result to the channel. Extracted from the handler closure so
+// the Err-arm (WatchError emission) is unit-testable without driving the OS
+// watcher. Runs on the debouncer's background thread → must never panic or block.
+fn handle(result: DebounceEventResult, op_heads_dir: &Path, checkout_path: &Path, tx: &SyncSender<WatcherEvent>) {
+    match result {
+        Ok(events) => {
+            let mut op_paths: Vec<PathBuf> = Vec::new();
+            let mut heartbeat_paths: Vec<PathBuf> = Vec::new();
+            for event in events {
+                for path in &event.paths {
+                    match classify(path, op_heads_dir, checkout_path) {
+                        Some(WatchKind::OpHeads) => op_paths.push(path.clone()),
+                        Some(WatchKind::Heartbeat) => heartbeat_paths.push(path.clone()),
+                        None => {}
+                    }
+                }
+            }
+            if !op_paths.is_empty() {
+                send_or_drop(tx, WatcherEvent::OpHeadsChanged { paths: op_paths });
+            }
+            if !heartbeat_paths.is_empty() {
+                send_or_drop(tx, WatcherEvent::WorkingCopyHeartbeat { paths: heartbeat_paths });
+            }
+        }
+        Err(errors) => {
+            let message = errors.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ");
+            send_or_drop(tx, WatcherEvent::WatchError { message });
+        }
+    }
 }
 
 impl Watcher {
@@ -95,50 +148,37 @@ impl Watcher {
     ///
     /// # Errors
     ///
-    /// Returns [`WatcherError::Notify`] if the OS watch cannot be armed
-    /// (e.g. the watched paths do not exist, or an OS watch limit is reached).
+    /// Returns [`WatcherError::Io`] if `repo_path` — or a required `.jj`
+    /// sub-path (the resolved repo dir, `op_heads/heads`, or `working_copy`) —
+    /// cannot be canonicalized, e.g. it does not exist. Returns
+    /// [`WatcherError::Notify`] if the OS watch cannot be armed (e.g. the
+    /// `checkout` file is absent, or an OS watch limit is reached).
     pub fn new(repo_path: &Path) -> Result<(Self, Receiver<WatcherEvent>), WatcherError> {
         // WHY: on macOS, callers may hold a /var/… path (tempfile, Finder) while
         // FSEvents delivers /private/var/… (the resolved canonical path). Canonicalize
-        // once so the paths we build below match what the OS hands back in events.
+        // repo_root — and, below, the actual watch targets — so the paths we classify
+        // against match what the OS hands back in events, including any symlinked
+        // component below repo_root inside `.jj`.
         let repo_root = repo_path.canonicalize()?;
-        let op_heads_dir = repo_root.join(".jj/repo/op_heads/heads");
-        // WHY: jj-lib workspace.rs:140 sets working_copy_state_path = jj_dir/"working_copy"
-        // where jj_dir = <workspace_root>/.jj. The correct heartbeat path is therefore
-        // .jj/working_copy/checkout, NOT .jj/repo/working_copy/checkout as written in
-        // the story spec / epics.md (copy-paste error in those docs).
-        let checkout_path = repo_root.join(".jj/working_copy/checkout");
+        let jj_dir = repo_root.join(".jj");
+        // WHY: follow the `.jj/repo` indirection so the op_heads watch points at the
+        // real store in both default and secondary workspaces (see `resolve_repo_dir`).
+        let repo_dir = resolve_repo_dir(&jj_dir)?;
+        // The op_heads dir is a structural invariant of any initialized repo; a missing
+        // one (corrupt/uninitialized) surfaces here as WatcherError::Io via canonicalize.
+        let op_heads_dir = repo_dir.join("op_heads/heads").canonicalize()?;
+        // WHY: jj-lib workspace.rs sets working_copy_state_path = <workspace_root>/.jj/working_copy
+        // (per-workspace). The heartbeat file is therefore .jj/working_copy/checkout, NOT
+        // .jj/repo/working_copy/checkout as written in the story spec / epics.md. Canonicalize
+        // the dir (stable) rather than the file (atomically rewritten by jj).
+        let checkout_path = jj_dir.join("working_copy").canonicalize()?.join("checkout");
 
         let (tx, rx) = mpsc::sync_channel::<WatcherEvent>(256);
 
         let handler = {
             let op_heads_dir = op_heads_dir.clone();
             let checkout_path = checkout_path.clone();
-            move |result: DebounceEventResult| match result {
-                Ok(events) => {
-                    let mut op_paths: Vec<PathBuf> = Vec::new();
-                    let mut heartbeat_paths: Vec<PathBuf> = Vec::new();
-                    for event in events {
-                        for path in &event.paths {
-                            match classify(path, &op_heads_dir, &checkout_path) {
-                                Some(WatchKind::OpHeads) => op_paths.push(path.clone()),
-                                Some(WatchKind::Heartbeat) => heartbeat_paths.push(path.clone()),
-                                None => {}
-                            }
-                        }
-                    }
-                    if !op_paths.is_empty() {
-                        send_or_drop(&tx, WatcherEvent::OpHeadsChanged { paths: op_paths });
-                    }
-                    if !heartbeat_paths.is_empty() {
-                        send_or_drop(&tx, WatcherEvent::WorkingCopyHeartbeat { paths: heartbeat_paths });
-                    }
-                }
-                Err(errors) => {
-                    let message = errors.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ");
-                    send_or_drop(&tx, WatcherEvent::WatchError { message });
-                }
-            }
+            move |result: DebounceEventResult| handle(result, &op_heads_dir, &checkout_path, &tx)
         };
 
         let mut debouncer = new_debouncer(Duration::from_millis(50), None, handler)?;
@@ -163,10 +203,16 @@ impl Watcher {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{self, Write};
     use std::path::PathBuf;
-    use std::sync::mpsc;
+    use std::sync::{mpsc, Arc, Mutex};
 
-    use super::{classify, send_or_drop, WatchKind, WatcherEvent};
+    use notify_debouncer_full::notify;
+    use tracing_subscriber::fmt::MakeWriter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::EnvFilter;
+
+    use super::{classify, handle, send_or_drop, WatchKind, WatcherEvent};
 
     #[test]
     fn classify_op_heads() {
@@ -191,16 +237,58 @@ mod tests {
         assert!(classify(&p, &op, &ck).is_none());
     }
 
+    // Capture tracing output so the channel-full warn can be asserted. Mirrors the
+    // `Recorder`/`run_scoped` test helper in `logging.rs` / `tracing_init.rs`.
+    #[derive(Clone, Default)]
+    struct Recorder(Arc<Mutex<Vec<u8>>>);
+    impl Recorder {
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+    }
+    impl Write for Recorder {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> MakeWriter<'a> for Recorder {
+        type Writer = Recorder;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+    fn run_scoped(body: impl FnOnce()) -> String {
+        let rec = Recorder::default();
+        let subscriber = tracing_subscriber::registry().with(EnvFilter::new("trace")).with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(rec.clone()),
+        );
+        tracing::subscriber::with_default(subscriber, body);
+        rec.contents()
+    }
+
     #[test]
-    fn send_or_drop_fills_then_drops() {
+    fn send_or_drop_fills_then_drops_and_warns() {
         let (tx, rx) = mpsc::sync_channel::<WatcherEvent>(1);
-        // First send succeeds.
-        send_or_drop(&tx, WatcherEvent::WatchError { message: "a".into() });
-        // Second is dropped (channel full) — must not panic.
-        send_or_drop(&tx, WatcherEvent::WatchError { message: "b".into() });
-        // Only the first event is in the channel.
+        let logs = run_scoped(|| {
+            // First send succeeds.
+            send_or_drop(&tx, WatcherEvent::WatchError { message: "a".into() });
+            // Second is dropped (channel full) — must not panic, and must warn.
+            send_or_drop(&tx, WatcherEvent::WatchError { message: "b".into() });
+        });
+        // Only the first event is in the channel (the second was dropped).
         assert!(matches!(rx.recv().unwrap(), WatcherEvent::WatchError { .. }));
         assert!(rx.try_recv().is_err());
+        // AC 9 / AC 16: the verbatim warn text fired (grep-stability contract).
+        assert!(
+            logs.contains("watcher channel full, dropping oldest"),
+            "expected channel-full warn, got logs: {logs:?}"
+        );
     }
 
     #[test]
@@ -208,5 +296,19 @@ mod tests {
         let (tx, rx) = mpsc::sync_channel::<WatcherEvent>(1);
         drop(rx);
         send_or_drop(&tx, WatcherEvent::WatchError { message: "gone".into() });
+    }
+
+    #[test]
+    fn handle_err_emits_watch_error() {
+        // Drives the handler's Err-arm directly (the only producer of WatchError),
+        // which the OS-watcher integration tests cannot deterministically reach.
+        let (tx, rx) = mpsc::sync_channel::<WatcherEvent>(4);
+        let op = PathBuf::from("/r/.jj/repo/op_heads/heads");
+        let ck = PathBuf::from("/r/.jj/working_copy/checkout");
+        handle(Err(vec![notify::Error::generic("boom")]), &op, &ck, &tx);
+        match rx.recv().unwrap() {
+            WatcherEvent::WatchError { message } => assert!(message.contains("boom")),
+            other => panic!("expected WatchError, got {other:?}"),
+        }
     }
 }

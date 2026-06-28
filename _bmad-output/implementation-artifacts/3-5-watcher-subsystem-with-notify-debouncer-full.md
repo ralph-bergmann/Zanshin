@@ -4,7 +4,7 @@
 baseline_commit: 563a0ab764b1f8dd9a8894b2afa7c9965573d5fe
 ---
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -137,6 +137,7 @@ The literal AR-AD-5 (`tokio::sync::mpsc` + drop-oldest) **cannot be implemented 
 | R6 | burst "collapse into a **single** event … no event dropped" | assert *coalesced* (count `< burst_count`), not exactly-1 | FSEvents may legitimately split a burst into a few debounced batches; exactly-1 is flaky. |
 | R7 | unit-test the auto-rescan (FR-RX-4) | document it as `FileIdCache`-provided; assert recovery in 3.10 | a deterministic unmount/remount isn't simulable in a unit test. |
 | R-channel | `tokio::sync::mpsc`, drop-oldest | `std::sync::mpsc::sync_channel(256)`, drop-newest (recommended) | see [Decision: channel](#decision-channel--drop-policy-the-crux--recommend-std-sync_channel-drop-newest) / OQ-1. |
+| R8 (review 2026-06-28) | heartbeat path `<repo_path>/.jj/repo/working_copy/checkout` (AC 5, AC 8, Story goal) | `.jj/working_copy/checkout`; also resolve the `.jj/repo` indirection (a FILE in *secondary* workspaces) before building `op_heads_dir` | jj-lib 0.42.0 `workspace.rs` sets `working_copy_state_path = <workspace_root>/.jj/working_copy` (per-workspace, lines 140/583) and `DefaultWorkspaceLoader` follows `.jj/repo`-as-file → primary repo dir (lines 571-582). The code was already correct on the heartbeat path; the secondary-workspace resolution was added in the 2026-06-28 review (Ralph chose Variante a). `project-context.md:226` fixed in the same review; upstream prd.md/epics.md/architecture.md still carry the stale `.jj/repo/working_copy/checkout` path — flagged for follow-up. |
 
 ### `notify-debouncer-full` v0.7.0 API cheat-sheet (get these right)
 
@@ -248,3 +249,36 @@ claude-sonnet-4-6
 ### Change Log
 
 - 2026-06-28: Story 3.5 implemented — `watcher.rs` subsystem with `notify-debouncer-full` v0.7.0; 93.59% coverage; gate green.
+
+## Review Findings (code review 2026-06-28)
+
+> bmad-code-review (ultracode multi-agent): 3 prescribed layers (Blind Hunter + Edge Case Hunter + Acceptance Auditor) + 2 domain lenses (Rust-concurrency/FFI, test-quality), each finding verified by two independent skeptics (correctness lens + spec-grounding lens), then conservative dedup/synthesis — 58 agents. **26 raw → 19 survived verification → 1 decision / 8 patch / 1 defer / 12 dismissed.** No production memory-safety or data-loss defect; the FFI-adjacent watcher (thread/closure Send+'static, panic-free debouncer thread, channel lifecycle, drop/stop semantics) verified sound. The code's two documented deviations from the spec (heartbeat path; `canonicalize()`) are CORRECT — see P1.
+
+### Decision needed (resolved 2026-06-28)
+
+- [x] [Review][Decision→Patch] Secondary jj workspace handling — **Ralph chose Variante (a): resolve now.** Reclassified to patch P0 below.
+
+### Patches
+
+- [x] [Review][Patch] (P0) Secondary jj workspace (`.jj/repo` is a FILE) makes `Watcher::new` fail to arm — `op_heads_dir = repo_root.join(".jj/repo/op_heads/heads")` assumes `.jj/repo` is a directory. In a secondary workspace jj-lib writes `.jj/repo` as a FILE pointing at the primary repo dir (jj-lib 0.42.0 `workspace.rs:571-582`), so that dir does not exist there and `Watcher::new` returns `Err`. **Fix (chosen Variante a):** after canonicalizing `repo_root`, read `<root>/.jj/repo`; if it is a file, decode its contents as a relative path, join under `<root>/.jj/`, canonicalize, and build `op_heads_dir` from that resolved repo dir (mirror jj-lib's `DefaultWorkspaceLoader`). Keep `checkout_path` per-workspace. Add an integration test that constructs/stubs a secondary workspace and asserts op_heads changes still fire `OpHeadsChanged`. [crates/zanshin-ffi/src/watcher.rs:105]
+- [x] [Review][Patch] Heartbeat-path doc drift (code is correct, docs are wrong) — `.jj/working_copy/checkout` in code is CORRECT (verified vs jj-lib 0.42.0 `workspace.rs:140`), but `project-context.md:226` (the canonical ruleset), `epics.md`, `prd.md`, `architecture.md`, and this story's AC 5/8 all say `.jj/repo/working_copy/checkout`. Stories 3.6/3.10 will build against the wrong path unless reconciled. Fix `project-context.md:226`, add an R8 reconciliation row here, flag the upstream docs. [crates/zanshin-ffi/src/watcher.rs:110 ; project-context.md:226]
+- [x] [Review][Patch] `WatcherEvent::WatchError` emission is never exercised end-to-end — the handler `Err(errors)` arm is the only live producer of the public WatchError variant (AC 2), yet no test drives a post-arm notify error; the inline `send_or_drop_*` tests construct WatchError directly (sink, not caller). Extract the handler body into a named `fn handle(result, &op_heads_dir, &checkout_path, &tx)` and unit-test it with a synthetic `DebounceEventResult::Err(vec![...])`. [crates/zanshin-ffi/src/watcher.rs:114-142]
+- [x] [Review][Patch] `watcher_stop_closes_receiver` hangs instead of fails on regression — drains via unbounded `while rx.recv().is_ok() {}`; if `stop()` ever stops closing the channel (switched to `stop_nonblocking`, stray sender clone) the test blocks forever, and with `cargo make test` the only gate (no CI test-timeout) it stalls the gate with no diagnostic. Bound the drain with `recv_timeout` + `panic!` on timeout. [crates/zanshin-ffi/tests/watcher.rs:116]
+- [x] [Review][Patch] `watcher_new_nonexistent_path_errors` doesn't test what it claims — `tempdir()` exists, so the error comes from `watch()` (→ `Notify`), not `canonicalize()` (→ `Io`); the test asserts only `is_err()` and the comment misattributes the failure. The `WatcherError::Io` path is never hit (AC 12 names both). Split into two variant-asserting cases: truly-missing path → `Io`, existing-dir-without-`.jj` → `Notify`. [crates/zanshin-ffi/tests/watcher.rs:65-72]
+- [x] [Review][Patch] AC 16 warn-assertion missing — `send_or_drop_fills_then_drops` asserts the drop but not that `tracing::warn!("watcher channel full, dropping oldest")` fired (AC 16: "assert the drop + that a warn is emitted"). Use the in-crate `logging.rs::run_scoped()` + Recorder to capture and assert the warn. [crates/zanshin-ffi/src/watcher.rs:194-204]
+- [x] [Review][Patch] `unsafe set_var` SAFETY comment is factually wrong — "tests run single-threaded per process (cargo test default)" is false (cargo test uses a CPU-count thread pool — that's *why* `set_var` is unsafe). Replace with the honest rationale used in `change_ffi.rs`/`repo_ffi.rs` (runs once via `LazyLock` before any watcher is armed; no concurrent `getenv` on the watcher path). A wrong SAFETY rationale is a dangerous copy-paste template. [crates/zanshin-ffi/tests/watcher.rs:11-16]
+- [x] [Review][Patch] `canonicalize()` resolves only `repo_root`; `op_heads_dir`/`checkout_path` are then literal joins — a symlinked component below root inside `.jj` would make FSEvents' resolved paths fail `classify` and be silently dropped (worst failure mode for a watcher). Narrow case, but silent. Canonicalize the built `op_heads_dir` (and the checkout parent, re-joining the filename), or at minimum document the no-symlinks-below-root assumption. [crates/zanshin-ffi/src/watcher.rs:104-110]
+- [x] [Review][Patch] `send_or_drop` Disconnected comment overstates — "silently stop sending" implies the thread self-terminates; it does not (the closure no-ops each tick and keeps running until the Watcher is dropped/stopped). Reword. [crates/zanshin-ffi/src/watcher.rs:83-88]
+
+### Deferred
+
+- [x] [Review][Defer] Non-UTF8 repo path panics inside notify's `append_path` (`path.to_str().unwrap()`, notify 8.2.0 `fsevent.rs:393`) — on the `Watcher::new` caller thread (not the debouncer thread, so no rule violation). Near-impossible on macOS (APFS/HFS+ are UTF-8; `canonicalize()` runs first). Optional pre-validation guard converts the panic to a typed error. [crates/zanshin-ffi/src/watcher.rs:145-146] — deferred, upstream + near-impossible on target platform
+
+### Dismissed (no action — verified intended or by-design)
+
+- **drop-newest + verbatim "dropping oldest" warn text** — intended per AC 9 / R-channel / OQ-1 (drop-newest is the accepted reconciliation; bounded mpsc cannot drop-oldest; text kept verbatim for grep-stability; events are coalescing-idempotent so which end drops is functionally moot per ADR-0002).
+- **all-or-nothing two-watch arm** — AC 5 mandates one `Result` from two watches; AC 12 mandates `Err` on a missing path; atomic-rename precludes transient `checkout` absence. (If best-effort heartbeat is ever wanted, that's a spec change.)
+- **FR-RX-4 auto-rescan untested** — explicitly deferred to Story 3.10 per AC 14 / R7. (Optional: add a `// FR-RX-4 → 3.10` traceability comment.)
+- **burst test `received < 50`** — matches AC 13 / R6 verbatim (`< burst_count`, not exactly-1). (Optional: tighten the ceiling.)
+- **OpHeads-before-Heartbeat batch ordering** — by-design; the two signals are independent coalesced "something happened" pings, no consumer needs cross-kind chronological order; at-most-2-events-per-batch coalescing is correct.
+- **+ 7 findings refuted by both verification skeptics:** atomic-replace breaks the checkout watch (macOS FSEvents is dir-granular + jj renames *into* the watched dir — empirically 2/2 heartbeats fired); `stop()` "~12 ms" misleading (12.5 ms = `timeout/4` tick, doc is precisely correct); op_heads-dir transient-absence degradation (dir is a structural invariant of any jj repo); MUST_SCAN_SUBDIRS rescan → `classify` None (filtered at the notify layer, never reaches `classify`); drop-newest=spec-violation (duplicate, spec-blessed); stop/drop sync-close doc overstatement (public `stop()` doc already contrasts "plain drop, which only signals it"); paths-payload not asserted (event *arrival* is itself the canonicalize regression guard; AC 17 blesses variant-only).
