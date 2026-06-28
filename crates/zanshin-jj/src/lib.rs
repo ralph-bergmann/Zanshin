@@ -40,7 +40,7 @@ pub(crate) mod status;
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use convert::{convert_colocated, convert_import};
-pub use detect::{detect_repo, DetectError, RepoKind};
+pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};

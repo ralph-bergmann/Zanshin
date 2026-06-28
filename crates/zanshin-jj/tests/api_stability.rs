@@ -9,7 +9,7 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (26 types, AC-1 table) --------
+// --- Type-path aliases: one alias per public type (27 types, AC-1 table) --------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -52,6 +52,7 @@ type _RemoteError = zanshin_jj::RemoteError;
 // detect
 type _RepoKind = zanshin_jj::RepoKind;
 type _DetectError = zanshin_jj::DetectError;
+type _RepoRoot = zanshin_jj::RepoRoot;
 
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
@@ -85,8 +86,14 @@ fn api_surface_resolves() {
     _ = zanshin_jj::detect_repo as fn(&std::path::Path) -> Result<zanshin_jj::RepoKind, zanshin_jj::DetectError>;
     _ = zanshin_jj::RepoKind::Jj;
     _ = zanshin_jj::DetectError::Io(String::new());
+    _ = zanshin_jj::find_repo_root
+        as fn(&std::path::Path) -> Result<Option<zanshin_jj::RepoRoot>, zanshin_jj::DetectError>;
+    _ = zanshin_jj::RepoRoot {
+        root: std::path::PathBuf::new(),
+        kind: zanshin_jj::RepoKind::Jj,
+    };
 
-    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 26)
+    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 27)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
     _ = zanshin_jj::convert_import
         as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
