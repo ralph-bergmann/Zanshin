@@ -15,6 +15,7 @@ import '../ffi/log_forwarder.dart';
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
+import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/status.dart' as repo_ffi_status;
 
 import 'commands.dart';
@@ -420,6 +421,33 @@ class ZanshinWorker {
     );
     return repo_ffi_remotes.decodeRemotesEnvelopeInternal(bytes);
   }
+
+  /// Detect the repository kind at [path] (FR-JJ-17).
+  ///
+  /// Returns a [repo_ffi_detect.RepoDetectResult] with the classification and,
+  /// when `kind` is `neither`/`pathNotFound`, an optional enclosing-repo
+  /// suggestion from the consent-gated ancestor walk (FR-JJ-14).
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.detect_failed`).
+  Future<repo_ffi_detect.RepoDetectResult> detect(String path) async {
+    final Uint8List bytes = await send(
+      DetectRepoCommand(commandId: _correlator.allocateId(), path: path),
+    );
+    return repo_ffi_detect.decodeRepoDetectEnvelopeInternal(bytes);
+  }
+
+  /// Convert the Git repository at [path] to a colocated jj workspace.
+  ///
+  /// On success returns a [RepoHandle] backed by the new workspace.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.already_jj_repo`,
+  /// `jj.not_a_git_repo`, `jj.convert_failed`).
+  Future<RepoHandle> convert(String path) async {
+    final WorkerResponse response = await _sendCommand(
+      ConvertRepoCommand(commandId: _correlator.allocateId(), path: path),
+    );
+    return _handleOrThrow(response);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -571,6 +599,14 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List bytes = repo_ffi_remotes.zanshinRemotes(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
+
+        case DetectRepoCommand(:final String path):
+          final Uint8List bytes = repo_ffi.zanshinRepoDetect(path);
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConvertRepoCommand(:final String path):
+          final Uint8List bytes = repo_ffi.zanshinRepoConvert(path);
+          _replyRepoOp(bytes, commandId, handles, responseSP, log, () => nextHandleId++);
       }
     } catch (e, st) {
       log.warning('Worker: dispatch error for command $commandId: $e\n$st');

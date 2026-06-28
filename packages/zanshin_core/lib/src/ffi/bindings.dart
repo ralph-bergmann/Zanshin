@@ -298,6 +298,56 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
   int handle,
 );
 
+/// Classify the repository kind at `path`.
+///
+/// This call is never an error for "no repo found" — `Neither` and `PathNotFound`
+/// are **normal results** carried in the success payload. Only a genuine I/O failure
+/// (e.g. `EACCES`, `ENOTDIR`) while stat-ing the path returns an error envelope.
+///
+/// When the result is `Neither` or `PathNotFound` and a parent jj or Git repo exists,
+/// `RepoDetect.suggested_root` and `RepoDetect.suggested_kind` are set so the UI can
+/// offer the user a consent-gated "this folder is inside a {jj|Git} repo at <root>"
+/// suggestion. The backend never auto-opens — the user decides.
+///
+/// # Errors
+/// - `jj.detect_failed` — an I/O error (e.g. `EACCES`, `ENOTDIR`) prevented classification.
+/// - `ffi.null_pointer` — `path` is a null pointer.
+/// - `ffi.utf8_error` — `path` contains invalid UTF-8.
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
+/// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_detect(
+  ffi.Pointer<ffi.Char> path,
+);
+
+/// Convert a plain Git repository at `path` to a colocated jj workspace.
+///
+/// On success the repository is open and ready; the returned `RepoHandle` is
+/// identical in semantics to the one returned by `zanshin_repo_open` / `_init` /
+/// `_clone` and must be released via `zanshin_repo_close`.
+///
+/// The conversion only writes `.jj/` — `.git/` is never touched. If the operation
+/// fails `.jj/` is rolled back, leaving the Git repo intact (no-data-loss invariant).
+///
+/// # Errors
+/// - `jj.already_jj_repo` — the path already has a `.jj/` directory.
+/// - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
+/// - `jj.convert_failed` — a jj-lib failure during conversion; detail in `context`.
+/// - `ffi.null_pointer` — `path` is a null pointer.
+/// - `ffi.utf8_error` — `path` contains invalid UTF-8.
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
+/// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
+/// The handle inside the success payload is closed via `zanshin_repo_close` (no
+/// `_convert`-specific destructor).
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_repo_convert(
+  ffi.Pointer<ffi.Char> path,
+);
+
 /// Read the working-copy status of the repo identified by `handle`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
@@ -341,6 +391,10 @@ const int ENUM_MAX_CONFLICT_STATE = 1;
 const int ENUM_MIN_BOOKMARK_KIND = 0;
 
 const int ENUM_MAX_BOOKMARK_KIND = 1;
+
+const int ENUM_MIN_REPO_KIND = 0;
+
+const int ENUM_MAX_REPO_KIND = 3;
 
 const int FileChange_VT_PATH = 4;
 
@@ -405,3 +459,7 @@ const int Bookmarks_VT_BOOKMARKS = 4;
 const int Remote_VT_URL = 6;
 
 const int Remotes_VT_REMOTES = 4;
+
+const int RepoDetect_VT_SUGGESTED_ROOT = 6;
+
+const int RepoDetect_VT_SUGGESTED_KIND = 8;

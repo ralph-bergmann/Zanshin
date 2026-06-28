@@ -293,18 +293,113 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_REPO_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 7;
+        pub const ENUM_MAX_REPO_KIND: i8 = 3;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 8] = [
+        pub const ENUM_VALUES_REPO_KIND: [RepoKind; 4] =
+            [RepoKind::Jj, RepoKind::Git, RepoKind::Neither, RepoKind::PathNotFound];
+
+        /// Classification of a path from detect_repo (FR-JJ-17).
+        /// Mirrors zanshin_jj::RepoKind — order must stay identical.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RepoKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl RepoKind {
+            pub const Jj: Self = Self(0);
+            pub const Git: Self = Self(1);
+            pub const Neither: Self = Self(2);
+            pub const PathNotFound: Self = Self(3);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 3;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Jj, Self::Git, Self::Neither, Self::PathNotFound];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Jj => Some("Jj"),
+                    Self::Git => Some("Git"),
+                    Self::Neither => Some("Neither"),
+                    Self::PathNotFound => Some("PathNotFound"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RepoKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RepoKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RepoKind {
+            type Output = RepoKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RepoKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RepoKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RepoKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 8;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 9] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -313,6 +408,7 @@ pub mod zanshin {
             Payload::OpLog,
             Payload::Bookmarks,
             Payload::Remotes,
+            Payload::RepoDetect,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -328,9 +424,10 @@ pub mod zanshin {
             pub const OpLog: Self = Self(5);
             pub const Bookmarks: Self = Self(6);
             pub const Remotes: Self = Self(7);
+            pub const RepoDetect: Self = Self(8);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 7;
+            pub const ENUM_MAX: u8 = 8;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -340,6 +437,7 @@ pub mod zanshin {
                 Self::OpLog,
                 Self::Bookmarks,
                 Self::Remotes,
+                Self::RepoDetect,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -352,6 +450,7 @@ pub mod zanshin {
                     Self::OpLog => Some("OpLog"),
                     Self::Bookmarks => Some("Bookmarks"),
                     Self::Remotes => Some("Remotes"),
+                    Self::RepoDetect => Some("RepoDetect"),
                     _ => None,
                 }
             }
@@ -2522,6 +2621,166 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum RepoDetectOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Result of zanshin_repo_detect.
+        ///
+        /// `kind` is always set.
+        /// `suggested_root` and `suggested_kind` are ONLY meaningful when
+        /// `suggested_root` is non-null (presence == the suggestion flag, D4).
+        /// When kind == Neither or PathNotFound and a parent jj/git repo exists,
+        /// `suggested_root` is its path and `suggested_kind` its classification,
+        /// so the UI can offer "this folder is inside a {jj|Git} repo at <root>".
+        /// The backend never auto-opens; the user decides.
+        pub struct RepoDetect<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RepoDetect<'a> {
+            type Inner = RepoDetect<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RepoDetect<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SUGGESTED_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SUGGESTED_KIND: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RepoDetect { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RepoDetectArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RepoDetect<'bldr>> {
+                let mut builder = RepoDetectBuilder::new(_fbb);
+                if let Some(x) = args.suggested_root {
+                    builder.add_suggested_root(x);
+                }
+                builder.add_suggested_kind(args.suggested_kind);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RepoKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RepoKind>(RepoDetect::VT_KIND, Some(RepoKind::Jj))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn suggested_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RepoDetect::VT_SUGGESTED_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn suggested_kind(&self) -> RepoKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RepoKind>(RepoDetect::VT_SUGGESTED_KIND, Some(RepoKind::Jj))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RepoDetect<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RepoKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "suggested_root",
+                        Self::VT_SUGGESTED_ROOT,
+                        false,
+                    )?
+                    .visit_field::<RepoKind>("suggested_kind", Self::VT_SUGGESTED_KIND, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RepoDetectArgs<'a> {
+            pub kind: RepoKind,
+            pub suggested_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub suggested_kind: RepoKind,
+        }
+        impl<'a> Default for RepoDetectArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RepoDetectArgs {
+                    kind: RepoKind::Jj,
+                    suggested_root: None,
+                    suggested_kind: RepoKind::Jj,
+                }
+            }
+        }
+
+        pub struct RepoDetectBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepoDetectBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RepoKind) {
+                self.fbb_.push_slot::<RepoKind>(RepoDetect::VT_KIND, kind, RepoKind::Jj);
+            }
+            #[inline]
+            pub fn add_suggested_root(&mut self, suggested_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoDetect::VT_SUGGESTED_ROOT, suggested_root);
+            }
+            #[inline]
+            pub fn add_suggested_kind(&mut self, suggested_kind: RepoKind) {
+                self.fbb_
+                    .push_slot::<RepoKind>(RepoDetect::VT_SUGGESTED_KIND, suggested_kind, RepoKind::Jj);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoDetectBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RepoDetectBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RepoDetect<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RepoDetect<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RepoDetect");
+                ds.field("kind", &self.kind());
+                ds.field("suggested_root", &self.suggested_root());
+                ds.field("suggested_kind", &self.suggested_kind());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2719,6 +2978,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_repo_detect(&self) -> Option<RepoDetect<'a>> {
+                if self.data_type() == Payload::RepoDetect {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { RepoDetect::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -2764,6 +3038,11 @@ pub mod zanshin {
                                 "Payload::Remotes",
                                 pos,
                             ),
+                            Payload::RepoDetect => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoDetect>>(
+                                    "Payload::RepoDetect",
+                                    pos,
+                                ),
                             _ => Ok(()),
                         },
                     )?
@@ -2879,6 +3158,13 @@ pub mod zanshin {
                     }
                     Payload::Remotes => {
                         if let Some(x) = self.data_as_remotes() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::RepoDetect => {
+                        if let Some(x) = self.data_as_repo_detect() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

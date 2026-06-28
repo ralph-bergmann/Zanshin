@@ -139,3 +139,25 @@ final class GetChangeCommand extends WorkerCommand {
   /// jj reverse-hex change identifier (sendable across the isolate port).
   final String changeId;
 }
+
+/// Detect the repository kind at [path] (FR-JJ-17).
+///
+/// Handle-free: the worker calls `zanshinRepoDetect` directly and replies with
+/// a `BufferResult` carrying the FlatBuffers `Envelope<RepoDetect>` bytes.
+final class DetectRepoCommand extends WorkerCommand {
+  const DetectRepoCommand({required super.commandId, required this.path});
+
+  /// Filesystem path to classify.
+  final String path;
+}
+
+/// Convert the Git repository at [path] to a colocated jj workspace.
+///
+/// Handle-free: the worker calls `zanshinRepoConvert` and, on success, stores
+/// the returned handle in its Model-A table and replies with a `HandleResult`.
+final class ConvertRepoCommand extends WorkerCommand {
+  const ConvertRepoCommand({required super.commandId, required this.path});
+
+  /// Filesystem path of the Git repository to convert.
+  final String path;
+}

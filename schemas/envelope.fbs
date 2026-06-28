@@ -147,6 +147,25 @@ table Remotes {
   remotes: [Remote];
 }
 
+/// Classification of a path from detect_repo (FR-JJ-17).
+/// Mirrors zanshin_jj::RepoKind — order must stay identical.
+enum RepoKind : byte { Jj, Git, Neither, PathNotFound }
+
+/// Result of zanshin_repo_detect.
+///
+/// `kind` is always set.
+/// `suggested_root` and `suggested_kind` are ONLY meaningful when
+/// `suggested_root` is non-null (presence == the suggestion flag, D4).
+/// When kind == Neither or PathNotFound and a parent jj/git repo exists,
+/// `suggested_root` is its path and `suggested_kind` its classification,
+/// so the UI can offer "this folder is inside a {jj|Git} repo at <root>".
+/// The backend never auto-opens; the user decides.
+table RepoDetect {
+  kind: RepoKind;
+  suggested_root: string;
+  suggested_kind: RepoKind;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -155,6 +174,7 @@ union Payload {
   OpLog,
   Bookmarks,
   Remotes,
+  RepoDetect,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

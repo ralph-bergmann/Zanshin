@@ -125,6 +125,49 @@ class _BookmarkKindReader extends fb.Reader<BookmarkKind> {
   BookmarkKind read(fb.BufferContext bc, int offset) => BookmarkKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  Classification of a path from detect_repo (FR-JJ-17).
+///  Mirrors zanshin_jj::RepoKind — order must stay identical.
+enum RepoKind {
+  Jj(0),
+  Git(1),
+  Neither(2),
+  PathNotFound(3);
+
+  final int value;
+  const RepoKind(this.value);
+
+  factory RepoKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RepoKind.Jj;
+      case 1:
+        return RepoKind.Git;
+      case 2:
+        return RepoKind.Neither;
+      case 3:
+        return RepoKind.PathNotFound;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RepoKind? _createOrNull(int? value) => value == null ? null : RepoKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 3;
+  static const fb.Reader<RepoKind> reader = _RepoKindReader();
+}
+
+class _RepoKindReader extends fb.Reader<RepoKind> {
+  const _RepoKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RepoKind read(fb.BufferContext bc, int offset) => RepoKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -133,7 +176,8 @@ enum PayloadTypeId {
   Change(4),
   OpLog(5),
   Bookmarks(6),
-  Remotes(7);
+  Remotes(7),
+  RepoDetect(8);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -156,6 +200,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Bookmarks;
       case 7:
         return PayloadTypeId.Remotes;
+      case 8:
+        return PayloadTypeId.RepoDetect;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -164,7 +210,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 7;
+  static const int maxValue = 8;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1485,6 +1531,106 @@ class RemotesObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Result of zanshin_repo_detect.
+///
+///  `kind` is always set.
+///  `suggested_root` and `suggested_kind` are ONLY meaningful when
+///  `suggested_root` is non-null (presence == the suggestion flag, D4).
+///  When kind == Neither or PathNotFound and a parent jj/git repo exists,
+///  `suggested_root` is its path and `suggested_kind` its classification,
+///  so the UI can offer "this folder is inside a {jj|Git} repo at <root>".
+///  The backend never auto-opens; the user decides.
+class RepoDetect {
+  RepoDetect._(this._bc, this._bcOffset);
+  factory RepoDetect(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RepoDetect> reader = _RepoDetectReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RepoKind get kind => RepoKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get suggestedRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  RepoKind get suggestedKind => RepoKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+
+  @override
+  String toString() {
+    return 'RepoDetect{kind: ${kind}, suggestedRoot: ${suggestedRoot}, suggestedKind: ${suggestedKind}}';
+  }
+}
+
+class _RepoDetectReader extends fb.TableReader<RepoDetect> {
+  const _RepoDetectReader();
+
+  @override
+  RepoDetect createObject(fb.BufferContext bc, int offset) => RepoDetect._(bc, offset);
+}
+
+class RepoDetectBuilder {
+  RepoDetectBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RepoKind? kind) {
+    fbBuilder.addInt8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSuggestedRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSuggestedKind(RepoKind? suggestedKind) {
+    fbBuilder.addInt8(2, suggestedKind?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RepoDetectObjectBuilder extends fb.ObjectBuilder {
+  final RepoKind? _kind;
+  final String? _suggestedRoot;
+  final RepoKind? _suggestedKind;
+
+  RepoDetectObjectBuilder({
+    RepoKind? kind,
+    String? suggestedRoot,
+    RepoKind? suggestedKind,
+  }) : _kind = kind,
+       _suggestedRoot = suggestedRoot,
+       _suggestedKind = suggestedKind;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? suggestedRootOffset = _suggestedRoot == null ? null : fbBuilder.writeString(_suggestedRoot!);
+    fbBuilder.startTable(3);
+    fbBuilder.addInt8(0, _kind?.value);
+    fbBuilder.addOffset(1, suggestedRootOffset);
+    fbBuilder.addInt8(2, _suggestedKind?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1528,6 +1674,8 @@ class Envelope {
         return Bookmarks.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 7:
         return Remotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 8:
+        return RepoDetect.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

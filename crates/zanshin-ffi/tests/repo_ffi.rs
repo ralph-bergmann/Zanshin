@@ -16,8 +16,12 @@ use test_helpers::extract_fixture;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
-    repo::{zanshin_repo_clone, zanshin_repo_close, zanshin_repo_init, zanshin_repo_open},
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    repo::{
+        zanshin_repo_clone, zanshin_repo_close, zanshin_repo_convert, zanshin_repo_detect, zanshin_repo_init,
+        zanshin_repo_open,
+    },
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO,
+    JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -373,4 +377,270 @@ fn git(args: &[&str], dir: &std::path::Path) {
         .status()
         .expect("git command failed to spawn");
     assert!(status.success(), "git {args:?} failed in {}", dir.display());
+}
+
+// ── zanshin_repo_detect ───────────────────────────────────────────────────────
+
+#[test]
+fn detect_jj_fixture_returns_jj_kind() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let path = cstr(fixture.path.to_str().expect("fixture path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(
+        env.ok(),
+        "detect on jj repo must succeed; error: {:?}",
+        env.error().and_then(|e| e.code())
+    );
+    assert_eq!(env.data_type(), fbs::Payload::RepoDetect);
+    let rd = env.data_as_repo_detect().expect("RepoDetect payload must be present");
+    assert_eq!(rd.kind(), fbs::RepoKind::Jj);
+    assert!(rd.suggested_root().is_none(), "jj repo must have no suggestion");
+}
+
+#[test]
+fn detect_git_only_dir_returns_git_kind() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok());
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::Git);
+    assert!(rd.suggested_root().is_none(), "git repo must have no suggestion");
+}
+
+#[test]
+fn detect_empty_dir_returns_neither() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok());
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::Neither);
+}
+
+#[test]
+fn detect_nonexistent_path_returns_path_not_found() {
+    pin_env();
+    let path = cstr("/nonexistent/zanshin-detect-abc999");
+
+    let token = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok(), "PathNotFound is a normal result, not an error");
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::PathNotFound);
+}
+
+#[test]
+fn detect_path_under_regular_file_returns_detect_failed_error() {
+    pin_env();
+    // Create a regular file, then ask to detect a sub-path under it.
+    // The OS returns ENOTDIR when stat-ing the sub-component → jj.detect_failed.
+    let tmp = TempDir::new().expect("tempdir");
+    let file_path = tmp.path().join("regular_file");
+    fs::write(&file_path, b"data").expect("write file");
+    let sub = file_path.join("nonexistent_child");
+    let path = cstr(sub.to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok(), "ENOTDIR must yield an error envelope");
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_DETECT_FAILED));
+}
+
+#[test]
+fn detect_neither_subdir_inside_jj_repo_returns_suggestion() {
+    pin_env();
+    // Create a jj repo, then detect an empty subdir inside it.
+    // detect_repo returns Neither; find_repo_root should return the jj root.
+    let tmp = TempDir::new().expect("tempdir");
+    let jj_path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    // Init a jj repo at tmp.
+    let init_tok = unsafe { zanshin_repo_init(jj_path.as_ptr(), 0) };
+    let init_bytes = unsafe { read_and_free(init_tok) };
+    let init_env = parse_envelope(&init_bytes);
+    assert!(init_env.ok(), "jj init must succeed");
+    let handle = init_env.data_as_repo_handle().expect("RepoHandle").handle();
+    let close_tok = unsafe { zanshin_repo_close(handle) };
+    unsafe { read_and_free(close_tok) };
+
+    // Create an empty subdir inside the jj repo.
+    let sub = tmp.path().join("inner");
+    fs::create_dir(&sub).expect("create inner dir");
+    let sub_path = cstr(sub.to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(sub_path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok());
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::Neither);
+    let suggested_root = rd
+        .suggested_root()
+        .expect("suggestion must be present for subdir inside jj repo");
+    assert!(!suggested_root.is_empty(), "suggested_root must not be empty");
+    assert_eq!(rd.suggested_kind(), fbs::RepoKind::Jj, "suggestion must be Jj kind");
+}
+
+#[test]
+fn detect_neither_subdir_inside_git_repo_returns_git_suggestion() {
+    pin_env();
+    // Empty subdir inside a Git repo: detect_repo returns Neither; find_repo_root
+    // returns the enclosing Git root with a Git suggested_kind. Symmetric twin of
+    // the jj-suggestion test — the only test that observes a `Git` value in the
+    // suggested_kind slot crossing the wire (the decode-contract test deliberately
+    // nulls it out, so this exercises repo_kind_to_fbs(Git) end-to-end).
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+
+    let sub = tmp.path().join("inner");
+    fs::create_dir(&sub).expect("create inner dir");
+    let sub_path = cstr(sub.to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(sub_path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok());
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::Neither);
+    let suggested_root = rd
+        .suggested_root()
+        .expect("suggestion must be present for subdir inside git repo");
+    assert!(!suggested_root.is_empty(), "suggested_root must not be empty");
+    assert_eq!(rd.suggested_kind(), fbs::RepoKind::Git, "suggestion must be Git kind");
+}
+
+#[test]
+fn detect_path_not_found_inside_jj_repo_returns_jj_suggestion() {
+    pin_env();
+    // Nonexistent child path inside a jj repo: detect_repo returns PathNotFound;
+    // find_repo_root still walks ancestors and finds the enclosing jj root. Covers
+    // the PathNotFound half of the `Neither | PathNotFound => find_repo_root` arm.
+    let tmp = TempDir::new().expect("tempdir");
+    let jj_path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let init_tok = unsafe { zanshin_repo_init(jj_path.as_ptr(), 0) };
+    let init_bytes = unsafe { read_and_free(init_tok) };
+    let init_env = parse_envelope(&init_bytes);
+    assert!(init_env.ok(), "jj init must succeed");
+    let handle = init_env.data_as_repo_handle().expect("RepoHandle").handle();
+    let close_tok = unsafe { zanshin_repo_close(handle) };
+    unsafe { read_and_free(close_tok) };
+
+    // A child path that does not exist on disk.
+    let missing = tmp.path().join("does_not_exist_child");
+    let missing_path = cstr(missing.to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_detect(missing_path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok(), "PathNotFound is a normal result, not an error");
+    let rd = env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(rd.kind(), fbs::RepoKind::PathNotFound);
+    let suggested_root = rd
+        .suggested_root()
+        .expect("suggestion must be present for a missing child inside a jj repo");
+    assert!(!suggested_root.is_empty(), "suggested_root must not be empty");
+    assert_eq!(rd.suggested_kind(), fbs::RepoKind::Jj, "suggestion must be Jj kind");
+}
+
+// ── zanshin_repo_convert ──────────────────────────────────────────────────────
+
+#[test]
+fn convert_git_repo_returns_handle_then_detect_returns_jj() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    // Convert the Git repo to a colocated jj workspace.
+    let conv_tok = unsafe { zanshin_repo_convert(path.as_ptr()) };
+    let conv_bytes = unsafe { read_and_free(conv_tok) };
+    let conv_env = parse_envelope(&conv_bytes);
+    assert!(
+        conv_env.ok(),
+        "convert must succeed; error: {:?}",
+        conv_env.error().and_then(|e| e.code())
+    );
+    assert_eq!(conv_env.data_type(), fbs::Payload::RepoHandle);
+    let handle = conv_env.data_as_repo_handle().expect("RepoHandle").handle();
+    assert_ne!(handle, 0, "handle must be non-zero");
+
+    // Close the converted repo handle.
+    let close_tok = unsafe { zanshin_repo_close(handle) };
+    let close_bytes = unsafe { read_and_free(close_tok) };
+    assert!(parse_envelope(&close_bytes).ok());
+
+    // Re-detect the same path — must now be Jj.
+    let det_tok = unsafe { zanshin_repo_detect(path.as_ptr()) };
+    let det_bytes = unsafe { read_and_free(det_tok) };
+    let det_env = parse_envelope(&det_bytes);
+    assert!(det_env.ok());
+    let rd = det_env.data_as_repo_detect().expect("RepoDetect");
+    assert_eq!(
+        rd.kind(),
+        fbs::RepoKind::Jj,
+        "path must now be detected as Jj after conversion"
+    );
+}
+
+#[test]
+fn convert_already_jj_repo_returns_already_jj_repo_error() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let path = cstr(fixture.path.to_str().expect("fixture path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_convert(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_ALREADY_JJ_REPO));
+}
+
+#[test]
+fn convert_empty_dir_returns_not_a_git_repo_error() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let token = unsafe { zanshin_repo_convert(path.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_NOT_A_GIT_REPO));
+}
+
+/// Create a git repo with a single commit so `convert_colocated` accepts it.
+fn git_with_commit(dir: &std::path::Path) {
+    git(&["init", "--initial-branch=main"], dir);
+    git(&["config", "user.email", "test@zanshin.test"], dir);
+    git(&["config", "user.name", "Fixture"], dir);
+    fs::write(dir.join("README.md"), "hello").expect("write README");
+    git(&["add", "."], dir);
+    git(&["commit", "-m", "initial"], dir);
 }

@@ -11,13 +11,17 @@
 use core::ffi::c_char;
 use std::path::Path;
 
+use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
-use zanshin_jj::{Backend, Repo, RepoError};
+use zanshin_jj::{
+    convert_colocated, detect_repo, find_repo_root, Backend, DetectError, Repo, RepoError, RepoKind, RepoRoot,
+};
 
 use crate::envelope::{
-    catch, ok_empty, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR,
-    JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    catch, ok_empty, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
+    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
+use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
 use crate::handle::handle_into_raw;
 
@@ -33,20 +37,70 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
             code: JJ_REPO_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
-        RepoError::InitFailed { reason }
-        | RepoError::CloneFailed { reason }
-        | RepoError::ConvertFailed { reason }
-        | RepoError::Backend(reason) => FfiErrorObj {
-            code: JJ_JJ_LIB_ERROR.to_owned(),
+        RepoError::InitFailed { reason } | RepoError::CloneFailed { reason } | RepoError::Backend(reason) => {
+            FfiErrorObj {
+                code: JJ_JJ_LIB_ERROR.to_owned(),
+                context: Some(reason),
+            }
+        }
+        RepoError::ConvertFailed { reason } => FfiErrorObj {
+            code: JJ_CONVERT_FAILED.to_owned(),
             context: Some(reason),
         },
-        // AlreadyJjRepo + NotAGitRepo get dedicated codes in Story 3.4c (jj.already_jj_repo /
-        // jj.not_a_git_repo). Until then they surface as JJ_JJ_LIB_ERROR with path context.
-        RepoError::AlreadyJjRepo { path } | RepoError::NotAGitRepo { path } => FfiErrorObj {
-            code: JJ_JJ_LIB_ERROR.to_owned(),
+        RepoError::AlreadyJjRepo { path } => FfiErrorObj {
+            code: JJ_ALREADY_JJ_REPO.to_owned(),
+            context: Some(path.display().to_string()),
+        },
+        RepoError::NotAGitRepo { path } => FfiErrorObj {
+            code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
     }
+}
+
+fn map_detect_err(e: &DetectError) -> FfiErrorObj {
+    FfiErrorObj {
+        code: JJ_DETECT_FAILED.to_owned(),
+        context: Some(e.to_string()),
+    }
+}
+
+fn repo_kind_to_fbs(k: RepoKind) -> fbs::RepoKind {
+    match k {
+        RepoKind::Jj => fbs::RepoKind::Jj,
+        RepoKind::Git => fbs::RepoKind::Git,
+        RepoKind::Neither => fbs::RepoKind::Neither,
+        RepoKind::PathNotFound => fbs::RepoKind::PathNotFound,
+    }
+}
+
+fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(128);
+    let (suggested_root_off, suggested_kind) = if let Some(root) = suggestion {
+        let s = b.create_string(&root.root.to_string_lossy());
+        (Some(s), repo_kind_to_fbs(root.kind))
+    } else {
+        (None, fbs::RepoKind::Jj)
+    };
+    let detect = fbs::RepoDetect::create(
+        &mut b,
+        &fbs::RepoDetectArgs {
+            kind: repo_kind_to_fbs(kind),
+            suggested_root: suggested_root_off,
+            suggested_kind,
+        },
+    );
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type: fbs::Payload::RepoDetect,
+            data: Some(detect.as_union_value()),
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
 }
 
 // ── extern "C" functions ──────────────────────────────────────────────────────
@@ -187,13 +241,88 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
     vec_into_token(buf)
 }
 
+/// Classify the repository kind at `path`.
+///
+/// This call is never an error for "no repo found" — `Neither` and `PathNotFound`
+/// are **normal results** carried in the success payload. Only a genuine I/O failure
+/// (e.g. `EACCES`, `ENOTDIR`) while stat-ing the path returns an error envelope.
+///
+/// When the result is `Neither` or `PathNotFound` and a parent jj or Git repo exists,
+/// `RepoDetect.suggested_root` and `RepoDetect.suggested_kind` are set so the UI can
+/// offer the user a consent-gated "this folder is inside a {jj|Git} repo at <root>"
+/// suggestion. The backend never auto-opens — the user decides. The enclosing-repo
+/// walk stops at the `$HOME` ceiling, so a repo at or above `$HOME` is intentionally
+/// not surfaced as a suggestion.
+///
+/// # Errors
+/// - `jj.detect_failed` — an I/O error (e.g. `EACCES`, `ENOTDIR`) prevented classification.
+/// - `ffi.null_pointer` — `path` is a null pointer.
+/// - `ffi.utf8_error` — `path` contains invalid UTF-8.
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
+/// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_repo_detect");
+    // SAFETY: caller guarantees path is null or a valid NUL-terminated C string.
+    let buf = catch(|| {
+        let p = unsafe { cstr_to_string(path) }?;
+        let kind = detect_repo(Path::new(&p)).map_err(|e| map_detect_err(&e))?;
+        let suggestion = match kind {
+            RepoKind::Neither | RepoKind::PathNotFound => {
+                find_repo_root(Path::new(&p)).map_err(|e| map_detect_err(&e))?
+            }
+            RepoKind::Jj | RepoKind::Git => None,
+        };
+        Ok(ok_repo_detect(kind, suggestion))
+    });
+    vec_into_token(buf)
+}
+
+/// Convert a plain Git repository at `path` to a colocated jj workspace.
+///
+/// On success the repository is open and ready; the returned `RepoHandle` is
+/// identical in semantics to the one returned by `zanshin_repo_open` / `_init` /
+/// `_clone` and must be released via `zanshin_repo_close`.
+///
+/// The conversion only writes `.jj/` — `.git/` is never touched. If the operation
+/// fails `.jj/` is rolled back, leaving the Git repo intact (no-data-loss invariant).
+///
+/// # Errors
+/// - `jj.already_jj_repo` — the path already has a `.jj/` directory.
+/// - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
+/// - `jj.convert_failed` — a jj-lib failure during conversion; detail in `context`.
+/// - `ffi.null_pointer` — `path` is a null pointer.
+/// - `ffi.utf8_error` — `path` contains invalid UTF-8.
+///
+/// # Safety
+/// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
+/// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
+/// The handle inside the success payload is closed via `zanshin_repo_close` (no
+/// `_convert`-specific destructor).
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_repo_convert");
+    // SAFETY: caller guarantees path is null or a valid NUL-terminated C string.
+    let buf = catch(|| {
+        let p = unsafe { cstr_to_string(path) }?;
+        let repo = convert_colocated(Path::new(&p)).map_err(map_repo_err)?;
+        Ok(ok_repo_handle(handle_into_raw(repo) as u64))
+    });
+    vec_into_token(buf)
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::envelope_generated::zanshin::ffi as fbs;
-    use crate::{FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND};
+    use crate::{
+        FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CONVERT_FAILED, JJ_JJ_LIB_ERROR,
+        JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    };
     use flatbuffers::VerifierOptions;
 
     fn verified_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
@@ -240,29 +369,29 @@ mod tests {
     }
 
     #[test]
-    fn map_repo_err_convert_failed_maps_to_jj_lib_error() {
+    fn map_repo_err_convert_failed_maps_to_jj_convert_failed() {
         let e = map_repo_err(RepoError::ConvertFailed {
             reason: "init failed".into(),
         });
-        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(e.code, JJ_CONVERT_FAILED);
         assert_eq!(e.context.unwrap(), "init failed");
     }
 
     #[test]
-    fn map_repo_err_already_jj_repo_maps_to_jj_lib_error() {
+    fn map_repo_err_already_jj_repo_maps_to_jj_already_jj_repo() {
         let e = map_repo_err(RepoError::AlreadyJjRepo {
             path: "/some/path".into(),
         });
-        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(e.code, JJ_ALREADY_JJ_REPO);
         assert!(e.context.unwrap().contains("/some/path"));
     }
 
     #[test]
-    fn map_repo_err_not_a_git_repo_maps_to_jj_lib_error() {
+    fn map_repo_err_not_a_git_repo_maps_to_jj_not_a_git_repo() {
         let e = map_repo_err(RepoError::NotAGitRepo {
             path: "/no/git/here".into(),
         });
-        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(e.code, JJ_NOT_A_GIT_REPO);
         assert!(e.context.unwrap().contains("/no/git/here"));
     }
 

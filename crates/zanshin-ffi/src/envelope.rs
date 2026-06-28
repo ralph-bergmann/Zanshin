@@ -33,6 +33,14 @@ pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 /// AR-P-4: emitted by `change.rs` when no change exists for the given id.
 pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
+/// AR-P-4: emitted by `repo.rs` when a filesystem I/O error (e.g. EACCES, ENOTDIR) prevented repo-kind classification.
+pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";
+/// AR-P-4: emitted by `repo.rs` when the path is already a jj workspace (`.jj/` present); convert skipped.
+pub const JJ_ALREADY_JJ_REPO: &str = "jj.already_jj_repo";
+/// AR-P-4: emitted by `repo.rs` when the path is not a Git repository or does not exist; convert refused.
+pub const JJ_NOT_A_GIT_REPO: &str = "jj.not_a_git_repo";
+/// AR-P-4: emitted by `repo.rs` when a jj-lib failure occurred during colocated conversion; detail in `context`.
+pub const JJ_CONVERT_FAILED: &str = "jj.convert_failed";
 
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///

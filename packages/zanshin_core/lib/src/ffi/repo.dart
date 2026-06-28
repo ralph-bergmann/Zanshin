@@ -91,3 +91,45 @@ Uint8List zanshinRepoClose(int rawHandle) {
     buf.dispose();
   }
 }
+
+/// Detects the repository kind at [path].
+///
+/// Returns the raw FlatBuffers `Envelope<RepoDetect>` bytes. Decode with
+/// `decodeRepoDetectEnvelope` from `repo_detect.dart`.
+///
+/// Success values: `RepoKind.Jj`, `.Git`, `.Neither`, `.PathNotFound`.
+/// Errors: `jj.detect_failed` (filesystem I/O failure only).
+Uint8List zanshinRepoDetect(String path) {
+  final ffi.Pointer<Utf8> p = path.toNativeUtf8();
+  try {
+    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_detect(p.cast());
+    final buf = FfiBuffer.fromToken(token);
+    try {
+      return Uint8List.fromList(buf.bytes);
+    } finally {
+      buf.dispose();
+    }
+  } finally {
+    calloc.free(p);
+  }
+}
+
+/// Converts the Git repository at [path] to a colocated jj workspace.
+///
+/// Returns the raw FlatBuffers `Envelope<RepoHandle>` bytes.
+///
+/// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`.
+Uint8List zanshinRepoConvert(String path) {
+  final ffi.Pointer<Utf8> p = path.toNativeUtf8();
+  try {
+    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_convert(p.cast());
+    final buf = FfiBuffer.fromToken(token);
+    try {
+      return Uint8List.fromList(buf.bytes);
+    } finally {
+      buf.dispose();
+    }
+  } finally {
+    calloc.free(p);
+  }
+}
