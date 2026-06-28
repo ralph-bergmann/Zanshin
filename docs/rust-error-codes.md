@@ -49,7 +49,7 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `jj.not_a_git_repo`             | `jj`       | The path is not a Git repository (no `.git/`) or does not exist.     | **Emitted — Story 3.4c** (`envelope.rs::JJ_NOT_A_GIT_REPO`, `repo.rs`); also produced by `convert_import` (Story 2.13) when the source is not a Git repo (normal or bare); `convert_import` FFI ships in the 0.2 fast-follow |
 | `jj.convert_failed`             | `jj`       | A jj-lib failure occurred during conversion; detail in `context`.    | **Emitted — Story 3.4c** (`envelope.rs::JJ_CONVERT_FAILED`, `repo.rs`) for `convert_colocated`; also produced by `convert_import` (Story 2.13); `convert_import` FFI ships in the 0.2 fast-follow |
 | `jj.detect_failed`              | `jj`       | A filesystem I/O error (permission denied, a non-directory path component, …) prevented repo-kind classification. | **Emitted — Story 3.4c** (`envelope.rs::JJ_DETECT_FAILED`, `repo.rs`) |
-| `watcher.io_error`              | `watcher`  | An I/O error in the filesystem-watch subsystem.                      | Reserved — deferred watcher stories |
+| `watcher.io_error`              | `watcher`  | An I/O error in the filesystem-watch subsystem.                      | Reserved — Story 3.5 introduced `WatcherError` / `WatcherEvent::WatchError` (pure Rust, no FFI); Story 3.6 maps these to the envelope and flips this row to **Emitted** |
 | `watcher.watchman_not_configured` | `watcher` | Watchman is not installed or not on `$PATH`.                        | Reserved — deferred watcher stories |
 
 ---

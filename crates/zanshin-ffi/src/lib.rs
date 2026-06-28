@@ -40,6 +40,7 @@ pub mod remotes;
 pub mod repo;
 pub mod status;
 pub mod tracing_init;
+pub mod watcher;
 
 /// Build-stamp version string.
 ///

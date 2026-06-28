@@ -31,6 +31,7 @@ clap = { version = "4", features = ["derive"] }
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: jj-lib exposes Stream-based APIs — consumed in production by zanshin-jj/src/status.rs and by the zanshin-jj graph_blueprint bench
 jj-lib = "=0.42.0"  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
+notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
 tar = "0.4"
 tempfile = "3"

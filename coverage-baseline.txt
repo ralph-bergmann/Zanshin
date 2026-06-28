@@ -24,6 +24,7 @@ crates/zanshin-ffi/src/remotes.rs = 100.00
 crates/zanshin-ffi/src/repo.rs = 100.00
 crates/zanshin-ffi/src/status.rs = 100.00
 crates/zanshin-ffi/src/tracing_init.rs = 94.96
+crates/zanshin-ffi/src/watcher.rs = 93.59
 crates/zanshin-jj/src/bookmarks.rs = 94.12
 crates/zanshin-jj/src/change.rs = 100.00
 crates/zanshin-jj/src/convert.rs = 100.00
