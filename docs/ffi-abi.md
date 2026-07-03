@@ -119,13 +119,13 @@ by calling `convert_colocated` (`zanshin_jj`). The operation writes only
 
 On success the function returns a live `RepoHandle` for the converted
 workspace. The Dart worker stores the raw handle in its Model-A handle table
-(`handleId → raw *mut Repo`) and returns an opaque `handleId` to the caller.
+(`handleId → raw *mut RepoSession`) and returns an opaque `handleId` to the caller.
 
 **Success payload:** `Envelope<RepoHandle>`
 
 ```
 RepoHandle {
-  handle: uint64   // raw *mut Repo reinterpreted as u64; opaque to Dart
+  handle: uint64   // raw *mut RepoSession reinterpreted as u64; opaque to Dart
 }
 ```
 
@@ -160,3 +160,161 @@ Public `ZanshinWorker` API:
 
 - `Future<RepoDetectResult> detect(String path)` — decodes via `decodeRepoDetectEnvelopeInternal`
 - `Future<RepoHandle> convert(String path)` — stores handle, returns `RepoHandle`
+
+---
+
+## Async events (Story 3.6)
+
+FR-FFI-4's async Rust→Dart signal: Story 3.5's watcher events and FR-FFI-8's
+future progress notifications both ride ONE process-global `NativeCallable`
+sink, registered once by the Dart worker isolate at startup. There is no
+per-handle callback registry.
+
+### `RepoSession` — the handle is now a warm loader + watcher owner
+
+Every handle-producing wrapper (`zanshin_repo_open`/`_init`/`_clone`/`_convert`)
+constructs a `RepoSession { repo, watcher, dispatch }` and arms its filesystem
+watcher **before returning** (AR-G-5). The `u64` handle Dart holds is a
+`*mut RepoSession` (no wire/ABI change — handles were always opaque `u64`).
+Each session owns one background dispatch thread that drains the watcher's
+`Receiver` and forwards serialised events to the process-global sink.
+`zanshin_repo_close` stops the watcher (joins the debouncer thread) and joins
+the dispatch thread **before** the session — and the repo it holds — is
+dropped, so no callback can fire for a handle after `close` returns.
+
+**Arming failure is strict-fail (OQ-1):** if the watcher cannot be armed
+(e.g. a required `.jj` sub-path is missing or unwatchable), the wrapper
+returns `watcher.io_error` and **no handle** — the repo is not left open in
+an unwatched state. For `init`/`clone`/`convert` the on-disk artefacts
+created before the arming failure **persist** (only the arming failed; a
+retry will see an existing repo — same posture as other post-init failures);
+`open` leaves no residue. Post-arm watch degradation (e.g. an FS error after a
+successful open) never re-uses this code string; it rides the event stream
+instead (see `WatchError` below) — `watcher.io_error` is emitted in exactly
+one place: the arming-failure envelope at open/init/clone/convert.
+
+### Registration
+
+```c
+typedef void (*EventCallback)(ZanshinBuf* event);
+
+void zanshin_events_register(EventCallback callback);   // NULL is a defensive no-op
+void zanshin_events_unregister(void);
+```
+
+Both are **infallible, `void`-returning, and `catch_unwind`-wrapped** — like
+`zanshin_log`/`zanshin_logging_init`, they are handle-free and callable from
+**any isolate/thread** (exempt from the single-consumer rule, AD-2).
+
+- `register` **overwrites** any previously registered callback — there is no
+  stacking. A worker restart simply re-registers.
+- `unregister` is **unconditional and idempotent** — there is no
+  compare-and-clear against a specific callback pointer, because production
+  runs exactly one worker per process. This lets the **main** isolate call
+  `unregister` on unexpected worker death without knowing the dead worker's
+  callback pointer (`ZanshinWorker._onWorkerDeath`).
+- **Ordering on graceful shutdown is load-bearing:** every open repo is closed
+  (joining its dispatch thread) **before** `zanshin_events_unregister()`,
+  which runs **before** the Dart `NativeCallable.close()`. Invoking a
+  `NativeCallable`'s pointer after `close()` is undefined behaviour
+  (api.dart.dev); this ordering makes that clause unreachable in practice.
+- **`unregister` is a barrier:** the dispatch path holds the registration lock
+  **across** the callback invocation, so once `unregister` returns no dispatch
+  thread can still be inside a callback it loaded earlier — closing the
+  callable or killing its isolate afterwards cannot race a delivery.
+- **Shutdown-ack timeout backstop:** if the worker never acks the
+  `ShutdownCommand` (hung or died mid-shutdown), the main isolate kills the
+  worker and calls `zanshin_events_unregister()` itself — the killed
+  isolate's callable must not stay reachable while un-closed sessions'
+  dispatch threads are still alive.
+- **Unexpected worker death:** the main isolate unregisters the sink
+  (unconditional-clear, see above) and kills the worker. The dead worker's
+  open sessions — their watchers and dispatch threads — **leak by design**
+  (same posture as the handle leak on worker death); after the unregister they
+  dispatch into an empty sink and drop. An event whose callback invocation is
+  concurrent with the death instant is an **accepted residual race**; tokens
+  already queued in the dead isolate leak with it.
+
+### Token ownership across the async hop
+
+`NativeCallable.listener` calls are non-blocking: Rust's `callback(token)`
+returns immediately, and the Dart handler runs later, on the isolate that
+created the callable. Rust therefore must **not** free the buffer after
+invoking the callback — the token transfers to Dart exactly like a
+synchronous return value:
+
+```dart
+void _onNativeEvent(ffi.Pointer<ZanshinBuf> token) {
+  final buf = FfiBuffer.fromToken(token);
+  try {
+    /* decode buf.bytes, forward */
+  } finally {
+    buf.dispose();
+  }
+}
+```
+
+**Undelivered tokens at callable-close leak by design.** If the callable is
+closed while events are still in flight, those tokens are never freed. This
+is bounded (at most the channel capacity — 256 — per repo, per Story 3.5) and
+shutdown-only; the graceful-shutdown ordering above (repos closed → threads
+joined → *then* the callable closes) makes the window empty in practice. No
+machinery is built to reclaim it.
+
+### Payload schemas
+
+Both tables are appended to the existing `Payload` union (`schemas/envelope.fbs`)
+— no second root type, no JSON, no `schema_version` (ADR-0001). Event
+envelopes are always `ok == true`.
+
+```
+enum WatcherEventKind : byte { OpHeadsChanged, WorkingCopyHeartbeat, WatchError }
+
+WatcherEvent {
+  repo_handle: uint64          // correlation id — the same u64 the Dart worker holds
+  kind:        WatcherEventKind
+  paths:       [string]?       // absent for WatchError (null-for-absence)
+  message:     string?         // set only for WatchError
+}
+
+Progress {
+  repo_handle: uint64          // same correlation id; first real producer is Story 6-4a
+  operation:   string          // e.g. "fetch"
+  progress:    float           // ∈ [0, 1]
+  message:     string
+}
+```
+
+`WatchError` is a **degraded-watch signal, not a failed call** — it never
+carries the `watcher.io_error` code string (single-emission-point rule).
+
+### Correlation and demux
+
+Events carry the **raw** `repo_handle` — the same `*mut RepoSession`-derived
+`u64` the worker's Model-A table already maps to a small dense `handleId`.
+The worker's `_onNativeEvent`/`onEvent` handler looks up `rawToId[repoHandle]`
+to recover the `handleId` before constructing the public `RepoEvent` sent to
+main; an unknown raw handle (a benign close race) is logged and dropped, never
+thrown. Raw pointers still never reach the main isolate (Model A holds).
+
+**Known accepted gap — raw-pointer ABA** (deferred-work.md, 3-6 review): a
+close → reopen can reuse the freed `RepoSession`'s allocation address, so an
+event queued during the close window could map to the NEW repo's `handleId`.
+Harmless for coalescing-idempotent watcher events (one spurious refresh); the
+correlation-id design (generation/session id) is revisited with Story 6-4a's
+first real `Progress` producer.
+
+### Dart worker integration
+
+- `lib/src/ffi/events.dart` — the only new file besides `bindings.dart`/the
+  generated FlatBuffers accessors allowed to import `dart:ffi`. Owns the
+  `NativeCallable.listener`, the try/catch-wrapped native handler, and
+  `registerEventSink` / `closeEventSink` / `unregisterEventSink`.
+- `lib/src/worker/events.dart` — pure Dart `RepoEvent` sealed family
+  (`OpHeadsChangedEvent` / `WorkingCopyHeartbeatEvent` / `WatchErrorEvent` /
+  `ProgressEvent`), exported from `zanshin_core.dart`.
+- `ZanshinWorker.events` — a broadcast `Stream<RepoEvent>` fed by the
+  previously-unused (Story 3.9) event `SendPort`.
+- `ZanshinWorker.close()` is now `Future<void>`: it sends a `ShutdownCommand`
+  the worker uses to run the shutdown ordering above, then awaits an ack
+  (bounded timeout) before killing the isolate as a backstop.

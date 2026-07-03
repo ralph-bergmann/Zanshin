@@ -40,7 +40,7 @@ void main() {
     });
 
     tearDown(() async {
-      worker.close();
+      await worker.close();
       if (tempDir.existsSync()) {
         tempDir.deleteSync(recursive: true);
       }
@@ -71,8 +71,8 @@ void main() {
       worker = await ZanshinWorker.start();
     });
 
-    tearDown(() {
-      worker.close();
+    tearDown(() async {
+      await worker.close();
     });
 
     test('worker_open_nonexistent_path_throws_ffi_exception', () async {
@@ -121,7 +121,7 @@ void main() {
     });
 
     tearDown(() async {
-      worker.close();
+      await worker.close();
       if (tempDir.existsSync()) {
         tempDir.deleteSync(recursive: true);
       }
@@ -169,7 +169,7 @@ void main() {
   group('ZanshinWorker command after close', () {
     test('worker_send_after_close_throws_state_error', () async {
       final ZanshinWorker worker = await ZanshinWorker.start();
-      worker.close();
+      await worker.close();
 
       await expectLater(
         worker.openRepo('/tmp/any'),
@@ -189,22 +189,27 @@ void main() {
   group('ZanshinWorker shutdown', () {
     test('worker_close_completes_cleanly', () async {
       final ZanshinWorker worker = await ZanshinWorker.start();
-      // Should complete synchronously without throwing; idempotent.
-      worker
-        ..close()
-        ..close();
+      // Should complete cleanly without throwing; idempotent.
+      await worker.close();
+      await worker.close();
     });
 
     test('worker_close_fails_in_flight_commands', () async {
       final ZanshinWorker worker = await ZanshinWorker.start();
 
-      // Fire an open command that will NOT be processed (worker is closed).
-      // We close synchronously before the event loop can deliver the response.
+      // Fire an open command, then close immediately after — no await between
+      // the two, so both are sent to the worker before this isolate yields.
+      // Whether the worker answers it first (FIFO) or close()'s failAll
+      // backstop does, the in-flight future must complete with an error, not
+      // hang. The expectation is attached to `inFlight` BEFORE awaiting
+      // close() (which now does real asynchronous shutdown work) so it always
+      // has a listener before it settles — otherwise a same-turn completion
+      // during the shutdown wait would be reported as an unhandled error
+      // instead of satisfying this expectation.
       final Future<RepoHandle> inFlight = worker.openRepo('/tmp/any');
-      worker.close();
-
-      // The in-flight future must complete with an error, not hang.
-      await expectLater(inFlight, throwsA(isA<Object>()));
+      final Future<void> expectation = expectLater(inFlight, throwsA(isA<Object>()));
+      await worker.close();
+      await expectation;
     });
   });
 }

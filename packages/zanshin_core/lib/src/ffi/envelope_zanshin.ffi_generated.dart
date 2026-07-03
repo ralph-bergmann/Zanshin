@@ -168,6 +168,50 @@ class _RepoKindReader extends fb.Reader<RepoKind> {
   RepoKind read(fb.BufferContext bc, int offset) => RepoKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  Kind of async watcher event dispatched over the process-global event sink
+///  (FR-FFI-4, FR-RX-1). `WatchError` is a degraded-watch signal, not a failed
+///  call — the event Envelope's `ok` is always true (R5, single-emission-point:
+///  the `watcher.io_error` code string is reserved for the arming-failure error
+///  envelope at open/init/clone/convert).
+enum WatcherEventKind {
+  OpHeadsChanged(0),
+  WorkingCopyHeartbeat(1),
+  WatchError(2);
+
+  final int value;
+  const WatcherEventKind(this.value);
+
+  factory WatcherEventKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return WatcherEventKind.OpHeadsChanged;
+      case 1:
+        return WatcherEventKind.WorkingCopyHeartbeat;
+      case 2:
+        return WatcherEventKind.WatchError;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static WatcherEventKind? _createOrNull(int? value) => value == null ? null : WatcherEventKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<WatcherEventKind> reader = _WatcherEventKindReader();
+}
+
+class _WatcherEventKindReader extends fb.Reader<WatcherEventKind> {
+  const _WatcherEventKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  WatcherEventKind read(fb.BufferContext bc, int offset) =>
+      WatcherEventKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -177,7 +221,9 @@ enum PayloadTypeId {
   OpLog(5),
   Bookmarks(6),
   Remotes(7),
-  RepoDetect(8);
+  RepoDetect(8),
+  WatcherEvent(9),
+  Progress(10);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -202,6 +248,10 @@ enum PayloadTypeId {
         return PayloadTypeId.Remotes;
       case 8:
         return PayloadTypeId.RepoDetect;
+      case 9:
+        return PayloadTypeId.WatcherEvent;
+      case 10:
+        return PayloadTypeId.Progress;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -210,7 +260,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 8;
+  static const int maxValue = 10;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -312,8 +362,8 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Opaque handle to an open Repo.
-///  `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+///  Opaque handle to an open repo session.
+///  `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 ///  Dart passes it back verbatim to zanshin_repo_close.
 class RepoHandle {
   RepoHandle._(this._bc, this._bcOffset);
@@ -1631,6 +1681,217 @@ class RepoDetectObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One filesystem-watch event for the repo identified by `repo_handle`
+///  (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+///  `paths` is absent for `WatchError`; `message` is set only for `WatchError`
+///  (null-for-absence).
+class WatcherEvent {
+  WatcherEvent._(this._bc, this._bcOffset);
+  factory WatcherEvent(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WatcherEvent> reader = _WatcherEventReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get repoHandle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  WatcherEventKind get kind => WatcherEventKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'WatcherEvent{repoHandle: ${repoHandle}, kind: ${kind}, paths: ${paths}, message: ${message}}';
+  }
+}
+
+class _WatcherEventReader extends fb.TableReader<WatcherEvent> {
+  const _WatcherEventReader();
+
+  @override
+  WatcherEvent createObject(fb.BufferContext bc, int offset) => WatcherEvent._(bc, offset);
+}
+
+class WatcherEventBuilder {
+  WatcherEventBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addRepoHandle(int? repoHandle) {
+    fbBuilder.addUint64(0, repoHandle);
+    return fbBuilder.offset;
+  }
+
+  int addKind(WatcherEventKind? kind) {
+    fbBuilder.addInt8(1, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WatcherEventObjectBuilder extends fb.ObjectBuilder {
+  final int? _repoHandle;
+  final WatcherEventKind? _kind;
+  final List<String>? _paths;
+  final String? _message;
+
+  WatcherEventObjectBuilder({
+    int? repoHandle,
+    WatcherEventKind? kind,
+    List<String>? paths,
+    String? message,
+  }) : _repoHandle = repoHandle,
+       _kind = kind,
+       _paths = paths,
+       _message = message;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint64(0, _repoHandle);
+    fbBuilder.addInt8(1, _kind?.value);
+    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.addOffset(3, messageOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Progress notification for a long-running operation (FR-FFI-8), e.g. `git
+///  fetch` (producer lands in Story 6-4a). Dispatched over the same
+///  process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+class Progress {
+  Progress._(this._bc, this._bcOffset);
+  factory Progress(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Progress> reader = _ProgressReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get repoHandle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  double get progress => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 8, 0.0);
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'Progress{repoHandle: ${repoHandle}, operation: ${operation}, progress: ${progress}, message: ${message}}';
+  }
+}
+
+class _ProgressReader extends fb.TableReader<Progress> {
+  const _ProgressReader();
+
+  @override
+  Progress createObject(fb.BufferContext bc, int offset) => Progress._(bc, offset);
+}
+
+class ProgressBuilder {
+  ProgressBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addRepoHandle(int? repoHandle) {
+    fbBuilder.addUint64(0, repoHandle);
+    return fbBuilder.offset;
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addProgress(double? progress) {
+    fbBuilder.addFloat32(2, progress);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ProgressObjectBuilder extends fb.ObjectBuilder {
+  final int? _repoHandle;
+  final String? _operation;
+  final double? _progress;
+  final String? _message;
+
+  ProgressObjectBuilder({
+    int? repoHandle,
+    String? operation,
+    double? progress,
+    String? message,
+  }) : _repoHandle = repoHandle,
+       _operation = operation,
+       _progress = progress,
+       _message = message;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint64(0, _repoHandle);
+    fbBuilder.addOffset(1, operationOffset);
+    fbBuilder.addFloat32(2, _progress);
+    fbBuilder.addOffset(3, messageOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1676,6 +1937,10 @@ class Envelope {
         return Remotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 8:
         return RepoDetect.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 9:
+        return WatcherEvent.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 10:
+        return Progress.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

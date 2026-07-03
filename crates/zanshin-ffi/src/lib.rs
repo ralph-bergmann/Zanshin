@@ -32,6 +32,7 @@ pub use envelope::*;
 pub mod bookmarks;
 pub mod change;
 pub mod diagnostics;
+pub mod events;
 pub mod ffi_strings;
 pub mod handle;
 pub mod logging;

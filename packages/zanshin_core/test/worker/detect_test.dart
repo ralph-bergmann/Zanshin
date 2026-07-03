@@ -48,8 +48,8 @@ void main() {
       worker = await ZanshinWorker.start();
     });
 
-    tearDown(() {
-      worker.close();
+    tearDown(() async {
+      await worker.close();
     });
 
     test('detect_jj_repo_returns_jj_kind', () async {
@@ -133,8 +133,8 @@ void main() {
       worker = await ZanshinWorker.start();
     });
 
-    tearDown(() {
-      worker.close();
+    tearDown(() async {
+      await worker.close();
     });
 
     test('convert_git_repo_returns_handle_and_detect_returns_jj', () async {

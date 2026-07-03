@@ -32,7 +32,7 @@ void main() {
     });
 
     tearDown(() async {
-      worker.close();
+      await worker.close();
       if (tempDir.existsSync()) {
         tempDir.deleteSync(recursive: true);
       }
@@ -129,7 +129,7 @@ void main() {
     });
 
     tearDown(() async {
-      worker.close();
+      await worker.close();
       if (tempDir.existsSync()) {
         tempDir.deleteSync(recursive: true);
       }

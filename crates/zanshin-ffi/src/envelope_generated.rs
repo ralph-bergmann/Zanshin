@@ -388,18 +388,118 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_WATCHER_EVENT_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 8;
+        pub const ENUM_MAX_WATCHER_EVENT_KIND: i8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 9] = [
+        pub const ENUM_VALUES_WATCHER_EVENT_KIND: [WatcherEventKind; 3] = [
+            WatcherEventKind::OpHeadsChanged,
+            WatcherEventKind::WorkingCopyHeartbeat,
+            WatcherEventKind::WatchError,
+        ];
+
+        /// Kind of async watcher event dispatched over the process-global event sink
+        /// (FR-FFI-4, FR-RX-1). `WatchError` is a degraded-watch signal, not a failed
+        /// call — the event Envelope's `ok` is always true (R5, single-emission-point:
+        /// the `watcher.io_error` code string is reserved for the arming-failure error
+        /// envelope at open/init/clone/convert).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct WatcherEventKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl WatcherEventKind {
+            pub const OpHeadsChanged: Self = Self(0);
+            pub const WorkingCopyHeartbeat: Self = Self(1);
+            pub const WatchError: Self = Self(2);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 2;
+            pub const ENUM_VALUES: &'static [Self] =
+                &[Self::OpHeadsChanged, Self::WorkingCopyHeartbeat, Self::WatchError];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::OpHeadsChanged => Some("OpHeadsChanged"),
+                    Self::WorkingCopyHeartbeat => Some("WorkingCopyHeartbeat"),
+                    Self::WatchError => Some("WatchError"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for WatcherEventKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for WatcherEventKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for WatcherEventKind {
+            type Output = WatcherEventKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for WatcherEventKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for WatcherEventKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for WatcherEventKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 10;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 11] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -409,6 +509,8 @@ pub mod zanshin {
             Payload::Bookmarks,
             Payload::Remotes,
             Payload::RepoDetect,
+            Payload::WatcherEvent,
+            Payload::Progress,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -425,9 +527,11 @@ pub mod zanshin {
             pub const Bookmarks: Self = Self(6);
             pub const Remotes: Self = Self(7);
             pub const RepoDetect: Self = Self(8);
+            pub const WatcherEvent: Self = Self(9);
+            pub const Progress: Self = Self(10);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 8;
+            pub const ENUM_MAX: u8 = 10;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -438,6 +542,8 @@ pub mod zanshin {
                 Self::Bookmarks,
                 Self::Remotes,
                 Self::RepoDetect,
+                Self::WatcherEvent,
+                Self::Progress,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -451,6 +557,8 @@ pub mod zanshin {
                     Self::Bookmarks => Some("Bookmarks"),
                     Self::Remotes => Some("Remotes"),
                     Self::RepoDetect => Some("RepoDetect"),
+                    Self::WatcherEvent => Some("WatcherEvent"),
+                    Self::Progress => Some("Progress"),
                     _ => None,
                 }
             }
@@ -643,8 +751,8 @@ pub mod zanshin {
         pub enum RepoHandleOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// Opaque handle to an open Repo.
-        /// `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+        /// Opaque handle to an open repo session.
+        /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
         /// Dart passes it back verbatim to zanshin_repo_close.
         pub struct RepoHandle<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
@@ -2781,6 +2889,345 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum WatcherEventOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One filesystem-watch event for the repo identified by `repo_handle`
+        /// (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+        /// `paths` is absent for `WatchError`; `message` is set only for `WatchError`
+        /// (null-for-absence).
+        pub struct WatcherEvent<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WatcherEvent<'a> {
+            type Inner = WatcherEvent<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WatcherEvent<'a> {
+            pub const VT_REPO_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WatcherEvent { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WatcherEventArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WatcherEvent<'bldr>> {
+                let mut builder = WatcherEventBuilder::new(_fbb);
+                builder.add_repo_handle(args.repo_handle);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn repo_handle(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(WatcherEvent::VT_REPO_HANDLE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn kind(&self) -> WatcherEventKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<WatcherEventKind>(WatcherEvent::VT_KIND, Some(WatcherEventKind::OpHeadsChanged))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WatcherEvent::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WatcherEvent::VT_MESSAGE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WatcherEvent<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<u64>("repo_handle", Self::VT_REPO_HANDLE, false)?
+     .visit_field::<WatcherEventKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct WatcherEventArgs<'a> {
+            pub repo_handle: u64,
+            pub kind: WatcherEventKind,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WatcherEventArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WatcherEventArgs {
+                    repo_handle: 0,
+                    kind: WatcherEventKind::OpHeadsChanged,
+                    paths: None,
+                    message: None,
+                }
+            }
+        }
+
+        pub struct WatcherEventBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WatcherEventBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_repo_handle(&mut self, repo_handle: u64) {
+                self.fbb_.push_slot::<u64>(WatcherEvent::VT_REPO_HANDLE, repo_handle, 0);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: WatcherEventKind) {
+                self.fbb_
+                    .push_slot::<WatcherEventKind>(WatcherEvent::VT_KIND, kind, WatcherEventKind::OpHeadsChanged);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WatcherEvent::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WatcherEvent::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WatcherEventBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WatcherEventBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WatcherEvent<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WatcherEvent<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WatcherEvent");
+                ds.field("repo_handle", &self.repo_handle());
+                ds.field("kind", &self.kind());
+                ds.field("paths", &self.paths());
+                ds.field("message", &self.message());
+                ds.finish()
+            }
+        }
+        pub enum ProgressOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
+        /// fetch` (producer lands in Story 6-4a). Dispatched over the same
+        /// process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+        pub struct Progress<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Progress<'a> {
+            type Inner = Progress<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Progress<'a> {
+            pub const VT_REPO_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PROGRESS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Progress { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ProgressArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Progress<'bldr>> {
+                let mut builder = ProgressBuilder::new(_fbb);
+                builder.add_repo_handle(args.repo_handle);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                builder.add_progress(args.progress);
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn repo_handle(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Progress::VT_REPO_HANDLE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn operation(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Progress::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn progress(&self) -> f32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<f32>(Progress::VT_PROGRESS, Some(0.0)).unwrap() }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Progress::VT_MESSAGE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Progress<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("repo_handle", Self::VT_REPO_HANDLE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<f32>("progress", Self::VT_PROGRESS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ProgressArgs<'a> {
+            pub repo_handle: u64,
+            pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub progress: f32,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ProgressArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ProgressArgs {
+                    repo_handle: 0,
+                    operation: None,
+                    progress: 0.0,
+                    message: None,
+                }
+            }
+        }
+
+        pub struct ProgressBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProgressBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_repo_handle(&mut self, repo_handle: u64) {
+                self.fbb_.push_slot::<u64>(Progress::VT_REPO_HANDLE, repo_handle, 0);
+            }
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Progress::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_progress(&mut self, progress: f32) {
+                self.fbb_.push_slot::<f32>(Progress::VT_PROGRESS, progress, 0.0);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Progress::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ProgressBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ProgressBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Progress<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Progress<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Progress");
+                ds.field("repo_handle", &self.repo_handle());
+                ds.field("operation", &self.operation());
+                ds.field("progress", &self.progress());
+                ds.field("message", &self.message());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2993,6 +3440,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_watcher_event(&self) -> Option<WatcherEvent<'a>> {
+                if self.data_type() == Payload::WatcherEvent {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { WatcherEvent::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_progress(&self) -> Option<Progress<'a>> {
+                if self.data_type() == Payload::Progress {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Progress::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -3043,6 +3520,15 @@ pub mod zanshin {
                                     "Payload::RepoDetect",
                                     pos,
                                 ),
+                            Payload::WatcherEvent => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WatcherEvent>>(
+                                    "Payload::WatcherEvent",
+                                    pos,
+                                ),
+                            Payload::Progress => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Progress>>(
+                                "Payload::Progress",
+                                pos,
+                            ),
                             _ => Ok(()),
                         },
                     )?
@@ -3165,6 +3651,20 @@ pub mod zanshin {
                     }
                     Payload::RepoDetect => {
                         if let Some(x) = self.data_as_repo_detect() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::WatcherEvent => {
+                        if let Some(x) = self.data_as_watcher_event() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Progress => {
+                        if let Some(x) = self.data_as_progress() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

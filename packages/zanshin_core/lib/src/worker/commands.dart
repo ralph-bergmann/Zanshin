@@ -161,3 +161,12 @@ final class ConvertRepoCommand extends WorkerCommand {
   /// Filesystem path of the Git repository to convert.
   final String path;
 }
+
+/// Request a graceful worker shutdown (Story 3.6).
+///
+/// The worker closes every repo left in its handle table (joining each
+/// session's Rust dispatch thread), unregisters the event sink, closes the
+/// `NativeCallable`, and acks — in that order (see `ZanshinWorker.close`).
+final class ShutdownCommand extends WorkerCommand {
+  const ShutdownCommand({required super.commandId});
+}

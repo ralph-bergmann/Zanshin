@@ -1,0 +1,289 @@
+// SPDX-License-Identifier: MIT
+
+//! Integration tests for the process-global event sink (Story 3.6).
+//!
+//! A Rust-side test sink is registered via `zanshin_events_register` and driven
+//! through the real `zanshin_repo_open`/`_close` wrappers, arming real Story-3.5
+//! watchers against real `tiny-3-commits` fixtures — the full producer chain
+//! (dispatch thread → `events::dispatch` → C callback) end to end.
+//!
+//! Every test that touches the sink holds `TEST_GUARD` for its duration (trap
+//! 11a): `cargo test` runs tests in parallel threads of ONE process, and the
+//! sink + its `RECEIVED` buffer are process-global state shared by every test
+//! in this binary.
+
+use std::ffi::CString;
+use std::path::Path;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
+use std::{env, fs};
+
+use flatbuffers::root as fb_root;
+use test_helpers::extract_fixture;
+use zanshin_ffi::events::{zanshin_events_register, zanshin_events_unregister};
+use zanshin_ffi::fbs;
+use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
+use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
+
+// ── Env pin (mirrors repo_ffi.rs / watcher.rs) ────────────────────────────────
+
+static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
+    // SAFETY: set once via LazyLock::force before any repo is opened; mirrors
+    // repo_ffi.rs / watcher.rs (single-init-before-use ordering is what makes
+    // this sound under cargo test's multi-threaded runner).
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+    }
+});
+
+fn pin_env() {
+    LazyLock::force(&ENV_GUARD);
+}
+
+// ── Sink serialization (trap 11a) ─────────────────────────────────────────────
+
+// Serializes every test in this file: all of them register/unregister the ONE
+// process-global sink and read the ONE process-global `RECEIVED` buffer.
+static TEST_GUARD: Mutex<()> = Mutex::new(());
+static RECEIVED: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+
+unsafe extern "C" fn test_sink(token: *mut ZanshinBuf) {
+    // SAFETY: forwarded from the `EventCallback` contract — `token` is a valid,
+    // non-null token produced by `events::dispatch` via `vec_into_token`.
+    let bytes = unsafe { read_and_free(token) };
+    received_lock().push(bytes);
+}
+
+fn received_lock() -> std::sync::MutexGuard<'static, Vec<Vec<u8>>> {
+    RECEIVED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn clear_received() {
+    received_lock().clear();
+}
+
+fn drain_received() -> Vec<Vec<u8>> {
+    std::mem::take(&mut received_lock())
+}
+
+// ── Envelope helpers (mirrors repo_ffi.rs) ────────────────────────────────────
+
+/// Copy bytes out of a `ZanshinBuf` token and free the token.
+///
+/// # Safety
+/// `token` must be a valid, non-null `ZanshinBuf` not yet freed.
+unsafe fn read_and_free(token: *mut ZanshinBuf) -> Vec<u8> {
+    assert!(!token.is_null(), "token must not be null");
+    // SAFETY: token is valid; we copy bytes before freeing.
+    let bytes = unsafe {
+        let t = &*token;
+        std::slice::from_raw_parts(t.ptr.cast_const(), t.len).to_vec()
+    };
+    // SAFETY: token is valid; freed exactly once here after the copy above.
+    unsafe { zanshin_buffer_free_token(token) };
+    bytes
+}
+
+fn parse_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
+    fb_root::<fbs::Envelope>(bytes).expect("FlatBuffers Verifier must pass for a well-formed Envelope")
+}
+
+fn cstr(s: &str) -> CString {
+    CString::new(s).expect("CString::new must not fail for a non-null string")
+}
+
+fn open_handle(path: &Path) -> u64 {
+    let p = cstr(path.to_str().expect("fixture path must be UTF-8"));
+    // SAFETY: p is a valid NUL-terminated C string alive for the call.
+    let token = unsafe { zanshin_repo_open(p.as_ptr()) };
+    // SAFETY: token is the fresh, non-null token zanshin_repo_open just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "expected ok, error: {:?}", env.error().and_then(|e| e.code()));
+    env.data_as_repo_handle()
+        .expect("RepoHandle payload must be present")
+        .handle()
+}
+
+fn close_handle(handle: u64) {
+    // SAFETY: handle originated from open_handle above and has not been closed.
+    let token = unsafe { zanshin_repo_close(handle) };
+    // SAFETY: token is the fresh, non-null token zanshin_repo_close just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "expected ok, error: {:?}", env.error().and_then(|e| e.code()));
+}
+
+/// Poll `RECEIVED`, accumulating every event observed into `into`, until a
+/// `WatcherEvent` matching `(handle, kind)` is found or `timeout` elapses.
+/// Returns whether it was found. Non-matching events are preserved in `into`
+/// (not discarded), so callers can also assert on absence — e.g. "no event
+/// carried a *different* handle" — without a second, racy drain pass.
+///
+/// Generous timeout: this asserts *arrival*, never a tight latency bound (R7).
+fn collect_until_watcher_event(
+    into: &mut Vec<Vec<u8>>,
+    handle: u64,
+    kind: fbs::WatcherEventKind,
+    timeout: Duration,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        for bytes in drain_received() {
+            let is_match = parse_envelope(&bytes)
+                .data_as_watcher_event()
+                .is_some_and(|p| p.repo_handle() == handle && p.kind() == kind);
+            into.push(bytes);
+            if is_match {
+                return true;
+            }
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn heads_dir(repo_root: &Path) -> std::path::PathBuf {
+    repo_root.join(".jj/repo/op_heads/heads")
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────────
+
+#[test]
+fn event_arrives_on_op_heads_change() {
+    // WHY unwrap_or_else(PoisonError::into_inner): an earlier test's assertion
+    // failure would otherwise poison this process-global guard and cascade-fail
+    // every later test in the binary — recovering is correct here since the
+    // guarded value is just `()` (no invariant a panic could have broken).
+    let _guard = TEST_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    pin_env();
+    clear_received();
+    zanshin_events_register(Some(test_sink));
+
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let handle = open_handle(&fixture.path);
+
+    // AR-G-5 ordering evidence (AC 16): this touch happens IMMEDIATELY after
+    // open_handle returns — no sleep between open-return and mutation. The
+    // event arriving below therefore proves the watcher was armed before the
+    // wrapper returned. No tighter race assertion is possible without
+    // fault-injection inside jj-lib: we cannot pause `Repo::open` between
+    // workspace load and watcher arming to slip a mutation into that gap, so
+    // "mutate immediately after return → event arrives" is the strongest
+    // observable evidence of the AR-G-5 ordering.
+    fs::write(heads_dir(&fixture.path).join("test_event"), b"").unwrap();
+
+    let mut events = Vec::new();
+    let found = collect_until_watcher_event(
+        &mut events,
+        handle,
+        fbs::WatcherEventKind::OpHeadsChanged,
+        Duration::from_secs(5),
+    );
+    assert!(found, "expected an OpHeadsChanged event for handle {handle}");
+
+    close_handle(handle);
+    zanshin_events_unregister();
+}
+
+#[test]
+fn two_repos_open_touching_one_dispatches_only_its_handle() {
+    // WHY unwrap_or_else(PoisonError::into_inner): an earlier test's assertion
+    // failure would otherwise poison this process-global guard and cascade-fail
+    // every later test in the binary — recovering is correct here since the
+    // guarded value is just `()` (no invariant a panic could have broken).
+    let _guard = TEST_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    pin_env();
+    clear_received();
+    zanshin_events_register(Some(test_sink));
+
+    let fixture_a = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let fixture_b = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let handle_a = open_handle(&fixture_a.path);
+    let handle_b = open_handle(&fixture_b.path);
+
+    fs::write(heads_dir(&fixture_a.path).join("test_event"), b"").unwrap();
+
+    let mut events = Vec::new();
+    let found = collect_until_watcher_event(
+        &mut events,
+        handle_a,
+        fbs::WatcherEventKind::OpHeadsChanged,
+        Duration::from_secs(5),
+    );
+    assert!(found, "expected an OpHeadsChanged event for handle_a ({handle_a})");
+
+    // Give any stray repo-B event a little extra time to (not) show up; a
+    // deliberately-unreachable target handle just extends the accumulation
+    // window without waiting for the full timeout.
+    collect_until_watcher_event(
+        &mut events,
+        u64::MAX,
+        fbs::WatcherEventKind::OpHeadsChanged,
+        Duration::from_millis(300),
+    );
+
+    assert!(
+        !events.iter().any(|bytes| {
+            parse_envelope(bytes)
+                .data_as_watcher_event()
+                .is_some_and(|p| p.repo_handle() == handle_b)
+        }),
+        "repo B was never touched — no event should carry repo_handle == handle_b ({handle_b})"
+    );
+
+    close_handle(handle_a);
+    close_handle(handle_b);
+    zanshin_events_unregister();
+}
+
+#[test]
+fn close_stops_further_dispatch() {
+    // WHY unwrap_or_else(PoisonError::into_inner): an earlier test's assertion
+    // failure would otherwise poison this process-global guard and cascade-fail
+    // every later test in the binary — recovering is correct here since the
+    // guarded value is just `()` (no invariant a panic could have broken).
+    let _guard = TEST_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    pin_env();
+    clear_received();
+    zanshin_events_register(Some(test_sink));
+
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let handle = open_handle(&fixture.path);
+
+    fs::write(heads_dir(&fixture.path).join("before_close"), b"").unwrap();
+    let mut events = Vec::new();
+    let found = collect_until_watcher_event(
+        &mut events,
+        handle,
+        fbs::WatcherEventKind::OpHeadsChanged,
+        Duration::from_secs(5),
+    );
+    assert!(found, "expected the pre-close OpHeadsChanged to arrive");
+
+    close_handle(handle);
+    clear_received();
+
+    // AC 8: no callback fires after zanshin_repo_close returns. Touching the
+    // now-unwatched op_heads dir must produce silence within a bounded wait —
+    // not a tight race assertion, just "nothing arrives eventually" (R7).
+    fs::write(heads_dir(&fixture.path).join("after_close"), b"").unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        received_lock().is_empty(),
+        "no event should be dispatched for handle {handle} after close() returns"
+    );
+
+    zanshin_events_unregister();
+}
+
+// Arming-failure coverage (AC 14's "watcher.io_error on arming failure" bullet)
+// lives as an inline unit test in `repo.rs::tests::arm_session_returns_watcher_io_error_when_checkout_missing_after_open`:
+// deleting `.jj/working_copy/checkout` BEFORE `zanshin_repo_open` fails inside
+// jj-lib's `Workspace::load` itself (`jj.jj_lib_error`, verified empirically),
+// never reaching `arm_session` — so the only way to exercise the *mapped code*
+// (per AC 14's explicit fallback) is to sabotage AFTER a successful `Repo::open`
+// and call `arm_session` directly, which requires `repo.rs`'s private items.

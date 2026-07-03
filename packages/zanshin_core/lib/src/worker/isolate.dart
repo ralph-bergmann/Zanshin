@@ -6,11 +6,22 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import '../ffi/events.dart'
+    show
+        RawOpHeadsChangedEvent,
+        RawProgressEvent,
+        RawWatchErrorEvent,
+        RawWorkingCopyHeartbeatEvent,
+        ZanshinRawEvent,
+        closeEventSink,
+        registerEventSink,
+        unregisterEventSink;
 import '../ffi/log_forwarder.dart';
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
@@ -20,13 +31,17 @@ import '../ffi/status.dart' as repo_ffi_status;
 
 import 'commands.dart';
 import 'correlation.dart';
+import 'events.dart';
 import 'handle.dart';
 import 'responses.dart';
 
 final _log = Logger('zanshin.worker');
 
-// Bootstrap record: all SendPorts the worker needs to communicate with main.
-typedef _WorkerInit = (SendPort, SendPort, SendPort);
+// Bootstrap record: all SendPorts the worker needs to communicate with main,
+// plus two test-only fault-injection flags (3.9-regression tests, AC 15a/15b;
+// always false in production — threaded through because a worker isolate's
+// entry point can only receive its initial state via this one message).
+typedef _WorkerInit = (SendPort, SendPort, SendPort, bool, bool);
 
 /// The main-isolate interface to the single long-running worker isolate
 /// (AR-AD-4, Story 3.9).
@@ -47,8 +62,7 @@ class ZanshinWorker {
   final SendPort _commandPort;
   // Main's receive end for worker responses.
   final ReceivePort _responsePort;
-  // Reserved for Story 3.6 watcher/progress events. No traffic yet, but the
-  // port exists so 3.6 can wire the producer without reshaping ZanshinWorker.
+  // Watcher/progress events (Story 3.6), demuxed to handleId by the worker.
   final ReceivePort _eventPort;
   // For detecting unexpected worker death via addOnExitListener.
   final ReceivePort _exitPort;
@@ -56,16 +70,28 @@ class ZanshinWorker {
   final ReceivePort _errorPort;
   final Isolate _isolate;
   final CommandCorrelator _correlator;
+  final _eventsController = StreamController<RepoEvent>.broadcast();
   var _closed = false;
+  // Memoized by [close] so concurrent/repeated callers all await the SAME
+  // in-progress shutdown instead of an instantly-completed no-op future.
+  Future<void>? _closeFuture;
+  // Completed by [_onExitEvent] when the worker isolate's exit event arrives;
+  // [_teardown] defers closing _exitPort until then (see [workerExited]).
+  final _exited = Completer<void>();
 
   // Held to satisfy cancel_subscriptions lint; cancelled in _teardown.
   StreamSubscription<dynamic>? _responseSub;
+  StreamSubscription<dynamic>? _eventSub;
   StreamSubscription<dynamic>? _exitSub;
   StreamSubscription<dynamic>? _errorSub;
 
   // Max wait for the worker's startup handshake before treating the spawn as
   // failed (guards against a worker that dies during init before its send).
   static const _handshakeTimeout = Duration(seconds: 10);
+
+  // Max wait for the worker's ShutdownCommand ack before the kill() backstop
+  // fires unconditionally (Story 3.6 graceful-shutdown protocol).
+  static const _shutdownAckTimeout = Duration(seconds: 5);
 
   // addErrorListener delivers [errorString, stackTraceString]; pull out the
   // error object (or fall back to the raw message).
@@ -77,7 +103,15 @@ class ZanshinWorker {
   /// If [Isolate.spawn] throws, the returned [Future] completes with the error
   /// (AC-12). The bootstrap fallback for this path uses `dart:developer` since
   /// FFI logging is not yet available at spawn time.
-  static Future<ZanshinWorker> start() async {
+  ///
+  /// [failBeforeHandshake] and [throwAsyncErrorAfterHandshake] are test-only
+  /// fault-injection hooks for the two Story 3.9 regression tests (AC 15a/15b)
+  /// that this story's pre-handshake event-sink registration and shutdown
+  /// protocol organically re-enable; production callers never set them.
+  static Future<ZanshinWorker> start({
+    @visibleForTesting bool failBeforeHandshake = false,
+    @visibleForTesting bool throwAsyncErrorAfterHandshake = false,
+  }) async {
     final bootstrap = ReceivePort();
     final responsePort = ReceivePort();
     final eventPort = ReceivePort();
@@ -96,7 +130,13 @@ class ZanshinWorker {
     try {
       isolate = await Isolate.spawn<_WorkerInit>(
         _workerEntry,
-        (bootstrap.sendPort, responsePort.sendPort, eventPort.sendPort),
+        (
+          bootstrap.sendPort,
+          responsePort.sendPort,
+          eventPort.sendPort,
+          failBeforeHandshake,
+          throwAsyncErrorAfterHandshake,
+        ),
         debugName: 'ZanshinWorker',
         errorsAreFatal: false,
       );
@@ -181,7 +221,7 @@ class ZanshinWorker {
     );
 
     exitSub.onData((_) {
-      worker._onWorkerDeath(StateError('Worker isolate exited unexpectedly'));
+      worker._onExitEvent();
     });
     errorSub.onData((msg) {
       worker._onWorkerDeath(
@@ -190,6 +230,7 @@ class ZanshinWorker {
     });
     worker
       .._responseSub = responsePort.listen(worker._onResponse)
+      .._eventSub = eventPort.listen(worker._onEvent)
       .._exitSub = exitSub
       .._errorSub = errorSub;
 
@@ -205,12 +246,29 @@ class ZanshinWorker {
     _correlator.resolve(id, response);
   }
 
+  void _onEvent(dynamic msg) {
+    if (msg is! RepoEvent) {
+      _log.warning('ZanshinWorker: unexpected event type');
+      return;
+    }
+    _eventsController.add(msg);
+  }
+
   void _onWorkerDeath(Object cause) {
     if (_closed) {
       return;
     }
     _log.warning('ZanshinWorker: worker died unexpectedly');
     _closed = true;
+    // FFI-only, any-isolate-safe (AD-2 exemption): the worker cannot cooperate
+    // in an unexpected death, so main clears the sink itself — BEFORE the
+    // kill: events::dispatch holds the sink lock across the callback
+    // invocation, so once unregister returns no in-flight dispatch can still
+    // reach the callable, and the kill below cannot race a delivery. Any
+    // dispatch thread still holding an open session from the dead worker now
+    // hits an empty sink and drops; the event-in-flight-at-the-instant-of-death
+    // residual race is documented as accepted (docs/ffi-abi.md "Async events").
+    unregisterEventSink();
     // Kill the worker: with errorsAreFatal:false an uncaught worker error is
     // reported but does NOT terminate the isolate, so without this the "dead"
     // worker would keep running and leak its FFI handles. Idempotent — the
@@ -220,19 +278,51 @@ class ZanshinWorker {
     _teardown();
   }
 
+  // Exit-port handler once the handshake is done: the exit event is the proof
+  // the isolate actually terminated (naturally, via the graceful-close
+  // backstop kill, or via _onWorkerDeath's kill).
+  void _onExitEvent() {
+    if (!_exited.isCompleted) {
+      _exited.complete();
+    }
+    if (_closed) {
+      // Graceful close (or post-death teardown already ran): finish the exit-
+      // port cleanup that _teardown deferred so this event could be observed.
+      _exitSub?.cancel().ignore();
+      _exitSub = null;
+      _exitPort.close();
+      return;
+    }
+    _onWorkerDeath(StateError('Worker isolate exited unexpectedly'));
+  }
+
   void _teardown() {
     // Cancel before closing ports; port close also ends subscriptions implicitly.
     _responseSub?.cancel().ignore();
-    _exitSub?.cancel().ignore();
+    _eventSub?.cancel().ignore();
     _errorSub?.cancel().ignore();
     _responseSub = null;
-    _exitSub = null;
+    _eventSub = null;
     _errorSub = null;
     _responsePort.close();
     _eventPort.close();
-    _exitPort.close();
     _errorPort.close();
+    _eventsController.close().ignore();
+    if (_exited.isCompleted) {
+      _exitSub?.cancel().ignore();
+      _exitSub = null;
+      _exitPort.close();
+    }
+    // else: _onExitEvent completes _exited on the isolate's exit event and
+    // closes the exit port itself — keeping it open until then is what lets
+    // tests observe that the isolate is actually gone (AC 15/15b).
   }
+
+  /// Watcher/progress events (Story 3.6), demuxed to `handleId` by the worker.
+  ///
+  /// Broadcast: subscribe any number of times. Completes when the worker
+  /// isolate shuts down (graceful [close] or unexpected death).
+  Stream<RepoEvent> get events => _eventsController.stream;
 
   // ── Typed command API ─────────────────────────────────────────────────────
 
@@ -309,17 +399,64 @@ class ZanshinWorker {
 
   /// Close the worker isolate and fail all in-flight commands.
   ///
-  /// Idempotent: subsequent calls are no-ops. Called by [ZanshinWorker] users
-  /// and (indirectly) by [RepoHandle]'s Dart [Finalizer].
-  void close() {
-    if (_closed) {
-      return;
+  /// Idempotent: repeated calls return the SAME in-progress future, so every
+  /// caller — including the app's `onExitRequested` hook — awaits actual
+  /// shutdown completion. Called by [ZanshinWorker] users and (indirectly) by
+  /// [RepoHandle]'s Dart [Finalizer].
+  ///
+  /// Runs the Story 3.6 graceful-shutdown protocol: sends a [ShutdownCommand]
+  /// the worker uses to close every open repo (joining each session's Rust
+  /// dispatch thread), unregister the event sink, and close its
+  /// `NativeCallable` — in that order, so no callback can ever fire after a
+  /// closed callable (`NativeCallable.listener`'s close-then-invoke clause is
+  /// undefined behaviour, api.dart.dev). Waits for the worker's ack up to
+  /// [_shutdownAckTimeout]; ack or timeout, [Isolate.kill] then runs
+  /// unconditionally as a backstop, exactly as before this story.
+  Future<void> close() {
+    final Future<void>? inProgress = _closeFuture;
+    if (inProgress != null) {
+      return inProgress;
     }
+    if (_closed) {
+      // _onWorkerDeath already tore everything down — nothing left to await.
+      return Future.value();
+    }
+    return _closeFuture = _doClose();
+  }
+
+  Future<void> _doClose() async {
     _closed = true;
-    _correlator.failAll(StateError('Worker is closed'));
+
+    // Sent directly (bypassing _sendCommand's now-true _closed guard) so the
+    // shutdown handshake itself isn't blocked by the flag it just set.
+    final int shutdownId = _correlator.allocateId();
+    final Future<WorkerResponse> ack = _correlator.register(shutdownId);
+    _commandPort.send(ShutdownCommand(commandId: shutdownId));
+    try {
+      await ack.timeout(_shutdownAckTimeout);
+    } catch (_) {
+      // Timeout, or the worker died mid-shutdown — the kill() backstop below
+      // covers both; there is nothing more to wait for.
+    }
+
     _isolate.kill(priority: Isolate.immediate);
+    // On the ack-timeout path the worker never processed ShutdownCommand: its
+    // sink is still registered and its sessions' dispatch threads still live —
+    // the killed isolate's callable must not stay reachable. Clear the sink
+    // from main (unconditional-clear is designed for exactly this any-isolate
+    // cleanup, AD-2 exemption); a no-op after a graceful ack.
+    unregisterEventSink();
+    _correlator.failAll(StateError('Worker is closed'));
     _teardown();
   }
+
+  /// Completes when the worker isolate's exit event has been observed — i.e.
+  /// the isolate is actually GONE, not merely marked closed.
+  ///
+  /// Test hook (AC 15/15b evidence): both the graceful [close] backstop and
+  /// [_onWorkerDeath] kill the isolate; the exit event is the observable proof.
+  @visibleForTesting
+  Future<void> get workerExited => _exited.future;
 
   /// Close the repository identified by [handleId] on the worker side.
   ///
@@ -457,9 +594,18 @@ class ZanshinWorker {
 /// Owns the handle table (`handleId → rawHandle`). Raw `*mut Repo` pointers
 /// are extracted from FFI envelopes here and never forwarded to main (Model A).
 ///
-/// [init] carries (bootstrapSP, responseSP, eventSP) as a positional record.
+/// [init] carries (bootstrapSP, responseSP, eventSP, failBeforeHandshake,
+/// throwAsyncErrorAfterHandshake) as a positional record; the last two are
+/// test-only fault-injection flags (AC 15a/15b), always false in production.
 void _workerEntry(_WorkerInit init) {
-  final (bootstrapSP, responseSP, _) = init; // eventSP reserved for Story 3.6
+  final (bootstrapSP, responseSP, eventSP, failBeforeHandshake, throwAsyncErrorAfterHandshake) = init;
+
+  if (failBeforeHandshake) {
+    // AC 15a regression test: a failure in the pre-handshake window (where
+    // registerEventSink now runs, below) must surface through start()'s
+    // existing death/timeout race instead of hanging forever.
+    throw StateError('failBeforeHandshake test injection');
+  }
 
   // Init log forwarding in the worker. zanshin_log is handle-free and
   // tracing's global subscriber is thread-safe (AR-P-5) — safe from any isolate.
@@ -467,13 +613,44 @@ void _workerEntry(_WorkerInit init) {
   final log = Logger('zanshin.worker.isolate');
 
   final commandPort = ReceivePort();
+
+  // Handle table: dense worker-side id → raw u64 (the Rust `*mut RepoSession`
+  // value), plus the reverse map for event demux (Story 3.6). Only this
+  // function ever extracts a raw pointer from an FFI envelope.
+  final Map<int, int> handles = {};
+  final Map<int, int> rawToId = {};
+  var nextHandleId = 0;
+
+  // Registration happens BEFORE the handshake send, so a registration
+  // failure surfaces through start()'s existing death/timeout race — this is
+  // the first worker-side init code that can fail (Story 3.9 review).
+  registerEventSink((raw) {
+    final int? id = rawToId[raw.repoHandle];
+    if (id == null) {
+      // Benign close race: the session closed (and left rawToId) between the
+      // Rust dispatch thread reading the event and this handler running.
+      // Known accepted gap (deferred-work.md, 3-6 review): a close → reopen
+      // can reuse the freed RepoSession's ADDRESS, so an event queued during
+      // the close window could instead map to the NEW repo's handleId here —
+      // harmless for coalescing-idempotent watcher events (one spurious
+      // refresh); revisit the correlation-id design (generation/session id)
+      // with Story 6-4a's first real Progress producer.
+      log.fine('Worker: event for unknown raw handle ${raw.repoHandle} — dropped');
+      return;
+    }
+    eventSP.send(_rawEventToRepoEvent(id, raw));
+  });
+
   // Handshake: send the command port back so main can start sending commands.
   bootstrapSP.send(commandPort.sendPort);
 
-  // Handle table: dense worker-side id → raw u64 (the Rust `*mut Repo` value).
-  // Only this function ever extracts a raw pointer from an FFI envelope.
-  final Map<int, int> handles = {};
-  var nextHandleId = 0;
+  if (throwAsyncErrorAfterHandshake) {
+    // AC 15b regression test: an uncaught async error after the handshake
+    // must NOT be silently swallowed — errorsAreFatal:false means the
+    // isolate itself keeps running, but main's error listener must fire and
+    // _onWorkerDeath must kill it (pending commands then fail via failAll).
+    scheduleMicrotask(() => throw StateError('throwAsyncErrorAfterHandshake test injection'));
+  }
 
   commandPort.listen((msg) {
     if (msg is! WorkerCommand) {
@@ -487,18 +664,19 @@ void _workerEntry(_WorkerInit init) {
       switch (msg) {
         case OpenRepoCommand(:final String path):
           final Uint8List bytes = repo_ffi.zanshinRepoOpen(path);
-          _replyRepoOp(bytes, commandId, handles, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
 
         case InitRepoCommand(:final String path, :final int backend):
           final Uint8List bytes = repo_ffi.zanshinRepoInit(path, backend);
-          _replyRepoOp(bytes, commandId, handles, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
 
         case CloneRepoCommand(:final String url, :final String targetPath):
           final Uint8List bytes = repo_ffi.zanshinRepoClone(url, targetPath);
-          _replyRepoOp(bytes, commandId, handles, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
 
         case CloseRepoCommand(:final int handleId):
           final int? raw = handles.remove(handleId);
+          rawToId.remove(raw);
           if (raw == null) {
             log.warning('Worker: CloseRepoCommand for unknown handleId $handleId');
             final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
@@ -606,7 +784,24 @@ void _workerEntry(_WorkerInit init) {
 
         case ConvertRepoCommand(:final String path):
           final Uint8List bytes = repo_ffi.zanshinRepoConvert(path);
-          _replyRepoOp(bytes, commandId, handles, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
+
+        case ShutdownCommand():
+          // Close every repo left open: each join()s its Rust dispatch thread
+          // (AC 8) before the loop below unregisters the sink. Best-effort —
+          // an individual close failure must not abort the shutdown.
+          for (final int raw in handles.values) {
+            try {
+              repo_ffi.zanshinRepoClose(raw);
+            } catch (e) {
+              log.warning('Worker: zanshinRepoClose failed during shutdown: $e');
+            }
+          }
+          handles.clear();
+          rawToId.clear();
+          closeEventSink();
+          responseSP.send((commandId, BufferResult(fbs.EnvelopeObjectBuilder(ok: true).toBytes())));
+          commandPort.close();
       }
     } catch (e, st) {
       log.warning('Worker: dispatch error for command $commandId: $e\n$st');
@@ -628,6 +823,7 @@ void _replyRepoOp(
   Uint8List bytes,
   int commandId,
   Map<int, int> handles,
+  Map<int, int> rawToId,
   SendPort responseSP,
   Logger log,
   int Function() nextId,
@@ -637,12 +833,27 @@ void _replyRepoOp(
     final int raw = (env.data as fbs.RepoHandle).handle;
     final int id = nextId();
     handles[id] = raw;
+    rawToId[raw] = id;
     log.fine('Worker: repo opened raw=$raw → handleId=$id');
     responseSP.send((commandId, HandleResult(id)));
   } else {
     responseSP.send((commandId, BufferResult(bytes)));
   }
 }
+
+/// Map a worker-decoded [ZanshinRawEvent] to the public [RepoEvent] sent to
+/// main, substituting the already-resolved `handleId` for the raw handle.
+RepoEvent _rawEventToRepoEvent(int handleId, ZanshinRawEvent raw) => switch (raw) {
+  RawOpHeadsChangedEvent(:final paths) => OpHeadsChangedEvent(handleId, paths),
+  RawWorkingCopyHeartbeatEvent(:final paths) => WorkingCopyHeartbeatEvent(handleId, paths),
+  RawWatchErrorEvent(:final message) => WatchErrorEvent(handleId, message),
+  RawProgressEvent(:final operation, :final progress, :final message) => ProgressEvent(
+    handleId,
+    operation,
+    progress,
+    message,
+  ),
+};
 
 ZanshinFfiException _envelopeToException(Uint8List bytes) {
   final env = fbs.Envelope(bytes);

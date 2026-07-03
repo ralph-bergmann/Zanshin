@@ -41,6 +41,11 @@ pub const JJ_ALREADY_JJ_REPO: &str = "jj.already_jj_repo";
 pub const JJ_NOT_A_GIT_REPO: &str = "jj.not_a_git_repo";
 /// AR-P-4: emitted by `repo.rs` when a jj-lib failure occurred during colocated conversion; detail in `context`.
 pub const JJ_CONVERT_FAILED: &str = "jj.convert_failed";
+/// AR-P-4: emitted by `repo.rs` when arming the filesystem watcher fails during
+/// open/init/clone/convert; detail in `context`. Story 3.5 → Reserved, Story 3.6 →
+/// Emitted (single-emission-point: post-arm watch errors ride the event stream
+/// as `WatcherEvent { kind: WatchError }`, never this code).
+pub const WATCHER_IO_ERROR: &str = "watcher.io_error";
 
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///
@@ -86,8 +91,8 @@ pub fn ok_empty() -> Vec<u8> {
 /// Build a success `Envelope` with a `RepoHandle` payload and return the finished buffer.
 ///
 /// Sets `ok = true`, `data_type = Payload::RepoHandle`, `data.handle = handle`.
-/// `handle` is the raw `*mut Repo` cast to `u64` via `handle_into_raw`; Dart stores it
-/// and passes it back verbatim to `zanshin_repo_close`.
+/// `handle` is the raw `*mut RepoSession` cast to `u64` via `handle_into_raw`; Dart
+/// stores it and passes it back verbatim to `zanshin_repo_close`.
 #[must_use]
 pub fn ok_repo_handle(handle: u64) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);

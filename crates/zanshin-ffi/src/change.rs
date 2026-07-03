@@ -11,12 +11,13 @@ use std::path::PathBuf;
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
-use zanshin_jj::{Change, ChangeError, ChangeId, ConflictState, Repo, Signature};
+use zanshin_jj::{Change, ChangeError, ChangeId, ConflictState, Signature};
 
 use crate::envelope::{catch, FfiErrorObj, FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_JJ_LIB_ERROR};
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
 use crate::handle::handle_from_raw;
+use crate::repo::RepoSession;
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
@@ -148,15 +149,17 @@ fn change_to_envelope(change: &Change) -> Vec<u8> {
 pub unsafe extern "C" fn zanshin_change(handle: u64, change_id: *const c_char) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_change", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from handle_into_raw (Box<Repo>);
-        // single-isolate model (AD-2) guarantees no concurrent access.
-        let repo = unsafe { handle_from_raw::<Repo>(handle as *mut Repo) }.ok_or_else(|| FfiErrorObj {
-            code: FFI_INVALID_HANDLE.to_owned(),
-            context: None,
-        })?;
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
         // SAFETY: change_id is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
-        let change = repo.get_change(&ChangeId(id)).map_err(map_change_err)?;
+        let change = session.repo.get_change(&ChangeId(id)).map_err(map_change_err)?;
         Ok(change_to_envelope(&change))
     });
     vec_into_token(buf)

@@ -38,7 +38,7 @@ class _WorkerLifecycleListener implements ProvisionListener<ZanshinWorker> {
     // is guaranteed to have run in main() before the component is created.
     AppLifecycleListener(
       onExitRequested: () async {
-        instance.close();
+        await instance.close();
         return AppExitResponse.exit;
       },
     );

@@ -10,6 +10,8 @@
 
 use core::ffi::c_char;
 use std::path::Path;
+use std::sync::mpsc::Receiver;
+use std::thread::{self, JoinHandle};
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
@@ -20,10 +22,13 @@ use zanshin_jj::{
 use crate::envelope::{
     catch, ok_empty, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
     JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
+use crate::events;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
-use crate::handle::handle_into_raw;
+use crate::handle::{handle_drop, handle_from_raw, handle_into_raw};
+use crate::watcher::{Watcher, WatcherError, WatcherEvent};
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
@@ -103,6 +108,132 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
+// ── RepoSession: warm loader + watcher owner (ADR-0002:34) ───────────────────
+
+/// Handle to an open jj repository plus its filesystem-watcher subsystem.
+///
+/// ADR-0002:34 defines the repo handle as a warm `Workspace` loader **and**
+/// the owner of the repo's op-heads watcher; this struct makes that literal.
+/// All four handle-producing wrappers (open/init/clone/convert) construct one
+/// via [`arm_session`]; the five read wrappers (`status.rs`, `change.rs`,
+/// `op_log.rs`, `bookmarks.rs`, `remotes.rs`) borrow `.repo`; `zanshin_repo_close`
+/// tears it down via [`RepoSession::close`]. Wire handles stay `u64` — no ABI
+/// change from this refactor.
+pub(crate) struct RepoSession {
+    pub(crate) repo: Repo,
+    // `Option` so `close()` can `take()` each for teardown (AC 8). Both are
+    // always `Some` for a session returned by `arm_session`.
+    watcher: Option<Watcher>,
+    dispatch: Option<JoinHandle<()>>,
+}
+
+impl RepoSession {
+    /// Tear down the watcher and its dispatch thread, in that order (AC 8):
+    /// `Watcher::stop()` joins the debouncer thread first (Story 3.5 chose
+    /// `stop()` over bare drop precisely so this is synchronous), which drops
+    /// the `SyncSender` and lets the dispatch thread's `recv()` loop see
+    /// disconnect and exit; joining it then blocks until that happens. After
+    /// this returns, no Rust thread for this repo can invoke the event sink.
+    fn close(&mut self) {
+        if let Some(watcher) = self.watcher.take() {
+            watcher.stop();
+        }
+        if let Some(dispatch) = self.dispatch.take() {
+            let _ = dispatch.join();
+        }
+    }
+}
+
+fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
+    FfiErrorObj {
+        code: WATCHER_IO_ERROR.to_owned(),
+        context: Some(e.to_string()),
+    }
+}
+
+/// Spawn the per-session dispatch thread (AC 7).
+///
+/// Blocking `recv()` loop: each [`WatcherEvent`] is serialised to a
+/// `FlatBuffers` `Envelope` tagged with `repo_handle` and forwarded to the
+/// process-global event sink. Exits on `RecvError` (the channel disconnected
+/// because the `Watcher` was stopped/dropped). Panic-proof: no
+/// `unwrap`/`expect` in the loop body, so nothing can unwind toward the
+/// `extern "C"` boundary.
+fn spawn_dispatch_thread(repo_handle: u64, rx: Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>> {
+    // WHY thread::Builder instead of thread::spawn: bare `spawn` PANICS on OS
+    // spawn failure — a panic source on an FFI-reachable path (forbidden); the
+    // Builder returns the error so arm_session can map it to watcher.io_error
+    // and reclaim the session instead of leaking it into catch_unwind.
+    thread::Builder::new()
+        .name("zanshin-event-dispatch".to_owned())
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                events::dispatch(events::watcher_event_to_envelope(repo_handle, &event));
+            }
+        })
+}
+
+/// Construct a [`RepoSession`] for `repo`, arm its filesystem watcher, and
+/// spawn the per-session dispatch thread — all before returning (AR-G-5:
+/// "watcher must start before the wrapper returns").
+///
+/// Returns the session's opaque `u64` handle on success. On watcher-arming
+/// failure the already-opened `repo` (and the just-allocated session box) are
+/// dropped — no leak — and the caller returns a `watcher.io_error` envelope
+/// with NO handle (OQ-1 strict-fail: a repo we can't watch does not open).
+fn arm_session(repo: Repo) -> Result<u64, FfiErrorObj> {
+    arm_session_with(repo, spawn_dispatch_thread)
+}
+
+/// [`arm_session`]'s body with the dispatch-thread spawner injected.
+///
+/// The seam exists solely so the spawn-failure arm is unit-testable (OS
+/// thread exhaustion cannot be forced in a test); production always goes
+/// through [`arm_session`] → [`spawn_dispatch_thread`].
+fn arm_session_with(
+    repo: Repo,
+    spawn: impl FnOnce(u64, Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>>,
+) -> Result<u64, FfiErrorObj> {
+    let repo_path = repo.workspace_root().to_path_buf();
+    let raw = handle_into_raw(RepoSession {
+        repo,
+        watcher: None,
+        dispatch: None,
+    });
+    let (watcher, rx) = match Watcher::new(&repo_path) {
+        Ok(pair) => pair,
+        Err(e) => {
+            // SAFETY: raw is the exact pointer handle_into_raw produced above
+            // and has not been shared with any other code; reclaiming it here
+            // is the sole owner's drop, so the just-opened repo is not leaked.
+            unsafe { handle_drop::<RepoSession>(raw) };
+            return Err(map_watcher_err(&e));
+        }
+    };
+    let dispatch = match spawn(raw as u64, rx) {
+        Ok(handle) => handle,
+        Err(e) => {
+            // Synchronous close (joins the debouncer thread) before reclaiming
+            // the session — mirrors RepoSession::close's teardown ordering.
+            watcher.stop();
+            // SAFETY: as above — sole-owner reclaim; the just-opened repo is
+            // not leaked (the epic's leak would otherwise hide in catch_unwind).
+            unsafe { handle_drop::<RepoSession>(raw) };
+            return Err(map_watcher_err(&WatcherError::Io(e)));
+        }
+    };
+    // SAFETY: `raw` was produced by handle_into_raw above and its POINTEE is
+    // exclusively owned by this function until the handle is returned: the
+    // dispatch thread only captured the address as a `u64` correlation id and
+    // never dereferences it, and no other code has seen the handle yet, so
+    // these writes cannot race a read.
+    unsafe {
+        (*raw).watcher = Some(watcher);
+        (*raw).dispatch = Some(dispatch);
+    }
+    Ok(raw as u64)
+}
+
 // ── extern "C" functions ──────────────────────────────────────────────────────
 
 /// Open an existing jj repository at `path`.
@@ -128,7 +259,7 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
         let repo = Repo::open(Path::new(&p)).map_err(map_repo_err)?;
-        let handle = handle_into_raw(repo) as u64;
+        let handle = arm_session(repo)?;
         Ok(ok_repo_handle(handle))
     });
     vec_into_token(buf)
@@ -166,7 +297,7 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
             }
         };
         let repo = Repo::init(Path::new(&p), backend_opt).map_err(map_repo_err)?;
-        let handle = handle_into_raw(repo) as u64;
+        let handle = arm_session(repo)?;
         Ok(ok_repo_handle(handle))
     });
     vec_into_token(buf)
@@ -194,7 +325,7 @@ pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *co
         let u = unsafe { cstr_to_string(url) }?;
         let t = unsafe { cstr_to_string(target_path) }?;
         let repo = Repo::clone(&u, Path::new(&t)).map_err(map_repo_err)?;
-        let handle = handle_into_raw(repo) as u64;
+        let handle = arm_session(repo)?;
         Ok(ok_repo_handle(handle))
     });
     vec_into_token(buf)
@@ -230,12 +361,18 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
                 context: None,
             });
         }
-        // SAFETY: handle is a non-zero value that originated from handle_into_raw in
-        // zanshin_repo_open/init/clone (a Box<Repo> leaked to Dart). The single-isolate
-        // model (AD-2) guarantees no concurrent access. The Dart worker removes the
-        // handleId mapping on close (Model A, Story 3.9), and the explicit close + Dart
-        // Finalizer backstop fire at most once, so a freed handle is not re-passed.
-        unsafe { crate::handle::handle_drop::<Repo>(handle as *mut Repo) };
+        // SAFETY: handle is a non-zero value that originated from arm_session's
+        // handle_into_raw in zanshin_repo_open/init/clone/convert (a Box<RepoSession>
+        // leaked to Dart). The single-isolate model (AD-2) guarantees no concurrent
+        // access. The Dart worker removes the handleId mapping on close (Model A,
+        // Story 3.9), and the explicit close + Dart Finalizer backstop fire at most
+        // once, so a freed handle is not re-passed. `close()` stops the watcher (joins
+        // the debouncer thread) and joins the dispatch thread (AC 8) before the
+        // reclaimed `Box<RepoSession>` — and the repo it owns — is dropped.
+        if let Some(session) = unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) } {
+            session.close();
+        }
+        unsafe { handle_drop::<RepoSession>(handle as *mut RepoSession) };
         Ok(ok_empty())
     });
     vec_into_token(buf)
@@ -308,7 +445,7 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
         let repo = convert_colocated(Path::new(&p)).map_err(map_repo_err)?;
-        Ok(ok_repo_handle(handle_into_raw(repo) as u64))
+        Ok(ok_repo_handle(arm_session(repo)?))
     });
     vec_into_token(buf)
 }
@@ -393,6 +530,73 @@ mod tests {
         });
         assert_eq!(e.code, JJ_NOT_A_GIT_REPO);
         assert!(e.context.unwrap().contains("/no/git/here"));
+    }
+
+    #[test]
+    fn map_watcher_err_io_maps_to_watcher_io_error() {
+        let e = map_watcher_err(&WatcherError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "missing",
+        )));
+        assert_eq!(e.code, crate::WATCHER_IO_ERROR);
+        assert!(e.context.unwrap().contains("missing"));
+    }
+
+    #[test]
+    fn map_watcher_err_notify_maps_to_watcher_io_error() {
+        let e = map_watcher_err(&WatcherError::Notify(notify_debouncer_full::notify::Error::generic(
+            "boom",
+        )));
+        assert_eq!(e.code, crate::WATCHER_IO_ERROR);
+        assert!(e.context.unwrap().contains("boom"));
+    }
+
+    // Pin JJ_CONFIG / GIT_CONFIG_GLOBAL so this module's real Repo::open call is
+    // hermetic (mirrors tests/repo_ffi.rs / tests/watcher.rs).
+    static ENV_GUARD: std::sync::LazyLock<()> = std::sync::LazyLock::new(|| {
+        // SAFETY: set once via LazyLock::force before any repo is opened; the
+        // single-init-before-use ordering is what makes this sound under
+        // cargo test's multi-threaded runner (mirrors tests/repo_ffi.rs).
+        unsafe {
+            std::env::set_var("JJ_CONFIG", "");
+            std::env::set_var("GIT_CONFIG_GLOBAL", "");
+        }
+    });
+
+    #[test]
+    fn arm_session_returns_watcher_io_error_when_checkout_missing_after_open() {
+        std::sync::LazyLock::force(&ENV_GUARD);
+        // AC 14's arming-failure test: deleting `.jj/working_copy/checkout`
+        // BEFORE zanshin_repo_open fails inside jj-lib's Workspace::load itself
+        // (jj.jj_lib_error, verified empirically) — Repo::open never even
+        // reaches arm_session. Per AC 14's explicit fallback ("if Repo::open
+        // itself refuses that state, fall back to unit-testing the arm-helper's
+        // error path directly"), sabotage AFTER a successful open instead: the
+        // repo is already loaded, but arm_session's Watcher::new(&repo_path)
+        // call still needs the checkout file to exist to arm the heartbeat watch.
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture must extract");
+        let repo = Repo::open(&fixture.path).expect("Repo::open must succeed while checkout exists");
+        std::fs::remove_file(fixture.path.join(".jj/working_copy/checkout"))
+            .expect("checkout file must exist to sabotage");
+
+        let err = arm_session(repo).expect_err("arm_session must fail when the checkout file is missing");
+        assert_eq!(err.code, crate::WATCHER_IO_ERROR);
+    }
+
+    #[test]
+    fn arm_session_with_failing_spawner_returns_watcher_io_error() {
+        std::sync::LazyLock::force(&ENV_GUARD);
+        // Covers the dispatch-thread spawn-failure arm (review patch,
+        // 2026-07-03): OS thread exhaustion cannot be forced in a test, so the
+        // failure is injected through arm_session_with's spawner seam. The
+        // session box + repo are reclaimed (sole-owner drop) and the error
+        // maps to watcher.io_error like every other arming failure.
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture must extract");
+        let repo = Repo::open(&fixture.path).expect("Repo::open must succeed");
+
+        let err = arm_session_with(repo, |_, _| Err(std::io::Error::other("injected: thread spawn failed")))
+            .expect_err("arm_session_with must fail when the spawner fails");
+        assert_eq!(err.code, crate::WATCHER_IO_ERROR);
     }
 
     #[test]

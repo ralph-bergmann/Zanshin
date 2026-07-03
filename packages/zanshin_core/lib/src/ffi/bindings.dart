@@ -86,6 +86,32 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function()>()
 external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
 
+/// Register `callback` as the process-global event sink.
+///
+/// Overwrites any previously registered callback — a worker restart
+/// re-registers, and the new callback simply replaces the old one. `None` is
+/// a defensive no-op (Dart never passes null in practice).
+///
+/// Infallible and `catch_unwind`-wrapped so no panic crosses the C ABI.
+/// Handle-free, so — like `zanshin_log` — it is exempt from the
+/// single-consumer rule (AD-2) and may be called from any isolate/thread.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ZanshinBuf> event)>>)>()
+external void zanshin_events_register(
+  ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ZanshinBuf> event)>> callback,
+);
+
+/// Clear the process-global event sink.
+///
+/// Unconditional and idempotent — there is no compare-and-clear against a
+/// specific callback pointer, because production has exactly one worker per
+/// process (documented in `docs/ffi-abi.md`). This lets the *main* isolate
+/// call it on unexpected worker death without knowing the dead worker's
+/// callback pointer.
+///
+/// Infallible and `catch_unwind`-wrapped; callable from any isolate/thread.
+@ffi.Native<ffi.Void Function()>()
+external void zanshin_events_unregister();
+
 /// Release a C string that was allocated by `string_to_cstring`.
 ///
 /// Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
@@ -307,7 +333,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 /// When the result is `Neither` or `PathNotFound` and a parent jj or Git repo exists,
 /// `RepoDetect.suggested_root` and `RepoDetect.suggested_kind` are set so the UI can
 /// offer the user a consent-gated "this folder is inside a {jj|Git} repo at <root>"
-/// suggestion. The backend never auto-opens — the user decides.
+/// suggestion. The backend never auto-opens — the user decides. The enclosing-repo
+/// walk stops at the `$HOME` ceiling, so a repo at or above `$HOME` is intentionally
+/// not surfaced as a suggestion.
 ///
 /// # Errors
 /// - `jj.detect_failed` — an I/O error (e.g. `EACCES`, `ENOTDIR`) prevented classification.
@@ -396,6 +424,10 @@ const int ENUM_MIN_REPO_KIND = 0;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
+const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
+
+const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
+
 const int FileChange_VT_PATH = 4;
 
 const int FileChange_VT_KIND = 6;
@@ -463,3 +495,13 @@ const int Remotes_VT_REMOTES = 4;
 const int RepoDetect_VT_SUGGESTED_ROOT = 6;
 
 const int RepoDetect_VT_SUGGESTED_KIND = 8;
+
+const int WatcherEvent_VT_REPO_HANDLE = 4;
+
+const int WatcherEvent_VT_PATHS = 8;
+
+const int WatcherEvent_VT_MESSAGE = 10;
+
+const int Progress_VT_OPERATION = 6;
+
+const int Progress_VT_PROGRESS = 8;

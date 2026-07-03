@@ -28,6 +28,10 @@
 
 #define ENUM_MAX_REPO_KIND 3
 
+#define ENUM_MIN_WATCHER_EVENT_KIND 0
+
+#define ENUM_MAX_WATCHER_EVENT_KIND 2
+
 /**
  * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
  * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
@@ -107,6 +111,16 @@ typedef struct {
 
 #define RepoDetect_VT_SUGGESTED_KIND 8
 
+#define WatcherEvent_VT_REPO_HANDLE 4
+
+#define WatcherEvent_VT_PATHS 8
+
+#define WatcherEvent_VT_MESSAGE 10
+
+#define Progress_VT_OPERATION 6
+
+#define Progress_VT_PROGRESS 8
+
 /**
  * Build-stamp version string.
  *
@@ -184,6 +198,32 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_diagnostics(void);
+
+/**
+ * Register `callback` as the process-global event sink.
+ *
+ * Overwrites any previously registered callback — a worker restart
+ * re-registers, and the new callback simply replaces the old one. `None` is
+ * a defensive no-op (Dart never passes null in practice).
+ *
+ * Infallible and `catch_unwind`-wrapped so no panic crosses the C ABI.
+ * Handle-free, so — like `zanshin_log` — it is exempt from the
+ * single-consumer rule (AD-2) and may be called from any isolate/thread.
+ */
+void zanshin_events_register(void (*callback)(ZanshinBuf *event));
+
+/**
+ * Clear the process-global event sink.
+ *
+ * Unconditional and idempotent — there is no compare-and-clear against a
+ * specific callback pointer, because production has exactly one worker per
+ * process (documented in `docs/ffi-abi.md`). This lets the *main* isolate
+ * call it on unexpected worker death without knowing the dead worker's
+ * callback pointer.
+ *
+ * Infallible and `catch_unwind`-wrapped; callable from any isolate/thread.
+ */
+void zanshin_events_unregister(void);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.
@@ -392,7 +432,9 @@ ZanshinBuf *zanshin_repo_close(uint64_t handle);
  * When the result is `Neither` or `PathNotFound` and a parent jj or Git repo exists,
  * `RepoDetect.suggested_root` and `RepoDetect.suggested_kind` are set so the UI can
  * offer the user a consent-gated "this folder is inside a {jj|Git} repo at <root>"
- * suggestion. The backend never auto-opens — the user decides.
+ * suggestion. The backend never auto-opens — the user decides. The enclosing-repo
+ * walk stops at the `$HOME` ceiling, so a repo at or above `$HOME` is intentionally
+ * not surfaced as a suggestion.
  *
  * # Errors
  * - `jj.detect_failed` — an I/O error (e.g. `EACCES`, `ENOTDIR`) prevented classification.

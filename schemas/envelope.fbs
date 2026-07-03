@@ -34,12 +34,13 @@ table FfiError {
 //   Story 3-4a : RepoHandle  ✓
 //   Story 3-8  : Diagnostics ✓
 //   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes ✓
+//   Story 3-6  : WatcherEvent ✓, Progress ✓
 //   Story 4-6  : GraphSlice
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
 
-/// Opaque handle to an open Repo.
-/// `handle` is the Rust `*mut Repo` reinterpreted as an unsigned integer;
+/// Opaque handle to an open repo session.
+/// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 /// Dart passes it back verbatim to zanshin_repo_close.
 table RepoHandle {
   handle: ulong;
@@ -166,6 +167,34 @@ table RepoDetect {
   suggested_kind: RepoKind;
 }
 
+/// Kind of async watcher event dispatched over the process-global event sink
+/// (FR-FFI-4, FR-RX-1). `WatchError` is a degraded-watch signal, not a failed
+/// call — the event Envelope's `ok` is always true (R5, single-emission-point:
+/// the `watcher.io_error` code string is reserved for the arming-failure error
+/// envelope at open/init/clone/convert).
+enum WatcherEventKind : byte { OpHeadsChanged, WorkingCopyHeartbeat, WatchError }
+
+/// One filesystem-watch event for the repo identified by `repo_handle`
+/// (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+/// `paths` is absent for `WatchError`; `message` is set only for `WatchError`
+/// (null-for-absence).
+table WatcherEvent {
+  repo_handle: uint64;
+  kind: WatcherEventKind;
+  paths: [string];
+  message: string;
+}
+
+/// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
+/// fetch` (producer lands in Story 6-4a). Dispatched over the same
+/// process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+table Progress {
+  repo_handle: uint64;
+  operation: string;
+  progress: float;
+  message: string;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -175,6 +204,8 @@ union Payload {
   Bookmarks,
   Remotes,
   RepoDetect,
+  WatcherEvent,
+  Progress,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

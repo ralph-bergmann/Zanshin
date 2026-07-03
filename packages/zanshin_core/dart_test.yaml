@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+
+# WHY concurrency: 1 — Story 3.6's process-global event sink is a native
+# (Rust) static, shared by every isolate in this VM process (native library
+# statics are per-process, not per-isolate). `dart test` runs test FILES as
+# concurrent isolates by default; several files start their own ZanshinWorker,
+# and each worker's registerEventSink call clobbers the ONE sink slot
+# (last-registration-wins) — a suite running concurrently with the events
+# suite would steal its callback mid-test, or vice versa. Production is
+# unaffected: exactly one worker per process (see docs/ffi-abi.md).
+concurrency: 1

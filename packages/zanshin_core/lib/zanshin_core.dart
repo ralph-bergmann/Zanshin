@@ -9,5 +9,7 @@ library;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
+export 'src/worker/events.dart'
+    show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
 export 'src/worker/isolate.dart' show ZanshinWorker;
 export 'src/worker/worker_module.dart' show WorkerModule;
