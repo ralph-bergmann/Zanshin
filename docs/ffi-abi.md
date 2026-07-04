@@ -125,7 +125,9 @@ workspace. The Dart worker stores the raw handle in its Model-A handle table
 
 ```
 RepoHandle {
-  handle: uint64   // raw *mut RepoSession reinterpreted as u64; opaque to Dart
+  handle:     uint64   // raw *mut RepoSession reinterpreted as u64; opaque to Dart
+  session_id: uint64   // process-unique event-correlation id (never reused);
+                       // async events carry it — see "Correlation and demux"
 }
 ```
 
@@ -271,14 +273,14 @@ envelopes are always `ok == true`.
 enum WatcherEventKind : byte { OpHeadsChanged, WorkingCopyHeartbeat, WatchError }
 
 WatcherEvent {
-  repo_handle: uint64          // correlation id — the same u64 the Dart worker holds
+  session_id:  uint64          // correlation id — process-unique, never reused
   kind:        WatcherEventKind
   paths:       [string]?       // absent for WatchError (null-for-absence)
   message:     string?         // set only for WatchError
 }
 
 Progress {
-  repo_handle: uint64          // same correlation id; first real producer is Story 6-4a
+  session_id:  uint64          // same correlation id; first real producer is Story 6-4a
   operation:   string          // e.g. "fetch"
   progress:    float           // ∈ [0, 1]
   message:     string
@@ -290,19 +292,26 @@ carries the `watcher.io_error` code string (single-emission-point rule).
 
 ### Correlation and demux
 
-Events carry the **raw** `repo_handle` — the same `*mut RepoSession`-derived
-`u64` the worker's Model-A table already maps to a small dense `handleId`.
-The worker's `_onNativeEvent`/`onEvent` handler looks up `rawToId[repoHandle]`
-to recover the `handleId` before constructing the public `RepoEvent` sent to
-main; an unknown raw handle (a benign close race) is logged and dropped, never
-thrown. Raw pointers still never reach the main isolate (Model A holds).
+Events carry the session's **`session_id`** — a process-unique `u64` allocated
+from a monotonic counter when the session is armed (starts at 1; 0 is never
+issued) and returned to the worker alongside the raw handle in the `RepoHandle`
+payload (`RepoHandle { handle, session_id }`). The worker's
+`_onNativeEvent`/`onEvent` handler looks up `sessionToId[sessionId]` to recover
+the small dense `handleId` before constructing the public `RepoEvent` sent to
+main; an unknown session id (a benign close race) is logged and dropped, never
+thrown. Raw pointers still never reach the main isolate (Model A holds), and
+the raw handle is used only for calls back INTO the cdylib
+(`zanshin_repo_close`, read wrappers).
 
-**Known accepted gap — raw-pointer ABA** (deferred-work.md, 3-6 review): a
-close → reopen can reuse the freed `RepoSession`'s allocation address, so an
-event queued during the close window could map to the NEW repo's `handleId`.
-Harmless for coalescing-idempotent watcher events (one spurious refresh); the
-correlation-id design (generation/session id) is revisited with Story 6-4a's
-first real `Progress` producer.
+**Resolved (2026-07-04) — raw-pointer ABA** (formerly a known accepted gap,
+3-6 review): events used to carry the raw `*mut RepoSession`-derived `u64`; a
+close → reopen could reuse the freed allocation's address, so a stale event
+queued during the close window could be misattributed to the NEW repo's
+`handleId` (first observed in the wild as a load-induced flake of the 3.6
+two-repos isolation test, 2026-07-03). Session ids are never reused, so a
+stale event can now only be dropped — never misattributed. Pulled forward
+from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
+`Progress` producer inherits the same correlation id.
 
 ### Dart worker integration
 

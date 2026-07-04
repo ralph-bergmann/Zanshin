@@ -93,7 +93,9 @@ fn cstr(s: &str) -> CString {
     CString::new(s).expect("CString::new must not fail for a non-null string")
 }
 
-fn open_handle(path: &Path) -> u64 {
+/// Open `path` and return `(handle, session_id)`: the raw close-handle plus
+/// the process-unique session id events carry as their correlation id.
+fn open_handle(path: &Path) -> (u64, u64) {
     let p = cstr(path.to_str().expect("fixture path must be UTF-8"));
     // SAFETY: p is a valid NUL-terminated C string alive for the call.
     let token = unsafe { zanshin_repo_open(p.as_ptr()) };
@@ -101,9 +103,8 @@ fn open_handle(path: &Path) -> u64 {
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "expected ok, error: {:?}", env.error().and_then(|e| e.code()));
-    env.data_as_repo_handle()
-        .expect("RepoHandle payload must be present")
-        .handle()
+    let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
+    (rh.handle(), rh.session_id())
 }
 
 fn close_handle(handle: u64) {
@@ -116,15 +117,15 @@ fn close_handle(handle: u64) {
 }
 
 /// Poll `RECEIVED`, accumulating every event observed into `into`, until a
-/// `WatcherEvent` matching `(handle, kind)` is found or `timeout` elapses.
+/// `WatcherEvent` matching `(session_id, kind)` is found or `timeout` elapses.
 /// Returns whether it was found. Non-matching events are preserved in `into`
 /// (not discarded), so callers can also assert on absence — e.g. "no event
-/// carried a *different* handle" — without a second, racy drain pass.
+/// carried a *different* session" — without a second, racy drain pass.
 ///
 /// Generous timeout: this asserts *arrival*, never a tight latency bound (R7).
 fn collect_until_watcher_event(
     into: &mut Vec<Vec<u8>>,
-    handle: u64,
+    session_id: u64,
     kind: fbs::WatcherEventKind,
     timeout: Duration,
 ) -> bool {
@@ -133,7 +134,7 @@ fn collect_until_watcher_event(
         for bytes in drain_received() {
             let is_match = parse_envelope(&bytes)
                 .data_as_watcher_event()
-                .is_some_and(|p| p.repo_handle() == handle && p.kind() == kind);
+                .is_some_and(|p| p.session_id() == session_id && p.kind() == kind);
             into.push(bytes);
             if is_match {
                 return true;
@@ -164,7 +165,7 @@ fn event_arrives_on_op_heads_change() {
     zanshin_events_register(Some(test_sink));
 
     let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
-    let handle = open_handle(&fixture.path);
+    let (handle, session_id) = open_handle(&fixture.path);
 
     // AR-G-5 ordering evidence (AC 16): this touch happens IMMEDIATELY after
     // open_handle returns — no sleep between open-return and mutation. The
@@ -179,11 +180,11 @@ fn event_arrives_on_op_heads_change() {
     let mut events = Vec::new();
     let found = collect_until_watcher_event(
         &mut events,
-        handle,
+        session_id,
         fbs::WatcherEventKind::OpHeadsChanged,
         Duration::from_secs(5),
     );
-    assert!(found, "expected an OpHeadsChanged event for handle {handle}");
+    assert!(found, "expected an OpHeadsChanged event for session {session_id}");
 
     close_handle(handle);
     zanshin_events_unregister();
@@ -202,22 +203,22 @@ fn two_repos_open_touching_one_dispatches_only_its_handle() {
 
     let fixture_a = extract_fixture("tiny-3-commits").expect("fixture must extract");
     let fixture_b = extract_fixture("tiny-3-commits").expect("fixture must extract");
-    let handle_a = open_handle(&fixture_a.path);
-    let handle_b = open_handle(&fixture_b.path);
+    let (handle_a, session_a) = open_handle(&fixture_a.path);
+    let (handle_b, session_b) = open_handle(&fixture_b.path);
 
     fs::write(heads_dir(&fixture_a.path).join("test_event"), b"").unwrap();
 
     let mut events = Vec::new();
     let found = collect_until_watcher_event(
         &mut events,
-        handle_a,
+        session_a,
         fbs::WatcherEventKind::OpHeadsChanged,
         Duration::from_secs(5),
     );
-    assert!(found, "expected an OpHeadsChanged event for handle_a ({handle_a})");
+    assert!(found, "expected an OpHeadsChanged event for session_a ({session_a})");
 
     // Give any stray repo-B event a little extra time to (not) show up; a
-    // deliberately-unreachable target handle just extends the accumulation
+    // deliberately-unreachable target session just extends the accumulation
     // window without waiting for the full timeout.
     collect_until_watcher_event(
         &mut events,
@@ -230,9 +231,9 @@ fn two_repos_open_touching_one_dispatches_only_its_handle() {
         !events.iter().any(|bytes| {
             parse_envelope(bytes)
                 .data_as_watcher_event()
-                .is_some_and(|p| p.repo_handle() == handle_b)
+                .is_some_and(|p| p.session_id() == session_b)
         }),
-        "repo B was never touched — no event should carry repo_handle == handle_b ({handle_b})"
+        "repo B was never touched — no event should carry session_id == session_b ({session_b})"
     );
 
     close_handle(handle_a);
@@ -252,13 +253,13 @@ fn close_stops_further_dispatch() {
     zanshin_events_register(Some(test_sink));
 
     let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
-    let handle = open_handle(&fixture.path);
+    let (handle, session_id) = open_handle(&fixture.path);
 
     fs::write(heads_dir(&fixture.path).join("before_close"), b"").unwrap();
     let mut events = Vec::new();
     let found = collect_until_watcher_event(
         &mut events,
-        handle,
+        session_id,
         fbs::WatcherEventKind::OpHeadsChanged,
         Duration::from_secs(5),
     );
@@ -274,7 +275,7 @@ fn close_stops_further_dispatch() {
     std::thread::sleep(Duration::from_millis(500));
     assert!(
         received_lock().is_empty(),
-        "no event should be dispatched for handle {handle} after close() returns"
+        "no event should be dispatched for session {session_id} after close() returns"
     );
 
     zanshin_events_unregister();

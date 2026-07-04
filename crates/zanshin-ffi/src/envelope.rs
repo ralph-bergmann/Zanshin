@@ -90,13 +90,16 @@ pub fn ok_empty() -> Vec<u8> {
 
 /// Build a success `Envelope` with a `RepoHandle` payload and return the finished buffer.
 ///
-/// Sets `ok = true`, `data_type = Payload::RepoHandle`, `data.handle = handle`.
+/// Sets `ok = true`, `data_type = Payload::RepoHandle`, `data.handle = handle`,
+/// `data.session_id = session_id`.
 /// `handle` is the raw `*mut RepoSession` cast to `u64` via `handle_into_raw`; Dart
-/// stores it and passes it back verbatim to `zanshin_repo_close`.
+/// stores it and passes it back verbatim to `zanshin_repo_close`. `session_id` is
+/// the process-unique, never-reused id async events carry as their correlation id
+/// (the raw address is ABA-unsafe across close→reopen; the session id is not).
 #[must_use]
-pub fn ok_repo_handle(handle: u64) -> Vec<u8> {
+pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
-    let h = fbs::RepoHandle::create(&mut b, &fbs::RepoHandleArgs { handle });
+    let h = fbs::RepoHandle::create(&mut b, &fbs::RepoHandleArgs { handle, session_id });
     let envelope = fbs::Envelope::create(
         &mut b,
         &fbs::EnvelopeArgs {
@@ -236,13 +239,14 @@ mod tests {
 
     #[test]
     fn ok_repo_handle_produces_repo_handle_envelope() {
-        let buf = ok_repo_handle(0xdead_beef_cafe_1234);
+        let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7);
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert!(env.error().is_none());
         assert_eq!(env.data_type(), fbs::Payload::RepoHandle);
         let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
         assert_eq!(rh.handle(), 0xdead_beef_cafe_1234);
+        assert_eq!(rh.session_id(), 7);
     }
 
     #[test]

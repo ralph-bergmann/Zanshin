@@ -365,6 +365,11 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
 ///  Opaque handle to an open repo session.
 ///  `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 ///  Dart passes it back verbatim to zanshin_repo_close.
+///  `session_id` is a process-unique, never-reused id allocated when the session
+///  is armed; async events (WatcherEvent/Progress) carry it as their correlation
+///  id. Unlike `handle` (an allocation address that a close→reopen can reuse —
+///  the rawToId ABA race, resolved 2026-07-04), a session id can never be
+///  misattributed to a later session.
 class RepoHandle {
   RepoHandle._(this._bc, this._bcOffset);
   factory RepoHandle(List<int> bytes) {
@@ -378,10 +383,11 @@ class RepoHandle {
   final int _bcOffset;
 
   int get handle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get sessionId => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
 
   @override
   String toString() {
-    return 'RepoHandle{handle: ${handle}}';
+    return 'RepoHandle{handle: ${handle}, sessionId: ${sessionId}}';
   }
 }
 
@@ -398,11 +404,16 @@ class RepoHandleBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
   }
 
   int addHandle(int? handle) {
     fbBuilder.addUint64(0, handle);
+    return fbBuilder.offset;
+  }
+
+  int addSessionId(int? sessionId) {
+    fbBuilder.addUint64(1, sessionId);
     return fbBuilder.offset;
   }
 
@@ -413,16 +424,20 @@ class RepoHandleBuilder {
 
 class RepoHandleObjectBuilder extends fb.ObjectBuilder {
   final int? _handle;
+  final int? _sessionId;
 
   RepoHandleObjectBuilder({
     int? handle,
-  }) : _handle = handle;
+    int? sessionId,
+  }) : _handle = handle,
+       _sessionId = sessionId;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
     fbBuilder.addUint64(0, _handle);
+    fbBuilder.addUint64(1, _sessionId);
     return fbBuilder.endTable();
   }
 
@@ -1681,8 +1696,10 @@ class RepoDetectObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One filesystem-watch event for the repo identified by `repo_handle`
-///  (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+///  One filesystem-watch event for the repo identified by `session_id`
+///  (ADR-0002:57 correlation id, refined 2026-07-04: the process-unique
+///  session id from `RepoHandle.session_id` — NOT the raw handle, whose
+///  allocation address a close→reopen can reuse).
 ///  `paths` is absent for `WatchError`; `message` is set only for `WatchError`
 ///  (null-for-absence).
 class WatcherEvent {
@@ -1697,14 +1714,14 @@ class WatcherEvent {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  int get repoHandle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get sessionId => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
   WatcherEventKind get kind => WatcherEventKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
   List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'WatcherEvent{repoHandle: ${repoHandle}, kind: ${kind}, paths: ${paths}, message: ${message}}';
+    return 'WatcherEvent{sessionId: ${sessionId}, kind: ${kind}, paths: ${paths}, message: ${message}}';
   }
 }
 
@@ -1724,8 +1741,8 @@ class WatcherEventBuilder {
     fbBuilder.startTable(4);
   }
 
-  int addRepoHandle(int? repoHandle) {
-    fbBuilder.addUint64(0, repoHandle);
+  int addSessionId(int? sessionId) {
+    fbBuilder.addUint64(0, sessionId);
     return fbBuilder.offset;
   }
 
@@ -1750,17 +1767,17 @@ class WatcherEventBuilder {
 }
 
 class WatcherEventObjectBuilder extends fb.ObjectBuilder {
-  final int? _repoHandle;
+  final int? _sessionId;
   final WatcherEventKind? _kind;
   final List<String>? _paths;
   final String? _message;
 
   WatcherEventObjectBuilder({
-    int? repoHandle,
+    int? sessionId,
     WatcherEventKind? kind,
     List<String>? paths,
     String? message,
-  }) : _repoHandle = repoHandle,
+  }) : _sessionId = sessionId,
        _kind = kind,
        _paths = paths,
        _message = message;
@@ -1771,7 +1788,7 @@ class WatcherEventObjectBuilder extends fb.ObjectBuilder {
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
     final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
     fbBuilder.startTable(4);
-    fbBuilder.addUint64(0, _repoHandle);
+    fbBuilder.addUint64(0, _sessionId);
     fbBuilder.addInt8(1, _kind?.value);
     fbBuilder.addOffset(2, pathsOffset);
     fbBuilder.addOffset(3, messageOffset);
@@ -1789,7 +1806,8 @@ class WatcherEventObjectBuilder extends fb.ObjectBuilder {
 
 ///  Progress notification for a long-running operation (FR-FFI-8), e.g. `git
 ///  fetch` (producer lands in Story 6-4a). Dispatched over the same
-///  process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+///  process-global event sink as `WatcherEvent`, correlated by `session_id`
+///  (same never-reused id as WatcherEvent — see RepoHandle.session_id).
 class Progress {
   Progress._(this._bc, this._bcOffset);
   factory Progress(List<int> bytes) {
@@ -1802,14 +1820,14 @@ class Progress {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  int get repoHandle => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get sessionId => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
   String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   double get progress => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 8, 0.0);
   String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'Progress{repoHandle: ${repoHandle}, operation: ${operation}, progress: ${progress}, message: ${message}}';
+    return 'Progress{sessionId: ${sessionId}, operation: ${operation}, progress: ${progress}, message: ${message}}';
   }
 }
 
@@ -1829,8 +1847,8 @@ class ProgressBuilder {
     fbBuilder.startTable(4);
   }
 
-  int addRepoHandle(int? repoHandle) {
-    fbBuilder.addUint64(0, repoHandle);
+  int addSessionId(int? sessionId) {
+    fbBuilder.addUint64(0, sessionId);
     return fbBuilder.offset;
   }
 
@@ -1855,17 +1873,17 @@ class ProgressBuilder {
 }
 
 class ProgressObjectBuilder extends fb.ObjectBuilder {
-  final int? _repoHandle;
+  final int? _sessionId;
   final String? _operation;
   final double? _progress;
   final String? _message;
 
   ProgressObjectBuilder({
-    int? repoHandle,
+    int? sessionId,
     String? operation,
     double? progress,
     String? message,
-  }) : _repoHandle = repoHandle,
+  }) : _sessionId = sessionId,
        _operation = operation,
        _progress = progress,
        _message = message;
@@ -1876,7 +1894,7 @@ class ProgressObjectBuilder extends fb.ObjectBuilder {
     final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
     final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
     fbBuilder.startTable(4);
-    fbBuilder.addUint64(0, _repoHandle);
+    fbBuilder.addUint64(0, _sessionId);
     fbBuilder.addOffset(1, operationOffset);
     fbBuilder.addFloat32(2, _progress);
     fbBuilder.addOffset(3, messageOffset);

@@ -20,15 +20,18 @@ final _log = Logger('zanshin.ffi.events');
 ///
 /// [RepoEvent]: package:zanshin_core/src/worker/events.dart
 sealed class ZanshinRawEvent {
-  const ZanshinRawEvent(this.repoHandle);
+  const ZanshinRawEvent(this.sessionId);
 
-  /// The raw `*mut RepoSession` value, as held by the worker's handle table.
-  final int repoHandle;
+  /// The process-unique session id allocated when the session was armed —
+  /// the event-correlation id. Never reused, so unlike the raw handle's
+  /// allocation address it can never be misattributed to a later session
+  /// (rawToId ABA, resolved 2026-07-04).
+  final int sessionId;
 }
 
 /// One or more files changed under `.jj/repo/op_heads/heads/`.
 final class RawOpHeadsChangedEvent extends ZanshinRawEvent {
-  const RawOpHeadsChangedEvent(super.repoHandle, this.paths);
+  const RawOpHeadsChangedEvent(super.sessionId, this.paths);
 
   /// Paths that changed.
   final List<String> paths;
@@ -36,7 +39,7 @@ final class RawOpHeadsChangedEvent extends ZanshinRawEvent {
 
 /// The working-copy checkout file changed (heartbeat).
 final class RawWorkingCopyHeartbeatEvent extends ZanshinRawEvent {
-  const RawWorkingCopyHeartbeatEvent(super.repoHandle, this.paths);
+  const RawWorkingCopyHeartbeatEvent(super.sessionId, this.paths);
 
   /// Paths that changed.
   final List<String> paths;
@@ -45,7 +48,7 @@ final class RawWorkingCopyHeartbeatEvent extends ZanshinRawEvent {
 /// The filesystem-watch subsystem encountered an error (degraded watch, not a
 /// failed call — see `docs/rust-error-codes.md`'s `watcher.io_error` note).
 final class RawWatchErrorEvent extends ZanshinRawEvent {
-  const RawWatchErrorEvent(super.repoHandle, this.message);
+  const RawWatchErrorEvent(super.sessionId, this.message);
 
   /// Human-readable error description.
   final String message;
@@ -53,7 +56,7 @@ final class RawWatchErrorEvent extends ZanshinRawEvent {
 
 /// Progress notification for a long-running operation (FR-FFI-8).
 final class RawProgressEvent extends ZanshinRawEvent {
-  const RawProgressEvent(super.repoHandle, this.operation, this.progress, this.message);
+  const RawProgressEvent(super.sessionId, this.operation, this.progress, this.message);
 
   /// The operation name, e.g. `"fetch"`.
   final String operation;
@@ -77,16 +80,16 @@ ZanshinRawEvent decodeEventEnvelope(Uint8List bytes) {
   final Object? payload = env.data;
   if (payload is fbs.WatcherEvent) {
     return switch (payload.kind) {
-      fbs.WatcherEventKind.OpHeadsChanged => RawOpHeadsChangedEvent(payload.repoHandle, payload.paths ?? const []),
+      fbs.WatcherEventKind.OpHeadsChanged => RawOpHeadsChangedEvent(payload.sessionId, payload.paths ?? const []),
       fbs.WatcherEventKind.WorkingCopyHeartbeat => RawWorkingCopyHeartbeatEvent(
-        payload.repoHandle,
+        payload.sessionId,
         payload.paths ?? const [],
       ),
-      fbs.WatcherEventKind.WatchError => RawWatchErrorEvent(payload.repoHandle, payload.message ?? ''),
+      fbs.WatcherEventKind.WatchError => RawWatchErrorEvent(payload.sessionId, payload.message ?? ''),
     };
   }
   if (payload is fbs.Progress) {
-    return RawProgressEvent(payload.repoHandle, payload.operation ?? '', payload.progress, payload.message ?? '');
+    return RawProgressEvent(payload.sessionId, payload.operation ?? '', payload.progress, payload.message ?? '');
   }
   throw ZanshinFfiException('ffi.unknown', 'expected WatcherEvent or Progress payload, got ${env.dataType}');
 }

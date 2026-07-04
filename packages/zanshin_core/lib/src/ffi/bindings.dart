@@ -428,6 +428,8 @@ const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
+const int RepoHandle_VT_SESSION_ID = 6;
+
 const int FileChange_VT_PATH = 4;
 
 const int FileChange_VT_KIND = 6;
@@ -495,8 +497,6 @@ const int Remotes_VT_REMOTES = 4;
 const int RepoDetect_VT_SUGGESTED_ROOT = 6;
 
 const int RepoDetect_VT_SUGGESTED_KIND = 8;
-
-const int WatcherEvent_VT_REPO_HANDLE = 4;
 
 const int WatcherEvent_VT_PATHS = 8;
 

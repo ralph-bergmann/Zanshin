@@ -115,14 +115,17 @@ pub(crate) fn dispatch(event_bytes: Vec<u8>) {
 }
 
 /// Serialise a [`WatcherEvent`] into a finished `Envelope<WatcherEvent>` buffer,
-/// tagged with `repo_handle` for Dart-side demux (ADR-0002:57).
+/// tagged with the session's process-unique `session_id` for Dart-side demux
+/// (ADR-0002:57, refined 2026-07-04: session id instead of the ABA-unsafe raw
+/// handle — a close→reopen can reuse the freed session's allocation address;
+/// a monotonic session id can never be misattributed to a later session).
 ///
 /// Always `ok == true` — a degraded watch (`WatchError`) is data, not a
 /// failed call; the `watcher.io_error` error code is reserved exclusively for
 /// the arming-failure error envelope returned by `zanshin_repo_open`/`_init`/
 /// `_clone`/`_convert` (single-emission-point rule).
 #[must_use]
-pub(crate) fn watcher_event_to_envelope(repo_handle: u64, event: &WatcherEvent) -> Vec<u8> {
+pub(crate) fn watcher_event_to_envelope(session_id: u64, event: &WatcherEvent) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let (kind, paths_off, message_off) = match event {
         WatcherEvent::OpHeadsChanged { paths } => {
@@ -148,7 +151,7 @@ pub(crate) fn watcher_event_to_envelope(repo_handle: u64, event: &WatcherEvent) 
     let watcher_event = fbs::WatcherEvent::create(
         &mut b,
         &fbs::WatcherEventArgs {
-            repo_handle,
+            session_id,
             kind,
             paths: paths_off,
             message: message_off,
@@ -168,7 +171,8 @@ pub(crate) fn watcher_event_to_envelope(repo_handle: u64, event: &WatcherEvent) 
 }
 
 /// Serialise a progress notification (FR-FFI-8) into a finished
-/// `Envelope<Progress>` buffer, tagged with `repo_handle` for Dart-side demux.
+/// `Envelope<Progress>` buffer, tagged with the session's `session_id` for
+/// Dart-side demux (same ABA-safe correlation id as `WatcherEvent`).
 ///
 /// No real producer exists yet — Story 6-4a's `git fetch` is the first —
 /// this builder + the decode path are proven by unit/Dart tests only.
@@ -179,14 +183,14 @@ pub(crate) fn watcher_event_to_envelope(repo_handle: u64, event: &WatcherEvent) 
 // count toward the non-test build's dead-code analysis.
 #[allow(dead_code)]
 #[must_use]
-pub(crate) fn progress_to_envelope(repo_handle: u64, operation: &str, progress: f32, message: &str) -> Vec<u8> {
+pub(crate) fn progress_to_envelope(session_id: u64, operation: &str, progress: f32, message: &str) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let operation_off = b.create_string(operation);
     let message_off = b.create_string(message);
     let progress_table = fbs::Progress::create(
         &mut b,
         &fbs::ProgressArgs {
-            repo_handle,
+            session_id,
             operation: Some(operation_off),
             progress,
             message: Some(message_off),
@@ -301,7 +305,7 @@ mod tests {
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::WatcherEvent);
         let payload = env.data_as_watcher_event().expect("data_as_watcher_event must succeed");
-        assert_eq!(payload.repo_handle(), 42);
+        assert_eq!(payload.session_id(), 42);
         assert_eq!(payload.kind(), fbs::WatcherEventKind::OpHeadsChanged);
         let paths: Vec<&str> = payload.paths().expect("paths must be set").iter().collect();
         assert_eq!(paths, vec!["/r/.jj/repo/op_heads/heads/abc"]);
@@ -348,7 +352,7 @@ mod tests {
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Progress);
         let payload = env.data_as_progress().expect("data_as_progress must succeed");
-        assert_eq!(payload.repo_handle(), 5);
+        assert_eq!(payload.session_id(), 5);
         assert_eq!(payload.operation(), Some("fetch"));
         assert!((payload.progress() - 0.5).abs() < f32::EPSILON);
         assert_eq!(payload.message(), Some("halfway"));

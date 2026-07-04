@@ -180,3 +180,67 @@ fn watcher_secondary_workspace_resolves_op_heads() {
 
     watcher.stop();
 }
+
+#[test]
+fn watcher_recovers_after_watched_dir_moved_away_and_back() {
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::time::Instant;
+
+    pin_env();
+    let fixture = test_helpers::extract_fixture("tiny-3-commits").unwrap();
+    let (watcher, rx) = Watcher::new(&fixture.path).unwrap();
+    let heads_dir = fixture.path.join(".jj/repo/op_heads/heads");
+
+    // Baseline: the watcher is live before any disturbance.
+    fs::write(heads_dir.join("baseline_touch"), b"").unwrap();
+    let event = rx
+        .recv_timeout(RECV_TIMEOUT)
+        .expect("baseline OpHeadsChanged should arrive");
+    assert!(
+        matches!(event, WatcherEvent::OpHeadsChanged { .. }),
+        "expected OpHeadsChanged, got {event:?}"
+    );
+
+    // Simulate an FS disturbance (FR-RX-4): move the watched dir away and back.
+    // Same volume as the fixture root => atomic rename.
+    let parked = fixture.path.join("parked_heads");
+    fs::rename(&heads_dir, &parked).unwrap();
+    fs::rename(&parked, &heads_dir).unwrap();
+
+    // The move itself generates noise on the watched path; drain until 200 ms of
+    // silence before touching again (debounce window is 50 ms).
+    while rx.recv_timeout(Duration::from_millis(200)).is_ok() {}
+
+    fs::write(heads_dir.join("recovery_touch"), b"").unwrap();
+
+    // Loop-recv, draining non-matching events, bounded by RECV_TIMEOUT overall.
+    // No re-arm, no new Watcher — recovery must come from this SAME instance
+    // (FR-RX-4; a deterministic failure here is a real product gap, per the
+    // story's binding escalation rule — never patched around with manual
+    // reset/re-watch logic).
+    let deadline = Instant::now() + RECV_TIMEOUT;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "recovery_touch OpHeadsChanged did not arrive within RECV_TIMEOUT after the watched \
+             dir was moved away and back — FR-RX-4 recovery gap"
+        );
+        match rx.recv_timeout(remaining) {
+            Ok(WatcherEvent::OpHeadsChanged { paths }) => {
+                if paths
+                    .iter()
+                    .any(|p| p.file_name().is_some_and(|n| n == "recovery_touch"))
+                {
+                    break;
+                }
+            }
+            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("channel disconnected while waiting for recovery_touch")
+            }
+        }
+    }
+
+    watcher.stop();
+}

@@ -42,8 +42,14 @@ table FfiError {
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 /// Dart passes it back verbatim to zanshin_repo_close.
+/// `session_id` is a process-unique, never-reused id allocated when the session
+/// is armed; async events (WatcherEvent/Progress) carry it as their correlation
+/// id. Unlike `handle` (an allocation address that a close→reopen can reuse —
+/// the rawToId ABA race, resolved 2026-07-04), a session id can never be
+/// misattributed to a later session.
 table RepoHandle {
   handle: ulong;
+  session_id: ulong;
 }
 
 /// Diagnostics payload returned by zanshin_diagnostics().
@@ -174,12 +180,14 @@ table RepoDetect {
 /// envelope at open/init/clone/convert).
 enum WatcherEventKind : byte { OpHeadsChanged, WorkingCopyHeartbeat, WatchError }
 
-/// One filesystem-watch event for the repo identified by `repo_handle`
-/// (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+/// One filesystem-watch event for the repo identified by `session_id`
+/// (ADR-0002:57 correlation id, refined 2026-07-04: the process-unique
+/// session id from `RepoHandle.session_id` — NOT the raw handle, whose
+/// allocation address a close→reopen can reuse).
 /// `paths` is absent for `WatchError`; `message` is set only for `WatchError`
 /// (null-for-absence).
 table WatcherEvent {
-  repo_handle: uint64;
+  session_id: uint64;
   kind: WatcherEventKind;
   paths: [string];
   message: string;
@@ -187,9 +195,10 @@ table WatcherEvent {
 
 /// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
 /// fetch` (producer lands in Story 6-4a). Dispatched over the same
-/// process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+/// process-global event sink as `WatcherEvent`, correlated by `session_id`
+/// (same never-reused id as WatcherEvent — see RepoHandle.session_id).
 table Progress {
-  repo_handle: uint64;
+  session_id: uint64;
   operation: string;
   progress: float;
   message: string;

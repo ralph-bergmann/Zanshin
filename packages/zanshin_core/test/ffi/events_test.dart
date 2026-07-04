@@ -39,7 +39,7 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.WatcherEvent,
         data: fbs.WatcherEventObjectBuilder(
-          repoHandle: 42,
+          sessionId: 42,
           kind: fbs.WatcherEventKind.OpHeadsChanged,
           paths: ['.jj/repo/op_heads/heads/abc'],
         ),
@@ -48,7 +48,7 @@ void main() {
       final ZanshinRawEvent event = decodeEventEnvelope(bytes);
       expect(event, isA<RawOpHeadsChangedEvent>());
       final raw = event as RawOpHeadsChangedEvent;
-      expect(raw.repoHandle, 42);
+      expect(raw.sessionId, 42);
       expect(raw.paths, ['.jj/repo/op_heads/heads/abc']);
     });
 
@@ -57,7 +57,7 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.WatcherEvent,
         data: fbs.WatcherEventObjectBuilder(
-          repoHandle: 7,
+          sessionId: 7,
           kind: fbs.WatcherEventKind.WorkingCopyHeartbeat,
           paths: ['.jj/working_copy/checkout'],
         ),
@@ -66,7 +66,7 @@ void main() {
       final ZanshinRawEvent event = decodeEventEnvelope(bytes);
       expect(event, isA<RawWorkingCopyHeartbeatEvent>());
       final raw = event as RawWorkingCopyHeartbeatEvent;
-      expect(raw.repoHandle, 7);
+      expect(raw.sessionId, 7);
       expect(raw.paths, ['.jj/working_copy/checkout']);
     });
 
@@ -75,7 +75,7 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.WatcherEvent,
         data: fbs.WatcherEventObjectBuilder(
-          repoHandle: 9,
+          sessionId: 9,
           kind: fbs.WatcherEventKind.WatchError,
           message: 'boom',
         ),
@@ -84,7 +84,7 @@ void main() {
       final ZanshinRawEvent event = decodeEventEnvelope(bytes);
       expect(event, isA<RawWatchErrorEvent>());
       final raw = event as RawWatchErrorEvent;
-      expect(raw.repoHandle, 9);
+      expect(raw.sessionId, 9);
       expect(raw.message, 'boom');
     });
 
@@ -92,13 +92,13 @@ void main() {
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.Progress,
-        data: fbs.ProgressObjectBuilder(repoHandle: 5, operation: 'fetch', progress: 0.5, message: 'halfway'),
+        data: fbs.ProgressObjectBuilder(sessionId: 5, operation: 'fetch', progress: 0.5, message: 'halfway'),
       ).toBytes();
 
       final ZanshinRawEvent event = decodeEventEnvelope(bytes);
       expect(event, isA<RawProgressEvent>());
       final raw = event as RawProgressEvent;
-      expect(raw.repoHandle, 5);
+      expect(raw.sessionId, 5);
       expect(raw.operation, 'fetch');
       expect(raw.progress, 0.5);
       expect(raw.message, 'halfway');
@@ -109,7 +109,7 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.WatcherEvent,
         data: fbs.WatcherEventObjectBuilder(
-          repoHandle: 1,
+          sessionId: 1,
           kind: fbs.WatcherEventKind.OpHeadsChanged,
           // paths omitted → null on wire.
         ),

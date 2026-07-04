@@ -754,6 +754,11 @@ pub mod zanshin {
         /// Opaque handle to an open repo session.
         /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
         /// Dart passes it back verbatim to zanshin_repo_close.
+        /// `session_id` is a process-unique, never-reused id allocated when the session
+        /// is armed; async events (WatcherEvent/Progress) carry it as their correlation
+        /// id. Unlike `handle` (an allocation address that a close→reopen can reuse —
+        /// the rawToId ABA race, resolved 2026-07-04), a session id can never be
+        /// misattributed to a later session.
         pub struct RepoHandle<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -770,6 +775,7 @@ pub mod zanshin {
 
         impl<'a> RepoHandle<'a> {
             pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SESSION_ID: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -781,6 +787,7 @@ pub mod zanshin {
                 args: &'args RepoHandleArgs,
             ) -> ::flatbuffers::WIPOffset<RepoHandle<'bldr>> {
                 let mut builder = RepoHandleBuilder::new(_fbb);
+                builder.add_session_id(args.session_id);
                 builder.add_handle(args.handle);
                 builder.finish()
             }
@@ -792,6 +799,13 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<u64>(RepoHandle::VT_HANDLE, Some(0)).unwrap() }
             }
+            #[inline]
+            pub fn session_id(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RepoHandle::VT_SESSION_ID, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for RepoHandle<'_> {
@@ -802,17 +816,22 @@ pub mod zanshin {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
                     .visit_field::<u64>("handle", Self::VT_HANDLE, false)?
+                    .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
                     .finish();
                 Ok(())
             }
         }
         pub struct RepoHandleArgs {
             pub handle: u64,
+            pub session_id: u64,
         }
         impl<'a> Default for RepoHandleArgs {
             #[inline]
             fn default() -> Self {
-                RepoHandleArgs { handle: 0 }
+                RepoHandleArgs {
+                    handle: 0,
+                    session_id: 0,
+                }
             }
         }
 
@@ -824,6 +843,10 @@ pub mod zanshin {
             #[inline]
             pub fn add_handle(&mut self, handle: u64) {
                 self.fbb_.push_slot::<u64>(RepoHandle::VT_HANDLE, handle, 0);
+            }
+            #[inline]
+            pub fn add_session_id(&mut self, session_id: u64) {
+                self.fbb_.push_slot::<u64>(RepoHandle::VT_SESSION_ID, session_id, 0);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoHandleBuilder<'a, 'b, A> {
@@ -844,6 +867,7 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("RepoHandle");
                 ds.field("handle", &self.handle());
+                ds.field("session_id", &self.session_id());
                 ds.finish()
             }
         }
@@ -2892,8 +2916,10 @@ pub mod zanshin {
         pub enum WatcherEventOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One filesystem-watch event for the repo identified by `repo_handle`
-        /// (ADR-0002:57 correlation id — the same `u64` the Dart worker holds).
+        /// One filesystem-watch event for the repo identified by `session_id`
+        /// (ADR-0002:57 correlation id, refined 2026-07-04: the process-unique
+        /// session id from `RepoHandle.session_id` — NOT the raw handle, whose
+        /// allocation address a close→reopen can reuse).
         /// `paths` is absent for `WatchError`; `message` is set only for `WatchError`
         /// (null-for-absence).
         pub struct WatcherEvent<'a> {
@@ -2911,7 +2937,7 @@ pub mod zanshin {
         }
 
         impl<'a> WatcherEvent<'a> {
-            pub const VT_REPO_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SESSION_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
             pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
@@ -2926,7 +2952,7 @@ pub mod zanshin {
                 args: &'args WatcherEventArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WatcherEvent<'bldr>> {
                 let mut builder = WatcherEventBuilder::new(_fbb);
-                builder.add_repo_handle(args.repo_handle);
+                builder.add_session_id(args.session_id);
                 if let Some(x) = args.message {
                     builder.add_message(x);
                 }
@@ -2938,11 +2964,11 @@ pub mod zanshin {
             }
 
             #[inline]
-            pub fn repo_handle(&self) -> u64 {
+            pub fn session_id(&self) -> u64 {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
-                unsafe { self._tab.get::<u64>(WatcherEvent::VT_REPO_HANDLE, Some(0)).unwrap() }
+                unsafe { self._tab.get::<u64>(WatcherEvent::VT_SESSION_ID, Some(0)).unwrap() }
             }
             #[inline]
             pub fn kind(&self) -> WatcherEventKind {
@@ -2985,7 +3011,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-     .visit_field::<u64>("repo_handle", Self::VT_REPO_HANDLE, false)?
+     .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
      .visit_field::<WatcherEventKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
@@ -2994,7 +3020,7 @@ pub mod zanshin {
             }
         }
         pub struct WatcherEventArgs<'a> {
-            pub repo_handle: u64,
+            pub session_id: u64,
             pub kind: WatcherEventKind,
             pub paths:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
@@ -3004,7 +3030,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 WatcherEventArgs {
-                    repo_handle: 0,
+                    session_id: 0,
                     kind: WatcherEventKind::OpHeadsChanged,
                     paths: None,
                     message: None,
@@ -3018,8 +3044,8 @@ pub mod zanshin {
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WatcherEventBuilder<'a, 'b, A> {
             #[inline]
-            pub fn add_repo_handle(&mut self, repo_handle: u64) {
-                self.fbb_.push_slot::<u64>(WatcherEvent::VT_REPO_HANDLE, repo_handle, 0);
+            pub fn add_session_id(&mut self, session_id: u64) {
+                self.fbb_.push_slot::<u64>(WatcherEvent::VT_SESSION_ID, session_id, 0);
             }
             #[inline]
             pub fn add_kind(&mut self, kind: WatcherEventKind) {
@@ -3057,7 +3083,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for WatcherEvent<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("WatcherEvent");
-                ds.field("repo_handle", &self.repo_handle());
+                ds.field("session_id", &self.session_id());
                 ds.field("kind", &self.kind());
                 ds.field("paths", &self.paths());
                 ds.field("message", &self.message());
@@ -3069,7 +3095,8 @@ pub mod zanshin {
 
         /// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
         /// fetch` (producer lands in Story 6-4a). Dispatched over the same
-        /// process-global event sink as `WatcherEvent`, correlated by `repo_handle`.
+        /// process-global event sink as `WatcherEvent`, correlated by `session_id`
+        /// (same never-reused id as WatcherEvent — see RepoHandle.session_id).
         pub struct Progress<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3085,7 +3112,7 @@ pub mod zanshin {
         }
 
         impl<'a> Progress<'a> {
-            pub const VT_REPO_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SESSION_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
             pub const VT_PROGRESS: ::flatbuffers::VOffsetT = 8;
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
@@ -3100,7 +3127,7 @@ pub mod zanshin {
                 args: &'args ProgressArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Progress<'bldr>> {
                 let mut builder = ProgressBuilder::new(_fbb);
-                builder.add_repo_handle(args.repo_handle);
+                builder.add_session_id(args.session_id);
                 if let Some(x) = args.message {
                     builder.add_message(x);
                 }
@@ -3112,11 +3139,11 @@ pub mod zanshin {
             }
 
             #[inline]
-            pub fn repo_handle(&self) -> u64 {
+            pub fn session_id(&self) -> u64 {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
-                unsafe { self._tab.get::<u64>(Progress::VT_REPO_HANDLE, Some(0)).unwrap() }
+                unsafe { self._tab.get::<u64>(Progress::VT_SESSION_ID, Some(0)).unwrap() }
             }
             #[inline]
             pub fn operation(&self) -> Option<&'a str> {
@@ -3154,7 +3181,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<u64>("repo_handle", Self::VT_REPO_HANDLE, false)?
+                    .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
                     .visit_field::<f32>("progress", Self::VT_PROGRESS, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
@@ -3163,7 +3190,7 @@ pub mod zanshin {
             }
         }
         pub struct ProgressArgs<'a> {
-            pub repo_handle: u64,
+            pub session_id: u64,
             pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub progress: f32,
             pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -3172,7 +3199,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 ProgressArgs {
-                    repo_handle: 0,
+                    session_id: 0,
                     operation: None,
                     progress: 0.0,
                     message: None,
@@ -3186,8 +3213,8 @@ pub mod zanshin {
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProgressBuilder<'a, 'b, A> {
             #[inline]
-            pub fn add_repo_handle(&mut self, repo_handle: u64) {
-                self.fbb_.push_slot::<u64>(Progress::VT_REPO_HANDLE, repo_handle, 0);
+            pub fn add_session_id(&mut self, session_id: u64) {
+                self.fbb_.push_slot::<u64>(Progress::VT_SESSION_ID, session_id, 0);
             }
             #[inline]
             pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
@@ -3221,7 +3248,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for Progress<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("Progress");
-                ds.field("repo_handle", &self.repo_handle());
+                ds.field("session_id", &self.session_id());
                 ds.field("operation", &self.operation());
                 ds.field("progress", &self.progress());
                 ds.field("message", &self.message());

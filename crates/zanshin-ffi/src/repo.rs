@@ -10,6 +10,7 @@
 
 use core::ffi::c_char;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::thread::{self, JoinHandle};
 
@@ -154,12 +155,13 @@ fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
 /// Spawn the per-session dispatch thread (AC 7).
 ///
 /// Blocking `recv()` loop: each [`WatcherEvent`] is serialised to a
-/// `FlatBuffers` `Envelope` tagged with `repo_handle` and forwarded to the
-/// process-global event sink. Exits on `RecvError` (the channel disconnected
-/// because the `Watcher` was stopped/dropped). Panic-proof: no
-/// `unwrap`/`expect` in the loop body, so nothing can unwind toward the
-/// `extern "C"` boundary.
-fn spawn_dispatch_thread(repo_handle: u64, rx: Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>> {
+/// `FlatBuffers` `Envelope` tagged with the session's process-unique
+/// `session_id` (the ABA-safe correlation id — never the raw handle) and
+/// forwarded to the process-global event sink. Exits on `RecvError` (the
+/// channel disconnected because the `Watcher` was stopped/dropped).
+/// Panic-proof: no `unwrap`/`expect` in the loop body, so nothing can unwind
+/// toward the `extern "C"` boundary.
+fn spawn_dispatch_thread(session_id: u64, rx: Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>> {
     // WHY thread::Builder instead of thread::spawn: bare `spawn` PANICS on OS
     // spawn failure — a panic source on an FFI-reachable path (forbidden); the
     // Builder returns the error so arm_session can map it to watcher.io_error
@@ -168,7 +170,7 @@ fn spawn_dispatch_thread(repo_handle: u64, rx: Receiver<WatcherEvent>) -> std::i
         .name("zanshin-event-dispatch".to_owned())
         .spawn(move || {
             while let Ok(event) = rx.recv() {
-                events::dispatch(events::watcher_event_to_envelope(repo_handle, &event));
+                events::dispatch(events::watcher_event_to_envelope(session_id, &event));
             }
         })
 }
@@ -177,11 +179,14 @@ fn spawn_dispatch_thread(repo_handle: u64, rx: Receiver<WatcherEvent>) -> std::i
 /// spawn the per-session dispatch thread — all before returning (AR-G-5:
 /// "watcher must start before the wrapper returns").
 ///
-/// Returns the session's opaque `u64` handle on success. On watcher-arming
-/// failure the already-opened `repo` (and the just-allocated session box) are
+/// Returns `(handle, session_id)` on success: the session's opaque `u64`
+/// handle plus the process-unique session id that async events carry as
+/// their correlation id (never reused — ABA-safe across close→reopen,
+/// unlike the raw handle's allocation address). On watcher-arming failure
+/// the already-opened `repo` (and the just-allocated session box) are
 /// dropped — no leak — and the caller returns a `watcher.io_error` envelope
 /// with NO handle (OQ-1 strict-fail: a repo we can't watch does not open).
-fn arm_session(repo: Repo) -> Result<u64, FfiErrorObj> {
+fn arm_session(repo: Repo) -> Result<(u64, u64), FfiErrorObj> {
     arm_session_with(repo, spawn_dispatch_thread)
 }
 
@@ -193,7 +198,15 @@ fn arm_session(repo: Repo) -> Result<u64, FfiErrorObj> {
 fn arm_session_with(
     repo: Repo,
     spawn: impl FnOnce(u64, Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>>,
-) -> Result<u64, FfiErrorObj> {
+) -> Result<(u64, u64), FfiErrorObj> {
+    // Process-unique event-correlation id (starts at 1; 0 is never issued).
+    // WHY not the raw pointer: a close→reopen can reuse the freed session's
+    // allocation ADDRESS, so a stale queued event could be misattributed to
+    // the NEW session (rawToId ABA, 3-6 review; fixed 2026-07-04). A
+    // monotonic counter can never collide with a later session.
+    static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+    let session_id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+
     let repo_path = repo.workspace_root().to_path_buf();
     let raw = handle_into_raw(RepoSession {
         repo,
@@ -210,7 +223,7 @@ fn arm_session_with(
             return Err(map_watcher_err(&e));
         }
     };
-    let dispatch = match spawn(raw as u64, rx) {
+    let dispatch = match spawn(session_id, rx) {
         Ok(handle) => handle,
         Err(e) => {
             // Synchronous close (joins the debouncer thread) before reclaiming
@@ -224,14 +237,14 @@ fn arm_session_with(
     };
     // SAFETY: `raw` was produced by handle_into_raw above and its POINTEE is
     // exclusively owned by this function until the handle is returned: the
-    // dispatch thread only captured the address as a `u64` correlation id and
-    // never dereferences it, and no other code has seen the handle yet, so
-    // these writes cannot race a read.
+    // dispatch thread captured only the process-unique `session_id` — never
+    // the address — and no other code has seen the handle yet, so these
+    // writes cannot race a read.
     unsafe {
         (*raw).watcher = Some(watcher);
         (*raw).dispatch = Some(dispatch);
     }
-    Ok(raw as u64)
+    Ok((raw as u64, session_id))
 }
 
 // ── extern "C" functions ──────────────────────────────────────────────────────
@@ -259,8 +272,8 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
         let repo = Repo::open(Path::new(&p)).map_err(map_repo_err)?;
-        let handle = arm_session(repo)?;
-        Ok(ok_repo_handle(handle))
+        let (handle, session_id) = arm_session(repo)?;
+        Ok(ok_repo_handle(handle, session_id))
     });
     vec_into_token(buf)
 }
@@ -297,8 +310,8 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
             }
         };
         let repo = Repo::init(Path::new(&p), backend_opt).map_err(map_repo_err)?;
-        let handle = arm_session(repo)?;
-        Ok(ok_repo_handle(handle))
+        let (handle, session_id) = arm_session(repo)?;
+        Ok(ok_repo_handle(handle, session_id))
     });
     vec_into_token(buf)
 }
@@ -325,8 +338,8 @@ pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *co
         let u = unsafe { cstr_to_string(url) }?;
         let t = unsafe { cstr_to_string(target_path) }?;
         let repo = Repo::clone(&u, Path::new(&t)).map_err(map_repo_err)?;
-        let handle = arm_session(repo)?;
-        Ok(ok_repo_handle(handle))
+        let (handle, session_id) = arm_session(repo)?;
+        Ok(ok_repo_handle(handle, session_id))
     });
     vec_into_token(buf)
 }
@@ -445,7 +458,8 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
         let repo = convert_colocated(Path::new(&p)).map_err(map_repo_err)?;
-        Ok(ok_repo_handle(arm_session(repo)?))
+        let (handle, session_id) = arm_session(repo)?;
+        Ok(ok_repo_handle(handle, session_id))
     });
     vec_into_token(buf)
 }

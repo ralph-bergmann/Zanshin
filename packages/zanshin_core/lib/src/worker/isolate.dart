@@ -615,27 +615,26 @@ void _workerEntry(_WorkerInit init) {
   final commandPort = ReceivePort();
 
   // Handle table: dense worker-side id → raw u64 (the Rust `*mut RepoSession`
-  // value), plus the reverse map for event demux (Story 3.6). Only this
-  // function ever extracts a raw pointer from an FFI envelope.
+  // value), plus the session-id → handleId map for event demux (Story 3.6;
+  // keyed by the process-unique session id since 2026-07-04 — the raw address
+  // was ABA-unsafe across close→reopen). Only this function ever extracts a
+  // raw pointer from an FFI envelope.
   final Map<int, int> handles = {};
-  final Map<int, int> rawToId = {};
+  final Map<int, int> sessionToId = {};
   var nextHandleId = 0;
 
   // Registration happens BEFORE the handshake send, so a registration
   // failure surfaces through start()'s existing death/timeout race — this is
   // the first worker-side init code that can fail (Story 3.9 review).
   registerEventSink((raw) {
-    final int? id = rawToId[raw.repoHandle];
+    final int? id = sessionToId[raw.sessionId];
     if (id == null) {
-      // Benign close race: the session closed (and left rawToId) between the
-      // Rust dispatch thread reading the event and this handler running.
-      // Known accepted gap (deferred-work.md, 3-6 review): a close → reopen
-      // can reuse the freed RepoSession's ADDRESS, so an event queued during
-      // the close window could instead map to the NEW repo's handleId here —
-      // harmless for coalescing-idempotent watcher events (one spurious
-      // refresh); revisit the correlation-id design (generation/session id)
-      // with Story 6-4a's first real Progress producer.
-      log.fine('Worker: event for unknown raw handle ${raw.repoHandle} — dropped');
+      // Benign close race: the session closed (and left sessionToId) between
+      // the Rust dispatch thread reading the event and this handler running.
+      // Session ids are process-unique and never reused, so a stale event can
+      // ONLY land here (dropped) — never be misattributed to a later session
+      // (the former rawToId ABA race, resolved 2026-07-04).
+      log.fine('Worker: event for unknown session ${raw.sessionId} — dropped');
       return;
     }
     eventSP.send(_rawEventToRepoEvent(id, raw));
@@ -664,19 +663,19 @@ void _workerEntry(_WorkerInit init) {
       switch (msg) {
         case OpenRepoCommand(:final String path):
           final Uint8List bytes = repo_ffi.zanshinRepoOpen(path);
-          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case InitRepoCommand(:final String path, :final int backend):
           final Uint8List bytes = repo_ffi.zanshinRepoInit(path, backend);
-          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case CloneRepoCommand(:final String url, :final String targetPath):
           final Uint8List bytes = repo_ffi.zanshinRepoClone(url, targetPath);
-          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case CloseRepoCommand(:final int handleId):
           final int? raw = handles.remove(handleId);
-          rawToId.remove(raw);
+          sessionToId.removeWhere((_, id) => id == handleId);
           if (raw == null) {
             log.warning('Worker: CloseRepoCommand for unknown handleId $handleId');
             final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
@@ -784,7 +783,7 @@ void _workerEntry(_WorkerInit init) {
 
         case ConvertRepoCommand(:final String path):
           final Uint8List bytes = repo_ffi.zanshinRepoConvert(path);
-          _replyRepoOp(bytes, commandId, handles, rawToId, responseSP, log, () => nextHandleId++);
+          _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case ShutdownCommand():
           // Close every repo left open: each join()s its Rust dispatch thread
@@ -798,7 +797,7 @@ void _workerEntry(_WorkerInit init) {
             }
           }
           handles.clear();
-          rawToId.clear();
+          sessionToId.clear();
           closeEventSink();
           responseSP.send((commandId, BufferResult(fbs.EnvelopeObjectBuilder(ok: true).toBytes())));
           commandPort.close();
@@ -817,24 +816,26 @@ void _workerEntry(_WorkerInit init) {
   });
 }
 
-/// Handle open/init/clone FFI bytes: store the raw handle and reply with
-/// [HandleResult] on success, or forward the error envelope as [BufferResult].
+/// Handle open/init/clone FFI bytes: store the raw handle plus the session-id
+/// event-demux mapping and reply with [HandleResult] on success, or forward
+/// the error envelope as [BufferResult].
 void _replyRepoOp(
   Uint8List bytes,
   int commandId,
   Map<int, int> handles,
-  Map<int, int> rawToId,
+  Map<int, int> sessionToId,
   SendPort responseSP,
   Logger log,
   int Function() nextId,
 ) {
   final env = fbs.Envelope(bytes);
   if (env.ok && env.dataType == fbs.PayloadTypeId.RepoHandle) {
-    final int raw = (env.data as fbs.RepoHandle).handle;
+    final rh = env.data as fbs.RepoHandle;
+    final int raw = rh.handle;
     final int id = nextId();
     handles[id] = raw;
-    rawToId[raw] = id;
-    log.fine('Worker: repo opened raw=$raw → handleId=$id');
+    sessionToId[rh.sessionId] = id;
+    log.fine('Worker: repo opened raw=$raw session=${rh.sessionId} → handleId=$id');
     responseSP.send((commandId, HandleResult(id)));
   } else {
     responseSP.send((commandId, BufferResult(bytes)));

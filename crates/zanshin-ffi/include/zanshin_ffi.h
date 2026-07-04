@@ -43,6 +43,8 @@ typedef struct {
   uintptr_t len;
 } ZanshinBuf;
 
+#define RepoHandle_VT_SESSION_ID 6
+
 #define FileChange_VT_PATH 4
 
 #define FileChange_VT_KIND 6
@@ -110,8 +112,6 @@ typedef struct {
 #define RepoDetect_VT_SUGGESTED_ROOT 6
 
 #define RepoDetect_VT_SUGGESTED_KIND 8
-
-#define WatcherEvent_VT_REPO_HANDLE 4
 
 #define WatcherEvent_VT_PATHS 8
 
