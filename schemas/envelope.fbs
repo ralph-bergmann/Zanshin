@@ -35,7 +35,7 @@ table FfiError {
 //   Story 3-8  : Diagnostics ✓
 //   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes ✓
 //   Story 3-6  : WatcherEvent ✓, Progress ✓
-//   Story 4-6  : GraphSlice
+//   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6)
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
 
@@ -204,6 +204,42 @@ table Progress {
   message: string;
 }
 
+/// How a graph edge's target was classified by the revset-graph stream.
+/// Mirrors zanshin_graph::EdgeKind — order must stay identical.
+/// `Direct`/`Indirect` targets are in the revset (Indirect = the direct parent
+/// was elided; renderers may draw it dashed); `Missing` leads outside the
+/// revset and never reserves a lane.
+enum GraphEdgeKind : byte { Direct, Indirect, Missing }
+
+/// One routed parent edge of a GraphRow (Story 4.2).
+/// `target_lane` is meaningful ONLY when kind != Missing (presence == the
+/// kind flag, same pattern as RepoDetect.suggested_kind / Bookmark.remote_name):
+/// a Missing edge never lands in a lane, so Rust writes 0 and Dart models it
+/// as null. flatc 25.12.19 rejects optional scalars (`= null`) for Dart.
+table GraphRowEdge {
+  target: string;          // parent commit id, hex
+  target_lane: uint;       // lane the edge is routed to; 0 / ignored when kind == Missing
+  kind: GraphEdgeKind;
+}
+
+/// One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
+/// COMMIT id (change ids are ambiguous for divergent changes); display metadata
+/// joins later.
+table GraphRow {
+  commit_id: string;       // commit id, hex
+  lane: uint;              // lane this commit was placed on
+  color_idx: uint;         // deterministic palette index, lane % PALETTE_SIZE
+  edges: [GraphRowEdge];   // one per input parent edge, same order
+}
+
+/// A slice of the lane-assigned commit graph, in stream (`jj log`) order.
+/// WIP return-all semantics: total_rows == rows.length. Story 4.4 windowing may
+/// set total_rows > rows.length later (breaking change allowed in WIP).
+table GraphSlice {
+  rows: [GraphRow];
+  total_rows: uint;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -215,6 +251,7 @@ union Payload {
   RepoDetect,
   WatcherEvent,
   Progress,
+  GraphSlice,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

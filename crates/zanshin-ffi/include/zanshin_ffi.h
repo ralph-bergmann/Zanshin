@@ -32,6 +32,10 @@
 
 #define ENUM_MAX_WATCHER_EVENT_KIND 2
 
+#define ENUM_MIN_GRAPH_EDGE_KIND 0
+
+#define ENUM_MAX_GRAPH_EDGE_KIND 2
+
 /**
  * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
  * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
@@ -120,6 +124,18 @@ typedef struct {
 #define Progress_VT_OPERATION 6
 
 #define Progress_VT_PROGRESS 8
+
+#define GraphRowEdge_VT_TARGET_LANE 6
+
+#define GraphRow_VT_LANE 6
+
+#define GraphRow_VT_COLOR_IDX 8
+
+#define GraphRow_VT_EDGES 10
+
+#define GraphSlice_VT_ROWS 4
+
+#define GraphSlice_VT_TOTAL_ROWS 6
 
 /**
  * Build-stamp version string.

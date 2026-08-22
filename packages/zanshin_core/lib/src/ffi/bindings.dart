@@ -428,6 +428,10 @@ const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
+const int ENUM_MIN_GRAPH_EDGE_KIND = 0;
+
+const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
+
 const int RepoHandle_VT_SESSION_ID = 6;
 
 const int FileChange_VT_PATH = 4;
@@ -505,3 +509,15 @@ const int WatcherEvent_VT_MESSAGE = 10;
 const int Progress_VT_OPERATION = 6;
 
 const int Progress_VT_PROGRESS = 8;
+
+const int GraphRowEdge_VT_TARGET_LANE = 6;
+
+const int GraphRow_VT_LANE = 6;
+
+const int GraphRow_VT_COLOR_IDX = 8;
+
+const int GraphRow_VT_EDGES = 10;
+
+const int GraphSlice_VT_ROWS = 4;
+
+const int GraphSlice_VT_TOTAL_ROWS = 6;

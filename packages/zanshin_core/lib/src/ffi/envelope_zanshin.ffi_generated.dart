@@ -212,6 +212,50 @@ class _WatcherEventKindReader extends fb.Reader<WatcherEventKind> {
       WatcherEventKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  How a graph edge's target was classified by the revset-graph stream.
+///  Mirrors zanshin_graph::EdgeKind — order must stay identical.
+///  `Direct`/`Indirect` targets are in the revset (Indirect = the direct parent
+///  was elided; renderers may draw it dashed); `Missing` leads outside the
+///  revset and never reserves a lane.
+enum GraphEdgeKind {
+  Direct(0),
+  Indirect(1),
+  Missing(2);
+
+  final int value;
+  const GraphEdgeKind(this.value);
+
+  factory GraphEdgeKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return GraphEdgeKind.Direct;
+      case 1:
+        return GraphEdgeKind.Indirect;
+      case 2:
+        return GraphEdgeKind.Missing;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static GraphEdgeKind? _createOrNull(int? value) => value == null ? null : GraphEdgeKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<GraphEdgeKind> reader = _GraphEdgeKindReader();
+}
+
+class _GraphEdgeKindReader extends fb.Reader<GraphEdgeKind> {
+  const _GraphEdgeKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  GraphEdgeKind read(fb.BufferContext bc, int offset) =>
+      GraphEdgeKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -223,7 +267,8 @@ enum PayloadTypeId {
   Remotes(7),
   RepoDetect(8),
   WatcherEvent(9),
-  Progress(10);
+  Progress(10),
+  GraphSlice(11);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -252,6 +297,8 @@ enum PayloadTypeId {
         return PayloadTypeId.WatcherEvent;
       case 10:
         return PayloadTypeId.Progress;
+      case 11:
+        return PayloadTypeId.GraphSlice;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -260,7 +307,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 10;
+  static const int maxValue = 11;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1910,6 +1957,296 @@ class ProgressObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One routed parent edge of a GraphRow (Story 4.2).
+///  `target_lane` is meaningful ONLY when kind != Missing (presence == the
+///  kind flag, same pattern as RepoDetect.suggested_kind / Bookmark.remote_name):
+///  a Missing edge never lands in a lane, so Rust writes 0 and Dart models it
+///  as null. flatc 25.12.19 rejects optional scalars (`= null`) for Dart.
+class GraphRowEdge {
+  GraphRowEdge._(this._bc, this._bcOffset);
+  factory GraphRowEdge(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphRowEdge> reader = _GraphRowEdgeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get targetLane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  GraphEdgeKind get kind => GraphEdgeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+
+  @override
+  String toString() {
+    return 'GraphRowEdge{target: ${target}, targetLane: ${targetLane}, kind: ${kind}}';
+  }
+}
+
+class _GraphRowEdgeReader extends fb.TableReader<GraphRowEdge> {
+  const _GraphRowEdgeReader();
+
+  @override
+  GraphRowEdge createObject(fb.BufferContext bc, int offset) => GraphRowEdge._(bc, offset);
+}
+
+class GraphRowEdgeBuilder {
+  GraphRowEdgeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addTargetOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTargetLane(int? targetLane) {
+    fbBuilder.addUint32(1, targetLane);
+    return fbBuilder.offset;
+  }
+
+  int addKind(GraphEdgeKind? kind) {
+    fbBuilder.addInt8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphRowEdgeObjectBuilder extends fb.ObjectBuilder {
+  final String? _target;
+  final int? _targetLane;
+  final GraphEdgeKind? _kind;
+
+  GraphRowEdgeObjectBuilder({
+    String? target,
+    int? targetLane,
+    GraphEdgeKind? kind,
+  }) : _target = target,
+       _targetLane = targetLane,
+       _kind = kind;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, targetOffset);
+    fbBuilder.addUint32(1, _targetLane);
+    fbBuilder.addInt8(2, _kind?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
+///  COMMIT id (change ids are ambiguous for divergent changes); display metadata
+///  joins later.
+class GraphRow {
+  GraphRow._(this._bc, this._bcOffset);
+  factory GraphRow(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphRow> reader = _GraphRowReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get lane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get colorIdx => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  List<GraphRowEdge>? get edges =>
+      const fb.ListReader<GraphRowEdge>(GraphRowEdge.reader).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'GraphRow{commitId: ${commitId}, lane: ${lane}, colorIdx: ${colorIdx}, edges: ${edges}}';
+  }
+}
+
+class _GraphRowReader extends fb.TableReader<GraphRow> {
+  const _GraphRowReader();
+
+  @override
+  GraphRow createObject(fb.BufferContext bc, int offset) => GraphRow._(bc, offset);
+}
+
+class GraphRowBuilder {
+  GraphRowBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLane(int? lane) {
+    fbBuilder.addUint32(1, lane);
+    return fbBuilder.offset;
+  }
+
+  int addColorIdx(int? colorIdx) {
+    fbBuilder.addUint32(2, colorIdx);
+    return fbBuilder.offset;
+  }
+
+  int addEdgesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphRowObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final int? _lane;
+  final int? _colorIdx;
+  final List<GraphRowEdgeObjectBuilder>? _edges;
+
+  GraphRowObjectBuilder({
+    String? commitId,
+    int? lane,
+    int? colorIdx,
+    List<GraphRowEdgeObjectBuilder>? edges,
+  }) : _commitId = commitId,
+       _lane = lane,
+       _colorIdx = colorIdx,
+       _edges = edges;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? edgesOffset = _edges == null
+        ? null
+        : fbBuilder.writeList(_edges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addUint32(1, _lane);
+    fbBuilder.addUint32(2, _colorIdx);
+    fbBuilder.addOffset(3, edgesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A slice of the lane-assigned commit graph, in stream (`jj log`) order.
+///  WIP return-all semantics: total_rows == rows.length. Story 4.4 windowing may
+///  set total_rows > rows.length later (breaking change allowed in WIP).
+class GraphSlice {
+  GraphSlice._(this._bc, this._bcOffset);
+  factory GraphSlice(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphSlice> reader = _GraphSliceReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<GraphRow>? get rows => const fb.ListReader<GraphRow>(GraphRow.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  int get totalRows => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+
+  @override
+  String toString() {
+    return 'GraphSlice{rows: ${rows}, totalRows: ${totalRows}}';
+  }
+}
+
+class _GraphSliceReader extends fb.TableReader<GraphSlice> {
+  const _GraphSliceReader();
+
+  @override
+  GraphSlice createObject(fb.BufferContext bc, int offset) => GraphSlice._(bc, offset);
+}
+
+class GraphSliceBuilder {
+  GraphSliceBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addRowsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTotalRows(int? totalRows) {
+    fbBuilder.addUint32(1, totalRows);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphSliceObjectBuilder extends fb.ObjectBuilder {
+  final List<GraphRowObjectBuilder>? _rows;
+  final int? _totalRows;
+
+  GraphSliceObjectBuilder({
+    List<GraphRowObjectBuilder>? rows,
+    int? totalRows,
+  }) : _rows = rows,
+       _totalRows = totalRows;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? rowsOffset = _rows == null
+        ? null
+        : fbBuilder.writeList(_rows!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, rowsOffset);
+    fbBuilder.addUint32(1, _totalRows);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1959,6 +2296,8 @@ class Envelope {
         return WatcherEvent.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 10:
         return Progress.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 11:
+        return GraphSlice.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

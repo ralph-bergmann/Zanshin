@@ -327,3 +327,54 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 - `ZanshinWorker.close()` is now `Future<void>`: it sends a `ShutdownCommand`
   the worker uses to run the shutdown ordering above, then awaits an ack
   (bounded timeout) before killing the isolate as a backstop.
+
+---
+
+## GraphSlice payload (Story 4.2)
+
+The lane-assigned commit graph (Story 4.1, `zanshin_graph::Row`) crosses FFI
+as a `GraphSlice` member of the `Payload` union (`schemas/envelope.fbs`) — no
+JSON, no `schema_version` (ADR-0001). **No extern fn yet**: Story 4.6 adds the
+`zanshin_graph_*` wrappers that call the Rust builder
+`zanshin_ffi::graph::graph_slice_to_envelope(&[Row]) -> Vec<u8>` (infallible,
+always `ok == true`) and the Dart worker command that feeds
+`decodeGraphSliceEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/graph.dart`).
+
+```
+enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_graph::EdgeKind order
+
+GraphRowEdge {
+  target:      string          // parent commit id, hex
+  target_lane: uint            // meaningful ONLY when kind != Missing (see below)
+  kind:        GraphEdgeKind
+}
+
+GraphRow {
+  commit_id:   string          // commit id, hex — rows are keyed by COMMIT id, not change id
+  lane:        uint
+  color_idx:   uint            // lane % PALETTE_SIZE (8)
+  edges:       [GraphRowEdge]  // one per input parent edge, same order
+}
+
+GraphSlice {
+  rows:        [GraphRow]      // always present (empty list for an empty slice)
+  total_rows:  uint
+}
+```
+
+- **`target_lane` presence rule.** `flatc 25.12.19` rejects optional scalars
+  (`= null`) for Dart, so absence is encoded by `kind`: a `Missing` edge never
+  reserves a lane — Rust writes `target_lane = 0` and the Dart model
+  (`GraphRowEdge.targetLane`) is `int?`, `null` iff `kind == missing`
+  (null-for-absence at the model level; same presence-flag pattern as
+  `RepoDetect.suggested_kind` / `Bookmark.remote_name`). Never read
+  `target_lane` of a `Missing` edge.
+- **`total_rows` semantics.** WIP return-all: `total_rows == rows.length`.
+  Story 4.4 windowing may set `total_rows > rows.length` later (a breaking
+  in-place change, allowed in WIP).
+- **Row order** is the stream / `jj log` order (topo-grouped, children before
+  parents); one `GraphRow` per `Row`, one `GraphRowEdge` per `RowEdge`, verbatim
+  strings (no escaping).
+- **Decode contract (Dart).** `!ok` → `ZanshinFfiException(code, context)`;
+  `ok` with a non-`GraphSlice` union variant → `ZanshinFfiException('ffi.unknown')`
+  (discriminant guard, same as every other payload decoder).

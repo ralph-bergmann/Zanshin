@@ -488,18 +488,114 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_GRAPH_EDGE_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 10;
+        pub const ENUM_MAX_GRAPH_EDGE_KIND: i8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 11] = [
+        pub const ENUM_VALUES_GRAPH_EDGE_KIND: [GraphEdgeKind; 3] =
+            [GraphEdgeKind::Direct, GraphEdgeKind::Indirect, GraphEdgeKind::Missing];
+
+        /// How a graph edge's target was classified by the revset-graph stream.
+        /// Mirrors zanshin_graph::EdgeKind — order must stay identical.
+        /// `Direct`/`Indirect` targets are in the revset (Indirect = the direct parent
+        /// was elided; renderers may draw it dashed); `Missing` leads outside the
+        /// revset and never reserves a lane.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct GraphEdgeKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl GraphEdgeKind {
+            pub const Direct: Self = Self(0);
+            pub const Indirect: Self = Self(1);
+            pub const Missing: Self = Self(2);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Direct, Self::Indirect, Self::Missing];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Direct => Some("Direct"),
+                    Self::Indirect => Some("Indirect"),
+                    Self::Missing => Some("Missing"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for GraphEdgeKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for GraphEdgeKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for GraphEdgeKind {
+            type Output = GraphEdgeKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for GraphEdgeKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for GraphEdgeKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for GraphEdgeKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 11;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 12] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -511,6 +607,7 @@ pub mod zanshin {
             Payload::RepoDetect,
             Payload::WatcherEvent,
             Payload::Progress,
+            Payload::GraphSlice,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -529,9 +626,10 @@ pub mod zanshin {
             pub const RepoDetect: Self = Self(8);
             pub const WatcherEvent: Self = Self(9);
             pub const Progress: Self = Self(10);
+            pub const GraphSlice: Self = Self(11);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 10;
+            pub const ENUM_MAX: u8 = 11;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -544,6 +642,7 @@ pub mod zanshin {
                 Self::RepoDetect,
                 Self::WatcherEvent,
                 Self::Progress,
+                Self::GraphSlice,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -559,6 +658,7 @@ pub mod zanshin {
                     Self::RepoDetect => Some("RepoDetect"),
                     Self::WatcherEvent => Some("WatcherEvent"),
                     Self::Progress => Some("Progress"),
+                    Self::GraphSlice => Some("GraphSlice"),
                     _ => None,
                 }
             }
@@ -3255,6 +3355,458 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum GraphRowEdgeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One routed parent edge of a GraphRow (Story 4.2).
+        /// `target_lane` is meaningful ONLY when kind != Missing (presence == the
+        /// kind flag, same pattern as RepoDetect.suggested_kind / Bookmark.remote_name):
+        /// a Missing edge never lands in a lane, so Rust writes 0 and Dart models it
+        /// as null. flatc 25.12.19 rejects optional scalars (`= null`) for Dart.
+        pub struct GraphRowEdge<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphRowEdge<'a> {
+            type Inner = GraphRowEdge<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphRowEdge<'a> {
+            pub const VT_TARGET: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGET_LANE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphRowEdge { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphRowEdgeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GraphRowEdge<'bldr>> {
+                let mut builder = GraphRowEdgeBuilder::new(_fbb);
+                builder.add_target_lane(args.target_lane);
+                if let Some(x) = args.target {
+                    builder.add_target(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn target(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRowEdge::VT_TARGET, None)
+                }
+            }
+            #[inline]
+            pub fn target_lane(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphRowEdge::VT_TARGET_LANE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn kind(&self) -> GraphEdgeKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<GraphEdgeKind>(GraphRowEdge::VT_KIND, Some(GraphEdgeKind::Direct))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphRowEdge<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target", Self::VT_TARGET, false)?
+                    .visit_field::<u32>("target_lane", Self::VT_TARGET_LANE, false)?
+                    .visit_field::<GraphEdgeKind>("kind", Self::VT_KIND, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphRowEdgeArgs<'a> {
+            pub target: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub target_lane: u32,
+            pub kind: GraphEdgeKind,
+        }
+        impl<'a> Default for GraphRowEdgeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GraphRowEdgeArgs {
+                    target: None,
+                    target_lane: 0,
+                    kind: GraphEdgeKind::Direct,
+                }
+            }
+        }
+
+        pub struct GraphRowEdgeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphRowEdgeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowEdge::VT_TARGET, target);
+            }
+            #[inline]
+            pub fn add_target_lane(&mut self, target_lane: u32) {
+                self.fbb_.push_slot::<u32>(GraphRowEdge::VT_TARGET_LANE, target_lane, 0);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: GraphEdgeKind) {
+                self.fbb_
+                    .push_slot::<GraphEdgeKind>(GraphRowEdge::VT_KIND, kind, GraphEdgeKind::Direct);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphRowEdgeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphRowEdgeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphRowEdge<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphRowEdge<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphRowEdge");
+                ds.field("target", &self.target());
+                ds.field("target_lane", &self.target_lane());
+                ds.field("kind", &self.kind());
+                ds.finish()
+            }
+        }
+        pub enum GraphRowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
+        /// COMMIT id (change ids are ambiguous for divergent changes); display metadata
+        /// joins later.
+        pub struct GraphRow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphRow<'a> {
+            type Inner = GraphRow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphRow<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LANE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COLOR_IDX: ::flatbuffers::VOffsetT = 8;
+            pub const VT_EDGES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphRow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphRowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GraphRow<'bldr>> {
+                let mut builder = GraphRowBuilder::new(_fbb);
+                if let Some(x) = args.edges {
+                    builder.add_edges(x);
+                }
+                builder.add_color_idx(args.color_idx);
+                builder.add_lane(args.lane);
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRow::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn lane(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphRow::VT_LANE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn color_idx(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphRow::VT_COLOR_IDX, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn edges(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRowEdge<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRowEdge>>,
+                    >>(GraphRow::VT_EDGES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphRow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<u32>("lane", Self::VT_LANE, false)?
+                    .visit_field::<u32>("color_idx", Self::VT_COLOR_IDX, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphRowEdge>>,
+                    >>("edges", Self::VT_EDGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphRowArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub lane: u32,
+            pub color_idx: u32,
+            pub edges: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRowEdge<'a>>>>,
+            >,
+        }
+        impl<'a> Default for GraphRowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GraphRowArgs {
+                    commit_id: None,
+                    lane: 0,
+                    color_idx: 0,
+                    edges: None,
+                }
+            }
+        }
+
+        pub struct GraphRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphRowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRow::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_lane(&mut self, lane: u32) {
+                self.fbb_.push_slot::<u32>(GraphRow::VT_LANE, lane, 0);
+            }
+            #[inline]
+            pub fn add_color_idx(&mut self, color_idx: u32) {
+                self.fbb_.push_slot::<u32>(GraphRow::VT_COLOR_IDX, color_idx, 0);
+            }
+            #[inline]
+            pub fn add_edges(
+                &mut self,
+                edges: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GraphRowEdge<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRow::VT_EDGES, edges);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphRowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphRowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphRow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphRow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphRow");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("lane", &self.lane());
+                ds.field("color_idx", &self.color_idx());
+                ds.field("edges", &self.edges());
+                ds.finish()
+            }
+        }
+        pub enum GraphSliceOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A slice of the lane-assigned commit graph, in stream (`jj log`) order.
+        /// WIP return-all semantics: total_rows == rows.length. Story 4.4 windowing may
+        /// set total_rows > rows.length later (breaking change allowed in WIP).
+        pub struct GraphSlice<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphSlice<'a> {
+            type Inner = GraphSlice<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphSlice<'a> {
+            pub const VT_ROWS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TOTAL_ROWS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphSlice { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphSliceArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GraphSlice<'bldr>> {
+                let mut builder = GraphSliceBuilder::new(_fbb);
+                builder.add_total_rows(args.total_rows);
+                if let Some(x) = args.rows {
+                    builder.add_rows(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn rows(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRow<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRow>>,
+                    >>(GraphSlice::VT_ROWS, None)
+                }
+            }
+            #[inline]
+            pub fn total_rows(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphSlice::VT_TOTAL_ROWS, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphSlice<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphRow>>>>("rows", Self::VT_ROWS, false)?
+     .visit_field::<u32>("total_rows", Self::VT_TOTAL_ROWS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphSliceArgs<'a> {
+            pub rows: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRow<'a>>>>,
+            >,
+            pub total_rows: u32,
+        }
+        impl<'a> Default for GraphSliceArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GraphSliceArgs {
+                    rows: None,
+                    total_rows: 0,
+                }
+            }
+        }
+
+        pub struct GraphSliceBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphSliceBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_rows(
+                &mut self,
+                rows: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GraphRow<'b>>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphSlice::VT_ROWS, rows);
+            }
+            #[inline]
+            pub fn add_total_rows(&mut self, total_rows: u32) {
+                self.fbb_.push_slot::<u32>(GraphSlice::VT_TOTAL_ROWS, total_rows, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphSliceBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphSliceBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphSlice<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphSlice<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphSlice");
+                ds.field("rows", &self.rows());
+                ds.field("total_rows", &self.total_rows());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -3497,6 +4049,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_graph_slice(&self) -> Option<GraphSlice<'a>> {
+                if self.data_type() == Payload::GraphSlice {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GraphSlice::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -3556,6 +4123,11 @@ pub mod zanshin {
                                 "Payload::Progress",
                                 pos,
                             ),
+                            Payload::GraphSlice => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GraphSlice>>(
+                                    "Payload::GraphSlice",
+                                    pos,
+                                ),
                             _ => Ok(()),
                         },
                     )?
@@ -3692,6 +4264,13 @@ pub mod zanshin {
                     }
                     Payload::Progress => {
                         if let Some(x) = self.data_as_progress() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GraphSlice => {
+                        if let Some(x) = self.data_as_graph_slice() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

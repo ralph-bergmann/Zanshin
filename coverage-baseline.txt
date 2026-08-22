@@ -17,6 +17,7 @@ crates/zanshin-ffi/src/diagnostics.rs = 100.00
 crates/zanshin-ffi/src/envelope.rs = 100.00
 crates/zanshin-ffi/src/events.rs = 100.00
 crates/zanshin-ffi/src/ffi_strings.rs = 99.14
+crates/zanshin-ffi/src/graph.rs = 99.45
 crates/zanshin-ffi/src/handle.rs = 97.92
 crates/zanshin-ffi/src/lib.rs = 100.00
 crates/zanshin-ffi/src/logging.rs = 96.20
