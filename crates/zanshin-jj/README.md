@@ -95,7 +95,11 @@ CLI's at v0.42.0: `TopoGroupedGraph::new(revset.stream_graph(), |id| id)` with
 `revsets.log-graph-prioritize` mechanics; the intersection happens as user
 expressions before resolution). Both expressions are caller pass-throughs;
 `DEFAULT_GRAPH_PRIORITIZE` (`"present(@)"`) exposes the CLI default as a
-pre-fill, never applied silently.
+pre-fill, never applied silently. `"none()"` is the canonical "no
+prioritization" value — an empty/blank `prioritize` is a `ParseError`, as the
+CLI fails on an empty config value. The prioritized set (`prioritize ∩ revset`)
+is materialized before streaming, so keep it small (`present(@)` is one commit;
+`all()` would materialize every id).
 
 The stream is lazy and re-derived from the head operation on every call
 (ADR-0002 — no cache, nothing retained); `visit` returning `ControlFlow::Break`

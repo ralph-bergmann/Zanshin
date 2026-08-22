@@ -247,6 +247,53 @@ fn walk_graph_medium_all_visits_every_node_once_children_before_parents() {
     }
 }
 
+#[test]
+fn walk_graph_prioritize_of_a_non_working_copy_branch_emits_that_branch_first() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let tip_a = commit_id_of(&repo, "bookmarks(exact:\"branch-a\")");
+    let tip_b = commit_id_of(&repo, "bookmarks(exact:\"branch-b\")");
+    let tip_c = commit_id_of(&repo, "bookmarks(exact:\"branch-c\")");
+    let position = |nodes: &[GraphNode], id: &str| nodes.iter().position(|n| n.id.0 == id).unwrap();
+
+    // Natural order (TopoGroupedGraph): "at merge point, the second (or the last) ancestor
+    // branch will be visited first" — the octopus merge's parents are (A, B, C), so C's
+    // branch comes first, then B, then A.
+    let natural = collect_nodes(&repo, "all()", "none()");
+    assert!(position(&natural, &tip_c) < position(&natural, &tip_b), "C before B");
+    assert!(position(&natural, &tip_b) < position(&natural, &tip_a), "B before A");
+
+    // Prioritising a non-head node queues its descendants first (jj-lib: "if the specified
+    // node isn't a head, all preceding nodes will be queued") — here the trunk above the
+    // merge, which is emitted first anyway; below the merge the parent order still rules,
+    // so C's tip precedes B's tip exactly as without prioritisation.
+    let merged = collect_nodes(&repo, "all()", "bookmarks(exact:\"branch-b\")");
+    assert_eq!(
+        merged.iter().map(|n| &n.id.0).collect::<Vec<_>>(),
+        natural.iter().map(|n| &n.id.0).collect::<Vec<_>>(),
+        "a prioritised node under a merge cannot reorder the merge's parent branches"
+    );
+
+    // With the three branch tips as heads (no merge), prioritising branch-b puts B's tip
+    // first — before both A's and C's — whereas the natural order starts with C (the first
+    // input commit, newest index position).
+    let three_heads = "::bookmarks(exact:\"branch-a\") | ::bookmarks(exact:\"branch-b\") \
+                       | ::bookmarks(exact:\"branch-c\")";
+    let natural = collect_nodes(&repo, three_heads, "none()");
+    assert_eq!(natural[0].id.0, tip_c, "natural: C's branch first");
+    let prioritized = collect_nodes(&repo, three_heads, "bookmarks(exact:\"branch-b\")");
+    assert_eq!(prioritized[0].id.0, tip_b, "prioritised: B's tip is the first node");
+    assert!(
+        position(&prioritized, &tip_b) < position(&prioritized, &tip_a),
+        "B before A"
+    );
+    assert!(
+        position(&prioritized, &tip_b) < position(&prioritized, &tip_c),
+        "B before C"
+    );
+}
+
 // ── Streaming shape: early exit, empty set ──────────────────────────────────
 
 #[test]
@@ -310,10 +357,14 @@ fn walk_graph_prioritize_outside_revset_falls_back_to_natural_order_without_pani
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&repo, "@");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
 
     let nodes = collect_nodes(&repo, "heads(all())", "root()");
 
     assert_eq!(nodes.len(), 2, "root() ∩ heads(all()) is empty → plain heads walk");
+    assert_eq!(nodes[0].id.0, c3, "natural order: the first input commit (c3) leads");
+    assert_eq!(nodes[1].id.0, wc, "@ is not forced first without present(@)");
 }
 
 // ── Errors: either parameter; no panic ──────────────────────────────────────
@@ -377,4 +428,56 @@ fn walk_graph_on_corrupt_repo_returns_jj_lib_error() {
         matches!(result, Err(RevsetError::JjLibError(_))),
         "corrupt op_heads must yield RevsetError::JjLibError, got: {result:?}"
     );
+}
+
+#[test]
+fn walk_graph_unresolvable_prioritize_returns_resolution_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.walk_graph("all()", "nonexistent-bookmark-xyz", |_| ControlFlow::Continue(()));
+    assert!(
+        matches!(result, Err(RevsetError::ResolutionError { .. })),
+        "an unknown prioritize symbol must return ResolutionError, got: {result:?}"
+    );
+}
+
+#[test]
+fn walk_graph_mid_stream_store_failure_returns_jj_lib_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    // No commit is read through the handle before the corruption (the store caches commits).
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // Corrupt the git object store AFTER open: the index still answers `all()`, but a filter
+    // revset has to read each commit lazily while the stream is pulled, so the failure
+    // surfaces as a per-item stream error (`prioritize = none()` keeps the prioritised-id
+    // materialisation from reading `@` first).
+    let objects = fx
+        .path
+        .join(".jj")
+        .join("repo")
+        .join("store")
+        .join("git")
+        .join("objects");
+    std::fs::remove_dir_all(&objects).unwrap();
+
+    let index_only = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(
+        index_only.len(),
+        5,
+        "the index alone still streams all() (no commit reads)"
+    );
+
+    let mut visited = 0usize;
+    let result = repo.walk_graph("description(\"Commit\")", "none()", |_| {
+        visited += 1;
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(RevsetError::JjLibError(_))),
+        "a commit read failing mid-stream must yield RevsetError::JjLibError, got: {result:?}"
+    );
+    assert_eq!(visited, 0, "the first filtered item already fails; nothing is visited");
 }

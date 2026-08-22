@@ -57,6 +57,10 @@ impl From<zanshin_jj::GraphNode> for GraphNode {
 /// `Ok(Break)`. When the stream is exhausted, [`LaneAssigner::finish`] runs and the result
 /// is `Ok(Continue)`.
 ///
+/// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a
+/// parse error (the CLI fails on an empty config value too). Rows already handed to `sink`
+/// before an `Err` are not retracted — discard partial output on `Err`.
+///
 /// # Errors
 ///
 /// - [`LaneStreamError::Revset`] — either expression failed to parse/resolve/evaluate, or
@@ -79,7 +83,22 @@ pub fn stream_lanes(
 
 #[cfg(test)]
 mod tests {
-    use super::{EdgeKind, GraphEdge, GraphNode};
+    use super::{EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError};
+
+    #[test]
+    fn lane_stream_error_wraps_graph_error_transparently() {
+        let inner = GraphError::DanglingEdge {
+            target: "x".to_string(),
+        };
+        let expected = inner.to_string();
+        let error = LaneStreamError::from(inner);
+        assert!(matches!(error, LaneStreamError::Graph(..)), "got: {error:?}");
+        assert_eq!(
+            error.to_string(),
+            expected,
+            "#[error(transparent)] forwards the message"
+        );
+    }
 
     #[test]
     fn edge_kind_from_jj_maps_every_variant_by_name() {

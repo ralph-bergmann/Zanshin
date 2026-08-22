@@ -291,3 +291,24 @@ fn stream_lanes_nonexistent_bookmark_returns_revset_resolution_error() {
         "an unknown symbol must surface as LaneStreamError::Revset(ResolutionError), got: {result:?}"
     );
 }
+
+#[test]
+fn stream_lanes_unresolvable_prioritize_returns_revset_resolution_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let result = stream_lanes(
+        &repo,
+        "all()",
+        "nonexistent-bookmark-xyz",
+        |_| ControlFlow::Continue(()),
+    );
+    assert!(
+        matches!(
+            result,
+            Err(LaneStreamError::Revset(RevsetError::ResolutionError { .. }))
+        ),
+        "an unknown prioritize symbol must surface as LaneStreamError::Revset(ResolutionError), got: {result:?}"
+    );
+}

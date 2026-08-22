@@ -191,6 +191,15 @@ impl Repo {
     /// `ControlFlow::Break` stops it early, and the result is `Ok(Break)`; `Ok(Continue)` means
     /// the stream was exhausted. Read-only; never shells to `jj log` (AR-AP-1).
     ///
+    /// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a
+    /// [`crate::RevsetError::ParseError`], as the CLI fails on an empty config value. The
+    /// prioritized set (`prioritize ∩ revset`) is materialized before streaming — keep it small
+    /// (the CLI default `present(@)` is one commit; `all()` would materialize every id). The
+    /// `jj log` order parity holds for the CLI's graph mode without `--reversed`/`--limit`
+    /// (paging/presentation concerns). Nodes already handed to `visit` before an `Err` are not
+    /// retracted — discard partial output on `Err`. No internal locking: callers serialize
+    /// access (single worker isolate, AD-2).
+    ///
     /// # Errors
     ///
     /// - [`crate::RevsetError::ParseError`] — either expression is syntactically invalid.
