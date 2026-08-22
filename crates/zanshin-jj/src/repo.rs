@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::io;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
@@ -177,6 +178,34 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_remotes(&self) -> Result<Vec<crate::Remote>, crate::RemoteError> {
         crate::remotes::list_remotes(self.workspace())
+    }
+
+    /// Streams the commit graph of `revset` — one [`crate::GraphNode`] per commit, children
+    /// before parents — through `visit`, in the order `jj log -r <revset>` prints it with
+    /// `revsets.log-graph-prioritize = <prioritize>` (NFR-R-2, ADR-0003).
+    ///
+    /// Both expressions are caller pass-throughs (FR-JJ-17); [`crate::DEFAULT_GRAPH_PRIORITIZE`]
+    /// is the CLI's default for `prioritize`. Only the `trunk()` alias is defined — other CLI
+    /// aliases (`immutable_heads()`, …) fail to parse. Re-resolves to the head operation per
+    /// call (ADR-0002); nothing is retained across calls. The stream is lazy: `visit` returning
+    /// `ControlFlow::Break` stops it early, and the result is `Ok(Break)`; `Ok(Continue)` means
+    /// the stream was exhausted. Read-only; never shells to `jj log` (AR-AP-1).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::RevsetError::ParseError`] — either expression is syntactically invalid.
+    /// - [`crate::RevsetError::ResolutionError`] — a symbol in either expression cannot be
+    ///   resolved.
+    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item
+    ///   stream failure; the jj-lib reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn walk_graph(
+        &self,
+        revset: &str,
+        prioritize: &str,
+        visit: impl FnMut(crate::GraphNode) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, crate::RevsetError> {
+        crate::graph::walk_graph(self, revset, prioritize, visit)
     }
 
     /// Opens an existing jj workspace rooted at `path`.

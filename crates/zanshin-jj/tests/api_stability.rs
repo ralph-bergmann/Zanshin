@@ -9,7 +9,7 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (27 types, AC-1 table) --------
+// --- Type-path aliases: one alias per public type (30 types, AC-1 table) --------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -54,6 +54,11 @@ type _RepoKind = zanshin_jj::RepoKind;
 type _DetectError = zanshin_jj::DetectError;
 type _RepoRoot = zanshin_jj::RepoRoot;
 
+// graph
+type _GraphNode = zanshin_jj::GraphNode;
+type _GraphEdge = zanshin_jj::GraphEdge;
+type _GraphEdgeKind = zanshin_jj::GraphEdgeKind;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 #[test]
@@ -93,7 +98,20 @@ fn api_surface_resolves() {
         kind: zanshin_jj::RepoKind::Jj,
     };
 
-    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 27)
+    // graph (Story 4.3): 3 new types + the CLI-default prioritize const; `Repo::walk_graph` is a
+    // method (generic over its visitor), so it is pinned by the fixture tests, not a fn-pointer.
+    _ = zanshin_jj::GraphEdgeKind::Direct;
+    _ = zanshin_jj::GraphEdge {
+        target: zanshin_jj::CommitId(String::new()),
+        kind: zanshin_jj::GraphEdgeKind::Missing,
+    };
+    _ = zanshin_jj::GraphNode {
+        id: zanshin_jj::CommitId(String::new()),
+        parents: vec![],
+    };
+    _ = zanshin_jj::DEFAULT_GRAPH_PRIORITIZE;
+
+    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 30)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
     _ = zanshin_jj::convert_import
         as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;

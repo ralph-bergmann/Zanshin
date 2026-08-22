@@ -80,6 +80,31 @@ destination directory.  The two-parameter signature of `convert_import`
 reflects this constraint; the destination is always caller-supplied (no
 baked-in default).
 
+## Graph stream (`Repo::walk_graph`)
+
+```rust
+repo.walk_graph(revset: &str, prioritize: &str, visit: impl FnMut(GraphNode) -> ControlFlow<()>)
+    -> Result<ControlFlow<()>, RevsetError>
+```
+
+Streams the commit graph of `revset` — one `GraphNode { id: CommitId, parents:
+Vec<GraphEdge { target, kind: Direct | Indirect | Missing }> }` per commit, children
+before parents — in the order `jj log -r <revset>` prints it. The pipeline is the
+CLI's at v0.42.0: `TopoGroupedGraph::new(revset.stream_graph(), |id| id)` with
+`prioritize_branch` for every commit of `prioritize ∩ revset` (the
+`revsets.log-graph-prioritize` mechanics; the intersection happens as user
+expressions before resolution). Both expressions are caller pass-throughs;
+`DEFAULT_GRAPH_PRIORITIZE` (`"present(@)"`) exposes the CLI default as a
+pre-fill, never applied silently.
+
+The stream is lazy and re-derived from the head operation on every call
+(ADR-0002 — no cache, nothing retained); `visit` returning `ControlFlow::Break`
+stops it early (`Ok(Break)`), exhaustion yields `Ok(Continue)`. Parse /
+resolution / jj-lib failures of either expression surface as `RevsetError`.
+Only the `trunk()` alias is defined — other CLI aliases (`immutable_heads()`,
+…) fail to parse. `zanshin-graph`'s `stream_lanes` feeds this stream through
+its lane assigner.
+
 ## Integration-test fixture pattern
 
 Integration tests that need a real jj repository use the pre-built fixtures:

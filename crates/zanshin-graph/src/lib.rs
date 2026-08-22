@@ -12,9 +12,12 @@
 //! (ADR-0002: the graph is derived lazily on every `op_heads` change, never held as a
 //! materialized cache); see [`GraphNode`] for the input contract this algorithm relies
 //! on. This crate has no `jj_lib` dependency — `zanshin-jj` is the sole importer
-//! (FR-JJ-16); mapping the real stream into these types is downstream work
-//! (Story 4.3 decides where that mapping lives).
+//! (FR-JJ-16); [`stream_lanes`] maps `zanshin_jj::Repo::walk_graph`'s stream into these
+//! types and drives it through the assigner on demand (Story 4.3: this crate depends on
+//! `zanshin-jj`, never the reverse).
 
 mod lane;
+mod stream;
 
 pub use lane::{assign_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneAssigner, Row, RowEdge, PALETTE_SIZE};
+pub use stream::{stream_lanes, LaneStreamError};

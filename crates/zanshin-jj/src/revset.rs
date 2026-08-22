@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use futures::TryStreamExt as _;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
-    self, RevsetAliasesMap, RevsetDiagnostics, RevsetExtensions, RevsetParseContext, RevsetWorkspaceContext,
-    SymbolResolver,
+    self, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExtensions, RevsetParseContext, RevsetWorkspaceContext,
+    SymbolResolver, UserRevsetExpression,
 };
 
 use crate::{ChangeId, Repo};
 
-/// Errors returned by [`resolve_revset`].
+/// Errors returned by [`resolve_revset`] and [`Repo::walk_graph`].
 #[derive(Debug, thiserror::Error)]
 pub enum RevsetError {
     /// The expression is syntactically invalid or names an unknown function.
@@ -53,9 +54,38 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
         .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+
+    // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`).
+    let parsed = parse_revset(repo, expr)?;
+    let set = evaluate_revset(repo_dyn, &parsed)?;
+
+    // 3. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
+    //    synchronously via pollster, mirroring the `load_at_head` call above), then
+    //    reverse-hex → dedup (preserve first-seen topological order) → materialize.
+    let pairs: Vec<_> = pollster::block_on(set.commit_change_ids().try_collect())
+        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+    let mut out: Vec<ChangeId> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for (_commit_id, change_id) in pairs {
+        let rev_hex = change_id.reverse_hex();
+        if seen.insert(rev_hex.clone()) {
+            out.push(ChangeId(rev_hex));
+        }
+    }
+    Ok(out)
+}
+
+/// Parses `expr` in this workspace's revset context (the `trunk()` alias, the workspace
+/// name for `@`, the user email, a `git`-default ignored remote). Pure parsing — no symbol
+/// is resolved yet, so the result is independent of any loaded operation.
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let workspace = repo.workspace();
 
-    // 2. Parse context — every borrowed local is declared before `context` so it outlives it.
+    // Parse context — every borrowed local is declared before `context` so it outlives it.
     let aliases_map = build_aliases_map()?;
     let fileset_aliases = FilesetAliasesMap::new();
     let extensions = RevsetExtensions::default();
@@ -81,32 +111,30 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
         workspace: Some(workspace_ctx),
     };
 
-    // 3. Parse → resolve → evaluate.
     let mut diagnostics = RevsetDiagnostics::new();
-    let parsed = revset::parse(&mut diagnostics, expr, &context)
-        .map_err(|e| RevsetError::ParseError { reason: e.to_string() })?;
+    revset::parse(&mut diagnostics, expr, &context).map_err(|e| RevsetError::ParseError { reason: e.to_string() })
+}
+
+/// Resolves the symbols of a parsed expression against `repo_dyn` (a head-resolved
+/// `ReadonlyRepo`, ADR-0002) and evaluates it to a lazy revset borrowing that repo.
+///
+/// # Errors
+///
+/// - [`RevsetError::ResolutionError`] — a symbol cannot be resolved (unknown bookmark/tag,
+///   no working-copy commit for `@`, unmatched/ambiguous id).
+/// - [`RevsetError::JjLibError`] — an internal jj-lib evaluation failure.
+pub(crate) fn evaluate_revset<'r>(
+    repo_dyn: &'r dyn jj_lib::repo::Repo,
+    expr: &Arc<UserRevsetExpression>,
+) -> Result<Box<dyn Revset + 'r>, RevsetError> {
+    let extensions = RevsetExtensions::default();
     let symbol_resolver = SymbolResolver::new(repo_dyn, extensions.symbol_resolvers());
-    let resolved = parsed
+    let resolved = expr
         .resolve_user_expression(repo_dyn, &symbol_resolver)
         .map_err(|e| RevsetError::ResolutionError { reason: e.to_string() })?;
-    let set = resolved
+    resolved
         .evaluate(repo_dyn)
-        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
-
-    // 4. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
-    //    synchronously via pollster, mirroring the `load_at_head` call above), then
-    //    reverse-hex → dedup (preserve first-seen topological order) → materialize.
-    let pairs: Vec<_> = pollster::block_on(set.commit_change_ids().try_collect())
-        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
-    let mut out: Vec<ChangeId> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    for (_commit_id, change_id) in pairs {
-        let rev_hex = change_id.reverse_hex();
-        if seen.insert(rev_hex.clone()) {
-            out.push(ChangeId(rev_hex));
-        }
-    }
-    Ok(out)
+        .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
 
 /// Builds a `RevsetAliasesMap` seeded with jj's default `trunk()` alias.

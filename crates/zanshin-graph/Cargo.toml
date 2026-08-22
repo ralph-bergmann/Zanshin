@@ -11,6 +11,10 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
+zanshin-jj = { workspace = true }
+
+[dev-dependencies]
+test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
 [lints]
 workspace = true

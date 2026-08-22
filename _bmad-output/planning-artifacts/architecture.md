@@ -441,7 +441,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── lane.rs                 # FR-GR-1 algorithm
-│   │       ├── cache.rs                # FR-GR-3 → lazy revset stream, NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k)
+│   │       ├── stream.rs               # FR-GR-3 → lazy revset stream (`stream_lanes`, Story 4.3; was `cache.rs`), NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k)
 │   │       ├── slice.rs                # FR-GR-4 render-slice API
 │   │       └── output.rs               # FR-GR-2 JSON
 │   │
