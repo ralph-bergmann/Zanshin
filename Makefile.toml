@@ -426,17 +426,20 @@ trap 'rm -f "$CORE/coverage.on"' EXIT
 # Force an instrumented rebuild: build.dart declares coverage.on as a build dependency, so the
 # marker toggling on re-runs the hook with `-C instrument-coverage`. We also drop the previously
 # built asset as a belt-and-suspenders against a cached non-instrumented dylib being reused.
-# (The old `.dart_tool/hooks_runner` cache path no longer exists in current Dart native-assets;
-# the asset now lands at .dart_tool/lib/libzanshin_ffi.dylib per .dart_tool/native_assets.yaml.)
-rm -rf "$CORE/.dart_tool/lib" "$CORE/.dart_tool/native_assets.yaml"
+# (packages/zanshin_core resolves via a Dart pub WORKSPACE — `resolution: workspace` in its
+# pubspec.yaml, `workspace:` in the root pubspec.yaml — so `.dart_tool` is hoisted to the
+# WORKSPACE ROOT, not nested under packages/zanshin_core/.dart_tool. The instrumented dylib lands
+# at $ROOT/.dart_tool/lib/libzanshin_ffi.dylib per $ROOT/.dart_tool/native_assets.yaml; verified
+# 2026-08-13 by deleting every candidate dylib, rerunning `dart test`, and checking mtimes.)
+rm -rf "$ROOT/.dart_tool/lib" "$ROOT/.dart_tool/native_assets.yaml"
 ( cd "$CORE" \
   && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
      dart test )
-DYL="$CORE/.dart_tool/lib/libzanshin_ffi.dylib"
-[ -f "$DYL" ] || DYL="$(find "$CORE/.dart_tool" -name 'libzanshin_ffi.dylib' -type f 2>/dev/null | head -1)"
+DYL="$ROOT/.dart_tool/lib/libzanshin_ffi.dylib"
+[ -f "$DYL" ] || DYL="$(find "$ROOT/.dart_tool" -name 'libzanshin_ffi.dylib' -type f 2>/dev/null | head -1)"
 if [ -z "$DYL" ] || [ ! -f "$DYL" ]; then
-    echo "coverage: instrumented cdylib not found at $CORE/.dart_tool/lib/libzanshin_ffi.dylib" >&2
+    echo "coverage: instrumented cdylib not found at $ROOT/.dart_tool/lib/libzanshin_ffi.dylib" >&2
     exit 1
 fi
 "$LLVM_BIN/llvm-profdata" merge -sparse -o "$COV/ffi.profdata" "$COV"/ffi-*.profraw

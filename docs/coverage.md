@@ -36,9 +36,11 @@ and `hook/build.dart` builds the cdylib with instrumentation while that file
 exists. `build.dart` declares `coverage.on` as a build dependency, so toggling
 the marker forces the hooks-runner to re-run the hook (otherwise a cached
 non-instrumented dylib would be reused and the FFI path would measure nothing).
-The instrumented cdylib lands at `.dart_tool/lib/libzanshin_ffi.dylib` (per
-`.dart_tool/native_assets.yaml`). The marker is removed on exit and is
-git-ignored.
+`packages/zanshin_core` resolves via a Dart pub **workspace** (`resolution: workspace` in its
+`pubspec.yaml`), which hoists `.dart_tool` to the **workspace root** rather than nesting it
+under the package. The instrumented cdylib lands at the repo root's
+`.dart_tool/lib/libzanshin_ffi.dylib` (per the repo root's `.dart_tool/native_assets.yaml`) —
+not `packages/zanshin_core/.dart_tool/...`. The marker is removed on exit and is git-ignored.
 
 ## The baseline
 
@@ -111,3 +113,15 @@ above consciously instead of letting an untested file slip in unnoticed.
 macOS + the rust-toolchain `llvm-tools` component + `cargo-llvm-cov`
 (`brew install cargo-llvm-cov`). `cargo make coverage` checks for these and
 prints install guidance if missing.
+
+## Build-profile pitfall: keep full dev debug info on our own crates
+
+`-C instrument-coverage`'s source-line attribution for **our own crates** depends
+on their full DWARF debug info. Setting the *profile-level*
+`[profile.dev] debug = "line-tables-only"` was verified by hand (2026-08-13) to
+silently drop cargo-side line coverage on unchanged code
+(`crates/zanshin-ffi/src/ffi_strings.rs`: 115/116 → 102/116), which the ratchet
+then reports as a false regression. The root `Cargo.toml` therefore trims debug
+info only for **dependencies** via `[profile.dev.package."*"]` — which excludes
+workspace members by definition — and says so in its `# WHY:` comment. If the
+ratchet ever regresses on a file you did not touch, check the profiles first.

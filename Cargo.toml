@@ -48,3 +48,18 @@ zstd = "0.13"
 # for single pedantic lints) take precedence over the group without a
 # Cargo "ambiguous lint priority" warning.
 pedantic = { level = "warn", priority = -1 }
+
+# WHY: full DWARF debug info for the ~200+ dependency crates (not our own ~15) is
+# the single biggest contributor to target/ size for a tree this large, and (per
+# docs/coverage.md) dependencies are outside the coverage baseline's scope. Line
+# tables only keeps file:line in backtraces through jj-lib/gix frames — which we DO
+# read when a test panics inside jj-lib — while dropping the bulk (type/variable
+# DWARF). `package."*"` excludes workspace members by definition, so our own crates
+# keep Cargo's default (full) dev debug info — deliberately: the PROFILE-level
+# `[profile.dev] debug = "line-tables-only"` was verified by hand (2026-08-13) to
+# break `-C instrument-coverage`'s source-line attribution for OUR OWN crates
+# (crates/zanshin-ffi/src/ffi_strings.rs cargo-side coverage dropped from 115/116
+# to 102/116 lines with it on), which the coverage ratchet would then flag as a
+# false regression. Do not "simplify" this into the profile-level form.
+[profile.dev.package."*"]
+debug = "line-tables-only"
