@@ -377,4 +377,11 @@ GraphSlice {
   strings (no escaping).
 - **Decode contract (Dart).** `!ok` → `ZanshinFfiException(code, context)`;
   `ok` with a non-`GraphSlice` union variant → `ZanshinFfiException('ffi.unknown')`
-  (discriminant guard, same as every other payload decoder).
+  (discriminant guard, same as every other payload decoder). An out-of-range
+  `GraphEdgeKind` byte surfaces as the generated `StateError` (cdylib/bindings
+  version-skew or corruption — crash loudly, not recoverable; the same by-design
+  rule as `RepoKind` in `repo_detect.dart`).
+- **Reachability (until 4.6).** The Dart models/decoder in `graph.dart` are not
+  exported from `package:zanshin_core/zanshin_core.dart` and no worker command
+  feeds them yet; until Story 4.6 wires the extern fn they are reachable only via
+  the `src/` import used by the decode-contract tests.

@@ -2,16 +2,26 @@
 title: 'Story 4.2: GraphSlice FlatBuffers payload (was: JSON output + graph.v1.schema.json)'
 type: 'feature'
 created: '2026-08-22'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'ef2e0b6636e4882bd551cb233f1b73d89d44ce30'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/docs/adr/0001-ffi-data-transport-flatbuffers.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      zanshin-ffi lib.rs module doc still points at the pre-move Dart bindings path app/lib/src/ffi/bindings.dart.
+    evidence: |-
+      crates/zanshin-ffi/src/lib.rs lines 5-7 say the generated bindings live in `app/lib/src/ffi/bindings.dart`;
+      the file this story regenerates (and ffigen.yaml's output) is `packages/zanshin_core/lib/src/ffi/bindings.dart`.
+      Pre-existing doc drift from the bridge move to packages/zanshin_core, surfaced by the verification-gap reviewer;
+      not caused by Story 4.2.
+    location: >-
+      crates/zanshin-ffi/src/lib.rs:5-7
+    severity: low
 ---
 
 <intent-contract>
@@ -101,6 +111,22 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-08-22 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 3, low 5)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 11: (high 0, medium 0, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` Rust round-trip fixtures all had `lane == color_idx` (lanes < PALETTE_SIZE), so a lane/color_idx cross-wire in `row_offset` was undetectable (verification-gap) → added `lane_and_color_idx_are_written_to_distinct_slots` (lane 9 / color_idx 1, both slots asserted independently via the typed accessors + `rows_from_wire` equality) in `crates/zanshin-ffi/src/graph.rs`.
+  - `[medium]` `[patch]` Dart decode fixtures likewise never distinguished `lane` from `colorIdx` in `_mapRow` → added `decodes lane and colorIdx into distinct fields` (lane 9 / colorIdx 1) in `packages/zanshin_core/test/ffi/graph_test.dart`.
+  - `[medium]` `[patch]` `_bmad-output/planning-artifacts/epics.md` § Story 4.2 still described the payload as `change_id`/`edges_below`/`parents` + `output.rs` and "effectively merges into 4.6" → appended a dated "Delivered standalone (2026-08-22)" note with the actual commit-id-keyed merged-edge shape, file locations, and pointers to this spec + `docs/ffi-abi.md`.
+  - `[low]` `[patch]` `epic-4-context.md` (new in this diff) contradicted the delivery ("effectively merged into 4.6", "4.2 collapses into 4.6", 4.6 "extend ffi-abi.md" as if from scratch) → Stories list marks 4.2 done/standalone, the 4.6 bullets point at the existing builder/decoder and the existing ffi-abi section, the cross-story dependency is reworded.
+  - `[low]` `[patch]` An out-of-range `GraphEdgeKind` byte surfaces as the generated `StateError`, undocumented for this decoder → doc note on `decodeGraphSliceEnvelope` (mirrors the 3-4c `RepoKind` by-design rule in `repo_detect.dart`) + one sentence in the `docs/ffi-abi.md` decode-contract bullet.
+  - `[low]` `[patch]` `docs/ffi-abi.md` did not say the Dart models/decoder are unreachable from the package API until 4.6 → added a "Reachability (until 4.6)" bullet.
+  - `[low]` `[patch]` `schemas/envelope.fbs` `GraphSlice.rows` / `total_rows` lacked the trailing `//` field comments every other new field carries (the rows-always-present guarantee lived only in ffi-abi.md) → added them; `cargo make verify-codegen` confirms zero generated drift.
+  - `[low]` `[patch]` `sprint-status.yaml` DEV entry ended with "Gate: see commit." instead of the inline gate evidence the history line carries by convention → gate numbers from commit `7a10417` written into the DEV entry; REVIEW DONE entry prepended with this pass's gate numbers; `4-2` key flipped review → done.
+
 ## Design Notes
 
 - **Why `zanshin-ffi/src/graph.rs`, not `zanshin-graph/src/output.rs`:** the epic's `output.rs` was a serde module; under ADR-0001 the generated Rust accessors live only in `zanshin-ffi` (`envelope_generated.rs`), and 4.1 deliberately kept `zanshin-graph` free of FlatBuffers/codegen. Story 4.6 adds `zanshin_graph_*` extern fns to this same file (project-context module layout: one file per noun).
@@ -128,3 +154,42 @@ deferred: []
 - `dart test test/ffi/graph_test.dart` (cwd `packages/zanshin_core`) -- expected: green.
 - `cargo make test` (unpiped) -- expected: exit 0; coverage summary lists `crates/zanshin-ffi/src/graph.rs` ≥ 80.00, no regressions; `coverage-baseline.txt` updated → commit it.
 - `git status --porcelain` after the commit -- expected: empty.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Summary of implemented change.** Story 4.2 reconciled to ADR-0001: the lane graph (Story 4.1 `zanshin_graph::Row`) now has a FlatBuffers wire form — `GraphEdgeKind` / `GraphRowEdge` / `GraphRow` / `GraphSlice` appended to `schemas/envelope.fbs` (`GraphSlice` last in `union Payload`, disc 11), both accessor sides regenerated via `cargo make codegen`, an infallible Rust builder `zanshin_ffi::graph::graph_slice_to_envelope(&[Row]) -> Vec<u8>` in the new `crates/zanshin-ffi/src/graph.rs`, Dart models + decoder in the new `packages/zanshin_core/lib/src/ffi/graph.dart`, and round-trip / decode-contract tests on both sides. `target_lane` presence rides on `kind` (Rust writes 0 for `Missing`, Dart `int?` null). No extern fn, worker command, export, or revset wiring (Story 4.6). The implementation landed as commit `7a10417` (first run, interrupted before review); this resumed run performed the review pass and applied the review patches below.
+
+**Files changed (since baseline `ef2e0b6636e4882bd551cb233f1b73d89d44ce30`).**
+- `schemas/envelope.fbs` — four graph types + `GraphSlice` union member + registry comment; review patch: trailing `//` comments on the `GraphSlice` fields.
+- `crates/zanshin-ffi/src/envelope_generated.rs`, `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart` — flatc output (committed; unchanged by the review pass).
+- `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` — generated `ENUM_*` / `*_VT_*` constants only.
+- `crates/zanshin-ffi/src/graph.rs` (new) — builder + private `edge_kind` + inline tests (6 after review: + `lane_and_color_idx_are_written_to_distinct_slots`).
+- `crates/zanshin-ffi/src/lib.rs` — `pub mod graph;`.
+- `Cargo.toml`, `crates/zanshin-ffi/Cargo.toml`, `Cargo.lock` — `zanshin-graph` workspace dep consumed by `zanshin-ffi`.
+- `packages/zanshin_core/lib/src/ffi/graph.dart` (new) — models + `decodeGraphSliceEnvelope` / `decodeGraphSliceEnvelopeInternal`; review patch: StateError-by-design doc note.
+- `packages/zanshin_core/test/ffi/graph_test.dart` (new) — 6 decode-contract tests after review (+ lane/colorIdx distinct-fields test).
+- `docs/ffi-abi.md` — "GraphSlice payload (Story 4.2)" section; review patch: StateError note + "Reachability (until 4.6)" bullet.
+- `coverage-baseline.txt` — `crates/zanshin-ffi/src/graph.rs = 99.45` (auto-added by the ratchet).
+- `_bmad-output/planning-artifacts/epics.md` — review patch: "Delivered standalone" note under Story 4.2.
+- `_bmad-output/implementation-artifacts/epic-4-context.md` (new) — Epic 4 context; review patch: 4.2 standalone / 4.6 reuse wording.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `4-2` review → done, history-line entries (DEV + REVIEW DONE).
+- `_bmad-output/implementation-artifacts/spec-4-2-graph-slice-flatbuffers-payload.md` (new) — this spec.
+
+**Review findings breakdown.** 4 layers (Blind Hunter, Edge Case Hunter, Verification Gap, Intent Alignment) → 29 raw → 20 unique: 0 intent_gap, 0 bad_spec, 8 patch (3 medium, 5 low — all applied, see Review Triage Log), 1 defer (`lib.rs` module-doc bindings path — frontmatter `deferred`), 11 reject (debug/const asserts for the contract-guaranteed None-iff-Missing invariant — 4.1 review precedent; `?? ''` string coercion per the `op_log.dart` golden pattern the contract cites; Dart-side truncated-buffer / unknown-discriminant `StateError` as the pre-existing by-design behaviour of every decoder; cross-language `.bin` fixture — the intent sanctions no real-cdylib test before 4.6; 99.45 % vs the spec's parenthetical "expected 100 %" — the only uncovered line is the unreachable wildcard arm of the test-only `kind_from_wire`; generated header/bindings constant shifts vs the "no content change expected" wording — AC-1 already allows trivial regeneration; `total_rows` clamp comment; untested one-line `Internal` alias; the in-flight uncommitted spec status flip). Zero correctness defects found in the 4.2 code.
+
+**Follow-up review recommendation.** Patched findings: high 0, medium 3, low 5 → score 3×3 + 1×5 = 14 ≥ 5 → `followup_review_recommended: true`.
+
+**Verification performed.**
+- `cargo test -p zanshin-ffi --lib graph` — 6 passed.
+- `dart test packages/zanshin_core/test/ffi/graph_test.dart` — 6 passed.
+- `cargo make verify-codegen` after the `.fbs` comment edit — flatc/cbindgen/ffigen re-run, no drift in any generated file (only `pubspec.lock` resolution churn, reverted).
+- `cargo make test` (unpiped, post-patches) — Build Done in 171.83 s: cargo test workspace green (98 zanshin-ffi lib unit tests incl. 6 in `graph.rs`, all integration suites), clippy pedantic / rustfmt / dart analyze / dart format / cargo deny clean, 102 `zanshin_core` dart tests green, coverage held at 98.55 % (2917/2960 lines over 27 files), `graph.rs` 99.45 % (baseline unchanged), extern-coverage OK. `app/analysis_options.yaml` / `pubspec.lock` gate churn reverted (4.1 precedent).
+- `git status --porcelain` after the final commit — checked at HALT (must be empty).
+
+**Residual risks.**
+- Cross-language byte-level parity rests on the shared schema + hand-mirrored fixtures on each side; the first Rust-produced buffer decoded by Dart arrives with Story 4.6's real-cdylib test.
+- `graph_slice_to_envelope` trusts the 4.1 invariant `target_lane.is_none() == (kind == Missing)`; a producer that broke it would serialise a plausible lane 0 (a guard was rejected on the 4.1 precedent).
+- Out-of-range `GraphEdgeKind` / unknown `Payload` discriminant / truncated buffer crash loudly on the Dart side by design (version-skew / corruption), consistent with every other decoder.

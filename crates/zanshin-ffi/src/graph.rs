@@ -256,6 +256,26 @@ mod tests {
     }
 
     #[test]
+    fn lane_and_color_idx_are_written_to_distinct_slots() {
+        // Every other fixture has `lane == color_idx` (lanes < PALETTE_SIZE), which
+        // could not tell a lane/color_idx cross-wire apart; a lane past the palette
+        // wraps its color and pins the two slots independently.
+        let rows = vec![Row {
+            commit_id: "far".to_owned(),
+            lane: 9,
+            color_idx: 1,
+            edges: vec![],
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        let wire_row = slice.rows().expect("rows").get(0);
+        assert_eq!(wire_row.lane(), 9, "lane must land in the lane slot");
+        assert_eq!(wire_row.color_idx(), 1, "color_idx must land in the color_idx slot");
+        assert_eq!(rows_from_wire(slice), rows);
+    }
+
+    #[test]
     fn edge_kind_maps_every_variant_in_order() {
         assert_eq!(edge_kind(EdgeKind::Direct), fbs::GraphEdgeKind::Direct);
         assert_eq!(edge_kind(EdgeKind::Indirect), fbs::GraphEdgeKind::Indirect);

@@ -236,8 +236,8 @@ table GraphRow {
 /// WIP return-all semantics: total_rows == rows.length. Story 4.4 windowing may
 /// set total_rows > rows.length later (breaking change allowed in WIP).
 table GraphSlice {
-  rows: [GraphRow];
-  total_rows: uint;
+  rows: [GraphRow];        // one per Row, stream order; always present (empty for an empty slice)
+  total_rows: uint;        // == rows.length in WIP (see table doc)
 }
 
 union Payload {

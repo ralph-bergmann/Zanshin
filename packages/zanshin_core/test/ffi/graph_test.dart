@@ -154,6 +154,25 @@ void main() {
       );
     });
 
+    test('decodes lane and colorIdx into distinct fields', () {
+      // Every other fixture has lane == colorIdx (lanes < PALETTE_SIZE), which
+      // could not tell a lane/colorIdx cross-wire apart; a lane past the palette
+      // wraps its color and pins the two fields independently.
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GraphSlice,
+        data: fbs.GraphSliceObjectBuilder(
+          rows: [fbs.GraphRowObjectBuilder(commitId: 'far', lane: 9, colorIdx: 1, edges: const [])],
+          totalRows: 1,
+        ),
+      ).toBytes();
+
+      final GraphRow row = decodeGraphSliceEnvelope(bytes).rows.single;
+
+      expect(row.lane, equals(9));
+      expect(row.colorIdx, equals(1));
+    });
+
     // ── Empty slice ───────────────────────────────────────────────────────────
 
     test('decodes empty GraphSlice', () {

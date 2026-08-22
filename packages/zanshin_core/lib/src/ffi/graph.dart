@@ -87,6 +87,14 @@ final class GraphSlice {
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
 /// go through the worker (Story 4.6).
+///
+/// A `GraphEdgeKind` byte outside `0..=2` surfaces as the generated `StateError`
+/// from `GraphEdgeKind.fromValue`, not as a [ZanshinFfiException]. This is by
+/// design (same rule as `RepoKind` in `repo_detect.dart`): both sides are
+/// generated from one schema and the Rust producer only emits `0..=2`, so an
+/// out-of-range byte means cdylib/bindings version-skew or memory corruption —
+/// a programming error that must crash loudly, not a recoverable condition.
+/// The `avoid_catching_errors` lint correctly forbids converting it.
 @visibleForTesting
 GraphSlice decodeGraphSliceEnvelope(Uint8List bytes) => _decodeGraphSliceEnvelope(bytes);
 
