@@ -57,7 +57,7 @@ pub struct GraphEdge {
 /// `default_index/revset_graph_iterator.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
-    /// Hex commit id (Git-SHA form; rows are keyed by commit id, not change id).
+    /// Hex commit id (rows are keyed by commit id, not change id).
     pub id: CommitId,
     /// Parent edges in stream order.
     pub parents: Vec<GraphEdge>,
@@ -110,13 +110,14 @@ pub(crate) fn walk_graph(
     prioritize: &str,
     mut visit: impl FnMut(GraphNode) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
-    // 1. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
-    let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
-
-    // 2. Parse; intersect the prioritised set with the log set as user expressions (CLI parity).
+    // 1. Parse; intersect the prioritised set with the log set as user expressions (CLI parity).
+    //    Parsing needs no loaded operation, so a syntax error costs no `load_at_head` I/O.
     let log = parse_revset(repo, revset)?;
     let prio = parse_revset(repo, prioritize)?.intersection(&log);
+
+    // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
+    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
+    let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
     // 3. Evaluate both; the prioritised commit ids are materialised (they are a tiny set).
     let set = evaluate_revset(repo_dyn, &log)?;

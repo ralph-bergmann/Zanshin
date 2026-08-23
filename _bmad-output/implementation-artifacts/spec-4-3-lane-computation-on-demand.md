@@ -2,16 +2,41 @@
 title: 'Story 4.3: Lane computation on demand (was: cache.rs) — lazy revset graph stream → LaneAssigner'
 type: 'feature'
 created: '2026-08-22'
-status: 'in-review'
+status: 'done'
 baseline_revision: '4e679cbf5f581d9df52e63f06a22ea786727c8fe'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/docs/adr/0002-repository-state-model-warm-loader-reload-per-operation.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      architecture.md's zanshin-graph tree block still lists `output.rs # FR-GR-2 JSON` right
+      under the (now updated) `stream.rs` line, although Story 4.2 delivered the graph payload as
+      the FlatBuffers `GraphSlice` in `zanshin-ffi` (ADR-0001) — the JSON output module no longer
+      exists in the plan.
+    evidence: |-
+      `_bmad-output/planning-artifacts/architecture.md:446` reads `output.rs # FR-GR-2 JSON`;
+      the 4.2 "Delivered standalone" note in epics.md and `crates/zanshin-ffi/src/graph.rs`
+      (FlatBuffers builder) show the JSON output was superseded. Pre-existing, surfaced because
+      4.3 edited the adjacent `cache.rs` → `stream.rs` line (`architecture.md:444`).
+    location: >-
+      _bmad-output/planning-artifacts/architecture.md:446
+    severity: low
+  - summary: >-
+      `test-jj-adapter-hygiene` only greps `crates/zanshin-jj/src/` for `pub use jj_lib`; nothing
+      mechanically verifies that `zanshin-graph` (the first crate depending on `zanshin-jj`) has
+      no `jj-lib` dependency or `jj_lib` import, although spec/docs state that invariant.
+    evidence: |-
+      `Makefile.toml` `[tasks.test-jj-adapter-hygiene]` (l.192-222) iterates
+      `git ls-files 'crates/zanshin-jj/src/'` only; `crates/zanshin-graph/Cargo.toml` and its
+      sources are not inspected. The invariant currently holds by inspection (no `jj-lib` in
+      `crates/zanshin-graph/Cargo.toml`, no `jj_lib` in its sources) but is unguarded.
+    location: >-
+      Makefile.toml:192-222 (test-jj-adapter-hygiene); crates/zanshin-graph/Cargo.toml
+    severity: low
 ---
 
 <intent-contract>
@@ -114,6 +139,24 @@ Fixture facts (`crates/xtask/src/tasks/gen_fixture.rs:177-268`): **tiny** = `roo
 
 ## Review Triage Log
 
+### 2026-08-23 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 0, medium 1, low 9)
+- defer: 2: (high 0, medium 0, low 2)
+- reject: 16
+- addressed_findings:
+  - `[medium]` `[patch]` `stream_lanes`'s exhausted-stream `finish()` → `LaneStreamError::Graph` path was unobservable (real fixtures never leave a dangling edge; deleting the `finish()` call kept every test green) — split the loop into a crate-private `drive_lanes(walk, sink)` (`stream_lanes` = `drive_lanes(|visit| repo.walk_graph(..), sink)`) and added the inline test `drive_lanes_reports_a_dangling_edge_when_the_exhausted_stream_never_delivered_the_target` (synthetic walk, one `Direct` edge to a target that never arrives → `Err(Graph(DanglingEdge { target }))`, the row still emitted first).
+  - `[low]` `[patch]` `DEFAULT_GRAPH_PRIORITIZE`'s value was never pinned (changing it to `"@"` kept every test green) — `tests/api_stability.rs` now asserts `== "present(@)"`.
+  - `[low]` `[patch]` Documented "empty/blank `prioritize` is a `ParseError`" was untested at both surfaces — added `walk_graph_blank_prioritize_returns_parse_error` (`""`, `"   "`) and `stream_lanes_blank_prioritize_returns_revset_parse_error`.
+  - `[low]` `[patch]` `walk_graph` paid `load_at_head` I/O before parsing either expression (parsing needs no loaded operation) — reordered: parse + intersect first, then load head, then evaluate.
+  - `[low]` `[patch]` Test counts in `epics.md` §4.3 and `sprint-status.yaml` (13 / 10 / 3 inline) did not match the delivered files — reconciled to 18 `tests/graph.rs` + 12 `tests/stream.rs` + 5 inline `stream.rs` tests (post-patch numbers).
+  - `[low]` `[patch]` `walk_graph_prioritize_of_a_non_working_copy_branch_emits_that_branch_first` bundled two scenarios (under-a-merge → no reorder; three heads → B first) under a name describing only the second — split into `walk_graph_prioritize_under_a_merge_cannot_reorder_the_merges_parent_branches` and `walk_graph_prioritize_of_a_non_working_copy_head_emits_that_branch_first` (shared `node_position` helper).
+  - `[low]` `[patch]` `stream_lanes_tiny_all_without_prioritize_honours_the_parameter` only asserted `first != @` — now also pins `first == c3` like its `walk_graph` twin.
+  - `[low]` `[patch]` `walk_graph_mid_stream_store_failure_returns_jj_lib_error` silently depends on jj-lib 0.42.0 internals (index answers `all()` without object reads; `description()` reads lazily) — comment names the assumption and the pin so the next bump knows why it might move.
+  - `[low]` `[patch]` `GraphNode::id` doc said "Git-SHA form" (commit ids are hex for any backend) — now "Hex commit id".
+  - `[low]` `[patch]` `api_stability.rs` comment "count unchanged at 30" read oddly right after the block that added the three types — reworded to "still 30 after graph".
+
 ## Design Notes
 
 - **Mapping owner = `zanshin-graph` depends on `zanshin-jj`** (`ffi → graph → jj`). Rationale: the planning docs place the on-demand lane computation in `zanshin-graph` (`architecture.md:444` `cache.rs` → stream; epic context "4.4 `slice.rs` builds on 4.3"); `zanshin-ffi` (4.6) then calls one function (`stream_lanes`) instead of composing stream + assigner itself; `lane.rs` stays a pure algorithm module (no jj dep leaks into it). Rejected: (a) aggregator mapping in `zanshin-ffi` — leaves "lane computation on demand" homeless until 4.6 and makes 4.4's `slice.rs` unable to reach a repo; (b) `zanshin-jj` depending on `zanshin-graph` — inverts the layering (the ACL crate would own a rendering concern).
@@ -143,3 +186,37 @@ Fixture facts (`crates/xtask/src/tasks/gen_fixture.rs:177-268`): **tiny** = `roo
 - `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check` -- expected: clean without any new `#[allow]`.
 - `cargo make test` (unpiped) -- expected: exit 0; coverage summary lists `crates/zanshin-jj/src/graph.rs` and `crates/zanshin-graph/src/stream.rs` ≥ 80.00, no regressions; `coverage-baseline.txt` updated → commit it.
 - `git status --porcelain` after the commit -- expected: empty.
+
+## Auto Run Result
+
+Status: done
+
+Finalization note: the resumed run's final commit initially could not be written — SSH commit signing through the 1Password agent failed four times in the unattended session (`error: 1Password: failed to fill whole buffer` ×3, `error: 1Password: agent returned an error` ×1; `commit.gpgsign=true`, `gpg.format=ssh`, `gpg.ssh.program=op-ssh-sign`), so the run temporarily HALTed `blocked` / `finalization left repository dirty` with every changed file staged. No unsigned commit was made (every commit on `main` is SSH-signed). The staged change set was committed unchanged once signing was available again (subject `fix(zanshin-graph): apply Story 4.3 second review pass; mark done`); nothing else was outstanding.
+
+**Run history.** The first run implemented the story (commit `84612b2`, 2026-08-22) and ran a review pass whose patches P1–P9 landed in `2f4d0c0` (`fix(zanshin-graph): apply Story 4.3 review findings`: `prioritize` resolution-error tests at both surfaces, mid-stream store-failure `JjLibError` test, non-working-copy-branch prioritisation test on medium, epic-4-context crate-boundary rewording, Code Map cites `git -C ../jj show v0.42.0:cli/src/commands/log.rs`, root `Cargo.toml` `futures` WHY, order-asserting prio-outside-revset test, `Repo::walk_graph`/`stream_lanes`/README rustdoc on `none()`/blank/materialisation/no-retraction/no-locking, inline `LaneStreamError` transparency test) but was cut off by a session limit before the triage log, this section and `status: done` were written — that pass has no triage-log entry; its scope is recorded here and in the `2f4d0c0` commit message. This resumed run (2026-08-23, `status: in-review` → step-04) re-reviewed the full diff since `baseline_revision` (`84612b2` + `2f4d0c0`) with the four layers and finalized.
+
+**Summary of implemented change.** Story 4.3 delivered as the ADR-0002 lazy stream, not a cache: (1) `zanshin-jj` gained the jj-lib-free revset graph stream `Repo::walk_graph(revset, prioritize, visit) -> Result<ControlFlow<()>, RevsetError>` (`src/graph.rs`: `GraphNode`/`GraphEdge`/`GraphEdgeKind`, `DEFAULT_GRAPH_PRIORITIZE = "present(@)"`) on the exact `jj log` v0.42.0 pipeline (`TopoGroupedGraph::new(set.stream_graph(), |id| id)` + `prioritize_branch` for every commit of `prioritize ∩ revset`, intersected as user expressions before resolution), re-resolved to head per call, lazy with early exit; `revset.rs` split into crate-private `parse_revset` + `evaluate_revset` shared with `resolve_revset` (behaviour unchanged). (2) `zanshin-graph` gained `src/stream.rs`: `stream_lanes(repo, revset, prioritize, sink) -> Result<ControlFlow<()>, LaneStreamError { Revset, Graph }>` = `drive_lanes` over `Repo::walk_graph` → `From` mapping → `LaneAssigner::push` → sink, `finish()` only when exhausted. Mapping-owner decision: `zanshin-graph` depends on `zanshin-jj` (`ffi → graph → jj`, no `jj_lib` in `zanshin-graph`). No cache/rebuild/memoization, no FFI/.fbs/codegen/Dart, no collect-all/paging, `lane.rs` and `zanshin-ffi/src/graph.rs` untouched, no new `error.code`.
+
+**Files changed (since `4e679cb`).**
+- `crates/zanshin-jj/src/graph.rs` (new) — types, `DEFAULT_GRAPH_PRIORITIZE`, `walk_graph` (parse → load head → evaluate → topo-group + prioritise → drive into visitor), inline `edge_kind` test.
+- `crates/zanshin-jj/src/revset.rs` — `parse_revset` + `evaluate_revset` extracted; `resolve_revset` rewired.
+- `crates/zanshin-jj/src/repo.rs` — public `Repo::walk_graph` (rustdoc: parity, pass-through, `none()`, blank = ParseError, materialised prio set, no retraction, no locking).
+- `crates/zanshin-jj/src/lib.rs` — `pub(crate) mod graph` + re-exports.
+- `crates/zanshin-jj/tests/graph.rs` (new, 18 tests) — order/kinds/invariants/early exit/empty/re-derive/prio-outside/errors (parse incl. blank, resolution, corrupt op_heads, mid-stream store failure)/prioritisation on medium.
+- `crates/zanshin-jj/tests/api_stability.rs` — 27 → 30 types, value constructions, `DEFAULT_GRAPH_PRIORITIZE == "present(@)"`.
+- `crates/zanshin-jj/README.md` — "Graph stream (`Repo::walk_graph`)" section.
+- `crates/zanshin-graph/Cargo.toml` — `+zanshin-jj` dep, `+test-helpers` dev-dep; `Cargo.lock` accordingly.
+- `crates/zanshin-graph/src/stream.rs` (new) — `LaneStreamError`, `From` impls, `stream_lanes`, crate-private `drive_lanes`, 5 inline tests.
+- `crates/zanshin-graph/src/lib.rs` — `mod stream`, re-exports, crate-doc states the mapping decision.
+- `crates/zanshin-graph/tests/stream.rs` (new, 12 tests) — hand-traced tiny rows (both prio values), Missing stubs, Indirect edge, medium invariants + determinism, Break skips finish, empty, parse (incl. blank)/resolution errors as `LaneStreamError::Revset`.
+- `Cargo.toml` — `futures` WHY comment names the consumers.
+- `coverage-baseline.txt` — `graph.rs = 100.00`, `stream.rs = 100.00` (new rows), `repo.rs 91.43 → 91.80`.
+- `_bmad-output/planning-artifacts/epics.md` (§4.3 dated Delivered note), `architecture.md:444` (`cache.rs` → `stream.rs`), `_bmad-output/implementation-artifacts/deferred-work.md` (4.3 delivered), `epic-4-context.md` (4.3 done + mapping decision; edited last), `sprint-status.yaml` (4-3 → done + `last_updated`), this spec.
+
+**Review findings breakdown (this pass).** 32 raw findings from 4 layers (Blind Hunter 18, Edge Case Hunter 3, Verification Gap 4, Intent Alignment 7 descriptive divergences) → 28 unique → 0 intent_gap, 0 bad_spec, 10 patch (1 medium, 9 low — all applied, see Review Triage Log), 2 defer (frontmatter `deferred`: stale `output.rs # FR-GR-2 JSON` line in architecture.md; hygiene gate does not mechanically cover `zanshin-graph`'s no-`jj_lib` invariant), 16 reject. Rejected (not this story's problem / noise): spec I/O matrix not listing the superset tests (extra tests are additive evidence, intent-contract untouched); "done" wording in planning docs vs `review` in sprint-status (resolved by this finalize); `ControlFlow<B>` generic callbacks (intent pins `ControlFlow<()>`); op-id exposure for 4.4/4.6 paging (those stories' concern, already tracked in deferred-work); `test-helpers` path-dep style (not a workspace dep; mirrors zanshin-jj); triplicated `pin_env` scaffolding (spec mandated the mirror; refactor out of scope); duplicated `RevsetExtensions::default()`; `#[must_use]` symmetry (`Result` is must_use; repo.rs convention); `jj()` helper name; `prioritize = all()` materialisation and deep-non-head buffering (jj CLI does the same — parity, documented in rustdoc); possible `Direct`+`Indirect` edges to one target (jj-lib output passed through; `LaneAssigner` reservations are idempotent; 4.1 contract says edges are not 1:1 per parent); CLI parity proven by pipeline identity + hand-traced orders rather than a `jj log` oracle (shelling to jj is banned; the matrix spells the orders out); laziness/`resolve_revset`-guard/process-surface observations (descriptive, by design).
+
+**Follow-up review recommendation.** `followup_review_recommended: true` — patched this pass: high 0, medium 1, low 9 → score 3 × 1 + 9 = 12 ≥ 5.
+
+**Verification performed.** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean (no new `#[allow]`); `cargo test -p zanshin-jj --test graph --test revset --test api_stability` green (18 / 15 + 1 ignored pre-existing perf test / 1); `cargo test -p zanshin-graph` green (13 inline incl. 5 in `stream.rs`, 20 `tests/lane.rs`, 12 `tests/stream.rs`); full gate `cargo make test` unpiped after the patches → exit 0 in 209 s (cargo test workspace, clippy pedantic, fmt, flutter test, dart analyze/format, cargo deny, jj-adapter hygiene, coverage ratchet): `coverage-check: OK — coverage held at 98.63% (3104/3147 lines over 29 files)`, `coverage-baseline.txt` unchanged (`graph.rs`/`stream.rs` stay 100.00, `revset.rs`/`lane.rs` 100.00, no regression), `extern-coverage: OK`; `flutter`/`dart` gate churn (`app/analysis_options.yaml`, `pubspec.lock`) reverted, not committed.
+
+**Residual risks.** (1) `walk_graph_mid_stream_store_failure_returns_jj_lib_error` encodes jj-lib 0.42.0 internals (annotated) — a pin bump may move where the failure surfaces. (2) The prioritised set `prioritize ∩ revset` is materialised before streaming (CLI-identical; documented "keep it small") — a UI-supplied `prioritize = all()` would materialise every id. (3) Visit order parity with `jj log` rests on pipeline identity with `cli/src/commands/log.rs` @ v0.42.0 plus hand-traced fixture orders, not on an independent oracle (shelling to jj is banned); re-verify the pipeline at the next pin bump. (4) The 4.2-era `output.rs` line in architecture.md and the unguarded `zanshin-graph` no-`jj_lib` invariant are deferred (frontmatter).

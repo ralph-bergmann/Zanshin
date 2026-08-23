@@ -247,22 +247,31 @@ fn walk_graph_medium_all_visits_every_node_once_children_before_parents() {
     }
 }
 
+fn node_position(nodes: &[GraphNode], id: &str) -> usize {
+    nodes.iter().position(|n| n.id.0 == id).unwrap()
+}
+
 #[test]
-fn walk_graph_prioritize_of_a_non_working_copy_branch_emits_that_branch_first() {
+fn walk_graph_prioritize_under_a_merge_cannot_reorder_the_merges_parent_branches() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
     let tip_a = commit_id_of(&repo, "bookmarks(exact:\"branch-a\")");
     let tip_b = commit_id_of(&repo, "bookmarks(exact:\"branch-b\")");
     let tip_c = commit_id_of(&repo, "bookmarks(exact:\"branch-c\")");
-    let position = |nodes: &[GraphNode], id: &str| nodes.iter().position(|n| n.id.0 == id).unwrap();
 
     // Natural order (TopoGroupedGraph): "at merge point, the second (or the last) ancestor
     // branch will be visited first" — the octopus merge's parents are (A, B, C), so C's
     // branch comes first, then B, then A.
     let natural = collect_nodes(&repo, "all()", "none()");
-    assert!(position(&natural, &tip_c) < position(&natural, &tip_b), "C before B");
-    assert!(position(&natural, &tip_b) < position(&natural, &tip_a), "B before A");
+    assert!(
+        node_position(&natural, &tip_c) < node_position(&natural, &tip_b),
+        "C before B"
+    );
+    assert!(
+        node_position(&natural, &tip_b) < node_position(&natural, &tip_a),
+        "B before A"
+    );
 
     // Prioritising a non-head node queues its descendants first (jj-lib: "if the specified
     // node isn't a head, all preceding nodes will be queued") — here the trunk above the
@@ -274,6 +283,16 @@ fn walk_graph_prioritize_of_a_non_working_copy_branch_emits_that_branch_first() 
         natural.iter().map(|n| &n.id.0).collect::<Vec<_>>(),
         "a prioritised node under a merge cannot reorder the merge's parent branches"
     );
+}
+
+#[test]
+fn walk_graph_prioritize_of_a_non_working_copy_head_emits_that_branch_first() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let tip_a = commit_id_of(&repo, "bookmarks(exact:\"branch-a\")");
+    let tip_b = commit_id_of(&repo, "bookmarks(exact:\"branch-b\")");
+    let tip_c = commit_id_of(&repo, "bookmarks(exact:\"branch-c\")");
 
     // With the three branch tips as heads (no merge), prioritising branch-b puts B's tip
     // first — before both A's and C's — whereas the natural order starts with C (the first
@@ -285,11 +304,11 @@ fn walk_graph_prioritize_of_a_non_working_copy_branch_emits_that_branch_first() 
     let prioritized = collect_nodes(&repo, three_heads, "bookmarks(exact:\"branch-b\")");
     assert_eq!(prioritized[0].id.0, tip_b, "prioritised: B's tip is the first node");
     assert!(
-        position(&prioritized, &tip_b) < position(&prioritized, &tip_a),
+        node_position(&prioritized, &tip_b) < node_position(&prioritized, &tip_a),
         "B before A"
     );
     assert!(
-        position(&prioritized, &tip_b) < position(&prioritized, &tip_c),
+        node_position(&prioritized, &tip_b) < node_position(&prioritized, &tip_c),
         "B before C"
     );
 }
@@ -398,6 +417,23 @@ fn walk_graph_bogus_prioritize_returns_parse_error() {
 }
 
 #[test]
+fn walk_graph_blank_prioritize_returns_parse_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // The documented contract: `none()` is the canonical no-prioritization value; an
+    // empty/blank expression is a ParseError (as the CLI fails on an empty config value).
+    for prioritize in ["", "   "] {
+        let result = repo.walk_graph("all()", prioritize, |_| ControlFlow::Continue(()));
+        assert!(
+            matches!(result, Err(RevsetError::ParseError { .. })),
+            "a blank prioritize ({prioritize:?}) must return ParseError, got: {result:?}"
+        );
+    }
+}
+
+#[test]
 fn walk_graph_nonexistent_bookmark_returns_resolution_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
@@ -453,7 +489,9 @@ fn walk_graph_mid_stream_store_failure_returns_jj_lib_error() {
     // Corrupt the git object store AFTER open: the index still answers `all()`, but a filter
     // revset has to read each commit lazily while the stream is pulled, so the failure
     // surfaces as a per-item stream error (`prioritize = none()` keeps the prioritised-id
-    // materialisation from reading `@` first).
+    // materialisation from reading `@` first). Both facts are jj-lib 0.42.0 internals (the
+    // index answers `all()` without object reads; `description()` reads commits lazily while
+    // pulled) — a pin bump may move where the failure surfaces; re-verify this test then.
     let objects = fx
         .path
         .join(".jj")

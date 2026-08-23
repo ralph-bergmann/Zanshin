@@ -109,9 +109,13 @@ fn api_surface_resolves() {
         id: zanshin_jj::CommitId(String::new()),
         parents: vec![],
     };
-    _ = zanshin_jj::DEFAULT_GRAPH_PRIORITIZE;
+    assert_eq!(
+        zanshin_jj::DEFAULT_GRAPH_PRIORITIZE,
+        "present(@)",
+        "the CLI's revsets.log-graph-prioritize default (v0.42.0 cli/src/config/revsets.toml)"
+    );
 
-    // convert (free fns + RepoError variants — no new *type* exported; count unchanged at 30)
+    // convert (free fns + RepoError variants — no new *type* exported; still 30 after graph)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
     _ = zanshin_jj::convert_import
         as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;

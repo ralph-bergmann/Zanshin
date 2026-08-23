@@ -10,7 +10,7 @@ Compute commit-graph lane assignments for arbitrary jj DAGs (including working-c
 
 - Story 4.1: Lane-assignment algorithm (`lane.rs`) — done
 - Story 4.2: Graph output payload (originally JSON + schema; delivered standalone as the FlatBuffers `GraphSlice` payload — schema + Rust builder `zanshin-ffi/src/graph.rs` + Dart models/decoder `packages/zanshin_core/lib/src/ffi/graph.dart`; extern fn + worker command stay in 4.6) — done
-- Story 4.3: Lane computation on demand (delivered as the lazy revset stream: `zanshin_jj::Repo::walk_graph` + `zanshin_graph::stream_lanes` in `crates/zanshin-graph/src/stream.rs` — no `cache.rs`, no cache) — done
+- Story 4.3: Lane computation on demand (delivered as the lazy revset stream: `zanshin_jj::Repo::walk_graph` + `zanshin_graph::stream_lanes` in `crates/zanshin-graph/src/stream.rs` — no `cache.rs`, no cache) — done (reviewed 2026-08-23)
 - Story 4.4: Return-all-lanes-for-revset API (`slice.rs`)
 - Story 4.5: 10k-commit performance test — DELETED (WIP)
 - Story 4.6: FFI wrapper (`zanshin-ffi/src/graph.rs`)

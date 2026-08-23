@@ -71,10 +71,25 @@ pub fn stream_lanes(
     repo: &zanshin_jj::Repo,
     revset: &str,
     prioritize: &str,
+    sink: impl FnMut(Row) -> ControlFlow<()>,
+) -> Result<ControlFlow<()>, LaneStreamError> {
+    drive_lanes(|visit| repo.walk_graph(revset, prioritize, visit), sink)
+}
+
+/// The visitor a graph walk hands each node to (see [`drive_lanes`]).
+type Visit<'a> = &'a mut dyn FnMut(zanshin_jj::GraphNode) -> ControlFlow<()>;
+
+/// Drives the nodes `walk` yields through a fresh [`LaneAssigner`] into `sink`; `finish()` runs
+/// only when `walk` reports an exhausted stream (`Continue`).
+///
+/// Separated from [`stream_lanes`] so the exhausted-stream `finish()` path is observable with a
+/// synthetic walk — a real revset stream never leaves a dangling edge.
+fn drive_lanes(
+    walk: impl FnOnce(Visit<'_>) -> Result<ControlFlow<()>, zanshin_jj::RevsetError>,
     mut sink: impl FnMut(Row) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, LaneStreamError> {
     let mut assigner = LaneAssigner::new();
-    let flow = repo.walk_graph(revset, prioritize, |node| sink(assigner.push(node.into())))?;
+    let flow = walk(&mut |node| sink(assigner.push(node.into())))?;
     if flow.is_continue() {
         assigner.finish()?;
     }
@@ -83,7 +98,42 @@ pub fn stream_lanes(
 
 #[cfg(test)]
 mod tests {
-    use super::{EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError};
+    use std::ops::ControlFlow;
+
+    use super::{drive_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, Visit};
+
+    #[test]
+    fn drive_lanes_reports_a_dangling_edge_when_the_exhausted_stream_never_delivered_the_target() {
+        fn walk(visit: Visit<'_>) -> ControlFlow<()> {
+            let flow = visit(zanshin_jj::GraphNode {
+                id: zanshin_jj::CommitId("child".to_string()),
+                parents: vec![zanshin_jj::GraphEdge {
+                    target: zanshin_jj::CommitId("never-arrives".to_string()),
+                    kind: zanshin_jj::GraphEdgeKind::Direct,
+                }],
+            });
+            assert_eq!(flow, ControlFlow::Continue(()), "the sink did not break");
+            ControlFlow::Continue(())
+        }
+
+        let mut rows = 0usize;
+        let result = drive_lanes(
+            |visit| Ok(walk(visit)),
+            |_row| {
+                rows += 1;
+                ControlFlow::Continue(())
+            },
+        );
+
+        assert_eq!(rows, 1, "the row is emitted before finish() runs");
+        assert!(
+            matches!(
+                result,
+                Err(LaneStreamError::Graph(GraphError::DanglingEdge { ref target })) if target == "never-arrives"
+            ),
+            "an exhausted stream with an open Direct reservation must fail finish(), got: {result:?}"
+        );
+    }
 
     #[test]
     fn lane_stream_error_wraps_graph_error_transparently() {

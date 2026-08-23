@@ -97,6 +97,7 @@ fn stream_lanes_tiny_all_without_prioritize_honours_the_parameter() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
     let wc = commit_id_of(&repo, "@");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
 
     let prioritized = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
     let natural = collect_rows(&repo, "all()", "none()");
@@ -107,6 +108,10 @@ fn stream_lanes_tiny_all_without_prioritize_honours_the_parameter() {
     assert_ne!(
         natural[0].commit_id, wc,
         "without present(@) the working copy is not first"
+    );
+    assert_eq!(
+        natural[0].commit_id, c3,
+        "the branch of the first input commit (c3) is emitted first"
     );
 }
 
@@ -272,6 +277,23 @@ fn stream_lanes_bogus_prioritize_returns_revset_parse_error() {
         matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
         "an unbalanced prioritize must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
     );
+}
+
+#[test]
+fn stream_lanes_blank_prioritize_returns_revset_parse_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // The documented contract: `none()` is the canonical no-prioritization value; an
+    // empty/blank expression is a ParseError.
+    for prioritize in ["", "   "] {
+        let result = stream_lanes(&repo, "all()", prioritize, |_| ControlFlow::Continue(()));
+        assert!(
+            matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
+            "a blank prioritize ({prioritize:?}) must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
+        );
+    }
 }
 
 #[test]
