@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Return-all-lanes-for-revset API (Story 4.4): the revset-selected slice of the commit
-//! graph, collected in one call — the source of the FFI `GraphSlice` wire payload.
+//! graph, collected in one call — the intended source of the FFI `GraphSlice` wire payload
+//! (wired in Story 4.6).
 //!
 //! There is no windowing (`start`/`count`/`limit`/`reversed`): the WIP rework of this story
 //! dropped pagination, and ADR-0002 AC-4 leaves no materialized cache to slice. A future page
@@ -16,7 +17,8 @@ use crate::{stream_lanes, LaneStreamError, Row};
 /// A collecting wrapper over [`stream_lanes`]: the graph is re-derived from the head operation
 /// on every call and nothing is retained between calls. `revset` and `prioritize` are caller
 /// pass-throughs (see [`zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`] for the CLI-default pre-fill;
-/// `"none()"` is the canonical "no prioritization" value). The stream is always exhausted, so
+/// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a parse
+/// error). The stream is always exhausted, so
 /// [`crate::LaneAssigner::finish`] has run on the returned rows; the FFI `GraphSlice`'s
 /// `total_rows` equals `len()` by construction.
 ///

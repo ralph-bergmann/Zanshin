@@ -3681,8 +3681,8 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// A slice of the lane-assigned commit graph, in stream (`jj log`) order.
-        /// WIP return-all semantics: total_rows == rows.length. Story 4.4 windowing may
-        /// set total_rows > rows.length later (breaking change allowed in WIP).
+        /// Return-all semantics (Story 4.4): total_rows == rows.length. Windowing is
+        /// deferred past WIP; if it lands later it may set total_rows > rows.length.
         pub struct GraphSlice<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

@@ -230,7 +230,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | FR-GR-1 | Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). | P0 |
 | FR-GR-2 | Output: structured data — rows with `lane`, `edges_below`, `color_idx`. Crosses the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). | P0 |
 | FR-GR-3 | Full lane-cache computed on repo-open and on every `op_heads` change. | P0 |
-| FR-GR-4 | Render-slice API: given a row range, return the slice of rows in O(slice-size). | P0 |
+| FR-GR-4 | Render-slice API: given a row range, return the slice of rows in O(slice-size). (*WIP-rework 2026-05-17 / Story 4.4 delivered 2026-08-23: one call returns all lanes for the resolved revset — `zanshin_graph::collect_lanes`; row-range windowing deferred past WIP.*) | P0 |
 | FR-GR-5 | Performance: a 10k-commit repo produces a full lane-cache in < 1s (sub-budget of NFR-P-1's < 2s repo-open). | P0 |
 | FR-GR-6 | Checkpoint-caching for very large repos (kicks in beyond the 10k-commit baseline NFR-P-1 covers). Deferred to a later milestone. | P2 |
 
@@ -305,7 +305,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | NFR | Target |
 |-----|--------|
 | NFR-P-1 | Repo open (incl. full lane-cache computation, op-log read) for a 10k-commit repo: **< 2s** |
-| NFR-P-2 | `zanshin-graph` render-slice API: O(slice-size), no scan of the full lane-cache per call |
+| NFR-P-2 | `zanshin-graph` render-slice API: O(slice-size), no scan of the full lane-cache per call (*WIP: no lane-cache exists (ADR-0002) and Story 4.4 returns all lanes per call; the O(slice-size) bound returns with windowing in the release phase*) |
 | NFR-P-3 | `zanshin-diff` output (FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON) for a 5k-line changed file: **< 500ms** |
 | NFR-P-4 | Watcher latency `op_heads → callback`: **< 100ms** (FR-RX-1) |
 | NFR-P-5 | FFI handle creation/destruction overhead: negligible (< 1ms per call) so the long-running-worker pattern stays the right choice |

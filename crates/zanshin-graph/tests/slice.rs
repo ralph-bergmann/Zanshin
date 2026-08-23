@@ -118,6 +118,11 @@ fn collect_lanes_tiny_all_without_prioritize_honours_the_parameter() {
         natural[0].commit_id, c3,
         "the branch of the first input commit (c3) is emitted first"
     );
+    assert_eq!(
+        natural,
+        collect_rows(&repo, "all()", "none()"),
+        "collect_lanes equals the stream_lanes collection for the non-default prioritize too"
+    );
 }
 
 // ── Medium: invariants + determinism (no retained state) ────────────────────
@@ -142,6 +147,10 @@ fn collect_lanes_medium_all_satisfies_structural_invariants_and_is_deterministic
         rows.iter().filter(|r| r.edges.len() == 3).count(),
         1,
         "one octopus merge"
+    );
+    assert!(
+        rows.iter().flat_map(|r| &r.edges).all(|e| e.kind == EdgeKind::Direct),
+        "all() elides nothing"
     );
     assert_eq!(
         rows.iter().map(|r| r.lane).max(),
@@ -210,6 +219,39 @@ fn collect_lanes_bogus_prioritize_returns_revset_parse_error() {
     assert!(
         matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
         "an unbalanced prioritize must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
+    );
+}
+
+#[test]
+fn collect_lanes_blank_prioritize_returns_revset_parse_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // The documented contract: `none()` is the canonical no-prioritization value; an
+    // empty/blank expression is a ParseError.
+    for prioritize in ["", "   "] {
+        let result = collect_lanes(&repo, "all()", prioritize);
+        assert!(
+            matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
+            "a blank prioritize ({prioritize:?}) must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn collect_lanes_unresolvable_prioritize_returns_revset_resolution_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let result = collect_lanes(&repo, "all()", "nonexistent-bookmark-xyz");
+    assert!(
+        matches!(
+            result,
+            Err(LaneStreamError::Revset(RevsetError::ResolutionError { .. }))
+        ),
+        "an unknown prioritize symbol must surface as LaneStreamError::Revset(ResolutionError), got: {result:?}"
     );
 }
 

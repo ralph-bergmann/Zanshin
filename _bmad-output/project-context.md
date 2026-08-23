@@ -11,6 +11,7 @@ overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
   - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
   - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k'
+  - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP'
 scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---

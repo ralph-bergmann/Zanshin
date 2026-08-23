@@ -372,7 +372,7 @@ GraphSlice {
 - **`total_rows` semantics.** Return-all (Story 4.4 delivered it as
   `zanshin_graph::collect_lanes`): `total_rows == rows.length`. Windowing is
   deferred past WIP; if it lands later it may set `total_rows > rows.length`
-  (a breaking in-place change, allowed in WIP).
+  (an in-place wire change — edit the `.fbs`, regenerate, update all callers).
 - **Row order** is the stream / `jj log` order (topo-grouped, children before
   parents); one `GraphRow` per `Row`, one `GraphRowEdge` per `RowEdge`, verbatim
   strings (no escaping).
