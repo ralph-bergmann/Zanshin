@@ -15,6 +15,8 @@ Compute commit-graph lane assignments for arbitrary jj DAGs (including working-c
 - Story 4.5: 10k-commit performance test — DELETED (WIP)
 - Story 4.6: FFI wrapper (`zanshin-ffi/src/graph.rs`) — done (delivered 2026-08-23 as ONE extern fn `zanshin_graph_slice(handle, revset, prioritize) -> *mut ZanshinBuf` over `collect_lanes` + Dart `GraphSliceCommand` / `ZanshinWorker.graphSlice` / `RepoHandle.graphSlice`; no `_build`/`_close`/graph handle, no `start`/`count`, no worker auto-re-derive)
 - Story 4.7: Checkpoint-caching for very large repos — DELETED (deferred post-0.1)
+- Story 4.8: CLI-parity log rows — metadata-enriched, self-contained GraphSlice rows — backlog (spec authored 2026-08-23: `_bmad-output/specs/spec-4-8-log-rows-cli-parity/SPEC.md` + `cli-log-parity.md`; enrich rows with `jj log` display metadata in the same single-pass call, add per-row `active_lanes`, synthetic elided rows (CLI default), CLI builtin revset aliases + `immutable` flag)
+- Story 4.9: Honor jj config `[revset-aliases]` + expose effective log defaults — backlog (spec authored 2026-08-23: `_bmad-output/specs/spec-4-9-config-revset-aliases/SPEC.md` + `jj-config-reference.md`; resolves 4.8's open question — user/repo config overrides of `trunk()`/`immutable_heads()`/custom aliases resolve like the CLI; DEPENDS ON 4.8's builtin-alias-table seam)
 
 ## Requirements & Constraints
 
@@ -26,7 +28,7 @@ Compute commit-graph lane assignments for arbitrary jj DAGs (including working-c
 - **Slice semantics (WIP).** One call returns all lanes for the resolved revset — delivered as `collect_lanes` (Story 4.4), a collect-all over the lazy `stream_lanes` stream; windowing/pagination is deferred. If paging ever returns it composes as an early-exit sink on `stream_lanes` (O(returned rows), never a scan of a held graph) and its out-of-range start / oversized count must clamp rather than panic — today no such parameters exist. The CLI's `--limit`/`--reversed` were deliberately not passed through (presentation/paging knobs dropped with windowing; a consumer wanting a prefix uses `stream_lanes` + `Break`); revisit when windowing returns.
 - **Performance.** NFR budgets (< 1 s graph derive at 10k, < 2 s repo open) are soft targets; no perf gate, no large-fixture perf test in WIP. The only mandated correctness check is the ~100-commit algorithmic test (already in 4.1).
 - **Parity / pass-through.** Row order inherits `jj log`'s observable order (same topo-grouped stream pipeline); the revset and branch-prioritization parameters are caller-supplied pass-throughs, not baked-in defaults. Lane drawing itself is GUI UX, not a CLI-parity concern.
-- **Anti-speculation.** Do not emit per-row pass-through-lane info or other "the UI might want it" data until the UI asks.
+- **Anti-speculation.** Do not emit per-row pass-through-lane info or other "the UI might want it" data until the UI asks. **Superseded for pass-through lanes + display metadata (Ralph 2026-08-23):** the UI has asked — Story 4.8 adds per-row `active_lanes` and the `jj log` metadata catalog (see `_bmad-output/specs/spec-4-8-log-rows-cli-parity/`).
 
 ## Technical Decisions
 
