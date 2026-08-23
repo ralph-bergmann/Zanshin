@@ -57,8 +57,9 @@ fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::Gr
 /// Infallible: every `Row` is representable, so the envelope is always `ok`.
 /// `rows` are written in input (stream / `jj log`) order — one `GraphRow` per
 /// `Row`, one `GraphRowEdge` per `RowEdge`, same order. `total_rows ==
-/// rows.len()` (WIP return-all semantics; Story 4.4 windowing may decouple
-/// it). A `RowEdge::target_lane` of `None` (iff `Missing`) is written as `0`;
+/// rows.len()` (Story 4.4 delivered return-all; windowing is deferred past
+/// WIP and may decouple it later). A `RowEdge::target_lane` of `None` (iff
+/// `Missing`) is written as `0`;
 /// the Dart model restores `null` from `kind`.
 #[must_use]
 pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {

@@ -2,7 +2,7 @@
 project_name: 'Zanshin'
 user_name: 'Ralph'
 date: '2026-05-15'
-last_revised: '2026-06-27'
+last_revised: '2026-08-23'
 sections_completed:
   ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_and_style', 'development_workflow', 'critical_dont_miss']
 status: 'complete (WIP-scope rework 2026-05-17)'
@@ -670,9 +670,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   the graph is re-derived via a lazy revset stream (`stream_graph` + `TopoGroupedGraph`, GG
   model) and never trusted across an op-id advance. **Don't reintroduce a materialized lane
   cache** — it buys nothing here (re-derive ≪ NFR-P-1's < 1s @ 10k) and brings back staleness.
-- **`zanshin-graph` render-slice is O(slice-size), not O(full-cache).**
-  Hand-rolled iteration over the cache per render call would tank UI scrolling
-  performance. Use the slice API.
+- **`zanshin-graph` slice API = `collect_lanes`, a collect-all over the lazy stream.**
+  There is no held cache to iterate: `collect_lanes(repo, revset, prioritize)` drives
+  `stream_lanes` with a collecting sink (Story 4.4; windowing deferred past WIP). A future
+  page composes as an early-exit sink on `stream_lanes` (O(prefix)), never as a scan over
+  held rows.
 - **`imara-diff` Histogram algorithm** is ~30× faster than `similar` for large
   diffs. Don't substitute `similar` "for consistency" — the perf gap is real.
 - **Don't pre-compute things "in case the UI needs them".** Compute on
@@ -734,7 +736,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-06-27 (ADR-0003 adopted: `zanshin-jj` exposes the jj CLI's operation set as a typed verb-level API over jj-lib — we compose, consumers name the verb; no mutation primitives cross FFI (impossible — borrowed handles/locks; transaction stays Rust-side); reads add a generic `eval_revset` joker + direct `View`; a shared support module re-ports the `cli_util` orchestration jj-lib doesn't expose. Backed by the jj-0.42 feasibility map (69 ops mapped+verified). Pin bump 0.41→0.42 is the first impl step.)
+Last Updated: 2026-08-23 (Story 4.4: the `zanshin-graph` slice API is `collect_lanes`, a collect-all over the lazy `stream_lanes` stream — the render-slice-over-cache performance gotcha is retired; windowing deferred past WIP.)
+Previously: 2026-06-27 (ADR-0003 adopted: `zanshin-jj` exposes the jj CLI's operation set as a typed verb-level API over jj-lib — we compose, consumers name the verb; no mutation primitives cross FFI (impossible — borrowed handles/locks; transaction stays Rust-side); reads add a generic `eval_revset` joker + direct `View`; a shared support module re-ports the `cli_util` orchestration jj-lib doesn't expose. Backed by the jj-0.42 feasibility map (69 ops mapped+verified). Pin bump 0.41→0.42 is the first impl step.)
 Previously: 2026-06-22 (ADR-0002 adopted: the repo handle is a warm `Workspace` loader + op-heads-watcher owner that re-resolves per operation, NOT an authoritative state cache; app is multi-repo (0..N handles); FR-GR-3 lane-cache decision resolved (AC-4): the lane graph is streamed (GG model), no materialized cache — full derive ~3 ms @ 10k (Story 3.11). Performance-gotchas + handle-semantics sections reconciled.)
 Previously: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
 Previously: 2026-06-17 (AR-P-5 revised: Dart logs forward to the Rust sink via `zanshin_log`; supersedes the original "no Dart logger" clause)

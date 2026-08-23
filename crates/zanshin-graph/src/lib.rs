@@ -14,10 +14,13 @@
 //! on. This crate has no `jj_lib` dependency — `zanshin-jj` is the sole importer
 //! (FR-JJ-16); [`stream_lanes`] maps `zanshin_jj::Repo::walk_graph`'s stream into these
 //! types and drives it through the assigner on demand (Story 4.3: this crate depends on
-//! `zanshin-jj`, never the reverse).
+//! `zanshin-jj`, never the reverse). [`collect_lanes`] is the one-call return-all API over
+//! that stream (Story 4.4; windowing is deferred past WIP).
 
 mod lane;
+mod slice;
 mod stream;
 
 pub use lane::{assign_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneAssigner, Row, RowEdge, PALETTE_SIZE};
+pub use slice::collect_lanes;
 pub use stream::{stream_lanes, LaneStreamError};

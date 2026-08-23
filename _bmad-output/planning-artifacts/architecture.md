@@ -442,7 +442,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │       ├── lib.rs
 │   │       ├── lane.rs                 # FR-GR-1 algorithm
 │   │       ├── stream.rs               # FR-GR-3 → lazy revset stream (`stream_lanes`, Story 4.3; was `cache.rs`), NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k)
-│   │       ├── slice.rs                # FR-GR-4 render-slice API
+│   │       ├── slice.rs                # FR-GR-4 → return-all lanes for a revset (`collect_lanes`, Story 4.4; windowing deferred past WIP)
 │   │       └── output.rs               # FR-GR-2 JSON
 │   │
 │   ├── zanshin-ffi/                    # FR-FFI-* — single cdylib

@@ -369,9 +369,10 @@ GraphSlice {
   (null-for-absence at the model level; same presence-flag pattern as
   `RepoDetect.suggested_kind` / `Bookmark.remote_name`). Never read
   `target_lane` of a `Missing` edge.
-- **`total_rows` semantics.** WIP return-all: `total_rows == rows.length`.
-  Story 4.4 windowing may set `total_rows > rows.length` later (a breaking
-  in-place change, allowed in WIP).
+- **`total_rows` semantics.** Return-all (Story 4.4 delivered it as
+  `zanshin_graph::collect_lanes`): `total_rows == rows.length`. Windowing is
+  deferred past WIP; if it lands later it may set `total_rows > rows.length`
+  (a breaking in-place change, allowed in WIP).
 - **Row order** is the stream / `jj log` order (topo-grouped, children before
   parents); one `GraphRow` per `Row`, one `GraphRowEdge` per `RowEdge`, verbatim
   strings (no escaping).

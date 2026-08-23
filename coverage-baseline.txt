@@ -28,6 +28,7 @@ crates/zanshin-ffi/src/status.rs = 100.00
 crates/zanshin-ffi/src/tracing_init.rs = 94.96
 crates/zanshin-ffi/src/watcher.rs = 96.00
 crates/zanshin-graph/src/lane.rs = 100.00
+crates/zanshin-graph/src/slice.rs = 100.00
 crates/zanshin-graph/src/stream.rs = 100.00
 crates/zanshin-jj/src/bookmarks.rs = 94.12
 crates/zanshin-jj/src/change.rs = 100.00
