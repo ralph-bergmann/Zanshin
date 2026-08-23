@@ -9,8 +9,18 @@ use std::env;
 use std::ops::ControlFlow;
 use std::sync::LazyLock;
 
-use test_helpers::{add_commit_off_root, extract_fixture};
-use zanshin_jj::{resolve_revset, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE};
+use test_helpers::{
+    abandon_commit, add_commit_off_root, add_conflicted_merge_off_root, add_divergent_twin, add_workspace,
+    describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_tag,
+};
+use zanshin_jj::{
+    resolve_revset, CommitRef, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE,
+    DEFAULT_LOG_REVSET,
+};
+
+/// The CLI's `revsets.short-prefixes` default (it falls back to `revsets.log`) — what the
+/// Dart side pre-fills, so it is what most tests pass.
+const SHORT: &str = DEFAULT_LOG_REVSET;
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // WHY: empty string pins jj-lib/git off the developer's globals for reproducibility.
@@ -26,15 +36,25 @@ fn pin_env() {
 
 /// Collects the whole stream into a Vec (the stream must be exhausted → `Continue`).
 fn collect_nodes(repo: &Repo, revset: &str, prioritize: &str) -> Vec<GraphNode> {
+    collect_nodes_with(repo, revset, prioritize, SHORT)
+}
+
+/// [`collect_nodes`] with an explicit `short_prefixes` expression.
+fn collect_nodes_with(repo: &Repo, revset: &str, prioritize: &str, short_prefixes: &str) -> Vec<GraphNode> {
     let mut nodes = Vec::new();
     let flow = repo
-        .walk_graph(revset, prioritize, |node| {
+        .walk_graph(revset, prioritize, short_prefixes, |node| {
             nodes.push(node);
             ControlFlow::Continue(())
         })
         .unwrap();
     assert_eq!(flow, ControlFlow::Continue(()), "an unbroken walk must report Continue");
     nodes
+}
+
+/// The single node whose commit id is `id`.
+fn node_of<'n>(nodes: &'n [GraphNode], id: &str) -> &'n GraphNode {
+    nodes.iter().find(|n| n.id.0 == id).expect("node must be in the stream")
 }
 
 /// Hex commit id of the single commit `revset` resolves to — through the public API only.
@@ -270,7 +290,7 @@ fn walk_graph_visitor_break_stops_the_stream_and_reports_break() {
 
     let mut visited = 0usize;
     let flow = repo
-        .walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, |_node| {
+        .walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, SHORT, |_node| {
             visited += 1;
             if visited == 2 {
                 ControlFlow::Break(())
@@ -341,7 +361,7 @@ fn walk_graph_bogus_revset_returns_parse_error() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.walk_graph("bogus_function()", DEFAULT_GRAPH_PRIORITIZE, |_| {
+    let result = repo.walk_graph("bogus_function()", DEFAULT_GRAPH_PRIORITIZE, SHORT, |_| {
         ControlFlow::Continue(())
     });
     assert!(
@@ -356,7 +376,7 @@ fn walk_graph_bogus_prioritize_returns_parse_error() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.walk_graph("all()", "(", |_| ControlFlow::Continue(()));
+    let result = repo.walk_graph("all()", "(", SHORT, |_| ControlFlow::Continue(()));
     assert!(
         matches!(result, Err(RevsetError::ParseError { .. })),
         "an unbalanced prioritize expression must return ParseError, got: {result:?}"
@@ -372,7 +392,7 @@ fn walk_graph_blank_prioritize_returns_parse_error() {
     // The documented contract: `none()` is the canonical no-prioritization value; an
     // empty/blank expression is a ParseError (as the CLI fails on an empty config value).
     for prioritize in ["", "   "] {
-        let result = repo.walk_graph("all()", prioritize, |_| ControlFlow::Continue(()));
+        let result = repo.walk_graph("all()", prioritize, SHORT, |_| ControlFlow::Continue(()));
         assert!(
             matches!(result, Err(RevsetError::ParseError { .. })),
             "a blank prioritize ({prioritize:?}) must return ParseError, got: {result:?}"
@@ -386,7 +406,7 @@ fn walk_graph_nonexistent_bookmark_returns_resolution_error() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.walk_graph("nonexistent-bookmark-xyz", DEFAULT_GRAPH_PRIORITIZE, |_| {
+    let result = repo.walk_graph("nonexistent-bookmark-xyz", DEFAULT_GRAPH_PRIORITIZE, SHORT, |_| {
         ControlFlow::Continue(())
     });
     assert!(
@@ -406,7 +426,7 @@ fn walk_graph_on_corrupt_repo_returns_jj_lib_error() {
     let op_heads = fx.path.join(".jj").join("repo").join("op_heads");
     std::fs::remove_dir_all(&op_heads).unwrap();
 
-    let result = repo.walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, |_| ControlFlow::Continue(()));
+    let result = repo.walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, SHORT, |_| ControlFlow::Continue(()));
     assert!(
         matches!(result, Err(RevsetError::JjLibError(_))),
         "corrupt op_heads must yield RevsetError::JjLibError, got: {result:?}"
@@ -419,7 +439,12 @@ fn walk_graph_unresolvable_prioritize_returns_resolution_error() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.walk_graph("all()", "nonexistent-bookmark-xyz", |_| ControlFlow::Continue(()));
+    let result = repo.walk_graph(
+        "all()",
+        "nonexistent-bookmark-xyz",
+        SHORT,
+        |_| ControlFlow::Continue(()),
+    );
     assert!(
         matches!(result, Err(RevsetError::ResolutionError { .. })),
         "an unknown prioritize symbol must return ResolutionError, got: {result:?}"
@@ -433,12 +458,12 @@ fn walk_graph_mid_stream_store_failure_returns_jj_lib_error() {
     // No commit is read through the handle before the corruption (the store caches commits).
     let repo = Repo::open(&fx.path).unwrap();
 
-    // Corrupt the git object store AFTER open: the index still answers `all()`, but a filter
-    // revset has to read each commit lazily while the stream is pulled, so the failure
-    // surfaces as a per-item stream error (`prioritize = none()` keeps the prioritised-id
-    // materialisation from reading `@` first). Both facts are jj-lib 0.42.0 internals (the
-    // index answers `all()` without object reads; `description()` reads commits lazily while
-    // pulled) — a pin bump may move where the failure surfaces; re-verify this test then.
+    // Corrupt the git object store AFTER open: the index still answers `all()`, but since
+    // Story 4.8 every emitted node is loaded (`store.get_commit_async`) to extract its
+    // metadata — the CLI's render loop does the same — so the first commit read fails and
+    // the walk surfaces it as a per-item stream error. `prioritize = none()` keeps the
+    // prioritised-id materialisation from reading `@` first. jj-lib 0.42.0 internals; a pin
+    // bump may move where the failure surfaces — re-verify this test then.
     let objects = fx
         .path
         .join(".jj")
@@ -448,15 +473,8 @@ fn walk_graph_mid_stream_store_failure_returns_jj_lib_error() {
         .join("objects");
     std::fs::remove_dir_all(&objects).unwrap();
 
-    let index_only = collect_nodes(&repo, "all()", "none()");
-    assert_eq!(
-        index_only.len(),
-        5,
-        "the index alone still streams all() (no commit reads)"
-    );
-
     let mut visited = 0usize;
-    let result = repo.walk_graph("description(\"Commit\")", "none()", |_| {
+    let result = repo.walk_graph("all()", "none()", SHORT, |_| {
         visited += 1;
         ControlFlow::Continue(())
     });
@@ -464,5 +482,358 @@ fn walk_graph_mid_stream_store_failure_returns_jj_lib_error() {
         matches!(result, Err(RevsetError::JjLibError(_))),
         "a commit read failing mid-stream must yield RevsetError::JjLibError, got: {result:?}"
     );
-    assert_eq!(visited, 0, "the first filtered item already fails; nothing is visited");
+    assert_eq!(visited, 0, "the first item already fails; nothing is visited");
+}
+
+// ── Story 4.8: `jj log`-parity metadata on every node ───────────────────────
+
+#[test]
+fn walk_graph_metadata_matches_get_change_for_the_same_commit() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    let nodes = collect_nodes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+
+    let node = node_of(&nodes, &c3);
+    let change = repo
+        .get_change(&zanshin_jj::ChangeId(node.meta.change_id.clone()))
+        .expect("the change id the row reports must resolve");
+    assert_eq!(
+        change.commit_id.0, c3,
+        "the row's change id resolves back to the row's commit"
+    );
+    assert_eq!(node.meta.description_first_line, "Commit 3");
+    assert_eq!(node.meta.author_email, change.author.email);
+    assert_eq!(node.meta.author_name, change.author.name);
+    assert_eq!(
+        node.meta.committer_timestamp, change.timestamps.committed_at,
+        "the log row shows the COMMITTER timestamp"
+    );
+    assert!(!node.meta.conflict);
+    assert!(!node.meta.hidden);
+    assert!(!node.meta.divergent);
+}
+
+#[test]
+fn walk_graph_root_row_is_root_immutable_and_empty_with_a_fully_populated_payload() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+
+    let nodes = collect_nodes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+
+    let node = node_of(&nodes, &root);
+    assert!(node.meta.root, "root() is flagged");
+    assert!(node.meta.immutable, "root() is always in the immutable set");
+    assert!(node.meta.empty, "the root commit has an empty tree");
+    assert!(node.meta.description_first_line.is_empty());
+    // Uniform payload: the special rendering is the UI's, so the ids are populated here too.
+    assert!(!node.meta.change_id.is_empty());
+    assert!(node.meta.change_id_prefix_len >= 1);
+    assert!(
+        nodes.iter().filter(|n| n.meta.root).count() == 1,
+        "exactly one root row"
+    );
+}
+
+#[test]
+fn walk_graph_flags_exactly_one_working_copy_and_leaves_it_mutable() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&repo, "@");
+
+    let nodes = collect_nodes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+
+    let wc_nodes: Vec<&GraphNode> = nodes.iter().filter(|n| n.meta.working_copy).collect();
+    assert_eq!(wc_nodes.len(), 1, "exactly one row is this workspace's @");
+    assert_eq!(wc_nodes[0].id.0, wc);
+    assert!(!wc_nodes[0].meta.immutable, "@ is mutable");
+    assert!(
+        wc_nodes[0].meta.working_copies.is_empty(),
+        "a single-workspace repo shows no workspace markers (the CLI's guard)"
+    );
+}
+
+#[test]
+fn walk_graph_accepts_the_cli_default_log_revset() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // Parses only because build_aliases_map defines the CLI's builtin [revset-aliases].
+    let nodes = collect_nodes(&repo, DEFAULT_LOG_REVSET, DEFAULT_GRAPH_PRIORITIZE);
+
+    assert!(!nodes.is_empty(), "the CLI default log revset selects rows");
+}
+
+#[test]
+fn walk_graph_shortest_prefix_lengths_are_unique_within_the_fixture() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let nodes = collect_nodes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+
+    for node in &nodes {
+        let len = usize::try_from(node.meta.commit_id_prefix_len).unwrap();
+        assert!(len >= 1 && len <= node.id.0.len(), "1 <= len <= full id, got {len}");
+        let prefix = &node.id.0[..len];
+        let matches = nodes.iter().filter(|n| n.id.0.starts_with(prefix)).count();
+        assert_eq!(matches, 1, "{prefix} must be unique among the fixture's commit ids");
+
+        let change_len = usize::try_from(node.meta.change_id_prefix_len).unwrap();
+        assert!(change_len >= 1 && change_len <= node.meta.change_id.len());
+    }
+}
+
+#[test]
+fn walk_graph_empty_short_prefixes_disables_disambiguation_and_never_shortens() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // "" = disabled (full-index prefixes), NOT a parse error like a blank prioritize.
+    let disabled = collect_nodes_with(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "");
+    // A one-commit disambiguation set is the strongest possible narrowing.
+    let narrow = collect_nodes_with(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "@");
+
+    assert_eq!(disabled.len(), narrow.len());
+    for (off, on) in disabled.iter().zip(&narrow) {
+        assert_eq!(off.id.0, on.id.0, "same rows in the same order either way");
+        assert!(
+            off.meta.commit_id_prefix_len >= on.meta.commit_id_prefix_len,
+            "the full index can never give a SHORTER prefix than a narrowed set"
+        );
+    }
+    assert!(
+        disabled
+            .iter()
+            .zip(&narrow)
+            .any(|(off, on)| off.meta.commit_id_prefix_len > on.meta.commit_id_prefix_len),
+        "on a 1k-commit fixture at least one id must shorten inside the narrowed set"
+    );
+}
+
+#[test]
+fn walk_graph_bogus_short_prefixes_returns_parse_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, "bogus_function()", |_| {
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(RevsetError::ParseError { .. })),
+        "a bogus short_prefixes function must return ParseError, got: {result:?}"
+    );
+}
+
+#[test]
+fn walk_graph_unresolvable_short_prefixes_returns_resolution_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // The CLI hard-errors on a user-typed expression it cannot resolve; only a failure
+    // while LOADING the index degrades to a warning (next test).
+    let result = repo.walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, "nonexistent-bookmark-xyz", |_| {
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(RevsetError::ResolutionError { .. })),
+        "an unknown short_prefixes symbol must return ResolutionError, got: {result:?}"
+    );
+}
+
+#[test]
+fn walk_graph_short_prefixes_index_load_failure_degrades_instead_of_erroring() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // A `description()` filter reads every commit while the disambiguation index is
+    // collected, so a corrupt object store makes `populate()` fail. The CLI warns and falls
+    // back to full-index prefixes rather than failing the command — an empty `revset` keeps
+    // the walk itself off the corrupt objects so only the degradation is observed.
+    let objects = fx
+        .path
+        .join(".jj")
+        .join("repo")
+        .join("store")
+        .join("git")
+        .join("objects");
+    std::fs::remove_dir_all(&objects).unwrap();
+
+    let nodes = collect_nodes_with(&repo, "none()", "none()", "description(\"Commit\")");
+
+    assert!(nodes.is_empty(), "the call succeeds; the index load only warned");
+}
+
+// ── Story 4.8: edge states, constructed in-test (fixtures are never regenerated) ──
+
+#[test]
+fn walk_graph_flags_both_commits_of_a_divergent_change_and_a_hidden_one() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let twin = add_divergent_twin(&fx.path, &c1, "divergent twin");
+
+    let nodes = collect_nodes(&repo, "all()", "none()");
+
+    for id in [&c1, &twin] {
+        let node = node_of(&nodes, id);
+        assert!(node.meta.divergent, "{id} is one of two visible commits of its change");
+        assert!(!node.meta.hidden);
+        assert!(
+            node.meta.change_offset.is_some(),
+            "jj-lib yields an offset for a change with several targets"
+        );
+    }
+    assert_eq!(
+        node_of(&nodes, &c1).meta.change_id,
+        node_of(&nodes, &twin).meta.change_id,
+        "a divergent change shares one change id across two commit rows"
+    );
+
+    // Abandoning the twin hides it: it is only reachable by naming its id explicitly.
+    abandon_commit(&fx.path, &twin);
+    let hidden_nodes = collect_nodes(&repo, &twin, "none()");
+    let hidden = node_of(&hidden_nodes, &twin);
+    assert!(hidden.meta.hidden, "an abandoned commit is hidden");
+    assert!(!hidden.meta.divergent, "only one visible commit is left");
+}
+
+#[test]
+fn walk_graph_flags_conflict_and_empty_on_the_right_rows_only() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&repo, "@");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let merge = add_conflicted_merge_off_root(&fx.path);
+
+    let nodes = collect_nodes(&repo, "all()", "none()");
+
+    assert!(node_of(&nodes, &merge).meta.conflict, "the merge tree is conflicted");
+    assert!(!node_of(&nodes, &c3).meta.conflict, "a plain commit is not");
+    assert!(node_of(&nodes, &wc).meta.empty, "@ has no changes of its own");
+    assert!(!node_of(&nodes, &c3).meta.empty, "c3 adds a file");
+}
+
+#[test]
+fn walk_graph_ref_visibility_follows_the_cli_collect_distinct_refs_rule() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    // synced: local and tracked remote agree → the remote entry is suppressed.
+    set_local_bookmark(&fx.path, "synced", &[&c1]);
+    set_remote_bookmark(&fx.path, "synced", "origin", &c1, true);
+    // unsynced: tracked remote disagrees with the local → both entries show.
+    set_local_bookmark(&fx.path, "unsynced", &[&c2]);
+    set_remote_bookmark(&fx.path, "unsynced", "origin", &c3, true);
+    // untracked: no local counterpart → the remote entry shows.
+    set_remote_bookmark(&fx.path, "untracked", "origin", &c3, false);
+    // conflicted local bookmark (two added targets).
+    set_local_bookmark(&fx.path, "conflicted", &[&c2, &c3]);
+    set_tag(&fx.path, "v1", &[&c1]);
+
+    let nodes = collect_nodes(&repo, "all()", "none()");
+    let named = |id: &str, name: &str| -> Vec<CommitRef> {
+        node_of(&nodes, id)
+            .meta
+            .bookmarks
+            .iter()
+            .filter(|b| b.name == name)
+            .cloned()
+            .collect()
+    };
+
+    let synced = named(&c1, "synced");
+    assert_eq!(synced.len(), 1, "the tracked-and-synced remote entry is suppressed");
+    assert_eq!(synced[0].remote, None);
+    assert!(synced[0].synced, "the local entry is in sync with its remote");
+
+    let unsynced_local = named(&c2, "unsynced");
+    assert_eq!(unsynced_local.len(), 1);
+    assert!(!unsynced_local[0].synced, "the local entry renders the `*` sigil");
+    let unsynced_remote = named(&c3, "unsynced");
+    assert_eq!(unsynced_remote.len(), 1, "a tracked-but-unsynced remote entry shows");
+    assert_eq!(unsynced_remote[0].remote.as_deref(), Some("origin"));
+
+    let untracked = named(&c3, "untracked");
+    assert_eq!(untracked.len(), 1, "an untracked remote entry shows");
+    assert_eq!(untracked[0].remote.as_deref(), Some("origin"));
+
+    // A conflicted local bookmark lands on every added target and is flagged.
+    for id in [&c2, &c3] {
+        let conflicted = named(id, "conflicted");
+        assert_eq!(conflicted.len(), 1, "the conflicted bookmark is listed on {id}");
+        assert!(conflicted[0].conflicted, "the `??` sigil comes from this flag");
+    }
+
+    let tags = &node_of(&nodes, &c1).meta.tags;
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].name, "v1");
+    assert_eq!(tags[0].remote, None);
+    assert!(
+        node_of(&nodes, &c2).meta.tags.is_empty(),
+        "tags only land on their target"
+    );
+}
+
+#[test]
+fn walk_graph_lists_every_workspace_working_copy_in_a_multi_workspace_repo() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let default_wc = commit_id_of(&repo, "@");
+
+    let (_second_root, second_wc) = add_workspace(&fx.path, "second");
+
+    let nodes = collect_nodes(&repo, "all()", "none()");
+
+    assert_eq!(
+        node_of(&nodes, &default_wc).meta.working_copies,
+        vec!["default".to_string()],
+        "the guard lifts once a second workspace exists — including for this workspace"
+    );
+    assert_eq!(
+        node_of(&nodes, &second_wc).meta.working_copies,
+        vec!["second".to_string()]
+    );
+    assert!(
+        node_of(&nodes, &default_wc).meta.working_copy,
+        "only the CURRENT workspace's @ carries the working_copy flag"
+    );
+    assert!(!node_of(&nodes, &second_wc).meta.working_copy);
+}
+
+#[test]
+fn walk_graph_rederives_metadata_so_an_external_describe_is_visible_on_the_next_call() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let before = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(node_of(&before, &c3).meta.description_first_line, "Commit 3");
+
+    let rewritten = describe_commit(&fx.path, &c3, "Rewritten by an external op\nsecond line");
+
+    // Same `Repo` handle — no reopen, no cache.
+    let after = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(
+        node_of(&after, &rewritten).meta.description_first_line,
+        "Rewritten by an external op",
+        "only the FIRST line rides the log row (get_change owns the full text)"
+    );
 }

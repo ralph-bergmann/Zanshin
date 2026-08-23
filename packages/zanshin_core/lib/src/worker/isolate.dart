@@ -535,6 +535,8 @@ class ZanshinWorker {
     int handleId, {
     required String revset,
     required String prioritize,
+    required bool syntheticElided,
+    required String shortPrefixes,
   }) async {
     final Uint8List bytes = await send(
       GraphSliceCommand(
@@ -542,6 +544,8 @@ class ZanshinWorker {
         handleId: handleId,
         revset: revset,
         prioritize: prioritize,
+        syntheticElided: syntheticElided,
+        shortPrefixes: shortPrefixes,
       ),
     );
     return repo_ffi_graph.decodeGraphSliceEnvelopeInternal(bytes);
@@ -760,7 +764,13 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case GraphSliceCommand(:final int handleId, :final String revset, :final String prioritize):
+        case GraphSliceCommand(
+          :final int handleId,
+          :final String revset,
+          :final String prioritize,
+          :final bool syntheticElided,
+          :final String shortPrefixes,
+        ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GraphSliceCommand for unknown handleId $handleId');
@@ -773,7 +783,13 @@ void _workerEntry(_WorkerInit init) {
             ).toBytes();
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_graph.zanshinGraphSlice(raw, revset, prioritize);
+            final Uint8List bytes = repo_ffi_graph.zanshinGraphSlice(
+              raw,
+              revset,
+              prioritize,
+              syntheticElided: syntheticElided,
+              shortPrefixes: shortPrefixes,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

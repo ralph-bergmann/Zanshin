@@ -13,7 +13,7 @@ use std::ffi::CString;
 use std::sync::LazyLock;
 
 use flatbuffers::root as fb_root;
-use test_helpers::{add_commit_off_root, extract_fixture, FixtureHandle};
+use test_helpers::{add_commit_off_root, describe_commit, extract_fixture, FixtureHandle};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
@@ -22,8 +22,11 @@ use zanshin_ffi::{
     FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
     JJ_REVSET_RESOLUTION_ERROR,
 };
-use zanshin_graph::{collect_lanes, EdgeKind, Row, RowEdge};
-use zanshin_jj::{Repo, DEFAULT_GRAPH_PRIORITIZE};
+use zanshin_graph::{collect_lanes, ActiveLane, EdgeKind, Row, RowEdge};
+use zanshin_jj::{CommitMeta, CommitRef, Repo, Timestamp, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET};
+
+/// The CLI's `revsets.short-prefixes` default (it falls back to `revsets.log`).
+const SHORT: &str = DEFAULT_LOG_REVSET;
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
 
@@ -92,11 +95,32 @@ unsafe fn close(handle: u64) {
     assert!(parse_envelope(&close_bytes).ok(), "repo close must succeed");
 }
 
-/// Call `zanshin_graph_slice` with both strings and return the envelope bytes.
+/// Call `zanshin_graph_slice` with the CLI-default `short_prefixes` and elided rows OFF —
+/// the pre-4.8 stream shape the topology round-trips below compare against.
 unsafe fn slice_bytes(handle: u64, revset: &str, prioritize: &str) -> Vec<u8> {
+    unsafe { slice_bytes_with(handle, revset, prioritize, false, SHORT) }
+}
+
+/// Call `zanshin_graph_slice` with every parameter explicit; return the envelope bytes.
+unsafe fn slice_bytes_with(
+    handle: u64,
+    revset: &str,
+    prioritize: &str,
+    synthetic_elided: bool,
+    short_prefixes: &str,
+) -> Vec<u8> {
     let revset_cstr = cstr(revset);
     let prio_cstr = cstr(prioritize);
-    let token = unsafe { zanshin_graph_slice(handle, revset_cstr.as_ptr(), prio_cstr.as_ptr()) };
+    let short_cstr = cstr(short_prefixes);
+    let token = unsafe {
+        zanshin_graph_slice(
+            handle,
+            revset_cstr.as_ptr(),
+            prio_cstr.as_ptr(),
+            synthetic_elided,
+            short_cstr.as_ptr(),
+        )
+    };
     unsafe { read_and_free(token) }
 }
 
@@ -106,6 +130,62 @@ fn kind_from_wire(kind: fbs::GraphEdgeKind) -> EdgeKind {
         fbs::GraphEdgeKind::Indirect => EdgeKind::Indirect,
         fbs::GraphEdgeKind::Missing => EdgeKind::Missing,
         other => panic!("unexpected wire GraphEdgeKind {other:?}"),
+    }
+}
+
+/// Map one wire `GraphCommitRef` back to the domain type.
+fn ref_from_wire(r: fbs::GraphCommitRef<'_>) -> CommitRef {
+    CommitRef {
+        name: r.name().expect("name must be present").to_owned(),
+        remote: r.remote().map(ToOwned::to_owned),
+        synced: r.synced(),
+        conflicted: r.conflicted(),
+    }
+}
+
+/// Map one wire `GraphRowMeta` back to the domain type (`has_change_offset` restores the
+/// `Option`).
+fn meta_from_wire(m: fbs::GraphRowMeta<'_>) -> CommitMeta {
+    CommitMeta {
+        change_id: m.change_id().expect("change_id must be present").to_owned(),
+        change_id_prefix_len: m.change_id_prefix_len(),
+        commit_id_prefix_len: m.commit_id_prefix_len(),
+        change_offset: m.has_change_offset().then(|| m.change_offset()),
+        author_name: m.author_name().expect("author_name must be present").to_owned(),
+        author_email: m.author_email().expect("author_email must be present").to_owned(),
+        committer_timestamp: Timestamp {
+            millis_since_epoch: m.committer_timestamp_millis(),
+            tz_offset_minutes: m.committer_tz_offset_minutes(),
+        },
+        bookmarks: m
+            .bookmarks()
+            .expect("bookmarks must be present")
+            .iter()
+            .map(ref_from_wire)
+            .collect(),
+        tags: m
+            .tags()
+            .expect("tags must be present")
+            .iter()
+            .map(ref_from_wire)
+            .collect(),
+        working_copies: m
+            .working_copies()
+            .expect("working_copies must be present")
+            .iter()
+            .map(ToOwned::to_owned)
+            .collect(),
+        working_copy: m.working_copy(),
+        immutable: m.immutable(),
+        conflict: m.conflict(),
+        empty: m.empty(),
+        hidden: m.hidden(),
+        divergent: m.divergent(),
+        root: m.root(),
+        description_first_line: m
+            .description_first_line()
+            .expect("description_first_line must be present")
+            .to_owned(),
     }
 }
 
@@ -132,6 +212,17 @@ fn rows_from_wire(slice: fbs::GraphSlice<'_>) -> Vec<Row> {
                     }
                 })
                 .collect(),
+            synthetic_elided: r.synthetic_elided(),
+            active_lanes: r
+                .active_lanes()
+                .expect("active_lanes must be present")
+                .iter()
+                .map(|l| ActiveLane {
+                    lane: l.lane(),
+                    kind: kind_from_wire(l.kind()),
+                })
+                .collect(),
+            meta: r.meta().map(meta_from_wire),
         })
         .collect()
 }
@@ -189,7 +280,7 @@ fn assert_error_with_context(bytes: &[u8], code: &str) {
 /// The oracle: `collect_lanes` through `zanshin_jj::Repo::open` on the same fixture path.
 fn oracle(fixture: &FixtureHandle, revset: &str, prioritize: &str) -> Vec<Row> {
     let repo = Repo::open(&fixture.path).expect("oracle repo must open");
-    collect_lanes(&repo, revset, prioritize).expect("oracle collect_lanes must succeed")
+    collect_lanes(&repo, revset, prioritize, SHORT, false).expect("oracle collect_lanes must succeed")
 }
 
 // ── Round-trips against the collect_lanes oracle ──────────────────────────────
@@ -360,7 +451,8 @@ fn graph_slice_null_revset_returns_ffi_null_pointer() {
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let token = unsafe { zanshin_graph_slice(handle, std::ptr::null(), prio.as_ptr()) };
+    let short = cstr(SHORT);
+    let token = unsafe { zanshin_graph_slice(handle, std::ptr::null(), prio.as_ptr(), true, short.as_ptr()) };
     let bytes = unsafe { read_and_free(token) };
     assert_error(&bytes, FFI_NULL_POINTER);
 
@@ -373,7 +465,8 @@ fn graph_slice_null_prioritize_returns_ffi_null_pointer() {
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let revset = cstr("all()");
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), std::ptr::null()) };
+    let short = cstr(SHORT);
+    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), std::ptr::null(), true, short.as_ptr()) };
     let bytes = unsafe { read_and_free(token) };
     assert_error(&bytes, FFI_NULL_POINTER);
 
@@ -388,7 +481,8 @@ fn graph_slice_invalid_utf8_revset_returns_ffi_utf8_error() {
     // A lone 0x80 continuation byte is not valid UTF-8 (mirrors tests/change_ffi.rs).
     let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
     let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let token = unsafe { zanshin_graph_slice(handle, bad_utf8.as_ptr(), prio.as_ptr()) };
+    let short = cstr(SHORT);
+    let token = unsafe { zanshin_graph_slice(handle, bad_utf8.as_ptr(), prio.as_ptr(), true, short.as_ptr()) };
     let bytes = unsafe { read_and_free(token) };
     assert_error(&bytes, FFI_UTF8_ERROR);
 
@@ -402,7 +496,8 @@ fn graph_slice_invalid_utf8_prioritize_returns_ffi_utf8_error() {
 
     let revset = cstr("all()");
     let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), bad_utf8.as_ptr()) };
+    let short = cstr(SHORT);
+    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), bad_utf8.as_ptr(), true, short.as_ptr()) };
     let bytes = unsafe { read_and_free(token) };
     assert_error(&bytes, FFI_UTF8_ERROR);
 
@@ -432,4 +527,233 @@ fn graph_slice_zero_handle_returns_ffi_invalid_handle() {
 
     let bytes = unsafe { slice_bytes(0, "all()", DEFAULT_GRAPH_PRIORITIZE) };
     assert_error(&bytes, FFI_INVALID_HANDLE);
+}
+
+// ── Story 4.8: metadata, active lanes, elided rows across the wire ───────────
+
+#[test]
+fn graph_slice_carries_the_metadata_of_the_same_snapshot_and_matches_get_change() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
+    let (rows, _) = ok_rows(&bytes);
+
+    // The oracle reads the same repo through the typed API — one snapshot, same answers.
+    let repo = Repo::open(&fx.path).expect("oracle repo must open");
+    for row in &rows {
+        let meta = row.meta.as_ref().expect("every commit row carries metadata");
+        let change = repo
+            .get_change(&zanshin_jj::ChangeId(meta.change_id.clone()))
+            .expect("the change id the row reports must resolve");
+        assert_eq!(change.commit_id.0, row.commit_id, "id pair agrees with get_change");
+        assert_eq!(meta.author_email, change.author.email);
+        assert_eq!(meta.committer_timestamp, change.timestamps.committed_at);
+        assert_eq!(
+            meta.description_first_line,
+            change.description.lines().next().unwrap_or_default()
+        );
+        assert!(meta.commit_id_prefix_len >= 1);
+        assert!(usize::try_from(meta.commit_id_prefix_len).unwrap() <= row.commit_id.len());
+    }
+    assert_eq!(rows.iter().filter(|r| r.meta.as_ref().unwrap().root).count(), 1);
+    assert_eq!(rows.iter().filter(|r| r.meta.as_ref().unwrap().working_copy).count(), 1);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_accepts_the_cli_default_log_revset_and_its_short_prefixes() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    // Both expressions only parse because the CLI's builtin aliases are defined (CAP-4).
+    let bytes = unsafe { slice_bytes_with(handle, DEFAULT_LOG_REVSET, DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
+    let (rows, total) = ok_rows(&bytes);
+
+    assert!(!rows.is_empty(), "the CLI default log revset selects rows");
+    assert_eq!(usize::try_from(total).ok(), Some(rows.len()));
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_empty_short_prefixes_disables_disambiguation_instead_of_erroring() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("medium-1k-commits") };
+
+    // "" = disabled (full-index lengths), NOT a parse error like a blank prioritize.
+    let disabled = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, false, "") };
+    let narrow = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, false, "@") };
+    let (disabled_rows, _) = ok_rows(&disabled);
+    let (narrow_rows, _) = ok_rows(&narrow);
+
+    assert_eq!(disabled_rows.len(), narrow_rows.len());
+    assert!(
+        disabled_rows
+            .iter()
+            .zip(&narrow_rows)
+            .all(|(off, on)| off.meta.as_ref().unwrap().commit_id_prefix_len
+                >= on.meta.as_ref().unwrap().commit_id_prefix_len),
+        "the full index can never give a SHORTER prefix than a narrowed set"
+    );
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_bogus_short_prefixes_returns_jj_revset_parse_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, "bogus_function()") };
+    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_unknown_bookmark_short_prefixes_returns_jj_revset_resolution_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let bytes = unsafe {
+        slice_bytes_with(
+            handle,
+            "all()",
+            DEFAULT_GRAPH_PRIORITIZE,
+            true,
+            "nonexistent-bookmark-xyz",
+        )
+    };
+    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_null_short_prefixes_returns_ffi_null_pointer() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let revset = cstr("all()");
+    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
+    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), prio.as_ptr(), true, std::ptr::null()) };
+    let bytes = unsafe { read_and_free(token) };
+    assert_error(&bytes, FFI_NULL_POINTER);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_invalid_utf8_short_prefixes_returns_ffi_utf8_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let revset = cstr("all()");
+    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
+    let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
+    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), prio.as_ptr(), true, bad_utf8.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    assert_error(&bytes, FFI_UTF8_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_synthetic_elided_toggle_adds_rows_and_off_is_the_pre_4_8_stream() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let eliding = "all() ~ description(\"Commit 2\")";
+
+    let off_bytes = unsafe { slice_bytes_with(handle, eliding, DEFAULT_GRAPH_PRIORITIZE, false, SHORT) };
+    let on_bytes = unsafe { slice_bytes_with(handle, eliding, DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
+    let (off, off_total) = ok_rows(&off_bytes);
+    let (on, on_total) = ok_rows(&on_bytes);
+
+    assert_eq!(off.len(), 4);
+    assert_eq!(usize::try_from(off_total).ok(), Some(off.len()));
+    assert!(off.iter().any(|r| r.edges.iter().any(|e| e.kind == EdgeKind::Indirect)));
+    assert!(off.iter().all(|r| !r.synthetic_elided && r.meta.is_some()));
+
+    assert_eq!(on.len(), 5, "one synthetic row is spliced in");
+    assert_eq!(usize::try_from(on_total).ok(), Some(on.len()));
+    let synthetic: Vec<&Row> = on.iter().filter(|r| r.synthetic_elided).collect();
+    assert_eq!(synthetic.len(), 1);
+    assert!(synthetic[0].meta.is_none(), "an elided row carries no metadata");
+    assert_eq!(synthetic[0].edges.len(), 1);
+    assert_eq!(synthetic[0].edges[0].kind, EdgeKind::Direct);
+    assert!(
+        on.iter().all(|r| r.edges.iter().all(|e| e.kind != EdgeKind::Indirect)),
+        "with the toggle on no Indirect edge is left"
+    );
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_medium_active_lanes_cross_every_row_their_edge_spans() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("medium-1k-commits") };
+
+    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
+    let (rows, _) = ok_rows(&bytes);
+
+    // The CAP-2 invariant, asserted on the wire form: for every routed edge on lane L from
+    // a child row to its landing row, every row strictly between lists L.
+    for (index, row) in rows.iter().enumerate() {
+        for edge in &row.edges {
+            let Some(lane) = edge.target_lane else { continue };
+            let landing = rows[index + 1..]
+                .iter()
+                .position(|r| r.commit_id == edge.target)
+                .map(|offset| index + 1 + offset)
+                .expect("every routed edge lands");
+            for crossed in &rows[index + 1..landing] {
+                assert!(
+                    crossed.active_lanes.iter().any(|l| l.lane == lane),
+                    "lane {lane} crosses {} but is missing from its active_lanes",
+                    crossed.commit_id
+                );
+            }
+        }
+        assert!(
+            !row.active_lanes.iter().any(|l| l.lane == row.lane),
+            "a row never lists its own lane as a pass-through"
+        );
+    }
+    assert!(rows.iter().any(|r| !r.active_lanes.is_empty()));
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_rederives_metadata_so_an_external_describe_appears_on_the_next_call() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let before_bytes = unsafe { slice_bytes_with(handle, "all()", "none()", true, SHORT) };
+    let (before, _) = ok_rows(&before_bytes);
+    let target = before
+        .iter()
+        .find(|r| r.meta.as_ref().unwrap().description_first_line == "Commit 3")
+        .expect("the fixture has a 'Commit 3' row")
+        .commit_id
+        .clone();
+
+    let rewritten = describe_commit(&fx.path, &target, "Rewritten externally");
+
+    // Same handle — no reopen, no cache.
+    let after_bytes = unsafe { slice_bytes_with(handle, "all()", "none()", true, SHORT) };
+    let (after, _) = ok_rows(&after_bytes);
+    let row = after
+        .iter()
+        .find(|r| r.commit_id == rewritten)
+        .expect("the rewritten commit is in the second slice");
+    assert_eq!(
+        row.meta.as_ref().unwrap().description_first_line,
+        "Rewritten externally"
+    );
+
+    unsafe { close(handle) };
 }

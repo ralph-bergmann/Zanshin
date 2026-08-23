@@ -7,11 +7,20 @@ use futures::TryStreamExt as _;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
-    self, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExtensions, RevsetParseContext, RevsetWorkspaceContext,
-    SymbolResolver, UserRevsetExpression,
+    self, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions, RevsetParseContext,
+    RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
 
 use crate::{ChangeId, Repo};
+
+/// The jj CLI's default `revsets.log` (`cli/src/config/revsets.toml` at v0.42.0) — the
+/// revset `jj log` shows without `-r`, and the CLI's fallback for
+/// `revsets.short-prefixes`.
+///
+/// A pre-fill for the caller's `revset` / `short_prefixes` parameters; nothing in this
+/// crate applies it silently (FR-JJ-17). It parses only because [`build_aliases_map`]
+/// defines the CLI's builtin aliases.
+pub const DEFAULT_LOG_REVSET: &str = "present(@) | ancestors(immutable_heads().., 2) | trunk()";
 
 /// Errors returned by [`resolve_revset`] and [`Repo::walk_graph`].
 #[derive(Debug, thiserror::Error)]
@@ -75,18 +84,35 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     Ok(out)
 }
 
-/// Parses `expr` in this workspace's revset context (the `trunk()` alias, the workspace
-/// name for `@`, the user email, a `git`-default ignored remote). Pure parsing — no symbol
-/// is resolved yet, so the result is independent of any loaded operation.
+/// Parses `expr` in this workspace's revset context, building a fresh alias map.
+///
+/// Convenience wrapper over [`parse_revset_with`] for call sites that parse a single
+/// expression; a call site parsing several (the graph walk) builds the map once and
+/// calls [`parse_revset_with`] directly.
 ///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
 pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    let aliases_map = build_aliases_map()?;
+    parse_revset_with(repo, &aliases_map, expr)
+}
+
+/// Parses `expr` in this workspace's revset context (`aliases_map`'s aliases, the
+/// workspace name for `@`, the user email, a `git`-default ignored remote). Pure parsing —
+/// no symbol is resolved yet, so the result is independent of any loaded operation.
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_revset_with(
+    repo: &Repo,
+    aliases_map: &RevsetAliasesMap,
+    expr: &str,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let workspace = repo.workspace();
 
     // Parse context — every borrowed local is declared before `context` so it outlives it.
-    let aliases_map = build_aliases_map()?;
     let fileset_aliases = FilesetAliasesMap::new();
     let extensions = RevsetExtensions::default();
     let user_email: &str = repo.settings().user_email();
@@ -100,7 +126,7 @@ pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpr
         workspace_name: workspace.workspace_name(),
     };
     let context = RevsetParseContext {
-        aliases_map: &aliases_map,
+        aliases_map,
         local_variables: HashMap::new(),
         user_email,
         date_pattern_context: date_ctx,
@@ -137,24 +163,67 @@ pub(crate) fn evaluate_revset<'r>(
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
 
-/// Builds a `RevsetAliasesMap` seeded with jj's default `trunk()` alias.
+/// The jj CLI's builtin `[revset-aliases]` table, verbatim from
+/// `cli/src/config/revsets.toml` at v0.42.0 — the single seam a future config layer
+/// (Story 4.9) overrides.
 ///
-/// # WHY: jj-lib ships no built-in `trunk()` function — it is a default alias
-/// defined by the jj CLI binary. Without this map, `parse("trunk()..@")` returns
-/// `NoSuchFunction`. The fallback to `root()` makes `trunk()..@` resolve cleanly
-/// on fixtures that have no remote bookmarks named main/master/trunk (Decision D2).
-fn build_aliases_map() -> Result<RevsetAliasesMap, RevsetError> {
+/// # WHY: jj-lib ships none of these as built-in functions — they are default aliases
+/// defined by the jj CLI binary, so without them `parse("trunk()..@")` or the default
+/// log revset return `NoSuchFunction`.
+const BUILTIN_ALIASES: &[(&str, &str)] = &[
+    (
+        "trunk()",
+        "latest(\
+            remote_bookmarks(exact:\"main\", exact:\"origin\") | \
+            remote_bookmarks(exact:\"master\", exact:\"origin\") | \
+            remote_bookmarks(exact:\"trunk\", exact:\"origin\") | \
+            remote_bookmarks(exact:\"main\", exact:\"upstream\") | \
+            remote_bookmarks(exact:\"master\", exact:\"upstream\") | \
+            remote_bookmarks(exact:\"trunk\", exact:\"upstream\") | \
+            root()\
+        )",
+    ),
+    (
+        "builtin_immutable_heads()",
+        "trunk() | tags() | untracked_remote_bookmarks()",
+    ),
+    ("immutable_heads()", "builtin_immutable_heads()"),
+    ("immutable()", "::(immutable_heads() | root())"),
+    ("mutable()", "~immutable()"),
+    ("visible()", "::visible_heads()"),
+    ("hidden()", "~visible()"),
+];
+
+/// Builds a `RevsetAliasesMap` seeded with [`BUILTIN_ALIASES`].
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — an alias definition is unparseable (a bug in the
+///   table above, not caller input).
+pub(crate) fn build_aliases_map() -> Result<RevsetAliasesMap, RevsetError> {
     let mut map = RevsetAliasesMap::new();
-    // The canonical default trunk() alias (jj 0.41-compatible syntax).
-    // Uses remote_bookmarks(<name>) single-arg form (confirmed valid in jj-lib 0.41.0).
-    // Falls back to root() when no matching remote bookmark exists.
-    let trunk_def = "latest(\
-        remote_bookmarks(exact:\"main\") | \
-        remote_bookmarks(exact:\"master\") | \
-        remote_bookmarks(exact:\"trunk\") | \
-        root()\
-    )";
-    map.insert("trunk()", trunk_def, None)
-        .map_err(|e| RevsetError::ParseError { reason: e.to_string() })?;
+    for (decl, defn) in BUILTIN_ALIASES {
+        map.insert(*decl, *defn, None)
+            .map_err(|e| RevsetError::ParseError { reason: e.to_string() })?;
+    }
     Ok(map)
+}
+
+/// Builds the CLI's immutable-set expression, `::(immutable_heads() | root())`.
+///
+/// Mirrors the CLI's *in-code* construction (`cli/src/revset_util.rs:193-203` +
+/// `cli/src/cli_util.rs:956-961`: parse the `immutable_heads()` definition, union
+/// `root()`, then `ancestors()`) rather than the `immutable()` alias, which exists only
+/// for user-written revsets. Both denote the same set, but mirroring the in-code form is
+/// what lets Story 4.9's config override of `immutable_heads()` flow through unchanged.
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
+pub(crate) fn immutable_expression(
+    repo: &Repo,
+    aliases_map: &RevsetAliasesMap,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    let heads = parse_revset_with(repo, aliases_map, "immutable_heads()")?;
+    Ok(heads.union(&RevsetExpression::root()).ancestors())
 }

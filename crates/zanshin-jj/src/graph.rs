@@ -9,14 +9,19 @@
 //! operation on every call and never retained (ADR-0002 AC-4).
 
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::graph::{GraphEdge as JjGraphEdge, GraphEdgeType, TopoGroupedGraph};
+use jj_lib::id_prefix::{IdPrefixContext, IdPrefixIndex};
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::Repo as _;
+use jj_lib::revset::{RevsetExtensions, UserRevsetExpression};
 
-use crate::revset::{evaluate_revset, parse_revset};
-use crate::{CommitId, Repo, RevsetError};
+use crate::commit_meta::LogMetaIndex;
+use crate::revset::{build_aliases_map, evaluate_revset, immutable_expression, parse_revset_with};
+use crate::{CommitId, CommitMeta, Repo, RevsetError};
 
 /// The jj CLI's default `revsets.log-graph-prioritize` (`cli/src/config/revsets.toml` at
 /// v0.42.0): emit the working-copy branch first.
@@ -61,6 +66,9 @@ pub struct GraphNode {
     pub id: CommitId,
     /// Parent edges in stream order.
     pub parents: Vec<GraphEdge>,
+    /// `jj log`-parity display metadata, extracted from the SAME head-resolved snapshot
+    /// as the edges (Story 4.8) — one call is one coherent view of the repo (ADR-0002).
+    pub meta: CommitMeta,
 }
 
 /// Converts any jj-lib error to [`RevsetError::JjLibError`].
@@ -77,8 +85,9 @@ fn edge_kind(kind: GraphEdgeType) -> GraphEdgeKind {
     }
 }
 
-/// Converts one `TopoGroupedGraph` stream item into the crate-owned node.
-fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>) -> GraphNode {
+/// Converts one `TopoGroupedGraph` stream item plus its extracted metadata into the
+/// crate-owned node.
+fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMeta) -> GraphNode {
     GraphNode {
         id: CommitId(id.hex()),
         parents: edges
@@ -88,55 +97,117 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>) -> GraphNode {
                 kind: edge_kind(edge.edge_type),
             })
             .collect(),
+        meta,
     }
 }
 
-/// Streams the commit graph of `revset` in `jj log` order through `visit`.
+/// Builds the shortest-prefix index, degrading to the full repo index like the CLI does.
 ///
-/// Pipeline (jj CLI v0.42.0 `cli/src/commands/log.rs`): parse both expressions, intersect
-/// `prioritize` with `revset` as user expressions BEFORE resolution (an out-of-set
-/// prioritised id would make `TopoGroupedGraph` panic), evaluate both against the
-/// head-resolved repo, then `TopoGroupedGraph::new(set.stream_graph(), |id| id)` with
-/// `prioritize_branch` for every prioritised commit id, driven lazily into `visit`.
+/// A parse/resolution failure of the caller's `short_prefixes` expression is a hard error
+/// (raised before this point); a failure while LOADING the disambiguation index is only a
+/// warning — the CLI keeps rendering with full-index prefixes rather than failing the
+/// command (`cli/src/commit_templater.rs:2231-2243`).
+fn short_prefix_index<'c>(ctx: &'c IdPrefixContext, repo_dyn: &dyn jj_lib::repo::Repo) -> IdPrefixIndex<'c> {
+    match ctx.populate(repo_dyn) {
+        Ok(index) => index,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "short-prefixes disambiguation index unavailable; falling back to full-index prefixes"
+            );
+            IdPrefixIndex::empty()
+        }
+    }
+}
+
+/// Builds the `IdPrefixContext` for `short_prefixes`.
+///
+/// An EMPTY expression disables disambiguation (full-index prefixes) — the CLI's
+/// `revsets.short-prefixes` toggle semantic, deliberately unlike `prioritize`, where a
+/// blank value is a parse error.
+fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext {
+    let ctx = IdPrefixContext::new(Arc::new(RevsetExtensions::default()));
+    match short {
+        Some(expr) => ctx.disambiguate_within(expr.clone()),
+        None => ctx,
+    }
+}
+
+/// Streams the commit graph of `revset` in `jj log` order through `visit`, each node
+/// carrying its `jj log`-parity metadata.
+///
+/// Pipeline (jj CLI v0.42.0 `cli/src/commands/log.rs`): parse every expression against ONE
+/// builtin-alias map, intersect `prioritize` with `revset` as user expressions BEFORE
+/// resolution (an out-of-set prioritised id would make `TopoGroupedGraph` panic), evaluate
+/// against the head-resolved repo, build the per-call metadata indexes, then
+/// `TopoGroupedGraph::new(set.stream_graph(), |id| id)` with `prioritize_branch` for every
+/// prioritised commit id, driven lazily into `visit` — one `store.get_commit_async` per
+/// node, exactly as the CLI's render loop does.
 ///
 /// # Errors
 ///
-/// - [`RevsetError::ParseError`] — either expression is syntactically invalid.
-/// - [`RevsetError::ResolutionError`] — a symbol in either expression cannot be resolved.
-/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item stream failure.
+/// - [`RevsetError::ParseError`] — any expression is syntactically invalid.
+/// - [`RevsetError::ResolutionError`] — a symbol in any expression cannot be resolved.
+/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata extraction, or a
+///   per-item stream failure.
 pub(crate) fn walk_graph(
     repo: &Repo,
     revset: &str,
     prioritize: &str,
+    short_prefixes: &str,
     mut visit: impl FnMut(GraphNode) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
-    // 1. Parse; intersect the prioritised set with the log set as user expressions (CLI parity).
+    // 1. Parse everything against ONE alias map (built once per walk — Story 4.9's seam).
     //    Parsing needs no loaded operation, so a syntax error costs no `load_at_head` I/O.
-    let log = parse_revset(repo, revset)?;
-    let prio = parse_revset(repo, prioritize)?.intersection(&log);
+    let aliases = build_aliases_map()?;
+    let log = parse_revset_with(repo, &aliases, revset)?;
+    let prio = parse_revset_with(repo, &aliases, prioritize)?.intersection(&log);
+    let short = (!short_prefixes.is_empty())
+        .then(|| parse_revset_with(repo, &aliases, short_prefixes))
+        .transpose()?;
+    let immutable = immutable_expression(repo, &aliases)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+    let store = readonly.store();
 
-    // 3. Evaluate both; the prioritised commit ids are materialised (they are a tiny set).
+    // 3. Evaluate; the prioritised commit ids are materialised (they are a tiny set).
     let set = evaluate_revset(repo_dyn, &log)?;
     let prio_set = evaluate_revset(repo_dyn, &prio)?;
     let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
+    if let Some(expr) = &short {
+        // Resolving a user-typed expression is a hard error in the CLI; only the index
+        // LOAD degrades to a warning (see `short_prefix_index`).
+        evaluate_revset(repo_dyn, expr)?;
+    }
 
-    // 4. Topo-group + prioritise (identity id-mapper as a `fn` pointer — HRTB inference).
+    // 4. Per-call O(1) metadata setup. `prefix_ctx` and `immutable_set` are locals so the
+    //    borrows inside `meta` (the prefix index, the containment closure) stay valid.
+    let prefix_ctx = prefix_context(short.as_ref());
+    let immutable_set = evaluate_revset(repo_dyn, &immutable)?;
+    let meta = LogMetaIndex::new(
+        repo_dyn,
+        repo.workspace().workspace_name(),
+        short_prefix_index(&prefix_ctx, repo_dyn),
+        immutable_set.containing_fn(),
+    );
+
+    // 5. Topo-group + prioritise (identity id-mapper as a `fn` pointer — HRTB inference).
     let as_id: for<'a> fn(&'a JjCommitId) -> &'a JjCommitId = |id| id;
     let mut topo = TopoGroupedGraph::new(set.stream_graph(), as_id);
     for id in prio_ids {
         topo.prioritize_branch(id);
     }
 
-    // 5. Drive the lazy stream into the visitor; stop at the first `Break`.
+    // 6. Drive the lazy stream into the visitor; stop at the first `Break`.
     pollster::block_on(async {
         let mut stream = std::pin::pin!(topo.stream());
         while let Some(item) = stream.next().await {
             let (id, edges) = item.map_err(jj)?;
-            if visit(to_node(&id, edges)).is_break() {
+            let commit = store.get_commit_async(&id).await.map_err(jj)?;
+            let node_meta = meta.extract(repo_dyn, &commit)?;
+            if visit(to_node(&id, edges, node_meta)).is_break() {
                 return Ok(ControlFlow::Break(()));
             }
         }

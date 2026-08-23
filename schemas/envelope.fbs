@@ -222,14 +222,76 @@ table GraphRowEdge {
   kind: GraphEdgeKind;
 }
 
+/// One bookmark or tag entry on a GraphRow (Story 4.8, zanshin_jj::CommitRef).
+/// Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a
+/// remote entry, then `??` when conflicted or `*` when a local entry is not
+/// synced. `remote` is ABSENT (Dart null) for the local entry — null-for-absence.
+/// Tracked-and-synced remote entries are not emitted at all (the CLI's
+/// `collect_distinct_refs` rule: `is_local() || !synced`).
+table GraphCommitRef {
+  name: string;            // bookmark/tag name, UTF-8
+  remote: string;          // absent for the local entry
+  synced: bool;
+  conflicted: bool;
+}
+
+/// One lane passing vertically THROUGH a GraphRow (Story 4.8,
+/// zanshin_graph::ActiveLane) — it neither starts nor ends at that row's node.
+/// `kind` is the kind of the edge that opened the segment, so a renderer can
+/// style it without reading any neighbouring row; the color is lane % PALETTE_SIZE.
+table GraphActiveLane {
+  lane: uint;
+  kind: GraphEdgeKind;
+}
+
+/// `jj log`-parity display metadata for one commit row (Story 4.8,
+/// zanshin_jj::CommitMeta), extracted from the SAME head-resolved snapshot as the
+/// lane assignment. Ids are full; the `*_prefix_len` fields are the
+/// shortest-unique-prefix lengths the UI highlights.
+///
+/// `change_offset` is meaningful ONLY when has_change_offset == true (presence
+/// pair, same pattern as GraphRowEdge.target_lane: flatc 25.12.19 rejects
+/// optional scalars for Dart). The CLI renders `/<offset>` only for
+/// hidden/divergent commits — that is a UI decision, reproducible from the flags.
+table GraphRowMeta {
+  change_id: string;                 // ChangeId reverse-hex display form
+  change_id_prefix_len: uint;
+  commit_id_prefix_len: uint;
+  change_offset: uint;               // 0 / ignored when has_change_offset == false
+  has_change_offset: bool;
+  author_name: string;               // may be empty (jj allows it)
+  author_email: string;              // may be empty (jj allows it)
+  committer_timestamp_millis: long;  // committer timestamp, millis since the Unix epoch
+  committer_tz_offset_minutes: int;  // timezone offset, minutes east of UTC
+  bookmarks: [GraphCommitRef];
+  tags: [GraphCommitRef];
+  working_copies: [string];          // other workspaces' names; empty in a single-workspace repo
+  working_copy: bool;                // this workspace's @
+  immutable: bool;                   // in ::(immutable_heads() | root())
+  conflict: bool;
+  empty: bool;
+  hidden: bool;
+  divergent: bool;
+  root: bool;
+  description_first_line: string;    // "" when the description is empty
+}
+
 /// One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
-/// COMMIT id (change ids are ambiguous for divergent changes); display metadata
-/// joins later.
+/// COMMIT id (change ids are ambiguous for divergent changes).
+///
+/// `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
+/// splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
+/// `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
+/// is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
+/// Dart see as null). On a commit row `meta` is always present.
 table GraphRow {
-  commit_id: string;       // commit id, hex
-  lane: uint;              // lane this commit was placed on
-  color_idx: uint;         // deterministic palette index, lane % PALETTE_SIZE
-  edges: [GraphRowEdge];   // one per input parent edge, same order
+  commit_id: string;               // commit id, hex
+  lane: uint;                      // lane this commit was placed on
+  color_idx: uint;                 // deterministic palette index, lane % PALETTE_SIZE
+  edges: [GraphRowEdge];           // one per input parent edge, same order
+  active_lanes: [GraphActiveLane]; // pass-through lanes, ascending; always present
+  synthetic_elided: bool;
+  meta: GraphRowMeta;              // absent iff synthetic_elided
 }
 
 /// A slice of the lane-assigned commit graph, in stream (`jj log`) order.

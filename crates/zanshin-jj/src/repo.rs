@@ -184,15 +184,24 @@ impl Repo {
     /// before parents — through `visit`, in the order `jj log -r <revset>` prints it with
     /// `revsets.log-graph-prioritize = <prioritize>` (NFR-R-2, ADR-0003).
     ///
-    /// Both expressions are caller pass-throughs (FR-JJ-17); [`crate::DEFAULT_GRAPH_PRIORITIZE`]
-    /// is the CLI's default for `prioritize`. Only the `trunk()` alias is defined — other CLI
-    /// aliases (`immutable_heads()`, …) fail to parse. Re-resolves to the head operation per
-    /// call (ADR-0002); nothing is retained across calls. The stream is lazy: `visit` returning
-    /// `ControlFlow::Break` stops it early, and the result is `Ok(Break)`; `Ok(Continue)` means
-    /// the stream was exhausted. Read-only; never shells to `jj log` (AR-AP-1).
+    /// Every node also carries its [`crate::CommitMeta`] — the `jj log`-parity display
+    /// metadata — extracted from the SAME head-resolved snapshot in the same pass (Story
+    /// 4.8), so a row's lanes and its content can never disagree.
+    ///
+    /// All three expressions are caller pass-throughs (FR-JJ-17);
+    /// [`crate::DEFAULT_GRAPH_PRIORITIZE`] is the CLI's default for `prioritize` and
+    /// [`crate::DEFAULT_LOG_REVSET`] the CLI's default for `revset` / `short_prefixes`. The
+    /// jj CLI's builtin `[revset-aliases]` (`trunk()`, `immutable_heads()`, `immutable()`,
+    /// `mutable()`, `visible()`, `hidden()`, `builtin_immutable_heads()`) are all defined.
+    /// Re-resolves to the head operation per call (ADR-0002); nothing is retained across
+    /// calls. The stream is lazy: `visit` returning `ControlFlow::Break` stops it early, and
+    /// the result is `Ok(Break)`; `Ok(Continue)` means the stream was exhausted. Read-only;
+    /// never shells to `jj log` (AR-AP-1).
     ///
     /// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a
-    /// [`crate::RevsetError::ParseError`], as the CLI fails on an empty config value. The
+    /// [`crate::RevsetError::ParseError`], as the CLI fails on an empty config value. An EMPTY
+    /// `short_prefixes` instead DISABLES prefix disambiguation (full-index prefix lengths) —
+    /// the CLI's `revsets.short-prefixes` toggle semantic. The
     /// prioritized set (`prioritize ∩ revset`) is materialized before streaming — keep it small
     /// (the CLI default `present(@)` is one commit; `all()` would materialize every id). The
     /// `jj log` order parity holds for the CLI's graph mode without `--reversed`/`--limit`
@@ -202,19 +211,20 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::RevsetError::ParseError`] — either expression is syntactically invalid.
-    /// - [`crate::RevsetError::ResolutionError`] — a symbol in either expression cannot be
+    /// - [`crate::RevsetError::ParseError`] — any expression is syntactically invalid.
+    /// - [`crate::RevsetError::ResolutionError`] — a symbol in any expression cannot be
     ///   resolved.
-    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item
-    ///   stream failure; the jj-lib reason is forwarded as a string.
+    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata
+    ///   extraction, or a per-item stream failure; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn walk_graph(
         &self,
         revset: &str,
         prioritize: &str,
+        short_prefixes: &str,
         visit: impl FnMut(crate::GraphNode) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
-        crate::graph::walk_graph(self, revset, prioritize, visit)
+        crate::graph::walk_graph(self, revset, prioritize, short_prefixes, visit)
     }
 
     /// Opens an existing jj workspace rooted at `path`.

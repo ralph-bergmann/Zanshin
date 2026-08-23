@@ -3114,6 +3114,7 @@ dependencies = [
  "tempfile",
  "test-helpers",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

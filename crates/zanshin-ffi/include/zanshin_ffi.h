@@ -127,11 +127,57 @@ typedef struct {
 
 #define GraphRowEdge_VT_TARGET_LANE 6
 
-#define GraphRow_VT_LANE 6
+#define GraphCommitRef_VT_REMOTE 6
+
+#define GraphCommitRef_VT_SYNCED 8
+
+#define GraphCommitRef_VT_CONFLICTED 10
+
+#define GraphActiveLane_VT_LANE 4
+
+#define GraphRowMeta_VT_CHANGE_ID 4
+
+#define GraphRowMeta_VT_CHANGE_ID_PREFIX_LEN 6
+
+#define GraphRowMeta_VT_COMMIT_ID_PREFIX_LEN 8
+
+#define GraphRowMeta_VT_CHANGE_OFFSET 10
+
+#define GraphRowMeta_VT_HAS_CHANGE_OFFSET 12
+
+#define GraphRowMeta_VT_AUTHOR_NAME 14
+
+#define GraphRowMeta_VT_AUTHOR_EMAIL 16
+
+#define GraphRowMeta_VT_COMMITTER_TIMESTAMP_MILLIS 18
+
+#define GraphRowMeta_VT_COMMITTER_TZ_OFFSET_MINUTES 20
+
+#define GraphRowMeta_VT_TAGS 24
+
+#define GraphRowMeta_VT_WORKING_COPIES 26
+
+#define GraphRowMeta_VT_WORKING_COPY 28
+
+#define GraphRowMeta_VT_IMMUTABLE 30
+
+#define GraphRowMeta_VT_EMPTY 34
+
+#define GraphRowMeta_VT_HIDDEN 36
+
+#define GraphRowMeta_VT_ROOT 40
+
+#define GraphRowMeta_VT_DESCRIPTION_FIRST_LINE 42
 
 #define GraphRow_VT_COLOR_IDX 8
 
 #define GraphRow_VT_EDGES 10
+
+#define GraphRow_VT_ACTIVE_LANES 12
+
+#define GraphRow_VT_SYNTHETIC_ELIDED 14
+
+#define GraphRow_VT_META 16
 
 #define GraphSlice_VT_ROWS 4
 
@@ -288,25 +334,31 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
 
 /**
  * Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
- * `jj log` order — the revset-selected slice of the commit graph.
+ * `jj log` order — the revset-selected slice of the commit graph, each commit row
+ * carrying the `jj log` display metadata of the same head-resolved snapshot.
  *
- * Both expressions are caller pass-throughs (FR-JJ-17): `revset` selects the rows,
+ * Every expression is a caller pass-through (FR-JJ-17): `revset` selects the rows,
  * `prioritize` is the branch-prioritisation revset (`jj log`'s
  * `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
- * a blank expression is a parse error). The graph is re-derived from the head operation
- * on every call and nothing is retained Rust-side (ADR-0002) — an operation performed by
- * another process between two calls is visible in the second. There is no windowing:
- * `total_rows == rows.len()`.
+ * a blank expression is a parse error), and `short_prefixes` is the disambiguation set
+ * for the shortest-prefix lengths (CLI default = `revsets.log`; an EMPTY string DISABLES
+ * disambiguation and falls back to full-index prefixes — the CLI's toggle semantic,
+ * deliberately unlike `prioritize`). `synthetic_elided` (the CLI's
+ * `ui.log-synthetic-elided-nodes`, default `true`) turns each elided-ancestor edge into a
+ * spliced synthetic row; `false` restores plain `Indirect` edges. The graph is re-derived
+ * from the head operation on every call and nothing is retained Rust-side (ADR-0002) — an
+ * operation performed by another process between two calls is visible in the second.
+ * There is no windowing: `total_rows == rows.len()`.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
- * - `ffi.null_pointer` — `revset` or `prioritize` is a null pointer.
- * - `ffi.utf8_error` — `revset` or `prioritize` is not valid UTF-8.
- * - `jj.revset_parse_error` — either expression is syntactically invalid or names an
+ * - `ffi.null_pointer` — `revset`, `prioritize`, or `short_prefixes` is a null pointer.
+ * - `ffi.utf8_error` — `revset`, `prioritize`, or `short_prefixes` is not valid UTF-8.
+ * - `jj.revset_parse_error` — an expression is syntactically invalid or names an
  *   unknown function; jj-lib's reason in `context`.
- * - `jj.revset_resolution_error` — either expression names a symbol that cannot be
+ * - `jj.revset_resolution_error` — an expression names a symbol that cannot be
  *   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
  * - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
  * - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
@@ -318,13 +370,17 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
  * handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
  * makes a stale handle unreachable.
- * `revset` and `prioritize` must be NUL-terminated UTF-8 C strings owned by the caller
- * (Dart allocates them via `toNativeUtf8()` and frees them with `calloc.free()` after
- * this call returns — AR-P-5 inbound rule). Rust only borrows them for the duration of
- * the call; they are never freed on the Rust side.
+ * `revset`, `prioritize`, and `short_prefixes` must be NUL-terminated UTF-8 C strings
+ * owned by the caller (Dart allocates them via `toNativeUtf8()` and frees them with
+ * `calloc.free()` after this call returns — AR-P-5 inbound rule). Rust only borrows them
+ * for the duration of the call; they are never freed on the Rust side.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_graph_slice(uint64_t handle, const char *revset, const char *prioritize);
+ZanshinBuf *zanshin_graph_slice(uint64_t handle,
+                                const char *revset,
+                                const char *prioritize,
+                                bool synthetic_elided,
+                                const char *short_prefixes);
 
 /**
  * Forward a single log record from Dart into the Rust `tracing` sink (AR-P-5).

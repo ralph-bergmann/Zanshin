@@ -14,6 +14,59 @@
 
 use std::collections::HashMap;
 
+use zanshin_jj::CommitMeta;
+
+/// Identity of a node in the lane graph: a commit id plus whether this is the
+/// synthetic "elided revisions" row standing in for that commit.
+///
+/// Mirrors the CLI's `(CommitId, bool)` renderdag key
+/// (`cli/src/commands/log.rs:245-329`): a synthetic row must be able to reserve
+/// and consume its own lane without colliding with the real commit that arrives
+/// later. Namespacing the flag into the id string instead would leak into
+/// [`Row::commit_id`] and [`GraphError::DanglingEdge`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NodeId {
+    /// Hex commit id (`zanshin_jj::CommitId.0` upstream).
+    pub commit_id: String,
+    /// `true` for the synthetic elided row standing in front of `commit_id`.
+    pub synthetic: bool,
+}
+
+impl NodeId {
+    /// The real commit's identity.
+    #[must_use]
+    pub fn commit(commit_id: impl Into<String>) -> Self {
+        Self {
+            commit_id: commit_id.into(),
+            synthetic: false,
+        }
+    }
+
+    /// The synthetic elided row standing in front of `commit_id`.
+    #[must_use]
+    pub fn elided(commit_id: impl Into<String>) -> Self {
+        Self {
+            commit_id: commit_id.into(),
+            synthetic: true,
+        }
+    }
+}
+
+/// One lane passing vertically THROUGH a [`Row`] — it neither starts nor ends at
+/// that row's node.
+///
+/// `kind` is the kind of the edge that opened the segment, so a renderer can
+/// style the pass-through (e.g. dash an [`EdgeKind::Indirect`] segment) without
+/// looking at any neighbouring row. The color is derivable as
+/// `lane % PALETTE_SIZE`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveLane {
+    /// The lane the segment occupies.
+    pub lane: u32,
+    /// The kind of the edge that opened the segment.
+    pub kind: EdgeKind,
+}
+
 /// How a [`GraphEdge`]'s target was classified by the upstream revset-graph
 /// stream.
 ///
@@ -35,8 +88,9 @@ pub enum EdgeKind {
 /// One parent edge of a [`GraphNode`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphEdge {
-    /// The parent commit's id.
-    pub target: String,
+    /// The parent's node identity (a real commit, or the synthetic elided row
+    /// spliced in front of it).
+    pub target: NodeId,
     /// How this edge was classified by the upstream stream.
     pub kind: EdgeKind,
 }
@@ -59,14 +113,19 @@ pub struct GraphEdge {
 ///    [`GraphError::DanglingEdge`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
-    /// Hex commit id (`zanshin_jj::CommitId.0` upstream).
-    pub id: String,
+    /// This node's identity (see [`NodeId`]).
+    pub id: NodeId,
     /// Parent edges in upstream stream order. Upstream that is parent order,
     /// but NOT one edge per parent: an elided parent contributes zero, one, or
     /// several [`EdgeKind::Indirect`] edges after jj-lib's ancestor dedup and
     /// transitive-edge removal. The first non-[`EdgeKind::Missing`] edge is the
     /// continuation edge (see [`LaneAssigner::push`]).
     pub parents: Vec<GraphEdge>,
+    /// `jj log`-parity display metadata, carried verbatim from the upstream
+    /// stream onto the [`Row`] this node produces. **Opaque to this crate** —
+    /// the lane algorithm never reads it (and could not: `zanshin-graph` has no
+    /// `jj_lib` dependency, FR-JJ-16). `None` on a synthetic elided row.
+    pub meta: Option<CommitMeta>,
 }
 
 /// One parent edge of a [`Row`], carrying the lane it was routed to.
@@ -95,7 +154,8 @@ pub const PALETTE_SIZE: u32 = 8;
 /// invalidate an already-emitted `Row` (see [`LaneAssigner::push`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
-    /// The commit id this row represents (same as the input [`GraphNode::id`]).
+    /// The commit id this row represents (the input [`NodeId::commit_id`]). On a
+    /// synthetic elided row this is the ELIDED TARGET's commit id.
     pub commit_id: String,
     /// The lane this commit was placed on.
     pub lane: u32,
@@ -103,6 +163,17 @@ pub struct Row {
     pub color_idx: u32,
     /// One [`RowEdge`] per input parent edge, in the same order.
     pub edges: Vec<RowEdge>,
+    /// This is a synthetic "(elided revisions)" row, not a real commit
+    /// (the input [`NodeId::synthetic`]).
+    pub synthetic_elided: bool,
+    /// Lanes carrying a vertical segment THROUGH this row — neither starting nor
+    /// ending at this row's node — in ascending lane order. Together with
+    /// [`Self::lane`] and [`Self::edges`] this is everything a renderer needs to
+    /// paint the row's complete graph cross-section without any neighbouring row.
+    pub active_lanes: Vec<ActiveLane>,
+    /// `jj log`-parity display metadata, opaque to this crate. `None` on a
+    /// synthetic elided row.
+    pub meta: Option<CommitMeta>,
 }
 
 /// Errors from [`LaneAssigner::finish`] / [`assign_lanes`].
@@ -137,16 +208,26 @@ pub enum GraphError {
 /// [`push`]: LaneAssigner::push
 #[derive(Debug, Default)]
 pub struct LaneAssigner {
-    /// Lane slots, indexed by lane number. `Some(id)` = a pending reservation
-    /// for `id` occupies this lane (an edge is running down it toward `id`);
-    /// `None` = free. Slots are cleared, never removed — removing would shift
-    /// every following lane index and invalidate already-emitted rows.
-    lanes: Vec<Option<String>>,
-    /// Commit id -> lanes reserved for it, kept sorted ascending so "leftmost"
+    /// Lane slots, indexed by lane number. `Some(reservation)` = an edge is
+    /// running down this lane toward a node that has not arrived yet; `None` =
+    /// free. Slots are cleared, never removed — removing would shift every
+    /// following lane index and invalidate already-emitted rows.
+    lanes: Vec<Option<Reservation>>,
+    /// Node id -> lanes reserved for it, kept sorted ascending so "leftmost"
     /// is O(1). An id can hold more than one reservation at once (multiple
     /// children each reserving a different lane for the same not-yet-arrived
     /// parent); all but the leftmost are freed when that parent is placed.
-    reservations: HashMap<String, Vec<u32>>,
+    reservations: HashMap<NodeId, Vec<u32>>,
+}
+
+/// A lane held open for a node that has not arrived yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Reservation {
+    /// The node this lane is waiting for.
+    target: NodeId,
+    /// The kind of the edge that OPENED this segment. A later edge joining the
+    /// same lane joins an existing segment; it does not restyle it.
+    kind: EdgeKind,
 }
 
 impl LaneAssigner {
@@ -173,8 +254,15 @@ impl LaneAssigner {
     /// reservation, or a freshly allocated lane if it has none yet. A
     /// `Missing` edge never reserves a lane; its `target_lane` is `None` — if
     /// every edge is `Missing`, the node's lane simply ends here.
+    ///
+    /// **Pass-through lanes** are read from the live reservation state the
+    /// instant after placement and before any edge is routed: at that point
+    /// every lane landing at this row has been cleared and the node's own lane
+    /// is free in BOTH placement branches, so the still-occupied slots are
+    /// exactly the segments crossing this row.
     pub fn push(&mut self, node: GraphNode) -> Row {
         let lane = self.place(&node.id);
+        let active_lanes = self.active_lanes();
         let mut edges = Vec::with_capacity(node.parents.len());
         let mut own_lane_unclaimed = true;
         for edge in node.parents {
@@ -184,16 +272,19 @@ impl LaneAssigner {
             }
             let target_lane = self.route_edge(lane, continues_own_lane, &edge);
             edges.push(RowEdge {
-                target: edge.target,
+                target: edge.target.commit_id,
                 target_lane,
                 kind: edge.kind,
             });
         }
         Row {
-            commit_id: node.id,
+            commit_id: node.id.commit_id,
             lane,
             color_idx: lane % PALETTE_SIZE,
             edges,
+            synthetic_elided: node.id.synthetic,
+            active_lanes,
+            meta: node.meta,
         }
     }
 
@@ -207,15 +298,31 @@ impl LaneAssigner {
     /// [`GraphNode`]. Which dangling target is reported is unspecified when
     /// more than one remains.
     pub fn finish(self) -> Result<(), GraphError> {
-        if let Some(target) = self.lanes.into_iter().flatten().next() {
-            return Err(GraphError::DanglingEdge { target });
+        if let Some(reservation) = self.lanes.into_iter().flatten().next() {
+            return Err(GraphError::DanglingEdge {
+                target: reservation.target.commit_id,
+            });
         }
         Ok(())
     }
 
+    /// Snapshots the currently-occupied lane slots, ascending.
+    fn active_lanes(&self) -> Vec<ActiveLane> {
+        self.lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| {
+                slot.as_ref().map(|reservation| ActiveLane {
+                    lane: Self::lane_number(index),
+                    kind: reservation.kind,
+                })
+            })
+            .collect()
+    }
+
     /// Places `id`: takes its leftmost reservation (freeing every other
     /// reservation held for `id`), or the leftmost free lane, or a new lane.
-    fn place(&mut self, id: &str) -> u32 {
+    fn place(&mut self, id: &NodeId) -> u32 {
         if let Some(lanes) = self.reservations.remove(id) {
             let placed = lanes[0];
             for lane in lanes {
@@ -240,20 +347,32 @@ impl LaneAssigner {
         } else {
             self.alloc_lane()
         };
-        self.reserve(edge.target.clone(), lane);
+        self.reserve(edge.target.clone(), lane, edge.kind);
         Some(lane)
     }
 
     /// Returns the target's leftmost already-reserved lane, if any.
-    fn leftmost_reservation(&self, target: &str) -> Option<u32> {
+    fn leftmost_reservation(&self, target: &NodeId) -> Option<u32> {
         self.reservations.get(target).and_then(|lanes| lanes.first().copied())
     }
 
     /// Marks `lane` reserved for `target`: occupies the lane slot and records
     /// the reservation (idempotent — reserving an already-held lane again is
     /// a no-op on the reservation list, keeping it duplicate-free).
-    fn reserve(&mut self, target: String, lane: u32) {
-        self.lanes[Self::index(lane)] = Some(target.clone());
+    ///
+    /// The slot's `kind` is written only when the slot was free. A lane is only
+    /// ever re-reserved for the target that already holds it (`route_edge`
+    /// reuses a lane through [`Self::leftmost_reservation`], and the node's own
+    /// lane is always free at that point), so a later edge joining the segment
+    /// must not restyle the segment the earlier edge opened.
+    fn reserve(&mut self, target: NodeId, lane: u32, kind: EdgeKind) {
+        let slot = &mut self.lanes[Self::index(lane)];
+        if slot.is_none() {
+            *slot = Some(Reservation {
+                target: target.clone(),
+                kind,
+            });
+        }
         let lanes = self.reservations.entry(target).or_default();
         if let Err(pos) = lanes.binary_search(&lane) {
             lanes.insert(pos, lane);
@@ -303,26 +422,41 @@ pub fn assign_lanes(nodes: impl IntoIterator<Item = GraphNode>) -> Result<Vec<Ro
 
 #[cfg(test)]
 mod tests {
-    use super::{EdgeKind, GraphEdge, LaneAssigner};
+    use super::{ActiveLane, EdgeKind, GraphEdge, GraphNode, LaneAssigner, NodeId, Reservation};
 
     fn direct(target: &str) -> GraphEdge {
         GraphEdge {
-            target: target.to_string(),
+            target: NodeId::commit(target),
             kind: EdgeKind::Direct,
+        }
+    }
+
+    fn held(target: &str, kind: EdgeKind) -> Reservation {
+        Reservation {
+            target: NodeId::commit(target),
+            kind,
+        }
+    }
+
+    fn node(id: &str, parents: Vec<GraphEdge>) -> GraphNode {
+        GraphNode {
+            id: NodeId::commit(id),
+            parents,
+            meta: None,
         }
     }
 
     #[test]
     fn alloc_lane_reuses_leftmost_free_slot() {
         let mut assigner = LaneAssigner::new();
-        assigner.lanes = vec![None, Some("x".to_string()), None];
+        assigner.lanes = vec![None, Some(held("x", EdgeKind::Direct)), None];
         assert_eq!(assigner.alloc_lane(), 0);
     }
 
     #[test]
     fn alloc_lane_appends_when_no_free_slot() {
         let mut assigner = LaneAssigner::new();
-        assigner.lanes = vec![Some("a".to_string()), Some("b".to_string())];
+        assigner.lanes = vec![Some(held("a", EdgeKind::Direct)), Some(held("b", EdgeKind::Direct))];
         assert_eq!(assigner.alloc_lane(), 2);
         assert_eq!(assigner.lanes.len(), 3);
     }
@@ -331,37 +465,65 @@ mod tests {
     fn reserve_then_leftmost_reservation_returns_smallest() {
         let mut assigner = LaneAssigner::new();
         assigner.lanes = vec![None, None, None];
-        assigner.reserve("p".to_string(), 2);
-        assigner.reserve("p".to_string(), 0);
-        assert_eq!(assigner.leftmost_reservation("p"), Some(0));
-        assert_eq!(assigner.reservations.get("p"), Some(&vec![0, 2]));
+        assigner.reserve(NodeId::commit("p"), 2, EdgeKind::Direct);
+        assigner.reserve(NodeId::commit("p"), 0, EdgeKind::Direct);
+        assert_eq!(assigner.leftmost_reservation(&NodeId::commit("p")), Some(0));
+        assert_eq!(assigner.reservations.get(&NodeId::commit("p")), Some(&vec![0, 2]));
     }
 
     #[test]
     fn reserve_is_idempotent_for_the_same_lane() {
         let mut assigner = LaneAssigner::new();
         assigner.lanes = vec![None];
-        assigner.reserve("p".to_string(), 0);
-        assigner.reserve("p".to_string(), 0);
-        assert_eq!(assigner.reservations.get("p"), Some(&vec![0]));
+        assigner.reserve(NodeId::commit("p"), 0, EdgeKind::Direct);
+        assigner.reserve(NodeId::commit("p"), 0, EdgeKind::Direct);
+        assert_eq!(assigner.reservations.get(&NodeId::commit("p")), Some(&vec![0]));
+    }
+
+    /// A later edge joining an open segment must not restyle it: the reservation
+    /// keeps the kind of the edge that CREATED it.
+    #[test]
+    fn reserve_keeps_the_kind_of_the_edge_that_opened_the_segment() {
+        let mut assigner = LaneAssigner::new();
+        assigner.lanes = vec![None];
+        assigner.reserve(NodeId::commit("p"), 0, EdgeKind::Indirect);
+        assigner.reserve(NodeId::commit("p"), 0, EdgeKind::Direct);
+        assert_eq!(assigner.lanes[0], Some(held("p", EdgeKind::Indirect)));
     }
 
     #[test]
     fn place_frees_every_reservation_held_for_the_arriving_id() {
         let mut assigner = LaneAssigner::new();
         assigner.lanes = vec![None, None, None];
-        assigner.reserve("p".to_string(), 1);
-        assigner.reserve("p".to_string(), 2);
-        let lane = assigner.place("p");
+        assigner.reserve(NodeId::commit("p"), 1, EdgeKind::Direct);
+        assigner.reserve(NodeId::commit("p"), 2, EdgeKind::Direct);
+        let lane = assigner.place(&NodeId::commit("p"));
         assert_eq!(lane, 1);
         assert_eq!(assigner.lanes, vec![None, None, None]);
-        assert!(!assigner.reservations.contains_key("p"));
+        assert!(!assigner.reservations.contains_key(&NodeId::commit("p")));
     }
 
     #[test]
     fn place_with_no_reservation_allocates_a_lane() {
         let mut assigner = LaneAssigner::new();
-        assert_eq!(assigner.place("root"), 0);
+        assert_eq!(assigner.place(&NodeId::commit("root")), 0);
+    }
+
+    /// A synthetic elided row and the real commit it stands for are distinct
+    /// identities: the elided row consumes its own reservation and leaves the
+    /// real commit's untouched.
+    #[test]
+    fn an_elided_node_id_does_not_collide_with_its_real_commit() {
+        let mut assigner = LaneAssigner::new();
+        assigner.lanes = vec![None, None];
+        assigner.reserve(NodeId::elided("p"), 0, EdgeKind::Direct);
+        assigner.reserve(NodeId::commit("p"), 1, EdgeKind::Direct);
+        assert_eq!(assigner.place(&NodeId::elided("p")), 0);
+        assert_eq!(
+            assigner.lanes[1],
+            Some(held("p", EdgeKind::Direct)),
+            "the real commit still waits"
+        );
     }
 
     #[test]
@@ -369,7 +531,7 @@ mod tests {
         let mut assigner = LaneAssigner::new();
         assigner.lanes = vec![None];
         let edge = GraphEdge {
-            target: "gone".to_string(),
+            target: NodeId::commit("gone"),
             kind: EdgeKind::Missing,
         };
         let target_lane = assigner.route_edge(0, true, &edge);
@@ -382,9 +544,59 @@ mod tests {
     fn route_edge_first_parent_reserves_own_lane_even_if_target_reserved_elsewhere() {
         let mut assigner = LaneAssigner::new();
         assigner.lanes = vec![None, None];
-        assigner.reserve("shared".to_string(), 0);
+        assigner.reserve(NodeId::commit("shared"), 0, EdgeKind::Direct);
         let target_lane = assigner.route_edge(1, true, &direct("shared"));
         assert_eq!(target_lane, Some(1));
-        assert_eq!(assigner.reservations.get("shared"), Some(&vec![0, 1]));
+        assert_eq!(assigner.reservations.get(&NodeId::commit("shared")), Some(&vec![0, 1]));
+    }
+
+    /// The pass-through set is read AFTER `place()` and BEFORE the edge loop: the
+    /// lane that lands here is already cleared, the node's own lane is still
+    /// free, and only the segment crossing the row remains.
+    #[test]
+    fn push_reads_active_lanes_after_placement_and_before_routing() {
+        let mut assigner = LaneAssigner::new();
+        // `crosser` opens lane 0 toward `far`; `head` opens lane 1 toward `p`.
+        assigner.push(node("crosser", vec![direct("far")]));
+        assigner.push(node("head", vec![direct("p")]));
+
+        let row = assigner.push(node("p", vec![direct("q")]));
+
+        assert_eq!(row.lane, 1, "p claims the reservation it was promised");
+        assert_eq!(
+            row.active_lanes,
+            vec![ActiveLane {
+                lane: 0,
+                kind: EdgeKind::Direct
+            }],
+            "only the segment crossing this row is listed: not p's own lane 1 \
+             (freed by place, re-taken by p's own edge), not the landed edge"
+        );
+    }
+
+    /// A pass-through carries the kind of the edge that opened it, so a renderer
+    /// can dash an elided segment without inspecting any other row.
+    #[test]
+    fn active_lanes_carry_the_kind_of_the_segment_that_crosses_the_row() {
+        let mut assigner = LaneAssigner::new();
+        assigner.push(node("crosser", vec![direct("far")]));
+        assigner.push(node(
+            "eliding",
+            vec![GraphEdge {
+                target: NodeId::commit("elided-target"),
+                kind: EdgeKind::Indirect,
+            }],
+        ));
+        // Swap the crossing segment for the Indirect one by letting `far` land first.
+        let row = assigner.push(node("far", vec![]));
+
+        assert_eq!(row.lane, 0);
+        assert_eq!(
+            row.active_lanes,
+            vec![ActiveLane {
+                lane: 1,
+                kind: EdgeKind::Indirect
+            }]
+        );
     }
 }

@@ -330,7 +330,7 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 ---
 
-## GraphSlice payload (Story 4.2) and `zanshin_graph_slice` (Story 4.6)
+## GraphSlice payload (Story 4.2) and `zanshin_graph_slice` (Stories 4.6 + 4.8)
 
 The lane-assigned commit graph (Story 4.1, `zanshin_graph::Row`) crosses FFI
 as a `GraphSlice` member of the `Payload` union (`schemas/envelope.fbs`) — no
@@ -342,10 +342,22 @@ always `ok == true`); the Dart worker command `GraphSliceCommand` feeds the
 bytes to `decodeGraphSliceEnvelopeInternal`
 (`packages/zanshin_core/lib/src/ffi/graph.dart`).
 
+Since **Story 4.8** each commit row is *self-contained renderable*: it carries
+the `jj log`-parity display metadata (`GraphRowMeta`) and the lanes passing
+through it (`GraphActiveLane`) alongside its own lane and edges, all derived
+from the SAME `load_at_head` snapshot in the same stream pass. Rendering the
+default `jj log` view therefore takes ONE call — no per-commit `zanshin_change`
+follow-ups, and no window in which an external `jj` operation could make the
+lanes and the metadata disagree.
+
 ### `zanshin_graph_slice`
 
 ```c
-ZanshinBuf* zanshin_graph_slice(uint64_t handle, const char* revset, const char* prioritize);
+ZanshinBuf* zanshin_graph_slice(uint64_t handle,
+                                const char* revset,
+                                const char* prioritize,
+                                bool synthetic_elided,
+                                const char* short_prefixes);
 ```
 
 Returns every lane-assigned row of `revset` in the repo referenced by `handle`,
@@ -361,16 +373,38 @@ return-all; windowing is deferred past WIP).
   `_clone` / `_convert`. Borrowed, never consumed.
 - `revset` — the revset selecting the rows (e.g. `all()`, `heads(all())`).
   Caller-owned NUL-terminated UTF-8 C string (Dart `toNativeUtf8` / `calloc.free`;
-  Rust only borrows it — AR-P-5 inbound rule).
+  Rust only borrows it — AR-P-5 inbound rule). The CLI's `revsets.log` default
+  is exported as the Dart constant `defaultLogRevset` (a mirror of
+  `zanshin_jj::DEFAULT_LOG_REVSET`) for the UI to pre-fill; it is never applied
+  silently. It parses because `zanshin-jj` defines the CLI's builtin
+  `[revset-aliases]` (`trunk()`, `builtin_immutable_heads()`,
+  `immutable_heads()`, `immutable()`, `mutable()`, `visible()`, `hidden()`).
 - `prioritize` — the branch-prioritisation revset (`jj log`'s
   `revsets.log-graph-prioritize`). Caller-owned C string, same ownership rule.
   The CLI default is `present(@)` — the Dart side pre-fills it as
   `defaultGraphPrioritize` (a mirror of `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`),
   editable by the caller; `none()` is the canonical "no prioritisation" value;
-  a blank expression is a `jj.revset_parse_error`. Both expressions are passed
-  through verbatim — nothing is baked in. An interior NUL (U+0000) in either
-  expression is rejected Dart-side with an `ArgumentError` (a C string cannot
-  carry it; `toNativeUtf8` would silently truncate the expression).
+  a blank expression is a `jj.revset_parse_error`.
+- `synthetic_elided` — render elided ancestry as synthetic "(elided revisions)"
+  rows (the CLI's `ui.log-synthetic-elided-nodes`, default `true`, pre-filled
+  Dart-side). `true`: every `Indirect` edge becomes a `Direct` edge into a
+  spliced synthetic row emitted right after its child. `false`: the pre-4.8
+  stream — plain `Indirect` edges, no synthetic rows. A plain `bool` at the C
+  surface (`zanshin_ffi.h` already includes `<stdbool.h>`).
+- `short_prefixes` — the disambiguation revset for the shortest-prefix lengths
+  (`revsets.short-prefixes`, which the CLI falls back to `revsets.log` for, so
+  the Dart pre-fill `defaultShortPrefixes == defaultLogRevset`). Caller-owned C
+  string, same ownership rule. An **EMPTY string DISABLES** disambiguation
+  (full-index prefix lengths) — the CLI's toggle semantic, deliberately unlike
+  `prioritize`, where a blank expression is a parse error. A parse/resolution
+  failure of the expression is a hard error; a failure while LOADING the
+  disambiguation index only logs a `tracing::warn!` and degrades to full-index
+  prefixes, exactly as the CLI does.
+
+All expressions are passed through verbatim — nothing is baked in. An interior
+NUL (U+0000) in `revset`, `prioritize`, or `shortPrefixes` is rejected
+Dart-side with an `ArgumentError` (a C string cannot carry it; `toNativeUtf8`
+would silently truncate the expression).
 
 **Re-derive per call (ADR-0002).** The graph is re-derived from the head
 operation on every call; Rust retains no graph state between calls. An
@@ -389,10 +423,10 @@ copied once into Dart — windowing is deferred past WIP.
 | Code                         | Condition                                                                 |
 |------------------------------|---------------------------------------------------------------------------|
 | `ffi.invalid_handle`         | Rust: `handle == 0`. Worker: unknown/closed `handleId` (Model A handle-table lookup). A stale non-zero raw handle is UB — liveness is the worker's lookup, not a Rust check (see the fn's `# Safety` rustdoc). |
-| `ffi.null_pointer`           | `revset` or `prioritize` is null.                                         |
-| `ffi.utf8_error`             | `revset` or `prioritize` contains invalid UTF-8.                          |
-| `jj.revset_parse_error`      | Either expression is syntactically invalid / unknown function (incl. blank `prioritize`); reason in `context`. |
-| `jj.revset_resolution_error` | Either expression names a symbol that cannot be resolved; reason in `context`. |
+| `ffi.null_pointer`           | `revset`, `prioritize`, or `short_prefixes` is null.                      |
+| `ffi.utf8_error`             | `revset`, `prioritize`, or `short_prefixes` contains invalid UTF-8.       |
+| `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation); reason in `context`. |
+| `jj.revset_resolution_error` | An expression names a symbol that cannot be resolved; reason in `context`. |
 | `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
 | `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
 
@@ -400,14 +434,19 @@ An error envelope never carries partial rows.
 
 **Dart worker integration:**
 
-- `GraphSliceCommand(handleId, revset, prioritize)` — worker looks up the raw
-  handle (unknown id → `ffi.invalid_handle` envelope), calls
-  `zanshinGraphSlice(raw, revset, prioritize)` (`lib/src/ffi/graph.dart`), and
-  replies `BufferResult` with the `Envelope<GraphSlice>` bytes.
-- `ZanshinWorker.graphSlice(handleId, {required revset, required prioritize})`
-  → `GraphSlice` via `decodeGraphSliceEnvelopeInternal`.
-- `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize})`
-  — closed-handle guard (`StateError`), pre-fills the CLI default, delegates.
+- `GraphSliceCommand(handleId, revset, prioritize, syntheticElided, shortPrefixes)`
+  — worker looks up the raw handle (unknown id → `ffi.invalid_handle` envelope),
+  calls `zanshinGraphSlice(raw, revset, prioritize, syntheticElided:,
+  shortPrefixes:)` (`lib/src/ffi/graph.dart`; the two Story-4.8 parameters are
+  NAMED Dart-side because `avoid_positional_boolean_parameters` forbids a
+  positional `bool` — the C argument order is unchanged), and replies
+  `BufferResult` with the `Envelope<GraphSlice>` bytes.
+- `ZanshinWorker.graphSlice(handleId, {required revset, required prioritize,
+  required syntheticElided, required shortPrefixes})` → `GraphSlice` via
+  `decodeGraphSliceEnvelopeInternal`.
+- `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize,
+  syntheticElided = true, shortPrefixes = defaultShortPrefixes})` —
+  closed-handle guard (`StateError`), pre-fills the CLI defaults, delegates.
 
 ```
 enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_graph::EdgeKind order
@@ -418,11 +457,49 @@ GraphRowEdge {
   kind:        GraphEdgeKind
 }
 
-GraphRow {
-  commit_id:   string          // commit id, hex — rows are keyed by COMMIT id, not change id
+GraphActiveLane {               // a lane passing THROUGH the row (Story 4.8)
   lane:        uint
-  color_idx:   uint            // lane % PALETTE_SIZE (8)
-  edges:       [GraphRowEdge]  // one per input parent edge, same order
+  kind:        GraphEdgeKind    // the kind of the edge that opened the segment
+}
+
+GraphCommitRef {                // one bookmark/tag entry (Story 4.8)
+  name:        string
+  remote:      string           // ABSENT (Dart null) for the local entry
+  synced:      bool
+  conflicted:  bool
+}
+
+GraphRowMeta {                  // jj log-parity display metadata (Story 4.8)
+  change_id:                   string   // reverse-hex display form
+  change_id_prefix_len:        uint
+  commit_id_prefix_len:        uint
+  change_offset:               uint     // meaningful ONLY when has_change_offset
+  has_change_offset:           bool
+  author_name:                 string   // may be empty
+  author_email:                string   // may be empty
+  committer_timestamp_millis:  long
+  committer_tz_offset_minutes: int
+  bookmarks:                   [GraphCommitRef]
+  tags:                        [GraphCommitRef]
+  working_copies:              [string] // empty in a single-workspace repo
+  working_copy:                bool     // this workspace's @
+  immutable:                   bool     // in ::(immutable_heads() | root())
+  conflict:                    bool
+  empty:                       bool
+  hidden:                      bool
+  divergent:                   bool
+  root:                        bool
+  description_first_line:      string   // "" when the description is empty
+}
+
+GraphRow {
+  commit_id:        string           // commit id, hex — rows are keyed by COMMIT id, not change id
+  lane:             uint
+  color_idx:        uint             // lane % PALETTE_SIZE (8)
+  edges:            [GraphRowEdge]   // one per input parent edge, same order
+  active_lanes:     [GraphActiveLane]// pass-through lanes, ascending; always present
+  synthetic_elided: bool             // this is an "(elided revisions)" row
+  meta:             GraphRowMeta     // ABSENT iff synthetic_elided
 }
 
 GraphSlice {
@@ -438,6 +515,24 @@ GraphSlice {
   (null-for-absence at the model level; same presence-flag pattern as
   `RepoDetect.suggested_kind` / `Bookmark.remote_name`). Never read
   `target_lane` of a `Missing` edge.
+- **`meta` absence rule.** `meta` is a NESTED TABLE precisely because that is
+  the only shape flatc 25.12.19 lets Dart see as `null`: it is absent on a
+  synthetic elided row (`GraphRow.meta` → `GraphRowMeta?`) and present on every
+  commit row. On an elided row `commit_id` holds the ELIDED TARGET's id, the
+  lane fields are real, and the single `Direct` edge points at that target's
+  real row. Inside `GraphRowMeta`, `change_offset` uses the documented presence
+  pair (`has_change_offset`; Dart `int?`) and `remote` uses string-nullability
+  (Dart `String?`, `null` for the local entry).
+- **Ref visibility is CONTENT, not styling.** `bookmarks` / `tags` carry the
+  CLI's own per-commit filter (`collect_distinct_refs`: `is_local() ||
+  !synced`) — a tracked-AND-synced remote entry simply is not part of a
+  `jj log` row and is not emitted. The unfiltered view stays
+  `zanshin_bookmarks_list`' job. The `*` / `??` / `@remote` sigils are the UI's
+  to draw from `synced` / `conflicted` / `remote`.
+- **`active_lanes` invariant.** For every routed edge on lane `L` from a child
+  row to its landing row, every row STRICTLY BETWEEN the two lists `L` in its
+  `active_lanes`; a row never lists its own lane. A renderer can therefore paint
+  any row's complete cross-section from that row's fields alone.
 - **`total_rows` semantics.** Return-all (Story 4.4 delivered it as
   `zanshin_graph::collect_lanes`): `total_rows == rows.length`. Windowing is
   deferred past WIP; if it lands later it may set `total_rows > rows.length`

@@ -9,7 +9,8 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (30 types, AC-1 table) --------
+// --- Type-path aliases: one alias per public type (32 types; the AC-1 table's 30 plus
+// --- Story 4.8's CommitMeta/CommitRef) -----------------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -59,7 +60,44 @@ type _GraphNode = zanshin_jj::GraphNode;
 type _GraphEdge = zanshin_jj::GraphEdge;
 type _GraphEdgeKind = zanshin_jj::GraphEdgeKind;
 
+// commit_meta (Story 4.8)
+type _CommitMeta = zanshin_jj::CommitMeta;
+type _CommitRef = zanshin_jj::CommitRef;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
+
+/// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
+/// type change in the log-row payload breaks this test at compile time.
+fn sample_commit_meta() -> zanshin_jj::CommitMeta {
+    zanshin_jj::CommitMeta {
+        change_id: String::new(),
+        change_id_prefix_len: 0,
+        commit_id_prefix_len: 0,
+        change_offset: None,
+        author_name: String::new(),
+        author_email: String::new(),
+        committer_timestamp: zanshin_jj::Timestamp {
+            millis_since_epoch: 0,
+            tz_offset_minutes: 0,
+        },
+        bookmarks: vec![zanshin_jj::CommitRef {
+            name: String::new(),
+            remote: None,
+            synced: false,
+            conflicted: false,
+        }],
+        tags: vec![],
+        working_copies: vec![],
+        working_copy: false,
+        immutable: false,
+        conflict: false,
+        empty: false,
+        hidden: false,
+        divergent: false,
+        root: false,
+        description_first_line: String::new(),
+    }
+}
 
 #[test]
 fn api_surface_resolves() {
@@ -108,14 +146,20 @@ fn api_surface_resolves() {
     _ = zanshin_jj::GraphNode {
         id: zanshin_jj::CommitId(String::new()),
         parents: vec![],
+        meta: sample_commit_meta(),
     };
     assert_eq!(
         zanshin_jj::DEFAULT_GRAPH_PRIORITIZE,
         "present(@)",
         "the CLI's revsets.log-graph-prioritize default (v0.42.0 cli/src/config/revsets.toml)"
     );
+    assert_eq!(
+        zanshin_jj::DEFAULT_LOG_REVSET,
+        "present(@) | ancestors(immutable_heads().., 2) | trunk()",
+        "the CLI's revsets.log default (v0.42.0 cli/src/config/revsets.toml)"
+    );
 
-    // convert (free fns + RepoError variants — no new *type* exported; still 30 after graph)
+    // convert (free fns + RepoError variants — no new *type* exported)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
     _ = zanshin_jj::convert_import
         as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;

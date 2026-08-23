@@ -6,16 +6,19 @@
 //! [`graph_slice_to_envelope`] serialises the lane rows Story 4.1 emits
 //! (`zanshin_graph::Row`) into a `FlatBuffers` `Envelope` carrying a `GraphSlice`
 //! payload — the wire form the Dart side decodes through its generated typed
-//! accessors (ADR-0001). [`zanshin_graph_slice`] borrows the `RepoSession`, passes the
-//! caller's `revset` + `prioritize` through to `zanshin_graph::collect_lanes` (re-derived
-//! from head on every call, nothing retained — ADR-0002) and returns that envelope.
+//! accessors (ADR-0001). Since Story 4.8 each commit row also carries its `jj log`-parity
+//! metadata (`GraphRowMeta`) and its pass-through lanes (`GraphActiveLane`), so a log view
+//! renders from ONE call. [`zanshin_graph_slice`] borrows the `RepoSession`, passes the
+//! caller's `revset` + `prioritize` + `short_prefixes` + `synthetic_elided` through to
+//! `zanshin_graph::collect_lanes` (re-derived from head on every call, nothing retained —
+//! ADR-0002) and returns that envelope.
 
 use std::ffi::c_char;
 
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use tracing::debug;
 use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
-use zanshin_jj::RevsetError;
+use zanshin_jj::{CommitMeta, CommitRef, RevsetError};
 
 use crate::envelope::{
     catch, FfiErrorObj, FFI_INVALID_HANDLE, GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
@@ -60,8 +63,69 @@ fn edge_kind(kind: EdgeKind) -> fbs::GraphEdgeKind {
     }
 }
 
-/// Build one `GraphRow` table; its edge tables and strings are created first
-/// (children before parents).
+/// Build the `[GraphCommitRef]` vector for one row's bookmarks or tags.
+fn refs_offset<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    refs: &[CommitRef],
+) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::GraphCommitRef<'a>>>> {
+    let mut offs = Vec::with_capacity(refs.len());
+    for r in refs {
+        let name = b.create_string(&r.name);
+        // `remote` stays absent for the local entry (null-for-absence in Dart).
+        let remote = r.remote.as_deref().map(|s| b.create_string(s));
+        offs.push(fbs::GraphCommitRef::create(
+            b,
+            &fbs::GraphCommitRefArgs {
+                name: Some(name),
+                remote,
+                synced: r.synced,
+                conflicted: r.conflicted,
+            },
+        ));
+    }
+    b.create_vector(&offs)
+}
+
+/// Build one `GraphRowMeta` table; its child strings and vectors are created first.
+fn meta_offset<'a>(b: &mut FlatBufferBuilder<'a>, meta: &CommitMeta) -> WIPOffset<fbs::GraphRowMeta<'a>> {
+    let bookmarks = refs_offset(b, &meta.bookmarks);
+    let tags = refs_offset(b, &meta.tags);
+    let wc_offs: Vec<_> = meta.working_copies.iter().map(|n| b.create_string(n)).collect();
+    let working_copies = b.create_vector(&wc_offs);
+    let change_id = b.create_string(&meta.change_id);
+    let author_name = b.create_string(&meta.author_name);
+    let author_email = b.create_string(&meta.author_email);
+    let description_first_line = b.create_string(&meta.description_first_line);
+    fbs::GraphRowMeta::create(
+        b,
+        &fbs::GraphRowMetaArgs {
+            change_id: Some(change_id),
+            change_id_prefix_len: meta.change_id_prefix_len,
+            commit_id_prefix_len: meta.commit_id_prefix_len,
+            // Presence pair — the wire has no optional scalar for Dart.
+            change_offset: meta.change_offset.unwrap_or(0),
+            has_change_offset: meta.change_offset.is_some(),
+            author_name: Some(author_name),
+            author_email: Some(author_email),
+            committer_timestamp_millis: meta.committer_timestamp.millis_since_epoch,
+            committer_tz_offset_minutes: meta.committer_timestamp.tz_offset_minutes,
+            bookmarks: Some(bookmarks),
+            tags: Some(tags),
+            working_copies: Some(working_copies),
+            working_copy: meta.working_copy,
+            immutable: meta.immutable,
+            conflict: meta.conflict,
+            empty: meta.empty,
+            hidden: meta.hidden,
+            divergent: meta.divergent,
+            root: meta.root,
+            description_first_line: Some(description_first_line),
+        },
+    )
+}
+
+/// Build one `GraphRow` table; its edge/active-lane/meta tables and strings are created
+/// first (children before parents).
 fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::GraphRow<'a>> {
     let mut edge_offs = Vec::with_capacity(row.edges.len());
     for e in &row.edges {
@@ -78,6 +142,22 @@ fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::Gr
         ));
     }
     let edges = b.create_vector(&edge_offs);
+    let lane_offs: Vec<_> = row
+        .active_lanes
+        .iter()
+        .map(|l| {
+            fbs::GraphActiveLane::create(
+                b,
+                &fbs::GraphActiveLaneArgs {
+                    lane: l.lane,
+                    kind: edge_kind(l.kind),
+                },
+            )
+        })
+        .collect();
+    let active_lanes = b.create_vector(&lane_offs);
+    // Absent on a synthetic elided row — the nested table is what makes Dart see `null`.
+    let meta = row.meta.as_ref().map(|m| meta_offset(b, m));
     let commit_id = b.create_string(&row.commit_id);
     fbs::GraphRow::create(
         b,
@@ -86,6 +166,9 @@ fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::Gr
             lane: row.lane,
             color_idx: row.color_idx,
             edges: Some(edges),
+            active_lanes: Some(active_lanes),
+            synthetic_elided: row.synthetic_elided,
+            meta,
         },
     )
 }
@@ -128,25 +211,31 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
 // ── extern "C" ────────────────────────────────────────────────────────────────
 
 /// Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
-/// `jj log` order — the revset-selected slice of the commit graph.
+/// `jj log` order — the revset-selected slice of the commit graph, each commit row
+/// carrying the `jj log` display metadata of the same head-resolved snapshot.
 ///
-/// Both expressions are caller pass-throughs (FR-JJ-17): `revset` selects the rows,
+/// Every expression is a caller pass-through (FR-JJ-17): `revset` selects the rows,
 /// `prioritize` is the branch-prioritisation revset (`jj log`'s
 /// `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
-/// a blank expression is a parse error). The graph is re-derived from the head operation
-/// on every call and nothing is retained Rust-side (ADR-0002) — an operation performed by
-/// another process between two calls is visible in the second. There is no windowing:
-/// `total_rows == rows.len()`.
+/// a blank expression is a parse error), and `short_prefixes` is the disambiguation set
+/// for the shortest-prefix lengths (CLI default = `revsets.log`; an EMPTY string DISABLES
+/// disambiguation and falls back to full-index prefixes — the CLI's toggle semantic,
+/// deliberately unlike `prioritize`). `synthetic_elided` (the CLI's
+/// `ui.log-synthetic-elided-nodes`, default `true`) turns each elided-ancestor edge into a
+/// spliced synthetic row; `false` restores plain `Indirect` edges. The graph is re-derived
+/// from the head operation on every call and nothing is retained Rust-side (ADR-0002) — an
+/// operation performed by another process between two calls is visible in the second.
+/// There is no windowing: `total_rows == rows.len()`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `ffi.null_pointer` — `revset` or `prioritize` is a null pointer.
-/// - `ffi.utf8_error` — `revset` or `prioritize` is not valid UTF-8.
-/// - `jj.revset_parse_error` — either expression is syntactically invalid or names an
+/// - `ffi.null_pointer` — `revset`, `prioritize`, or `short_prefixes` is a null pointer.
+/// - `ffi.utf8_error` — `revset`, `prioritize`, or `short_prefixes` is not valid UTF-8.
+/// - `jj.revset_parse_error` — an expression is syntactically invalid or names an
 ///   unknown function; jj-lib's reason in `context`.
-/// - `jj.revset_resolution_error` — either expression names a symbol that cannot be
+/// - `jj.revset_resolution_error` — an expression names a symbol that cannot be
 ///   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
 /// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
 /// - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
@@ -158,16 +247,18 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
 /// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
 /// handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
 /// makes a stale handle unreachable.
-/// `revset` and `prioritize` must be NUL-terminated UTF-8 C strings owned by the caller
-/// (Dart allocates them via `toNativeUtf8()` and frees them with `calloc.free()` after
-/// this call returns — AR-P-5 inbound rule). Rust only borrows them for the duration of
-/// the call; they are never freed on the Rust side.
+/// `revset`, `prioritize`, and `short_prefixes` must be NUL-terminated UTF-8 C strings
+/// owned by the caller (Dart allocates them via `toNativeUtf8()` and frees them with
+/// `calloc.free()` after this call returns — AR-P-5 inbound rule). Rust only borrows them
+/// for the duration of the call; they are never freed on the Rust side.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
 pub unsafe extern "C" fn zanshin_graph_slice(
     handle: u64,
     revset: *const c_char,
     prioritize: *const c_char,
+    synthetic_elided: bool,
+    short_prefixes: *const c_char,
 ) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_graph_slice", handle);
     let buf = catch(|| {
@@ -179,10 +270,12 @@ pub unsafe extern "C" fn zanshin_graph_slice(
                 code: FFI_INVALID_HANDLE.to_owned(),
                 context: None,
             })?;
-        // SAFETY: both are caller-owned NUL-terminated C strings (Dart allocates + frees).
+        // SAFETY: all three are caller-owned NUL-terminated C strings (Dart allocates + frees).
         let revset = unsafe { cstr_to_string(revset) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
         let prioritize = unsafe { cstr_to_string(prioritize) }?;
-        let rows = collect_lanes(&session.repo, &revset, &prioritize).map_err(map_lane_stream_err)?;
+        let short_prefixes = unsafe { cstr_to_string(short_prefixes) }?;
+        let rows = collect_lanes(&session.repo, &revset, &prioritize, &short_prefixes, synthetic_elided)
+            .map_err(map_lane_stream_err)?;
         Ok(graph_slice_to_envelope(&rows))
     });
     vec_into_token(buf)
@@ -193,8 +286,10 @@ pub unsafe extern "C" fn zanshin_graph_slice(
 #[cfg(test)]
 mod tests {
     use flatbuffers::root as fb_root;
-    use zanshin_graph::{assign_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, Row, RowEdge};
-    use zanshin_jj::RevsetError;
+    use zanshin_graph::{
+        assign_lanes, ActiveLane, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, NodeId, Row, RowEdge,
+    };
+    use zanshin_jj::{CommitMeta, CommitRef, RevsetError, Timestamp};
 
     use super::{edge_kind, graph_slice_to_envelope, map_lane_stream_err};
     use crate::envelope::{GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR};
@@ -214,6 +309,55 @@ mod tests {
             lane,
             color_idx: lane % zanshin_graph::PALETTE_SIZE,
             edges,
+            synthetic_elided: false,
+            active_lanes: vec![],
+            meta: None,
+        }
+    }
+
+    /// A fully-populated `CommitMeta` — every field distinct so a cross-wired slot in the
+    /// builder or the reader is visible in the round-trip.
+    fn full_meta() -> CommitMeta {
+        CommitMeta {
+            change_id: "qpvuntsm".to_owned(),
+            change_id_prefix_len: 2,
+            commit_id_prefix_len: 3,
+            change_offset: Some(7),
+            author_name: "Ada Lovelace".to_owned(),
+            author_email: "ada@example.com".to_owned(),
+            committer_timestamp: Timestamp {
+                millis_since_epoch: 1_700_000_000_123,
+                tz_offset_minutes: -420,
+            },
+            bookmarks: vec![
+                CommitRef {
+                    name: "feature".to_owned(),
+                    remote: None,
+                    synced: false,
+                    conflicted: true,
+                },
+                CommitRef {
+                    name: "feature".to_owned(),
+                    remote: Some("origin".to_owned()),
+                    synced: false,
+                    conflicted: false,
+                },
+            ],
+            tags: vec![CommitRef {
+                name: "v1.0".to_owned(),
+                remote: None,
+                synced: true,
+                conflicted: false,
+            }],
+            working_copies: vec!["default".to_owned(), "second".to_owned()],
+            working_copy: true,
+            immutable: false,
+            conflict: true,
+            empty: false,
+            hidden: true,
+            divergent: false,
+            root: true,
+            description_first_line: "first line".to_owned(),
         }
     }
 
@@ -255,6 +399,62 @@ mod tests {
         env.data_as_graph_slice().expect("data_as_graph_slice must succeed")
     }
 
+    /// Map one wire `GraphCommitRef` back to the domain type.
+    fn ref_from_wire(r: fbs::GraphCommitRef<'_>) -> CommitRef {
+        CommitRef {
+            name: r.name().expect("name must be present").to_owned(),
+            remote: r.remote().map(ToOwned::to_owned),
+            synced: r.synced(),
+            conflicted: r.conflicted(),
+        }
+    }
+
+    /// Map one wire `GraphRowMeta` back to the domain type (`has_change_offset` restores
+    /// the `Option`).
+    fn meta_from_wire(m: fbs::GraphRowMeta<'_>) -> CommitMeta {
+        CommitMeta {
+            change_id: m.change_id().expect("change_id must be present").to_owned(),
+            change_id_prefix_len: m.change_id_prefix_len(),
+            commit_id_prefix_len: m.commit_id_prefix_len(),
+            change_offset: m.has_change_offset().then(|| m.change_offset()),
+            author_name: m.author_name().expect("author_name must be present").to_owned(),
+            author_email: m.author_email().expect("author_email must be present").to_owned(),
+            committer_timestamp: Timestamp {
+                millis_since_epoch: m.committer_timestamp_millis(),
+                tz_offset_minutes: m.committer_tz_offset_minutes(),
+            },
+            bookmarks: m
+                .bookmarks()
+                .expect("bookmarks must be present")
+                .iter()
+                .map(ref_from_wire)
+                .collect(),
+            tags: m
+                .tags()
+                .expect("tags must be present")
+                .iter()
+                .map(ref_from_wire)
+                .collect(),
+            working_copies: m
+                .working_copies()
+                .expect("working_copies must be present")
+                .iter()
+                .map(ToOwned::to_owned)
+                .collect(),
+            working_copy: m.working_copy(),
+            immutable: m.immutable(),
+            conflict: m.conflict(),
+            empty: m.empty(),
+            hidden: m.hidden(),
+            divergent: m.divergent(),
+            root: m.root(),
+            description_first_line: m
+                .description_first_line()
+                .expect("description_first_line must be present")
+                .to_owned(),
+        }
+    }
+
     /// Map the wire payload back to the 4.1 domain type (`Missing` ⇒ `target_lane: None`).
     fn rows_from_wire(slice: fbs::GraphSlice<'_>) -> Vec<Row> {
         slice
@@ -278,6 +478,17 @@ mod tests {
                         }
                     })
                     .collect(),
+                synthetic_elided: r.synthetic_elided(),
+                active_lanes: r
+                    .active_lanes()
+                    .expect("active_lanes must be present")
+                    .iter()
+                    .map(|l| ActiveLane {
+                        lane: l.lane(),
+                        kind: kind_from_wire(l.kind()),
+                    })
+                    .collect(),
+                meta: r.meta().map(meta_from_wire),
             })
             .collect()
     }
@@ -303,28 +514,31 @@ mod tests {
         // proven against rows `assign_lanes` actually emits (AC-2).
         let nodes = vec![
             GraphNode {
-                id: "merge".into(),
+                id: NodeId::commit("merge"),
                 parents: vec![
                     GraphEdge {
-                        target: "a".into(),
+                        target: NodeId::commit("a"),
                         kind: EdgeKind::Direct,
                     },
                     GraphEdge {
-                        target: "b".into(),
+                        target: NodeId::commit("b"),
                         kind: EdgeKind::Indirect,
                     },
                 ],
+                meta: Some(full_meta()),
             },
             GraphNode {
-                id: "b".into(),
+                id: NodeId::commit("b"),
                 parents: vec![GraphEdge {
-                    target: "outside".into(),
+                    target: NodeId::commit("outside"),
                     kind: EdgeKind::Missing,
                 }],
+                meta: Some(full_meta()),
             },
             GraphNode {
-                id: "a".into(),
+                id: NodeId::commit("a"),
                 parents: vec![],
+                meta: Some(full_meta()),
             },
         ];
         let rows = assign_lanes(nodes).expect("contract-conforming input must assign");
@@ -371,6 +585,9 @@ mod tests {
             lane: 9,
             color_idx: 1,
             edges: vec![],
+            synthetic_elided: false,
+            active_lanes: vec![],
+            meta: None,
         }];
         let buf = graph_slice_to_envelope(&rows);
 
@@ -379,6 +596,122 @@ mod tests {
         assert_eq!(wire_row.lane(), 9, "lane must land in the lane slot");
         assert_eq!(wire_row.color_idx(), 1, "color_idx must land in the color_idx slot");
         assert_eq!(rows_from_wire(slice), rows);
+    }
+
+    // ── Story 4.8: metadata, active lanes, elided rows ────────────────────────
+
+    /// Every catalogued metadata field survives the round-trip in its own slot.
+    #[test]
+    fn graph_row_meta_roundtrips_every_field() {
+        let rows = vec![Row {
+            meta: Some(full_meta()),
+            ..row("c", 0, vec![])
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        assert_eq!(rows_from_wire(slice), rows);
+    }
+
+    /// `change_offset` rides a presence pair (flatc 25.12.19 has no optional scalar for
+    /// Dart), so `None` must come back as `None` and never as the `0` placeholder.
+    #[test]
+    fn absent_change_offset_is_written_as_zero_with_the_presence_flag_clear() {
+        let rows = vec![Row {
+            meta: Some(CommitMeta {
+                change_offset: None,
+                ..full_meta()
+            }),
+            ..row("c", 0, vec![])
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        let wire_meta = slice.rows().expect("rows").get(0).meta().expect("meta");
+        assert_eq!(wire_meta.change_offset(), 0, "the placeholder is 0");
+        assert!(!wire_meta.has_change_offset(), "the presence flag must be clear");
+        assert_eq!(
+            rows_from_wire(slice)[0].meta.as_ref().and_then(|m| m.change_offset),
+            None
+        );
+    }
+
+    /// A synthetic elided row carries no metadata: the nested table must be ABSENT so
+    /// Dart decodes `null` (a flat scalar could not express that).
+    #[test]
+    fn a_synthetic_elided_row_writes_no_meta_table() {
+        let rows = vec![Row {
+            synthetic_elided: true,
+            ..row(
+                "elided-target",
+                1,
+                vec![edge("elided-target", Some(1), EdgeKind::Direct)],
+            )
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        let wire_row = slice.rows().expect("rows").get(0);
+        assert!(wire_row.synthetic_elided(), "the elided flag must be set");
+        assert!(wire_row.meta().is_none(), "meta must be absent on an elided row");
+        assert_eq!(rows_from_wire(slice), rows);
+    }
+
+    #[test]
+    fn active_lanes_roundtrip_in_order_with_their_kinds() {
+        let rows = vec![Row {
+            active_lanes: vec![
+                ActiveLane {
+                    lane: 1,
+                    kind: EdgeKind::Indirect,
+                },
+                ActiveLane {
+                    lane: 4,
+                    kind: EdgeKind::Direct,
+                },
+            ],
+            ..row("c", 0, vec![])
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        let wire_lanes = slice.rows().expect("rows").get(0).active_lanes().expect("active_lanes");
+        assert_eq!(wire_lanes.len(), 2);
+        assert_eq!(wire_lanes.get(0).lane(), 1);
+        assert_eq!(wire_lanes.get(0).kind(), fbs::GraphEdgeKind::Indirect);
+        assert_eq!(rows_from_wire(slice), rows);
+    }
+
+    /// The local entry has no remote: `remote` must stay absent (null-for-absence), never
+    /// become an empty string.
+    #[test]
+    fn a_local_commit_ref_writes_no_remote_string() {
+        let rows = vec![Row {
+            meta: Some(CommitMeta {
+                bookmarks: vec![CommitRef {
+                    name: "feature".to_owned(),
+                    remote: None,
+                    synced: true,
+                    conflicted: false,
+                }],
+                ..full_meta()
+            }),
+            ..row("c", 0, vec![])
+        }];
+        let buf = graph_slice_to_envelope(&rows);
+
+        let slice = verified_slice(&buf);
+        let wire_ref = slice
+            .rows()
+            .expect("rows")
+            .get(0)
+            .meta()
+            .expect("meta")
+            .bookmarks()
+            .expect("bookmarks")
+            .get(0);
+        assert_eq!(wire_ref.name(), Some("feature"));
+        assert_eq!(wire_ref.remote(), None, "a local entry has no remote");
     }
 
     #[test]

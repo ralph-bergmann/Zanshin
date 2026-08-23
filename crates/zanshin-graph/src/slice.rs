@@ -15,23 +15,32 @@ use crate::{stream_lanes, LaneStreamError, Row};
 /// Collects every lane-assigned [`Row`] of `revset`, in `jj log` order.
 ///
 /// A collecting wrapper over [`stream_lanes`]: the graph is re-derived from the head operation
-/// on every call and nothing is retained between calls. `revset` and `prioritize` are caller
-/// pass-throughs (see [`zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`] for the CLI-default pre-fill;
-/// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a parse
-/// error). The stream is always exhausted, so
+/// on every call and nothing is retained between calls. `revset`, `prioritize`,
+/// `short_prefixes` and `synthetic_elided` are caller pass-throughs (see
+/// [`zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`] / [`zanshin_jj::DEFAULT_LOG_REVSET`] for the
+/// CLI-default pre-fills; `"none()"` is the canonical "no prioritization" value, an
+/// empty/blank `prioritize` is a parse error, an EMPTY `short_prefixes` disables prefix
+/// disambiguation, and `synthetic_elided = true` is the CLI's
+/// `ui.log-synthetic-elided-nodes` default). The stream is always exhausted, so
 /// [`crate::LaneAssigner::finish`] has run on the returned rows; the FFI `GraphSlice`'s
 /// `total_rows` equals `len()` by construction.
 ///
 /// # Errors
 ///
-/// - [`LaneStreamError::Revset`] — either expression failed to parse/resolve/evaluate, or
+/// - [`LaneStreamError::Revset`] — an expression failed to parse/resolve/evaluate, or
 ///   jj-lib failed mid-stream. No rows are returned alongside the error.
 /// - [`LaneStreamError::Graph`] — the exhausted stream left a dangling non-`Missing` edge
 ///   (contract violation by the upstream stream).
-pub fn collect_lanes(repo: &zanshin_jj::Repo, revset: &str, prioritize: &str) -> Result<Vec<Row>, LaneStreamError> {
+pub fn collect_lanes(
+    repo: &zanshin_jj::Repo,
+    revset: &str,
+    prioritize: &str,
+    short_prefixes: &str,
+    synthetic_elided: bool,
+) -> Result<Vec<Row>, LaneStreamError> {
     let mut rows = Vec::new();
     // The sink never breaks, so the stream is always exhausted (finish() ran).
-    let _exhausted = stream_lanes(repo, revset, prioritize, |row| {
+    let _exhausted = stream_lanes(repo, revset, prioritize, short_prefixes, synthetic_elided, |row| {
         rows.push(row);
         ControlFlow::Continue(())
     })?;

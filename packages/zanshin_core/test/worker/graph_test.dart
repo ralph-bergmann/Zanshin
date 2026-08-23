@@ -48,7 +48,7 @@ void main() {
       final WorkingCopyStatus status = await handle.status();
       final Change wc = await handle.getChange(status.workingCopyChangeId);
 
-      // prioritize is pre-filled with the CLI default (present(@)).
+      // prioritize / syntheticElided / shortPrefixes are pre-filled with the CLI defaults.
       final GraphSlice slice = await handle.graphSlice(revset: 'all()');
 
       expect(slice.rows, hasLength(2), reason: 'fresh init = @ + root');
@@ -66,6 +66,76 @@ void main() {
       expect(edge.kind, equals(GraphEdgeKind.direct));
       expect(rootRow.lane, equals(0));
       expect(rootRow.edges, isEmpty, reason: 'root has no parents');
+      expect(wcRow.activeLanes, isEmpty, reason: 'nothing crosses a two-row graph');
+      expect(wcRow.syntheticElided, isFalse);
+      expect(rootRow.syntheticElided, isFalse);
+
+      await handle.close();
+    });
+
+    // ── Story 4.8: metadata rides the same call ───────────────────────────
+
+    test('graphSlice_rows_carry_jj_log_metadata_from_the_same_snapshot', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      final WorkingCopyStatus status = await handle.status();
+      final Change wc = await handle.getChange(status.workingCopyChangeId);
+
+      final GraphSlice slice = await handle.graphSlice(revset: 'all()');
+
+      final GraphRowMeta wcMeta = slice.rows[0].meta!;
+      final GraphRowMeta rootMeta = slice.rows[1].meta!;
+
+      // The change id agrees with getChange for the same commit — one snapshot.
+      expect(wcMeta.changeId, equals(wc.id));
+      expect(wcMeta.workingCopy, isTrue, reason: 'the @ row is this workspace’s working copy');
+      expect(wcMeta.immutable, isFalse, reason: '@ is mutable');
+      expect(wcMeta.empty, isTrue, reason: 'a fresh @ has no changes');
+      expect(wcMeta.descriptionFirstLine, isEmpty);
+      expect(wcMeta.committerTimestampMillis, greaterThan(0));
+      expect(wcMeta.workingCopies, isEmpty, reason: 'single-workspace repo (CLI guard)');
+      expect(wcMeta.changeIdPrefixLen, greaterThanOrEqualTo(1));
+      expect(wcMeta.changeIdPrefixLen, lessThanOrEqualTo(wcMeta.changeId.length));
+      expect(wcMeta.commitIdPrefixLen, greaterThanOrEqualTo(1));
+      expect(wcMeta.commitIdPrefixLen, lessThanOrEqualTo(slice.rows[0].commitId.length));
+
+      expect(rootMeta.root, isTrue, reason: 'the last row is the root commit');
+      expect(rootMeta.immutable, isTrue, reason: 'root() is always immutable');
+      expect(rootMeta.workingCopy, isFalse);
+
+      await handle.close();
+    });
+
+    test('graphSlice_accepts_the_cli_default_log_revset', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // Parses only because the builtin [revset-aliases] are defined Rust-side.
+      final GraphSlice slice = await handle.graphSlice(revset: defaultLogRevset);
+
+      expect(slice.rows, isNotEmpty);
+
+      await handle.close();
+    });
+
+    test('graphSlice_with_empty_short_prefixes_disables_disambiguation', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // Empty = disabled (the CLI's toggle), NOT a parse error like a blank prioritize.
+      final GraphSlice slice = await handle.graphSlice(revset: 'all()', shortPrefixes: '');
+
+      expect(slice.rows, hasLength(2));
+      expect(slice.rows[0].meta!.commitIdPrefixLen, greaterThanOrEqualTo(1));
+
+      await handle.close();
+    });
+
+    test('graphSlice_on_bogus_short_prefixes_surfaces_jj_revset_parse_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      await expectLater(
+        handle.graphSlice(revset: 'all()', shortPrefixes: 'bogus_function()'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.revset_parse_error')),
+      );
 
       await handle.close();
     });
@@ -158,7 +228,13 @@ void main() {
       await handle.close();
 
       await expectLater(
-        worker.graphSlice(handle.handleId, revset: 'all()', prioritize: defaultGraphPrioritize),
+        worker.graphSlice(
+          handle.handleId,
+          revset: 'all()',
+          prioritize: defaultGraphPrioritize,
+          syntheticElided: true,
+          shortPrefixes: defaultShortPrefixes,
+        ),
         throwsA(
           isA<ZanshinFfiException>().having(
             (e) => e.code,
@@ -179,12 +255,50 @@ void main() {
       expect(defaultGraphPrioritize, 'present(@)');
     });
 
+    test('defaultLogRevset_and_defaultShortPrefixes_mirror_the_rust_cli_default', () {
+      // Pinned Rust-side as zanshin_jj::DEFAULT_LOG_REVSET; the CLI's
+      // revsets.short-prefixes falls back to revsets.log, so both hold it.
+      expect(defaultLogRevset, 'present(@) | ancestors(immutable_heads().., 2) | trunk()');
+      expect(defaultShortPrefixes, equals(defaultLogRevset));
+    });
+
     test('zanshinGraphSlice_rejects_interior_nul_in_revset_with_argument_error', () {
-      expect(() => zanshinGraphSlice(0, 'all()${String.fromCharCode(0)}x', 'none()'), throwsArgumentError);
+      expect(
+        () => zanshinGraphSlice(
+          0,
+          'all()${String.fromCharCode(0)}x',
+          'none()',
+          syntheticElided: true,
+          shortPrefixes: '',
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('zanshinGraphSlice_rejects_interior_nul_in_prioritize_with_argument_error', () {
-      expect(() => zanshinGraphSlice(0, 'all()', 'none()${String.fromCharCode(0)}x'), throwsArgumentError);
+      expect(
+        () => zanshinGraphSlice(
+          0,
+          'all()',
+          'none()${String.fromCharCode(0)}x',
+          syntheticElided: true,
+          shortPrefixes: '',
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('zanshinGraphSlice_rejects_interior_nul_in_short_prefixes_with_argument_error', () {
+      expect(
+        () => zanshinGraphSlice(
+          0,
+          'all()',
+          'none()',
+          syntheticElided: true,
+          shortPrefixes: 'all()${String.fromCharCode(0)}x',
+        ),
+        throwsArgumentError,
+      );
     });
   });
 

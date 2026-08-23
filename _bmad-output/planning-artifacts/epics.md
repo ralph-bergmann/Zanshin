@@ -3090,6 +3090,42 @@ So that the deferred work is visible in the backlog without being implemented in
 
 ---
 
+### Story 4.8: CLI-parity log rows — metadata-enriched, self-contained `GraphSlice` rows
+
+As a Rust developer completing the graph payload,
+I want every `GraphRow` to carry the display metadata `jj log` shows plus the lanes passing through it,
+So that the (out-of-scope) Flutter log view renders from ONE `zanshin_graph_slice` call, with no window in which an external `jj` operation can make a row's lanes and its content disagree.
+
+> **Delivered (2026-08-23, Story 4.8 done):** spec + parity catalog at `_bmad-output/specs/spec-4-8-log-rows-cli-parity/` (`SPEC.md` + `cli-log-parity.md`, both read from the jj monorepo at the pinned tag `v0.42.0`).
+>
+> - **Metadata (CAP-1).** New `crates/zanshin-jj/src/commit_meta.rs`: `pub struct CommitMeta` (change id + `change_id_prefix_len` / `commit_id_prefix_len` / `change_offset`, author name+email, committer timestamp, `bookmarks`/`tags` as `CommitRef { name, remote: Option<String>, synced, conflicted }`, `working_copies`, and the `working_copy` / `immutable` / `conflict` / `empty` / `hidden` / `divergent` / `root` flags + `description_first_line`). A crate-internal `LogMetaIndex` builds the refs reverse index, the working-copy map, the `IdPrefixIndex` and the immutable `containing_fn` ONCE per call and answers per node in amortized O(1) — no revset is evaluated per row. Extraction happens inside the SAME `load_at_head` scope and the same stream pass as the lane assignment (ADR-0002), so `Repo::walk_graph` now loads each emitted commit (`store.get_commit_async`) exactly as the CLI's render loop does.
+> - **Self-contained rows (CAP-2).** `zanshin_graph::Row` gains `active_lanes: Vec<ActiveLane { lane, kind }>` — the pass-through set read off the assigner's live reservation state right after placement — plus `synthetic_elided` and the opaque `meta` pass-through. `zanshin-graph` stays `jj_lib`-free: it moves `CommitMeta` from node to row and never inspects it. Reservations now carry the kind of the edge that OPENED the segment, so a later edge joining a lane does not restyle it.
+> - **Elided rows (CAP-3).** `stream.rs` splices the CLI's synthetic "(elided revisions)" rows (`ui.log-synthetic-elided-nodes`, default on): each `Indirect` edge becomes a `Direct` edge to the elided identity `(commit_id, synthetic)` and one synthetic row per collected target follows its child (duplicates are NOT deduped, matching the CLI). `synthetic_elided = false` restores the pre-4.8 stream byte-for-byte.
+> - **Builtin aliases (CAP-4).** `revset.rs`'s `build_aliases_map` now carries the CLI's whole builtin `[revset-aliases]` table verbatim (`trunk()` incl. its six `remote_bookmarks(exact:…, exact:…)` terms, `builtin_immutable_heads()`, `immutable_heads()`, `immutable()`, `mutable()`, `visible()`, `hidden()`), built ONCE per walk — the single seam Story 4.9 layers user/repo config over. `pub const DEFAULT_LOG_REVSET` exposes `revsets.log`; the immutable set is built in code (`immutable_heads() | root()` → `.ancestors()`), mirroring `cli_util.rs`.
+> - **Surface (CAP-5).** `zanshin_graph_slice(handle, revset, prioritize, synthetic_elided: bool, short_prefixes: *const c_char)`; `schemas/envelope.fbs` gains `GraphCommitRef`, `GraphActiveLane`, `GraphRowMeta` and `GraphRow.{active_lanes, synthetic_elided, meta}` (`meta` is a nested table so Dart can see it as `null` on an elided row). `short_prefixes` mirrors the CLI's toggle: EMPTY = disabled; a parse/resolution failure is a hard error, an index-LOAD failure only warns and degrades to full-index prefixes. Dart: `defaultLogRevset` / `defaultShortPrefixes` consts, `GraphRowMeta` / `GraphCommitRef` / `GraphActiveLane` models, and `RepoHandle.graphSlice({revset, prioritize, syntheticElided = true, shortPrefixes = defaultShortPrefixes})`.
+> - **Tests.** Edge states (divergent, hidden, conflicted merge, local/untracked/tracked-unsynced/tracked-synced/conflicted bookmarks, tags, second workspace, external `describe`) are constructed in-test via new `test-helpers` jj-lib write helpers — fixtures are never regenerated. No new error codes; `docs/ffi-abi.md` and `docs/rust-error-codes.md` updated in the same change.
+
+**Acceptance Criteria:**
+
+**Given** a repo handle
+**When** `zanshin_graph_slice` is called once with the CLI default log revset
+**Then** the returned rows carry, per commit row, every field of `cli-log-parity.md` § Row model, derived from a single `load_at_head` snapshot
+**And** no second FFI call is needed to render the default `jj log` view.
+
+**Given** the medium fixture (octopus merge, multiple roots)
+**When** the structural-invariant test runs
+**Then** every routed edge's lane appears in `active_lanes` of every row strictly between its child and its landing row
+**And** no assertion needs a neighbouring row's fields to validate a row.
+
+**Given** an eliding revset
+**When** `synthetic_elided` is `true`
+**Then** each elided target gets one synthetic row directly after its child, with a single `Direct` edge to the real target and a real lane
+**And** when it is `false`, the output is identical to the pre-4.8 stream.
+
+**Out of scope:** colors/glyphs/layout (UI); windowing and `--limit`/`--reversed` (Story 4.4 decision unchanged); op-log graph parity; cryptographic-signature display; multi-line descriptions (`get_change`'s job); honoring user/repo jj-config overrides of the aliases (Story 4.9).
+
+---
+
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
 
 Produce structured diff JSON (hunks → lines → segments) with word-level diff inside changed lines plus tree-sitter syntax classification, served via the FFI surface. Hit the < 500ms target for a 5k-line changed file (NFR-P-3).

@@ -2,7 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
-import '../ffi/graph.dart' show GraphSlice, defaultGraphPrioritize;
+import '../ffi/graph.dart' show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -90,13 +90,24 @@ final class RepoHandle {
     return _worker.getChange(_handleId, changeId);
   }
 
-  /// Read the lane-assigned commit graph for [revset] (Story 4.6).
+  /// Read the lane-assigned commit graph for [revset], metadata included
+  /// (Story 4.6, enriched in Story 4.8).
   ///
-  /// [prioritize] is the branch-prioritisation revset, pre-filled with the
-  /// CLI default [defaultGraphPrioritize] (`present(@)`) and editable by the
-  /// caller (FR-JJ-17); `'none()'` means no prioritisation. The graph is
-  /// re-derived from head on every call (ADR-0002) — re-request on an
-  /// `OpHeadsChangedEvent` to pick up external operations.
+  /// Every parameter is a CLI pass-through with the CLI's own default
+  /// pre-filled and editable by the caller (FR-JJ-17):
+  ///
+  /// - [prioritize] — branch-prioritisation revset, default
+  ///   [defaultGraphPrioritize] (`present(@)`); `'none()'` means none.
+  /// - [syntheticElided] — render elided ancestry as synthetic rows, default
+  ///   `true` (the CLI's `ui.log-synthetic-elided-nodes`).
+  /// - [shortPrefixes] — disambiguation revset for the shortest-prefix lengths,
+  ///   default [defaultShortPrefixes]; `''` DISABLES disambiguation.
+  ///
+  /// [defaultLogRevset] is the CLI's default for [revset], exported for the UI
+  /// to pre-fill; it is never applied silently.
+  ///
+  /// The graph is re-derived from head on every call (ADR-0002) — re-request on
+  /// an `OpHeadsChangedEvent` to pick up external operations.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -105,11 +116,19 @@ final class RepoHandle {
   Future<GraphSlice> graphSlice({
     required String revset,
     String prioritize = defaultGraphPrioritize,
+    bool syntheticElided = true,
+    String shortPrefixes = defaultShortPrefixes,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.graphSlice(_handleId, revset: revset, prioritize: prioritize);
+    return _worker.graphSlice(
+      _handleId,
+      revset: revset,
+      prioritize: prioritize,
+      syntheticElided: syntheticElided,
+      shortPrefixes: shortPrefixes,
+    );
   }
 
   /// Read the operation log for this repository.

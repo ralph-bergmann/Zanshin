@@ -3,7 +3,7 @@
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
 ///
 /// Commands flow from the main isolate to the single long-running worker via
-/// a `SendPort`. Every subtype carries only `int` or `String`
+/// a `SendPort`. Every subtype carries only `int`, `String` or `bool`
 /// fields so instances are sendable across isolate boundaries without copying.
 ///
 /// Handle-taking commands carry the opaque `handleId` from the worker's
@@ -144,14 +144,18 @@ final class GetChangeCommand extends WorkerCommand {
 /// [handleId] (Story 4.6).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinGraphSlice(raw, revset, prioritize)`, and replies
-/// with a `BufferResult` carrying the FlatBuffers `Envelope<GraphSlice>` bytes.
+/// remove), calls
+/// `zanshinGraphSlice(raw, revset, prioritize, syntheticElided, shortPrefixes)`,
+/// and replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<GraphSlice>` bytes.
 final class GraphSliceCommand extends WorkerCommand {
   const GraphSliceCommand({
     required super.commandId,
     required this.handleId,
     required this.revset,
     required this.prioritize,
+    required this.syntheticElided,
+    required this.shortPrefixes,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -163,6 +167,15 @@ final class GraphSliceCommand extends WorkerCommand {
   /// Branch-prioritisation revset (caller pass-through; `RepoHandle.graphSlice`
   /// pre-fills the CLI default `present(@)`; `none()` = no prioritisation).
   final String prioritize;
+
+  /// Render elided ancestry as synthetic "(elided revisions)" rows (caller
+  /// pass-through; the CLI's `ui.log-synthetic-elided-nodes` default is `true`).
+  final bool syntheticElided;
+
+  /// Disambiguation revset for the shortest-prefix lengths (caller
+  /// pass-through; `RepoHandle.graphSlice` pre-fills the CLI default; an EMPTY
+  /// string disables disambiguation).
+  final String shortPrefixes;
 }
 
 /// Detect the repository kind at [path] (FR-JJ-17).

@@ -2,26 +2,45 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+mod common;
+
+use common::assert_active_lanes_invariant;
 use zanshin_graph::{
-    assign_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneAssigner, Row, RowEdge, PALETTE_SIZE,
+    assign_lanes, ActiveLane, EdgeKind, GraphEdge, GraphError, GraphNode, LaneAssigner, NodeId, Row, RowEdge,
+    PALETTE_SIZE,
 };
 
 /// Builds a `GraphNode` from a compact `(target, kind)` parent list.
+///
+/// These are pure-topology tests: no node is synthetic and none carries metadata (the
+/// splice + the metadata pass-through are `stream.rs`'s job, tested in `tests/stream.rs`).
 fn node(id: &str, parents: &[(&str, EdgeKind)]) -> GraphNode {
     GraphNode {
-        id: id.to_string(),
+        id: NodeId::commit(id),
         parents: parents
             .iter()
             .map(|(target, kind)| GraphEdge {
-                target: (*target).to_string(),
+                target: NodeId::commit(*target),
                 kind: *kind,
             })
             .collect(),
+        meta: None,
     }
 }
 
-/// Builds the expected `Row` from a compact `(target, target_lane, kind)` edge list.
+/// Builds the expected `Row` from a compact `(target, target_lane, kind)` edge list, with
+/// no pass-through lanes.
 fn row(commit_id: &str, lane: u32, edges: &[(&str, Option<u32>, EdgeKind)]) -> Row {
+    row_crossed(commit_id, lane, edges, &[])
+}
+
+/// [`row`] plus an expected `(lane, kind)` pass-through set.
+fn row_crossed(
+    commit_id: &str,
+    lane: u32,
+    edges: &[(&str, Option<u32>, EdgeKind)],
+    active_lanes: &[(u32, EdgeKind)],
+) -> Row {
     Row {
         commit_id: commit_id.to_string(),
         lane,
@@ -34,6 +53,15 @@ fn row(commit_id: &str, lane: u32, edges: &[(&str, Option<u32>, EdgeKind)]) -> R
                 kind: *kind,
             })
             .collect(),
+        synthetic_elided: false,
+        active_lanes: active_lanes
+            .iter()
+            .map(|(lane, kind)| ActiveLane {
+                lane: *lane,
+                kind: *kind,
+            })
+            .collect(),
+        meta: None,
     }
 }
 
@@ -69,7 +97,13 @@ fn two_heads_converge_at_shared_parent() {
         rows,
         vec![
             row("h1", 0, &[("base", Some(0), EdgeKind::Direct)]),
-            row("h2", 1, &[("base", Some(1), EdgeKind::Direct)]),
+            // h1's edge to base runs down lane 0 THROUGH h2's row.
+            row_crossed(
+                "h2",
+                1,
+                &[("base", Some(1), EdgeKind::Direct)],
+                &[(0, EdgeKind::Direct)]
+            ),
             row("base", 0, &[]),
         ]
     );
@@ -97,10 +131,11 @@ fn fork_then_merge_reclaims_temporary_lane() {
                 0,
                 &[("a", Some(0), EdgeKind::Direct), ("b", Some(1), EdgeKind::Direct)]
             ),
-            row("a", 0, &[("f", Some(0), EdgeKind::Direct)]),
-            row("b", 1, &[("f", Some(1), EdgeKind::Direct)]),
+            row_crossed("a", 0, &[("f", Some(0), EdgeKind::Direct)], &[(1, EdgeKind::Direct)]),
+            row_crossed("b", 1, &[("f", Some(1), EdgeKind::Direct)], &[(0, EdgeKind::Direct)]),
+            // Both branches land on f, so nothing crosses its row.
             row("f", 0, &[("root", Some(0), EdgeKind::Direct)]),
-            row("h", 1, &[]),
+            row_crossed("h", 1, &[], &[(0, EdgeKind::Direct)]),
             row("root", 0, &[]),
         ]
     );
@@ -128,14 +163,30 @@ fn nested_forks_stay_on_distinct_lanes_until_convergence() {
                 0,
                 &[("x", Some(0), EdgeKind::Direct), ("y", Some(1), EdgeKind::Direct)]
             ),
-            row(
+            row_crossed(
                 "x",
                 0,
-                &[("p", Some(0), EdgeKind::Direct), ("q", Some(2), EdgeKind::Direct)]
+                &[("p", Some(0), EdgeKind::Direct), ("q", Some(2), EdgeKind::Direct)],
+                &[(1, EdgeKind::Direct)]
             ),
-            row("y", 1, &[("z", Some(1), EdgeKind::Direct)]),
-            row("p", 0, &[("z", Some(0), EdgeKind::Direct)]),
-            row("q", 2, &[("z", Some(2), EdgeKind::Direct)]),
+            row_crossed(
+                "y",
+                1,
+                &[("z", Some(1), EdgeKind::Direct)],
+                &[(0, EdgeKind::Direct), (2, EdgeKind::Direct)]
+            ),
+            row_crossed(
+                "p",
+                0,
+                &[("z", Some(0), EdgeKind::Direct)],
+                &[(1, EdgeKind::Direct), (2, EdgeKind::Direct)]
+            ),
+            row_crossed(
+                "q",
+                2,
+                &[("z", Some(2), EdgeKind::Direct)],
+                &[(0, EdgeKind::Direct), (1, EdgeKind::Direct)]
+            ),
             row("z", 0, &[]),
         ]
     );
@@ -158,10 +209,10 @@ fn parallel_branches_hold_their_lane_when_interleaved() {
         rows,
         vec![
             row("a1", 0, &[("a2", Some(0), EdgeKind::Direct)]),
-            row("b1", 1, &[("b2", Some(1), EdgeKind::Direct)]),
-            row("a2", 0, &[("a3", Some(0), EdgeKind::Direct)]),
-            row("b2", 1, &[("b3", Some(1), EdgeKind::Direct)]),
-            row("a3", 0, &[]),
+            row_crossed("b1", 1, &[("b2", Some(1), EdgeKind::Direct)], &[(0, EdgeKind::Direct)]),
+            row_crossed("a2", 0, &[("a3", Some(0), EdgeKind::Direct)], &[(1, EdgeKind::Direct)]),
+            row_crossed("b2", 1, &[("b3", Some(1), EdgeKind::Direct)], &[(0, EdgeKind::Direct)]),
+            row_crossed("a3", 0, &[], &[(1, EdgeKind::Direct)]),
             row("b3", 1, &[]),
         ]
     );
@@ -195,8 +246,10 @@ fn octopus_merge_routes_every_parent_edge() {
                     ("c", Some(2), EdgeKind::Direct),
                 ]
             ),
-            row("a", 0, &[]),
-            row("b", 1, &[]),
+            // The octopus's other two edges cross every row between the merge and their
+            // landing row — each row's own fields paint its whole cross-section.
+            row_crossed("a", 0, &[], &[(1, EdgeKind::Direct), (2, EdgeKind::Direct)]),
+            row_crossed("b", 1, &[], &[(2, EdgeKind::Direct)]),
             row("c", 2, &[]),
         ]
     );
@@ -218,8 +271,8 @@ fn many_roots_reuse_freed_lanes() {
         rows,
         vec![
             row("x1", 0, &[("x2", Some(0), EdgeKind::Direct)]),
-            row("r1", 1, &[]),
-            row("r2", 1, &[]),
+            row_crossed("r1", 1, &[], &[(0, EdgeKind::Direct)]),
+            row_crossed("r2", 1, &[], &[(0, EdgeKind::Direct)]),
             row("x2", 0, &[]),
         ]
     );
@@ -256,12 +309,13 @@ fn merge_edge_reuses_an_existing_reservation_for_its_target() {
         rows,
         vec![
             row("y", 0, &[("q", Some(0), EdgeKind::Direct)]),
-            row(
+            row_crossed(
                 "x",
                 1,
-                &[("p", Some(1), EdgeKind::Direct), ("q", Some(0), EdgeKind::Direct)]
+                &[("p", Some(1), EdgeKind::Direct), ("q", Some(0), EdgeKind::Direct)],
+                &[(0, EdgeKind::Direct)]
             ),
-            row("q", 0, &[]),
+            row_crossed("q", 0, &[], &[(1, EdgeKind::Direct)]),
             row("p", 1, &[]),
         ]
     );
@@ -313,12 +367,13 @@ fn missing_first_edge_lets_the_next_edge_continue_the_lane() {
         rows,
         vec![
             row("x", 0, &[("p", Some(0), EdgeKind::Direct)]),
-            row(
+            row_crossed(
                 "c",
                 1,
-                &[("g", None, EdgeKind::Missing), ("p", Some(1), EdgeKind::Direct)]
+                &[("g", None, EdgeKind::Missing), ("p", Some(1), EdgeKind::Direct)],
+                &[(0, EdgeKind::Direct)]
             ),
-            row("r", 2, &[]),
+            row_crossed("r", 2, &[], &[(0, EdgeKind::Direct), (1, EdgeKind::Direct)]),
             row("p", 0, &[]),
         ]
     );
@@ -391,7 +446,10 @@ fn lane_assigner_emits_final_rows_one_push_at_a_time() {
             &[("a", Some(0), EdgeKind::Direct), ("b", Some(1), EdgeKind::Direct)]
         )
     );
-    assert_eq!(assigner.push(node("a", &[])), row("a", 0, &[]));
+    assert_eq!(
+        assigner.push(node("a", &[])),
+        row_crossed("a", 0, &[], &[(1, EdgeKind::Direct)])
+    );
     assert_eq!(assigner.push(node("b", &[])), row("b", 1, &[]));
     assert_eq!(assigner.finish(), Ok(()));
 }
@@ -490,7 +548,7 @@ fn about_100_node_dag_satisfies_structural_invariants() {
 
     assert_eq!(rows.len(), dag.len(), "one row per input node");
     for (actual, expected) in rows.iter().zip(dag.iter()) {
-        assert_eq!(actual.commit_id, expected.id, "rows stay in input order");
+        assert_eq!(actual.commit_id, expected.id.commit_id, "rows stay in input order");
     }
 
     // Lanes are allocated densely (leftmost-free reuse, append-only growth):
@@ -561,4 +619,7 @@ fn about_100_node_dag_satisfies_structural_invariants() {
         lane_promised_to.is_empty(),
         "lanes still promised after the last row: {lane_promised_to:?}"
     );
+
+    // CAP-2: each row's own fields paint its complete cross-section.
+    assert_active_lanes_invariant(&rows);
 }

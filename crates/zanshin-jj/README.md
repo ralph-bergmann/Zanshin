@@ -83,13 +83,25 @@ baked-in default).
 ## Graph stream (`Repo::walk_graph`)
 
 ```rust
-repo.walk_graph(revset: &str, prioritize: &str, visit: impl FnMut(GraphNode) -> ControlFlow<()>)
-    -> Result<ControlFlow<()>, RevsetError>
+repo.walk_graph(
+    revset: &str,
+    prioritize: &str,
+    short_prefixes: &str,
+    visit: impl FnMut(GraphNode) -> ControlFlow<()>,
+) -> Result<ControlFlow<()>, RevsetError>
 ```
 
 Streams the commit graph of `revset` — one `GraphNode { id: CommitId, parents:
-Vec<GraphEdge { target, kind: Direct | Indirect | Missing }> }` per commit, children
-before parents — in the order `jj log -r <revset>` prints it. The pipeline is the
+Vec<GraphEdge { target, kind: Direct | Indirect | Missing }>, meta: CommitMeta }`
+per commit, children before parents — in the order `jj log -r <revset>` prints it.
+`meta` is the `jj log`-parity display metadata (ids + shortest-prefix lengths,
+author, committer timestamp, bookmarks/tags/workspace markers, the
+working-copy / immutable / conflict / empty / hidden / divergent / root flags and
+the description's first line), extracted from the SAME head-resolved snapshot in
+the same pass (Story 4.8), so a row's lanes and its content can never disagree.
+`short_prefixes` scopes the shortest-prefix disambiguation; an EMPTY string
+disables it (full-index lengths) — the CLI's `revsets.short-prefixes` toggle,
+deliberately unlike `prioritize`. The pipeline is the
 CLI's at v0.42.0: `TopoGroupedGraph::new(revset.stream_graph(), |id| id)` with
 `prioritize_branch` for every commit of `prioritize ∩ revset` (the
 `revsets.log-graph-prioritize` mechanics; the intersection happens as user
@@ -105,9 +117,11 @@ The stream is lazy and re-derived from the head operation on every call
 (ADR-0002 — no cache, nothing retained); `visit` returning `ControlFlow::Break`
 stops it early (`Ok(Break)`), exhaustion yields `Ok(Continue)`. Parse /
 resolution / jj-lib failures of either expression surface as `RevsetError`.
-Only the `trunk()` alias is defined — other CLI aliases (`immutable_heads()`,
-…) fail to parse. `zanshin-graph`'s `stream_lanes` feeds this stream through
-its lane assigner.
+The jj CLI's builtin `[revset-aliases]` are all defined (`trunk()`,
+`builtin_immutable_heads()`, `immutable_heads()`, `immutable()`, `mutable()`,
+`visible()`, `hidden()`), so `DEFAULT_LOG_REVSET` — the CLI's `revsets.log`
+default and the pre-fill for `revset` / `short_prefixes` — parses.
+`zanshin-graph`'s `stream_lanes` feeds this stream through its lane assigner.
 
 ## Integration-test fixture pattern
 

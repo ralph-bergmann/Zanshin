@@ -3503,12 +3503,853 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum GraphCommitRefOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One bookmark or tag entry on a GraphRow (Story 4.8, zanshin_jj::CommitRef).
+        /// Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a
+        /// remote entry, then `??` when conflicted or `*` when a local entry is not
+        /// synced. `remote` is ABSENT (Dart null) for the local entry — null-for-absence.
+        /// Tracked-and-synced remote entries are not emitted at all (the CLI's
+        /// `collect_distinct_refs` rule: `is_local() || !synced`).
+        pub struct GraphCommitRef<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphCommitRef<'a> {
+            type Inner = GraphCommitRef<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphCommitRef<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SYNCED: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONFLICTED: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphCommitRef { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphCommitRefArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GraphCommitRef<'bldr>> {
+                let mut builder = GraphCommitRefBuilder::new(_fbb);
+                if let Some(x) = args.remote {
+                    builder.add_remote(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_conflicted(args.conflicted);
+                builder.add_synced(args.synced);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphCommitRef::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn remote(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphCommitRef::VT_REMOTE, None)
+                }
+            }
+            #[inline]
+            pub fn synced(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphCommitRef::VT_SYNCED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn conflicted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GraphCommitRef::VT_CONFLICTED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphCommitRef<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote", Self::VT_REMOTE, false)?
+                    .visit_field::<bool>("synced", Self::VT_SYNCED, false)?
+                    .visit_field::<bool>("conflicted", Self::VT_CONFLICTED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphCommitRefArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remote: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub synced: bool,
+            pub conflicted: bool,
+        }
+        impl<'a> Default for GraphCommitRefArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GraphCommitRefArgs {
+                    name: None,
+                    remote: None,
+                    synced: false,
+                    conflicted: false,
+                }
+            }
+        }
+
+        pub struct GraphCommitRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphCommitRefBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphCommitRef::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_remote(&mut self, remote: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphCommitRef::VT_REMOTE, remote);
+            }
+            #[inline]
+            pub fn add_synced(&mut self, synced: bool) {
+                self.fbb_.push_slot::<bool>(GraphCommitRef::VT_SYNCED, synced, false);
+            }
+            #[inline]
+            pub fn add_conflicted(&mut self, conflicted: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphCommitRef::VT_CONFLICTED, conflicted, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphCommitRefBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphCommitRefBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphCommitRef<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphCommitRef<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphCommitRef");
+                ds.field("name", &self.name());
+                ds.field("remote", &self.remote());
+                ds.field("synced", &self.synced());
+                ds.field("conflicted", &self.conflicted());
+                ds.finish()
+            }
+        }
+        pub enum GraphActiveLaneOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One lane passing vertically THROUGH a GraphRow (Story 4.8,
+        /// zanshin_graph::ActiveLane) — it neither starts nor ends at that row's node.
+        /// `kind` is the kind of the edge that opened the segment, so a renderer can
+        /// style it without reading any neighbouring row; the color is lane % PALETTE_SIZE.
+        pub struct GraphActiveLane<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphActiveLane<'a> {
+            type Inner = GraphActiveLane<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphActiveLane<'a> {
+            pub const VT_LANE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphActiveLane { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphActiveLaneArgs,
+            ) -> ::flatbuffers::WIPOffset<GraphActiveLane<'bldr>> {
+                let mut builder = GraphActiveLaneBuilder::new(_fbb);
+                builder.add_lane(args.lane);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn lane(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphActiveLane::VT_LANE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn kind(&self) -> GraphEdgeKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<GraphEdgeKind>(GraphActiveLane::VT_KIND, Some(GraphEdgeKind::Direct))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphActiveLane<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("lane", Self::VT_LANE, false)?
+                    .visit_field::<GraphEdgeKind>("kind", Self::VT_KIND, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphActiveLaneArgs {
+            pub lane: u32,
+            pub kind: GraphEdgeKind,
+        }
+        impl<'a> Default for GraphActiveLaneArgs {
+            #[inline]
+            fn default() -> Self {
+                GraphActiveLaneArgs {
+                    lane: 0,
+                    kind: GraphEdgeKind::Direct,
+                }
+            }
+        }
+
+        pub struct GraphActiveLaneBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphActiveLaneBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_lane(&mut self, lane: u32) {
+                self.fbb_.push_slot::<u32>(GraphActiveLane::VT_LANE, lane, 0);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: GraphEdgeKind) {
+                self.fbb_
+                    .push_slot::<GraphEdgeKind>(GraphActiveLane::VT_KIND, kind, GraphEdgeKind::Direct);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphActiveLaneBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphActiveLaneBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphActiveLane<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphActiveLane<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphActiveLane");
+                ds.field("lane", &self.lane());
+                ds.field("kind", &self.kind());
+                ds.finish()
+            }
+        }
+        pub enum GraphRowMetaOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `jj log`-parity display metadata for one commit row (Story 4.8,
+        /// zanshin_jj::CommitMeta), extracted from the SAME head-resolved snapshot as the
+        /// lane assignment. Ids are full; the `*_prefix_len` fields are the
+        /// shortest-unique-prefix lengths the UI highlights.
+        ///
+        /// `change_offset` is meaningful ONLY when has_change_offset == true (presence
+        /// pair, same pattern as GraphRowEdge.target_lane: flatc 25.12.19 rejects
+        /// optional scalars for Dart). The CLI renders `/<offset>` only for
+        /// hidden/divergent commits — that is a UI decision, reproducible from the flags.
+        pub struct GraphRowMeta<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GraphRowMeta<'a> {
+            type Inner = GraphRowMeta<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GraphRowMeta<'a> {
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID_PREFIX_LEN: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COMMIT_ID_PREFIX_LEN: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CHANGE_OFFSET: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_CHANGE_OFFSET: ::flatbuffers::VOffsetT = 12;
+            pub const VT_AUTHOR_NAME: ::flatbuffers::VOffsetT = 14;
+            pub const VT_AUTHOR_EMAIL: ::flatbuffers::VOffsetT = 16;
+            pub const VT_COMMITTER_TIMESTAMP_MILLIS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_COMMITTER_TZ_OFFSET_MINUTES: ::flatbuffers::VOffsetT = 20;
+            pub const VT_BOOKMARKS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 24;
+            pub const VT_WORKING_COPIES: ::flatbuffers::VOffsetT = 26;
+            pub const VT_WORKING_COPY: ::flatbuffers::VOffsetT = 28;
+            pub const VT_IMMUTABLE: ::flatbuffers::VOffsetT = 30;
+            pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 32;
+            pub const VT_EMPTY: ::flatbuffers::VOffsetT = 34;
+            pub const VT_HIDDEN: ::flatbuffers::VOffsetT = 36;
+            pub const VT_DIVERGENT: ::flatbuffers::VOffsetT = 38;
+            pub const VT_ROOT: ::flatbuffers::VOffsetT = 40;
+            pub const VT_DESCRIPTION_FIRST_LINE: ::flatbuffers::VOffsetT = 42;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GraphRowMeta { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GraphRowMetaArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GraphRowMeta<'bldr>> {
+                let mut builder = GraphRowMetaBuilder::new(_fbb);
+                builder.add_committer_timestamp_millis(args.committer_timestamp_millis);
+                if let Some(x) = args.description_first_line {
+                    builder.add_description_first_line(x);
+                }
+                if let Some(x) = args.working_copies {
+                    builder.add_working_copies(x);
+                }
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                if let Some(x) = args.bookmarks {
+                    builder.add_bookmarks(x);
+                }
+                builder.add_committer_tz_offset_minutes(args.committer_tz_offset_minutes);
+                if let Some(x) = args.author_email {
+                    builder.add_author_email(x);
+                }
+                if let Some(x) = args.author_name {
+                    builder.add_author_name(x);
+                }
+                builder.add_change_offset(args.change_offset);
+                builder.add_commit_id_prefix_len(args.commit_id_prefix_len);
+                builder.add_change_id_prefix_len(args.change_id_prefix_len);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                builder.add_root(args.root);
+                builder.add_divergent(args.divergent);
+                builder.add_hidden(args.hidden);
+                builder.add_empty(args.empty);
+                builder.add_conflict(args.conflict);
+                builder.add_immutable(args.immutable);
+                builder.add_working_copy(args.working_copy);
+                builder.add_has_change_offset(args.has_change_offset);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRowMeta::VT_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn change_id_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(GraphRowMeta::VT_CHANGE_ID_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn commit_id_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(GraphRowMeta::VT_COMMIT_ID_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn change_offset(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GraphRowMeta::VT_CHANGE_OFFSET, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn has_change_offset(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GraphRowMeta::VT_HAS_CHANGE_OFFSET, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRowMeta::VT_AUTHOR_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn author_email(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRowMeta::VT_AUTHOR_EMAIL, None)
+                }
+            }
+            #[inline]
+            pub fn committer_timestamp_millis(&self) -> i64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<i64>(GraphRowMeta::VT_COMMITTER_TIMESTAMP_MILLIS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn committer_tz_offset_minutes(&self) -> i32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<i32>(GraphRowMeta::VT_COMMITTER_TZ_OFFSET_MINUTES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef>>,
+                    >>(GraphRowMeta::VT_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef>>,
+                    >>(GraphRowMeta::VT_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn working_copies(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GraphRowMeta::VT_WORKING_COPIES, None)
+                }
+            }
+            #[inline]
+            pub fn working_copy(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GraphRowMeta::VT_WORKING_COPY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn immutable(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_IMMUTABLE, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn conflict(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_CONFLICT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn empty(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_EMPTY, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn hidden(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_HIDDEN, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn divergent(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_DIVERGENT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn root(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GraphRowMeta::VT_ROOT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn description_first_line(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GraphRowMeta::VT_DESCRIPTION_FIRST_LINE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GraphRowMeta<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+     .visit_field::<u32>("change_id_prefix_len", Self::VT_CHANGE_ID_PREFIX_LEN, false)?
+     .visit_field::<u32>("commit_id_prefix_len", Self::VT_COMMIT_ID_PREFIX_LEN, false)?
+     .visit_field::<u32>("change_offset", Self::VT_CHANGE_OFFSET, false)?
+     .visit_field::<bool>("has_change_offset", Self::VT_HAS_CHANGE_OFFSET, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_name", Self::VT_AUTHOR_NAME, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_email", Self::VT_AUTHOR_EMAIL, false)?
+     .visit_field::<i64>("committer_timestamp_millis", Self::VT_COMMITTER_TIMESTAMP_MILLIS, false)?
+     .visit_field::<i32>("committer_tz_offset_minutes", Self::VT_COMMITTER_TZ_OFFSET_MINUTES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphCommitRef>>>>("bookmarks", Self::VT_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphCommitRef>>>>("tags", Self::VT_TAGS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("working_copies", Self::VT_WORKING_COPIES, false)?
+     .visit_field::<bool>("working_copy", Self::VT_WORKING_COPY, false)?
+     .visit_field::<bool>("immutable", Self::VT_IMMUTABLE, false)?
+     .visit_field::<bool>("conflict", Self::VT_CONFLICT, false)?
+     .visit_field::<bool>("empty", Self::VT_EMPTY, false)?
+     .visit_field::<bool>("hidden", Self::VT_HIDDEN, false)?
+     .visit_field::<bool>("divergent", Self::VT_DIVERGENT, false)?
+     .visit_field::<bool>("root", Self::VT_ROOT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description_first_line", Self::VT_DESCRIPTION_FIRST_LINE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GraphRowMetaArgs<'a> {
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change_id_prefix_len: u32,
+            pub commit_id_prefix_len: u32,
+            pub change_offset: u32,
+            pub has_change_offset: bool,
+            pub author_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_email: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub committer_timestamp_millis: i64,
+            pub committer_tz_offset_minutes: i32,
+            pub bookmarks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'a>>>>,
+            >,
+            pub tags: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'a>>>>,
+            >,
+            pub working_copies:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub working_copy: bool,
+            pub immutable: bool,
+            pub conflict: bool,
+            pub empty: bool,
+            pub hidden: bool,
+            pub divergent: bool,
+            pub root: bool,
+            pub description_first_line: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for GraphRowMetaArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GraphRowMetaArgs {
+                    change_id: None,
+                    change_id_prefix_len: 0,
+                    commit_id_prefix_len: 0,
+                    change_offset: 0,
+                    has_change_offset: false,
+                    author_name: None,
+                    author_email: None,
+                    committer_timestamp_millis: 0,
+                    committer_tz_offset_minutes: 0,
+                    bookmarks: None,
+                    tags: None,
+                    working_copies: None,
+                    working_copy: false,
+                    immutable: false,
+                    conflict: false,
+                    empty: false,
+                    hidden: false,
+                    divergent: false,
+                    root: false,
+                    description_first_line: None,
+                }
+            }
+        }
+
+        pub struct GraphRowMetaBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GraphRowMetaBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn add_change_id_prefix_len(&mut self, change_id_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(GraphRowMeta::VT_CHANGE_ID_PREFIX_LEN, change_id_prefix_len, 0);
+            }
+            #[inline]
+            pub fn add_commit_id_prefix_len(&mut self, commit_id_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(GraphRowMeta::VT_COMMIT_ID_PREFIX_LEN, commit_id_prefix_len, 0);
+            }
+            #[inline]
+            pub fn add_change_offset(&mut self, change_offset: u32) {
+                self.fbb_
+                    .push_slot::<u32>(GraphRowMeta::VT_CHANGE_OFFSET, change_offset, 0);
+            }
+            #[inline]
+            pub fn add_has_change_offset(&mut self, has_change_offset: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphRowMeta::VT_HAS_CHANGE_OFFSET, has_change_offset, false);
+            }
+            #[inline]
+            pub fn add_author_name(&mut self, author_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_AUTHOR_NAME, author_name);
+            }
+            #[inline]
+            pub fn add_author_email(&mut self, author_email: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_AUTHOR_EMAIL, author_email);
+            }
+            #[inline]
+            pub fn add_committer_timestamp_millis(&mut self, committer_timestamp_millis: i64) {
+                self.fbb_.push_slot::<i64>(
+                    GraphRowMeta::VT_COMMITTER_TIMESTAMP_MILLIS,
+                    committer_timestamp_millis,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_committer_tz_offset_minutes(&mut self, committer_tz_offset_minutes: i32) {
+                self.fbb_.push_slot::<i32>(
+                    GraphRowMeta::VT_COMMITTER_TZ_OFFSET_MINUTES,
+                    committer_tz_offset_minutes,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_bookmarks(
+                &mut self,
+                bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_BOOKMARKS, bookmarks);
+            }
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GraphCommitRef<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_TAGS, tags);
+            }
+            #[inline]
+            pub fn add_working_copies(
+                &mut self,
+                working_copies: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRowMeta::VT_WORKING_COPIES, working_copies);
+            }
+            #[inline]
+            pub fn add_working_copy(&mut self, working_copy: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphRowMeta::VT_WORKING_COPY, working_copy, false);
+            }
+            #[inline]
+            pub fn add_immutable(&mut self, immutable: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphRowMeta::VT_IMMUTABLE, immutable, false);
+            }
+            #[inline]
+            pub fn add_conflict(&mut self, conflict: bool) {
+                self.fbb_.push_slot::<bool>(GraphRowMeta::VT_CONFLICT, conflict, false);
+            }
+            #[inline]
+            pub fn add_empty(&mut self, empty: bool) {
+                self.fbb_.push_slot::<bool>(GraphRowMeta::VT_EMPTY, empty, false);
+            }
+            #[inline]
+            pub fn add_hidden(&mut self, hidden: bool) {
+                self.fbb_.push_slot::<bool>(GraphRowMeta::VT_HIDDEN, hidden, false);
+            }
+            #[inline]
+            pub fn add_divergent(&mut self, divergent: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphRowMeta::VT_DIVERGENT, divergent, false);
+            }
+            #[inline]
+            pub fn add_root(&mut self, root: bool) {
+                self.fbb_.push_slot::<bool>(GraphRowMeta::VT_ROOT, root, false);
+            }
+            #[inline]
+            pub fn add_description_first_line(&mut self, description_first_line: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GraphRowMeta::VT_DESCRIPTION_FIRST_LINE,
+                    description_first_line,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphRowMetaBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GraphRowMetaBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GraphRowMeta<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GraphRowMeta<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GraphRowMeta");
+                ds.field("change_id", &self.change_id());
+                ds.field("change_id_prefix_len", &self.change_id_prefix_len());
+                ds.field("commit_id_prefix_len", &self.commit_id_prefix_len());
+                ds.field("change_offset", &self.change_offset());
+                ds.field("has_change_offset", &self.has_change_offset());
+                ds.field("author_name", &self.author_name());
+                ds.field("author_email", &self.author_email());
+                ds.field("committer_timestamp_millis", &self.committer_timestamp_millis());
+                ds.field("committer_tz_offset_minutes", &self.committer_tz_offset_minutes());
+                ds.field("bookmarks", &self.bookmarks());
+                ds.field("tags", &self.tags());
+                ds.field("working_copies", &self.working_copies());
+                ds.field("working_copy", &self.working_copy());
+                ds.field("immutable", &self.immutable());
+                ds.field("conflict", &self.conflict());
+                ds.field("empty", &self.empty());
+                ds.field("hidden", &self.hidden());
+                ds.field("divergent", &self.divergent());
+                ds.field("root", &self.root());
+                ds.field("description_first_line", &self.description_first_line());
+                ds.finish()
+            }
+        }
         pub enum GraphRowOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
         /// One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
-        /// COMMIT id (change ids are ambiguous for divergent changes); display metadata
-        /// joins later.
+        /// COMMIT id (change ids are ambiguous for divergent changes).
+        ///
+        /// `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
+        /// splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
+        /// `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
+        /// is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
+        /// Dart see as null). On a commit row `meta` is always present.
         pub struct GraphRow<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3528,6 +4369,9 @@ pub mod zanshin {
             pub const VT_LANE: ::flatbuffers::VOffsetT = 6;
             pub const VT_COLOR_IDX: ::flatbuffers::VOffsetT = 8;
             pub const VT_EDGES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ACTIVE_LANES: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SYNTHETIC_ELIDED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_META: ::flatbuffers::VOffsetT = 16;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3539,6 +4383,12 @@ pub mod zanshin {
                 args: &'args GraphRowArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<GraphRow<'bldr>> {
                 let mut builder = GraphRowBuilder::new(_fbb);
+                if let Some(x) = args.meta {
+                    builder.add_meta(x);
+                }
+                if let Some(x) = args.active_lanes {
+                    builder.add_active_lanes(x);
+                }
                 if let Some(x) = args.edges {
                     builder.add_edges(x);
                 }
@@ -3547,6 +4397,7 @@ pub mod zanshin {
                 if let Some(x) = args.commit_id {
                     builder.add_commit_id(x);
                 }
+                builder.add_synthetic_elided(args.synthetic_elided);
                 builder.finish()
             }
 
@@ -3585,6 +4436,40 @@ pub mod zanshin {
                     >>(GraphRow::VT_EDGES, None)
                 }
             }
+            #[inline]
+            pub fn active_lanes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphActiveLane<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphActiveLane>>,
+                    >>(GraphRow::VT_ACTIVE_LANES, None)
+                }
+            }
+            #[inline]
+            pub fn synthetic_elided(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GraphRow::VT_SYNTHETIC_ELIDED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn meta(&self) -> Option<GraphRowMeta<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<GraphRowMeta>>(GraphRow::VT_META, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for GraphRow<'_> {
@@ -3600,6 +4485,11 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphRowEdge>>,
                     >>("edges", Self::VT_EDGES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GraphActiveLane>>,
+                    >>("active_lanes", Self::VT_ACTIVE_LANES, false)?
+                    .visit_field::<bool>("synthetic_elided", Self::VT_SYNTHETIC_ELIDED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<GraphRowMeta>>("meta", Self::VT_META, false)?
                     .finish();
                 Ok(())
             }
@@ -3611,6 +4501,13 @@ pub mod zanshin {
             pub edges: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphRowEdge<'a>>>>,
             >,
+            pub active_lanes: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GraphActiveLane<'a>>>,
+                >,
+            >,
+            pub synthetic_elided: bool,
+            pub meta: Option<::flatbuffers::WIPOffset<GraphRowMeta<'a>>>,
         }
         impl<'a> Default for GraphRowArgs<'a> {
             #[inline]
@@ -3620,6 +4517,9 @@ pub mod zanshin {
                     lane: 0,
                     color_idx: 0,
                     edges: None,
+                    active_lanes: None,
+                    synthetic_elided: false,
+                    meta: None,
                 }
             }
         }
@@ -3653,6 +4553,26 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRow::VT_EDGES, edges);
             }
             #[inline]
+            pub fn add_active_lanes(
+                &mut self,
+                active_lanes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GraphActiveLane<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GraphRow::VT_ACTIVE_LANES, active_lanes);
+            }
+            #[inline]
+            pub fn add_synthetic_elided(&mut self, synthetic_elided: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GraphRow::VT_SYNTHETIC_ELIDED, synthetic_elided, false);
+            }
+            #[inline]
+            pub fn add_meta(&mut self, meta: ::flatbuffers::WIPOffset<GraphRowMeta<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<GraphRowMeta>>(GraphRow::VT_META, meta);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GraphRowBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 GraphRowBuilder {
@@ -3674,6 +4594,9 @@ pub mod zanshin {
                 ds.field("lane", &self.lane());
                 ds.field("color_idx", &self.color_idx());
                 ds.field("edges", &self.edges());
+                ds.field("active_lanes", &self.active_lanes());
+                ds.field("synthetic_elided", &self.synthetic_elided());
+                ds.field("meta", &self.meta());
                 ds.finish()
             }
         }

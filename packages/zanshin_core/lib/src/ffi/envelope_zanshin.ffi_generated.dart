@@ -2053,9 +2053,493 @@ class GraphRowEdgeObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One bookmark or tag entry on a GraphRow (Story 4.8, zanshin_jj::CommitRef).
+///  Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a
+///  remote entry, then `??` when conflicted or `*` when a local entry is not
+///  synced. `remote` is ABSENT (Dart null) for the local entry — null-for-absence.
+///  Tracked-and-synced remote entries are not emitted at all (the CLI's
+///  `collect_distinct_refs` rule: `is_local() || !synced`).
+class GraphCommitRef {
+  GraphCommitRef._(this._bc, this._bcOffset);
+  factory GraphCommitRef(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphCommitRef> reader = _GraphCommitRefReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'GraphCommitRef{name: ${name}, remote: ${remote}, synced: ${synced}, conflicted: ${conflicted}}';
+  }
+}
+
+class _GraphCommitRefReader extends fb.TableReader<GraphCommitRef> {
+  const _GraphCommitRefReader();
+
+  @override
+  GraphCommitRef createObject(fb.BufferContext bc, int offset) => GraphCommitRef._(bc, offset);
+}
+
+class GraphCommitRefBuilder {
+  GraphCommitRefBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSynced(bool? synced) {
+    fbBuilder.addBool(2, synced);
+    return fbBuilder.offset;
+  }
+
+  int addConflicted(bool? conflicted) {
+    fbBuilder.addBool(3, conflicted);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphCommitRefObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _remote;
+  final bool? _synced;
+  final bool? _conflicted;
+
+  GraphCommitRefObjectBuilder({
+    String? name,
+    String? remote,
+    bool? synced,
+    bool? conflicted,
+  }) : _name = name,
+       _remote = remote,
+       _synced = synced,
+       _conflicted = conflicted;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, remoteOffset);
+    fbBuilder.addBool(2, _synced);
+    fbBuilder.addBool(3, _conflicted);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One lane passing vertically THROUGH a GraphRow (Story 4.8,
+///  zanshin_graph::ActiveLane) — it neither starts nor ends at that row's node.
+///  `kind` is the kind of the edge that opened the segment, so a renderer can
+///  style it without reading any neighbouring row; the color is lane % PALETTE_SIZE.
+class GraphActiveLane {
+  GraphActiveLane._(this._bc, this._bcOffset);
+  factory GraphActiveLane(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphActiveLane> reader = _GraphActiveLaneReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get lane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  GraphEdgeKind get kind => GraphEdgeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+
+  @override
+  String toString() {
+    return 'GraphActiveLane{lane: ${lane}, kind: ${kind}}';
+  }
+}
+
+class _GraphActiveLaneReader extends fb.TableReader<GraphActiveLane> {
+  const _GraphActiveLaneReader();
+
+  @override
+  GraphActiveLane createObject(fb.BufferContext bc, int offset) => GraphActiveLane._(bc, offset);
+}
+
+class GraphActiveLaneBuilder {
+  GraphActiveLaneBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addLane(int? lane) {
+    fbBuilder.addUint32(0, lane);
+    return fbBuilder.offset;
+  }
+
+  int addKind(GraphEdgeKind? kind) {
+    fbBuilder.addInt8(1, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphActiveLaneObjectBuilder extends fb.ObjectBuilder {
+  final int? _lane;
+  final GraphEdgeKind? _kind;
+
+  GraphActiveLaneObjectBuilder({
+    int? lane,
+    GraphEdgeKind? kind,
+  }) : _lane = lane,
+       _kind = kind;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(2);
+    fbBuilder.addUint32(0, _lane);
+    fbBuilder.addInt8(1, _kind?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `jj log`-parity display metadata for one commit row (Story 4.8,
+///  zanshin_jj::CommitMeta), extracted from the SAME head-resolved snapshot as the
+///  lane assignment. Ids are full; the `*_prefix_len` fields are the
+///  shortest-unique-prefix lengths the UI highlights.
+///
+///  `change_offset` is meaningful ONLY when has_change_offset == true (presence
+///  pair, same pattern as GraphRowEdge.target_lane: flatc 25.12.19 rejects
+///  optional scalars for Dart). The CLI renders `/<offset>` only for
+///  hidden/divergent commits — that is a UI decision, reproducible from the flags.
+class GraphRowMeta {
+  GraphRowMeta._(this._bc, this._bcOffset);
+  factory GraphRowMeta(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphRowMeta> reader = _GraphRowMetaReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get changeIdPrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get commitIdPrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get changeOffset => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  bool get hasChangeOffset => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  String? get authorName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+  String? get authorEmail => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
+  int get committerTimestampMillis => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 18, 0);
+  int get committerTzOffsetMinutes => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 20, 0);
+  List<GraphCommitRef>? get bookmarks =>
+      const fb.ListReader<GraphCommitRef>(GraphCommitRef.reader).vTableGetNullable(_bc, _bcOffset, 22);
+  List<GraphCommitRef>? get tags =>
+      const fb.ListReader<GraphCommitRef>(GraphCommitRef.reader).vTableGetNullable(_bc, _bcOffset, 24);
+  List<String>? get workingCopies =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 26);
+  bool get workingCopy => const fb.BoolReader().vTableGet(_bc, _bcOffset, 28, false);
+  bool get immutable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 30, false);
+  bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 32, false);
+  bool get empty => const fb.BoolReader().vTableGet(_bc, _bcOffset, 34, false);
+  bool get hidden => const fb.BoolReader().vTableGet(_bc, _bcOffset, 36, false);
+  bool get divergent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 38, false);
+  bool get root => const fb.BoolReader().vTableGet(_bc, _bcOffset, 40, false);
+  String? get descriptionFirstLine => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 42);
+
+  @override
+  String toString() {
+    return 'GraphRowMeta{changeId: ${changeId}, changeIdPrefixLen: ${changeIdPrefixLen}, commitIdPrefixLen: ${commitIdPrefixLen}, changeOffset: ${changeOffset}, hasChangeOffset: ${hasChangeOffset}, authorName: ${authorName}, authorEmail: ${authorEmail}, committerTimestampMillis: ${committerTimestampMillis}, committerTzOffsetMinutes: ${committerTzOffsetMinutes}, bookmarks: ${bookmarks}, tags: ${tags}, workingCopies: ${workingCopies}, workingCopy: ${workingCopy}, immutable: ${immutable}, conflict: ${conflict}, empty: ${empty}, hidden: ${hidden}, divergent: ${divergent}, root: ${root}, descriptionFirstLine: ${descriptionFirstLine}}';
+  }
+}
+
+class _GraphRowMetaReader extends fb.TableReader<GraphRowMeta> {
+  const _GraphRowMetaReader();
+
+  @override
+  GraphRowMeta createObject(fb.BufferContext bc, int offset) => GraphRowMeta._(bc, offset);
+}
+
+class GraphRowMetaBuilder {
+  GraphRowMetaBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(20);
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdPrefixLen(int? changeIdPrefixLen) {
+    fbBuilder.addUint32(1, changeIdPrefixLen);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdPrefixLen(int? commitIdPrefixLen) {
+    fbBuilder.addUint32(2, commitIdPrefixLen);
+    return fbBuilder.offset;
+  }
+
+  int addChangeOffset(int? changeOffset) {
+    fbBuilder.addUint32(3, changeOffset);
+    return fbBuilder.offset;
+  }
+
+  int addHasChangeOffset(bool? hasChangeOffset) {
+    fbBuilder.addBool(4, hasChangeOffset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorNameOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorEmailOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitterTimestampMillis(int? committerTimestampMillis) {
+    fbBuilder.addInt64(7, committerTimestampMillis);
+    return fbBuilder.offset;
+  }
+
+  int addCommitterTzOffsetMinutes(int? committerTzOffsetMinutes) {
+    fbBuilder.addInt32(8, committerTzOffsetMinutes);
+    return fbBuilder.offset;
+  }
+
+  int addBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopiesOffset(int? offset) {
+    fbBuilder.addOffset(11, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopy(bool? workingCopy) {
+    fbBuilder.addBool(12, workingCopy);
+    return fbBuilder.offset;
+  }
+
+  int addImmutable(bool? immutable) {
+    fbBuilder.addBool(13, immutable);
+    return fbBuilder.offset;
+  }
+
+  int addConflict(bool? conflict) {
+    fbBuilder.addBool(14, conflict);
+    return fbBuilder.offset;
+  }
+
+  int addEmpty(bool? empty) {
+    fbBuilder.addBool(15, empty);
+    return fbBuilder.offset;
+  }
+
+  int addHidden(bool? hidden) {
+    fbBuilder.addBool(16, hidden);
+    return fbBuilder.offset;
+  }
+
+  int addDivergent(bool? divergent) {
+    fbBuilder.addBool(17, divergent);
+    return fbBuilder.offset;
+  }
+
+  int addRoot(bool? root) {
+    fbBuilder.addBool(18, root);
+    return fbBuilder.offset;
+  }
+
+  int addDescriptionFirstLineOffset(int? offset) {
+    fbBuilder.addOffset(19, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphRowMetaObjectBuilder extends fb.ObjectBuilder {
+  final String? _changeId;
+  final int? _changeIdPrefixLen;
+  final int? _commitIdPrefixLen;
+  final int? _changeOffset;
+  final bool? _hasChangeOffset;
+  final String? _authorName;
+  final String? _authorEmail;
+  final int? _committerTimestampMillis;
+  final int? _committerTzOffsetMinutes;
+  final List<GraphCommitRefObjectBuilder>? _bookmarks;
+  final List<GraphCommitRefObjectBuilder>? _tags;
+  final List<String>? _workingCopies;
+  final bool? _workingCopy;
+  final bool? _immutable;
+  final bool? _conflict;
+  final bool? _empty;
+  final bool? _hidden;
+  final bool? _divergent;
+  final bool? _root;
+  final String? _descriptionFirstLine;
+
+  GraphRowMetaObjectBuilder({
+    String? changeId,
+    int? changeIdPrefixLen,
+    int? commitIdPrefixLen,
+    int? changeOffset,
+    bool? hasChangeOffset,
+    String? authorName,
+    String? authorEmail,
+    int? committerTimestampMillis,
+    int? committerTzOffsetMinutes,
+    List<GraphCommitRefObjectBuilder>? bookmarks,
+    List<GraphCommitRefObjectBuilder>? tags,
+    List<String>? workingCopies,
+    bool? workingCopy,
+    bool? immutable,
+    bool? conflict,
+    bool? empty,
+    bool? hidden,
+    bool? divergent,
+    bool? root,
+    String? descriptionFirstLine,
+  }) : _changeId = changeId,
+       _changeIdPrefixLen = changeIdPrefixLen,
+       _commitIdPrefixLen = commitIdPrefixLen,
+       _changeOffset = changeOffset,
+       _hasChangeOffset = hasChangeOffset,
+       _authorName = authorName,
+       _authorEmail = authorEmail,
+       _committerTimestampMillis = committerTimestampMillis,
+       _committerTzOffsetMinutes = committerTzOffsetMinutes,
+       _bookmarks = bookmarks,
+       _tags = tags,
+       _workingCopies = workingCopies,
+       _workingCopy = workingCopy,
+       _immutable = immutable,
+       _conflict = conflict,
+       _empty = empty,
+       _hidden = hidden,
+       _divergent = divergent,
+       _root = root,
+       _descriptionFirstLine = descriptionFirstLine;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    final int? authorNameOffset = _authorName == null ? null : fbBuilder.writeString(_authorName!);
+    final int? authorEmailOffset = _authorEmail == null ? null : fbBuilder.writeString(_authorEmail!);
+    final int? bookmarksOffset = _bookmarks == null
+        ? null
+        : fbBuilder.writeList(_bookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? tagsOffset = _tags == null
+        ? null
+        : fbBuilder.writeList(_tags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? workingCopiesOffset = _workingCopies == null
+        ? null
+        : fbBuilder.writeList(_workingCopies!.map(fbBuilder.writeString).toList());
+    final int? descriptionFirstLineOffset = _descriptionFirstLine == null
+        ? null
+        : fbBuilder.writeString(_descriptionFirstLine!);
+    fbBuilder.startTable(20);
+    fbBuilder.addOffset(0, changeIdOffset);
+    fbBuilder.addUint32(1, _changeIdPrefixLen);
+    fbBuilder.addUint32(2, _commitIdPrefixLen);
+    fbBuilder.addUint32(3, _changeOffset);
+    fbBuilder.addBool(4, _hasChangeOffset);
+    fbBuilder.addOffset(5, authorNameOffset);
+    fbBuilder.addOffset(6, authorEmailOffset);
+    fbBuilder.addInt64(7, _committerTimestampMillis);
+    fbBuilder.addInt32(8, _committerTzOffsetMinutes);
+    fbBuilder.addOffset(9, bookmarksOffset);
+    fbBuilder.addOffset(10, tagsOffset);
+    fbBuilder.addOffset(11, workingCopiesOffset);
+    fbBuilder.addBool(12, _workingCopy);
+    fbBuilder.addBool(13, _immutable);
+    fbBuilder.addBool(14, _conflict);
+    fbBuilder.addBool(15, _empty);
+    fbBuilder.addBool(16, _hidden);
+    fbBuilder.addBool(17, _divergent);
+    fbBuilder.addBool(18, _root);
+    fbBuilder.addOffset(19, descriptionFirstLineOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
-///  COMMIT id (change ids are ambiguous for divergent changes); display metadata
-///  joins later.
+///  COMMIT id (change ids are ambiguous for divergent changes).
+///
+///  `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
+///  splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
+///  `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
+///  is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
+///  Dart see as null). On a commit row `meta` is always present.
 class GraphRow {
   GraphRow._(this._bc, this._bcOffset);
   factory GraphRow(List<int> bytes) {
@@ -2073,10 +2557,14 @@ class GraphRow {
   int get colorIdx => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
   List<GraphRowEdge>? get edges =>
       const fb.ListReader<GraphRowEdge>(GraphRowEdge.reader).vTableGetNullable(_bc, _bcOffset, 10);
+  List<GraphActiveLane>? get activeLanes =>
+      const fb.ListReader<GraphActiveLane>(GraphActiveLane.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  bool get syntheticElided => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  GraphRowMeta? get meta => GraphRowMeta.reader.vTableGetNullable(_bc, _bcOffset, 16);
 
   @override
   String toString() {
-    return 'GraphRow{commitId: ${commitId}, lane: ${lane}, colorIdx: ${colorIdx}, edges: ${edges}}';
+    return 'GraphRow{commitId: ${commitId}, lane: ${lane}, colorIdx: ${colorIdx}, edges: ${edges}, activeLanes: ${activeLanes}, syntheticElided: ${syntheticElided}, meta: ${meta}}';
   }
 }
 
@@ -2093,7 +2581,7 @@ class GraphRowBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(7);
   }
 
   int addCommitIdOffset(int? offset) {
@@ -2116,6 +2604,21 @@ class GraphRowBuilder {
     return fbBuilder.offset;
   }
 
+  int addActiveLanesOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSyntheticElided(bool? syntheticElided) {
+    fbBuilder.addBool(5, syntheticElided);
+    return fbBuilder.offset;
+  }
+
+  int addMetaOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2126,16 +2629,25 @@ class GraphRowObjectBuilder extends fb.ObjectBuilder {
   final int? _lane;
   final int? _colorIdx;
   final List<GraphRowEdgeObjectBuilder>? _edges;
+  final List<GraphActiveLaneObjectBuilder>? _activeLanes;
+  final bool? _syntheticElided;
+  final GraphRowMetaObjectBuilder? _meta;
 
   GraphRowObjectBuilder({
     String? commitId,
     int? lane,
     int? colorIdx,
     List<GraphRowEdgeObjectBuilder>? edges,
+    List<GraphActiveLaneObjectBuilder>? activeLanes,
+    bool? syntheticElided,
+    GraphRowMetaObjectBuilder? meta,
   }) : _commitId = commitId,
        _lane = lane,
        _colorIdx = colorIdx,
-       _edges = edges;
+       _edges = edges,
+       _activeLanes = activeLanes,
+       _syntheticElided = syntheticElided,
+       _meta = meta;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2144,11 +2656,18 @@ class GraphRowObjectBuilder extends fb.ObjectBuilder {
     final int? edgesOffset = _edges == null
         ? null
         : fbBuilder.writeList(_edges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(4);
+    final int? activeLanesOffset = _activeLanes == null
+        ? null
+        : fbBuilder.writeList(_activeLanes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? metaOffset = _meta?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(7);
     fbBuilder.addOffset(0, commitIdOffset);
     fbBuilder.addUint32(1, _lane);
     fbBuilder.addUint32(2, _colorIdx);
     fbBuilder.addOffset(3, edgesOffset);
+    fbBuilder.addOffset(4, activeLanesOffset);
+    fbBuilder.addBool(5, _syntheticElided);
+    fbBuilder.addOffset(6, metaOffset);
     return fbBuilder.endTable();
   }
 

@@ -16,6 +16,7 @@ gix = { workspace = true }
 jj-lib = { workspace = true }
 pollster = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

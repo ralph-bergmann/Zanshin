@@ -26,6 +26,9 @@ List<fbs.GraphRowObjectBuilder> _forkThenMergeRows() => [
       fbs.GraphRowEdgeObjectBuilder(target: 'a', targetLane: 0, kind: fbs.GraphEdgeKind.Direct),
       fbs.GraphRowEdgeObjectBuilder(target: 'b', targetLane: 1, kind: fbs.GraphEdgeKind.Indirect),
     ],
+    activeLanes: const [],
+    syntheticElided: false,
+    meta: _fullMeta(),
   ),
   fbs.GraphRowObjectBuilder(
     commitId: 'b',
@@ -34,9 +37,48 @@ List<fbs.GraphRowObjectBuilder> _forkThenMergeRows() => [
     edges: [
       fbs.GraphRowEdgeObjectBuilder(target: 'outside', targetLane: 0, kind: fbs.GraphEdgeKind.Missing),
     ],
+    activeLanes: [fbs.GraphActiveLaneObjectBuilder(lane: 0, kind: fbs.GraphEdgeKind.Direct)],
+    syntheticElided: false,
+    meta: _fullMeta(),
   ),
-  fbs.GraphRowObjectBuilder(commitId: 'a', lane: 0, colorIdx: 0, edges: const []),
+  fbs.GraphRowObjectBuilder(
+    commitId: 'a',
+    lane: 0,
+    colorIdx: 0,
+    edges: const [],
+    activeLanes: const [],
+    syntheticElided: false,
+    meta: _fullMeta(),
+  ),
 ];
+
+/// A fully-populated `GraphRowMeta` — every field distinct so a cross-wired slot
+/// is visible in the decode.
+fbs.GraphRowMetaObjectBuilder _fullMeta() => fbs.GraphRowMetaObjectBuilder(
+  changeId: 'qpvuntsm',
+  changeIdPrefixLen: 2,
+  commitIdPrefixLen: 3,
+  changeOffset: 7,
+  hasChangeOffset: true,
+  authorName: 'Ada Lovelace',
+  authorEmail: 'ada@example.com',
+  committerTimestampMillis: 1700000000123,
+  committerTzOffsetMinutes: -420,
+  bookmarks: [
+    fbs.GraphCommitRefObjectBuilder(name: 'feature', synced: false, conflicted: true),
+    fbs.GraphCommitRefObjectBuilder(name: 'feature', remote: 'origin', synced: false, conflicted: false),
+  ],
+  tags: [fbs.GraphCommitRefObjectBuilder(name: 'v1.0', synced: true, conflicted: false)],
+  workingCopies: ['default', 'second'],
+  workingCopy: true,
+  immutable: false,
+  conflict: true,
+  empty: false,
+  hidden: true,
+  divergent: false,
+  root: true,
+  descriptionFirstLine: 'first line',
+);
 
 void main() {
   group('decodeGraphSliceEnvelope decode contract', () {
@@ -119,6 +161,111 @@ void main() {
       expect(root.commitId, equals('a'));
       expect(root.lane, equals(0));
       expect(root.edges, isEmpty);
+
+      // Pass-through lanes ride the row itself (Story 4.8).
+      expect(merge.activeLanes, isEmpty);
+      expect(sideline.activeLanes, hasLength(1));
+      expect(sideline.activeLanes.single.lane, equals(0));
+      expect(sideline.activeLanes.single.kind, equals(GraphEdgeKind.direct));
+    });
+
+    // ── Story 4.8: metadata, elided rows ──────────────────────────────────
+
+    test('decodes every GraphRowMeta field into its own slot', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GraphSlice,
+        data: fbs.GraphSliceObjectBuilder(rows: _forkThenMergeRows(), totalRows: 3),
+      ).toBytes();
+
+      final GraphRowMeta meta = decodeGraphSliceEnvelope(bytes).rows.first.meta!;
+
+      expect(meta.changeId, equals('qpvuntsm'));
+      expect(meta.changeIdPrefixLen, equals(2));
+      expect(meta.commitIdPrefixLen, equals(3));
+      expect(meta.changeOffset, equals(7));
+      expect(meta.authorName, equals('Ada Lovelace'));
+      expect(meta.authorEmail, equals('ada@example.com'));
+      expect(meta.committerTimestampMillis, equals(1700000000123));
+      expect(meta.committerTzOffsetMinutes, equals(-420));
+      expect(meta.workingCopies, equals(['default', 'second']));
+      expect(meta.workingCopy, isTrue);
+      expect(meta.immutable, isFalse);
+      expect(meta.conflict, isTrue);
+      expect(meta.empty, isFalse);
+      expect(meta.hidden, isTrue);
+      expect(meta.divergent, isFalse);
+      expect(meta.root, isTrue);
+      expect(meta.descriptionFirstLine, equals('first line'));
+
+      // Refs: the local entry has no remote (null-for-absence), the remote one does.
+      expect(meta.bookmarks, hasLength(2));
+      expect(meta.bookmarks[0].name, equals('feature'));
+      expect(meta.bookmarks[0].remote, isNull, reason: 'local entry ⇒ remote null');
+      expect(meta.bookmarks[0].conflicted, isTrue);
+      expect(meta.bookmarks[1].remote, equals('origin'));
+      expect(meta.bookmarks[1].synced, isFalse);
+      expect(meta.tags.single.name, equals('v1.0'));
+      expect(meta.tags.single.synced, isTrue);
+    });
+
+    test('decodes an absent changeOffset as null via the presence flag', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GraphSlice,
+        data: fbs.GraphSliceObjectBuilder(
+          rows: [
+            fbs.GraphRowObjectBuilder(
+              commitId: 'c',
+              lane: 0,
+              colorIdx: 0,
+              edges: const [],
+              activeLanes: const [],
+              syntheticElided: false,
+              // hasChangeOffset false + the 0 placeholder Rust writes.
+              meta: fbs.GraphRowMetaObjectBuilder(changeId: 'c', changeOffset: 0, hasChangeOffset: false),
+            ),
+          ],
+          totalRows: 1,
+        ),
+      ).toBytes();
+
+      final GraphRowMeta meta = decodeGraphSliceEnvelope(bytes).rows.single.meta!;
+
+      expect(meta.changeOffset, isNull, reason: 'the 0 placeholder must not surface as 0');
+    });
+
+    test('decodes a synthetic elided row with a null meta', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GraphSlice,
+        data: fbs.GraphSliceObjectBuilder(
+          rows: [
+            fbs.GraphRowObjectBuilder(
+              commitId: 'elided-target',
+              lane: 1,
+              colorIdx: 1,
+              edges: [
+                fbs.GraphRowEdgeObjectBuilder(
+                  target: 'elided-target',
+                  targetLane: 1,
+                  kind: fbs.GraphEdgeKind.Direct,
+                ),
+              ],
+              activeLanes: const [],
+              syntheticElided: true,
+            ),
+          ],
+          totalRows: 1,
+        ),
+      ).toBytes();
+
+      final GraphRow row = decodeGraphSliceEnvelope(bytes).rows.single;
+
+      expect(row.syntheticElided, isTrue);
+      expect(row.meta, isNull, reason: 'an elided row carries no metadata');
+      expect(row.commitId, equals('elided-target'), reason: 'the elided TARGET id');
+      expect(row.edges.single.target, equals('elided-target'));
     });
 
     test('decodes every GraphEdgeKind variant', () {
@@ -136,6 +283,11 @@ void main() {
                 fbs.GraphRowEdgeObjectBuilder(target: 'i', targetLane: 3, kind: fbs.GraphEdgeKind.Indirect),
                 fbs.GraphRowEdgeObjectBuilder(target: 'm', targetLane: 0, kind: fbs.GraphEdgeKind.Missing),
               ],
+              activeLanes: [
+                fbs.GraphActiveLaneObjectBuilder(lane: 1, kind: fbs.GraphEdgeKind.Indirect),
+                fbs.GraphActiveLaneObjectBuilder(lane: 4, kind: fbs.GraphEdgeKind.Missing),
+              ],
+              syntheticElided: false,
             ),
           ],
           totalRows: 1,
@@ -152,6 +304,11 @@ void main() {
         slice.rows.single.edges.map((e) => e.targetLane).toList(),
         equals([2, 3, null]),
       );
+      // Every kind decodes on an active lane too (they share the wire enum).
+      expect(
+        slice.rows.single.activeLanes.map((l) => (l.lane, l.kind)).toList(),
+        equals([(1, GraphEdgeKind.indirect), (4, GraphEdgeKind.missing)]),
+      );
     });
 
     test('decodes lane and colorIdx into distinct fields', () {
@@ -162,7 +319,16 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.GraphSlice,
         data: fbs.GraphSliceObjectBuilder(
-          rows: [fbs.GraphRowObjectBuilder(commitId: 'far', lane: 9, colorIdx: 1, edges: const [])],
+          rows: [
+            fbs.GraphRowObjectBuilder(
+              commitId: 'far',
+              lane: 9,
+              colorIdx: 1,
+              edges: const [],
+              activeLanes: const [],
+              syntheticElided: false,
+            ),
+          ],
           totalRows: 1,
         ),
       ).toBytes();
