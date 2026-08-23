@@ -19,7 +19,8 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
     graph::zanshin_graph_slice,
     repo::{zanshin_repo_close, zanshin_repo_open},
-    FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR,
 };
 use zanshin_graph::{collect_lanes, EdgeKind, Row, RowEdge};
 use zanshin_jj::{Repo, DEFAULT_GRAPH_PRIORITIZE};
@@ -152,7 +153,7 @@ fn ok_rows(bytes: &[u8]) -> (Vec<Row>, u32) {
     (rows_from_wire(slice), slice.total_rows())
 }
 
-/// Assert an error envelope with the given code and a non-empty `context`.
+/// Assert an error envelope with the given code and no payload at the union level.
 fn assert_error(bytes: &[u8], code: &str) {
     let env = parse_envelope(bytes);
     assert!(!env.ok(), "must produce an error envelope (expected {code})");
@@ -161,9 +162,27 @@ fn assert_error(bytes: &[u8], code: &str) {
         Some(code),
         "error.code must be {code}"
     );
+    assert_eq!(
+        env.data_type(),
+        fbs::Payload::NONE,
+        "an error envelope never carries partial rows (data_type must be NONE)"
+    );
     assert!(
         env.data_as_graph_slice().is_none(),
         "an error envelope must carry no rows"
+    );
+}
+
+/// [`assert_error`] plus a non-empty `error.context` — the ABI doc promises the
+/// jj-lib reason in `context` for `jj.revset_parse_error` / `jj.revset_resolution_error`.
+fn assert_error_with_context(bytes: &[u8], code: &str) {
+    assert_error(bytes, code);
+    assert!(
+        parse_envelope(bytes)
+            .error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| !c.is_empty()),
+        "context must carry jj-lib's reason for {code}"
     );
 }
 
@@ -285,14 +304,7 @@ fn graph_slice_bogus_revset_returns_jj_revset_parse_error() {
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let bytes = unsafe { slice_bytes(handle, "bogus_function()", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error(&bytes, JJ_REVSET_PARSE_ERROR);
-    assert!(
-        parse_envelope(&bytes)
-            .error()
-            .and_then(|e| e.context())
-            .is_some_and(|c| !c.is_empty()),
-        "context must carry jj-lib's parse reason"
-    );
+    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
 
     unsafe { close(handle) };
 }
@@ -303,7 +315,7 @@ fn graph_slice_bogus_prioritize_returns_jj_revset_parse_error() {
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let bytes = unsafe { slice_bytes(handle, "all()", "(") };
-    assert_error(&bytes, JJ_REVSET_PARSE_ERROR);
+    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
 
     unsafe { close(handle) };
 }
@@ -315,7 +327,7 @@ fn graph_slice_blank_prioritize_returns_jj_revset_parse_error() {
 
     // `none()` is the canonical no-prioritization value; a blank expression is a parse error.
     let bytes = unsafe { slice_bytes(handle, "all()", "") };
-    assert_error(&bytes, JJ_REVSET_PARSE_ERROR);
+    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
 
     unsafe { close(handle) };
 }
@@ -326,7 +338,7 @@ fn graph_slice_unknown_bookmark_revset_returns_jj_revset_resolution_error() {
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let bytes = unsafe { slice_bytes(handle, "nonexistent-bookmark-xyz", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error(&bytes, JJ_REVSET_RESOLUTION_ERROR);
+    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
 
     unsafe { close(handle) };
 }
@@ -337,7 +349,7 @@ fn graph_slice_unknown_bookmark_prioritize_returns_jj_revset_resolution_error() 
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let bytes = unsafe { slice_bytes(handle, "all()", "nonexistent-bookmark-xyz") };
-    assert_error(&bytes, JJ_REVSET_RESOLUTION_ERROR);
+    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
 
     unsafe { close(handle) };
 }
@@ -379,6 +391,37 @@ fn graph_slice_invalid_utf8_revset_returns_ffi_utf8_error() {
     let token = unsafe { zanshin_graph_slice(handle, bad_utf8.as_ptr(), prio.as_ptr()) };
     let bytes = unsafe { read_and_free(token) };
     assert_error(&bytes, FFI_UTF8_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_invalid_utf8_prioritize_returns_ffi_utf8_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let revset = cstr("all()");
+    let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
+    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), bad_utf8.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    assert_error(&bytes, FFI_UTF8_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_slice_on_corrupt_op_heads_returns_jj_jj_lib_error() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    // Corrupt AFTER open, exactly as crates/zanshin-jj/tests/graph.rs does: the graph is
+    // re-derived from head on every call (ADR-0002), so removing op_heads makes
+    // load_at_head() fail → RevsetError::JjLibError → `jj.jj_lib_error` at the FFI surface.
+    let op_heads = fx.path.join(".jj").join("repo").join("op_heads");
+    std::fs::remove_dir_all(&op_heads).expect("op_heads must be removable");
+
+    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
+    assert_error(&bytes, JJ_JJ_LIB_ERROR);
 
     unsafe { close(handle) };
 }

@@ -165,7 +165,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `zanshin-jj` is the ONLY production/library crate that imports `jj_lib`. Other
   internal crates consume `zanshin-jj`'s typed API, not jj-lib directly. (The
   `xtask` fixture generator also imports `jj_lib`, but only as a build-time tool —
-  not part of the shipped surface.)
+  not part of the shipped surface; likewise `crates/test-helpers` — a test-only
+  tool crate, dev-dep everywhere, coverage `exclude_prefix` — imports it for the
+  `add_commit_off_root` write helper, Story 4.6.)
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).

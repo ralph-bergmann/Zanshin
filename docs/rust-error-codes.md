@@ -41,7 +41,7 @@ Error codes follow the dotted `<domain>.<reason>` format, e.g. `jj.repo_not_foun
 | `ffi.utf8_error`                | `ffi`      | A `*const c_char` argument contained invalid UTF-8.                 | **Emitted — Story 3.2** (`envelope.rs::FFI_UTF8_ERROR`) |
 | `jj.repo_not_found`             | `jj`       | No jj repo found at or above the given path.                         | **Emitted — Story 3.4a** (`envelope.rs::JJ_REPO_NOT_FOUND`, `repo.rs`) |
 | `jj.path_not_found`             | `jj`       | A path argument does not exist on disk.                              | **Emitted — Story 3.4a** (`envelope.rs::JJ_PATH_NOT_FOUND`, `repo.rs`) |
-| `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | **Emitted — Story 3.4a** (`envelope.rs::JJ_JJ_LIB_ERROR`, `repo.rs`) |
+| `jj.jj_lib_error`               | `jj`       | An unclassified error from jj-lib; detail in `context`.             | **Emitted — Story 3.4a** (`envelope.rs::JJ_JJ_LIB_ERROR`, `repo.rs`; also emitted by the other `zanshin_*` read wrappers and `graph.rs` (Story 4.6)) |
 | `ffi.invalid_argument`          | `ffi`      | A required argument value is out of the accepted range.              | **Emitted — Story 3.4a** (`envelope.rs::FFI_INVALID_ARGUMENT`, `repo.rs`) |
 | `jj.no_working_copy`            | `jj`       | The workspace has no working-copy commit (@).                        | **Emitted — Story 3.4b** (`envelope.rs::JJ_NO_WORKING_COPY`, `status.rs`) |
 | `jj.change_not_found`           | `jj`       | No change found for the given id.                                    | **Emitted — Story 3.4b (change)** (`envelope.rs::JJ_CHANGE_NOT_FOUND`, `change.rs`) |

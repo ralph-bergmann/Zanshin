@@ -527,7 +527,8 @@ class ZanshinWorker {
   /// `Envelope<GraphSlice>` bytes into a [repo_ffi_graph.GraphSlice].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`).
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`;
+  /// full list: `docs/ffi-abi.md` § `zanshin_graph_slice`).
   /// Completes with a [StateError] after [close]. The close-guard [StateError]
   /// is delivered synchronously by [RepoHandle.graphSlice].
   Future<repo_ffi_graph.GraphSlice> graphSlice(

@@ -368,7 +368,9 @@ return-all; windowing is deferred past WIP).
   `defaultGraphPrioritize` (a mirror of `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`),
   editable by the caller; `none()` is the canonical "no prioritisation" value;
   a blank expression is a `jj.revset_parse_error`. Both expressions are passed
-  through verbatim — nothing is baked in.
+  through verbatim — nothing is baked in. An interior NUL (U+0000) in either
+  expression is rejected Dart-side with an `ArgumentError` (a C string cannot
+  carry it; `toNativeUtf8` would silently truncate the expression).
 
 **Re-derive per call (ADR-0002).** The graph is re-derived from the head
 operation on every call; Rust retains no graph state between calls. An
@@ -378,13 +380,15 @@ same handle is visible in the second. The op-heads watcher event stream
 does **not** auto-re-derive.
 
 **Success payload:** `Envelope<GraphSlice>` (shapes below); `total_rows ==
-rows.length`.
+rows.length`. Size model: the whole revset result is materialised into ONE
+buffer (every row and edge, no cap; `total_rows` saturates at `u32::MAX`) and
+copied once into Dart — windowing is deferred past WIP.
 
 **Error codes:**
 
 | Code                         | Condition                                                                 |
 |------------------------------|---------------------------------------------------------------------------|
-| `ffi.invalid_handle`         | `handle` is `0` / not a live session.                                     |
+| `ffi.invalid_handle`         | Rust: `handle == 0`. Worker: unknown/closed `handleId` (Model A handle-table lookup). A stale non-zero raw handle is UB — liveness is the worker's lookup, not a Rust check (see the fn's `# Safety` rustdoc). |
 | `ffi.null_pointer`           | `revset` or `prioritize` is null.                                         |
 | `ffi.utf8_error`             | `revset` or `prioritize` contains invalid UTF-8.                          |
 | `jj.revset_parse_error`      | Either expression is syntactically invalid / unknown function (incl. blank `prioritize`); reason in `context`. |

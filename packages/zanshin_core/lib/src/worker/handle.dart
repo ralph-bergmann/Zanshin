@@ -100,7 +100,8 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`).
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`;
+  /// full list: `docs/ffi-abi.md` § `zanshin_graph_slice`).
   Future<GraphSlice> graphSlice({
     required String revset,
     String prioritize = defaultGraphPrioritize,

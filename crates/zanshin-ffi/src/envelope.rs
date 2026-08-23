@@ -27,7 +27,8 @@ pub const FFI_INVALID_ARGUMENT: &str = "ffi.invalid_argument";
 pub const JJ_PATH_NOT_FOUND: &str = "jj.path_not_found";
 /// AR-P-4: emitted by `repo.rs` when no jj repo is found at the given path.
 pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
-/// AR-P-4: emitted by `repo.rs` for unclassified jj-lib errors; detail in `context`.
+/// AR-P-4: emitted by `repo.rs` and the read wrappers (`status.rs`, `change.rs`, `op_log.rs`,
+/// `bookmarks.rs`, `remotes.rs`, `graph.rs`) for unclassified jj-lib errors; detail in `context`.
 pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 /// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@).
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";

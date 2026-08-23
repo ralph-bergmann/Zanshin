@@ -33,29 +33,41 @@ const defaultGraphPrioritize = 'present(@)';
 /// `toNativeUtf8` and freed by Dart via `calloc.free` (AR-P-5 inbound rule —
 /// Rust only borrows them for the duration of the call).
 ///
-/// Errors: `ffi.null_pointer` (never — we always pass valid pointers),
-/// `ffi.invalid_handle`, `jj.revset_parse_error`,
-/// `jj.revset_resolution_error`, `jj.jj_lib_error`, `graph.dangling_edge`.
+/// Throws [ArgumentError] if [revset] or [prioritize] contains an interior
+/// U+0000: a C string cannot carry it, and `toNativeUtf8` would silently
+/// truncate the user-typed expression at the NUL, so Rust would evaluate a
+/// shorter expression than the one the caller wrote.
+///
+/// Error codes: see `docs/ffi-abi.md` § `zanshin_graph_slice`
+/// (`ffi.null_pointer` / `ffi.utf8_error` never arise from this adapter —
+/// it always passes valid, non-null UTF-8 pointers).
 Uint8List zanshinGraphSlice(int rawHandle, String revset, String prioritize) {
+  if (revset.codeUnits.contains(0)) {
+    throw ArgumentError.value(revset, 'revset', 'must not contain an interior NUL (U+0000)');
+  }
+  if (prioritize.codeUnits.contains(0)) {
+    throw ArgumentError.value(prioritize, 'prioritize', 'must not contain an interior NUL (U+0000)');
+  }
   final ffi.Pointer<Utf8> revsetPtr = revset.toNativeUtf8();
-  final ffi.Pointer<Utf8> prioritizePtr = prioritize.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_graph_slice(
-      rawHandle,
-      revsetPtr.cast(),
-      prioritizePtr.cast(),
-    );
-    final buf = FfiBuffer.fromToken(token);
+    final ffi.Pointer<Utf8> prioritizePtr = prioritize.toNativeUtf8();
     try {
-      return Uint8List.fromList(buf.bytes);
+      final ffi.Pointer<ZanshinBuf> token = zanshin_graph_slice(
+        rawHandle,
+        revsetPtr.cast(),
+        prioritizePtr.cast(),
+      );
+      final buf = FfiBuffer.fromToken(token);
+      try {
+        return Uint8List.fromList(buf.bytes);
+      } finally {
+        buf.dispose(); // inner: free the returned buffer
+      }
     } finally {
-      buf.dispose(); // inner: free the returned buffer
+      calloc.free(prioritizePtr); // each C string is freed by its own finally
     }
   } finally {
-    // outer: free both C strings we allocated
-    calloc
-      ..free(prioritizePtr)
-      ..free(revsetPtr);
+    calloc.free(revsetPtr);
   }
 }
 

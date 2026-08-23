@@ -2,10 +2,10 @@
 title: 'Story 4.6: FFI wrapper (`zanshin-ffi/src/graph.rs`) — `zanshin_graph_slice` extern fn + Dart worker command over `collect_lanes`'
 type: 'feature'
 created: '2026-08-23'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'f80d3d176ca3e5925e239c2df210966f533893fe'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
@@ -123,6 +123,28 @@ Fixture facts: **tiny** = `root` ← `@` and `root` ← c1 ← c2 ← c3 → `al
 
 ## Review Triage Log
 
+### 2026-08-23 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 14: (high 0, medium 1, low 13)
+- defer: 0
+- reject: 13
+- addressed_findings:
+  - `[medium]` `[patch]` The Dart path never proved that the caller's `prioritize` reaches Rust (every Dart error test sent a bad *revset*; a worker arm ignoring `prioritize` would have stayed green — an FR-JJ-17 pass-through regression hole at the surface the UI calls) — added two real-cdylib tests (`graphSlice_on_bogus_prioritize_surfaces_jj_revset_parse_error`, `graphSlice_on_unknown_bookmark_prioritize_surfaces_jj_revset_resolution_error`).
+  - `[low]` `[patch]` `defaultGraphPrioritize` (Dart mirror of `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`) had no value pin — added `defaultGraphPrioritize_mirrors_the_rust_cli_default` (`'present(@)'`).
+  - `[low]` `[patch]` `zanshinGraphSlice` allocated the `revset` C string outside the try/finally (a throwing second `toNativeUtf8` would leak it) — each allocation now freed by its own `finally`.
+  - `[low]` `[patch]` An interior U+0000 in either user-typed expression would be silently truncated by `toNativeUtf8` (Rust would evaluate a shorter revset) — `zanshinGraphSlice` now throws `ArgumentError` (two guard tests); rule documented in the adapter doc and `docs/ffi-abi.md`.
+  - `[low]` `[patch]` Adapter doc listed `ffi.null_pointer` "(never…)" but not `ffi.utf8_error` — replaced with a pointer to the ABI table.
+  - `[low]` `[patch]` `tests/graph_ffi.rs` exercised `ffi.utf8_error` only for `revset` — added `graph_slice_invalid_utf8_prioritize_returns_ffi_utf8_error`.
+  - `[low]` `[patch]` `jj.jj_lib_error` was documented for `zanshin_graph_slice` but pinned only by the inline mapper test — added `graph_slice_on_corrupt_op_heads_returns_jj_jj_lib_error` (same corruption mechanism as `crates/zanshin-jj/tests/graph.rs`).
+  - `[low]` `[patch]` `assert_error` did not assert `data_type == Payload::NONE` (no partial rows at the union level) and only one parse-error test asserted a non-empty `context` although the ABI promises "reason in `context`" — `assert_error` extended + `assert_error_with_context` used by all five parse/resolution tests.
+  - `[low]` `[patch]` `docs/rust-error-codes.md` `jj.jj_lib_error` row and the `envelope.rs` doc named `repo.rs` as sole emitter — now list the read wrappers incl. `graph.rs` (Story 4.6).
+  - `[low]` `[patch]` `docs/ffi-abi.md` `ffi.invalid_handle` row said "not a live session" although Rust detects only `0` (liveness = the worker's handle-table lookup; stale non-zero = UB) — row reworded.
+  - `[low]` `[patch]` `docs/ffi-abi.md` lacked the payload size model (whole revset materialised into one buffer, rows × edges, no cap, `total_rows` saturates, copied once into Dart; windowing deferred) — one sentence added.
+  - `[low]` `[patch]` `RepoHandle.graphSlice` / `ZanshinWorker.graphSlice` docs listed a partial error-code set — pointer to the full ABI table appended.
+  - `[low]` `[patch]` `project-context.md` ACL bullet still named `xtask` as the only non-`zanshin-jj` `jj_lib` importer — `test-helpers` (test-only tool crate) added to the parenthetical.
+  - `[low]` `[patch]` `deferred-work.md` l.100 heading still read "need a create-story REWRITE" although the body says all three rewrites are closed — heading prefixed "RESOLVED (2026-08-23)".
+
 ## Design Notes
 
 - **Why ONE fn named `zanshin_graph_slice`:** no cache ⇒ no `_build`/`_close`; the name keeps the epic's symbol, matches the `GraphSlice` payload and 4.4's `slice.rs`/`collect_lanes` ("slice" = the revset-selected slice of the graph), and follows the "fn name == payload name" precedent (`zanshin_op_log` → `OpLog`, `zanshin_status` → `Status`).
@@ -155,3 +177,31 @@ Fixture facts: **tiny** = `root` ← `@` and `root` ← c1 ← c2 ← c3 → `al
 - `dart analyze` + `dart format --set-exit-if-changed` in `packages/zanshin_core` -- expected: clean (exhaustive switch satisfied).
 - `cargo make test` (unpiped) -- expected: exit 0; `extern-coverage: OK`; `coverage-check: OK`; `coverage-baseline.txt` updated → commit it.
 - `git status --porcelain` after the commit -- expected: empty.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Summary of implemented change.** Story 4.6 delivered as ONE extern fn `zanshin_graph_slice(handle: u64, revset: *const c_char, prioritize: *const c_char) -> *mut ZanshinBuf` in `crates/zanshin-ffi/src/graph.rs`: borrows the `RepoSession`, passes both caller-supplied expressions through (FR-JJ-17) to `zanshin_graph::collect_lanes` (re-derived from head on every call, nothing retained — ADR-0002) and returns the 4.2 `Envelope<GraphSlice>` via `graph_slice_to_envelope` (ADR-0001; `.fbs` untouched). Errors map to three NEW registry codes (`jj.revset_parse_error`, `jj.revset_resolution_error`, `graph.dangling_edge`) plus the existing `jj.jj_lib_error` / `ffi.invalid_handle` / `ffi.null_pointer` / `ffi.utf8_error`. Dart: `zanshinGraphSlice` adapter (+ interior-NUL guard, leak-safe nested frees), `defaultGraphPrioritize` mirror of the CLI default, `GraphSliceCommand(handleId, revset, prioritize)`, `ZanshinWorker.graphSlice`, `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize})`. The epic's `zanshin_graph_build`/`LaneCache` handle/`zanshin_graph_close`/`start`+`count`/worker-rebuilds-on-`OpHeadsChanged`/JSON ACs are superseded (ADR-0001 + ADR-0002 AC-4 + 4.4 return-all; the UI re-requests on the existing `OpHeadsChangedEvent`, the worker holds no graph state). The 4.4-deferred "re-derive after an external op" proof now exists at the FFI surface (`graph_slice_rederives_from_head_so_an_external_commit_appears_on_the_next_call`) via the new jj-lib write helper `test_helpers::add_commit_off_root` (moved from `crates/zanshin-jj/tests/graph.rs`). The `lane.rs` `expect()` deferral (4.1) is closed as "keep" (infallible on the supported target, `catch_unwind` backstop) with a `// WHY:` at the site.
+
+**Files changed (since `f80d3d176ca3e5925e239c2df210966f533893fe`).**
+- `crates/zanshin-ffi/src/graph.rs` — module doc, `map_lane_stream_err`, `zanshin_graph_slice` + rustdoc, inline mapper test (4.2 builder untouched).
+- `crates/zanshin-ffi/src/envelope.rs` — `JJ_REVSET_PARSE_ERROR`, `JJ_REVSET_RESOLUTION_ERROR`, `GRAPH_DANGLING_EDGE`; `JJ_JJ_LIB_ERROR` doc names the read wrappers.
+- `crates/zanshin-ffi/tests/graph_ffi.rs` (new, 16 tests after review) — oracle equality vs `collect_lanes` (tiny `present(@)`/`none()`, medium 1002), empty revset, re-derive after external op, parse/resolution errors for each param incl. blank prioritize (with non-empty `context`), null revset/prioritize, invalid UTF-8 revset/prioritize, zero handle, corrupt op-heads → `jj.jj_lib_error`; `assert_error` pins `Payload::NONE`.
+- `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` — regenerated by `cargo make codegen` (one new symbol).
+- `crates/zanshin-graph/src/lane.rs` — comment-only `// WHY:` at `index`/`lane_number`.
+- `crates/test-helpers/{Cargo.toml,src/lib.rs}` — `jj-lib` + `pollster` (`# WHY:`), `add_commit_off_root` + private `make_test_settings`; `crates/zanshin-jj/tests/graph.rs` — uses the shared helper, local copy + `jj_lib` imports dropped; `Cargo.lock`.
+- `packages/zanshin_core/lib/src/ffi/graph.dart` — adapter, NUL guard, `defaultGraphPrioritize`, docs; `worker/commands.dart` (`GraphSliceCommand`), `worker/isolate.dart` (import, `graphSlice`, dispatch arm), `worker/handle.dart` (`RepoHandle.graphSlice`).
+- `packages/zanshin_core/test/worker/graph_test.dart` (new, 11 tests after review) — round-trip (2 rows, `getChange(status.workingCopyChangeId).commitId` oracle), `none()` → empty, parse/resolution errors for revset AND prioritize, closed handle → `ffi.invalid_handle`, `RepoHandle` guard → `StateError`, `defaultGraphPrioritize` pin, two NUL-guard tests.
+- `coverage-baseline.txt` — `crates/zanshin-ffi/src/graph.rs` 99.45 → 99.60.
+- `docs/rust-error-codes.md` (+3 rows, `jj.jj_lib_error` emitters), `docs/ffi-abi.md` (section intro, `### zanshin_graph_slice`, worker integration, reachability, size model, NUL rule, `ffi.invalid_handle` row).
+- `_bmad-output/planning-artifacts/epics.md` (§4.6 dated Delivered note), `_bmad-output/project-context.md` (ACL parenthetical names `test-helpers`), `_bmad-output/implementation-artifacts/deferred-work.md` (l.100 RESOLVED + 4.6 DELIVERED, l.182 `expect()` RESOLVED keep), `epic-4-context.md` (4.6 done, FFI-surface bullet, dependency line — touched last among planning edits), `sprint-status.yaml` (4-6 → done + `last_updated` entries), this spec.
+
+**Review findings breakdown.** 4 layers (Blind Hunter 16, Edge Case Hunter 3, Verification Gap 2, Intent Alignment ~7 descriptive divergences) → 28 raw → 27 unique: 0 intent_gap, 0 bad_spec, 14 patch (1 medium, 13 low — all applied, see Review Triage Log), 0 defer, 13 reject. Rejected: stale non-zero handle UB (Model A by design, identical to every wrapper; documented); duplicated `rows_from_wire`/`kind_from_wire` test helpers and the duplicated `setUp`/`tearDown` group (repo test convention, mirrors `change_test.dart`; 4.4 review precedent); the untouched 4.4-spec `deferred:` entry (historical artifact — `deferred-work.md` is the live tracker and records the closure); `epic-4-context` "done" vs `sprint-status` "review" (transient within this run; both `done` now); a `project-context.md` `overrides:`/rule carve-out for the kept infallible `expect()`s (normative ruleset edit — Ralph's call; decision is recorded at the site, in `deferred-work.md` and here — see residual risks); the Intent Alignment auditor's descriptive divergences (Readings A/B — graph-handle lifecycle, windowing scalars, worker-side rebuild, `jsonschema` — are the superseded readings the repository's own artifacts had already retired; error-code domain `jj.*` for `RevsetError` is a documented decision; `test-helpers`/`lane.rs`/planning edits originate from the 4.4/4.1 deferrals named in the spec).
+
+**Follow-up review recommendation.** Patched this pass: high 0, medium 1, low 13 → score 3 × 1 + 13 = 16 ≥ 5 → `followup_review_recommended: true`.
+
+**Verification performed.** Implementation run: `cargo make test` exit 0 (224.95 s) — 14 `graph_ffi` + 6 Dart worker graph tests, `extern-coverage: OK`, baseline RAISED (`graph.rs` 99.45 → 99.60, overall 98.66 % = 3170/3213 over 30 files), committed as `e1f8409`. Step-03 verification by the orchestrator: full `cargo make test` (stdout redirected to a file, exit code read directly) → exit 0 in 175.24 s, `coverage-check: OK — coverage held at 98.66%`, `extern-coverage: OK`; matrix audit: every I/O-matrix row covered by a test that ran and passed. Review pass (after the 14 patches): `cargo test -p zanshin-ffi --test graph_ffi` 16/16, clippy pedantic/fmt clean, `dart analyze`/`dart format` clean, `dart test test/worker/graph_test.dart` 11/11; full `cargo make test` → exit 0 in 184.79 s: 16 `graph_ffi` (both cargo and llvm-cov runs), 113 zanshin_core Dart tests, `coverage-check: OK — coverage held at 98.66% (3170/3213 lines)` (baseline unchanged by the patches), `extern-coverage: OK`; `flutter`/`dart` gate churn (`app/analysis_options.yaml`, `pubspec.lock`) reverted, not committed.
+
+**Residual risks.** (1) The two kept `expect()`s in `lane.rs` are FFI-reachable now; they are infallible on the supported 64-bit target and backstopped by `catch_unwind`, but `project-context.md`'s Rust rule has no explicit carve-out for infallible-by-construction conversions — whether to add one (or to convert lanes to `usize` internally) is Ralph's call. (2) `crates/test-helpers` now imports `jj_lib` (test-only tool crate, coverage `exclude_prefix`, never shipped; named in `project-context.md` next to `xtask`) — a deliberate, reviewed widening of the FR-JJ-16 ACL's tooling exemption. (3) The watcher → re-derive property is proven at the Rust FFI surface (same handle, external jj-lib op), not as an `OpHeadsChangedEvent` → `graphSlice` Dart E2E (no Dart-side mutation helper exists without shelling to `jj`); the Dart worker deliberately does not auto-re-derive — the UI re-requests. (4) `graph.rs` sits at 99.60 %: the single uncovered line is the unreachable wildcard arm of the test-only `kind_from_wire` helper (pre-existing since 4.2).

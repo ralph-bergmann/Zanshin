@@ -115,6 +115,42 @@ void main() {
       await handle.close();
     });
 
+    // The prioritize argument must reach Rust too — a valid revset with a bad
+    // prioritize proves the second string is passed through, not ignored.
+    test('graphSlice_on_bogus_prioritize_surfaces_jj_revset_parse_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      await expectLater(
+        handle.graphSlice(revset: 'all()', prioritize: 'bogus_function()'),
+        throwsA(
+          isA<ZanshinFfiException>().having(
+            (e) => e.code,
+            'code',
+            'jj.revset_parse_error',
+          ),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    test('graphSlice_on_unknown_bookmark_prioritize_surfaces_jj_revset_resolution_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      await expectLater(
+        handle.graphSlice(revset: 'all()', prioritize: 'nonexistent-bookmark-xyz'),
+        throwsA(
+          isA<ZanshinFfiException>().having(
+            (e) => e.code,
+            'code',
+            'jj.revset_resolution_error',
+          ),
+        ),
+      );
+
+      await handle.close();
+    });
+
     test('graphSlice_on_closed_handle_surfaces_ffi_invalid_handle', () async {
       // Close the handle, then bypass the RepoHandle guard and call the worker
       // directly — mirrors the closed-handle test in change_test.dart.
@@ -131,6 +167,24 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  // ── Adapter guards (no cdylib call) ──────────────────────────────────────
+
+  group('zanshinGraphSlice argument guards', () {
+    test('defaultGraphPrioritize_mirrors_the_rust_cli_default', () {
+      // Pinned Rust-side as zanshin_jj::DEFAULT_GRAPH_PRIORITIZE in
+      // crates/zanshin-jj/tests/api_stability.rs; this is the Dart mirror's pin.
+      expect(defaultGraphPrioritize, 'present(@)');
+    });
+
+    test('zanshinGraphSlice_rejects_interior_nul_in_revset_with_argument_error', () {
+      expect(() => zanshinGraphSlice(0, 'all()${String.fromCharCode(0)}x', 'none()'), throwsArgumentError);
+    });
+
+    test('zanshinGraphSlice_rejects_interior_nul_in_prioritize_with_argument_error', () {
+      expect(() => zanshinGraphSlice(0, 'all()', 'none()${String.fromCharCode(0)}x'), throwsArgumentError);
     });
   });
 
