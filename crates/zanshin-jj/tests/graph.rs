@@ -7,15 +7,9 @@
 use std::collections::HashSet;
 use std::env;
 use std::ops::ControlFlow;
-use std::path::Path;
 use std::sync::LazyLock;
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
-use jj_lib::object_id::ObjectId as _;
-use jj_lib::repo::Repo as _;
-use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
-use test_helpers::extract_fixture;
+use test_helpers::{add_commit_off_root, extract_fixture};
 use zanshin_jj::{resolve_revset, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
@@ -28,25 +22,6 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
-}
-
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
 }
 
 /// Collects the whole stream into a Vec (the stream must be exhausted → `Continue`).
@@ -67,34 +42,6 @@ fn commit_id_of(repo: &Repo, revset: &str) -> String {
     let ids = resolve_revset(repo, revset).unwrap();
     assert_eq!(ids.len(), 1, "{revset} must resolve to exactly one change");
     repo.get_change(&ids[0]).unwrap().commit_id.0
-}
-
-/// Adds a visible commit off root via an external jj-lib transaction (a new operation),
-/// returning its hex commit id — simulates an external `jj` mutating the repo.
-fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
-    let settings = make_test_settings();
-    let workspace = Workspace::load(
-        &settings,
-        workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
-        &default_working_copy_factories(),
-    )
-    .unwrap();
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
-    let root_commit = repo.store().root_commit();
-    let root_id = root_commit.id().clone();
-
-    let mut tx = repo.start_transaction();
-    let commit = pollster::block_on(
-        tx.repo_mut()
-            .new_commit(vec![root_id], root_commit.tree())
-            .set_description(description)
-            .write(),
-    )
-    .unwrap();
-    pollster::block_on(tx.repo_mut().add_head(&commit)).unwrap();
-    pollster::block_on(tx.commit("test: add external commit")).unwrap();
-    commit.id().hex()
 }
 
 // ── Tiny: node set + CLI-default order (`present(@)` first) ─────────────────

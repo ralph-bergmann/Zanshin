@@ -41,6 +41,15 @@ pub const JJ_ALREADY_JJ_REPO: &str = "jj.already_jj_repo";
 pub const JJ_NOT_A_GIT_REPO: &str = "jj.not_a_git_repo";
 /// AR-P-4: emitted by `repo.rs` when a jj-lib failure occurred during colocated conversion; detail in `context`.
 pub const JJ_CONVERT_FAILED: &str = "jj.convert_failed";
+/// AR-P-4: emitted by `graph.rs` when a revset or prioritize expression is syntactically invalid
+/// or names an unknown function; jj-lib's reason in `context`.
+pub const JJ_REVSET_PARSE_ERROR: &str = "jj.revset_parse_error";
+/// AR-P-4: emitted by `graph.rs` when a revset or prioritize expression is well-formed but a
+/// symbol cannot be resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+pub const JJ_REVSET_RESOLUTION_ERROR: &str = "jj.revset_resolution_error";
+/// AR-P-4: emitted by `graph.rs` when the exhausted revset graph stream left a dangling
+/// non-`Missing` edge (upstream stream contract violation); the dangling target in `context`.
+pub const GRAPH_DANGLING_EDGE: &str = "graph.dangling_edge";
 /// AR-P-4: emitted by `repo.rs` when arming the filesystem watcher fails during
 /// open/init/clone/convert; detail in `context`. Story 3.5 → Reserved, Story 3.6 →
 /// Emitted (single-emission-point: post-arm watch errors ride the event stream

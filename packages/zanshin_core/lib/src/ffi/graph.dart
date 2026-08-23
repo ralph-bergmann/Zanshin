@@ -1,15 +1,63 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
+import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'ffi_buffer.dart';
 
-// No FFI adapter yet: Story 4.6 adds the `zanshin_graph_*` extern fns and the
-// worker command. This file owns the Dart half of the GraphSlice wire contract
-// (models + decoder) so it needs no `dart:ffi` / `bindings.dart` import.
+// This file owns the Dart half of the GraphSlice wire contract: the
+// `zanshin_graph_slice` FFI adapter (Story 4.6), the models, and the decoder.
+// `dart:ffi` stays inside `ffi/` — only the worker isolate calls the adapter.
+
+// ── FFI adapter ───────────────────────────────────────────────────────────────
+
+/// The CLI-default branch-prioritisation revset, pre-filled by
+/// `RepoHandle.graphSlice` and editable by the caller (FR-JJ-17).
+///
+/// Mirrors `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE` — `jj log`'s
+/// `revsets.log-graph-prioritize` default. `'none()'` is the canonical
+/// "no prioritisation" value; a blank expression is a `jj.revset_parse_error`.
+const defaultGraphPrioritize = 'present(@)';
+
+/// Call `zanshin_graph_slice` with the raw `u64` handle, a [revset] and a
+/// [prioritize] expression, and return the FlatBuffers `Envelope` bytes.
+///
+/// Only the worker isolate calls this — raw handles never leave the worker
+/// (Model A, Story 3.9). Both C strings are allocated by Dart via
+/// `toNativeUtf8` and freed by Dart via `calloc.free` (AR-P-5 inbound rule —
+/// Rust only borrows them for the duration of the call).
+///
+/// Errors: `ffi.null_pointer` (never — we always pass valid pointers),
+/// `ffi.invalid_handle`, `jj.revset_parse_error`,
+/// `jj.revset_resolution_error`, `jj.jj_lib_error`, `graph.dangling_edge`.
+Uint8List zanshinGraphSlice(int rawHandle, String revset, String prioritize) {
+  final ffi.Pointer<Utf8> revsetPtr = revset.toNativeUtf8();
+  final ffi.Pointer<Utf8> prioritizePtr = prioritize.toNativeUtf8();
+  try {
+    final ffi.Pointer<ZanshinBuf> token = zanshin_graph_slice(
+      rawHandle,
+      revsetPtr.cast(),
+      prioritizePtr.cast(),
+    );
+    final buf = FfiBuffer.fromToken(token);
+    try {
+      return Uint8List.fromList(buf.bytes);
+    } finally {
+      buf.dispose(); // inner: free the returned buffer
+    }
+  } finally {
+    // outer: free both C strings we allocated
+    calloc
+      ..free(prioritizePtr)
+      ..free(revsetPtr);
+  }
+}
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 
@@ -86,7 +134,7 @@ final class GraphSlice {
 /// Decode a `GraphSlice` `Envelope` buffer into a [GraphSlice].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
-/// go through the worker (Story 4.6).
+/// go through `ZanshinWorker.graphSlice`.
 ///
 /// A `GraphEdgeKind` byte outside `0..=2` surfaces as the generated `StateError`
 /// from `GraphEdgeKind.fromValue`, not as a [ZanshinFfiException]. This is by
@@ -98,7 +146,8 @@ final class GraphSlice {
 @visibleForTesting
 GraphSlice decodeGraphSliceEnvelope(Uint8List bytes) => _decodeGraphSliceEnvelope(bytes);
 
-/// Internal decoder used by production code (wired in Story 4.6).
+/// Internal decoder used by production code in `isolate.dart`
+/// (`ZanshinWorker.graphSlice`).
 GraphSlice decodeGraphSliceEnvelopeInternal(Uint8List bytes) => _decodeGraphSliceEnvelope(bytes);
 
 GraphSlice _decodeGraphSliceEnvelope(Uint8List bytes) {

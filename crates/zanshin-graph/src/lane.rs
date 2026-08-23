@@ -271,6 +271,14 @@ impl LaneAssigner {
         }
     }
 
+    // WHY: these two `expect()`s are FFI-reachable since Story 4.6 (`zanshin_graph_slice` →
+    // `collect_lanes` → `push`), and project rules forbid `expect()` on FFI-reachable library
+    // paths — kept deliberately (decision recorded in deferred-work, 4.1 review item): both
+    // conversions are infallible on the supported 64-bit target (`u32` → `usize` cannot fail;
+    // `usize` → `u32` fails only past 4·10⁹ concurrently open lanes, which no graph of
+    // addressable size produces), so carrying lanes as `usize` internally would add a
+    // conversion at the FFI edge for no reachable failure. `catch_unwind` in `zanshin-ffi`
+    // remains the backstop (`internal.panic`) should the impossible ever happen.
     fn index(lane: u32) -> usize {
         usize::try_from(lane).expect("lane number fits in usize on any supported platform")
     }

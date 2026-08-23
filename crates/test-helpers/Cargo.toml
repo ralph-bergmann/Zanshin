@@ -13,6 +13,14 @@ rust-version.workspace = true
 name = "test_helpers"
 
 [dependencies]
+# WHY: jj-lib + pollster power `add_commit_off_root`, the test-only jj-lib WRITE helper that
+# lets integration tests outside zanshin-jj (e.g. zanshin-ffi's re-derive-after-external-op
+# tests, ADR-0002) mutate a fixture repo through a real jj-lib transaction without shelling
+# to the `jj` CLI (banned). test-helpers is a test-only tool crate — dev-dependency of every
+# consumer, never shipped, coverage `exclude_prefix` — the same category as `xtask`, which
+# the FR-JJ-16 "only zanshin-jj imports jj_lib" ACL explicitly exempts (project-context).
+jj-lib = { workspace = true }
+pollster = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }
 zstd = { workspace = true }

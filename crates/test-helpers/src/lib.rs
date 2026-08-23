@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::Repo as _;
+use jj_lib::settings::UserSettings;
+use jj_lib::workspace::{default_working_copy_factories, Workspace};
 use tempfile::TempDir;
 
 /// Handle returned by [`extract_fixture`]. Keeps the temp directory alive while the caller holds
@@ -49,4 +54,57 @@ pub fn extract_fixture(name: &str) -> Result<FixtureHandle, Box<dyn std::error::
 
     let path = temp.path().to_path_buf();
     Ok(FixtureHandle { _temp: temp, path })
+}
+
+fn make_test_settings() -> UserSettings {
+    let mut config = StackedConfig::with_defaults();
+    config.add_layer(
+        ConfigLayer::parse(
+            ConfigSource::User,
+            r#"
+                [user]
+                name = "Zanshin"
+                email = "zanshin@localhost"
+                [operation]
+                username = "zanshin"
+                hostname = "localhost"
+            "#,
+        )
+        .expect("valid config literal"),
+    );
+    UserSettings::from_config(config).expect("valid settings")
+}
+
+/// Adds a visible commit off root to the jj workspace at `workspace_root` via an external
+/// jj-lib transaction (a new operation in `jj op log`), returning its hex commit id —
+/// simulates an external `jj` process mutating the repo (ADR-0002 re-derive tests).
+///
+/// # Panics
+/// Panics on any jj-lib failure (workspace load, transaction, commit write) — this is a
+/// test helper; a failure here is a broken fixture, not a condition to recover from.
+#[must_use = "the new commit id is what the re-derive assertions compare against"]
+pub fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
+    let settings = make_test_settings();
+    let workspace = Workspace::load(
+        &settings,
+        workspace_root,
+        &jj_lib::repo::StoreFactories::default(),
+        &default_working_copy_factories(),
+    )
+    .unwrap();
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let root_commit = repo.store().root_commit();
+    let root_id = root_commit.id().clone();
+
+    let mut tx = repo.start_transaction();
+    let commit = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(vec![root_id], root_commit.tree())
+            .set_description(description)
+            .write(),
+    )
+    .unwrap();
+    pollster::block_on(tx.repo_mut().add_head(&commit)).unwrap();
+    pollster::block_on(tx.commit("test: add external commit")).unwrap();
+    commit.id().hex()
 }

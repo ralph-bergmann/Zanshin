@@ -1,17 +1,55 @@
 // SPDX-License-Identifier: MIT
 
-//! Graph-slice `FlatBuffers` payload builder (Story 4.2).
+//! Graph-slice `FlatBuffers` payload builder (Story 4.2) and the `zanshin_graph_slice`
+//! FFI wrapper (Story 4.6).
 //!
-//! Serialises the lane rows Story 4.1 emits (`zanshin_graph::Row`) into a
-//! `FlatBuffers` `Envelope` carrying a `GraphSlice` payload — the wire form the
-//! Dart side decodes through its generated typed accessors (ADR-0001). No
-//! `extern "C"` fn lives here yet: Story 4.6 adds the `zanshin_graph_*` wrappers
-//! that call [`graph_slice_to_envelope`].
+//! [`graph_slice_to_envelope`] serialises the lane rows Story 4.1 emits
+//! (`zanshin_graph::Row`) into a `FlatBuffers` `Envelope` carrying a `GraphSlice`
+//! payload — the wire form the Dart side decodes through its generated typed
+//! accessors (ADR-0001). [`zanshin_graph_slice`] borrows the `RepoSession`, passes the
+//! caller's `revset` + `prioritize` through to `zanshin_graph::collect_lanes` (re-derived
+//! from head on every call, nothing retained — ADR-0002) and returns that envelope.
+
+use std::ffi::c_char;
 
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
-use zanshin_graph::{EdgeKind, Row};
+use tracing::debug;
+use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
+use zanshin_jj::RevsetError;
 
+use crate::envelope::{
+    catch, FfiErrorObj, FFI_INVALID_HANDLE, GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR,
+};
 use crate::fbs;
+use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
+use crate::handle::handle_from_raw;
+use crate::repo::RepoSession;
+
+// ── Error mapping ─────────────────────────────────────────────────────────────
+
+fn map_lane_stream_err(e: LaneStreamError) -> FfiErrorObj {
+    match e {
+        LaneStreamError::Revset(RevsetError::ParseError { reason }) => FfiErrorObj {
+            code: JJ_REVSET_PARSE_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        LaneStreamError::Revset(RevsetError::ResolutionError { reason }) => FfiErrorObj {
+            code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        LaneStreamError::Revset(RevsetError::JjLibError(reason)) => FfiErrorObj {
+            code: JJ_JJ_LIB_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        LaneStreamError::Graph(GraphError::DanglingEdge { target }) => FfiErrorObj {
+            code: GRAPH_DANGLING_EDGE.to_owned(),
+            context: Some(target),
+        },
+    }
+}
+
+// ── Row → FlatBuffers builder ─────────────────────────────────────────────────
 
 /// Map `zanshin_graph::EdgeKind` onto the wire enum (order-identical by contract).
 fn edge_kind(kind: EdgeKind) -> fbs::GraphEdgeKind {
@@ -87,12 +125,79 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
+// ── extern "C" ────────────────────────────────────────────────────────────────
+
+/// Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
+/// `jj log` order — the revset-selected slice of the commit graph.
+///
+/// Both expressions are caller pass-throughs (FR-JJ-17): `revset` selects the rows,
+/// `prioritize` is the branch-prioritisation revset (`jj log`'s
+/// `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
+/// a blank expression is a parse error). The graph is re-derived from the head operation
+/// on every call and nothing is retained Rust-side (ADR-0002) — an operation performed by
+/// another process between two calls is visible in the second. There is no windowing:
+/// `total_rows == rows.len()`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `revset` or `prioritize` is a null pointer.
+/// - `ffi.utf8_error` — `revset` or `prioritize` is not valid UTF-8.
+/// - `jj.revset_parse_error` — either expression is syntactically invalid or names an
+///   unknown function; jj-lib's reason in `context`.
+/// - `jj.revset_resolution_error` — either expression names a symbol that cannot be
+///   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+/// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
+/// - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
+///   non-`Missing` edge after the stream was exhausted); the target id in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
+/// handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
+/// makes a stale handle unreachable.
+/// `revset` and `prioritize` must be NUL-terminated UTF-8 C strings owned by the caller
+/// (Dart allocates them via `toNativeUtf8()` and frees them with `calloc.free()` after
+/// this call returns — AR-P-5 inbound rule). Rust only borrows them for the duration of
+/// the call; they are never freed on the Rust side.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_graph_slice(
+    handle: u64,
+    revset: *const c_char,
+    prioritize: *const c_char,
+) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_graph_slice", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        // SAFETY: both are caller-owned NUL-terminated C strings (Dart allocates + frees).
+        let revset = unsafe { cstr_to_string(revset) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
+        let prioritize = unsafe { cstr_to_string(prioritize) }?;
+        let rows = collect_lanes(&session.repo, &revset, &prioritize).map_err(map_lane_stream_err)?;
+        Ok(graph_slice_to_envelope(&rows))
+    });
+    vec_into_token(buf)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use flatbuffers::root as fb_root;
-    use zanshin_graph::{assign_lanes, EdgeKind, GraphEdge, GraphNode, Row, RowEdge};
+    use zanshin_graph::{assign_lanes, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, Row, RowEdge};
+    use zanshin_jj::RevsetError;
 
-    use super::{edge_kind, graph_slice_to_envelope};
+    use super::{edge_kind, graph_slice_to_envelope, map_lane_stream_err};
+    use crate::envelope::{GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR};
     use crate::fbs;
 
     fn edge(target: &str, target_lane: Option<u32>, kind: EdgeKind) -> RowEdge {
@@ -281,5 +386,33 @@ mod tests {
         assert_eq!(edge_kind(EdgeKind::Direct), fbs::GraphEdgeKind::Direct);
         assert_eq!(edge_kind(EdgeKind::Indirect), fbs::GraphEdgeKind::Indirect);
         assert_eq!(edge_kind(EdgeKind::Missing), fbs::GraphEdgeKind::Missing);
+    }
+
+    /// Every `LaneStreamError` variant lands on its registry code with the reason/target
+    /// as `context`. `graph.dangling_edge` is unreachable with real fixtures (the jj-lib
+    /// stream never dangles), so this is the only place that arm is pinned.
+    #[test]
+    fn map_lane_stream_err_maps_every_variant() {
+        let parse = map_lane_stream_err(LaneStreamError::Revset(RevsetError::ParseError {
+            reason: "bad syntax".to_owned(),
+        }));
+        assert_eq!(parse.code, JJ_REVSET_PARSE_ERROR);
+        assert_eq!(parse.context.as_deref(), Some("bad syntax"));
+
+        let resolution = map_lane_stream_err(LaneStreamError::Revset(RevsetError::ResolutionError {
+            reason: "no such bookmark".to_owned(),
+        }));
+        assert_eq!(resolution.code, JJ_REVSET_RESOLUTION_ERROR);
+        assert_eq!(resolution.context.as_deref(), Some("no such bookmark"));
+
+        let jj_lib = map_lane_stream_err(LaneStreamError::Revset(RevsetError::JjLibError("boom".to_owned())));
+        assert_eq!(jj_lib.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(jj_lib.context.as_deref(), Some("boom"));
+
+        let dangling = map_lane_stream_err(LaneStreamError::Graph(GraphError::DanglingEdge {
+            target: "deadbeef".to_owned(),
+        }));
+        assert_eq!(dangling.code, GRAPH_DANGLING_EDGE);
+        assert_eq!(dangling.context.as_deref(), Some("deadbeef"));
     }
 }

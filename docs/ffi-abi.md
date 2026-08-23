@@ -330,15 +330,80 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 ---
 
-## GraphSlice payload (Story 4.2)
+## GraphSlice payload (Story 4.2) and `zanshin_graph_slice` (Story 4.6)
 
 The lane-assigned commit graph (Story 4.1, `zanshin_graph::Row`) crosses FFI
 as a `GraphSlice` member of the `Payload` union (`schemas/envelope.fbs`) — no
-JSON, no `schema_version` (ADR-0001). **No extern fn yet**: Story 4.6 adds the
-`zanshin_graph_*` wrappers that call the Rust builder
+JSON, no `schema_version` (ADR-0001). The exported symbol is
+`zanshin_graph_slice` (Story 4.6, below): it calls
+`zanshin_graph::collect_lanes` and serialises the rows with the Rust builder
 `zanshin_ffi::graph::graph_slice_to_envelope(&[Row]) -> Vec<u8>` (infallible,
-always `ok == true`) and the Dart worker command that feeds
-`decodeGraphSliceEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/graph.dart`).
+always `ok == true`); the Dart worker command `GraphSliceCommand` feeds the
+bytes to `decodeGraphSliceEnvelopeInternal`
+(`packages/zanshin_core/lib/src/ffi/graph.dart`).
+
+### `zanshin_graph_slice`
+
+```c
+ZanshinBuf* zanshin_graph_slice(uint64_t handle, const char* revset, const char* prioritize);
+```
+
+Returns every lane-assigned row of `revset` in the repo referenced by `handle`,
+in `jj log` order — the revset-selected slice of the commit graph. There is
+exactly ONE graph function: no `zanshin_graph_build` / `_close`, no graph
+handle, no `LaneCache` (ADR-0002 AC-4 — nothing to build, rebuild, or close),
+and no `start` / `count` / `limit` / `reversed` (Story 4.4 delivered
+return-all; windowing is deferred past WIP).
+
+**Parameter semantics (FR-JJ-17 pass-through):**
+
+- `handle` — a live `RepoSession` handle from `zanshin_repo_open` / `_init` /
+  `_clone` / `_convert`. Borrowed, never consumed.
+- `revset` — the revset selecting the rows (e.g. `all()`, `heads(all())`).
+  Caller-owned NUL-terminated UTF-8 C string (Dart `toNativeUtf8` / `calloc.free`;
+  Rust only borrows it — AR-P-5 inbound rule).
+- `prioritize` — the branch-prioritisation revset (`jj log`'s
+  `revsets.log-graph-prioritize`). Caller-owned C string, same ownership rule.
+  The CLI default is `present(@)` — the Dart side pre-fills it as
+  `defaultGraphPrioritize` (a mirror of `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`),
+  editable by the caller; `none()` is the canonical "no prioritisation" value;
+  a blank expression is a `jj.revset_parse_error`. Both expressions are passed
+  through verbatim — nothing is baked in.
+
+**Re-derive per call (ADR-0002).** The graph is re-derived from the head
+operation on every call; Rust retains no graph state between calls. An
+operation performed by another process (jj CLI, MCP) between two calls on the
+same handle is visible in the second. The op-heads watcher event stream
+(`OpHeadsChangedEvent`, Story 3.6) is the UI's re-request trigger — the worker
+does **not** auto-re-derive.
+
+**Success payload:** `Envelope<GraphSlice>` (shapes below); `total_rows ==
+rows.length`.
+
+**Error codes:**
+
+| Code                         | Condition                                                                 |
+|------------------------------|---------------------------------------------------------------------------|
+| `ffi.invalid_handle`         | `handle` is `0` / not a live session.                                     |
+| `ffi.null_pointer`           | `revset` or `prioritize` is null.                                         |
+| `ffi.utf8_error`             | `revset` or `prioritize` contains invalid UTF-8.                          |
+| `jj.revset_parse_error`      | Either expression is syntactically invalid / unknown function (incl. blank `prioritize`); reason in `context`. |
+| `jj.revset_resolution_error` | Either expression names a symbol that cannot be resolved; reason in `context`. |
+| `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
+| `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
+
+An error envelope never carries partial rows.
+
+**Dart worker integration:**
+
+- `GraphSliceCommand(handleId, revset, prioritize)` — worker looks up the raw
+  handle (unknown id → `ffi.invalid_handle` envelope), calls
+  `zanshinGraphSlice(raw, revset, prioritize)` (`lib/src/ffi/graph.dart`), and
+  replies `BufferResult` with the `Envelope<GraphSlice>` bytes.
+- `ZanshinWorker.graphSlice(handleId, {required revset, required prioritize})`
+  → `GraphSlice` via `decodeGraphSliceEnvelopeInternal`.
+- `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize})`
+  — closed-handle guard (`StateError`), pre-fills the CLI default, delegates.
 
 ```
 enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_graph::EdgeKind order
@@ -382,7 +447,9 @@ GraphSlice {
   `GraphEdgeKind` byte surfaces as the generated `StateError` (cdylib/bindings
   version-skew or corruption — crash loudly, not recoverable; the same by-design
   rule as `RepoKind` in `repo_detect.dart`).
-- **Reachability (until 4.6).** The Dart models/decoder in `graph.dart` are not
-  exported from `package:zanshin_core/zanshin_core.dart` and no worker command
-  feeds them yet; until Story 4.6 wires the extern fn they are reachable only via
-  the `src/` import used by the decode-contract tests.
+- **Reachability.** The graph is reachable via the worker command
+  (`GraphSliceCommand` → `ZanshinWorker.graphSlice` / `RepoHandle.graphSlice`,
+  Story 4.6). The Dart models/decoder in `graph.dart` are — like every other
+  noun's models (`Change`, `WorkingCopyStatus`, `Operation`, `RepoHandle`) —
+  not exported from `package:zanshin_core/zanshin_core.dart` by convention; the
+  decode-contract tests import them via `src/`.

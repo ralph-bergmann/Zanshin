@@ -2,6 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
+import '../ffi/graph.dart' show GraphSlice, defaultGraphPrioritize;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -87,6 +88,27 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.getChange(_handleId, changeId);
+  }
+
+  /// Read the lane-assigned commit graph for [revset] (Story 4.6).
+  ///
+  /// [prioritize] is the branch-prioritisation revset, pre-filled with the
+  /// CLI default [defaultGraphPrioritize] (`present(@)`) and editable by the
+  /// caller (FR-JJ-17); `'none()'` means no prioritisation. The graph is
+  /// re-derived from head on every call (ADR-0002) — re-request on an
+  /// `OpHeadsChangedEvent` to pick up external operations.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`).
+  Future<GraphSlice> graphSlice({
+    required String revset,
+    String prioritize = defaultGraphPrioritize,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.graphSlice(_handleId, revset: revset, prioritize: prioritize);
   }
 
   /// Read the operation log for this repository.

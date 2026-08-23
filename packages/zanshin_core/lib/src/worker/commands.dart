@@ -140,6 +140,31 @@ final class GetChangeCommand extends WorkerCommand {
   final String changeId;
 }
 
+/// Read the lane-assigned commit graph for [revset] in the repo identified by
+/// [handleId] (Story 4.6).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinGraphSlice(raw, revset, prioritize)`, and replies
+/// with a `BufferResult` carrying the FlatBuffers `Envelope<GraphSlice>` bytes.
+final class GraphSliceCommand extends WorkerCommand {
+  const GraphSliceCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revset,
+    required this.prioritize,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revset selecting the rows (caller pass-through, FR-JJ-17).
+  final String revset;
+
+  /// Branch-prioritisation revset (caller pass-through; `RepoHandle.graphSlice`
+  /// pre-fills the CLI default `present(@)`; `none()` = no prioritisation).
+  final String prioritize;
+}
+
 /// Detect the repository kind at [path] (FR-JJ-17).
 ///
 /// Handle-free: the worker calls `zanshinRepoDetect` directly and replies with

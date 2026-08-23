@@ -22,6 +22,7 @@ import '../ffi/events.dart'
         closeEventSink,
         registerEventSink,
         unregisterEventSink;
+import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_forwarder.dart';
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
@@ -513,6 +514,38 @@ class ZanshinWorker {
     return repo_ffi_change.decodeChangeEnvelopeInternal(bytes);
   }
 
+  /// Read the lane-assigned commit graph for [revset] in the repo identified by
+  /// [handleId] (Story 4.6).
+  ///
+  /// Both expressions are caller pass-throughs (FR-JJ-17): [prioritize] is the
+  /// branch-prioritisation revset (`RepoHandle.graphSlice` pre-fills the CLI
+  /// default; `none()` = no prioritisation). The graph is re-derived from head
+  /// on every call — nothing is cached here or in Rust (ADR-0002); the UI
+  /// re-requests when [events] reports an `OpHeadsChangedEvent`.
+  ///
+  /// Sends a [GraphSliceCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<GraphSlice>` bytes into a [repo_ffi_graph.GraphSlice].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`).
+  /// Completes with a [StateError] after [close]. The close-guard [StateError]
+  /// is delivered synchronously by [RepoHandle.graphSlice].
+  Future<repo_ffi_graph.GraphSlice> graphSlice(
+    int handleId, {
+    required String revset,
+    required String prioritize,
+  }) async {
+    final Uint8List bytes = await send(
+      GraphSliceCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revset: revset,
+        prioritize: prioritize,
+      ),
+    );
+    return repo_ffi_graph.decodeGraphSliceEnvelopeInternal(bytes);
+  }
+
   /// Read the operation log for the repo identified by [handleId].
   ///
   /// `limit < 0` returns all operations; `limit >= 0` returns at most [limit]
@@ -723,6 +756,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_change.zanshinChange(raw, changeId);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GraphSliceCommand(:final int handleId, :final String revset, :final String prioritize):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GraphSliceCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_graph.zanshinGraphSlice(raw, revset, prioritize);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

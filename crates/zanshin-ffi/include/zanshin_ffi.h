@@ -287,6 +287,46 @@ void zanshin_buffer_free_token(ZanshinBuf *token);
 void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
 
 /**
+ * Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
+ * `jj log` order — the revset-selected slice of the commit graph.
+ *
+ * Both expressions are caller pass-throughs (FR-JJ-17): `revset` selects the rows,
+ * `prioritize` is the branch-prioritisation revset (`jj log`'s
+ * `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
+ * a blank expression is a parse error). The graph is re-derived from the head operation
+ * on every call and nothing is retained Rust-side (ADR-0002) — an operation performed by
+ * another process between two calls is visible in the second. There is no windowing:
+ * `total_rows == rows.len()`.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `revset` or `prioritize` is a null pointer.
+ * - `ffi.utf8_error` — `revset` or `prioritize` is not valid UTF-8.
+ * - `jj.revset_parse_error` — either expression is syntactically invalid or names an
+ *   unknown function; jj-lib's reason in `context`.
+ * - `jj.revset_resolution_error` — either expression names a symbol that cannot be
+ *   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+ * - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
+ * - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
+ *   non-`Missing` edge after the stream was exhausted); the target id in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+ * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
+ * handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
+ * makes a stale handle unreachable.
+ * `revset` and `prioritize` must be NUL-terminated UTF-8 C strings owned by the caller
+ * (Dart allocates them via `toNativeUtf8()` and frees them with `calloc.free()` after
+ * this call returns — AR-P-5 inbound rule). Rust only borrows them for the duration of
+ * the call; they are never freed on the Rust side.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_graph_slice(uint64_t handle, const char *revset, const char *prioritize);
+
+/**
  * Forward a single log record from Dart into the Rust `tracing` sink (AR-P-5).
  *
  * Infallible by contract: a null/invalid argument or an internal panic **drops
