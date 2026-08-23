@@ -16,6 +16,8 @@ analyzer:
     # in package:zanshin_core; the app keeps only the inject_generator output, which
     # imports zanshin_core internals (and would otherwise trip implementation_imports).
     - lib/main.inject.dart # inject_generator output
+    - build/**
+    - macos/**
 
 formatter:
   page_width: 120
