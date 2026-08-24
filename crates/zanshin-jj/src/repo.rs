@@ -103,6 +103,11 @@ impl Repo {
         &self.workspace
     }
 
+    /// Returns a mutable reference to the underlying jj workspace (crate-internal use only).
+    pub(crate) fn workspace_mut(&mut self) -> &mut Workspace {
+        &mut self.workspace
+    }
+
     /// Returns the user settings used to open this workspace (crate-internal use only).
     pub(crate) fn settings(&self) -> &UserSettings {
         &self.settings
@@ -255,6 +260,78 @@ impl Repo {
         visit: impl FnMut(crate::GraphNode) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
         crate::graph::walk_graph(self, revset, prioritize, short_prefixes, visit)
+    }
+
+    /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
+    ///
+    /// Opens a jj-lib transaction, mutates via `tx.repo_mut()`, and commits with a
+    /// CLI-parity op-log description (NFR-R-2) — jj-lib only, never shells to `jj`
+    /// (AR-AP-1). `description` may be empty (jj convention).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::InvalidInput`] — `change_id` resolves to the root commit.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
+    // implementation only needs to borrow it, but the public API takes ownership.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn describe(
+        &mut self,
+        change_id: crate::ChangeId,
+        description: &str,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::mutate::describe(self.workspace_mut(), &change_id, description)
+    }
+
+    /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit
+    /// when `parents.len() > 1` — and switches the working copy to it.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `parents` is empty.
+    /// - [`crate::MutateError::ChangeNotFound`] — a parent id is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn new_change(&mut self, parents: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::mutate::new_change(self.workspace_mut(), parents)
+    }
+
+    /// Switches the working copy to `change_id` without creating a new commit
+    /// (FR-JJ-10a).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
+    // implementation only needs to borrow it, but the public API takes ownership.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn edit(&mut self, change_id: crate::ChangeId) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::mutate::edit(self.workspace_mut(), &change_id)
+    }
+
+    /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
+    /// bookmarks that pointed only at the abandoned commits (FR-JJ-10a). If `@` itself
+    /// is among `change_ids`, jj-lib creates a fresh empty commit at the (merged)
+    /// parent(s) and repoints the working copy at it automatically — its change id is
+    /// reported in the result's `new_change_ids`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `change_ids` is empty, or resolves the
+    ///   root commit.
+    /// - [`crate::MutateError::ChangeNotFound`] — a target id is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn abandon(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::mutate::abandon(self.workspace_mut(), change_ids)
     }
 
     /// Opens an existing jj workspace rooted at `path`.

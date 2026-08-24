@@ -68,6 +68,10 @@ type _CommitRef = zanshin_jj::CommitRef;
 type _ConfigError = zanshin_jj::ConfigError;
 type _LogDefaults = zanshin_jj::LogDefaults;
 
+// mutate (Story 6.1)
+type _MutationResult = zanshin_jj::MutationResult;
+type _MutateError = zanshin_jj::MutateError;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 /// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
@@ -100,6 +104,17 @@ fn sample_commit_meta() -> zanshin_jj::CommitMeta {
         divergent: false,
         root: false,
         description_first_line: String::new(),
+    }
+}
+
+/// Names every `MutationResult` field by its public path (epics.md Story 6.1's AC), so a
+/// field rename, reorder, or type change breaks this test at compile time.
+fn sample_mutation_result() -> zanshin_jj::MutationResult {
+    zanshin_jj::MutationResult {
+        new_op_id: zanshin_jj::OperationId(String::new()),
+        new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
+        abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
+        working_copy_change_id: zanshin_jj::ChangeId(String::new()),
     }
 }
 
@@ -185,4 +200,8 @@ fn api_surface_resolves() {
         path: std::path::PathBuf::new(),
     };
     _ = zanshin_jj::RepoError::ConvertFailed { reason: String::new() };
+
+    // mutate (Story 6.1)
+    _ = zanshin_jj::MutateError::Backend(String::new());
+    _ = sample_mutation_result();
 }
