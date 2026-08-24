@@ -46,9 +46,7 @@ development_status:
   epic-3: done
 
   # Epic 4: zanshin-graph — DAG Lane Assignment
-  epic-4: done  # 4-8 + 4-9 done 2026-08-24, closing the 2026-08-23 reopen
-  4-8-log-rows-cli-parity: done  # CLI-parity log rows: metadata-enriched, self-contained GraphSlice rows (commits 03a2009, a5d20bb)
-  4-9-config-revset-aliases: done  # honor jj config [revset-aliases] + effective log defaults (commit 095ba8f)
+  epic-4: done
 
   # Epic 5: zanshin-diff — Word-Diff + Syntax Highlight
   epic-5: backlog
@@ -63,16 +61,7 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Write Path & extern "C" Mutation Exposure
-  epic-6: done  # 6-1, 6-2, 6-4a, 6-5, 6-6 done 2026-08-24
-  6-1-p0-essentials-mutations-mutate-rs-describe-new-edit-abandon: done  # describe/new/edit/abandon + concurrent-write smoke (commit 7578cb2)
-  6-2-op-log-undo-p0: done  # thin op-restore Repo::undo() (commit 57ae0d0)
-  # 6-3-conflict-ops-conflict-rs: DELETED (WIP-rework 2026-05-17)
-  6-4a-git-fetch-with-progress-callback: done  # renamed from 6-4 (SHRINK: no push) (commit be5b3b2)
-  6-5-ffi-mutation-surface-zanshin-ffi-src-repo-rs-write-extensions: done  # 6 extern "C" wrappers + FlatBuffers MutationResult table (ADR-0001) (commit 0f5be4c)
-  6-6-schemas-change-schema-json-extension-for-mutations: done  # renamed (no .v1, no versioning); substance already satisfied by 6.5/3.4b, verification-only (commit b203f38)
-  # 6-7-op-log-visibility-test-nfr-r-2: DELETED (WIP-rework 2026-05-17)
-  # 6-8 through 6-12: DELETED (WIP-rework 2026-05-17 — all were already deferred)
-  epic-6-retrospective: optional
+  epic-6: done
 
   # Epic 7: zanshin-mcp Binary
   epic-7: backlog
