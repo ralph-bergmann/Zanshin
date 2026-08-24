@@ -72,6 +72,9 @@ type _LogDefaults = zanshin_jj::LogDefaults;
 type _MutationResult = zanshin_jj::MutationResult;
 type _MutateError = zanshin_jj::MutateError;
 
+// remotes: git_fetch progress (Story 6.4a)
+type _ProgressEvent = zanshin_jj::ProgressEvent;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 /// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
@@ -138,6 +141,15 @@ fn api_surface_resolves() {
     _ = zanshin_jj::BookmarkError::Backend(String::new());
     _ = zanshin_jj::RemoteError::Backend(String::new());
     _ = zanshin_jj::RevsetError::JjLibError(String::new());
+    // remotes: git_fetch progress callback (Story 6.4a) — pin the callback type and
+    // the exact `Repo::git_fetch` signature.
+    let _: &zanshin_jj::ProgressFn = &|_: zanshin_jj::ProgressEvent| {};
+    _ = zanshin_jj::Repo::git_fetch
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            &zanshin_jj::ProgressFn,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
     // Story 4.9: the variant `zanshin-ffi::map_lane_stream_err` matches on — pin its shape.
     _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
 
@@ -207,4 +219,8 @@ fn api_surface_resolves() {
 
     // op-log undo (Story 6.2)
     _ = zanshin_jj::MutateError::NothingToUndo;
+
+    // git_fetch (Story 6.4a)
+    _ = zanshin_jj::MutateError::RemoteNotFound { name: String::new() };
+    _ = zanshin_jj::MutateError::NetworkError { reason: String::new() };
 }

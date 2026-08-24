@@ -353,6 +353,31 @@ impl Repo {
         crate::op_log::undo(self.workspace_mut())
     }
 
+    /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
+    ///
+    /// Always fetches ALL branches and tags — there is no branch/tag filter
+    /// parameter (unlike the CLI's `jj git fetch -b`/`--branch`). Mirrors
+    /// [`Repo::clone`]'s own fetch step, but forwards real progress via `progress`
+    /// instead of discarding it, and never moves `@` — fetch only updates
+    /// remote-tracking refs. A fresh operation is committed even when nothing changed
+    /// (CLI parity).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::RemoteNotFound`] — `remote_name` has no configured git
+    ///   remote, or the repo has no git backend at all.
+    /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
+    ///   failed.
+    /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_fetch(
+        &mut self,
+        remote_name: &str,
+        progress: &crate::ProgressFn,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, progress)
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors

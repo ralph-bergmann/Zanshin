@@ -30,13 +30,16 @@ pub struct MutationResult {
     /// abandons `@` itself. A rewrite ([`describe`]) or a pointer move ([`edit`]) never
     /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
-    /// (it restores state, it doesn't mint anything).
+    /// (it restores state, it doesn't mint anything) and for
+    /// [`crate::Repo::git_fetch`] (it imports remote refs; it doesn't mint or
+    /// abandon a change in the sense these fields track).
     pub new_change_ids: Vec<ChangeId>,
     /// The change ids [`abandon`]'s caller passed in, echoed verbatim. Always empty for
     /// `describe`/`new_change`/`edit` — jj-lib's own side effects (e.g. `edit()`'s
     /// implicit abandon of a discardable previous `@`) are never reflected here. Always
     /// empty for [`crate::op_log::undo`] too (it restores state, it doesn't abandon
-    /// anything).
+    /// anything), and for [`crate::Repo::git_fetch`] (same reason as
+    /// `new_change_ids` above).
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
@@ -74,6 +77,21 @@ pub enum MutateError {
     /// engineer that state via direct `op_heads` file manipulation).
     #[error("nothing to undo")]
     NothingToUndo,
+    /// [`crate::Repo::git_fetch`] was called with a remote name that has no
+    /// configured git remote — or the repo has no git backend at all, in which case
+    /// no remote can exist categorically (FR-JJ-13).
+    #[error("no such remote: {name}")]
+    RemoteNotFound {
+        /// The remote name that could not be resolved.
+        name: String,
+    },
+    /// [`crate::Repo::git_fetch`]'s underlying `git` subprocess failed — a network,
+    /// authentication, or transport error. No operation is committed (FR-JJ-13).
+    #[error("network error: {reason}")]
+    NetworkError {
+        /// The underlying `git`/jj-lib failure message, forwarded verbatim.
+        reason: String,
+    },
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes
     /// the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]

@@ -50,7 +50,7 @@ pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use mutate::{MutateError, MutationResult};
 pub use op_log::{OpLogError, Operation, OperationId};
-pub use remotes::{Remote, RemoteError};
+pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
