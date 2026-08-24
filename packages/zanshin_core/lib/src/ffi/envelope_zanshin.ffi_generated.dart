@@ -268,7 +268,8 @@ enum PayloadTypeId {
   RepoDetect(8),
   WatcherEvent(9),
   Progress(10),
-  GraphSlice(11);
+  GraphSlice(11),
+  LogDefaults(12);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -299,6 +300,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Progress;
       case 11:
         return PayloadTypeId.GraphSlice;
+      case 12:
+        return PayloadTypeId.LogDefaults;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -307,7 +310,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 11;
+  static const int maxValue = 12;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2773,6 +2776,118 @@ class GraphSliceObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
+///  CLI would apply, after their `[revsets]` / `[ui]` config overrides.
+///
+///  Offered as pre-fills for zanshin_graph_slice's pass-through parameters
+///  (FR-JJ-17); nothing is applied silently, the caller decides. `short_prefixes`
+///  falls back to `log` when `revsets.short-prefixes` is ABSENT; an explicit
+///  empty string means disambiguation is DISABLED and is returned verbatim.
+class LogDefaults {
+  LogDefaults._(this._bc, this._bcOffset);
+  factory LogDefaults(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<LogDefaults> reader = _LogDefaultsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get log => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get logGraphPrioritize => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get shortPrefixes => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  bool get syntheticElided => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'LogDefaults{log: ${log}, logGraphPrioritize: ${logGraphPrioritize}, shortPrefixes: ${shortPrefixes}, syntheticElided: ${syntheticElided}}';
+  }
+}
+
+class _LogDefaultsReader extends fb.TableReader<LogDefaults> {
+  const _LogDefaultsReader();
+
+  @override
+  LogDefaults createObject(fb.BufferContext bc, int offset) => LogDefaults._(bc, offset);
+}
+
+class LogDefaultsBuilder {
+  LogDefaultsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addLogOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLogGraphPrioritizeOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addShortPrefixesOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSyntheticElided(bool? syntheticElided) {
+    fbBuilder.addBool(3, syntheticElided);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class LogDefaultsObjectBuilder extends fb.ObjectBuilder {
+  final String? _log;
+  final String? _logGraphPrioritize;
+  final String? _shortPrefixes;
+  final bool? _syntheticElided;
+
+  LogDefaultsObjectBuilder({
+    String? log,
+    String? logGraphPrioritize,
+    String? shortPrefixes,
+    bool? syntheticElided,
+  }) : _log = log,
+       _logGraphPrioritize = logGraphPrioritize,
+       _shortPrefixes = shortPrefixes,
+       _syntheticElided = syntheticElided;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? logOffset = _log == null ? null : fbBuilder.writeString(_log!);
+    final int? logGraphPrioritizeOffset = _logGraphPrioritize == null
+        ? null
+        : fbBuilder.writeString(_logGraphPrioritize!);
+    final int? shortPrefixesOffset = _shortPrefixes == null ? null : fbBuilder.writeString(_shortPrefixes!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, logOffset);
+    fbBuilder.addOffset(1, logGraphPrioritizeOffset);
+    fbBuilder.addOffset(2, shortPrefixesOffset);
+    fbBuilder.addBool(3, _syntheticElided);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -2824,6 +2939,8 @@ class Envelope {
         return Progress.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 11:
         return GraphSlice.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 12:
+        return LogDefaults.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

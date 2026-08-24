@@ -30,6 +30,7 @@
 pub(crate) mod bookmarks;
 pub(crate) mod change;
 pub(crate) mod commit_meta;
+pub(crate) mod config;
 pub(crate) mod convert;
 pub(crate) mod detect;
 pub(crate) mod graph;
@@ -42,6 +43,7 @@ pub(crate) mod status;
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use commit_meta::{CommitMeta, CommitRef};
+pub use config::{ConfigError, LogDefaults};
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};

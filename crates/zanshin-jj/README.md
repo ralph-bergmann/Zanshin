@@ -117,10 +117,15 @@ The stream is lazy and re-derived from the head operation on every call
 (ADR-0002 — no cache, nothing retained); `visit` returning `ControlFlow::Break`
 stops it early (`Ok(Break)`), exhaustion yields `Ok(Continue)`. Parse /
 resolution / jj-lib failures of either expression surface as `RevsetError`.
-The jj CLI's builtin `[revset-aliases]` are all defined (`trunk()`,
-`builtin_immutable_heads()`, `immutable_heads()`, `immutable()`, `mutable()`,
-`visible()`, `hidden()`), so `DEFAULT_LOG_REVSET` — the CLI's `revsets.log`
-default and the pre-fill for `revset` / `short_prefixes` — parses.
+Aliases are resolved from the repo's effective jj config, builtin defaults
+included (Story 4.9): `config.rs` rebuilds the CLI's layer stack per operation —
+Zanshin's builtin default layer, then the user config (`JJ_CONFIG` or platform
+discovery), the repo layer and the workspace layer — and every parse site feeds
+from it. So `DEFAULT_LOG_REVSET` (the CLI's `revsets.log` default and the
+pre-fill for `revset` / `short_prefixes`) parses out of the box, while a user's
+`[revset-aliases]` override of `trunk()` or `immutable_heads()`, or a
+brand-new `wip()`, resolves exactly as it does in their CLI. `Repo::log_defaults()`
+returns the four *effective* `jj log` defaults for the UI to pre-fill.
 `zanshin-graph`'s `stream_lanes` feeds this stream through its lane assigner.
 
 ## Integration-test fixture pattern

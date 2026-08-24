@@ -589,13 +589,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 11;
+        pub const ENUM_MAX_PAYLOAD: u8 = 12;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 12] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 13] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -608,6 +608,7 @@ pub mod zanshin {
             Payload::WatcherEvent,
             Payload::Progress,
             Payload::GraphSlice,
+            Payload::LogDefaults,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -627,9 +628,10 @@ pub mod zanshin {
             pub const WatcherEvent: Self = Self(9);
             pub const Progress: Self = Self(10);
             pub const GraphSlice: Self = Self(11);
+            pub const LogDefaults: Self = Self(12);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 11;
+            pub const ENUM_MAX: u8 = 12;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -643,6 +645,7 @@ pub mod zanshin {
                 Self::WatcherEvent,
                 Self::Progress,
                 Self::GraphSlice,
+                Self::LogDefaults,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -659,6 +662,7 @@ pub mod zanshin {
                     Self::WatcherEvent => Some("WatcherEvent"),
                     Self::Progress => Some("Progress"),
                     Self::GraphSlice => Some("GraphSlice"),
+                    Self::LogDefaults => Some("LogDefaults"),
                     _ => None,
                 }
             }
@@ -4737,6 +4741,195 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum LogDefaultsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
+        /// CLI would apply, after their `[revsets]` / `[ui]` config overrides.
+        ///
+        /// Offered as pre-fills for zanshin_graph_slice's pass-through parameters
+        /// (FR-JJ-17); nothing is applied silently, the caller decides. `short_prefixes`
+        /// falls back to `log` when `revsets.short-prefixes` is ABSENT; an explicit
+        /// empty string means disambiguation is DISABLED and is returned verbatim.
+        pub struct LogDefaults<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for LogDefaults<'a> {
+            type Inner = LogDefaults<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> LogDefaults<'a> {
+            pub const VT_LOG: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LOG_GRAPH_PRIORITIZE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SHORT_PREFIXES: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SYNTHETIC_ELIDED: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                LogDefaults { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args LogDefaultsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<LogDefaults<'bldr>> {
+                let mut builder = LogDefaultsBuilder::new(_fbb);
+                if let Some(x) = args.short_prefixes {
+                    builder.add_short_prefixes(x);
+                }
+                if let Some(x) = args.log_graph_prioritize {
+                    builder.add_log_graph_prioritize(x);
+                }
+                if let Some(x) = args.log {
+                    builder.add_log(x);
+                }
+                builder.add_synthetic_elided(args.synthetic_elided);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn log(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(LogDefaults::VT_LOG, None)
+                }
+            }
+            #[inline]
+            pub fn log_graph_prioritize(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(LogDefaults::VT_LOG_GRAPH_PRIORITIZE, None)
+                }
+            }
+            #[inline]
+            pub fn short_prefixes(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(LogDefaults::VT_SHORT_PREFIXES, None)
+                }
+            }
+            #[inline]
+            pub fn synthetic_elided(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(LogDefaults::VT_SYNTHETIC_ELIDED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for LogDefaults<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("log", Self::VT_LOG, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "log_graph_prioritize",
+                        Self::VT_LOG_GRAPH_PRIORITIZE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "short_prefixes",
+                        Self::VT_SHORT_PREFIXES,
+                        false,
+                    )?
+                    .visit_field::<bool>("synthetic_elided", Self::VT_SYNTHETIC_ELIDED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct LogDefaultsArgs<'a> {
+            pub log: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub log_graph_prioritize: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub short_prefixes: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub synthetic_elided: bool,
+        }
+        impl<'a> Default for LogDefaultsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                LogDefaultsArgs {
+                    log: None,
+                    log_graph_prioritize: None,
+                    short_prefixes: None,
+                    synthetic_elided: false,
+                }
+            }
+        }
+
+        pub struct LogDefaultsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> LogDefaultsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_log(&mut self, log: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(LogDefaults::VT_LOG, log);
+            }
+            #[inline]
+            pub fn add_log_graph_prioritize(&mut self, log_graph_prioritize: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    LogDefaults::VT_LOG_GRAPH_PRIORITIZE,
+                    log_graph_prioritize,
+                );
+            }
+            #[inline]
+            pub fn add_short_prefixes(&mut self, short_prefixes: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(LogDefaults::VT_SHORT_PREFIXES, short_prefixes);
+            }
+            #[inline]
+            pub fn add_synthetic_elided(&mut self, synthetic_elided: bool) {
+                self.fbb_
+                    .push_slot::<bool>(LogDefaults::VT_SYNTHETIC_ELIDED, synthetic_elided, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> LogDefaultsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                LogDefaultsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<LogDefaults<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for LogDefaults<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("LogDefaults");
+                ds.field("log", &self.log());
+                ds.field("log_graph_prioritize", &self.log_graph_prioritize());
+                ds.field("short_prefixes", &self.short_prefixes());
+                ds.field("synthetic_elided", &self.synthetic_elided());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -4994,6 +5187,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_log_defaults(&self) -> Option<LogDefaults<'a>> {
+                if self.data_type() == Payload::LogDefaults {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { LogDefaults::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -5056,6 +5264,11 @@ pub mod zanshin {
                             Payload::GraphSlice => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<GraphSlice>>(
                                     "Payload::GraphSlice",
+                                    pos,
+                                ),
+                            Payload::LogDefaults => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<LogDefaults>>(
+                                    "Payload::LogDefaults",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -5201,6 +5414,13 @@ pub mod zanshin {
                     }
                     Payload::GraphSlice => {
                         if let Some(x) = self.data_as_graph_slice() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::LogDefaults => {
+                        if let Some(x) = self.data_as_log_defaults() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

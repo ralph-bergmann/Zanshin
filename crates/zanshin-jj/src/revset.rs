@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 
 use futures::TryStreamExt as _;
+use jj_lib::config::StackedConfig;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
@@ -11,6 +13,7 @@ use jj_lib::revset::{
     RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
 
+use crate::config::ConfigError;
 use crate::{ChangeId, Repo};
 
 /// The jj CLI's default `revsets.log` (`cli/src/config/revsets.toml` at v0.42.0) — the
@@ -18,8 +21,9 @@ use crate::{ChangeId, Repo};
 /// `revsets.short-prefixes`.
 ///
 /// A pre-fill for the caller's `revset` / `short_prefixes` parameters; nothing in this
-/// crate applies it silently (FR-JJ-17). It parses only because [`build_aliases_map`]
-/// defines the CLI's builtin aliases.
+/// crate applies it silently (FR-JJ-17). It parses only because the builtin config layer
+/// defines the CLI's `[revset-aliases]`. The repo's own effective value — which a user's
+/// config may override — is [`Repo::log_defaults`].
 pub const DEFAULT_LOG_REVSET: &str = "present(@) | ancestors(immutable_heads().., 2) | trunk()";
 
 /// Errors returned by [`resolve_revset`] and [`Repo::walk_graph`].
@@ -42,6 +46,10 @@ pub enum RevsetError {
     /// so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
     JjLibError(String),
+    /// The repo's effective jj config could not be read (Story 4.9) — a malformed file, a
+    /// bad `config-id`, or a wrong-typed value. Never a silent fall-back to the builtins.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
 }
 
 /// Resolve a jj revset expression to a deduplicated, fully materialized list of change ids.
@@ -56,6 +64,9 @@ pub enum RevsetError {
 ///   (e.g. `bogus_function()`).
 /// - [`RevsetError::ResolutionError`] — a symbol cannot be resolved: unknown bookmark/tag
 ///   (`nonexistent-branch`), no working-copy commit for `@`, or an unmatched/ambiguous id.
+/// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable,
+///   or a layer's `revset-aliases` is not a table. A single bad alias ENTRY is not an
+///   error: like the CLI, it warns and is skipped.
 /// - [`RevsetError::JjLibError`] — an internal jj-lib evaluation or backend failure.
 #[must_use = "the resolved change ids are the result of this call"]
 pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetError> {
@@ -84,17 +95,20 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     Ok(out)
 }
 
-/// Parses `expr` in this workspace's revset context, building a fresh alias map.
+/// Parses `expr` in this workspace's revset context, building a fresh alias map from the
+/// repo's effective jj config.
 ///
 /// Convenience wrapper over [`parse_revset_with`] for call sites that parse a single
-/// expression; a call site parsing several (the graph walk) builds the map once and
-/// calls [`parse_revset_with`] directly.
+/// expression; a call site parsing several (the graph walk) loads the config and builds the
+/// map once, then calls [`parse_revset_with`] directly.
 ///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+/// - [`RevsetError::Config`] — the repo's jj config is malformed or unreadable.
 pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    let aliases_map = build_aliases_map()?;
+    let config = crate::config::load(repo)?;
+    let aliases_map = build_aliases_map(&config)?;
     parse_revset_with(repo, &aliases_map, expr)
 }
 
@@ -163,48 +177,70 @@ pub(crate) fn evaluate_revset<'r>(
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
 
-/// The jj CLI's builtin `[revset-aliases]` table, verbatim from
-/// `cli/src/config/revsets.toml` at v0.42.0 — the single seam a future config layer
-/// (Story 4.9) overrides.
+/// Builds the `RevsetAliasesMap` from every `[revset-aliases]` table in `config`, lowest
+/// layer first — Zanshin's builtin defaults, then the user, repo and workspace layers.
 ///
-/// # WHY: jj-lib ships none of these as built-in functions — they are default aliases
-/// defined by the jj CLI binary, so without them `parse("trunk()..@")` or the default
-/// log revset return `NoSuchFunction`.
-const BUILTIN_ALIASES: &[(&str, &str)] = &[
-    (
-        "trunk()",
-        "latest(\
-            remote_bookmarks(exact:\"main\", exact:\"origin\") | \
-            remote_bookmarks(exact:\"master\", exact:\"origin\") | \
-            remote_bookmarks(exact:\"trunk\", exact:\"origin\") | \
-            remote_bookmarks(exact:\"main\", exact:\"upstream\") | \
-            remote_bookmarks(exact:\"master\", exact:\"upstream\") | \
-            remote_bookmarks(exact:\"trunk\", exact:\"upstream\") | \
-            root()\
-        )",
-    ),
-    (
-        "builtin_immutable_heads()",
-        "trunk() | tags() | untracked_remote_bookmarks()",
-    ),
-    ("immutable_heads()", "builtin_immutable_heads()"),
-    ("immutable()", "::(immutable_heads() | root())"),
-    ("mutable()", "~immutable()"),
-    ("visible()", "::visible_heads()"),
-    ("hidden()", "~visible()"),
-];
-
-/// Builds a `RevsetAliasesMap` seeded with [`BUILTIN_ALIASES`].
+/// Mirrors the CLI's `load_aliases_map` (`cli/src/config.rs:930-981`): insertion is keyed
+/// by (name, arity), so a user's `trunk()` REPLACES the builtin while a user's `trunk(x)`
+/// merely adds an overload. A value may be a plain string or a table with a `definition`
+/// string key.
+///
+/// The CLI's two failure levels are mirrored exactly, and they differ:
+///
+/// - **The TABLE level is a hard error.** A layer whose `revset-aliases` is not a table at
+///   all aborts the load (`cli/src/config.rs:943-953` returns `ConfigGetError::Type`).
+///   Skipping it would silently fall back to the builtin aliases — the one behaviour this
+///   story exists to prevent.
+/// - **The ENTRY level warns and continues** (`cli/src/config.rs:964-977`): a non-string
+///   value or a declaration jj-lib's parser rejects is logged and skipped, and every other
+///   alias still loads. One messy entry must not take down the whole table.
+///
+/// jj-lib does not check the DEFINITION (`dsl_util.rs:594-597`), so a malformed `defn`
+/// surfaces later still, when the alias is substituted.
 ///
 /// # Errors
 ///
-/// - [`RevsetError::ParseError`] — an alias definition is unparseable (a bug in the
-///   table above, not caller input).
-pub(crate) fn build_aliases_map() -> Result<RevsetAliasesMap, RevsetError> {
+/// - [`ConfigError::Load`] — a config layer's `revset-aliases` key is not a table.
+pub(crate) fn build_aliases_map(config: &StackedConfig) -> Result<RevsetAliasesMap, ConfigError> {
     let mut map = RevsetAliasesMap::new();
-    for (decl, defn) in BUILTIN_ALIASES {
-        map.insert(*decl, *defn, None)
-            .map_err(|e| RevsetError::ParseError { reason: e.to_string() })?;
+    for layer in config.layers() {
+        let table = match layer.look_up_table("revset-aliases") {
+            Ok(Some(table)) => table,
+            Ok(None) => continue,
+            Err(item) => {
+                let path = layer.path.as_deref().unwrap_or(Path::new("<builtin>"));
+                return Err(ConfigError::Load {
+                    reason: format!(
+                        "{}: revset-aliases: Expected a table, but is {}",
+                        path.display(),
+                        item.type_name()
+                    ),
+                });
+            }
+        };
+        for (decl, item) in table.iter() {
+            let (definition, doc) = match item.as_table_like() {
+                Some(t) => (
+                    t.get("definition").and_then(jj_lib::config::ConfigItem::as_str),
+                    t.get("doc")
+                        .and_then(jj_lib::config::ConfigItem::as_str)
+                        .map(ToOwned::to_owned),
+                ),
+                None => (item.as_str(), None),
+            };
+            let Some(definition) = definition else {
+                let found = item.type_name();
+                tracing::warn!(
+                    alias = decl,
+                    found,
+                    "revset alias is neither a string nor a table with a `definition` string key; skipped"
+                );
+                continue;
+            };
+            if let Err(e) = map.insert(decl, definition, doc) {
+                tracing::warn!(alias = decl, error = %e, "failed to load revset alias; skipped");
+            }
+        }
     }
     Ok(map)
 }

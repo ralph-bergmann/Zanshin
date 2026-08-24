@@ -64,6 +64,10 @@ type _GraphEdgeKind = zanshin_jj::GraphEdgeKind;
 type _CommitMeta = zanshin_jj::CommitMeta;
 type _CommitRef = zanshin_jj::CommitRef;
 
+// config (Story 4.9)
+type _ConfigError = zanshin_jj::ConfigError;
+type _LogDefaults = zanshin_jj::LogDefaults;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 /// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
@@ -119,6 +123,8 @@ fn api_surface_resolves() {
     _ = zanshin_jj::BookmarkError::Backend(String::new());
     _ = zanshin_jj::RemoteError::Backend(String::new());
     _ = zanshin_jj::RevsetError::JjLibError(String::new());
+    // Story 4.9: the variant `zanshin-ffi::map_lane_stream_err` matches on — pin its shape.
+    _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
 
     // Trivially-constructible tuple-struct wrappers.
     _ = zanshin_jj::ChangeId(String::new());
@@ -158,6 +164,15 @@ fn api_surface_resolves() {
         "present(@) | ancestors(immutable_heads().., 2) | trunk()",
         "the CLI's revsets.log default (v0.42.0 cli/src/config/revsets.toml)"
     );
+
+    // config (Story 4.9): the four effective log defaults + the config error.
+    _ = zanshin_jj::ConfigError::Load { reason: String::new() };
+    _ = zanshin_jj::LogDefaults {
+        log: String::new(),
+        log_graph_prioritize: String::new(),
+        short_prefixes: String::new(),
+        synthetic_elided: false,
+    };
 
     // convert (free fns + RepoError variants — no new *type* exported)
     _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;

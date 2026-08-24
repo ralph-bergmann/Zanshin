@@ -18,11 +18,11 @@ use std::ffi::c_char;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use tracing::debug;
 use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
-use zanshin_jj::{CommitMeta, CommitRef, RevsetError};
+use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError};
 
 use crate::envelope::{
-    catch, FfiErrorObj, FFI_INVALID_HANDLE, GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR,
+    catch, FfiErrorObj, FFI_INVALID_HANDLE, GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -43,6 +43,10 @@ fn map_lane_stream_err(e: LaneStreamError) -> FfiErrorObj {
         },
         LaneStreamError::Revset(RevsetError::JjLibError(reason)) => FfiErrorObj {
             code: JJ_JJ_LIB_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        LaneStreamError::Revset(RevsetError::Config(ConfigError::Load { reason })) => FfiErrorObj {
+            code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
         LaneStreamError::Graph(GraphError::DanglingEdge { target }) => FfiErrorObj {
@@ -294,10 +298,12 @@ mod tests {
     use zanshin_graph::{
         assign_lanes, ActiveLane, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, NodeId, Row, RowEdge,
     };
-    use zanshin_jj::{CommitMeta, CommitRef, RevsetError, Timestamp};
+    use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError, Timestamp};
 
     use super::{edge_kind, graph_slice_to_envelope, map_lane_stream_err};
-    use crate::envelope::{GRAPH_DANGLING_EDGE, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR};
+    use crate::envelope::{
+        GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    };
     use crate::fbs;
 
     fn edge(target: &str, target_lane: Option<u32>, kind: EdgeKind) -> RowEdge {
@@ -747,6 +753,12 @@ mod tests {
         let jj_lib = map_lane_stream_err(LaneStreamError::Revset(RevsetError::JjLibError("boom".to_owned())));
         assert_eq!(jj_lib.code, JJ_JJ_LIB_ERROR);
         assert_eq!(jj_lib.context.as_deref(), Some("boom"));
+
+        let config = map_lane_stream_err(LaneStreamError::Revset(RevsetError::Config(ConfigError::Load {
+            reason: "/r/.jj/repo/config.toml: bad TOML".to_owned(),
+        })));
+        assert_eq!(config.code, JJ_CONFIG_ERROR);
+        assert_eq!(config.context.as_deref(), Some("/r/.jj/repo/config.toml: bad TOML"));
 
         let dangling = map_lane_stream_err(LaneStreamError::Graph(GraphError::DanglingEdge {
             target: "deadbeef".to_owned(),

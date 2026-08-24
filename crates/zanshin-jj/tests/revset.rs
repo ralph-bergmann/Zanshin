@@ -459,6 +459,230 @@ fn revset_on_at_without_working_copy_returns_resolution_error() {
     );
 }
 
+// ── Story 4.9: the repo config layer feeds the alias map ─────────────────────
+
+/// Writes the legacy repo-config file of an extracted fixture (`.jj/repo/config.toml`).
+///
+/// Extracted fixtures carry no `config-id`, so this legacy path IS the repo layer — and
+/// writing it needs no environment variable, which is why the repo-layer rows carry the
+/// bulk of the config coverage (`JJ_CONFIG` is process-global; see
+/// `tests/config_user_layer.rs`).
+fn write_repo_config(workspace_root: &Path, toml: &str) {
+    std::fs::write(workspace_root.join(".jj").join("repo").join("config.toml"), toml).unwrap();
+}
+
+/// Hex commit id of the single commit `expr` resolves to — through the public API only.
+fn commit_id_of(repo: &Repo, expr: &str) -> String {
+    let ids = resolve_revset(repo, expr).unwrap();
+    assert_eq!(ids.len(), 1, "{expr} must resolve to exactly one change");
+    repo.get_change(&ids[0]).unwrap().commit_id.0
+}
+
+/// A repo-config `[revset-aliases]` entry overrides the builtin of the same name+arity —
+/// the CLI's layered-insert semantics (`cli/src/config.rs:930-981`).
+#[test]
+fn repo_config_override_of_trunk_replaces_the_builtin_definition() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    // The fixture has no remote bookmarks, so the builtin trunk() degenerates to root().
+    assert_eq!(commit_id_of(&repo, "trunk()"), root);
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 3\")'\n");
+    assert_eq!(
+        commit_id_of(&repo, "trunk()"),
+        c3,
+        "the repo layer must override the builtin trunk()"
+    );
+}
+
+/// A user-defined alias that no builtin declares evaluates instead of erroring — before
+/// Story 4.9 this was a `RevsetError::ParseError` (unknown function).
+#[test]
+fn repo_config_custom_alias_resolves_instead_of_failing_to_parse() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    assert!(
+        matches!(resolve_revset(&repo, "wip()"), Err(RevsetError::ParseError { .. })),
+        "an undefined alias is an unknown function"
+    );
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = 'description(\"Commit 2\")'\n");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    assert_eq!(commit_id_of(&repo, "wip()"), c2, "wip() must evaluate");
+}
+
+/// Config is re-read per operation — the SAME handle sees an externally edited config file
+/// on its next call. Nothing is cached (the op-heads watcher does not cover config files).
+#[test]
+fn config_is_re_read_on_every_call_so_an_edit_needs_no_reopen() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 1\")'\n");
+    assert_eq!(commit_id_of(&repo, "trunk()"), c1);
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 2\")'\n");
+    assert_eq!(
+        commit_id_of(&repo, "trunk()"),
+        c2,
+        "the second call must reflect the new config without reopening the handle"
+    );
+}
+
+/// A malformed config file is an ERROR, never a silent fall-back to the builtin layer —
+/// and the context names the offending file.
+#[test]
+fn malformed_repo_config_is_an_error_naming_the_file() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    write_repo_config(&fx.path, "not = = toml");
+    let result = resolve_revset(&repo, "all()");
+    let Err(RevsetError::Config(err)) = result else {
+        panic!("a malformed config must yield RevsetError::Config, got: {result:?}");
+    };
+    assert!(
+        err.to_string().contains("config.toml"),
+        "the context must name the file, got: {err}"
+    );
+}
+
+/// A non-string alias value only WARNS and is skipped (CLI parity,
+/// `cli/src/config.rs:964-977`); every other alias in the same table still works and the
+/// call succeeds.
+#[test]
+fn non_string_alias_value_is_skipped_and_the_call_succeeds() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+
+    write_repo_config(
+        &fx.path,
+        "[revset-aliases]\n'foo()' = 42\n'bar()' = 'description(\"Commit 1\")'\n",
+    );
+
+    assert!(
+        matches!(resolve_revset(&repo, "foo()"), Err(RevsetError::ParseError { .. })),
+        "the skipped alias stays undefined"
+    );
+    assert_eq!(commit_id_of(&repo, "bar()"), c1, "the sibling alias still loads");
+    assert!(
+        resolve_revset(&repo, "all()").is_ok(),
+        "one bad entry must not fail the call"
+    );
+}
+
+/// A `revset-aliases` key that is not a TABLE at all is a HARD ERROR, not a skipped layer.
+///
+/// The CLI's two failure levels differ and must not be conflated: the TABLE level returns
+/// `ConfigGetError::Type` (`cli/src/config.rs:943-953`), while only the per-ENTRY level
+/// warns and continues (`:964-977`). Skipping the layer here would silently fall back to
+/// the builtin aliases — the exact behaviour this story exists to prevent.
+#[test]
+fn a_non_table_revset_aliases_key_is_a_config_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    write_repo_config(&fx.path, "revset-aliases = 42\n");
+    let result = resolve_revset(&repo, "all()");
+    let Err(RevsetError::Config(err)) = result else {
+        panic!("a non-table `revset-aliases` must yield RevsetError::Config, got: {result:?}");
+    };
+    let reason = err.to_string();
+    assert!(
+        reason.contains("config.toml") && reason.contains("revset-aliases"),
+        "the context must name the file and the key, got: {reason}"
+    );
+}
+
+/// A bad alias DECLARATION only warns and is skipped — jj-lib's declaration parser is the
+/// gate, and the CLI keeps going.
+#[test]
+fn bad_alias_declaration_is_skipped_and_the_call_succeeds() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+
+    write_repo_config(
+        &fx.path,
+        "[revset-aliases]\n'not a decl' = 'root()'\n'ok_alias()' = 'description(\"Commit 1\")'\n",
+    );
+    assert_eq!(commit_id_of(&repo, "ok_alias()"), c1);
+    assert!(resolve_revset(&repo, "all()").is_ok());
+}
+
+/// A table with a `definition` string key is a valid alias value (the CLI accepts both
+/// shapes; the `doc` key is help text and has no effect on resolution).
+#[test]
+fn table_shaped_alias_with_a_definition_key_is_accepted() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+
+    write_repo_config(
+        &fx.path,
+        "[revset-aliases]\n'wip()' = { definition = 'description(\"Commit 1\")', doc = 'work in progress' }\n",
+    );
+    assert_eq!(commit_id_of(&repo, "wip()"), c1);
+}
+
+/// jj-lib does not check an alias DEFINITION at insert time ("The `defn` part isn't
+/// checked", `dsl_util.rs:594-597`), so a malformed definition surfaces only when the alias
+/// is substituted — a revset that does not use it is unaffected.
+#[test]
+fn malformed_alias_definition_fails_only_where_the_alias_is_used() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = '('\n");
+    assert!(
+        resolve_revset(&repo, "all()").is_ok(),
+        "a revset that does not use wip() is unaffected"
+    );
+    assert!(
+        matches!(resolve_revset(&repo, "wip()"), Err(RevsetError::ParseError { .. })),
+        "using the alias surfaces the bad definition as a parse error"
+    );
+}
+
+/// A user's overload at a DIFFERENT arity adds to the builtin rather than replacing it —
+/// jj-lib keys alias insertion by (name, arity) (`dsl_util.rs:614-619`).
+#[test]
+fn an_alias_overload_at_another_arity_leaves_the_builtin_alone() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'trunk(x)' = 'x'\n");
+    assert_eq!(
+        commit_id_of(&repo, "trunk()"),
+        root,
+        "the zero-arg builtin trunk() must survive a trunk(x) overload"
+    );
+    assert_eq!(
+        commit_id_of(&repo, "trunk(description(\"Commit 3\"))"),
+        c3,
+        "the added overload must be callable"
+    );
+}
+
 // ── Internal jj-lib failure → JjLibError ─────────────────────────────────────
 
 #[test]

@@ -36,6 +36,7 @@ table FfiError {
 //   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes ✓
 //   Story 3-6  : WatcherEvent ✓, Progress ✓
 //   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6)
+//   Story 4-9  : LogDefaults ✓
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results
 
@@ -309,6 +310,20 @@ table GraphSlice {
   total_rows: uint;        // == rows.length in WIP (see table doc)
 }
 
+/// The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
+/// CLI would apply, after their `[revsets]` / `[ui]` config overrides.
+///
+/// Offered as pre-fills for zanshin_graph_slice's pass-through parameters
+/// (FR-JJ-17); nothing is applied silently, the caller decides. `short_prefixes`
+/// falls back to `log` when `revsets.short-prefixes` is ABSENT; an explicit
+/// empty string means disambiguation is DISABLED and is returned verbatim.
+table LogDefaults {
+  log: string;                  // revsets.log
+  log_graph_prioritize: string; // revsets.log-graph-prioritize
+  short_prefixes: string;       // revsets.short-prefixes (falls back to log on absence)
+  synthetic_elided: bool;       // ui.log-synthetic-elided-nodes
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -321,6 +336,8 @@ union Payload {
   WatcherEvent,
   Progress,
   GraphSlice,
+  // Member order IS the wire discriminant — APPEND only, never reorder.
+  LogDefaults,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

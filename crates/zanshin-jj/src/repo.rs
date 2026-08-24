@@ -180,6 +180,29 @@ impl Repo {
         crate::remotes::list_remotes(self.workspace())
     }
 
+    /// Returns the effective `jj log` defaults of this repo (Story 4.9): the values the
+    /// user's own `jj` CLI would apply for `revsets.log`, `revsets.log-graph-prioritize`,
+    /// `revsets.short-prefixes` and `ui.log-synthetic-elided-nodes`.
+    ///
+    /// The config stack is re-read on every call and never cached — config files change
+    /// externally and the op-heads watcher does not cover them. Read-only: nothing is
+    /// created, migrated or symlinked.
+    ///
+    /// These are *offers*, not policy: [`Repo::walk_graph`]'s parameters stay caller
+    /// pass-throughs (FR-JJ-17), so the UI pre-fills these values and the user edits them.
+    /// `short_prefixes` falls back to `log` when the key is absent from every layer; an
+    /// explicit empty string means "disambiguation disabled" and is returned verbatim.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::ConfigError::Load`] — a config file is unreadable or not valid TOML, a
+    ///   `config-id` is malformed, or one of the four values has the wrong type. Never a
+    ///   silent fall-back to the builtin defaults.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn log_defaults(&self) -> Result<crate::LogDefaults, crate::ConfigError> {
+        crate::config::log_defaults(&crate::config::load(self)?)
+    }
+
     /// Streams the commit graph of `revset` — one [`crate::GraphNode`] per commit, children
     /// before parents — through `visit`, in the order `jj log -r <revset>` prints it with
     /// `revsets.log-graph-prioritize = <prioritize>` (NFR-R-2, ADR-0003).
@@ -190,9 +213,12 @@ impl Repo {
     ///
     /// All three expressions are caller pass-throughs (FR-JJ-17);
     /// [`crate::DEFAULT_GRAPH_PRIORITIZE`] is the CLI's default for `prioritize` and
-    /// [`crate::DEFAULT_LOG_REVSET`] the CLI's default for `revset` / `short_prefixes`. The
-    /// jj CLI's builtin `[revset-aliases]` (`trunk()`, `immutable_heads()`, `immutable()`,
-    /// `mutable()`, `visible()`, `hidden()`, `builtin_immutable_heads()`) are all defined.
+    /// [`crate::DEFAULT_LOG_REVSET`] the CLI's default for `revset` / `short_prefixes`
+    /// (the repo's *effective* values are [`Repo::log_defaults`]). Aliases are resolved
+    /// from the repo's effective jj config, builtin defaults included — a user's
+    /// `[revset-aliases]` override of `trunk()` or `immutable_heads()` changes the row set
+    /// and the per-row `immutable` flag exactly as it does in their CLI (Story 4.9). The
+    /// config is re-read per call and never cached.
     /// Re-resolves to the head operation per call (ADR-0002); nothing is retained across
     /// calls. The stream is lazy: `visit` returning `ControlFlow::Break` stops it early, and
     /// the result is `Ok(Break)`; `Ok(Continue)` means the stream was exhausted. Read-only;
@@ -215,6 +241,9 @@ impl Repo {
     /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize`
     ///   cannot be resolved. An unresolvable `short_prefixes` is NOT an error: like the
     ///   CLI, it warns and degrades to full-index prefix lengths.
+    /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
+    ///   unreadable. A single bad `[revset-aliases]` entry is NOT an error: like the CLI, it
+    ///   warns and is skipped.
     /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata
     ///   extraction, or a per-item stream failure; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]

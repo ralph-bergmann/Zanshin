@@ -101,6 +101,19 @@ final class RemotesCommand extends WorkerCommand {
   final int handleId;
 }
 
+/// Read the effective `jj log` defaults for the repo identified by [handleId]
+/// (Story 4.9).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_log_defaults(handle)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<LogDefaults>` bytes.
+final class LogDefaultsCommand extends WorkerCommand {
+  const LogDefaultsCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}
+
 /// Read the operation log for the repo identified by [handleId].
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never

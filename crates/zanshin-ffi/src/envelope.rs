@@ -48,6 +48,10 @@ pub const JJ_REVSET_PARSE_ERROR: &str = "jj.revset_parse_error";
 /// AR-P-4: emitted by `graph.rs` when a revset or prioritize expression is well-formed but a
 /// symbol cannot be resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
 pub const JJ_REVSET_RESOLUTION_ERROR: &str = "jj.revset_resolution_error";
+/// AR-P-4: emitted by `log_defaults.rs` and `graph.rs` when the repo's effective jj config
+/// cannot be read — a malformed/unreadable config file, a bad `config-id`, or a
+/// wrong-typed config value; the offending file path or config key in `context`.
+pub const JJ_CONFIG_ERROR: &str = "jj.config_error";
 /// AR-P-4: emitted by `graph.rs` when the exhausted revset graph stream left a dangling
 /// non-`Missing` edge (upstream stream contract violation); the dangling target in `context`.
 pub const GRAPH_DANGLING_EDGE: &str = "graph.dangling_edge";

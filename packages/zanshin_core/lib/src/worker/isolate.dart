@@ -23,6 +23,7 @@ import '../ffi/events.dart'
         registerEventSink,
         unregisterEventSink;
 import '../ffi/graph.dart' as repo_ffi_graph;
+import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
@@ -597,6 +598,26 @@ class ZanshinWorker {
     return repo_ffi_remotes.decodeRemotesEnvelopeInternal(bytes);
   }
 
+  /// Read the effective `jj log` defaults for the repo identified by [handleId]
+  /// (Story 4.9).
+  ///
+  /// Sends a [LogDefaultsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<LogDefaults>` bytes into a `LogDefaults`.
+  ///
+  /// The config stack is re-read Rust-side on every call (never cached), so a
+  /// config file edited between two calls is reflected in the second.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.config_error`). Completes with a [StateError] after [close].
+  /// The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.logDefaults].
+  Future<repo_ffi_log_defaults.LogDefaults> logDefaults(int handleId) async {
+    final Uint8List bytes = await send(
+      LogDefaultsCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_log_defaults.decodeLogDefaultsEnvelopeInternal(bytes);
+  }
+
   /// Detect the repository kind at [path] (FR-JJ-17).
   ///
   /// Returns a [repo_ffi_detect.RepoDetectResult] with the classification and,
@@ -841,6 +862,23 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_remotes.zanshinRemotes(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case LogDefaultsCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: LogDefaultsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_log_defaults.zanshinLogDefaults(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

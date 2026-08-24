@@ -3126,6 +3126,46 @@ So that the (out-of-scope) Flutter log view renders from ONE `zanshin_graph_slic
 
 ---
 
+### Story 4.9: Honor jj config revset aliases + expose the effective log defaults
+
+As a Rust developer completing the log surface,
+I want every revset Zanshin parses to resolve `[revset-aliases]` from the repo's effective jj config, and the four `jj log` defaults to be readable per repo handle,
+So that a user who has customized `trunk()` or `immutable_heads()` — or defined their own aliases — sees Zanshin's graph agree with their own `jj log`: same ◆ set, same default view, their aliases accepted.
+
+> **Delivered (2026-08-24, Story 4.9 done):** spec + config reference at `_bmad-output/specs/spec-4-9-config-revset-aliases/` (`SPEC.md` + `jj-config-reference.md`), both read from the jj monorepo at the pinned tag `v0.42.0`.
+>
+> - **One config loader (CAP-1).** New `crates/zanshin-jj/src/config.rs` rebuilds, PER OPERATION, the layered `StackedConfig` the jj CLI would have at v0.42.0 for that workspace: jj-lib defaults + Zanshin's builtin layer (`ConfigSource::Default`) < user config (`ConfigSource::User`) < repo config (`Repo`) < workspace config (`Workspace`), flattened through `jj_lib::config::resolve`. Nothing is cached — config files change externally and the op-heads watcher does not cover them, so ADR-0002's re-resolve-per-operation rule extends to config. Story 4.8's `BUILTIN_ALIASES` Rust array is GONE: the CLI's `[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes` and the 7-entry `[revset-aliases]` table now live as a verbatim TOML default LAYER, so builtins and user aliases enter the `RevsetAliasesMap` through the one code path the CLI uses (all layers, lowest first, keyed by name+arity — a user's `trunk()` replaces the builtin, a user's `trunk(x)` only adds an overload).
+> - **Every parse site follows (CAP-1).** `build_aliases_map(&StackedConfig)` is now infallible with the CLI's warn-and-continue semantics (`cli/src/config.rs:930-981`); both parse entry points (`revset::parse_revset`, `graph::walk_graph`) feed from it, so the graph slice, `prioritize`, `short_prefixes`, plain revset resolution and the per-row `immutable` flag all follow the user's config — the last one for free, because Story 4.8 deliberately built the immutable set in code from `immutable_heads()` rather than from the `immutable()` alias.
+> - **Effective log defaults (CAP-2).** `Repo::log_defaults() -> Result<LogDefaults, ConfigError>` returns `revsets.log`, `revsets.log-graph-prioritize`, `revsets.short-prefixes` (falling back to the EFFECTIVE `revsets.log` on ABSENCE only — an explicit `""` means disabled and is returned verbatim) and `ui.log-synthetic-elided-nodes`. New extern fn `zanshin_log_defaults(handle) -> *mut ZanshinBuf`; `schemas/envelope.fbs` gains a `LogDefaults` table APPENDED to the `Payload` union (member order is the wire discriminant). Dart: `LogDefaults` model + decoder in `lib/src/ffi/log_defaults.dart`, `LogDefaultsCommand`, `ZanshinWorker.logDefaults`, `RepoHandle.logDefaults()`. FR-JJ-17 holds: these are pre-fills the UI offers, `graphSlice`'s Dart defaults stay compile-time constants, and nothing Rust-side substitutes a config value for a caller argument.
+> - **Read-only, by hand (constraint).** `jj_lib::secure_config::SecureConfig` is never called: its `maybe_load_config` WRITES (creates directories, writes `metadata.binpb`, can generate a `config-id`, copies configs on repo-move detection, symlinks the legacy file away) and consumes an RNG. The `config-id` → `<config_dir>/jj/{repos,workspaces}/<id>/config.toml` indirection is resolved by reading the id and joining the path, with the legacy files as the fallback — identical config CONTENT, zero disk side effects. Two SPEC statements were corrected against the pin (NFR-R-2/ADR-0003, the CLI is the oracle): the repo config is reached through that indirection, not simply `.jj/repo/config.toml`; and `ConfigSource::Workspace` sits ABOVE `Repo` and can carry `[revset-aliases]`. Not layered: the `--config`/`--config-file` CLI layer and the `EnvBase`/`EnvOverrides` layers (provably disjoint key sets), and `config_resolver::migrate` (empty rule list at the pin).
+> - **Error split mirrors the CLI, at BOTH its levels.** New registry code `jj.config_error` (malformed/unreadable config, bad `config-id`, wrong-typed value, and a `revset-aliases` key that is not a table) — never a silent fall-back to the builtins. The table level is a hard error (`cli/src/config.rs:943-953` returns `ConfigGetError::Type`); only the per-ENTRY level warns and continues (`:964-977`), so one non-string value or rejected declaration is skipped while every other alias still loads. A malformed alias DEFINITION is not caught at load time at all — jj-lib does not check `defn` at insert time (`dsl_util.rs:594-597`), so it surfaces as `jj.revset_parse_error`, and only where the alias is used.
+> - **Tests.** Story 4.8's `every_builtin_revset_alias_expands_and_resolves`, `mutable_and_immutable_partition_all`, `walk_graph_accepts_the_cli_default_log_revset`, `trunk_alias_resolves_a_main_bookmark_on_origin_and_ignores_other_remotes` and `walk_graph_immutable_covers_the_ancestry_of_every_immutable_head` pass unchanged — the no-regression proof for the default layer. Config cases are constructed in-test by writing the legacy repo/workspace config files into an extracted fixture (fixtures are never regenerated), so they need no environment variable; `JJ_CONFIG` — process-global, and now the only thing keeping the developer's real config out of the stack — is repointed by exactly ONE test, alone in `crates/zanshin-jj/tests/config_user_layer.rs`, and never unset. The path-selection matrix (`JJ_CONFIG` file/dir/empty/missing, XDG vs `$HOME/.config`, `config-id` validity) is pinned by pure inline unit tests in `src/config.rs`.
+
+**Acceptance Criteria:**
+
+**Given** an extracted fixture whose repo config redefines `trunk()` and `immutable_heads()` and adds a custom `wip()`
+**When** `zanshin_graph_slice` runs on the CLI default log revset and `resolve_revset("wip()")` is called
+**Then** the row set, the per-row `immutable` flags and the `wip()` resolution all match what `jj` v0.42.0 would produce with that config
+**And** with the config file removed the output is identical to Story 4.8's.
+
+**Given** the same handle
+**When** the config file changes between two calls
+**Then** the second call reflects the new config without reopening the handle.
+
+**Given** a repo config that overrides `revsets.log` and sets `ui.log-synthetic-elided-nodes = false`
+**When** `Repo::log_defaults()` / `zanshin_log_defaults` / `RepoHandle.logDefaults()` are called
+**Then** the overrides are returned and `short_prefixes` follows `revsets.log` on absence
+**And** with no overrides the four values equal the constants Story 4.8 ships.
+
+**Given** a malformed config file or a wrong-typed config value
+**When** any revset is parsed or `log_defaults` is read
+**Then** the call fails with `jj.config_error` naming the file or key — never a silent fall-back to the builtin layer
+**And** a single bad `[revset-aliases]` entry only warns, and the call still succeeds.
+
+**Out of scope:** template aliases / custom log templates (the GUI replaces the CLI's template UX); fileset aliases; config writing/editing from Zanshin; a settings surface beyond the four values; the `--config`/`--config-file` command-line layer; `user.*` config (Zanshin's commit/operation identity stays pinned in `make_settings`, so a repo's `user.name` can never take over authorship). Known residual, recorded not fixed: `RevsetParseContext.user_email` still comes from that hardcoded identity, so a jj builtin keying off the user's email resolves differently than in the CLI.
+
+---
+
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
 
 Produce structured diff JSON (hunks → lines → segments) with word-level diff inside changed lines plus tree-sitter syntax classification, served via the FFI surface. Hit the < 500ms target for a 5k-line changed file (NFR-P-3).

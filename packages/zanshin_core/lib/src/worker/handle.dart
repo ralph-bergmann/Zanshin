@@ -4,6 +4,7 @@ import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
+import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -169,6 +170,26 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.remotes(_handleId);
+  }
+
+  /// Read the effective `jj log` defaults for this repository (Story 4.9) —
+  /// what the user's own `jj` CLI would apply after their config overrides.
+  ///
+  /// Use these to pre-fill [graphSlice]'s parameters instead of the builtin
+  /// constants [defaultLogRevset] / [defaultGraphPrioritize] /
+  /// [defaultShortPrefixes] / [defaultSyntheticElided]; they are offers, still
+  /// editable by the user (FR-JJ-17). The config is re-read Rust-side on every
+  /// call and never cached, so an externally edited config file shows up on the
+  /// next call without reopening the handle.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`).
+  Future<LogDefaults> logDefaults() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.logDefaults(_handleId);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

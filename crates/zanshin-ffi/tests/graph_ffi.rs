@@ -20,7 +20,7 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
     graph::zanshin_graph_slice,
     repo::{zanshin_repo_close, zanshin_repo_open},
-    FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+    FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
     JJ_REVSET_RESOLUTION_ERROR,
 };
 use zanshin_graph::{collect_lanes, ActiveLane, EdgeKind, Row, RowEdge};
@@ -795,6 +795,64 @@ fn graph_slice_rederives_metadata_so_an_external_describe_appears_on_the_next_ca
     assert_eq!(
         row.meta.as_ref().unwrap().description_first_line,
         "Rewritten externally"
+    );
+
+    unsafe { close(handle) };
+}
+
+// ── Story 4.9: the config layer reaches the FFI surface ──────────────────────
+
+/// Writes `.jj/repo/config.toml` — the repo config layer of an extracted fixture, which
+/// carries no `config-id`, so this legacy path IS the repo layer.
+fn write_repo_config(workspace_root: &std::path::Path, toml: &str) {
+    std::fs::write(workspace_root.join(".jj").join("repo").join("config.toml"), toml).unwrap();
+}
+
+/// A `[revset-aliases]` override in the repo config is visible through
+/// `zanshin_graph_slice` on the SAME handle — which also re-proves that the config is
+/// re-read per call and never cached.
+#[test]
+fn graph_slice_resolves_repo_config_aliases_on_the_same_handle() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    // Before the override, `wip()` is an unknown function.
+    let before = unsafe { slice_bytes(handle, "wip()", "none()") };
+    assert_error(&before, JJ_REVSET_PARSE_ERROR);
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = 'description(\"Commit 2\")'\n");
+
+    let after = unsafe { slice_bytes_with(handle, "wip()", "none()", true, SHORT) };
+    let (rows, total) = ok_rows(&after);
+    assert_eq!(total, 1, "wip() selects exactly one row");
+    assert_eq!(
+        rows[0]
+            .meta
+            .as_ref()
+            .expect("commit rows carry meta")
+            .description_first_line,
+        "Commit 2"
+    );
+
+    unsafe { close(handle) };
+}
+
+/// A malformed repo config fails the call with `jj.config_error` and the file in
+/// `context` — never a silent fall-back to the builtin alias layer.
+#[test]
+fn graph_slice_on_malformed_repo_config_returns_jj_config_error() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    write_repo_config(&fx.path, "not = = toml");
+
+    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
+    assert_error_with_context(&bytes, JJ_CONFIG_ERROR);
+    assert!(
+        parse_envelope(&bytes)
+            .error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.contains("config.toml")),
+        "the context must name the offending file"
     );
 
     unsafe { close(handle) };

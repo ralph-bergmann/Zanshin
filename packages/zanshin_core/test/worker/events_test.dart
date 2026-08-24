@@ -87,6 +87,14 @@ void main() {
       final RepoHandle handleA = await worker.initRepo(tempDir.path, backend: 0);
       final RepoHandle handleB = await worker.initRepo(tempDirB.path, backend: 0);
 
+      // `initRepo` itself writes into `.jj/repo/op_heads/heads/`, and the watcher is
+      // armed BEFORE the open call returns (AR-G-5), so each repo's own creation can
+      // legitimately produce an event of its own. Let the 50 ms debounce window (plus
+      // margin) drain before subscribing, so "repo B was never touched" is actually true
+      // for the window this test observes — otherwise repo B's init event races the
+      // listener attach and the assertion fails on a loaded host.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+
       final List<RepoEvent> observed = [];
       final StreamSubscription<RepoEvent> sub = worker.events.listen(observed.add);
       addTearDown(sub.cancel);

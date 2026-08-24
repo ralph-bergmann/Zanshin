@@ -220,6 +220,32 @@ external ffi.Pointer<ZanshinBuf> zanshin_graph_slice(
   ffi.Pointer<ffi.Char> short_prefixes,
 );
 
+/// Read the effective `jj log` defaults of the repo identified by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `LogDefaults` payload on success:
+/// `revsets.log`, `revsets.log-graph-prioritize`, `revsets.short-prefixes` (falling back
+/// to `revsets.log` when the key is absent from every layer — an explicit empty string
+/// means disambiguation is disabled and is returned verbatim) and
+/// `ui.log-synthetic-elided-nodes`, resolved through the repo's full jj config stack.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — a config file is unreadable or not valid TOML, a `config-id` is
+/// malformed, or one of the four values has the wrong type; the offending file path or
+/// config key in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+/// closed. `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_log_defaults(
+  int handle,
+);
+
 /// Forward a single log record from Dart into the Rust `tracing` sink (AR-P-5).
 ///
 /// Infallible by contract: a null/invalid argument or an internal panic **drops
@@ -626,3 +652,9 @@ const int GraphRow_VT_META = 16;
 const int GraphSlice_VT_ROWS = 4;
 
 const int GraphSlice_VT_TOTAL_ROWS = 6;
+
+const int LogDefaults_VT_LOG = 4;
+
+const int LogDefaults_VT_LOG_GRAPH_PRIORITIZE = 6;
+
+const int LogDefaults_VT_SHORT_PREFIXES = 8;

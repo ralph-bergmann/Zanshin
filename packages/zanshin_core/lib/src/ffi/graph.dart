@@ -23,6 +23,10 @@ import 'ffi_buffer.dart';
 /// Mirrors `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE` — `jj log`'s
 /// `revsets.log-graph-prioritize` default. `'none()'` is the canonical
 /// "no prioritisation" value; a blank expression is a `jj.revset_parse_error`.
+///
+/// This is the BUILTIN default. The user's config may override it — prefer
+/// `RepoHandle.logDefaults()` (Story 4.9), whose `logGraphPrioritize` is the
+/// effective value their own CLI would apply.
 const defaultGraphPrioritize = 'present(@)';
 
 /// The CLI-default log revset (`revsets.log`) — the rows `jj log` shows without
@@ -30,6 +34,10 @@ const defaultGraphPrioritize = 'present(@)';
 ///
 /// A pre-fill for the caller's `revset`, never applied silently (FR-JJ-17); the
 /// UI passes `revset` explicitly.
+///
+/// This is the BUILTIN default. The user's config may override it — prefer
+/// `RepoHandle.logDefaults()` (Story 4.9), whose `log` is the effective value
+/// their own CLI would apply.
 const defaultLogRevset = 'present(@) | ancestors(immutable_heads().., 2) | trunk()';
 
 /// The CLI-default for rendering elided ancestry as synthetic "(elided
@@ -38,6 +46,10 @@ const defaultLogRevset = 'present(@) | ancestors(immutable_heads().., 2) | trunk
 ///
 /// Mirrors the CLI's `ui.log-synthetic-elided-nodes` default. `false` restores
 /// plain `GraphEdgeKind.indirect` edges with no synthetic rows.
+///
+/// This is the BUILTIN default. The user's config may override it — prefer
+/// `RepoHandle.logDefaults()` (Story 4.9), whose `syntheticElided` is the
+/// effective value their own CLI would apply.
 const defaultSyntheticElided = true;
 
 /// The CLI-default shortest-prefix disambiguation set, pre-filled by
@@ -47,6 +59,11 @@ const defaultSyntheticElided = true;
 /// same expression as [defaultLogRevset]. An EMPTY string DISABLES disambiguation
 /// (full-index prefix lengths) — the CLI's toggle semantic, deliberately unlike
 /// [defaultGraphPrioritize], where a blank expression is a parse error.
+///
+/// This is the BUILTIN default. The user's config may override it — prefer
+/// `RepoHandle.logDefaults()` (Story 4.9), whose `shortPrefixes` is the
+/// effective value their own CLI would apply (it follows `revsets.log` when
+/// `revsets.short-prefixes` is unset).
 const String defaultShortPrefixes = defaultLogRevset;
 
 /// Call `zanshin_graph_slice` with the raw `u64` handle, a [revset], a

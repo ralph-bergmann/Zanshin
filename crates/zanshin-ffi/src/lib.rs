@@ -36,6 +36,7 @@ pub mod events;
 pub mod ffi_strings;
 pub mod graph;
 pub mod handle;
+pub mod log_defaults;
 pub mod logging;
 pub mod op_log;
 pub mod remotes;

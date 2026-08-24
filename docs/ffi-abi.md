@@ -386,9 +386,18 @@ return-all; windowing is deferred past WIP).
   Rust only borrows it — AR-P-5 inbound rule). The CLI's `revsets.log` default
   is exported as the Dart constant `defaultLogRevset` (a mirror of
   `zanshin_jj::DEFAULT_LOG_REVSET`) for the UI to pre-fill; it is never applied
-  silently. It parses because `zanshin-jj` defines the CLI's builtin
+  silently. It parses because Zanshin's builtin config layer defines the CLI's
   `[revset-aliases]` (`trunk()`, `builtin_immutable_heads()`,
   `immutable_heads()`, `immutable()`, `mutable()`, `visible()`, `hidden()`).
+  **Since Story 4.9** all three revset pass-throughs — `revset`, `prioritize`
+  and `short_prefixes` — resolve aliases from the repo's EFFECTIVE jj config
+  (builtin defaults < user config < repo config < workspace config), re-read on
+  every call, so a user's `[revset-aliases]` override of `trunk()` or
+  `immutable_heads()` changes the row set and the per-row `meta.immutable` flag
+  exactly as it does in their CLI, and their own `wip()` / `mine()` aliases are
+  accepted. A malformed config fails the call with `jj.config_error`; a single
+  bad alias entry only warns and is skipped. `zanshin_log_defaults` (below)
+  returns the effective values of the four `jj log` defaults.
 - `prioritize` — the branch-prioritisation revset (`jj log`'s
   `revsets.log-graph-prioritize`). Caller-owned C string, same ownership rule.
   The CLI default is `present(@)` — the Dart side pre-fills it as
@@ -442,6 +451,7 @@ copied once into Dart — windowing is deferred past WIP.
 | `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation). The only `short_prefixes` failure that surfaces as an error code. Reason in `context`. |
 | `jj.revset_resolution_error` | `revset` or `prioritize` names a symbol that cannot be resolved; reason in `context`. NOT raised for `short_prefixes` (it warns and degrades — see above). |
 | `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
+| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value (Story 4.9); the file path or config key in `context`. A single bad `[revset-aliases]` entry does NOT produce this — it warns and is skipped. |
 | `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
 
 An error envelope never carries partial rows.
@@ -573,3 +583,108 @@ GraphSlice {
   noun's models (`Change`, `WorkingCopyStatus`, `Operation`, `RepoHandle`) —
   not exported from `package:zanshin_core/zanshin_core.dart` by convention; the
   decode-contract tests import them via `src/`.
+
+## `LogDefaults` payload and `zanshin_log_defaults` (Story 4.9)
+
+The repo's EFFECTIVE `jj log` defaults cross FFI as a `LogDefaults` member of the
+`Payload` union (`schemas/envelope.fbs`, appended after `GraphSlice` — union
+member order is the wire discriminant, so it is append-only). The exported
+symbol calls `zanshin_jj::Repo::log_defaults()` and serialises the result with
+`zanshin_ffi::log_defaults::log_defaults_to_envelope` (infallible, always
+`ok == true`). The Dart worker command `LogDefaultsCommand` carries only the
+`handleId`; the worker isolate calls the adapter and replies with the raw bytes
+as a `BufferResult`, and the decode happens main-isolate-side in
+`ZanshinWorker.logDefaults` via `decodeLogDefaultsEnvelopeInternal`
+(`packages/zanshin_core/lib/src/ffi/log_defaults.dart`).
+
+### `zanshin_log_defaults`
+
+```c
+ZanshinBuf* zanshin_log_defaults(uint64_t handle);
+```
+
+Handle-only — no C-string argument, so there is no `ffi.null_pointer` /
+`ffi.utf8_error` path (the same asymmetry as `zanshin_remotes`).
+
+**What "effective" means.** `zanshin-jj` rebuilds, per call, the layered config
+the jj CLI would have at v0.42.0 for that workspace and reads the four values out
+of it:
+
+| Layer (ascending precedence) | Source |
+|------------------------------|--------|
+| `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.42.0) |
+| `ConfigSource::User`         | `JJ_CONFIG` (a `PATH`-style list of files and/or directories, which REPLACES discovery — including when it is the empty string, which disables user config entirely), else `$HOME/.jjconfig.toml`, `<config_dir>/jj/config.toml`, `<config_dir>/jj/conf.d/`. Non-existent entries are skipped silently. `<config_dir>` = `$XDG_CONFIG_HOME` when absolute, else `$HOME/.config`. |
+| `ConfigSource::Repo`         | `.jj/repo/config-id` (20 ASCII hex chars) → `<config_dir>/jj/repos/<id>/config.toml`; absent id file → legacy `.jj/repo/config.toml` |
+| `ConfigSource::Workspace`    | `.jj/workspace-config-id` → `<config_dir>/jj/workspaces/<id>/config.toml`; absent id file → legacy `.jj/workspace-config.toml` |
+
+then flattens `--when` / `[[--scope]]` blocks through
+`jj_lib::config::resolve`. **Read-only by construction:** the CLI reaches the
+repo/workspace layer through `jj_lib::secure_config::SecureConfig`, whose
+`maybe_load_config` writes (creates directories, writes `metadata.binpb`,
+generates a `config-id`, copies configs on repo-move detection, symlinks the
+legacy file away); Zanshin resolves the `config-id` → path indirection by hand
+instead, so nothing on disk is created, migrated or symlinked. Not layered: the
+`--config`/`--config-file` command-line layer and the `EnvBase` / `EnvOverrides`
+layers (at the pin those can only set `operation.*`, `user.*`, `debug.*`,
+`ui.color`, `ui.editor`, `ui.pager` — never a key this payload reads).
+`config_resolver::resolve` runs with `command: None` and `hostname: ""`, so
+`--when.commands` and `--when.hostnames` scopes never match in Zanshin.
+
+**Re-read per call (ADR-0002 extended to config).** Nothing is cached: config
+files change externally and the op-heads watcher does not cover them, so a file
+edited between two calls on the same handle is visible in the second.
+
+**Success payload:** `Envelope<LogDefaults>`.
+
+```
+LogDefaults {
+  log:                  string   // revsets.log
+  log_graph_prioritize: string   // revsets.log-graph-prioritize
+  short_prefixes:       string   // revsets.short-prefixes (see below)
+  synthetic_elided:     bool     // ui.log-synthetic-elided-nodes
+}
+```
+
+- **`short_prefixes` fallback rule.** `revsets.short-prefixes` falls back to the
+  EFFECTIVE `revsets.log` when the key is ABSENT from every layer — never when it
+  is present but empty. An explicit `""` means "prefix disambiguation disabled"
+  and is returned verbatim (`cli/src/cli_util.rs:991-995`).
+- **These are offers, not policy (FR-JJ-17).** `zanshin_graph_slice`'s
+  `revset` / `prioritize` / `short_prefixes` remain caller pass-throughs;
+  nothing Rust-side substitutes a config value for a caller argument. The UI
+  pre-fills from this read and the user edits. The Dart compile-time constants
+  (`defaultLogRevset`, `defaultGraphPrioritize`, `defaultShortPrefixes`,
+  `defaultSyntheticElided`) stay as the BUILTIN pre-fills for a pre-handle UI;
+  `RepoHandle.graphSlice`'s default parameter values are unchanged (Dart
+  defaults must be compile-time constants).
+
+**Error codes:**
+
+| Code                  | Condition                                                                     |
+|-----------------------|-------------------------------------------------------------------------------|
+| `ffi.invalid_handle`  | Rust: `handle == 0`. Worker: unknown/closed `handleId`. `context` is absent.   |
+| `jj.config_error`     | A config file is unreadable or not valid TOML, a `config-id` is not exactly 20 ASCII hex characters, or one of the four values has the wrong type; the file path or config key in `context`. Never a silent fall-back to the builtin defaults. |
+
+The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
+
+- **Table level → error.** A layer whose `revset-aliases` key is not a table
+  fails the call with `jj.config_error` (`cli/src/config.rs:943-953`).
+- **Entry level → warn and continue.** A single entry with a non-string value or
+  a declaration jj-lib's parser rejects logs a `tracing::warn!`, is skipped, and
+  the call succeeds with every other alias loaded (`cli/src/config.rs:964-977`).
+  A malformed alias DEFINITION is not caught at load time at all — it surfaces
+  as `jj.revset_parse_error` when the alias is used.
+
+**Dart worker integration:**
+
+- `LogDefaultsCommand(handleId)` — worker looks up the raw handle (unknown id →
+  `ffi.invalid_handle` envelope built Dart-side), calls
+  `zanshinLogDefaults(raw)` (`lib/src/ffi/log_defaults.dart`), and replies
+  `BufferResult` with the `Envelope<LogDefaults>` bytes.
+- `ZanshinWorker.logDefaults(handleId)` → `LogDefaults` via
+  `decodeLogDefaultsEnvelopeInternal`.
+- `RepoHandle.logDefaults()` — closed-handle guard (`StateError`), delegates.
+- Decode contract: `!ok` → `ZanshinFfiException(code, context)`; `ok` with a
+  non-`LogDefaults` union variant → `ZanshinFfiException('ffi.unknown')`. Absent
+  strings coalesce to `''`, so an explicitly empty `short_prefixes` and an
+  absent one are indistinguishable Dart-side — Rust always writes all three.

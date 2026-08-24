@@ -153,6 +153,7 @@ fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext 
 /// - [`RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize` cannot be
 ///   resolved. NOT raised for `short_prefixes`: an unresolvable disambiguation set only
 ///   warns and degrades (see [`short_prefix_index`]).
+/// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable.
 /// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata extraction, or a
 ///   per-item stream failure.
 pub(crate) fn walk_graph(
@@ -162,9 +163,11 @@ pub(crate) fn walk_graph(
     short_prefixes: &str,
     mut visit: impl FnMut(GraphNode) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
-    // 1. Parse everything against ONE alias map (built once per walk — Story 4.9's seam).
-    //    Parsing needs no loaded operation, so a syntax error costs no `load_at_head` I/O.
-    let aliases = build_aliases_map()?;
+    // 1. Load the effective config ONCE per walk (never cached — Story 4.9) and parse
+    //    everything against the ONE alias map it feeds. Parsing needs no loaded operation,
+    //    so a syntax error costs no `load_at_head` I/O.
+    let config = crate::config::load(repo)?;
+    let aliases = build_aliases_map(&config)?;
     let log = parse_revset_with(repo, &aliases, revset)?;
     let prio = parse_revset_with(repo, &aliases, prioritize)?.intersection(&log);
     let short = (!short_prefixes.is_empty())

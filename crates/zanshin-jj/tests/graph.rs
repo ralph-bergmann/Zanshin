@@ -57,6 +57,12 @@ fn node_of<'n>(nodes: &'n [GraphNode], id: &str) -> &'n GraphNode {
     nodes.iter().find(|n| n.id.0 == id).expect("node must be in the stream")
 }
 
+/// Writes `.jj/repo/config.toml` — the repo config layer of an extracted fixture, which
+/// carries no `config-id`, so this legacy path IS the repo layer (Story 4.9).
+fn write_repo_config(workspace_root: &std::path::Path, toml: &str) {
+    std::fs::write(workspace_root.join(".jj").join("repo").join("config.toml"), toml).unwrap();
+}
+
 /// Hex commit id of the single commit `revset` resolves to — through the public API only.
 fn commit_id_of(repo: &Repo, revset: &str) -> String {
     let ids = resolve_revset(repo, revset).unwrap();
@@ -1021,6 +1027,115 @@ fn walk_graph_immutable_covers_the_ancestry_of_every_immutable_head() {
             "{id} is outside ::(immutable_heads() | root())"
         );
     }
+}
+
+/// Story 4.9: an `immutable_heads()` override in the repo config moves the ◆ set, with no
+/// plumbing beyond the config-fed alias map — that is exactly why Story 4.8 built the
+/// immutable expression in code (`parse("immutable_heads()") | root()` then `.ancestors()`)
+/// instead of from the `immutable()` alias.
+///
+/// It also re-proves the no-caching rule: all three reads use the SAME handle.
+#[test]
+fn an_immutable_heads_override_in_the_repo_config_moves_the_immutable_set() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+
+    let before = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(
+        before.iter().filter(|n| n.meta.immutable).count(),
+        1,
+        "only root() is immutable while immutable_heads() degenerates"
+    );
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'all()'\n");
+    let all_immutable = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(all_immutable.len(), before.len(), "the row set itself is unchanged");
+    assert!(
+        all_immutable.iter().all(|n| n.meta.immutable),
+        "immutable_heads() = all() must flip every row to immutable"
+    );
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'none()'\n");
+    let only_root = collect_nodes(&repo, "all()", "none()");
+    let immutable: Vec<&str> = only_root
+        .iter()
+        .filter(|n| n.meta.immutable)
+        .map(|n| n.id.0.as_str())
+        .collect();
+    assert_eq!(
+        immutable,
+        vec![root.as_str()],
+        "immutable_heads() = none() leaves only root(), which the in-code `| root()` union pins"
+    );
+}
+
+/// Story 4.9 / CAP-1: an alias override changes the DEFAULT VIEW's contents, not just the
+/// ◆ flag.
+///
+/// `DEFAULT_LOG_REVSET` is `present(@) | ancestors(immutable_heads().., 2) | trunk()`, so
+/// `immutable_heads()` decides where the two-generation window starts. Moving it off
+/// `root()` drops the rows that fall outside that window — the row set a user would
+/// actually see in `jj log`, which the `all()`-based ◆ test deliberately holds constant.
+#[test]
+fn an_alias_override_changes_the_default_log_views_row_set() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    let ids = |nodes: &[GraphNode]| -> HashSet<String> { nodes.iter().map(|n| n.id.0.clone()).collect() };
+
+    // Builtin: immutable_heads() degenerates to root(), so the window spans everything.
+    let before = ids(&collect_nodes(&repo, DEFAULT_LOG_REVSET, DEFAULT_GRAPH_PRIORITIZE));
+    assert!(before.contains(&c1), "the default view starts out showing Commit 1");
+
+    // Override: the window now starts at Commit 2, so Commit 1 falls out of it.
+    write_repo_config(
+        &fx.path,
+        "[revset-aliases]\n'immutable_heads()' = 'description(\"Commit 2\")'\n",
+    );
+    let after = ids(&collect_nodes(&repo, DEFAULT_LOG_REVSET, DEFAULT_GRAPH_PRIORITIZE));
+
+    assert!(
+        !after.contains(&c1),
+        "Commit 1 is outside ancestors(immutable_heads().., 2) once the alias moves"
+    );
+    assert!(
+        after.contains(&c2) && after.contains(&c3),
+        "the window itself still shows"
+    );
+    assert!(
+        after.len() < before.len(),
+        "the default view's row set must actually shrink: {} -> {}",
+        before.len(),
+        after.len()
+    );
+}
+
+/// Story 4.9: a repo-config alias override reaches the graph walk's own expressions —
+/// `revset`, `prioritize` and `short_prefixes` all parse against the same config-fed map.
+#[test]
+fn walk_graph_expressions_resolve_repo_config_aliases() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+
+    // Before the override `wip()` is an unknown function in every position.
+    assert!(matches!(
+        repo.walk_graph("wip()", "none()", "", |_| ControlFlow::Continue(())),
+        Err(RevsetError::ParseError { .. })
+    ));
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = 'description(\"Commit 2\")'\n");
+
+    let rows = collect_nodes_with(&repo, "wip()", "wip()", "wip()");
+    assert_eq!(rows.len(), 1, "wip() selects exactly one row");
+    assert_eq!(rows[0].id.0, c2);
 }
 
 // ── Story 4.8: edge states, constructed in-test (fixtures are never regenerated) ──
