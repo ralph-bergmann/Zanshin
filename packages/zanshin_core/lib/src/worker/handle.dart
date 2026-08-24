@@ -5,6 +5,7 @@ import '../ffi/change.dart' show Change;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
 import '../ffi/log_defaults.dart' show LogDefaults;
+import '../ffi/mutate.dart' show MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -190,6 +191,87 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.logDefaults(_handleId);
+  }
+
+  /// Rewrite the description of [changeId] to [description] (Story 6.5).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.invalid_input`).
+  Future<MutationResult> describe({required String changeId, required String description}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.describe(_handleId, changeId: changeId, description: description);
+  }
+
+  /// Create a new, empty change on top of [parents], and switch the working
+  /// copy to it — a merge commit when [parents] has more than one entry
+  /// (Story 6.5).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`).
+  Future<MutationResult> newChange(List<String> parents) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.newChange(_handleId, parents);
+  }
+
+  /// Switch the working copy to [changeId] without creating a new commit
+  /// (Story 6.5).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`).
+  Future<MutationResult> edit(String changeId) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.edit(_handleId, changeId);
+  }
+
+  /// Abandon [changeIds], rebasing descendants onto their parents and deleting
+  /// any bookmarks that pointed only at the abandoned commits (Story 6.5).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`).
+  Future<MutationResult> abandon(List<String> changeIds) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.abandon(_handleId, changeIds);
+  }
+
+  /// Revert the last operation, one step back from the current head
+  /// (Story 6.5). Calling this twice in a row redoes the first `undo`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.nothing_to_undo`).
+  Future<MutationResult> undo() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.undo(_handleId);
+  }
+
+  /// Fetch all branches and tags from [remoteName] and import them
+  /// (Story 6.5). Never moves `@` — fetch only updates remote-tracking refs.
+  ///
+  /// Progress rides `ZanshinWorker.events` as a `ProgressEvent` carrying this
+  /// handle's [handleId].
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.network_error`).
+  Future<MutationResult> gitFetch(String remoteName) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitFetch(_handleId, remoteName);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

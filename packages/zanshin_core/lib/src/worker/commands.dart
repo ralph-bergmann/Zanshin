@@ -213,6 +213,124 @@ final class ConvertRepoCommand extends WorkerCommand {
   final String path;
 }
 
+/// Rewrite the description of the change identified by [changeId] in the repo
+/// identified by [handleId] (Story 6.5).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDescribe(raw, changeId, description)`, and replies
+/// with a `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class DescribeCommand extends WorkerCommand {
+  const DescribeCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.changeId,
+    required this.description,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// jj reverse-hex change identifier to rewrite.
+  final String changeId;
+
+  /// New description text.
+  final String description;
+}
+
+/// Create a new, empty change on top of [parents] in the repo identified by
+/// [handleId], and switch the working copy to it (Story 6.5).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinNewChange(raw, parents)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class NewChangeCommand extends WorkerCommand {
+  const NewChangeCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.parents,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// jj reverse-hex change identifiers of the new change's parents.
+  final List<String> parents;
+}
+
+/// Switch the working copy to [changeId] without creating a new commit, in the
+/// repo identified by [handleId] (Story 6.5).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinEdit(raw, changeId)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class EditCommand extends WorkerCommand {
+  const EditCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.changeId,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// jj reverse-hex change identifier to switch the working copy to.
+  final String changeId;
+}
+
+/// Abandon [changeIds] in the repo identified by [handleId] (Story 6.5).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinAbandon(raw, changeIds)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class AbandonCommand extends WorkerCommand {
+  const AbandonCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.changeIds,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// jj reverse-hex change identifiers to abandon.
+  final List<String> changeIds;
+}
+
+/// Revert the last operation of the repo identified by [handleId], one step
+/// back from the current head (Story 6.5).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinUndo(raw)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class UndoCommand extends WorkerCommand {
+  const UndoCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}
+
+/// Fetch all branches and tags from [remoteName] and import them, in the repo
+/// identified by [handleId] (Story 6.5). Never moves `@`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinGitFetch(raw, remoteName)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+/// Progress rides the same process-global event sink `WatcherEvent` already
+/// uses, tagged with the handle's `session_id`.
+final class GitFetchCommand extends WorkerCommand {
+  const GitFetchCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.remoteName,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Name of the configured git remote to fetch from.
+  final String remoteName;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

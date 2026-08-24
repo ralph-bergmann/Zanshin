@@ -25,6 +25,7 @@ import '../ffi/events.dart'
 import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
+import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
@@ -644,6 +645,117 @@ class ZanshinWorker {
     );
     return _handleOrThrow(response);
   }
+
+  /// Rewrite the description of [changeId] in the repo identified by [handleId]
+  /// (Story 6.5).
+  ///
+  /// Sends a [DescribeCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.invalid_input`). Completes with a [StateError]
+  /// after [close]. The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.describe].
+  Future<repo_ffi_mutate.MutationResult> describe(
+    int handleId, {
+    required String changeId,
+    required String description,
+  }) async {
+    final Uint8List bytes = await send(
+      DescribeCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        changeId: changeId,
+        description: description,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Create a new, empty change on top of [parents] in the repo identified by
+  /// [handleId], and switch the working copy to it (Story 6.5).
+  ///
+  /// Sends a [NewChangeCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
+  /// after [close]. The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.newChange].
+  Future<repo_ffi_mutate.MutationResult> newChange(int handleId, List<String> parents) async {
+    final Uint8List bytes = await send(
+      NewChangeCommand(commandId: _correlator.allocateId(), handleId: handleId, parents: parents),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Switch the working copy to [changeId] without creating a new commit, in
+  /// the repo identified by [handleId] (Story 6.5).
+  ///
+  /// Sends an [EditCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.change_not_found`). Completes with a [StateError] after [close]. The
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.edit].
+  Future<repo_ffi_mutate.MutationResult> edit(int handleId, String changeId) async {
+    final Uint8List bytes = await send(
+      EditCommand(commandId: _correlator.allocateId(), handleId: handleId, changeId: changeId),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Abandon [changeIds] in the repo identified by [handleId] (Story 6.5).
+  ///
+  /// Sends an [AbandonCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
+  /// after [close]. The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.abandon].
+  Future<repo_ffi_mutate.MutationResult> abandon(int handleId, List<String> changeIds) async {
+    final Uint8List bytes = await send(
+      AbandonCommand(commandId: _correlator.allocateId(), handleId: handleId, changeIds: changeIds),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Revert the last operation of the repo identified by [handleId], one step
+  /// back from the current head (Story 6.5).
+  ///
+  /// Sends an [UndoCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.nothing_to_undo`). Completes with a [StateError] after [close]. The
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.undo].
+  Future<repo_ffi_mutate.MutationResult> undo(int handleId) async {
+    final Uint8List bytes = await send(
+      UndoCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Fetch all branches and tags from [remoteName] and import them, in the repo
+  /// identified by [handleId] (Story 6.5). Never moves `@`.
+  ///
+  /// Progress rides [events] as a `ProgressEvent` with this [handleId], demuxed
+  /// by the worker's session-id table (same mechanism as watcher events).
+  ///
+  /// Sends a [GitFetchCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.network_error`). Completes with a [StateError]
+  /// after [close]. The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitFetch].
+  Future<repo_ffi_mutate.MutationResult> gitFetch(int handleId, String remoteName) async {
+    final Uint8List bytes = await send(
+      GitFetchCommand(commandId: _correlator.allocateId(), handleId: handleId, remoteName: remoteName),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -889,6 +1001,108 @@ void _workerEntry(_WorkerInit init) {
         case ConvertRepoCommand(:final String path):
           final Uint8List bytes = repo_ffi.zanshinRepoConvert(path);
           _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
+
+        case DescribeCommand(:final int handleId, :final String changeId, :final String description):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DescribeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinDescribe(raw, changeId, description);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case NewChangeCommand(:final int handleId, :final List<String> parents):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: NewChangeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinNewChange(raw, parents);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case EditCommand(:final int handleId, :final String changeId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: EditCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinEdit(raw, changeId);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case AbandonCommand(:final int handleId, :final List<String> changeIds):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: AbandonCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinAbandon(raw, changeIds);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case UndoCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: UndoCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinUndo(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitFetchCommand(:final int handleId, :final String remoteName):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitFetchCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinGitFetch(raw, remoteName);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
 
         case ShutdownCommand():
           // Close every repo left open: each join()s its Rust dispatch thread

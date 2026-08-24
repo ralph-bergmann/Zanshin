@@ -589,13 +589,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 12;
+        pub const ENUM_MAX_PAYLOAD: u8 = 13;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 13] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 14] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -609,6 +609,7 @@ pub mod zanshin {
             Payload::Progress,
             Payload::GraphSlice,
             Payload::LogDefaults,
+            Payload::MutationResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -629,9 +630,10 @@ pub mod zanshin {
             pub const Progress: Self = Self(10);
             pub const GraphSlice: Self = Self(11);
             pub const LogDefaults: Self = Self(12);
+            pub const MutationResult: Self = Self(13);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 12;
+            pub const ENUM_MAX: u8 = 13;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -646,6 +648,7 @@ pub mod zanshin {
                 Self::Progress,
                 Self::GraphSlice,
                 Self::LogDefaults,
+                Self::MutationResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -663,6 +666,7 @@ pub mod zanshin {
                     Self::Progress => Some("Progress"),
                     Self::GraphSlice => Some("GraphSlice"),
                     Self::LogDefaults => Some("LogDefaults"),
+                    Self::MutationResult => Some("MutationResult"),
                     _ => None,
                 }
             }
@@ -849,6 +853,117 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("FfiError");
                 ds.field("code", &self.code());
                 ds.field("context", &self.context());
+                ds.finish()
+            }
+        }
+        pub enum ChangeIdListOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
+        /// `parents` and `zanshin_abandon`'s `change_ids`.
+        pub struct ChangeIdList<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ChangeIdList<'a> {
+            type Inner = ChangeIdList<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ChangeIdList<'a> {
+            pub const VT_CHANGE_IDS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ChangeIdList { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ChangeIdListArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ChangeIdList<'bldr>> {
+                let mut builder = ChangeIdListBuilder::new(_fbb);
+                if let Some(x) = args.change_ids {
+                    builder.add_change_ids(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn change_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ChangeIdList::VT_CHANGE_IDS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ChangeIdList<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("change_ids", Self::VT_CHANGE_IDS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ChangeIdListArgs<'a> {
+            pub change_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for ChangeIdListArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ChangeIdListArgs { change_ids: None }
+            }
+        }
+
+        pub struct ChangeIdListBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ChangeIdListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_change_ids(
+                &mut self,
+                change_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ChangeIdList::VT_CHANGE_IDS, change_ids);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeIdListBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ChangeIdListBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ChangeIdList<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ChangeIdList<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ChangeIdList");
+                ds.field("change_ids", &self.change_ids());
                 ds.finish()
             }
         }
@@ -4930,6 +5045,204 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum MutationResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful mutation (Story 6-1/6-2/6-4a, FR-JJ-10a/FR-JJ-13/FR-JJ-14a):
+        /// `zanshin_describe`/`_new_change`/`_edit`/`_abandon`/`_undo`/`_git_fetch`.
+        /// `new_change_ids` / `abandoned_change_ids` are empty when the mutation mints
+        /// or abandons nothing (see `zanshin_jj::MutationResult`'s field docs for the
+        /// per-verb rules).
+        pub struct MutationResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MutationResult<'a> {
+            type Inner = MutationResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MutationResult<'a> {
+            pub const VT_NEW_OP_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NEW_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MutationResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MutationResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MutationResult<'bldr>> {
+                let mut builder = MutationResultBuilder::new(_fbb);
+                if let Some(x) = args.working_copy_change_id {
+                    builder.add_working_copy_change_id(x);
+                }
+                if let Some(x) = args.abandoned_change_ids {
+                    builder.add_abandoned_change_ids(x);
+                }
+                if let Some(x) = args.new_change_ids {
+                    builder.add_new_change_ids(x);
+                }
+                if let Some(x) = args.new_op_id {
+                    builder.add_new_op_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn new_op_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MutationResult::VT_NEW_OP_ID, None)
+                }
+            }
+            #[inline]
+            pub fn new_change_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MutationResult::VT_NEW_CHANGE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn abandoned_change_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MutationResult::VT_ABANDONED_CHANGE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn working_copy_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MutationResult::VT_WORKING_COPY_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MutationResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("new_op_id", Self::VT_NEW_OP_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("new_change_ids", Self::VT_NEW_CHANGE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("working_copy_change_id", Self::VT_WORKING_COPY_CHANGE_ID, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct MutationResultArgs<'a> {
+            pub new_op_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub new_change_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub abandoned_change_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for MutationResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MutationResultArgs {
+                    new_op_id: None,
+                    new_change_ids: None,
+                    abandoned_change_ids: None,
+                    working_copy_change_id: None,
+                }
+            }
+        }
+
+        pub struct MutationResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MutationResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_new_op_id(&mut self, new_op_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MutationResult::VT_NEW_OP_ID, new_op_id);
+            }
+            #[inline]
+            pub fn add_new_change_ids(
+                &mut self,
+                new_change_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MutationResult::VT_NEW_CHANGE_IDS, new_change_ids);
+            }
+            #[inline]
+            pub fn add_abandoned_change_ids(
+                &mut self,
+                abandoned_change_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MutationResult::VT_ABANDONED_CHANGE_IDS,
+                    abandoned_change_ids,
+                );
+            }
+            #[inline]
+            pub fn add_working_copy_change_id(&mut self, working_copy_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MutationResult::VT_WORKING_COPY_CHANGE_ID,
+                    working_copy_change_id,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MutationResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MutationResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MutationResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MutationResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MutationResult");
+                ds.field("new_op_id", &self.new_op_id());
+                ds.field("new_change_ids", &self.new_change_ids());
+                ds.field("abandoned_change_ids", &self.abandoned_change_ids());
+                ds.field("working_copy_change_id", &self.working_copy_change_id());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -5202,6 +5515,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_mutation_result(&self) -> Option<MutationResult<'a>> {
+                if self.data_type() == Payload::MutationResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { MutationResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -5269,6 +5597,11 @@ pub mod zanshin {
                             Payload::LogDefaults => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<LogDefaults>>(
                                     "Payload::LogDefaults",
+                                    pos,
+                                ),
+                            Payload::MutationResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                                    "Payload::MutationResult",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -5421,6 +5754,13 @@ pub mod zanshin {
                     }
                     Payload::LogDefaults => {
                         if let Some(x) = self.data_as_log_defaults() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::MutationResult => {
+                        if let Some(x) = self.data_as_mutation_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

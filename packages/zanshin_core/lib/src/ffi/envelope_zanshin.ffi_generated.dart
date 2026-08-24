@@ -269,7 +269,8 @@ enum PayloadTypeId {
   WatcherEvent(9),
   Progress(10),
   GraphSlice(11),
-  LogDefaults(12);
+  LogDefaults(12),
+  MutationResult(13);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -302,6 +303,8 @@ enum PayloadTypeId {
         return PayloadTypeId.GraphSlice;
       case 12:
         return PayloadTypeId.LogDefaults;
+      case 13:
+        return PayloadTypeId.MutationResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -310,7 +313,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 12;
+  static const int maxValue = 13;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -400,6 +403,81 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addOffset(0, codeOffset);
     fbBuilder.addOffset(1, contextOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
+///  `parents` and `zanshin_abandon`'s `change_ids`.
+class ChangeIdList {
+  ChangeIdList._(this._bc, this._bcOffset);
+  factory ChangeIdList(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ChangeIdList> reader = _ChangeIdListReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get changeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ChangeIdList{changeIds: ${changeIds}}';
+  }
+}
+
+class _ChangeIdListReader extends fb.TableReader<ChangeIdList> {
+  const _ChangeIdListReader();
+
+  @override
+  ChangeIdList createObject(fb.BufferContext bc, int offset) => ChangeIdList._(bc, offset);
+}
+
+class ChangeIdListBuilder {
+  ChangeIdListBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addChangeIdsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _changeIds;
+
+  ChangeIdListObjectBuilder({
+    List<String>? changeIds,
+  }) : _changeIds = changeIds;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeIdsOffset = _changeIds == null
+        ? null
+        : fbBuilder.writeList(_changeIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, changeIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -2888,6 +2966,122 @@ class LogDefaultsObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Outcome of a successful mutation (Story 6-1/6-2/6-4a, FR-JJ-10a/FR-JJ-13/FR-JJ-14a):
+///  `zanshin_describe`/`_new_change`/`_edit`/`_abandon`/`_undo`/`_git_fetch`.
+///  `new_change_ids` / `abandoned_change_ids` are empty when the mutation mints
+///  or abandons nothing (see `zanshin_jj::MutationResult`'s field docs for the
+///  per-verb rules).
+class MutationResult {
+  MutationResult._(this._bc, this._bcOffset);
+  factory MutationResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MutationResult> reader = _MutationResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get newOpId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get newChangeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get abandonedChangeIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  String? get workingCopyChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}}';
+  }
+}
+
+class _MutationResultReader extends fb.TableReader<MutationResult> {
+  const _MutationResultReader();
+
+  @override
+  MutationResult createObject(fb.BufferContext bc, int offset) => MutationResult._(bc, offset);
+}
+
+class MutationResultBuilder {
+  MutationResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addNewOpIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewChangeIdsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAbandonedChangeIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopyChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MutationResultObjectBuilder extends fb.ObjectBuilder {
+  final String? _newOpId;
+  final List<String>? _newChangeIds;
+  final List<String>? _abandonedChangeIds;
+  final String? _workingCopyChangeId;
+
+  MutationResultObjectBuilder({
+    String? newOpId,
+    List<String>? newChangeIds,
+    List<String>? abandonedChangeIds,
+    String? workingCopyChangeId,
+  }) : _newOpId = newOpId,
+       _newChangeIds = newChangeIds,
+       _abandonedChangeIds = abandonedChangeIds,
+       _workingCopyChangeId = workingCopyChangeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? newOpIdOffset = _newOpId == null ? null : fbBuilder.writeString(_newOpId!);
+    final int? newChangeIdsOffset = _newChangeIds == null
+        ? null
+        : fbBuilder.writeList(_newChangeIds!.map(fbBuilder.writeString).toList());
+    final int? abandonedChangeIdsOffset = _abandonedChangeIds == null
+        ? null
+        : fbBuilder.writeList(_abandonedChangeIds!.map(fbBuilder.writeString).toList());
+    final int? workingCopyChangeIdOffset = _workingCopyChangeId == null
+        ? null
+        : fbBuilder.writeString(_workingCopyChangeId!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, newOpIdOffset);
+    fbBuilder.addOffset(1, newChangeIdsOffset);
+    fbBuilder.addOffset(2, abandonedChangeIdsOffset);
+    fbBuilder.addOffset(3, workingCopyChangeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -2941,6 +3135,8 @@ class Envelope {
         return GraphSlice.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 12:
         return LogDefaults.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 13:
+        return MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

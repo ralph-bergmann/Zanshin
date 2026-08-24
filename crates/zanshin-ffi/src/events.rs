@@ -174,14 +174,10 @@ pub(crate) fn watcher_event_to_envelope(session_id: u64, event: &WatcherEvent) -
 /// `Envelope<Progress>` buffer, tagged with the session's `session_id` for
 /// Dart-side demux (same ABA-safe correlation id as `WatcherEvent`).
 ///
-/// No real producer exists yet — Story 6-4a's `git fetch` is the first —
-/// this builder + the decode path are proven by unit/Dart tests only.
-// WHY: no production call site exists until Story 6-4a ships a real progress
-// producer (OQ-3, this story deliberately ships schema + decode + dispatch-path
-// only, no per-op registration API). Unit tests (below) call this directly and
-// the Dart decode-contract test round-trips it; `#[cfg(test)]` callers don't
-// count toward the non-test build's dead-code analysis.
-#[allow(dead_code)]
+/// The first real caller is `repo.rs::zanshin_git_fetch` (Story 6.5), which
+/// wraps the Dart-supplied `NativeCallable.listener` into a `ProgressFn` and
+/// forwards each `zanshin_jj::ProgressEvent` here, tagged with the session's
+/// `session_id` so the worker can demux it back to the right `handleId`.
 #[must_use]
 pub(crate) fn progress_to_envelope(session_id: u64, operation: &str, progress: f32, message: &str) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);

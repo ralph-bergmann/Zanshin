@@ -28,6 +28,17 @@ table FfiError {
   context: string;
 }
 
+// ── Request-only tables ─────────────────────────────────────────────────────────
+// NOT part of the Payload union below (that union is response-only). Dart builds
+// and owns/frees these buffers itself; Rust only borrows them for the call
+// (ADR-0001 composite-input pattern, Story 6-5).
+
+/// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
+/// `parents` and `zanshin_abandon`'s `change_ids`.
+table ChangeIdList {
+  change_ids: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -38,7 +49,7 @@ table FfiError {
 //   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6)
 //   Story 4-9  : LogDefaults ✓
 //   Story 5-8  : Diff
-//   Story 6-5  : mutation results
+//   Story 6-5  : mutation results ✓
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -324,6 +335,18 @@ table LogDefaults {
   synthetic_elided: bool;       // ui.log-synthetic-elided-nodes
 }
 
+/// Outcome of a successful mutation (Story 6-1/6-2/6-4a, FR-JJ-10a/FR-JJ-13/FR-JJ-14a):
+/// `zanshin_describe`/`_new_change`/`_edit`/`_abandon`/`_undo`/`_git_fetch`.
+/// `new_change_ids` / `abandoned_change_ids` are empty when the mutation mints
+/// or abandons nothing (see `zanshin_jj::MutationResult`'s field docs for the
+/// per-verb rules).
+table MutationResult {
+  new_op_id: string;
+  new_change_ids: [string];
+  abandoned_change_ids: [string];
+  working_copy_change_id: string;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -338,6 +361,7 @@ union Payload {
   GraphSlice,
   // Member order IS the wire discriminant — APPEND only, never reorder.
   LogDefaults,
+  MutationResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

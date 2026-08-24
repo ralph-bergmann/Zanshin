@@ -461,6 +461,195 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_convert(
   ffi.Pointer<ffi.Char> path,
 );
 
+/// Rewrite `change_id`'s description to `description` in the repo referenced by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` or `description` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.invalid_input` — `change_id` resolves to the root commit.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `change_id` and `description` must each be a NUL-terminated UTF-8 C string owned
+/// by the caller (Dart allocates via `toNativeUtf8()` and frees with `calloc.free()`
+/// after this call returns — AR-P-5 inbound rule). Rust only borrows them for the
+/// duration of the call; they are never freed on the Rust side.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_describe(
+  int handle,
+  ffi.Pointer<ffi.Char> change_id,
+  ffi.Pointer<ffi.Char> description,
+);
+
+/// Create a new, empty change on top of `parents` in the repo referenced by `handle`
+/// and switch the working copy to it — a merge commit when `parents` has more than
+/// one entry.
+///
+/// `parents` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern), not `args_json` and not a raw C-string array.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `jj.invalid_input` — the parsed `parents` list is empty.
+/// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_new_change(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Switch the working copy to `change_id` without creating a new commit, in the repo
+/// referenced by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure (includes attempting to edit
+/// the root commit); detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `change_id` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_edit(
+  int handle,
+  ffi.Pointer<ffi.Char> change_id,
+);
+
+/// Abandon `change_ids` in the repo referenced by `handle`, rebasing descendants onto
+/// their parents and deleting any bookmarks that pointed only at the abandoned commits.
+///
+/// `change_ids` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern), not `args_json` and not a raw C-string array.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// If `@` itself is among `change_ids`, jj-lib creates a fresh empty commit at the
+/// (merged) parent(s) and repoints the working copy at it automatically — its change
+/// id is reported in `MutationResult.new_change_ids`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
+/// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_abandon(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Revert the last operation of the repo referenced by `handle`, one step back from
+/// the current head. Calling this twice in a row redoes the first `undo`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.nothing_to_undo` — the head operation IS the op-store root (no parent to
+/// restore to).
+/// - `jj.invalid_input` — the head operation has more than one parent (a
+/// divergent-write merge op).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_undo(
+  int handle,
+);
+
+/// Fetch all branches and tags from `remote_name` and import them, in the repo
+/// referenced by `handle`. Never moves `@` — fetch only updates remote-tracking refs.
+///
+/// Progress is dispatched over the SAME process-global event sink `WatcherEvent`
+/// already uses (Story 3.6), tagged with the session's `session_id` — there is no
+/// separate per-op registry; the caller correlates by `session_id`, exactly like a
+/// `WatcherEvent`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `remote_name` is a null pointer.
+/// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
+/// - `jj.remote_not_found` — `remote_name` has no configured git remote, or the repo
+/// has no git backend at all.
+/// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+/// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_fetch(
+  int handle,
+  ffi.Pointer<ffi.Char> remote_name,
+);
+
 /// Read the working-copy status of the repo identified by `handle`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
@@ -516,6 +705,8 @@ const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 const int ENUM_MIN_GRAPH_EDGE_KIND = 0;
 
 const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
+
+const int ChangeIdList_VT_CHANGE_IDS = 4;
 
 const int RepoHandle_VT_SESSION_ID = 6;
 
@@ -658,3 +849,9 @@ const int LogDefaults_VT_LOG = 4;
 const int LogDefaults_VT_LOG_GRAPH_PRIORITIZE = 6;
 
 const int LogDefaults_VT_SHORT_PREFIXES = 8;
+
+const int MutationResult_VT_NEW_OP_ID = 4;
+
+const int MutationResult_VT_NEW_CHANGE_IDS = 6;
+
+const int MutationResult_VT_ABANDONED_CHANGE_IDS = 8;

@@ -14,16 +14,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::thread::{self, JoinHandle};
 
-use flatbuffers::FlatBufferBuilder;
+use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
 use zanshin_jj::{
-    convert_colocated, detect_repo, find_repo_root, Backend, DetectError, Repo, RepoError, RepoKind, RepoRoot,
+    convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, DetectError, MutateError, Repo, RepoError,
+    RepoKind, RepoRoot,
 };
 
 use crate::envelope::{
-    catch, ok_empty, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
-    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
-    WATCHER_IO_ERROR,
+    catch, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
+    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_INVALID_INPUT,
+    JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND,
+    JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -62,6 +64,80 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
             context: Some(path.display().to_string()),
         },
     }
+}
+
+/// Map a [`MutateError`] (from the Story 6.1/6.2/6.4a mutation functions) to an
+/// [`FfiErrorObj`]. `ChangeNotFound` reuses [`JJ_CHANGE_NOT_FOUND`] (same
+/// not-found semantics as the read-side `change.rs`); `Backend` reuses
+/// [`JJ_JJ_LIB_ERROR`] (same unclassified-jj-lib-failure semantics as every
+/// other wrapper); `InvalidInput`/`NothingToUndo`/`RemoteNotFound`/`NetworkError`
+/// are new codes introduced by Story 6.5 (`docs/rust-error-codes.md`).
+fn map_mutate_err(e: MutateError) -> FfiErrorObj {
+    match e {
+        MutateError::ChangeNotFound { id } => FfiErrorObj {
+            code: JJ_CHANGE_NOT_FOUND.to_owned(),
+            context: Some(id),
+        },
+        MutateError::InvalidInput { reason } => FfiErrorObj {
+            code: JJ_INVALID_INPUT.to_owned(),
+            context: Some(reason),
+        },
+        MutateError::NothingToUndo => FfiErrorObj {
+            code: JJ_NOTHING_TO_UNDO.to_owned(),
+            context: None,
+        },
+        MutateError::RemoteNotFound { name } => FfiErrorObj {
+            code: JJ_REMOTE_NOT_FOUND.to_owned(),
+            context: Some(name),
+        },
+        MutateError::NetworkError { reason } => FfiErrorObj {
+            code: JJ_NETWORK_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        MutateError::Backend(reason) => FfiErrorObj {
+            code: JJ_JJ_LIB_ERROR.to_owned(),
+            context: Some(reason),
+        },
+    }
+}
+
+/// Parse a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001 composite-input
+/// pattern) into an owned `Vec<ChangeId>`.
+///
+/// `data`/`len` describe a caller-owned buffer Dart builds and owns/frees
+/// itself (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only borrows
+/// it for the duration of this call — the same AR-P-5 inbound rule as
+/// `cstr_to_string`'s `CString`s, generalized to raw bytes.
+///
+/// `flatbuffers::root_with_opts::<T>` works for any generated table `T`, not
+/// only `envelope.fbs`'s declared `root_type` — `root_as_envelope` is itself a
+/// thin wrapper over exactly this generic call (verified in
+/// `envelope_generated.rs`), so `ChangeIdList` needs no `root_type` change.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+fn read_change_id_list(data: *const u8, len: usize) -> Result<Vec<ChangeId>, FfiErrorObj> {
+    if data.is_null() {
+        return Err(FfiErrorObj {
+            code: FFI_NULL_POINTER.to_owned(),
+            context: None,
+        });
+    }
+    // SAFETY: caller-owned, borrowed for this call only (see doc comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let list = flatbuffers::root_with_opts::<fbs::ChangeIdList>(&VerifierOptions::default(), bytes).map_err(|e| {
+        FfiErrorObj {
+            code: FFI_INVALID_ARGUMENT.to_owned(),
+            context: Some(e.to_string()),
+        }
+    })?;
+    Ok(list
+        .change_ids()
+        .into_iter()
+        .flatten()
+        .map(|s| ChangeId(s.to_owned()))
+        .collect())
 }
 
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
@@ -126,6 +202,11 @@ pub(crate) struct RepoSession {
     // always `Some` for a session returned by `arm_session`.
     watcher: Option<Watcher>,
     dispatch: Option<JoinHandle<()>>,
+    // The same process-unique, never-reused id returned to Dart as
+    // `RepoHandle.session_id` (arm_session_with's NEXT_SESSION_ID counter).
+    // Story 6.5's `zanshin_git_fetch` copies this out to correlate its
+    // `Progress` events — the same mechanism `WatcherEvent` already uses.
+    pub(crate) session_id: u64,
 }
 
 impl RepoSession {
@@ -212,6 +293,7 @@ fn arm_session_with(
         repo,
         watcher: None,
         dispatch: None,
+        session_id,
     });
     let (watcher, rx) = match Watcher::new(&repo_path) {
         Ok(pair) => pair,
@@ -464,6 +546,294 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
     vec_into_token(buf)
 }
 
+// ── Mutation wrappers (Story 6.5) ────────────────────────────────────────────
+
+/// Rewrite `change_id`'s description to `description` in the repo referenced by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` or `description` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.invalid_input` — `change_id` resolves to the root commit.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `change_id` and `description` must each be a NUL-terminated UTF-8 C string owned
+/// by the caller (Dart allocates via `toNativeUtf8()` and frees with `calloc.free()`
+/// after this call returns — AR-P-5 inbound rule). Rust only borrows them for the
+/// duration of the call; they are never freed on the Rust side.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_describe(
+    handle: u64,
+    change_id: *const c_char,
+    description: *const c_char,
+) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_describe", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        // SAFETY: both are caller-owned NUL-terminated C strings (Dart allocates + frees).
+        let id = unsafe { cstr_to_string(change_id) }?;
+        let desc = unsafe { cstr_to_string(description) }?;
+        let result = session.repo.describe(ChangeId(id), &desc).map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Create a new, empty change on top of `parents` in the repo referenced by `handle`
+/// and switch the working copy to it — a merge commit when `parents` has more than
+/// one entry.
+///
+/// `parents` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern), not `args_json` and not a raw C-string array.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `jj.invalid_input` — the parsed `parents` list is empty.
+/// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_new_change", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        let parents = read_change_id_list(data, len)?;
+        let result = session.repo.new_change(&parents).map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Switch the working copy to `change_id` without creating a new commit, in the repo
+/// referenced by `handle`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
+/// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure (includes attempting to edit
+///   the root commit); detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `change_id` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_edit", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        // SAFETY: change_id is a caller-owned NUL-terminated C string (Dart allocates + frees).
+        let id = unsafe { cstr_to_string(change_id) }?;
+        let result = session.repo.edit(ChangeId(id)).map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Abandon `change_ids` in the repo referenced by `handle`, rebasing descendants onto
+/// their parents and deleting any bookmarks that pointed only at the abandoned commits.
+///
+/// `change_ids` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern), not `args_json` and not a raw C-string array.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// If `@` itself is among `change_ids`, jj-lib creates a fresh empty commit at the
+/// (merged) parent(s) and repoints the working copy at it automatically — its change
+/// id is reported in `MutationResult.new_change_ids`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
+/// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_abandon", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        let change_ids = read_change_id_list(data, len)?;
+        let result = session.repo.abandon(&change_ids).map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Revert the last operation of the repo referenced by `handle`, one step back from
+/// the current head. Calling this twice in a row redoes the first `undo`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.nothing_to_undo` — the head operation IS the op-store root (no parent to
+///   restore to).
+/// - `jj.invalid_input` — the head operation has more than one parent (a
+///   divergent-write merge op).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_undo", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        let result = session.repo.undo().map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Fetch all branches and tags from `remote_name` and import them, in the repo
+/// referenced by `handle`. Never moves `@` — fetch only updates remote-tracking refs.
+///
+/// Progress is dispatched over the SAME process-global event sink `WatcherEvent`
+/// already uses (Story 3.6), tagged with the session's `session_id` — there is no
+/// separate per-op registry; the caller correlates by `session_id`, exactly like a
+/// `WatcherEvent`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `remote_name` is a null pointer.
+/// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
+/// - `jj.remote_not_found` — `remote_name` has no configured git remote, or the repo
+///   has no git backend at all.
+/// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+/// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_char) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_fetch", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        // SAFETY: remote_name is a caller-owned NUL-terminated C string (Dart allocates + frees).
+        let remote_name = unsafe { cstr_to_string(remote_name) }?;
+        // Copy the Copy `u64` out BEFORE building the closure — avoids a borrow
+        // conflict with the subsequent `session.repo.git_fetch(&mut self, ...)`.
+        let session_id = session.session_id;
+        let progress = move |e: zanshin_jj::ProgressEvent| {
+            events::dispatch(events::progress_to_envelope(
+                session_id,
+                &e.operation,
+                e.progress,
+                &e.message,
+            ));
+        };
+        let result = session
+            .repo
+            .git_fetch(&remote_name, &progress)
+            .map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -471,8 +841,9 @@ mod tests {
     use super::*;
     use crate::envelope_generated::zanshin::ffi as fbs;
     use crate::{
-        FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CONVERT_FAILED, JJ_JJ_LIB_ERROR,
-        JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+        FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONVERT_FAILED,
+        JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND,
+        JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
     };
     use flatbuffers::VerifierOptions;
 
@@ -544,6 +915,54 @@ mod tests {
         });
         assert_eq!(e.code, JJ_NOT_A_GIT_REPO);
         assert!(e.context.unwrap().contains("/no/git/here"));
+    }
+
+    #[test]
+    fn map_mutate_err_change_not_found_maps_to_jj_change_not_found() {
+        let e = map_mutate_err(MutateError::ChangeNotFound { id: "bogus".to_owned() });
+        assert_eq!(e.code, JJ_CHANGE_NOT_FOUND);
+        assert_eq!(e.context.unwrap(), "bogus");
+    }
+
+    #[test]
+    fn map_mutate_err_invalid_input_maps_to_jj_invalid_input() {
+        let e = map_mutate_err(MutateError::InvalidInput {
+            reason: "empty list".to_owned(),
+        });
+        assert_eq!(e.code, JJ_INVALID_INPUT);
+        assert_eq!(e.context.unwrap(), "empty list");
+    }
+
+    #[test]
+    fn map_mutate_err_nothing_to_undo_maps_to_jj_nothing_to_undo() {
+        let e = map_mutate_err(MutateError::NothingToUndo);
+        assert_eq!(e.code, JJ_NOTHING_TO_UNDO);
+        assert!(e.context.is_none());
+    }
+
+    #[test]
+    fn map_mutate_err_remote_not_found_maps_to_jj_remote_not_found() {
+        let e = map_mutate_err(MutateError::RemoteNotFound {
+            name: "origin".to_owned(),
+        });
+        assert_eq!(e.code, JJ_REMOTE_NOT_FOUND);
+        assert_eq!(e.context.unwrap(), "origin");
+    }
+
+    #[test]
+    fn map_mutate_err_network_error_maps_to_jj_network_error() {
+        let e = map_mutate_err(MutateError::NetworkError {
+            reason: "connection refused".to_owned(),
+        });
+        assert_eq!(e.code, JJ_NETWORK_ERROR);
+        assert_eq!(e.context.unwrap(), "connection refused");
+    }
+
+    #[test]
+    fn map_mutate_err_backend_maps_to_jj_lib_error() {
+        let e = map_mutate_err(MutateError::Backend("underlying".to_owned()));
+        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        assert_eq!(e.context.unwrap(), "underlying");
     }
 
     #[test]

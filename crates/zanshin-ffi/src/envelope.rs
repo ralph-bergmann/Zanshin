@@ -34,6 +34,18 @@ pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 /// AR-P-4: emitted by `change.rs` when no change exists for the given id.
 pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
+/// AR-P-4: emitted by `repo.rs` (the mutation wrappers) when the caller's arguments are
+/// structurally invalid for the mutation (e.g. an empty `parents`/`change_ids` list).
+pub const JJ_INVALID_INPUT: &str = "jj.invalid_input";
+/// AR-P-4: emitted by `repo.rs::zanshin_undo` when the head operation is the op-store
+/// root — there is no parent operation to restore to.
+pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
+/// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured
+/// git remote, or the repo has no git backend at all.
+pub const JJ_REMOTE_NOT_FOUND: &str = "jj.remote_not_found";
+/// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
+/// fails (network, authentication, or transport error); detail in `context`.
+pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
 /// AR-P-4: emitted by `repo.rs` when a filesystem I/O error (e.g. EACCES, ENOTDIR) prevented repo-kind classification.
 pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";
 /// AR-P-4: emitted by `repo.rs` when the path is already a jj workspace (`.jj/` present); convert skipped.
@@ -121,6 +133,44 @@ pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
             error: None,
             data_type: fbs::Payload::RepoHandle,
             data: Some(h.as_union_value()),
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
+}
+
+/// Build a success `Envelope` with a `MutationResult` payload and return the finished buffer.
+///
+/// Sets `ok = true`, `data_type = Payload::MutationResult`. Children (the two
+/// string vectors) are built before the string scalars, before the
+/// `MutationResult` table, before the `Envelope` — the same bottom-up order as
+/// `ok_diagnostics`/`change_to_envelope`. Shared by all six Story 6.5 mutation
+/// wrappers (`repo.rs`), not owned by one noun file.
+#[must_use]
+pub fn ok_mutation_result(r: &zanshin_jj::MutationResult) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let new_change_offs: Vec<_> = r.new_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
+    let new_change_vec = b.create_vector(&new_change_offs);
+    let abandoned_offs: Vec<_> = r.abandoned_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
+    let abandoned_vec = b.create_vector(&abandoned_offs);
+    let new_op_id_off = b.create_string(&r.new_op_id.0);
+    let working_copy_change_id_off = b.create_string(&r.working_copy_change_id.0);
+    let mutation_result = fbs::MutationResult::create(
+        &mut b,
+        &fbs::MutationResultArgs {
+            new_op_id: Some(new_op_id_off),
+            new_change_ids: Some(new_change_vec),
+            abandoned_change_ids: Some(abandoned_vec),
+            working_copy_change_id: Some(working_copy_change_id_off),
+        },
+    );
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type: fbs::Payload::MutationResult,
+            data: Some(mutation_result.as_union_value()),
         },
     );
     b.finish(envelope, None);
@@ -274,6 +324,37 @@ mod tests {
         assert_eq!(diag.app_version(), Some("1.2.3"));
         assert_eq!(diag.git_sha(), Some("abc123"));
         assert_eq!(diag.log_path(), Some("/tmp/Logs/Zanshin"));
+    }
+
+    #[test]
+    fn ok_mutation_result_produces_mutation_result_envelope() {
+        let r = zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId("abc123".to_owned()),
+            new_change_ids: vec![zanshin_jj::ChangeId("qpvuntsm".to_owned())],
+            abandoned_change_ids: vec![
+                zanshin_jj::ChangeId("rlvkpnrz".to_owned()),
+                zanshin_jj::ChangeId("zsuskuln".to_owned()),
+            ],
+            working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+        };
+        let buf = ok_mutation_result(&r);
+        let env = verified_envelope(&buf);
+        assert!(env.ok());
+        assert!(env.error().is_none());
+        assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+        let mr = env
+            .data_as_mutation_result()
+            .expect("MutationResult payload must be present");
+        assert_eq!(mr.new_op_id(), Some("abc123"));
+        assert_eq!(
+            mr.new_change_ids().map(|v| v.iter().collect::<Vec<_>>()),
+            Some(vec!["qpvuntsm"])
+        );
+        assert_eq!(
+            mr.abandoned_change_ids().map(|v| v.iter().collect::<Vec<_>>()),
+            Some(vec!["rlvkpnrz", "zsuskuln"])
+        );
+        assert_eq!(mr.working_copy_change_id(), Some("qpvuntsm"));
     }
 
     #[test]
