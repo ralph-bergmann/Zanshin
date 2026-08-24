@@ -262,6 +262,12 @@ void main() {
       expect(defaultShortPrefixes, equals(defaultLogRevset));
     });
 
+    test('defaultSyntheticElided_mirrors_the_cli_ui_log_synthetic_elided_nodes_default', () {
+      // The CLI's ui.log-synthetic-elided-nodes default (cli/src/config/misc.toml
+      // @ v0.42.0); RepoHandle.graphSlice pre-fills it.
+      expect(defaultSyntheticElided, isTrue);
+    });
+
     test('zanshinGraphSlice_rejects_interior_nul_in_revset_with_argument_error', () {
       expect(
         () => zanshinGraphSlice(

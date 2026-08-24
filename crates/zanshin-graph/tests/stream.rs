@@ -229,6 +229,88 @@ fn stream_lanes_emits_one_synthetic_row_per_child_without_deduplicating_targets(
     assert_eq!(rows.last().map(|r| r.commit_id.as_str()), Some(root.as_str()));
 }
 
+/// A synthetic row is a first-class row for the assigner: it reports the lanes crossing it
+/// exactly like a commit row does, so a renderer needs nothing extra to paint it.
+#[test]
+fn stream_lanes_synthetic_row_reports_its_own_pass_through_lanes() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+
+    // Two tips each elide to root. Every synthetic row sits directly behind its own child,
+    // so the walk is tip_a, synthetic, tip_b, synthetic, root. At the FIRST synthetic row
+    // the walk has not reached tip_b yet — a branch that has not been reached cannot cross
+    // a row above it, so nothing passes through. The SECOND synthetic row is the one with a
+    // genuine pass-through: the first synthetic row routed its own edge to root, and that
+    // segment is still open when the second synthetic row lands in a different lane.
+    let selected = "bookmarks(exact:\"branch-a\") | bookmarks(exact:\"branch-b\") | root()";
+    let rows = collect_rows_with(&repo, selected, "none()", true);
+
+    let synthetic: Vec<usize> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.synthetic_elided)
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(synthetic.len(), 2, "both tips elide to root");
+    let (first, second) = (&rows[synthetic[0]], &rows[synthetic[1]]);
+
+    assert!(
+        first.active_lanes.is_empty(),
+        "nothing crosses the first synthetic row: the second tip is not reached yet"
+    );
+    assert_eq!(
+        second.active_lanes.iter().map(|l| l.lane).collect::<Vec<_>>(),
+        vec![first.edges[0].target_lane.expect("the elided row routes to root")],
+        "the first synthetic row's still-open edge to root crosses the second synthetic row"
+    );
+    assert_eq!(second.commit_id, root);
+    assert!(
+        rows.last().is_some_and(|r| r.active_lanes.is_empty()),
+        "everything has landed by the root row"
+    );
+}
+
+/// Breaking ON a synthetic row abandons the assigner mid-splice — the child's reservation is
+/// already consumed and later synthetic rows are still pending. The stream must report
+/// `Break` and skip `finish()` (which would otherwise flag the open reservations).
+#[test]
+fn stream_lanes_sink_break_on_a_synthetic_row_stops_mid_splice() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut seen = Vec::new();
+    let result = stream_lanes(
+        &repo,
+        "all() ~ description(\"Commit 2\")",
+        DEFAULT_GRAPH_PRIORITIZE,
+        SHORT,
+        true,
+        |row| {
+            let synthetic = row.synthetic_elided;
+            seen.push((row.commit_id, synthetic));
+            if synthetic {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
+    );
+
+    assert!(matches!(result, Ok(ControlFlow::Break(()))), "got: {result:?}");
+    assert!(
+        seen.last().is_some_and(|(_, synthetic)| *synthetic),
+        "the break happened ON the synthetic row: {seen:?}"
+    );
+    assert_eq!(
+        seen.iter().filter(|(_, synthetic)| *synthetic).count(),
+        1,
+        "no row is emitted after the break"
+    );
+}
+
 // ── Edge kinds through the assigner ─────────────────────────────────────────
 
 #[test]

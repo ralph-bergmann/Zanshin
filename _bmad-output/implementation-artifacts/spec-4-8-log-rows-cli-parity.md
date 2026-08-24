@@ -2,17 +2,39 @@
 title: 'Story 4.8: CLI-parity log rows — metadata-enriched, self-contained GraphSlice rows'
 type: 'feature'
 created: '2026-08-23'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '35bee2170a5eb10292ef0cfed77c84939208b1b2'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
   - '{project-root}/_bmad-output/specs/spec-4-8-log-rows-cli-parity/SPEC.md'
   - '{project-root}/_bmad-output/specs/spec-4-8-log-rows-cli-parity/cli-log-parity.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The `syntheticElided` flag is never exercised as `false`, nor against elidable
+      ancestry, through the real cdylib from Dart — the Dart-to-C `bool` hop is unverified.
+    evidence: |-
+      `synthetic_elided` is the project's first and only `bool` at the C surface. The Rust
+      extern fn honours both values (`graph_slice_synthetic_elided_toggle_adds_rows_and_off_keeps_plain_indirect_edges`
+      in crates/zanshin-ffi/tests/graph_ffi.rs), and the Dart decoder handles both
+      (test/ffi/graph_test.dart, over hand-built ObjectBuilder buffers). What no test covers
+      is the argument plumbing in between: replacing `syntheticElided: syntheticElided` with
+      a literal `true` at packages/zanshin_core/lib/src/worker/isolate.dart or
+      .../worker/handle.dart keeps `dart analyze` and every Dart test green, because every
+      live-cdylib worker test runs against `worker.initRepo` on a fresh temp dir — a repo of
+      `@` plus root, whose ancestry cannot elide, so the flag cannot change the output.
+      Consequence: a UI toggle for elided rows could silently do nothing.
+      Not closable inside Story 4.8: the Dart test suite has no fixture-extraction path and
+      no commit-creating FFI verb (Epic 9), so elidable ancestry cannot be constructed from
+      Dart. Closing it needs either a Dart-side fixture extractor or the mutation verbs.
+      Contrast `shortPrefixes`, which IS proven end-to-end because a bad expression surfaces
+      `jj.revset_parse_error` only if the string actually crossed the boundary.
+    location: >-
+      packages/zanshin_core/test/worker/graph_test.dart
+    severity: medium
 ---
 
 <intent-contract>
@@ -158,6 +180,40 @@ Fixture facts: **tiny-3-commits** = `root` ← `@` and `root` ← c1 ← c2 ← 
 
 ## Review Triage Log
 
+### 2026-08-24 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 3, low 3)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 27: (high 0, medium 0, low 27)
+- addressed_findings:
+  - `[medium]` `[patch]` `change_id_prefix_len` shipped with a bounds check only — no uniqueness proof, so a constant or the adjacent `shortest_commit_prefix_len` call would pass every test. Extended `walk_graph_shortest_prefix_lengths_are_unique_within_the_fixture` (`crates/zanshin-jj/tests/graph.rs`) with the same `starts_with` uniqueness loop the commit id already gets.
+  - `[medium]` `[patch]` Four of the seven new builtin revset aliases (`immutable()`, `mutable()`, `visible()`, `hidden()`) were never expanded by any code path or test, and jj-lib does not validate an alias definition at insert time (`dsl_util.rs`: "The `defn` part isn't checked"), so `build_aliases_map()` returning `Ok` proved nothing. Added `every_builtin_revset_alias_expands_and_resolves` (all seven) plus the semantic pin `mutable_and_immutable_partition_all` in `crates/zanshin-jj/tests/revset.rs`. The table itself was re-verified verbatim against `git -C ../jj show v0.42.0:cli/src/config/revsets.toml`.
+  - `[medium]` `[patch]` `_bmad-output/implementation-artifacts/epic-4-context.md` had become OLDER than `_bmad-output/planning-artifacts/epics.md`, breaking the spec's "edit LAST" rule and silently invalidating the cached epic context. Re-edited last; it is now the newest of the two.
+  - `[low]` `[patch]` `app/analysis_options.yaml` carried `android/ios/web/windows/linux` excludes that the intent forbids committing (and that are inert — none of those directories exist in this macOS-only app). Reverted to baseline. Confirmed to be tool churn: the Flutter step of `cargo make test` regenerates it, so it was reverted again after the final gate run.
+  - `[low]` `[patch]` The golden parity test's comment claimed its rendering "proves we ship the lengths the CLI computes"; the CLI's own `id.shortest(8)` floor makes that rendering insensitive to every prefix length both fixtures produce. Corrected the comment and pointed it at the test that actually pins the lengths.
+  - `[low]` `[patch]` `epic-4-context.md` still cited the pre-4.8 "~3 ms full 10k derive" baseline, measured on the topology-only walk that 4.8 replaced with a per-row commit read. Annotated as stale, naming what was added and that a commit-read failure now fails the call.
+
+Notes on the largest reject groups, recorded because each was checked against the pinned
+oracle rather than dismissed:
+
+- **Committer vs. author timestamp** (claimed parity bug): rejected. At v0.42.0
+  `templates.toml:315` defines `'commit_timestamp(commit)' = 'commit.committer().timestamp()'`,
+  and `format_short_commit_header` renders exactly that. Shipping `committer_timestamp` is correct.
+- **`builtin_immutable_heads()` missing a `present(...)` wrapper** and **`trunk()` narrowed to
+  origin/upstream**: both rejected. The shipped table is byte-for-byte the v0.42.0
+  `revsets.toml`; the pre-4.8 one-arg `trunk()` was the bug this story fixes.
+- **`short_prefixes` degrading instead of erroring** (contradicts this spec's own I/O matrix
+  row): rejected against the code — the implementation is right and the matrix row is wrong
+  about the CLI. jj's own `cli/tests/test_log_command.rs::test_log_bad_short_prefixes` at
+  v0.42.0 shows `!nval!d` exiting 1 while `'missing'` only warns and still prints the log.
+  The intent's "CLI is the semantic oracle at v0.42.0" clause resolves the contradiction to a
+  single reading, so this is not an intent_gap. Carried into Residual risks instead.
+- **Blank-but-not-empty `short_prefixes` erroring while `prioritize` treats it as empty**:
+  rejected. The CLI's own guard is `revset_string.is_empty()` (`cli_util.rs:996`), so `"   "`
+  reaching a parse error is exact parity.
+
 ## Design Notes
 
 - **Why metadata rides `GraphNode`/`Row` instead of a side channel.** The SPEC's atomicity constraint bans parallel arrays and join keys. `zanshin-graph` never inspects `CommitMeta`; it is an opaque payload moved from the node to the row it produced. That keeps `lane.rs` a pure algorithm (still fixture-free, still `jj_lib`-free) while making the row the unit of atomicity.
@@ -185,3 +241,183 @@ Fixture facts: **tiny-3-commits** = `root` ← `@` and `root` ← c1 ← c2 ← 
 **Manual checks (if no CLI):**
 - Golden parity: for at least one fixture commit and one in-test edge-state commit, reconstruct the CLI row string from the shipped fields and compare against `jj log` output produced at authoring time from the 0.44 binary on an extracted fixture copy (provenance + the v0.42.0 template lines documented in the test).
 - `_bmad-output/implementation-artifacts/epic-4-context.md` is the newest file relative to `_bmad-output/planning-artifacts/` after all doc edits.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Run history — read this before trusting the shape of the commits
+
+This story did NOT run as one clean pass, and the history should not be read as if it did.
+
+1. The implementation pass produced commit `03a2009 feat(zanshin-graph): CLI-parity log rows
+   with metadata + active_lanes (Story 4.8)` on top of `baseline_revision` `35bee21`.
+2. A first review pass ran, applied 17 findings to the working tree, and was then cut off by
+   a **session limit** before it could write its triage-log entry. That is why
+   `## Review Triage Log` was empty and `review_loop_iteration` was still `0` at the start of
+   this pass: the entry was never written, not skipped.
+3. During that interrupted pass a **concurrent-writer incident** occurred — two patch agents
+   wrote the same working tree at once and corrupted the pass's own progress. The stray
+   scratch files it left (`tmp_perf.rs`, `tmp_perf2.rs`, `tmp_dump.rs`) were removed before
+   this pass. This pass ran every subagent synchronously, single-writer.
+4. Ralph then made four un-reviewed repairs by hand to get the gate green again (see
+   "Human repairs carried into this review" below). Those were reviewed here, not before.
+5. This pass is therefore the FIRST completed review of Story 4.8. It produced a second
+   commit rather than the single focused commit the intent asked for — an unavoidable
+   consequence of the interruption, since `03a2009` is already published and the intent
+   forbids amending a published commit.
+
+### Summary of implemented change
+
+`zanshin_graph_slice` now returns self-contained `jj log`-parity rows from ONE call.
+`zanshin-jj` gained `commit_meta.rs`: a per-call index bundle (`LogMetaIndex` — refs reverse
+index, working-copy map, `IdPrefixIndex`, immutable containment fn) built once per walk inside
+the same `load_at_head` scope, plus a per-commit `extract` producing `CommitMeta`. `walk_graph`
+threads `short_prefixes` and attaches that payload to each `GraphNode`. `revset.rs` replaced the
+lone (and wrong) one-arg `trunk()` with the verbatim v0.42.0 builtin `[revset-aliases]` table and
+added `DEFAULT_LOG_REVSET` plus an in-code immutable expression, so the CLI's default log revset
+parses for the first time. `zanshin-graph` stays `jj_lib`-free and carries `CommitMeta` as an
+opaque pass-through: `lane.rs` gained `NodeId` (the CLI's `(CommitId, bool)` keying),
+kind-carrying reservations and per-row `active_lanes` read off the live reservation state
+immediately after placement; `stream.rs` splices one synthetic "(elided revisions)" row per
+elided target directly behind its child, un-deduped, exactly where the CLI splices. The wire
+gained `GraphRowMeta` / `GraphCommitRef` / `GraphActiveLane` and `GraphRow.{meta,
+active_lanes, synthetic_elided}`, with `meta` absent on elided rows. The Dart bridge decodes all
+of it and pre-fills the CLI defaults (`defaultLogRevset`, `defaultShortPrefixes`,
+`defaultSyntheticElided`) editable at the call site, per FR-JJ-17.
+
+### Files changed (since `35bee21`; 41 files)
+
+**zanshin-jj**
+- `src/commit_meta.rs` (NEW) — `CommitMeta` / `CommitRef`, the per-call `LogMetaIndex`, per-commit `extract`.
+- `src/graph.rs` — builds the index in the `load_at_head` scope, loads each commit, attaches `meta` to `GraphNode`.
+- `src/revset.rs` — full v0.42.0 builtin alias table, `DEFAULT_LOG_REVSET`, in-code immutable expression, aliases map built once per walk.
+- `src/repo.rs`, `src/lib.rs`, `README.md`, `Cargo.toml` — widened `walk_graph` signature, re-exports, `tracing` dep, retired the "only `trunk()` is defined" prose.
+- `tests/graph.rs` — metadata, flags, refs, prefixes, golden CLI-row reconstruction; **this pass** added change-id prefix uniqueness and corrected the golden test's overstated claim.
+- `tests/api_stability.rs` — `meta` on the struct literals, `DEFAULT_LOG_REVSET` value pin.
+- `tests/revset.rs` — **this pass**: `every_builtin_revset_alias_expands_and_resolves`, `mutable_and_immutable_partition_all`.
+
+**zanshin-graph**
+- `src/lane.rs` — `NodeId`, `ActiveLane`, kind-carrying `Reservation`, `active_lanes` read after `place()`, opaque `meta` on `GraphNode`/`Row`.
+- `src/stream.rs` — `splice_elided` + `elided_node`; synthetic rows spliced behind their child, honouring sink `Break`.
+- `src/slice.rs`, `src/lib.rs` — parameter pass-through, re-exports, the "no `jj_lib`, opaque metadata" note.
+- `tests/{common/mod.rs,lane.rs,slice.rs,stream.rs}` — new field builders, the `active_lanes` structural invariant on medium, elided splice on/off/duplicate.
+
+**zanshin-ffi + wire**
+- `schemas/envelope.fbs` — `GraphCommitRef`, `GraphActiveLane`, `GraphRowMeta`; `GraphRow` widened (edited in place, WIP).
+- `src/graph.rs` — meta/active-lane sub-builders, 5-arg extern fn, `# Errors`/`# Safety` rustdoc.
+- `tests/graph_ffi.rs` — widened call sites plus the FFI-surface I/O-matrix rows and the 1002-row wire-vs-`collect_lanes` oracle.
+- `include/zanshin_ffi.h`, `src/envelope_generated.rs` — regenerated by `cargo make codegen`.
+
+**Dart bridge (`packages/zanshin_core`)**
+- `lib/src/ffi/graph.dart` — `shortPrefixes` NUL guard, new models, `_mapMeta`, the three CLI-default consts.
+- `lib/src/worker/{commands,isolate,handle}.dart` — the two new command fields, dispatch arm, `RepoHandle.graphSlice` defaults.
+- `lib/src/ffi/{bindings.dart,envelope_zanshin.ffi_generated.dart}` — regenerated.
+- `test/{worker,ffi}/graph_test.dart` — widened calls and builders, metadata round-trip, elided decode, NUL guards, default value pins.
+- `test/ffi/buffer_free_test.dart` (NEW) — real-cdylib cover for the synchronous `zanshin_buffer_free` path.
+
+**Support / docs / planning**
+- `crates/test-helpers/src/lib.rs` — jj-lib write helpers for the in-test edge states (fixtures are never regenerated).
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — ABI contract, new payload tables, `short_prefixes` sourcing.
+- `Makefile.toml` — `EXTERN_COV_ALLOW` **comment** only; no name added or removed.
+- `coverage-baseline.txt` — `commit_meta.rs` at 100.00; `ffi_strings.rs` 99.14 → 100.00; `graph.rs` 99.60 → 99.81.
+- `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/epic-4-context.md` — Story 4.8 delivery notes; epic context re-edited LAST this pass and its stale perf baseline annotated.
+- `app/analysis_options.yaml` — reverted to baseline (tool churn, deliberately not committed).
+
+### Human repairs carried into this review
+
+Four un-reviewed hand repairs were made after the interrupted pass died. All four were reviewed
+here and all four are **correct**:
+
+1. `crates/zanshin-ffi/src/graph.rs` — the shared `row()` test helper now supplies
+   `Some(full_meta())` (and `meta: None` is pinned explicitly in the synthetic-elided test) so
+   the new `debug_assert_eq!` "meta absent IFF synthetic elided" holds. Consistent with the
+   only producers of `Row` along the FFI path.
+2. `crates/zanshin-graph/tests/stream.rs` — the assertion in
+   `stream_lanes_synthetic_row_reports_its_own_pass_through_lanes` was retargeted from the
+   first synthetic row to the second. **Independently confirmed by hand-tracing `LaneAssigner`
+   over the test's five-row stream** (tip_X, synth_X, tip_Y, synth_Y, root): at synth_X the
+   lane vector is `[None]`, so `active_lanes` is genuinely empty — tip_Y sits BELOW synth_X and
+   its lane cannot cross a row above it. The real pass-through is at synth_Y, crossed by the
+   still-open lane-0 edge synth_X opened toward root. Checked against the spec's own CAP-2
+   phrasing ("every row strictly BETWEEN its child and its landing row") and against renderdag's
+   top-down column allocation, where a later tip's column starts at its own row. The original
+   expectation `[1]` was wrong; the implementation was right. This was a correct test fix, NOT a
+   masked implementation bug.
+3. `packages/zanshin_core/lib/src/ffi/graph.dart` — dropped a redundant `bool` annotation that
+   tripped `omit_obvious_property_types` under `--fatal-infos`. Cosmetic, correct.
+4. `app/analysis_options.yaml` revert — correct and required by the intent; it had merely been
+   re-applied by the Flutter step of the gate (see the patch note above).
+
+### Review findings breakdown
+
+Four review layers ran in parallel as blocking calls in a single turn: blind hunter, edge-case
+hunter, verification-gap reviewer, intent-alignment auditor.
+
+- **intent_gap: 0.** Every apparent ambiguity resolves to exactly one reading through the
+  intent's own "CLI is the semantic oracle at v0.42.0" constraint, verified against the pinned tag.
+- **bad_spec: 0.** No finding required re-deriving the code.
+- **patches applied: 6** — high 0, medium 3, low 3 (listed in the triage log above).
+- **items deferred: 1** — the unverified Dart-to-C `bool` hop for `syntheticElided` (see
+  frontmatter `deferred`). Not closable in this story: the Dart suite has no fixture-extraction
+  path and no commit-creating verb, so elidable ancestry cannot be built from Dart.
+- **items rejected: 27.** The substantive ones were rejected only after checking the pinned
+  oracle (`../jj` at v0.42.0 and the vendored jj-lib 0.42.0), not on assertion — see the triage
+  log's notes on the timestamp field, the alias table, and the `short_prefixes` failure split.
+
+### Follow-up review recommendation
+
+`followup_review_recommended: true`.
+Patched counts this pass: high 0, medium 3, low 3. No high-severity patch, so the score decides:
+`3 × 3 + 1 × 3 = 12`, which is >= 5. Recommendation: **true**.
+
+### Verification performed
+
+- `cargo test -p zanshin-jj --test revset --test graph` — green (36 + 17 passed, 1 pre-existing
+  `#[ignore]` perf target); used as a fast pre-check on the two touched test files.
+- `cargo make test`, run **unpiped** with its exit code read directly (output redirected to a
+  file, not piped, so `$?` is the task's own status) — **exit 0**.
+  - `coverage-check: OK — coverage held at 98.92% (3848/3890 lines).`
+  - `extern-coverage: OK — every zanshin-ffi extern "C" fn is covered (allow: zanshin_buffer_free).`
+  - Coverage **held** rather than rose, so `coverage-baseline.txt` is correctly unchanged by this
+    pass. No baseline value was lowered and no `exclude_prefix` was added.
+  - One intermediate red: `cargo fmt --all --check` flagged a >100-col closure in the new
+    `tests/revset.rs` test. Reformatted; the re-run was clean. Clippy pedantic was green in both runs.
+- `cargo make codegen` was **not** re-run this pass and did not need to be: no `.fbs`, no
+  `extern "C"` signature and no rustdoc on the extern fn changed after the implementation commit.
+- Manual: `_bmad-output/implementation-artifacts/epic-4-context.md` (24 Aug 01:59) is newer than
+  every file in `_bmad-output/planning-artifacts/` (newest: `epics.md`, 23 Aug 23:17). Cache valid.
+- Manual: builtin alias table re-checked line-by-line against
+  `git -C ../jj show v0.42.0:cli/src/config/revsets.toml` — verbatim.
+- Manual: `git status --porcelain` empty after the finalizing commit.
+
+### Residual risks
+
+- **This spec's own I/O-matrix row for `short_prefixes` is wrong about the CLI.** It states that
+  an unresolvable symbol yields `ok:false` + `jj.revset_resolution_error` + no rows. jj v0.42.0
+  actually warns and degrades to full-index prefixes (`test_log_bad_short_prefixes`); only a
+  PARSE failure is a hard error. The code, its rustdoc, `docs/rust-error-codes.md` and two tests
+  all implement the CLI behavior, which the intent's oracle clause mandates. The matrix row was
+  left untouched because this workflow forbids editing `<intent-contract>`; it should be
+  corrected the next time the contract is legitimately amended, or it will mislead a later reader.
+- **`(commit_id, synthetic_elided)` is offered as a row key in three doc surfaces**
+  (`schemas/envelope.fbs`, `docs/ffi-abi.md`, `graph.dart`) but is NOT unique: two children
+  eliding to the same target produce two rows with identical `(commit_id, true)`, deliberately
+  un-deduped for CLI parity. Positional keying — also documented, and listed first — is the only
+  safe key. Correcting the wording touches four synchronized artifacts plus a codegen cycle, so it
+  was not attempted here.
+- **`ActiveLane`'s doc phrase "neither starts nor ends at that row's node"** is loose for a lane
+  a merge edge REUSES at that row: the segment was opened by an earlier row and genuinely crosses,
+  but the row's own edge also routes into it. The intent's invariant explicitly contemplates this
+  ("nor is reused by an earlier edge") and the behavior is correct, so only the summary wording is
+  imprecise.
+- **Prefix lengths are proven unique but not proven MINIMAL** — for either the commit id or the
+  change id. A length longer than necessary would pass. Minimality was out of scope for the
+  finding that was fixed and is not asserted for the commit id either, so it was left symmetric.
+- **The metadata walk is no longer index-only.** Every emitted node now costs a
+  `store.get_commit_async`, an `is_empty` parent-tree merge, two prefix lookups and a containment
+  check, so a repo with an unreadable object store that previously streamed topology now fails the
+  call. This is by design; `epic-4-context.md`'s ~3 ms/10k figure predates it and is annotated as stale.
+- **Two commits, not one.** The intent asked for a single focused commit; the session interruption
+  makes that impossible without amending the published `03a2009`, which the project rules forbid.

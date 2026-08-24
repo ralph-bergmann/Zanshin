@@ -367,7 +367,12 @@ impl LaneAssigner {
     /// must not restyle the segment the earlier edge opened.
     fn reserve(&mut self, target: NodeId, lane: u32, kind: EdgeKind) {
         let slot = &mut self.lanes[Self::index(lane)];
-        if slot.is_none() {
+        if let Some(held) = slot.as_ref() {
+            debug_assert_eq!(
+                held.target, target,
+                "a lane is only ever re-reserved for the target that already holds it"
+            );
+        } else {
             *slot = Some(Reservation {
                 target: target.clone(),
                 kind,

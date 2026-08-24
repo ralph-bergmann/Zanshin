@@ -103,10 +103,13 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMet
 
 /// Builds the shortest-prefix index, degrading to the full repo index like the CLI does.
 ///
-/// A parse/resolution failure of the caller's `short_prefixes` expression is a hard error
-/// (raised before this point); a failure while LOADING the disambiguation index is only a
-/// warning — the CLI keeps rendering with full-index prefixes rather than failing the
-/// command (`cli/src/commit_templater.rs:2231-2243`).
+/// A PARSE failure of the caller's `short_prefixes` expression is a hard error (raised
+/// before this point). Everything that can only fail while LOADING the disambiguation
+/// index — symbol resolution included — is a warning: the CLI keeps rendering with
+/// full-index prefixes rather than failing the command
+/// (`cli/src/commit_templater.rs:2231-2243`, pinned by jj's own
+/// `cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.42.0, where
+/// `revsets.short-prefixes = 'missing'` warns and still prints the whole log).
 fn short_prefix_index<'c>(ctx: &'c IdPrefixContext, repo_dyn: &dyn jj_lib::repo::Repo) -> IdPrefixIndex<'c> {
     match ctx.populate(repo_dyn) {
         Ok(index) => index,
@@ -147,7 +150,9 @@ fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext 
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — any expression is syntactically invalid.
-/// - [`RevsetError::ResolutionError`] — a symbol in any expression cannot be resolved.
+/// - [`RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize` cannot be
+///   resolved. NOT raised for `short_prefixes`: an unresolvable disambiguation set only
+///   warns and degrades (see [`short_prefix_index`]).
 /// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata extraction, or a
 ///   per-item stream failure.
 pub(crate) fn walk_graph(
@@ -176,11 +181,6 @@ pub(crate) fn walk_graph(
     let set = evaluate_revset(repo_dyn, &log)?;
     let prio_set = evaluate_revset(repo_dyn, &prio)?;
     let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
-    if let Some(expr) = &short {
-        // Resolving a user-typed expression is a hard error in the CLI; only the index
-        // LOAD degrades to a warning (see `short_prefix_index`).
-        evaluate_revset(repo_dyn, expr)?;
-    }
 
     // 4. Per-call O(1) metadata setup. `prefix_ctx` and `immutable_set` are locals so the
     //    borrows inside `meta` (the prefix index, the containment closure) stay valid.

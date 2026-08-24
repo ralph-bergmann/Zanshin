@@ -32,6 +32,14 @@ const defaultGraphPrioritize = 'present(@)';
 /// UI passes `revset` explicitly.
 const defaultLogRevset = 'present(@) | ancestors(immutable_heads().., 2) | trunk()';
 
+/// The CLI-default for rendering elided ancestry as synthetic "(elided
+/// revisions)" rows, pre-filled by `RepoHandle.graphSlice` and editable by the
+/// caller (FR-JJ-17).
+///
+/// Mirrors the CLI's `ui.log-synthetic-elided-nodes` default. `false` restores
+/// plain `GraphEdgeKind.indirect` edges with no synthetic rows.
+const defaultSyntheticElided = true;
+
 /// The CLI-default shortest-prefix disambiguation set, pre-filled by
 /// `RepoHandle.graphSlice` and editable by the caller (FR-JJ-17).
 ///
@@ -286,8 +294,15 @@ final class GraphRow {
     required this.meta,
   });
 
-  /// The commit id this row represents (hex). Rows are keyed by commit id. On a
-  /// synthetic elided row this is the ELIDED TARGET's commit id.
+  /// The commit id this row represents (hex). On a synthetic elided row this is
+  /// the ELIDED TARGET's commit id.
+  ///
+  /// NOT a unique row key while [syntheticElided] rows are enabled (the
+  /// default): the synthetic row and the real commit it stands for share this
+  /// id, and the child's [GraphRowEdge.target] names it with no synthetic
+  /// marker. A synthetic row always sits IMMEDIATELY after the child that
+  /// elided to it, and [lane] / [GraphRowEdge.targetLane] are the linkage. Key
+  /// rows by position, or by `(commitId, syntheticElided)`.
   final String commitId;
 
   /// The lane this commit was placed on.

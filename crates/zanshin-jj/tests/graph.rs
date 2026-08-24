@@ -14,7 +14,7 @@ use test_helpers::{
     describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_tag,
 };
 use zanshin_jj::{
-    resolve_revset, CommitRef, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE,
+    resolve_revset, CommitMeta, CommitRef, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE,
     DEFAULT_LOG_REVSET,
 };
 
@@ -587,6 +587,18 @@ fn walk_graph_shortest_prefix_lengths_are_unique_within_the_fixture() {
 
         let change_len = usize::try_from(node.meta.change_id_prefix_len).unwrap();
         assert!(change_len >= 1 && change_len <= node.meta.change_id.len());
+        // The change id needs the SAME uniqueness proof as the commit id: a bounds check
+        // alone cannot tell `shortest_change_prefix_len` apart from the commit-id call it
+        // sits next to, nor from a constant.
+        let change_prefix = &node.meta.change_id[..change_len];
+        let change_matches = nodes
+            .iter()
+            .filter(|n| n.meta.change_id.starts_with(change_prefix))
+            .count();
+        assert_eq!(
+            change_matches, 1,
+            "{change_prefix} must be unique among the fixture's change ids"
+        );
     }
 }
 
@@ -634,20 +646,31 @@ fn walk_graph_bogus_short_prefixes_returns_parse_error() {
 }
 
 #[test]
-fn walk_graph_unresolvable_short_prefixes_returns_resolution_error() {
+fn walk_graph_unresolvable_short_prefixes_degrades_to_full_index_prefixes() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let repo = Repo::open(&fx.path).unwrap();
 
-    // The CLI hard-errors on a user-typed expression it cannot resolve; only a failure
-    // while LOADING the index degrades to a warning (next test).
-    let result = repo.walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, "nonexistent-bookmark-xyz", |_| {
-        ControlFlow::Continue(())
-    });
-    assert!(
-        matches!(result, Err(RevsetError::ResolutionError { .. })),
-        "an unknown short_prefixes symbol must return ResolutionError, got: {result:?}"
-    );
+    // Symbol resolution of short_prefixes happens while LOADING the disambiguation index,
+    // so — unlike revset/prioritize — an unknown symbol only warns and degrades. Pinned by
+    // jj's own cli/tests/test_log_command.rs::test_log_bad_short_prefixes @ v0.42.0:
+    // `revsets.short-prefixes = 'missing'` warns and still renders the whole log at exit 0.
+    let degraded = collect_nodes_with(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "nonexistent-bookmark-xyz");
+    let disabled = collect_nodes_with(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "");
+
+    assert_eq!(degraded.len(), 5, "the call succeeds with the full row set");
+    assert_eq!(degraded.len(), disabled.len());
+    for (warned, full_index) in degraded.iter().zip(&disabled) {
+        assert_eq!(warned.id.0, full_index.id.0, "same rows in the same order");
+        assert_eq!(
+            (warned.meta.commit_id_prefix_len, warned.meta.change_id_prefix_len),
+            (
+                full_index.meta.commit_id_prefix_len,
+                full_index.meta.change_id_prefix_len
+            ),
+            "degrading falls back to exactly the full-index lengths"
+        );
+    }
 }
 
 #[test]
@@ -672,6 +695,332 @@ fn walk_graph_short_prefixes_index_load_failure_degrades_instead_of_erroring() {
     let nodes = collect_nodes_with(&repo, "none()", "none()", "description(\"Commit\")");
 
     assert!(nodes.is_empty(), "the call succeeds; the index load only warned");
+}
+
+// ── Story 4.8 (CAP-1): committed CLI golden parity ─────────────────────────
+
+/// Reconstructs the jj CLI's `builtin_log_compact` row for one commit from `CommitMeta`
+/// ALONE — the proof that the payload carries everything `jj log` prints.
+///
+/// Mirrors `cli/src/config/templates.toml` @ v0.42.0 verbatim:
+/// `builtin_log_compact` → `format_root_commit` for the root, otherwise
+/// `format_short_commit_header ++ "\n"` then
+/// `separate(" ", if(empty) empty_commit_marker, description.first_line() or
+/// description_placeholder)`. `separate(" ", …)` drops empty items, which is why the
+/// absent refs contribute nothing.
+fn cli_row(meta: &CommitMeta, commit_id: &str) -> String {
+    // 'format_short_id(id)' = 'id.shortest(8)' — at least 8 chars, more only when the
+    // unique prefix is longer. NOTE: because of that 8-char floor this rendering is
+    // INSENSITIVE to any prefix length <= 8, which is every length both fixtures produce.
+    // It proves the row layout and the fields around the ids; the prefix lengths
+    // themselves are pinned by walk_graph_shortest_prefix_lengths_are_unique_within_the_fixture.
+    let short = |id: &str, prefix_len: u32| -> String {
+        let len = usize::try_from(prefix_len).unwrap().max(8).min(id.len());
+        id[..len].to_owned()
+    };
+    let short_change = short(&meta.change_id, meta.change_id_prefix_len);
+    let short_commit = short(commit_id, meta.commit_id_prefix_len);
+    let refs = |entries: &[CommitRef]| -> Vec<String> { entries.iter().map(cli_ref).collect() };
+
+    if meta.root {
+        // 'format_root_commit(root)' = separate(" ", change id, "root()", commit id, bookmarks)
+        let mut parts = vec![short_change, "root()".to_owned(), short_commit];
+        parts.extend(refs(&meta.bookmarks));
+        return separate(&parts);
+    }
+
+    // 'format_short_change_id_with_change_offset': hidden overrides divergent; the offset
+    // rides along only for those two.
+    let change_field = if meta.hidden || meta.divergent {
+        match meta.change_offset {
+            Some(offset) => format!("{short_change}/{offset}"),
+            None => short_change,
+        }
+    } else {
+        short_change
+    };
+    // 'format_short_signature(signature)' = 'coalesce(signature.email(), email_placeholder)'
+    let author = if meta.author_email.is_empty() {
+        "(no email set)".to_owned()
+    } else {
+        meta.author_email.clone()
+    };
+    // 'format_commit_labels(commit)' — hidden overrides divergent, then conflict.
+    let mut labels: Vec<String> = Vec::new();
+    if meta.hidden {
+        labels.push("(hidden)".to_owned());
+    } else if meta.divergent {
+        labels.push("(divergent)".to_owned());
+    }
+    if meta.conflict {
+        labels.push("(conflict)".to_owned());
+    }
+
+    let mut header = vec![change_field, author, cli_timestamp(meta)];
+    header.extend(refs(&meta.bookmarks));
+    header.extend(refs(&meta.tags));
+    // 'impl Template for WorkspaceRef' writes "{name}@".
+    header.extend(meta.working_copies.iter().map(|name| format!("{name}@")));
+    header.push(short_commit);
+    header.extend(labels);
+
+    let mut second = Vec::new();
+    if meta.empty {
+        second.push("(empty)".to_owned()); // empty_commit_marker
+    }
+    second.push(if meta.description_first_line.is_empty() {
+        "(no description set)".to_owned() // description_placeholder
+    } else {
+        meta.description_first_line.clone()
+    });
+
+    format!("{}\n{}", separate(&header), separate(&second))
+}
+
+/// `impl Template for Rc<CommitRef>` (`cli/src/commit_templater.rs:1733-1748`): name, then
+/// `@remote` for a remote entry, then `??` when conflicted or `*` when a local entry is not
+/// synced ("Don't show both conflict and unsynced sigils").
+fn cli_ref(r: &CommitRef) -> String {
+    let mut out = r.name.clone();
+    if let Some(remote) = &r.remote {
+        out.push('@');
+        out.push_str(remote);
+    }
+    if r.conflicted {
+        out.push_str("??");
+    } else if r.remote.is_none() && !r.synced {
+        out.push('*');
+    }
+    out
+}
+
+/// `'format_timestamp(timestamp)' = 'timestamp.local().format("%Y-%m-%d %H:%M:%S")'`, with
+/// the ONE deliberate difference recorded on the golden test below: we render in the
+/// commit's OWN stored offset, not the viewer's local zone.
+fn cli_timestamp(meta: &CommitMeta) -> String {
+    let offset = chrono::FixedOffset::east_opt(meta.committer_timestamp.tz_offset_minutes * 60)
+        .expect("a jj tz_offset is within a day");
+    chrono::DateTime::from_timestamp_millis(meta.committer_timestamp.millis_since_epoch)
+        .expect("a jj timestamp is representable")
+        .with_timezone(&offset)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
+/// `separate(" ", …)` — joins with a space, skipping empty items.
+fn separate(parts: &[String]) -> String {
+    parts
+        .iter()
+        .filter(|p| !p.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Golden CLI parity: every row of `tiny-3-commits`, reconstructed from `CommitMeta` alone,
+/// equals what `jj log` prints (`builtin_log_compact`, the `templates.log` default).
+///
+/// **Oracle provenance.** The expected strings were captured at authoring time by running
+/// the locally installed `jj` binary against an EXTRACTED COPY of the fixture in a temp dir
+/// (never the committed archive), with `JJ_CONFIG=""`, `GIT_CONFIG_GLOBAL=""` and `TZ=UTC`:
+///
+/// ```text
+/// @  sryyqqkq fixture@zanshin.test 2026-06-14 18:24:47 6bfb7ef5
+/// │  (empty) (no description set)
+/// │ ○  xtozqkmp fixture@zanshin.test 2001-09-09 01:49:40 c606753c
+/// │ │  Commit 3
+/// │ ○  vwqqlvkw fixture@zanshin.test 2001-09-09 01:48:40 32bf1527
+/// │ │  Commit 2
+/// │ ○  pxnqtknr fixture@zanshin.test 2001-09-09 01:47:40 2eb4ea06
+/// ├─╯  Commit 1
+/// ◆  zzzzzzzz root() 00000000
+/// ```
+///
+/// The local binary is **0.44.0**, not the pinned 0.42.0, so it is only a sound oracle
+/// because the parity surface is unchanged between the tags:
+/// `git -C ../jj diff v0.42.0 v0.44.0 -- cli/src/config/templates.toml
+/// cli/src/config/revsets.toml cli/src/config/misc.toml cli/src/commit_templater.rs` shows
+/// `templates.toml` differing only in `workspace_list`, with `builtin_log_compact`,
+/// `format_short_commit_header`, `format_root_commit`,
+/// `format_short_change_id_with_change_offset`, `format_commit_labels` and every
+/// `commit_templater` parity function byte-identical, and the builtin `[revset-aliases]` /
+/// `ui.log-synthetic-elided-nodes` unchanged.
+///
+/// **The one deliberate difference: the timestamp zone.** The CLI's `format_timestamp` is
+/// `timestamp.local()` — the VIEWER's zone — so its rendering is machine-dependent (the same
+/// fixture prints `03:49:40` on a UTC+2 machine and `01:49:40` under `TZ=UTC`). We ship
+/// millis + the commit's stored `tz_offset` and let the UI localise
+/// (`cli-log-parity.md` § Row model), so this reconstruction renders in the commit's OWN
+/// stored zone. For the four offset-0 commits that is byte-identical to the `TZ=UTC` capture
+/// above; for `@` (stored offset +120) it is `20:24:47`, which is what the CLI prints for a
+/// viewer in the commit's own zone.
+///
+/// The graph glyphs (`@`/`○`/`◆`/`│`/`├─╯`) are NOT part of the payload — the backend ships
+/// flags, the UI picks glyphs (`cli-log-parity.md` § Node-flag priority).
+#[test]
+fn golden_cli_log_compact_rows_reconstruct_from_metadata_alone() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let nodes = collect_nodes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+
+    let rendered: Vec<String> = nodes.iter().map(|n| cli_row(&n.meta, &n.id.0)).collect();
+    assert_eq!(
+        rendered,
+        vec![
+            "sryyqqkq fixture@zanshin.test 2026-06-14 20:24:47 6bfb7ef5\n(empty) (no description set)",
+            "xtozqkmp fixture@zanshin.test 2001-09-09 01:49:40 c606753c\nCommit 3",
+            "vwqqlvkw fixture@zanshin.test 2001-09-09 01:48:40 32bf1527\nCommit 2",
+            "pxnqtknr fixture@zanshin.test 2001-09-09 01:47:40 2eb4ea06\nCommit 1",
+            "zzzzzzzz root() 00000000",
+        ],
+        "the reconstructed rows must equal jj v0.42.0's builtin_log_compact output"
+    );
+}
+
+/// Golden CLI parity for the ref sigils, over the in-test ref states (the fixtures carry no
+/// remote bookmarks at all).
+///
+/// **Oracle provenance.** Captured at authoring time by driving the real `jj` binary on a
+/// throwaway colocated repo with a local bare remote (`git init --bare`; no network), where
+/// `synced` is pushed and left alone, `unsynced`'s local is moved ahead of its tracked
+/// remote, and `untracked@origin` is untracked and its local deleted:
+///
+/// ```text
+/// @  quxkmrsu t@e … unsynced* 3fefb9aa
+/// │  (empty) ahead
+/// ○  pktkwwos t@e … 900c96bb
+/// │  (empty) (no description set)
+/// ◆  wrozztrv t@e … synced unsynced@origin untracked@origin e10302bd
+/// │  (empty) base
+/// ◆  zzzzzzzz root() 00000000
+/// ```
+///
+/// That pins four of the five rules directly: `name*` on the local ahead of its tracked
+/// remote, `name@remote` for the tracked-but-unsynced remote entry, `name@remote` for the
+/// untracked one, and a tracked-AND-synced remote entry rendered NOWHERE (`synced` appears
+/// once, bare). The fifth — `name??` for a conflicted local, which suppresses the `*` —
+/// comes from `impl Template for Rc<CommitRef>` (`cli/src/commit_templater.rs:1733-1748`
+/// @ v0.42.0, "Don't show both conflict and unsynced sigils"); a conflicted bookmark cannot
+/// be produced through the CLI without a real divergent fetch.
+#[test]
+fn golden_cli_ref_sigils_render_from_the_shipped_commit_refs() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    set_local_bookmark(&fx.path, "synced", &[&c1]);
+    set_remote_bookmark(&fx.path, "synced", "origin", &c1, true);
+    set_local_bookmark(&fx.path, "unsynced", &[&c2]);
+    set_remote_bookmark(&fx.path, "unsynced", "origin", &c3, true);
+    set_remote_bookmark(&fx.path, "untracked", "origin", &c3, false);
+    set_local_bookmark(&fx.path, "conflicted", &[&c2, &c3]);
+    set_tag(&fx.path, "v1", &[&c1]);
+
+    let nodes = collect_nodes(&repo, "all()", "none()");
+    let header = |id: &str| -> String {
+        cli_row(&node_of(&nodes, id).meta, id)
+            .lines()
+            .next()
+            .expect("a commit row has a header line")
+            .to_owned()
+    };
+
+    assert_eq!(
+        header(&c1),
+        "pxnqtknr fixture@zanshin.test 2001-09-09 01:47:40 synced v1 2eb4ea06",
+        "a tracked-AND-synced remote entry is suppressed; the tag follows the bookmarks"
+    );
+    assert_eq!(
+        header(&c2),
+        "vwqqlvkw fixture@zanshin.test 2001-09-09 01:48:40 conflicted?? unsynced* 32bf1527",
+        "?? for the conflicted local, * for the local that is ahead of its tracked remote"
+    );
+    assert_eq!(
+        header(&c3),
+        "xtozqkmp fixture@zanshin.test 2001-09-09 01:49:40 conflicted?? unsynced@origin \
+         untracked@origin c606753c",
+        "the tracked-but-unsynced and the untracked remote entries both render"
+    );
+}
+
+// ── Story 4.8 (CAP-4): the builtin aliases beyond their degenerate fallback ──
+
+/// The fixtures carry no remote bookmarks, so `trunk()` collapses to its `root()` fallback
+/// everywhere else in the suite — which would keep passing if the six
+/// `remote_bookmarks(exact:<name>, exact:<remote>)` terms were wrong. Construct the real
+/// case in-test: only `origin` and `upstream` count, and the argument order is
+/// (bookmark, remote).
+#[test]
+fn trunk_alias_resolves_a_main_bookmark_on_origin_and_ignores_other_remotes() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let root_change = resolve_revset(&repo, "root()").unwrap();
+
+    // A remote that is neither origin nor upstream must NOT satisfy trunk().
+    set_remote_bookmark(&fx.path, "main", "fork", &c2, false);
+    assert_eq!(
+        resolve_revset(&repo, "trunk()").unwrap(),
+        root_change,
+        "main@fork is not one of the six builtin terms; trunk() stays at its root() fallback"
+    );
+
+    // main@origin is, and latest() picks it over the root commit.
+    set_remote_bookmark(&fx.path, "main", "origin", &c2, true);
+    let trunk = resolve_revset(&repo, "trunk()").unwrap();
+    assert_eq!(trunk.len(), 1);
+    assert_eq!(
+        repo.get_change(&trunk[0]).unwrap().commit_id.0,
+        c2,
+        "trunk() resolves to main@origin"
+    );
+}
+
+/// `builtin_immutable_heads()` = `trunk() | tags() | untracked_remote_bookmarks()`
+/// degenerates to `root()` on both fixtures, so every other `immutable == true` assertion is
+/// on the root commit and would survive dropping `.ancestors()` — or `immutable_heads()`
+/// itself. A tag makes the set non-degenerate and pins the ancestry semantics Story 4.9's
+/// config layer must preserve.
+#[test]
+fn walk_graph_immutable_covers_the_ancestry_of_every_immutable_head() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&repo, "@");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let root = commit_id_of(&repo, "root()");
+
+    // Before: nothing but the root is immutable (the degenerate case).
+    let before = collect_nodes(&repo, "all()", "none()");
+    assert_eq!(
+        before.iter().filter(|n| n.meta.immutable).count(),
+        1,
+        "only root() is immutable while immutable_heads() degenerates"
+    );
+
+    set_tag(&fx.path, "v1", &[&c2]);
+
+    let after = collect_nodes(&repo, "all()", "none()");
+    for id in [&c2, &c1, &root] {
+        assert!(
+            node_of(&after, id).meta.immutable,
+            "{id} is the tagged head or one of its ancestors"
+        );
+    }
+    for id in [&c3, &wc] {
+        assert!(
+            !node_of(&after, id).meta.immutable,
+            "{id} is outside ::(immutable_heads() | root())"
+        );
+    }
 }
 
 // ── Story 4.8: edge states, constructed in-test (fixtures are never regenerated) ──

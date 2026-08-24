@@ -180,6 +180,60 @@ fn revset_on_trunk_range_resolves_ok() {
     assert!(result.is_ok(), "trunk()..@ must resolve without error, got: {result:?}");
 }
 
+/// Every builtin alias must actually EXPAND, not merely be declared.
+///
+/// `RevsetAliasesMap::insert` does not check the definition — jj-lib documents that a bad
+/// `defn` is only reported when the alias is substituted (`dsl_util.rs`: "The `defn` part
+/// isn't checked"). So `build_aliases_map()` returning `Ok` proves nothing about the table;
+/// a typo in any definition would first surface in the user's revset box. Naming each alias
+/// here is what pins the whole v0.42.0 builtin table.
+#[test]
+fn every_builtin_revset_alias_expands_and_resolves() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    for alias in [
+        "trunk()",
+        "builtin_immutable_heads()",
+        "immutable_heads()",
+        "immutable()",
+        "mutable()",
+        "visible()",
+        "hidden()",
+    ] {
+        let result = resolve_revset(&repo, alias);
+        assert!(result.is_ok(), "builtin alias {alias} must expand, got: {result:?}");
+    }
+}
+
+/// `mutable()` is `~immutable()`, so the two must partition `all()` — a semantic pin that a
+/// merely-parseable definition would not survive.
+#[test]
+fn mutable_and_immutable_partition_all() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let ids = |expr: &str| -> HashSet<String> {
+        resolve_revset(&repo, expr)
+            .unwrap()
+            .iter()
+            .map(|id| id.0.clone())
+            .collect()
+    };
+    let all = ids("all()");
+    let immutable = ids("immutable()");
+    let mutable = ids("mutable()");
+
+    assert!(
+        immutable.is_disjoint(&mutable),
+        "immutable() and mutable() must not overlap"
+    );
+    let union: HashSet<String> = immutable.union(&mutable).cloned().collect();
+    assert_eq!(union, all, "immutable() | mutable() must cover all()");
+}
+
 // ── AC-6: `none()` returns empty Vec ────────────────────────────────────────
 
 #[test]

@@ -2,55 +2,82 @@
 
 //! Shared assertions for the `zanshin-graph` integration tests.
 
+use std::collections::BTreeSet;
+
 use zanshin_graph::Row;
 
-/// Asserts CAP-2's self-containment invariant: for every routed edge on lane `L` from a
-/// child row to its landing row, every row STRICTLY BETWEEN the two lists `L` in its
-/// `active_lanes` — so a renderer can paint any row's complete cross-section from that
-/// row's own fields.
+/// Asserts CAP-2's self-containment invariant as a set EQUALITY: a row's `active_lanes` is
+/// exactly the set of lanes carrying a routed edge that crosses it — every crossing lane is
+/// listed (nothing missing) AND every listed lane genuinely crosses (nothing spurious). A
+/// renderer can therefore paint any row's complete cross-section from that row's own fields.
 ///
-/// The landing row is the first later row carrying the edge's target commit id. When a
-/// synthetic elided row is spliced in front of a real commit both rows share that id, so
-/// for a duplicated elided target the window stops at the nearer of the two — a narrower
-/// but still sound check (the wire carries no synthetic flag on an edge target).
+/// Also pins the ordering contract (ascending, duplicate-free) and that a row never lists
+/// its own lane.
 ///
 /// # Panics
-/// Panics when a routed edge never lands, or when a crossed row omits the lane.
+/// Panics when a routed edge never lands, or when a row's `active_lanes` differs from the
+/// independently computed crossing set.
 pub fn assert_active_lanes_invariant(rows: &[Row]) {
+    // Independently reconstruct, per row index, the lanes crossing it.
+    let mut crossing: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); rows.len()];
     for (index, row) in rows.iter().enumerate() {
         for edge in &row.edges {
             let Some(lane) = edge.target_lane else {
                 continue; // a Missing edge occupies no lane
             };
-            let Some(offset) = rows[index + 1..].iter().position(|r| r.commit_id == edge.target) else {
-                panic!("{} -> {} never lands", row.commit_id, edge.target);
-            };
-            let landing = index + 1 + offset;
-            for crossed in &rows[index + 1..landing] {
-                assert!(
-                    crossed.active_lanes.iter().any(|l| l.lane == lane),
-                    "lane {lane} carries {} -> {} through {}, so it must be in that row's \
-                     active_lanes (got {:?})",
-                    row.commit_id,
-                    edge.target,
-                    crossed.commit_id,
-                    crossed.active_lanes
-                );
+            let landing = landing_row(rows, index, &edge.target);
+            for crossed in &mut crossing[index + 1..landing] {
+                crossed.insert(lane);
             }
         }
     }
-    // The converse guard: a row never lists its OWN lane as a pass-through.
-    for row in rows {
+
+    for (row, expected) in rows.iter().zip(&crossing) {
+        let listed: Vec<u32> = row.active_lanes.iter().map(|l| l.lane).collect();
+        let mut ascending = listed.clone();
+        ascending.sort_unstable();
+        ascending.dedup();
+        assert_eq!(
+            listed, ascending,
+            "{}: active_lanes must be ascending and duplicate-free",
+            row.commit_id
+        );
         assert!(
-            !row.active_lanes.iter().any(|l| l.lane == row.lane),
+            !listed.contains(&row.lane),
             "{} lists its own lane {} as a pass-through",
             row.commit_id,
             row.lane
         );
-        let lanes: Vec<u32> = row.active_lanes.iter().map(|l| l.lane).collect();
-        let mut sorted = lanes.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(lanes, sorted, "active_lanes must be ascending and duplicate-free");
+        assert_eq!(
+            listed,
+            expected.iter().copied().collect::<Vec<u32>>(),
+            "{}: active_lanes must equal the lanes crossing it — no missing segment, no \
+             spurious one",
+            row.commit_id
+        );
     }
+}
+
+/// Index of the row an edge from `child_index` to `target` lands on.
+///
+/// `commit_id` alone is ambiguous once synthetic elided rows are spliced (a synthetic row
+/// carries its TARGET's id, so two rows share it). The CLI's splice rule disambiguates it
+/// exactly: a synthetic row sits IMMEDIATELY after the child that elided to it, so an edge
+/// lands on the very next row when that row is the synthetic stand-in for its target, and
+/// otherwise on the next NON-synthetic row carrying the id.
+fn landing_row(rows: &[Row], child_index: usize, target: &str) -> usize {
+    let next = child_index + 1;
+    if rows
+        .get(next)
+        .is_some_and(|r| r.synthetic_elided && r.commit_id == target)
+    {
+        return next;
+    }
+    let Some(offset) = rows[next..]
+        .iter()
+        .position(|r| !r.synthetic_elided && r.commit_id == target)
+    else {
+        panic!("{} -> {target} never lands on a real row", rows[child_index].commit_id);
+    };
+    next + offset
 }

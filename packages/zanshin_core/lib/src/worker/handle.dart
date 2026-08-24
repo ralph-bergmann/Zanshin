@@ -2,7 +2,8 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
-import '../ffi/graph.dart' show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
+import '../ffi/graph.dart'
+    show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -99,7 +100,7 @@ final class RepoHandle {
   /// - [prioritize] — branch-prioritisation revset, default
   ///   [defaultGraphPrioritize] (`present(@)`); `'none()'` means none.
   /// - [syntheticElided] — render elided ancestry as synthetic rows, default
-  ///   `true` (the CLI's `ui.log-synthetic-elided-nodes`).
+  ///   [defaultSyntheticElided] (`true`, the CLI's `ui.log-synthetic-elided-nodes`).
   /// - [shortPrefixes] — disambiguation revset for the shortest-prefix lengths,
   ///   default [defaultShortPrefixes]; `''` DISABLES disambiguation.
   ///
@@ -116,7 +117,7 @@ final class RepoHandle {
   Future<GraphSlice> graphSlice({
     required String revset,
     String prioritize = defaultGraphPrioritize,
-    bool syntheticElided = true,
+    bool syntheticElided = defaultSyntheticElided,
     String shortPrefixes = defaultShortPrefixes,
   }) {
     if (_closed) {

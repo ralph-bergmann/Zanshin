@@ -25,6 +25,16 @@ ports and use after disposal.
 `zanshin_buffer_free`, `zanshin_buffer_free_token`) return plain types — no
 envelope.
 
+`zanshin_buffer_free_token` frees **two** allocations: the payload the token
+points at, and the token struct itself. It skips the payload when `ptr` is null
+**or** `len == 0`, and always frees the token struct. So a caller that released
+the payload through the synchronous `zanshin_buffer_free(ptr, len)` path can
+still hand the token back for disposal by first zeroing `token.ptr` /
+`token.len` — that is the only supported way to mix the two halves without a
+double free, and it is what
+`packages/zanshin_core/test/ffi/buffer_free_test.dart` does. Production Dart
+never mixes them: `FfiBuffer` always uses the token path.
+
 ---
 
 ## Envelope format
@@ -396,10 +406,14 @@ return-all; windowing is deferred past WIP).
   the Dart pre-fill `defaultShortPrefixes == defaultLogRevset`). Caller-owned C
   string, same ownership rule. An **EMPTY string DISABLES** disambiguation
   (full-index prefix lengths) — the CLI's toggle semantic, deliberately unlike
-  `prioritize`, where a blank expression is a parse error. A parse/resolution
-  failure of the expression is a hard error; a failure while LOADING the
-  disambiguation index only logs a `tracing::warn!` and degrades to full-index
-  prefixes, exactly as the CLI does.
+  `prioritize`, where a blank expression is a parse error. A **PARSE** failure of
+  the expression is a hard error; everything that can only fail while LOADING the
+  disambiguation index — symbol resolution included — logs a `tracing::warn!` and
+  degrades to full-index prefixes rather than failing the call, exactly as the CLI
+  does (pinned by jj's `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`
+  @ v0.42.0: `revsets.short-prefixes = 'missing'` warns and still prints the whole
+  log). So an unknown bookmark in `short_prefixes` succeeds; an unknown bookmark in
+  `revset` or `prioritize` is `jj.revset_resolution_error`.
 
 All expressions are passed through verbatim — nothing is baked in. An interior
 NUL (U+0000) in `revset`, `prioritize`, or `shortPrefixes` is rejected
@@ -425,8 +439,8 @@ copied once into Dart — windowing is deferred past WIP.
 | `ffi.invalid_handle`         | Rust: `handle == 0`. Worker: unknown/closed `handleId` (Model A handle-table lookup). A stale non-zero raw handle is UB — liveness is the worker's lookup, not a Rust check (see the fn's `# Safety` rustdoc). |
 | `ffi.null_pointer`           | `revset`, `prioritize`, or `short_prefixes` is null.                      |
 | `ffi.utf8_error`             | `revset`, `prioritize`, or `short_prefixes` contains invalid UTF-8.       |
-| `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation); reason in `context`. |
-| `jj.revset_resolution_error` | An expression names a symbol that cannot be resolved; reason in `context`. |
+| `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation). The only `short_prefixes` failure that surfaces as an error code. Reason in `context`. |
+| `jj.revset_resolution_error` | `revset` or `prioritize` names a symbol that cannot be resolved; reason in `context`. NOT raised for `short_prefixes` (it warns and degrades — see above). |
 | `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
 | `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
 
@@ -527,8 +541,15 @@ GraphSlice {
   CLI's own per-commit filter (`collect_distinct_refs`: `is_local() ||
   !synced`) — a tracked-AND-synced remote entry simply is not part of a
   `jj log` row and is not emitted. The unfiltered view stays
-  `zanshin_bookmarks_list`' job. The `*` / `??` / `@remote` sigils are the UI's
+  `zanshin_bookmarks_list`'s job. The `*` / `??` / `@remote` sigils are the UI's
   to draw from `synced` / `conflicted` / `remote`.
+- **`commit_id` is not a unique row key.** With `synthetic_elided` on (the
+  default) the synthetic "(elided revisions)" row carries its TARGET's
+  `commit_id`, so a slice can contain two rows with the same id, and the child's
+  `GraphRowEdge.target` names that id with no synthetic marker (deliberate — the
+  wire has no `target_synthetic` field). A synthetic row always sits
+  IMMEDIATELY after the child that elided to it; `lane` / `target_lane` are the
+  linkage. Key rows by position, or by `(commit_id, synthetic_elided)`.
 - **`active_lanes` invariant.** For every routed edge on lane `L` from a child
   row to its landing row, every row STRICTLY BETWEEN the two lists `L` in its
   `active_lanes`; a row never lists its own lane. A renderer can therefore paint

@@ -92,8 +92,7 @@ fn make_test_settings() -> UserSettings {
 /// test helper; a failure here is a broken fixture, not a condition to recover from.
 #[must_use = "the new commit id is what the re-derive assertions compare against"]
 pub fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
-    let (workspace, repo) = load(workspace_root);
-    let _ = &workspace;
+    let (_workspace, repo) = load(workspace_root);
     let root_commit = repo.store().root_commit();
     let root_id = root_commit.id().clone();
 

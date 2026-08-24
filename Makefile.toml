@@ -481,7 +481,7 @@ echo "  \"$LLVM_BIN/llvm-cov\" show -instr-profile \"$COV/ffi.profdata\" --show-
 #    freeze a non-reproducible high (root cause of the 2026-06-24 lib.rs red, where
 #    485e289 auto-raised lib.rs 86.67 -> 100 with no test justifying it).
 #    EXTERN_COV_ALLOW holds conscious, reviewed exceptions (like a coverage exclude).
-EXTERN_COV_ALLOW="zanshin_buffer_free"  # sync buffer-free: the live Dart bridge frees via the NativeFinalizer token path (zanshin_buffer_free_token), so this variant is exercised only by the Rust cargo test envelope_buffer_ffi_roundtrip — deliberate, reviewed exception.
+EXTERN_COV_ALLOW="zanshin_buffer_free"  # sync buffer-free: the live Dart bridge frees via the NativeFinalizer token path (zanshin_buffer_free_token), so no PRODUCTION Dart code calls this variant. Since Story 4.8 it does have a real cdylib caller — packages/zanshin_core/test/ffi/buffer_free_test.dart — plus the Rust cargo test envelope_buffer_ffi_roundtrip, so it is covered; the name stays allow-listed as a deliberate, reviewed exception because no production Dart path exercises it.
 extern_uncovered=""
 for name in $(grep -rhoE 'extern "C" fn [a-z0-9_]+' "$ROOT/crates/zanshin-ffi/src" | grep -oE '[a-z0-9_]+$' | sort -u); do
     case " $EXTERN_COV_ALLOW " in *" $name "*) continue ;; esac

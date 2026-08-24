@@ -212,8 +212,9 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::RevsetError::ParseError`] — any expression is syntactically invalid.
-    /// - [`crate::RevsetError::ResolutionError`] — a symbol in any expression cannot be
-    ///   resolved.
+    /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize`
+    ///   cannot be resolved. An unresolvable `short_prefixes` is NOT an error: like the
+    ///   CLI, it warns and degrades to full-index prefix lengths.
     /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata
     ///   extraction, or a per-item stream failure; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]

@@ -127,6 +127,11 @@ fn meta_offset<'a>(b: &mut FlatBufferBuilder<'a>, meta: &CommitMeta) -> WIPOffse
 /// Build one `GraphRow` table; its edge/active-lane/meta tables and strings are created
 /// first (children before parents).
 fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::GraphRow<'a>> {
+    debug_assert_eq!(
+        row.meta.is_none(),
+        row.synthetic_elided,
+        "wire contract: GraphRow.meta is absent IFF the row is a synthetic elided row"
+    );
     let mut edge_offs = Vec::with_capacity(row.edges.len());
     for e in &row.edges {
         let target = b.create_string(&e.target);
@@ -311,7 +316,7 @@ mod tests {
             edges,
             synthetic_elided: false,
             active_lanes: vec![],
-            meta: None,
+            meta: Some(full_meta()),
         }
     }
 
@@ -587,7 +592,7 @@ mod tests {
             edges: vec![],
             synthetic_elided: false,
             active_lanes: vec![],
-            meta: None,
+            meta: Some(full_meta()),
         }];
         let buf = graph_slice_to_envelope(&rows);
 
@@ -642,6 +647,7 @@ mod tests {
     fn a_synthetic_elided_row_writes_no_meta_table() {
         let rows = vec![Row {
             synthetic_elided: true,
+            meta: None,
             ..row(
                 "elided-target",
                 1,

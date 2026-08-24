@@ -2532,14 +2532,21 @@ class GraphRowMetaObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One lane-assigned commit row (zanshin_graph::Row). Rows are keyed by
-///  COMMIT id (change ids are ambiguous for divergent changes).
+///  One lane-assigned commit row (zanshin_graph::Row). Rows carry a COMMIT id,
+///  never a change id (change ids are ambiguous for divergent changes).
 ///
 ///  `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
 ///  splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
 ///  `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
 ///  is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
 ///  Dart see as null). On a commit row `meta` is always present.
+///
+///  Consequence: with synthetic elided rows ON (the default) `commit_id` is NOT
+///  unique across rows — the synthetic row and the real commit it stands for
+///  share it, and a child's GraphRowEdge.target names that id with no synthetic
+///  marker. A synthetic row always sits IMMEDIATELY after the child that elided
+///  to it, and `lane` / `target_lane` are the linkage. Do not use `commit_id`
+///  alone as a row key.
 class GraphRow {
   GraphRow._(this._bc, this._bcOffset);
   factory GraphRow(List<int> bytes) {

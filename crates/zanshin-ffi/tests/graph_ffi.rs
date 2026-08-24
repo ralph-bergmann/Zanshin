@@ -8,6 +8,7 @@
 //! on a `zanshin_jj::Repo::open` of the same fixture. Every token is freed via
 //! `zanshin_buffer_free_token` and every handle is closed, so the suite is leak-clean.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::ffi::CString;
 use std::sync::LazyLock;
@@ -612,12 +613,15 @@ fn graph_slice_bogus_short_prefixes_returns_jj_revset_parse_error() {
     unsafe { close(handle) };
 }
 
+/// An unresolvable `short_prefixes` is NOT an error at the FFI surface either: symbol
+/// resolution happens while loading the disambiguation index, which the CLI degrades with a
+/// warning (jj `cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.42.0).
 #[test]
-fn graph_slice_unknown_bookmark_short_prefixes_returns_jj_revset_resolution_error() {
+fn graph_slice_unknown_bookmark_short_prefixes_degrades_to_full_index_prefixes() {
     pin_env();
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
-    let bytes = unsafe {
+    let degraded_bytes = unsafe {
         slice_bytes_with(
             handle,
             "all()",
@@ -626,7 +630,16 @@ fn graph_slice_unknown_bookmark_short_prefixes_returns_jj_revset_resolution_erro
             "nonexistent-bookmark-xyz",
         )
     };
-    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
+    let disabled_bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, "") };
+    let (degraded, total) = ok_rows(&degraded_bytes);
+    let (disabled, _) = ok_rows(&disabled_bytes);
+
+    assert_eq!(degraded.len(), 5, "the call succeeds with the full row set");
+    assert_eq!(usize::try_from(total).ok(), Some(degraded.len()));
+    assert_eq!(
+        degraded, disabled,
+        "degrading falls back to exactly the full-index prefix lengths"
+    );
 
     unsafe { close(handle) };
 }
@@ -661,7 +674,7 @@ fn graph_slice_invalid_utf8_short_prefixes_returns_ffi_utf8_error() {
 }
 
 #[test]
-fn graph_slice_synthetic_elided_toggle_adds_rows_and_off_is_the_pre_4_8_stream() {
+fn graph_slice_synthetic_elided_toggle_adds_rows_and_off_keeps_plain_indirect_edges() {
     pin_env();
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
     let eliding = "all() ~ description(\"Commit 2\")";
@@ -674,7 +687,11 @@ fn graph_slice_synthetic_elided_toggle_adds_rows_and_off_is_the_pre_4_8_stream()
     assert_eq!(off.len(), 4);
     assert_eq!(usize::try_from(off_total).ok(), Some(off.len()));
     assert!(off.iter().any(|r| r.edges.iter().any(|e| e.kind == EdgeKind::Indirect)));
-    assert!(off.iter().all(|r| !r.synthetic_elided && r.meta.is_some()));
+    assert!(
+        off.iter().all(|r| !r.synthetic_elided && r.meta.is_some()),
+        "toggle off = the pre-4.8 TOPOLOGY (plain Indirect edges, no synthetic rows); the row \
+         STRUCT still grew active_lanes/synthetic_elided/meta, so this is not byte-identity"
+    );
 
     assert_eq!(on.len(), 5, "one synthetic row is spliced in");
     assert_eq!(usize::try_from(on_total).ok(), Some(on.len()));
@@ -699,32 +716,57 @@ fn graph_slice_medium_active_lanes_cross_every_row_their_edge_spans() {
     let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
     let (rows, _) = ok_rows(&bytes);
 
-    // The CAP-2 invariant, asserted on the wire form: for every routed edge on lane L from
-    // a child row to its landing row, every row strictly between lists L.
+    // CAP-2 on the wire form, as a set EQUALITY: a row's active_lanes is exactly the set of
+    // lanes carrying a routed edge across it — nothing missing, nothing spurious. (The
+    // domain-side twin lives in crates/zanshin-graph/tests/common/mod.rs; test helpers are
+    // duplicated per test crate by repo convention.)
+    let mut crossing: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); rows.len()];
     for (index, row) in rows.iter().enumerate() {
         for edge in &row.edges {
             let Some(lane) = edge.target_lane else { continue };
-            let landing = rows[index + 1..]
-                .iter()
-                .position(|r| r.commit_id == edge.target)
-                .map(|offset| index + 1 + offset)
-                .expect("every routed edge lands");
-            for crossed in &rows[index + 1..landing] {
-                assert!(
-                    crossed.active_lanes.iter().any(|l| l.lane == lane),
-                    "lane {lane} crosses {} but is missing from its active_lanes",
-                    crossed.commit_id
-                );
+            let landing = landing_row(&rows, index, &edge.target);
+            for crossed in &mut crossing[index + 1..landing] {
+                crossed.insert(lane);
             }
         }
+    }
+    for (row, expected) in rows.iter().zip(&crossing) {
         assert!(
             !row.active_lanes.iter().any(|l| l.lane == row.lane),
             "a row never lists its own lane as a pass-through"
+        );
+        assert_eq!(
+            row.active_lanes.iter().map(|l| l.lane).collect::<Vec<u32>>(),
+            expected.iter().copied().collect::<Vec<u32>>(),
+            "{}: active_lanes must equal the crossing set, ascending",
+            row.commit_id
         );
     }
     assert!(rows.iter().any(|r| !r.active_lanes.is_empty()));
 
     unsafe { close(handle) };
+}
+
+/// Index of the row an edge from `child_index` to `target` lands on.
+///
+/// `commit_id` alone is ambiguous once synthetic elided rows are spliced (a synthetic row
+/// carries its TARGET's id). The CLI's splice rule disambiguates it exactly: a synthetic row
+/// sits IMMEDIATELY after the child that elided to it.
+fn landing_row(rows: &[Row], child_index: usize, target: &str) -> usize {
+    let next = child_index + 1;
+    if rows
+        .get(next)
+        .is_some_and(|r| r.synthetic_elided && r.commit_id == target)
+    {
+        return next;
+    }
+    let Some(offset) = rows[next..]
+        .iter()
+        .position(|r| !r.synthetic_elided && r.commit_id == target)
+    else {
+        panic!("{} -> {target} never lands on a real row", rows[child_index].commit_id);
+    };
+    next + offset
 }
 
 #[test]
