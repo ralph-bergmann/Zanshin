@@ -29,11 +29,14 @@ pub struct MutationResult {
     /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`]
     /// abandons `@` itself. A rewrite ([`describe`]) or a pointer move ([`edit`]) never
     /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
-    /// `@` itself was among the abandoned ids.
+    /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
+    /// (it restores state, it doesn't mint anything).
     pub new_change_ids: Vec<ChangeId>,
     /// The change ids [`abandon`]'s caller passed in, echoed verbatim. Always empty for
     /// `describe`/`new_change`/`edit` — jj-lib's own side effects (e.g. `edit()`'s
-    /// implicit abandon of a discardable previous `@`) are never reflected here.
+    /// implicit abandon of a discardable previous `@`) are never reflected here. Always
+    /// empty for [`crate::op_log::undo`] too (it restores state, it doesn't abandon
+    /// anything).
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
@@ -60,14 +63,26 @@ pub enum MutateError {
         /// Human-readable reason the input was rejected.
         reason: String,
     },
+    /// [`crate::Repo::undo`] was called with the head operation at the op-store root —
+    /// there is no parent operation to restore to. Currently unreachable through this
+    /// crate's own public API alone: `Workspace::init_*` always commits an
+    /// "add workspace" op on top of root, so a freshly opened repo's head always has at
+    /// least one parent. It exists as a defensive CLI-parity guard mirroring the CLI's
+    /// own `Cannot undo root operation` refusal, not a normally-reachable path — it only
+    /// fires against a hand-crafted or externally-mutated op-store (see
+    /// `tests/op_log.rs`'s `undo_at_root_operation_returns_nothing_to_undo`, which has to
+    /// engineer that state via direct `op_heads` file manipulation).
+    #[error("nothing to undo")]
+    NothingToUndo,
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes
     /// the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
     Backend(String),
 }
 
-/// Converts any jj-lib error to [`MutateError::Backend`].
-fn be<E: std::fmt::Display>(e: E) -> MutateError {
+/// Converts any jj-lib error to [`MutateError::Backend`]. `pub(crate)` so
+/// [`crate::op_log::undo`] can reuse it instead of duplicating an identical helper.
+pub(crate) fn be<E: std::fmt::Display>(e: E) -> MutateError {
     MutateError::Backend(e.to_string())
 }
 
@@ -104,7 +119,7 @@ fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateErr
 /// post-commit sync step can tell whether this mutation moved `@`, and so
 /// `workspace.check_out` gets the pre-mutation tree for jj-lib's own
 /// concurrent-modification guard.
-fn capture_old_wc(
+pub(crate) fn capture_old_wc(
     readonly: &ReadonlyRepo,
     workspace_name: &WorkspaceName,
 ) -> Result<(Option<jj_lib::backend::CommitId>, Option<MergedTree>), MutateError> {
@@ -119,7 +134,7 @@ fn capture_old_wc(
 /// Syncs the on-disk working copy to the just-committed transaction's `@`, but ONLY if
 /// this mutation actually moved it (AC-3: no `workspace.check_out` call otherwise).
 /// Returns the new `@` commit either way, so callers can read its change id.
-fn sync_working_copy(
+pub(crate) fn sync_working_copy(
     workspace: &mut Workspace,
     workspace_name: &WorkspaceName,
     old_wc_id: Option<&jj_lib::backend::CommitId>,

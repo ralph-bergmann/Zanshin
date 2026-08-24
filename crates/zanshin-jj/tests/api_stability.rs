@@ -204,4 +204,7 @@ fn api_surface_resolves() {
     // mutate (Story 6.1)
     _ = zanshin_jj::MutateError::Backend(String::new());
     _ = sample_mutation_result();
+
+    // op-log undo (Story 6.2)
+    _ = zanshin_jj::MutateError::NothingToUndo;
 }

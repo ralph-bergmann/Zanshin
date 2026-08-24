@@ -334,6 +334,25 @@ impl Repo {
         crate::mutate::abandon(self.workspace_mut(), change_ids)
     }
 
+    /// Reverts the last operation, one step back from the current head (FR-JJ-14a).
+    ///
+    /// Mirrors the CLI's `jj undo`: restores the head operation's single parent's repo
+    /// state + local bookmarks/tags + remote-tracking bookmarks (leaving `git_refs`/
+    /// `git_head` untouched) onto a freshly-committed op. Calling `undo()` twice in a
+    /// row redoes the first `undo()`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NothingToUndo`] — the head operation IS the op-store root
+    ///   (no parent to restore to).
+    /// - [`crate::MutateError::InvalidInput`] — the head operation has more than one
+    ///   parent (a divergent-write merge op) — undoing a merge operation is refused.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn undo(&mut self) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::op_log::undo(self.workspace_mut())
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors
