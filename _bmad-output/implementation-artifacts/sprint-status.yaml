@@ -46,9 +46,9 @@ development_status:
   epic-3: done
 
   # Epic 4: zanshin-graph — DAG Lane Assignment
-  epic-4: in-progress  # reopened 2026-08-23: follow-up story 4-8 (spec: _bmad-output/specs/spec-4-8-log-rows-cli-parity/)
-  4-8-log-rows-cli-parity: backlog  # CLI-parity log rows: metadata-enriched, self-contained GraphSlice rows (Ralph 2026-08-23)
-  4-9-config-revset-aliases: backlog  # honor jj config [revset-aliases] + effective log defaults (spec: _bmad-output/specs/spec-4-9-config-revset-aliases/). DEPENDS ON 4-8 (alias-table seam)
+  epic-4: done  # 4-8 + 4-9 done 2026-08-24, closing the 2026-08-23 reopen
+  4-8-log-rows-cli-parity: done  # CLI-parity log rows: metadata-enriched, self-contained GraphSlice rows (commits 03a2009, a5d20bb)
+  4-9-config-revset-aliases: done  # honor jj config [revset-aliases] + effective log defaults (commit 095ba8f)
 
   # Epic 5: zanshin-diff — Word-Diff + Syntax Highlight
   epic-5: backlog

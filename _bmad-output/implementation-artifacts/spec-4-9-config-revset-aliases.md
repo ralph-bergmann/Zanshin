@@ -2,7 +2,7 @@
 title: 'Story 4.9: Honor jj config revset aliases + expose the effective log defaults'
 type: 'feature'
 created: '2026-08-24'
-status: 'blocked'
+status: 'done'
 baseline_revision: 'a5d20bb8490678df44107e74dbe1fa2ad91eda31'
 review_loop_iteration: 0
 followup_review_recommended: true
@@ -274,16 +274,13 @@ Notes on the largest reject groups, recorded because each was checked rather tha
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: commit signing unavailable — 1Password is locked, so `op-ssh-sign` fails
-(`error: 1Password: failed to fill whole buffer`, then `error: 1Password: agent returned an
-error` on retry; both end in `fatal: failed to write commit object`). Per this spec's Block If
-and the repo's rules, `--no-gpg-sign` was NOT used. **All 36 files are staged and the quality
-gate is green** — unlock 1Password and re-run the commit; nothing else is outstanding. The
-implementation, the review pass and all 10 patches are complete and verified below; only the
-signed commit remains.
+Status: done
+1Password was unlocked and the prepared commit landed as `095ba8f` (36 files, +3459 −69, per
+`git commit`'s own report — the earlier `+3310 −69` above was this run's approximate tally, not
+re-verified against the final staged diff). Working tree verified clean after commit; nothing
+staged or unstaged remains. Not pushed.
 
-Prepared commit message:
+Committed message:
 
 ```
 feat(zanshin-jj): honor jj config revset aliases (Story 4.9)
@@ -308,6 +305,12 @@ indirection (resolved read-only, never via SecureConfig, which writes), and
 ConfigSource::Workspace sits above Repo and is layered too.
 
 Config is re-read per operation and never cached. Adds jj.config_error.
+
+Also carries a 3-line fix to packages/zanshin_core/test/worker/events_test.dart
+that is NOT part of Story 4.9: a pre-existing watcher race (repo B's initRepo
+writes op_heads and the watcher is armed before open returns, so its event can
+beat the listener attach). It fails on a clean HEAD tree too, but the quality
+gate cannot reach exit 0 without it. Recorded as deferred in the story spec.
 
 FR-JJ-16, FR-JJ-17, NFR-R-2, ADR-0003
 ```
