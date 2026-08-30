@@ -4,8 +4,8 @@
 # This file should be version controlled and should not be manually edited.
 
 version:
-  revision: "a8c3b09f8de63286c31f3879c419acefa9f1b840"
-  channel: "main"
+  revision: "7099814fba851cfee875dc0aa63994b20e415a51"
+  channel: "master"
 
 project_type: app
 
@@ -13,11 +13,11 @@ project_type: app
 migration:
   platforms:
     - platform: root
-      create_revision: a8c3b09f8de63286c31f3879c419acefa9f1b840
-      base_revision: a8c3b09f8de63286c31f3879c419acefa9f1b840
+      create_revision: 7099814fba851cfee875dc0aa63994b20e415a51
+      base_revision: 7099814fba851cfee875dc0aa63994b20e415a51
     - platform: macos
-      create_revision: a8c3b09f8de63286c31f3879c419acefa9f1b840
-      base_revision: a8c3b09f8de63286c31f3879c419acefa9f1b840
+      create_revision: 7099814fba851cfee875dc0aa63994b20e415a51
+      base_revision: 7099814fba851cfee875dc0aa63994b20e415a51
 
   # User provided section
 
@@ -27,4 +27,4 @@ migration:
   # Files that are not part of the templates will be ignored by default.
   unmanaged_files:
     - 'lib/main.dart'
-    - 'macos/Podfile'
+    - 'ios/Runner.xcodeproj/project.pbxproj'

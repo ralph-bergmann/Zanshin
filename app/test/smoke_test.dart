@@ -1,9 +1,0 @@
-// SPDX-License-Identifier: MIT
-
-import 'package:flutter_test/flutter_test.dart';
-
-void main() {
-  test('smoke', () {
-    expect(true, isTrue);
-  });
-}
