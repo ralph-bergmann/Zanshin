@@ -75,6 +75,7 @@ class ZanshinApp extends StatefulWidget {
 
 class _ZanshinAppState extends State<ZanshinApp> {
   ShellTheme? _shellTheme;
+  ThemeMode _themeMode = ThemeMode.system;
   StreamSubscription<ShellTheme>? _subscription;
 
   @override
@@ -93,6 +94,21 @@ class _ZanshinAppState extends State<ZanshinApp> {
     setState(() => _shellTheme = theme);
   }
 
+  /// Applies the user's choice and mirrors it onto the native window chrome
+  /// (blur background, traffic lights), which Flutter theming cannot reach.
+  void _setThemeMode(ThemeMode mode) {
+    setState(() => _themeMode = mode);
+    if (!kIsWeb && Platform.isMacOS) {
+      unawaited(
+        ZanshinShell.setWindowAppearance(switch (mode) {
+          ThemeMode.light => WindowAppearance.light,
+          ThemeMode.dark => WindowAppearance.dark,
+          ThemeMode.system => WindowAppearance.system,
+        }),
+      );
+    }
+  }
+
   @override
   void dispose() {
     unawaited(_subscription?.cancel());
@@ -104,7 +120,9 @@ class _ZanshinAppState extends State<ZanshinApp> {
     if (!kIsWeb && Platform.isLinux) {
       return YaruTheme(
         builder: (context, yaru, child) => _ExampleHome(
-          themeMode: ThemeMode.system,
+          themeMode: _themeMode,
+          selectedMode: _themeMode,
+          onModeChanged: _setThemeMode,
           lightTheme: yaru.theme,
           darkTheme: yaru.darkTheme,
         ),
@@ -112,19 +130,32 @@ class _ZanshinAppState extends State<ZanshinApp> {
     }
 
     final ShellTheme? shellTheme = _shellTheme;
+    // A forced mode wins outright; in system mode the shell channel is
+    // authoritative for day/night on macOS. The channel keeps reporting the
+    // SYSTEM value even while the window appearance is overridden (the
+    // override is per-window), so switching back to system stays correct.
+    final ThemeMode effectiveMode = switch (_themeMode) {
+      ThemeMode.system when shellTheme != null =>
+        shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      _ => _themeMode,
+    };
+
     if (shellTheme == null) {
       // First frame before the platform answered: follow the system via
       // Flutter's own brightness until the shell theme arrives.
-      return const _ExampleHome(
-        themeMode: ThemeMode.system,
+      return _ExampleHome(
+        themeMode: effectiveMode,
+        selectedMode: _themeMode,
+        onModeChanged: _setThemeMode,
         lightTheme: null,
         darkTheme: null,
       );
     }
 
     return _ExampleHome(
-      // The shell channel is authoritative for day/night on macOS.
-      themeMode: shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      themeMode: effectiveMode,
+      selectedMode: _themeMode,
+      onModeChanged: _setThemeMode,
       lightTheme: createYaruLightTheme(primaryColor: shellTheme.accentColor),
       darkTheme: createYaruDarkTheme(primaryColor: shellTheme.accentColor),
     );
@@ -136,11 +167,17 @@ class _ExampleHome extends StatelessWidget {
     required this.lightTheme,
     required this.darkTheme,
     required this.themeMode,
+    required this.selectedMode,
+    required this.onModeChanged,
   });
 
   final ThemeData? lightTheme;
   final ThemeData? darkTheme;
   final ThemeMode themeMode;
+
+  /// The user's raw choice (may be `system` while [themeMode] is resolved).
+  final ThemeMode selectedMode;
+  final ValueChanged<ThemeMode> onModeChanged;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -148,17 +185,50 @@ class _ExampleHome extends StatelessWidget {
     theme: lightTheme ?? yaruLight,
     themeMode: themeMode,
     darkTheme: darkTheme ?? yaruDark,
-    home: const _Example(),
+    home: _Example(selectedMode: selectedMode, onModeChanged: onModeChanged),
   );
 }
 
 class _Example extends StatelessWidget {
-  const _Example();
+  const _Example({required this.selectedMode, required this.onModeChanged});
+
+  final ThemeMode selectedMode;
+  final ValueChanged<ThemeMode> onModeChanged;
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: WindowDragArea(
-      child: AppBar(title: const Text('hallo ralph, dies ist dein Yaru Test')),
+      child: AppBar(
+        title: const Text('hallo ralph, dies ist dein Yaru Test'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  icon: Icon(Icons.light_mode, size: 16),
+                  tooltip: 'Light',
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  icon: Icon(Icons.dark_mode, size: 16),
+                  tooltip: 'Dark',
+                ),
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  icon: Icon(Icons.brightness_auto, size: 16),
+                  tooltip: 'System',
+                ),
+              ],
+              selected: {selectedMode},
+              onSelectionChanged: (selection) => onModeChanged(selection.first),
+            ),
+          ),
+        ],
+      ),
     ),
     body: const CheckboxPage(),
   );
