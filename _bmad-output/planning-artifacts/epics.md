@@ -5519,6 +5519,9 @@ So that the deferred work is visible.
 ### Story 9.0: Bump `jj-lib` 0.41.0 → 0.42.0 (precursor)
 Edit the `=0.41.0` pins to `=0.42.0`, absorb any API diff inside `zanshin-jj`, regenerate codegen if an `extern "C"` signature changed, `cargo make test` green (incl. coverage ratchet). One reviewed change before any operation work, so the surface is built on current. *(Executed in the 2026-06-27 session.)*
 
+### Story 9.0a: Bump `jj-lib` to latest — 0.42.0 → 0.44.0 (precursor)
+Edit the `=0.42.0` pin to the latest release (`=0.44.0` as of 2026-09-02), re-align the pins that track it (`gix` 0.84.0 → 0.85.0 per jj-lib 0.44's transitive version; re-verify the exact `chrono` pin), absorb any API diff inside `zanshin-jj`, regenerate codegen if an `extern "C"` signature changed, and bump the `../jj` reference-tag mentions (`CLAUDE.md`, `project-context.md` § jj source reference) in lockstep. `cargo make test` green (incl. coverage ratchet + `cargo deny`). Lands before any Epic 9 operation work, so the surface is built on current. *(Added 2026-09-02.)*
+
 ### Story 9.1: Operation-support layer (`zanshin-jj/src/op_support.rs`)
 Re-port the orchestration jj-lib does NOT expose (lives in jj-cli's `cli_util`): the immutable-heads / `check_rewritable` guard, `compute_commit_location` (insert `-A`/`-B`/`--onto`), description combination (`combine_messages` + trailers), and the `SelectedTree` plumbing that replaces the CLI's interactive `DiffSelector`. Shared by every thick verb + MCP. **Blocks Tier C.**
 

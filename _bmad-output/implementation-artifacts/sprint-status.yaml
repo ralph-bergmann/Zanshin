@@ -89,8 +89,9 @@ development_status:
   # Each verb: .fbs -> zanshin-jj typed op (tx Rust-side) -> zanshin-ffi + codegen -> Dart WorkerCommand
   # -> optional MCP tool -> tests (+ coverage attribution + ratchet). Tier A (cheap) -> B (medium) -> C (thick).
   # Per-operation detail (helper, thickness, typed-API sketch) lives in the feasibility map + epics.md Epic 9.
-  epic-9: in-progress  # only the 9-0 precursor (pin bump) is done; 9-1..9-23 backlog, scheduling TBD
+  epic-9: in-progress  # 9-0 precursor (0.41->0.42) done; 9-0a (bump to latest) + 9-1..9-23 scheduled 2026-09-02 (unattended bmad-build-auto run)
   9-0-bump-jj-lib-0-41-to-0-42: done  # DONE 2026-06-27 (commit 92ae4ad): jj-lib =0.42.0 + gix 0.84; 4 API diffs absorbed in zanshin-jj (GitImportOptions.record_synthetic_predecessors, commit_change_ids stream, dsl_util insert doc-arg, Store::write_file futures-AsyncRead/&[u8] -> dropped orphan tokio dep); cargo make test green, coverage ratchet raised baseline (ffi_strings 93.97->99.14%). Precursor to all operation work; done directly (no separate story file).
+  9-0a-bump-jj-lib-0-42-to-latest: backlog  # ADDED 2026-09-02: bump jj-lib =0.42.0 -> =0.44.0 (latest); re-align gix 0.84.0 -> 0.85.0 (jj-lib 0.44 transitive) + re-verify chrono exact-pin; absorb API diffs inside zanshin-jj; regen codegen if extern "C" changed; bump ../jj reference-tag mentions (CLAUDE.md + project-context.md) in lockstep; cargo make test green (ratchet + cargo deny). MUST land before 9-1..9-23.
   9-1-operation-support-layer-op-support-rs: backlog  # zanshin-jj/src/op_support.rs: re-port cli_util orchestration NOT in jj-lib (check_rewritable immutable guard, compute_commit_location, combine_messages+trailers, SelectedTree replacing the interactive DiffSelector). Shared by every thick verb + MCP. BLOCKS Tier C.
   9-2-eval-revset-primitive-view-read-helpers: backlog  # extends 2-5: typed eval_revset(&str)->Stream<Commit> (lazy Box<dyn Revset>, streamed per ADR-0002, no try_collect) + direct View reads (bookmarks/tags/heads/wc); preserve the 3-stage parse/resolve/evaluate error taxonomy.
   # --- Tier A (cheap) ---
