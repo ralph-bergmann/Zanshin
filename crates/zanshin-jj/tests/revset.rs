@@ -5,12 +5,13 @@ use std::env;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use jj_lib::backend::CommitId;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::default_working_copy_factories;
 use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
-use test_helpers::extract_fixture;
+use test_helpers::{add_commit_off_root, extract_fixture, set_local_bookmark};
 use zanshin_jj::{resolve_revset, Repo, RevsetError};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
@@ -94,6 +95,21 @@ fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
     out
 }
 
+/// The change id (reverse-hex) of the commit whose hex commit id is `commit_hex`.
+fn change_id_of(workspace_root: &Path, commit_hex: &str) -> String {
+    let settings = make_test_settings();
+    let workspace = Workspace::load(
+        &settings,
+        workspace_root,
+        &jj_lib::default_backend_factories::default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .unwrap();
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let commit_id = CommitId::try_from_hex(commit_hex).expect("valid commit hex");
+    repo.store().get_commit(&commit_id).unwrap().change_id().reverse_hex()
+}
+
 // ── AC-2: `@` resolves to working-copy change id ────────────────────────────
 
 #[test]
@@ -155,6 +171,57 @@ fn revset_on_bookmarks_medium_equals_oracle() {
     assert_eq!(
         result_set, oracle,
         "bookmarks() change ids must match local bookmark targets"
+    );
+}
+
+// ── Story 9.0a: bare pattern args are glob (=exact), not substring ───────────
+
+/// Pins the user-visible revset-language change the jj-lib 0.42 → 0.44 bump brought in:
+/// `RevsetParseContext::use_glob_by_default` is gone, so a bare/quoted pattern argument is now
+/// parsed as a glob — and a glob with no metacharacter is an EXACT match, where 0.42 defaulted
+/// to SUBSTRING. Nothing else in the suite passes an argument to a pattern-taking revset
+/// function, so without this the flip is invisible to the gate. See the `// WHY:` block in
+/// `parse_revset_with` (src/revset.rs) for why the new behaviour is the CLI-correct one.
+#[test]
+fn revset_bare_pattern_arg_is_exact_not_substring() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+
+    // Two bookmark names that strictly nest: "release" is a substring of "release-candidate"
+    // but not equal to it. tiny-3-commits ships no bookmarks, so these two are the whole
+    // bookmark space and the assertions below can be exact sets.
+    let exact_commit = add_commit_off_root(&fx.path, "9.0a: release");
+    let longer_commit = add_commit_off_root(&fx.path, "9.0a: release-candidate");
+    set_local_bookmark(&fx.path, "release", &[&exact_commit]);
+    set_local_bookmark(&fx.path, "release-candidate", &[&longer_commit]);
+
+    let exact_change = change_id_of(&fx.path, &exact_commit);
+    let longer_change = change_id_of(&fx.path, &longer_commit);
+    let repo = Repo::open(&fx.path).unwrap();
+
+    // NEW (0.44): bare argument → glob → exact, so "release-candidate" is NOT selected.
+    // Under 0.42's substring default this returned BOTH bookmarks.
+    let bare: HashSet<String> = resolve_revset(&repo, "bookmarks(release)")
+        .unwrap()
+        .iter()
+        .map(|id| id.0.clone())
+        .collect();
+    assert_eq!(
+        bare,
+        HashSet::from([exact_change.clone()]),
+        "a bare pattern argument must match exactly, not as a substring"
+    );
+
+    // The explicit kinds are untouched by the default change: `substring:` still matches both.
+    let substring: HashSet<String> = resolve_revset(&repo, r#"bookmarks(substring:"release")"#)
+        .unwrap()
+        .iter()
+        .map(|id| id.0.clone())
+        .collect();
+    assert_eq!(
+        substring,
+        HashSet::from([exact_change, longer_change]),
+        "an explicit substring: kind must still match both nested bookmark names"
     );
 }
 

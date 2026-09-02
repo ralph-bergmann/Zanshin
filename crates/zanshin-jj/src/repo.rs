@@ -534,8 +534,12 @@ impl Repo {
             let mut fetcher = GitFetch::new(mut_repo, subprocess_options, &import_options)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             // TODO(FR-JJ-13, Epic 6 Story 6.4a): wire NativeCallable progress callback
+            // WHY: `depth: None` = a full (non-shallow) clone. jj 0.44 dropped `fetch`'s
+            // trailing `fetch_tags_override`, so the 0.42 call's second `None` is the one that
+            // went away — the remaining one is `depth`, unchanged.
+            let depth = None;
             fetcher
-                .fetch(remote_name, refspecs, &mut NoopCallback, None)
+                .fetch(remote_name, refspecs, &mut NoopCallback, depth)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             import_stats = pollster::block_on(fetcher.import_refs())
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;

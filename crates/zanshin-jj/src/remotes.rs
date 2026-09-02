@@ -228,8 +228,12 @@ pub(crate) fn git_fetch(
     let refspecs = expand_fetch_refspecs(remote, expr).map_err(mutate::be)?;
 
     let mut callback = FetchCallback { progress };
+    // WHY: `depth: None` = a full (non-shallow) fetch. jj 0.44 dropped `fetch`'s trailing
+    // `fetch_tags_override`, so the 0.42 call's second `None` is the one that went away — the
+    // remaining one is `depth`, unchanged.
+    let depth = None;
     fetcher
-        .fetch(remote, refspecs, &mut callback, None)
+        .fetch(remote, refspecs, &mut callback, depth)
         .map_err(|e| match e {
             GitFetchError::NoSuchRemote(_) => MutateError::RemoteNotFound {
                 name: remote_name.to_owned(),

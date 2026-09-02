@@ -139,6 +139,26 @@ pub(crate) fn parse_revset_with(
         path_converter: &path_converter,
         workspace_name: workspace.workspace_name(),
     };
+    // WHY: two USER-VISIBLE revset-language changes arrived with the jj-lib 0.42 → 0.44 bump
+    // (Story 9.0a). Neither is a no-op; both reach users through `resolve_revset` and through
+    // `walk_graph` / the FFI `graphSlice(revset:)` pass-through, where the revset is user-typed.
+    //
+    // 1. `RevsetParseContext::use_glob_by_default` is GONE — this struct literal used to set it
+    //    to `false`. In 0.42 that made the default kind for a bare/quoted pattern argument
+    //    "substring"; 0.44 always parses it as a glob (and `StringPattern::glob` degrades to
+    //    `exact` when the string holds no glob metacharacter). So `description(fix)` used to
+    //    match any description CONTAINING "fix" and now matches only one EQUAL to "fix" — same
+    //    for `subject`/`author`/`committer`/`bookmarks`/`remote_bookmarks`/`tags`/`files`/
+    //    `diff_contains`. Explicit kinds (`substring:"fix"`, `glob:`, `regex:`, `exact:`) are
+    //    unaffected. This is a PARITY IMPROVEMENT, not a regression: jj's own CLI shipped
+    //    `ui.revsets-use-glob-by-default = true` in `cli/src/config/misc.toml` at v0.42.0, so
+    //    our hardcoded `false` had been diverging from the CLI that NFR-R-2 makes the semantic
+    //    reference; 0.44 deleted the knob, leaving glob as the only — and CLI-correct — behavior.
+    //    Pinned by `revset_bare_pattern_arg_is_exact_not_substring` in tests/revset.rs.
+    //
+    // 2. Git-like symbols (e.g. `refs/heads/main`) are NO LONGER resolved to revisions; the
+    //    bookmark/tag `<name>` or `<name>@<remote>` syntax replaces them. A revset that relied
+    //    on the old form now fails to resolve rather than silently changing meaning.
     let context = RevsetParseContext {
         aliases_map,
         local_variables: HashMap::new(),
