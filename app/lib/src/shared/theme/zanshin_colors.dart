@@ -4,7 +4,7 @@
 // Dependency theme_tailor_annotation is declared for future @TailorMixin() migration.
 // For now the extension is written manually for immediate compilation.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 @immutable
 class ZanshinColors extends ThemeExtension<ZanshinColors> {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 // SVG-based icon widget. Uses assets/icons/svg/<name>.svg.
