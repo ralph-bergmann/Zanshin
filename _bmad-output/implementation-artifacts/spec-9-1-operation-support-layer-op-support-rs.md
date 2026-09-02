@@ -2,13 +2,68 @@
 title: 'Story 9.1: Operation-support layer (zanshin-jj/src/op_support.rs)'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'a35f15846761e4ca430876102ee5671dba79f5a8'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `describe`, `edit` and `new_change` still call bare `rebase_descendants()`, which
+      passes `none()` as the immutable set, where the CLI always passes the resolved one.
+    evidence: |-
+      Only `abandon` was switched to `rebase_descendants_with_options(&resolved_immutable, …)`,
+      because that is the call Story 9.0a flagged. The CLI's `rebase_mutable_descendants`
+      (`cli_util.rs:2927`) runs at transaction finish for EVERY command. The divergence has no
+      observable consequence today: the immutable set is `::(immutable_heads() | root())` and so
+      is ancestor-closed, which means a target that passes `check_rewritable` provably has no
+      immutable descendants. The residual case is the one the CLI's own comment names — a
+      `jj git fetch` updating immutable commits between `tx.base_repo()` and `tx.repo()`. Worth a
+      single consistent policy when the Tier C verbs land rather than three more ad-hoc call sites.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs (describe/edit/new_change `rebase_descendants()` calls)
+    severity: low
+  - summary: >-
+      `MutateError::Immutable` carries a raw commit hex, while every other identity in this
+      crate's mutation API is a `ChangeId`.
+    evidence: |-
+      The GUI calls `describe(changeId)` and, on refusal, gets back a commit hex it must resolve
+      separately to map onto the change it just submitted. The CLI reports the commit id
+      (`{commit_id:.12}`), so this is CLI-faithful, and the offender is always one of the caller's
+      own targets — but the crate's public convention at the API boundary is change ids. Decide
+      when the GUI actually consumes the code; changing the variant's shape later ripples into
+      the FFI `context` contract.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs (MutateError::Immutable)
+    severity: low
+  - summary: >-
+      `describe` and `abandon` report the root commit as `jj.invalid_input`, where the jj CLI
+      reports it as immutable.
+    evidence: |-
+      Their explicit root guards run BEFORE the new immutability guard, deliberately: those guards
+      exist to pre-empt jj-lib's internal `assert!` (a process crash, not an error), and moving the
+      immutability guard ahead of them would make those lines unreachable — dropping `mutate.rs`
+      below its coverage baseline while also changing a shipped error code. `edit`, which never had
+      such a guard, does report root as `jj.immutable`. Both refuse and neither writes an op-log
+      entry, so the observable outcome matches the CLI; only the code differs, and only for root.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs (describe/abandon root guards)
+    severity: low
+  - summary: >-
+      `op_support.rs`'s inline tests are the first code to mutate the process environment inside
+      the `zanshin-jj` LIB test binary.
+    evidence: |-
+      Every other `JJ_CONFIG`/`GIT_CONFIG_GLOBAL` pin lives in a `tests/` binary where all tests
+      share it. `set_var` is `unsafe` precisely because it races a concurrent `getenv` in another
+      thread. Verified not to be an acute problem today: the only other env reader in that binary
+      is `config.rs`'s `ConfigEnv::from_env`, and `config.rs`'s own inline tests construct
+      `ConfigEnv` explicitly instead of calling it. It is a latent hazard for the next inline test
+      that reads the environment. Moving these tests to `tests/` is not an option — they exercise
+      `pub(crate)` items, which integration tests cannot see.
+    location: >-
+      crates/zanshin-jj/src/op_support.rs (inline `#[cfg(test)]` ENV_GUARD)
+    severity: low
 ---
 
 <intent-contract>
@@ -117,13 +172,31 @@ Everything below was verified against jj-cli at `v0.44.0` and the vendored `jj-l
 - Given a fixture repo with a tag placed on a non-root commit, when `Repo::describe`, `Repo::edit`, or `Repo::abandon` targets that commit, then the call returns `MutateError::Immutable` naming it, and `jj op log` shows no new operation.
 - Given the same repo, when those verbs target a commit outside the immutable set, then they succeed exactly as before this story.
 - Given a repo whose config overrides `revset-aliases."immutable_heads()"`, when the guard runs, then the override decides the immutable set (the builtin is replaced, not merged) — proving the guard reads the effective config rather than a Rust constant.
-- Given `zanshin-jj`'s public API, when compared against the pre-change surface, then only `MutateError` gained a variant: `tests/api_stability.rs` compiles untouched and no `jj_lib` type appears in any public position.
-- Given no `extern "C"` signature changed, when the FFI surface is checked, then `zanshin_ffi.h` and `bindings.dart` need no regeneration.
+- Given `zanshin-jj`'s public API, when compared against the pre-change surface, then `MutateError` is the only public item that changed, no `jj_lib` type appears in any public position, and every variant it gained is pinned in `tests/api_stability.rs` (that file's job is to break on surface drift, so it is EXTENDED, not left untouched — corrected during review, see the Triage Log).
+- Given no `extern "C"` **signature** changed, when the FFI surface is checked, then the ABI is unchanged. Regeneration is still required whenever a wrapper's doc comment changes, because cbindgen/ffigen lift those comments into `zanshin_ffi.h` and `bindings.dart` — so this story runs `cargo make codegen` and commits both generated files (corrected during review; the original wording conflated ABI stability with generated-file staleness).
 - Given `docs/rust-error-codes.md`, when it is read, then `jj.immutable` is registered with its emission site, and the entry for `jj.invalid_input` still describes the root-commit refusal it continues to serve.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-09-02 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 4, low 5)
+- defer: 4: (high 0, medium 0, low 4)
+- reject: 7: (high 0, medium 2, low 5)
+- addressed_findings:
+  - `[medium]` `[patch]` The shipped FFI contract was stale and, for `zanshin_edit`, factually wrong: it still said `jj.jj_lib_error` "includes attempting to edit the root commit", which this very change had moved to `jj.immutable`, contradicting the row added to `docs/rust-error-codes.md`. None of the three verbs' `# Errors` lists mentioned the new codes. Corrected at the source, then `cargo make codegen` was run and `zanshin_ffi.h` + `bindings.dart` committed, plus the Dart worker's own code lists in `handle.dart` and `isolate.dart`. This supersedes AC #6's literal wording, which had conflated "no `extern "C"` signature changed" with "no regeneration needed" — the ABI is indeed unchanged, but cbindgen/ffigen lift doc comments, so the generated contract the GUI reads was drifting. Triaged `patch` rather than `bad_spec` deliberately: re-deriving from an amended spec would reproduce byte-identical `op_support.rs`/`mutate.rs`/`repo.rs`, so the loopback's entire yield would have been these comment edits.
+  - `[medium]` `[patch]` A config fault reported the wrong code. The guard made `describe`/`edit`/`abandon` read the repo's jj config for the first time, and a malformed config or an unparseable/unresolvable `immutable_heads()` alias funnelled into `MutateError::Backend` → `jj.jj_lib_error` ("unclassified"). The repo already registers `jj.config_error` for exactly this fault (Story 4.9) and the CLI classifies it the same way (`cli_util.rs:1139`). Added `MutateError::Config`, routed the config/parse/resolve failures through it, mapped it to the EXISTING `JJ_CONFIG_ERROR` constant, extended that code's registry row with the new emission site, and pinned it at three levels (crate, envelope, mapper).
+  - `[medium]` `[patch]` The one shipped error code this story knowingly changed — `edit(root)` moving from `jj.jj_lib_error` to `jj.immutable` — was asserted in three doc sites and observed by no test. Added `edit_root_commit_returns_immutable`.
+  - `[medium]` `[patch]` `jj.immutable` never crossed the FFI boundary in a test; its only coverage was the in-module mapper unit test, while every other mutation code is pinned end-to-end in `repo_write_ffi.rs`. Added envelope-level rows for both new codes, asserting `ok = false`, the code, the hex commit id in `context`, and that a refused `describe` really did not write.
+  - `[low]` `[patch]` `tests/api_stability.rs` pins each public `MutateError` variant with a per-story comment; the two new variants were absent, so the pin test could not catch a later rename. Added both.
+  - `[low]` `[patch]` `apply_trailers` takes caller-built `Trailer`s and an arbitrary `&str` where the CLI's inputs are always normalized. Documented the three resulting preconditions (newline-terminated description, no embedded newlines in key/value, no intra-list dedup) rather than adding validation, which would diverge from the verbatim port NFR-R-2 pins.
+  - `[low]` `[patch]` `compute_commit_location` takes raw slices where the CLI gets an `IndexSet` of existing commits from `resolve_revsets_ordered`. Documented the input contract (resolved, existing, deduplicated; absence is `None`, never `Some(&[])`).
+  - `[low]` `[patch]` `abandon_names_the_first_immutable_target_even_when_several_are` pinned `Commit 3` on the basis of reverse-topological stream order, which jj-lib does not promise — an upstream index change would have turned it red with no behaviour regression. Relaxed to assert membership in the immutable target set plus exactly-one-offender, and renamed accordingly.
+  - `[low]` `[patch]` `abandon` rebound its `immutable` parameter (`&Arc<UserRevsetExpression>`) to the resolved set under the same name, ~30 lines from the `rebase_descendants_with_options` call where the base-repo-vs-mutable-repo distinction matters; renamed to `resolved_immutable`. Two new `InvalidInput` messages reused the CLI's internal *panic* text and leaked Rust parameter names to a GUI; reworded to name the user-facing flags, leaving the CLI's genuinely user-facing strings verbatim.
 
 ## Design Notes
 
@@ -148,3 +221,91 @@ Everything below was verified against jj-cli at `v0.44.0` and the vendored `jj-l
 
 **Manual checks (if no CLI):**
 - Diff the crate's `pub` items: confirm `MutateError` is the only public item that changed and that no `jj_lib` type leaked into a public signature.
+
+## Auto Run Result
+
+Status: done
+Commits: `1dd962c32585057c248f01acdf87451c02cba1d6` (the layer + guard wiring) and
+`66057e708a3d203e034b4de074dfc8e059c740f2` (review patches), both on `main`, baseline
+`a35f15846761e4ca430876102ee5671dba79f5a8`.
+
+**Summary.** `crates/zanshin-jj/src/op_support.rs` re-ports, at jj-cli `v0.44.0` parity, the four
+pieces of rewrite orchestration that live in `cli_util` and are absent from jj-lib: the
+immutable-heads rewritability guard, insert-location resolution for `-A`/`-B`/`--onto`, description
+combination with trailers, and the selected-tree seam that replaces the interactive `DiffSelector`.
+The whole module is `pub(crate)` — no `jj_lib` type may sit in a public position (FR-JJ-16) — so
+`lib.rs` gains a module declaration and no re-export.
+
+Section 1 is wired into `describe`/`edit`/`abandon`, closing the CLI-parity gap Story 9.0a deferred
+here: those verbs rewrote immutable commits where jj refuses. Sections 2-4 ship tested-but-unwired
+behind a documented `#[allow(dead_code)]`; their consumers are Tier C verbs by the epic's own
+sequencing, which is why this story "blocks Tier C".
+
+Two design findings are worth carrying forward. First, the immutable set is
+`::(immutable_heads() | root())` and therefore **ancestor-closed**: a target that passes
+`check_rewritable` provably has no immutable descendants. So the substantive fix for the 9.0a gap is
+the target guard, not the `rebase_descendants_with_options` argument — the latter was still changed
+on `abandon` for CLI parity and for the `jj git fetch` case the CLI's own comment names (hence
+resolving against `tx.base_repo()`). Second, `try_combine_messages` returning `None` on ambiguity is
+deliberate: the CLI's fallback is a `JJ: `-commented `$EDITOR` buffer, exactly the terminal UX
+ADR-0003 replaces, so the backend classifies and the UI decides.
+
+**Files changed.**
+- `crates/zanshin-jj/src/op_support.rs` — the layer, inline tests included.
+- `crates/zanshin-jj/src/mutate.rs` — `MutateError::{Immutable, Config}`, the `cfg()` classifier, the
+  guard threaded into the three rewriting verbs, and `abandon`'s `RevsetExpression::none()`
+  placeholder replaced with the resolved immutable set.
+- `crates/zanshin-jj/src/repo.rs` — the three facades build the expression from `&self` before
+  `workspace_mut()`; that borrow split was the story's one real design constraint.
+- `crates/zanshin-jj/src/revset.rs` — `resolve_expression` extracted from `evaluate_revset`, so the
+  guard reaches the *resolved* expression without duplicating symbol resolution.
+- `crates/zanshin-ffi/src/{envelope.rs,repo.rs}` — the `jj.immutable` constant, both new mapper arms,
+  their unit tests, and the corrected/extended `# Errors` contracts.
+- `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` —
+  regenerated via `cargo make codegen`.
+- `packages/zanshin_core/lib/src/worker/{handle,isolate}.dart` — the Dart-facing code lists.
+- `docs/rust-error-codes.md` — the `jj.immutable` row; `jj.config_error` gained its new emission site.
+- Tests: `crates/zanshin-jj/tests/op_support.rs` (13 integration rows), 26 inline rows in
+  `op_support.rs`, 2 new envelope rows in `crates/zanshin-ffi/tests/repo_write_ffi.rs`, and the new
+  variants pinned in `tests/api_stability.rs`.
+
+**Review findings.** 9 patched (0 high, 4 medium, 5 low), 4 deferred (all low — see frontmatter),
+7 rejected. No `intent_gap` and no `bad_spec`: the implementation matched the spec and every patch
+was additive. Two patches deliberately superseded the literal wording of ACs #5 and #6, both of
+which had read a test's and a generator's purpose backwards; the ACs were corrected in place rather
+than looped back, because re-derivation would have reproduced byte-identical code.
+
+**Follow-up review recommended:** true. Patched this pass: high 0, medium 4, low 5 →
+score `3×4 + 1×5 = 17`, at or above the threshold of 5. Note for whoever acts on it: the remaining
+yield is likely documentation and test-shape polish rather than defects — the guard's behaviour is
+pinned at three levels (crate, envelope, mapper), and the ancestor-closure argument above bounds
+what the remaining `none()` call sites can affect.
+
+**Verification performed.** `cargo make test` run to completion unpiped with the exit code captured,
+green on the final state: `GATE_EXIT=0`, `Build Done in 287.92 seconds`. It covers
+`cargo test --workspace`, clippy pedantic `-D warnings`, rustfmt, `flutter test` +
+`dart analyze`/`format`, `cargo deny` (`advisories ok, bans ok`), and the coverage ratchet:
+`coverage-check: OK — coverage held at 99.06% (5480/5532 lines)` — held, so `coverage-baseline.txt`
+was neither raised nor lowered and is in neither commit. Two earlier gate runs were red and were
+fixed rather than worked around: two inline assertions still matched the pre-rewording refusal text,
+and one rustfmt violation. Every new test was confirmed present in the run output rather than
+assumed, and the I/O matrix was audited row by row against tests that actually executed.
+
+**Process note.** The review patches were first delegated back to the implementation subagent, which
+then ran concurrently with this session and clobbered several files (duplicate helpers and two
+duplicated test pairs). Ownership was reclaimed, the duplicates were collapsed, and the final state
+was re-verified from scratch. The lesson for future runs: re-engaging a subagent asynchronously in a
+loop that cannot block on its result is unsafe — apply the patches directly instead.
+
+**Residual risks.**
+- `edit(root)` changed its shipped error code from `jj.jj_lib_error` to `jj.immutable`. Closer to the
+  CLI, now tested, and recorded in the registry — but a user-visible change beyond the spec's
+  literal wording.
+- Sections 2-4 have no production caller, so their contracts are pinned only by their own tests. The
+  documented preconditions on `apply_trailers` and `compute_commit_location` are prose, not
+  enforcement — deliberately, since validation would diverge from the verbatim port.
+- `templates.commit_trailers` rendering is NOT implemented (it needs jj's template engine), so a user
+  who configures it is silently ignored. The key was deliberately kept out of `BUILTIN_CONFIG_TOML`
+  so the builtin layer does not advertise a default this crate does not honour.
+- The interactive half of the selected-tree seam cannot be validated from this repo — it needs the
+  Flutter diff editor to supply a tree id. Only the apply half is tested, as the epic anticipated.
