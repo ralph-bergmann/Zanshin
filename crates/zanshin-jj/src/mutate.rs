@@ -14,6 +14,7 @@ use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
+use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
 use jj_lib::workspace::Workspace;
 
@@ -375,7 +376,14 @@ pub(crate) fn abandon(workspace: &mut Workspace, change_ids: &[ChangeId]) -> Res
         },
         ..Default::default()
     };
-    pollster::block_on(tx.repo_mut().rebase_descendants_with_options(&options, |_, _| {})).map_err(be)?;
+    // WHY: jj 0.44 added the leading `immutable` argument. `RevsetExpression::none()` is exactly
+    // what jj-lib's own `rebase_descendants()` passes, so this preserves pre-0.44 semantics rather
+    // than newly constraining the rebase.
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&RevsetExpression::none(), &options, |_, _| {}),
+    )
+    .map_err(be)?;
 
     let description = if let [only] = commits.as_slice() {
         format!("abandon commit {}", only.id().hex())

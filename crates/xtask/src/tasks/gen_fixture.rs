@@ -75,7 +75,13 @@ fn generate(size: FixtureSize) -> Result<(), BoxError> {
     let workspace_root = temp.path().to_path_buf();
 
     let settings = make_settings()?;
-    let (_workspace, repo) = pollster::block_on(Workspace::init_internal_git(&settings, &workspace_root))?;
+    // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default, so regenerated
+    // fixtures keep the same object hashes as the committed ones.
+    let (_workspace, repo) = pollster::block_on(Workspace::init_internal_git(
+        &settings,
+        &workspace_root,
+        gix::hash::Kind::Sha1,
+    ))?;
 
     match size {
         FixtureSize::Tiny => build_tiny(&repo)?,

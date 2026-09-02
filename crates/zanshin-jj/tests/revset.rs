@@ -6,9 +6,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::default_working_copy_factories;
 use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{resolve_revset, Repo, RevsetError};
 
@@ -50,7 +51,7 @@ fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
+        &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -78,7 +79,7 @@ fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
+        &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -346,7 +347,7 @@ fn make_divergent_change(workspace_root: &Path) -> String {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
+        &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -401,7 +402,7 @@ fn remove_working_copy(workspace_root: &Path) {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
+        &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();

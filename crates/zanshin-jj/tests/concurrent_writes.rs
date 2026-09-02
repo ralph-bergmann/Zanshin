@@ -18,9 +18,10 @@ use std::sync::{Arc, Barrier, LazyLock};
 use std::{env, thread};
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
-use jj_lib::repo::{Repo as _, StoreFactories};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeId, Repo};
 
@@ -59,7 +60,7 @@ fn oracle_targets(workspace_root: &Path) -> (String, String) {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");

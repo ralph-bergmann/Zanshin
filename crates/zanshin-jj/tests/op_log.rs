@@ -8,13 +8,14 @@ use std::{env, path::Path};
 use futures::StreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
-use jj_lib::object_id::ObjectId as _;
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+use jj_lib::object_id::ObjectId;
 use jj_lib::op_store::RefTarget;
 use jj_lib::op_walk;
 use jj_lib::ref_name::GitRefName;
-use jj_lib::repo::{Repo as _, StoreFactories};
+use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeError, ChangeId, MutateError, OpLogError, Repo};
@@ -53,7 +54,7 @@ fn oracle_workspace(root: &Path) -> (Workspace, UserSettings) {
     let workspace = Workspace::load(
         &settings,
         root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
@@ -607,23 +608,36 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     let mut repo = Repo::open(&fx.path).unwrap();
     repo.undo().unwrap();
 
-    // git_head must still resolve to Commit 3 (CURRENT/op B) -- NOT revert to Commit 1
+    // git_head must still point at Commit 3 (CURRENT/op B) -- NOT revert to Commit 1
     // (the target op's value). A regression that swapped restored_view's git_refs/
     // git_head source from `current` to `target` would flip this.
-    let head = zanshin_jj::resolve_revset(&repo, "git_head()").unwrap();
+    //
+    // WHY: read the `View` directly. jj 0.44 removed the `git_head()`/`git_refs()` REVSET
+    // functions, but the view fields they exposed — and which `undo()` copies from `current`
+    // — are unchanged, so this asserts the same property one level closer to the code.
+    let (oracle, _settings) = oracle_workspace(&fx.path);
+    let view_repo = pollster::block_on(oracle.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let view = view_repo.view();
+
+    let head: Vec<String> = view.git_head().added_ids().map(ObjectId::hex).collect();
     assert_eq!(
         head,
-        vec![ChangeId(layout.commit3_change_id.clone())],
+        vec![layout.commit3_commit_hex.clone()],
         "git_head must stay at the CURRENT (pre-undo) commit, not revert to the target op's"
     );
 
-    let refs = zanshin_jj::resolve_revset(&repo, "git_refs()").unwrap();
+    let refs: Vec<String> = view
+        .git_refs()
+        .values()
+        .flat_map(RefTarget::added_ids)
+        .map(ObjectId::hex)
+        .collect();
     assert!(
-        refs.contains(&ChangeId(layout.commit3_change_id)),
-        "git_refs() must still include the CURRENT (pre-undo) commit"
+        refs.contains(&layout.commit3_commit_hex),
+        "git_refs must still include the CURRENT (pre-undo) commit"
     );
     assert!(
-        !refs.contains(&ChangeId(layout.commit1_change_id)),
-        "git_refs() must not revert to the target op's commit"
+        !refs.contains(&layout.commit1_commit_hex),
+        "git_refs must not revert to the target op's commit"
     );
 }

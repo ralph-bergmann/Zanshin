@@ -25,8 +25,8 @@ pager; interactive verbs take a GUI-supplied `TreeId`) — and pass CLI paramete
 rather than baking in defaults. See project-context.md § zanshin-jj for the canonical rules.
 
 - **Read at the pinned tag, not the working tree:** `git -C ../jj show vX.Y.Z:<path>`
-  (currently `v0.42.0`, matching the `jj-lib =0.42.0` pin in the root `Cargo.toml`) — e.g.
-  `git -C ../jj show v0.42.0:lib/src/workspace.rs` or `:cli/src/commands/git/init.rs`.
+  (currently `v0.44.0`, matching the `jj-lib =0.44.0` pin in the root `Cargo.toml`) — e.g.
+  `git -C ../jj show v0.44.0:lib/src/workspace.rs` or `:cli/src/commands/git/init.rs`.
   The working tree may sit on `main`, ahead of the pin — those APIs need not match what
   we build against. Bump the reference tag in lockstep when the `jj-lib` pin moves.
 - **jj-lib shortcut:** the same crate is also vendored version-exact at

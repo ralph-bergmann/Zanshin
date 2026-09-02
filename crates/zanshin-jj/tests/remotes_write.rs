@@ -13,11 +13,11 @@ use std::fs;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::repo::StoreFactories;
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{Backend, MutateError, ProgressEvent, Repo};
 
@@ -103,7 +103,7 @@ fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) 
     let workspace = Workspace::load(
         &settings,
         root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to read view");
@@ -127,7 +127,7 @@ fn remote_tag_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Op
     let workspace = Workspace::load(
         &settings,
         root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to read view");
@@ -165,7 +165,7 @@ fn register_remote(root: &std::path::Path, name: &str, url: &str) {
     let workspace = Workspace::load(
         &settings,
         root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("load workspace to add remote");
@@ -173,8 +173,7 @@ fn register_remote(root: &std::path::Path, name: &str, url: &str) {
     let mut tx = base.start_transaction();
     let remote_name_buf: RemoteNameBuf = name.into();
     let remote_name: &RemoteName = &remote_name_buf;
-    git::add_remote(tx.repo_mut(), remote_name, url, None, gix::remote::fetch::Tags::All)
-        .unwrap_or_else(|e| panic!("add_remote({name}) failed: {e}"));
+    git::add_remote(tx.repo_mut(), remote_name, url, None).unwrap_or_else(|e| panic!("add_remote({name}) failed: {e}"));
     // tx is intentionally dropped without commit.
 }
 

@@ -3,6 +3,12 @@
 use std::sync::LazyLock;
 use std::{env, fs};
 
+use jj_lib::backend::CommitId;
+use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::settings::UserSettings;
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{convert_colocated, convert_import, RepoError, RepoKind};
@@ -16,6 +22,41 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
+}
+
+/// The commit ids the workspace's imported Git `HEAD` points at — the view's `git_head`.
+///
+/// WHY: jj 0.44 removed the `git_head()` REVSET function (upstream deprecated it, suggesting
+/// `first_parent(@)` as a colocated-repo approximation). The underlying `View::git_head` is
+/// unchanged and `convert.rs` still writes it, so reading the view asserts exactly the property
+/// these tests were written for — and does so more tightly than `first_parent(@)` would: the
+/// latter is also satisfied by `check_out` alone, so it could not catch a dropped `import_head`.
+fn git_head_ids(workspace_root: &std::path::Path) -> Vec<CommitId> {
+    let mut config = StackedConfig::with_defaults();
+    config.add_layer(
+        ConfigLayer::parse(
+            ConfigSource::User,
+            r#"
+                [user]
+                name = "Zanshin"
+                email = "zanshin@localhost"
+                [operation]
+                username = "zanshin"
+                hostname = "localhost"
+            "#,
+        )
+        .expect("valid config literal"),
+    );
+    let settings = UserSettings::from_config(config).expect("valid settings");
+    let workspace = Workspace::load(
+        &settings,
+        workspace_root,
+        &default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .expect("oracle workspace load");
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    repo.view().git_head().added_ids().cloned().collect()
 }
 
 /// Run a git command in `dir`; panics on non-zero exit.
@@ -289,12 +330,12 @@ fn convert_detached_head_imports_head_commit() {
         "no bookmark expected after branch deletion; got: {bookmarks:?}"
     );
     // … yet the HEAD commit is reachable via the imported git_head ref. If convert
-    // dropped `import_head`, `git_head()` would resolve to nothing and this fails.
-    let head = zanshin_jj::resolve_revset(&repo, "git_head()").expect("resolve git_head()");
+    // dropped `import_head`, git_head would be empty and this fails.
+    let head = git_head_ids(repo.workspace_root());
     assert_eq!(
         head.len(),
         1,
-        "the detached HEAD commit must be reachable via git_head(); got: {head:?}"
+        "the detached HEAD commit must be reachable via git_head; got: {head:?}"
     );
 }
 
@@ -361,10 +402,10 @@ fn convert_import_git_repo_with_commit_returns_jj_native() {
         "working copy must be materialised with HEAD's tree"
     );
 
-    // Repo::open succeeds and can resolve git_head().
-    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
-    let head = zanshin_jj::resolve_revset(&repo, "git_head()").expect("resolve git_head()");
-    assert_eq!(head.len(), 1, "imported HEAD commit must be reachable via git_head()");
+    // Repo::open succeeds and the imported HEAD is recorded in git_head.
+    zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    let head = git_head_ids(&dst);
+    assert_eq!(head.len(), 1, "imported HEAD commit must be reachable via git_head");
 }
 
 // ── Test 2: source refs/HEAD unchanged after import ──────────────────────────
@@ -534,14 +575,8 @@ fn convert_import_unborn_branch_source_succeeds() {
         "must detect as Jj even with unborn branch source"
     );
     // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1).
-    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
-    assert_eq!(
-        zanshin_jj::resolve_revset(&repo, "git_head()")
-            .expect("resolve git_head()")
-            .len(),
-        0,
-        "unborn source must import no HEAD commit"
-    );
+    zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    assert_eq!(git_head_ids(&dst).len(), 0, "unborn source must import no HEAD commit");
 }
 
 // ── Test 8b: bare + unborn source → Ok, empty history (AC-10 bare-unborn arm) ─
@@ -565,11 +600,9 @@ fn convert_import_bare_unborn_source_succeeds() {
         RepoKind::Jj,
         "must detect as Jj for bare unborn source"
     );
-    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    zanshin_jj::Repo::open(&dst).expect("Repo::open");
     assert_eq!(
-        zanshin_jj::resolve_revset(&repo, "git_head()")
-            .expect("resolve git_head()")
-            .len(),
+        git_head_ids(&dst).len(),
         0,
         "bare unborn source must import no HEAD commit"
     );
@@ -738,10 +771,17 @@ fn convert_import_into_same_dir_is_colocated() {
 
     // The colocated skip must have fired: no jj-native `@` was created on top of
     // the imported HEAD. If is_colocated() had wrongly returned false (the raw-path
-    // bug), check_out would have run and git_head() would gain a strict descendant.
+    // bug), check_out would have run and git_head would gain a strict descendant.
     let repo = zanshin_jj::Repo::open(src.path()).expect("Repo::open");
+    // The removed `git_head()` revset function is replaced by substituting the commit id
+    // the view records, so the descendants/exclusion query itself is unchanged.
+    let head_ids = git_head_ids(repo.workspace_root());
+    let [head] = head_ids.as_slice() else {
+        panic!("expected exactly one imported git_head commit; got: {head_ids:?}");
+    };
+    let head_hex = head.hex();
     assert_eq!(
-        zanshin_jj::resolve_revset(&repo, "descendants(git_head()) ~ git_head()")
+        zanshin_jj::resolve_revset(&repo, &format!("descendants({head_hex}) ~ {head_hex}"))
             .expect("resolve revset")
             .len(),
         0,

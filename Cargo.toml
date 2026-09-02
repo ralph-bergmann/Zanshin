@@ -30,12 +30,12 @@ chrono = { version = "=0.4.45", features = ["clock"] }  # WHY: pinned to jj-lib'
 clap = { version = "4", features = ["derive"] }
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: jj-lib exposes Stream-based APIs — consumed in production by zanshin-jj (status.rs, revset.rs, graph.rs) and by the zanshin-jj graph_blueprint bench
-jj-lib = "=0.42.0"  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
+jj-lib = "=0.44.0"  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
 notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
 tar = "0.4"
 tempfile = "3"
-gix = { version = "0.84.0", default-features = false } # WHY: gix::remote::fetch::Tags required by jj_lib::git::add_remote; pinned to match jj-lib 0.42's transitive gix version
+gix = { version = "0.85.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs and gix::hash::Kind by repo.rs; pinned to match jj-lib 0.44's transitive gix version
 thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"

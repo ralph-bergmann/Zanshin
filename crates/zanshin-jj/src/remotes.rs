@@ -229,7 +229,7 @@ pub(crate) fn git_fetch(
 
     let mut callback = FetchCallback { progress };
     fetcher
-        .fetch(remote, refspecs, &mut callback, None, None)
+        .fetch(remote, refspecs, &mut callback, None)
         .map_err(|e| match e {
             GitFetchError::NoSuchRemote(_) => MutateError::RemoteNotFound {
                 name: remote_name.to_owned(),

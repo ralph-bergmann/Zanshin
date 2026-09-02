@@ -196,7 +196,10 @@ impl<'a> LogMetaIndex<'a> {
             tags: self.tags.get(&id_hex).cloned().unwrap_or_default(),
             working_copies: self.working_copies.get(&id_hex).cloned().unwrap_or_default(),
             working_copy: self.current_wc_commit.as_deref() == Some(id_hex.as_str()),
-            immutable: (self.immutable)(commit_id).map_err(jj)?,
+            // WHY: jj 0.44 made `RevsetContainingFn` async (it returns a `LocalBoxFuture`);
+            // pollster drives it here exactly as `is_empty` below, keeping the crate's public
+            // API sync (project-context § zanshin-jj).
+            immutable: pollster::block_on((self.immutable)(commit_id)).map_err(jj)?,
             conflict: commit.has_conflict(),
             // WHY: `Commit::is_empty` is jj-lib's only emptiness check and it is async;
             // pollster drives it here exactly as the rest of this crate drives jj-lib's

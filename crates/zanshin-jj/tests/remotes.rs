@@ -5,11 +5,11 @@ use std::fs;
 use std::sync::LazyLock;
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::repo::StoreFactories;
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{Backend, RemoteError, Repo};
@@ -47,7 +47,7 @@ fn oracle_workspace(root: &std::path::Path) -> (Workspace, UserSettings) {
     let workspace = Workspace::load(
         &settings,
         root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .expect("oracle workspace load");
@@ -67,7 +67,7 @@ fn add_remotes(root: &std::path::Path, remotes: &[(&str, &str)]) {
         let mut tx = base.start_transaction();
         let remote_name_buf: RemoteNameBuf = (*name).into();
         let remote_name: &RemoteName = &remote_name_buf;
-        git::add_remote(tx.repo_mut(), remote_name, url, None, gix::remote::fetch::Tags::All)
+        git::add_remote(tx.repo_mut(), remote_name, url, None)
             .unwrap_or_else(|e| panic!("add_remote({name}) failed: {e}"));
         pollster::block_on(tx.commit(&format!("test: add remote {name}"))).expect("commit");
     }

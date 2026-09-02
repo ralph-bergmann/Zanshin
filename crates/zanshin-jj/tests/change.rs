@@ -6,15 +6,16 @@ use std::{env, fs};
 
 use jj_lib::backend::{CopyId, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::repo::{Repo as _, StoreFactories};
+use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::settings::UserSettings;
 use jj_lib::store::Store;
 use jj_lib::tree_builder::TreeBuilder;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
 use zanshin_jj::{ChangeError, ChangeId, ConflictState, Repo};
@@ -59,7 +60,7 @@ fn jj_new_with_description(workspace_root: &Path, description: &str) -> Result<(
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )?;
     let repo = pollster::block_on(workspace.repo_loader().load_at_head())?;
@@ -93,7 +94,7 @@ fn make_divergent_change(workspace_root: &Path) -> String {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -157,7 +158,7 @@ fn make_conflicted_change(workspace_root: &Path) -> String {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -213,7 +214,7 @@ fn wc_oracle_fields(workspace_root: &Path) -> (String, String, Vec<String>, Stri
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -385,7 +386,7 @@ fn change_on_root_returns_empty_parents() {
     let workspace = Workspace::load(
         &settings,
         &fx.path,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -454,7 +455,7 @@ fn change_on_merge_in_medium_fixture_has_three_parents() {
     let workspace = Workspace::load(
         &settings,
         &fx.path,
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();
@@ -524,7 +525,7 @@ fn change_on_divergent_id_returns_divergent_flag() {
     let workspace = Workspace::load(
         &settings,
         tmp.path(),
-        &StoreFactories::default(),
+        &default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();

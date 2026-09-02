@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
+gix = { workspace = true } # WHY: jj-lib 0.44's `Workspace::init_internal_git` takes a `gix::hash::Kind`; jj-lib does not re-export gix
 jj-lib = { workspace = true }
 pollster = { workspace = true }
 tar = { workspace = true }

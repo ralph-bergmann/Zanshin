@@ -146,7 +146,6 @@ pub(crate) fn parse_revset_with(
         date_pattern_context: date_ctx,
         default_ignored_remote: Some("git".as_ref()),
         fileset_aliases_map: &fileset_aliases,
-        use_glob_by_default: false,
         extensions: &extensions,
         workspace: Some(workspace_ctx),
     };

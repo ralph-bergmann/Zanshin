@@ -5,15 +5,16 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchRefExpression, GitImportOptions, GitProgress, GitSidebandLineTerminator,
     GitSubprocessCallback, GitSubprocessOptions,
 };
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::repo::{Repo as _, StoreFactories};
+use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::Workspace;
 
 /// Errors returned by [`Repo::open`], [`Repo::init`], [`Repo::clone`], and
 /// [`crate::convert_colocated`].
@@ -395,7 +396,7 @@ impl Repo {
         let workspace = Workspace::load(
             &settings,
             path,
-            &StoreFactories::default(),
+            &default_backend_factories(),
             &default_working_copy_factories(),
         )
         .map_err(|e| RepoError::Backend(e.to_string()))?;
@@ -413,8 +414,15 @@ impl Repo {
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
         let settings = make_settings()?;
         let (workspace, _repo) = match backend {
-            Some(Backend::Git) => pollster::block_on(Workspace::init_internal_git(&settings, path))
-                .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?,
+            // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
+            // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
+            // mirrors that default and reproduces pre-0.44 behaviour exactly. Exposing it as a
+            // caller parameter (FR-JJ-17) belongs to Story 9.20 (`git init`/`git clone`), not to
+            // this pin bump.
+            Some(Backend::Git) => {
+                pollster::block_on(Workspace::init_internal_git(&settings, path, gix::hash::Kind::Sha1))
+                    .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?
+            }
             None => pollster::block_on(Workspace::init_simple(&settings, path))
                 .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?,
         };
@@ -454,8 +462,14 @@ impl Repo {
     /// Composes the clone steps, returning the workspace reloaded at the committed head.
     fn clone_into(settings: &UserSettings, url: &str, target_path: &Path) -> Result<Workspace, RepoError> {
         // Step 1: Create git-backed jj workspace.
-        let (_workspace_init, repo) = pollster::block_on(Workspace::init_internal_git(settings, target_path))
-            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
+        // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see
+        // `Repo::init`); making it a caller parameter is Story 9.20's scope.
+        let (_workspace_init, repo) = pollster::block_on(Workspace::init_internal_git(
+            settings,
+            target_path,
+            gix::hash::Kind::Sha1,
+        ))
+        .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
 
         let remote_name_buf: RemoteNameBuf = "origin".into();
         let remote_name: &RemoteName = &remote_name_buf;
@@ -467,7 +481,10 @@ impl Repo {
         // is the disk side-effect. Step 3 reloads from disk to pick it up.
         {
             let mut tx = repo.start_transaction();
-            jj_lib::git::add_remote(tx.repo_mut(), remote_name, url, None, gix::remote::fetch::Tags::All)
+            // WHY: jj 0.44 dropped `add_remote`'s trailing `fetch_tags` argument — tag selection
+            // is now driven purely by the fetch refspec, which `fetch_expr` below already sets to
+            // glob("*"), i.e. the same "all tags" behaviour the old `Tags::All` requested.
+            jj_lib::git::add_remote(tx.repo_mut(), remote_name, url, None)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             // tx is intentionally dropped without commit.
         }
@@ -477,7 +494,7 @@ impl Repo {
         let mut workspace = Workspace::load(
             settings,
             target_path,
-            &StoreFactories::default(),
+            &default_backend_factories(),
             &default_working_copy_factories(),
         )
         .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
@@ -518,7 +535,7 @@ impl Repo {
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             // TODO(FR-JJ-13, Epic 6 Story 6.4a): wire NativeCallable progress callback
             fetcher
-                .fetch(remote_name, refspecs, &mut NoopCallback, None, None)
+                .fetch(remote_name, refspecs, &mut NoopCallback, None)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             import_stats = pollster::block_on(fetcher.import_refs())
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
@@ -530,16 +547,13 @@ impl Repo {
         // Point `@` at the fetched default branch: create a fresh working-copy commit
         // on its tip so the cloned workspace shows the default branch's files.
         let target_commit_id = default_branch.as_ref().and_then(|branch| {
-            import_stats
-                .changed_remote_bookmarks
-                .iter()
-                .find_map(|(symbol, (_old_ref, new_target))| {
-                    if &symbol.name == branch && symbol.remote == remote_name_buf {
-                        new_target.as_normal()
-                    } else {
-                        None
-                    }
-                })
+            import_stats.changed_remote_bookmarks.iter().find_map(|update| {
+                if &update.symbol.name == branch && update.symbol.remote == remote_name_buf {
+                    update.new_target.as_normal()
+                } else {
+                    None
+                }
+            })
         });
 
         let new_wc_commit = match target_commit_id {
@@ -573,7 +587,7 @@ impl Repo {
         let workspace = Workspace::load(
             settings,
             target_path,
-            &StoreFactories::default(),
+            &default_backend_factories(),
             &default_working_copy_factories(),
         )
         .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;

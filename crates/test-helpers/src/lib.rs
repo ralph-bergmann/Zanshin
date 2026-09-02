@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use jj_lib::backend::{CommitId, CopyId, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_working_copy_factories, default_working_copy_factory};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::{RefTarget, RemoteRef, RemoteRefState};
@@ -14,7 +15,7 @@ use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::settings::UserSettings;
 use jj_lib::store::Store;
 use jj_lib::tree_builder::TreeBuilder;
-use jj_lib::workspace::{default_working_copy_factories, default_working_copy_factory, Workspace};
+use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 
 /// Handle returned by [`extract_fixture`]. Keeps the temp directory alive while the caller holds
@@ -120,7 +121,7 @@ fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     let workspace = Workspace::load(
         &settings,
         workspace_root,
-        &jj_lib::repo::StoreFactories::default(),
+        &jj_lib::default_backend_factories::default_backend_factories(),
         &default_working_copy_factories(),
     )
     .unwrap();

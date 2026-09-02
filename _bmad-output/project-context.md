@@ -33,7 +33,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Rust `1.95.0` (pinned via `rust-toolchain.toml`)
 
 **Rust workspace (5 lib crates + 1 bin + xtask):**
-- `jj-lib` `=0.41.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
+- `jj-lib` `=0.44.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
 - `rmcp` `=1.7.0` (pin exact)
 - `imara-diff` `=*` (pin exact — Histogram algorithm)
 - `tree-sitter-highlight`
@@ -724,10 +724,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   — research backing ADR-0003 (30-agent jj-0.42 feasibility map; 69 ops mapped+verified; prior art GG/JayJay/VisualJJ)
 - `../jj` (local, read-only) — upstream jj **monorepo** checkout (sibling of the repo root):
   both `lib/` (jj-lib source) and `cli/` (the jj CLI). Read at the pinned tag: `git -C ../jj show
-  v0.42.0:lib/src/<file>` / `:cli/src/<file>` (working tree may be on `main`, ahead of the pin).
+  v0.44.0:lib/src/<file>` / `:cli/src/<file>` (working tree may be on `main`, ahead of the pin).
   The jj **CLI** orchestration (`cli/`, `cli_util`) is NOT vendored — prior art for ADR-0003 / Epic 9.
   For jj-lib reads there's a shortcut: the same crate is vendored version-exact under
-  `~/.cargo/registry/.../jj-lib-0.42.0/src/…` (read directly, no `git show`). Optional convenience;
+  `~/.cargo/registry/.../jj-lib-0.44.0/src/…` (read directly, no `git show`). Optional convenience;
   the build never depends on `../jj`. See CLAUDE.md § "jj source reference" for the full convention.
 - `_bmad-output/planning-artifacts/architecture.md` — full architecture
   rationale (AD-1..AD-7, P-1..P-9, anti-patterns, structure)
