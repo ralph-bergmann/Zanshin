@@ -1,0 +1,20 @@
+name: zanshin_shell_platform_interface
+description: Platform interface for the zanshin_shell plugin (macOS shell integration for Zanshin).
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.14.0-143.0.dev
+  flutter: ^3.48.0-1.0.pre-295
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  meta: ^1.16.0
+  plugin_platform_interface: ^2.1.8
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
