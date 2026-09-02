@@ -1043,3 +1043,56 @@ fn eval_revset_honours_a_repo_config_alias_override() {
         "the repo layer's override must decide the denoted set"
     );
 }
+
+/// A per-item store failure surfaces as `JjLibError` only AFTER the rows the walk had already
+/// handed over — partial output is not retracted (the contract `walk_graph` carries too, see
+/// `tests/graph.rs::walk_graph_mid_stream_store_failure_returns_jj_lib_error`, which pins the
+/// N = 0 shape by removing the whole object store).
+#[test]
+fn eval_revset_mid_walk_store_failure_keeps_the_rows_already_visited() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+
+    // Read the id through a handle that is then DROPPED: the store caches every commit it
+    // loads, so the handle that walks must never have seen the one removed below.
+    let oldest = {
+        let probe = Repo::open(&fx.path).unwrap();
+        commit_id_of(&probe, "description(\"Commit 1\")")
+    };
+
+    // Remove exactly ONE loose object. The fixture is a linear chain (root → Commit 1 → 2 → 3,
+    // `xtask::gen_fixture`), so `Commit 1` is the deepest non-root commit and every row before
+    // it loads fine. Its CHILD is what fails first: a `Change` carries its parents' change ids,
+    // so building `Commit 2`'s row already reads the missing parent. jj-lib 0.44.0 internals —
+    // a pin bump may move where the failure surfaces; re-verify this test then.
+    let object = fx
+        .path
+        .join(".jj")
+        .join("repo")
+        .join("store")
+        .join("git")
+        .join("objects")
+        .join(&oldest[..2])
+        .join(&oldest[2..]);
+    std::fs::remove_file(&object).unwrap();
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let mut visited: Vec<String> = Vec::new();
+    let result = repo.eval_revset("all()", |change| {
+        visited.push(change.commit_id.0.clone());
+        ControlFlow::Continue(())
+    });
+
+    assert!(
+        matches!(result, Err(RevsetError::JjLibError(_))),
+        "a commit read failing mid-walk must yield JjLibError, got: {result:?}"
+    );
+    assert!(
+        !visited.is_empty(),
+        "the rows handed to the visitor before the failure are not retracted; got none"
+    );
+    assert!(
+        !visited.contains(&oldest),
+        "the unreadable commit itself can never have been visited, got: {visited:?}"
+    );
+}

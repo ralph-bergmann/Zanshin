@@ -24,21 +24,6 @@ deferred:
     location: >-
       crates/zanshin-ffi/ (no file touched), schemas/envelope.fbs (unchanged), crates/zanshin-mcp/
     severity: low
-  - summary: >-
-      The "mid-walk failure" row of the I/O matrix (a per-item stream/store failure after N
-      visits) is documented in the contract but not covered by a test.
-    evidence: |-
-      The contract is stated on both `Repo::eval_revset` and `revset::eval_revset` ("Changes
-      already handed to `visit` before an `Err` are not retracted — discard partial output on
-      `Err`"), and matches `walk_graph`, which has no such test either. Provoking it needs the
-      commit store to start failing part-way through an in-flight stream; every construction
-      available (deleting the store mid-walk, corrupting an object) is racy against
-      `RevsetStreamExt::commits`' `buffered(store.concurrency())` prefetch, so a test would be
-      non-deterministic — which the testing rules forbid. The per-item error arms are covered as
-      lines by the happy path; only the multi-item partial-output shape is untested.
-    location: >-
-      crates/zanshin-jj/src/revset.rs (`eval_revset`'s drive loop)
-    severity: low
 ---
 
 <intent-contract>
