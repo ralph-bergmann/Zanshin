@@ -1225,13 +1225,49 @@ git commit --no-gpg-sign -m "chore(gate): run analyze/format/test for the zanshi
 
 ### Task 7: Final verification
 
-- [ ] **Step 1: Full gate once more from a clean state**
+- [x] **Step 1: Full gate once more from a clean state**
 
 ```bash
 cargo make test
 ```
 Expected: PASS. `git status --short` afterwards shows a clean tree (everything committed; if `pubspec.lock` changed, amend it into the Task 5 commit or add a follow-up chore commit).
 
-- [ ] **Step 2: Report**
+- [x] **Step 2: Report**
 
 Summarize for the orchestrator: what was built, test counts, gate result, any deviations from this plan (with reasons), and anything left for manual verification (window drag feel, theme switching live on screen).
+
+---
+
+## Deviations from this plan (as implemented)
+
+1. **macOS deployment target is 12.0, not 10.15.** `app/macos/Runner.xcodeproj/project.pbxproj`
+   sets `MACOSX_DEPLOYMENT_TARGET = 12.0` and the Flutter Podfile template pins
+   `platform :osx, '12.0'`. The podspec uses 12.0, and the `#available(macOS 11.0, *)`
+   branch around `performAsCurrentDrawingAppearance` was dropped (always true at that target).
+2. **The macOS plugin ships as a Swift Package, not CocoaPods-only.** The app integrates
+   plugins via SPM; a CocoaPods-only plugin made `flutter build macos` fall back to
+   CocoaPods and rewrite the Xcode project (Podfile, Podfile.lock, `Pods.xcodeproj`
+   workspace ref, `Flutter-*.xcconfig` includes, `project.pbxproj`). Sources moved to
+   `macos/zanshin_shell_macos/Sources/zanshin_shell_macos/`, `Package.swift` added,
+   podspec kept as a CocoaPods fallback pointing at the same sources.
+3. **`@visibleForTesting` dropped** from the private `_channel` in `zanshin_shell_macos`
+   (the annotation is invalid on private members; the plan allowed dropping it).
+4. **`dart:ui` imports removed** from `zanshin_shell_macos` lib+test (`unnecessary_import`:
+   `package:flutter/services.dart` already provides `Color`/`Brightness`).
+5. **`plugin_platform_interface` added as a dev_dependency of `zanshin_shell`**
+   (`depend_on_referenced_packages`: the test's fake mixes in `MockPlatformInterfaceMixin`).
+6. **`kDoubleTapMinTime` needs `package:flutter/gestures.dart`** — added that import
+   rather than the plan's duration fallback.
+7. **The pan-drag widget test pumps `kDoubleTapTimeout`** instead of a bare `pump()`:
+   the double-tap recognizer arms a timer on tap-down that would otherwise outlive
+   the widget tree ("A Timer is still pending").
+8. **`.gitignore` added per new package** (`build/`) so the Flutter test/asset output
+   does not dirty the tree; mirrors `packages/zanshin_core/.gitignore`.
+9. **`analysis_options.yaml` of the new packages carries a tool-written
+   `analyzer: exclude:` block** (`build/**`, plus `macos/**` for the plugin package) —
+   `flutter pub get` adds it automatically.
+10. **`window_manager` survives as a transitive dependency** via `yaru` →
+    `yaru_window_manager`, so it still appears in `GeneratedPluginRegistrant.swift`.
+    The app's direct dependency and all app-side usage are gone.
+11. **`pubspec.lock` did not change** (workspace-root-relative direct/transitive marks;
+    `plugin_platform_interface` was already locked), so no commit touched it.
