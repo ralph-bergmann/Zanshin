@@ -104,7 +104,7 @@ class MainFlutterWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
-        self.minSize = NSSize(width: 600, height: 400)
+        self.minSize = NSSize(width: 900, height: 600)
 
         // The WindowState mechanism below is the single owner of the window
         // geometry. AppKit's own state restoration would restore its stale frame

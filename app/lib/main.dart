@@ -36,17 +36,9 @@ Future<void> main() async {
         FlutterError.presentError(details);
       };
 
+      // Needed by DragToMoveArea in the title bar. All window geometry and
+      // titlebar styling lives in macos/Runner/MainFlutterWindow.swift.
       await windowManager.ensureInitialized();
-      await windowManager.waitUntilReadyToShow(
-        const WindowOptions(
-          titleBarStyle: TitleBarStyle.hidden,
-          minimumSize: Size(900, 600),
-        ),
-        () async {
-          await windowManager.show();
-          await windowManager.focus();
-        },
-      );
 
       // ignore: specify_nonobvious_local_variable_types
       final mainComponent = MainComponent.create();
