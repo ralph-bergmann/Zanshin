@@ -157,6 +157,75 @@ fn tags_tracked_remote_adds_a_row_even_when_synced_with_the_local_one() {
     );
 }
 
+/// A remote row must report the REMOTE ref's own target. Every other remote-tag test points the
+/// local and the remote tag at the same commit, so a row that wrongly reused the local target
+/// would pass all of them; here the two targets differ, which is the ordinary state after a local
+/// retag or a fetch that moved `v1@origin`.
+#[test]
+fn tags_remote_row_reports_the_remote_refs_own_target() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let local_commit = add_commit_off_root(&fx.path, "9.2: local target");
+    let remote_commit = add_commit_off_root(&fx.path, "9.2: remote target");
+    set_tag(&fx.path, "v1", &[&local_commit]);
+    set_remote_tag(&fx.path, "v1", "origin", &remote_commit, true);
+    let local_change = change_id_of(&fx.path, &local_commit);
+    let remote_change = change_id_of(&fx.path, &remote_commit);
+    assert_ne!(local_change, remote_change, "the two targets must genuinely differ");
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let tags = repo.list_tags().unwrap();
+
+    assert_eq!(tags.len(), 2, "local + tracked-remote = two rows; got {tags:?}");
+    assert_eq!(tags[0].kind, TagKind::Local);
+    assert_eq!(tags[0].target.0, local_change, "the Local row keeps the local target");
+    assert_eq!(
+        tags[1].kind,
+        TagKind::Remote {
+            remote_name: "origin".to_owned()
+        }
+    );
+    assert_eq!(
+        tags[1].target.0, remote_change,
+        "the Remote row must report the REMOTE ref's target, not the local one"
+    );
+}
+
+/// A tracked remote tag with NO local counterpart still produces a row, and two remotes of one
+/// name sort by `remote_name` — the secondary key `TagKind`'s `Ord` declares.
+#[test]
+fn tags_remote_only_rows_sort_by_remote_name() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let commit = add_commit_off_root(&fx.path, "9.2: tagged");
+    // Written out of remote order; no local tag of this name exists.
+    set_remote_tag(&fx.path, "v1", "upstream", &commit, true);
+    set_remote_tag(&fx.path, "v1", "origin", &commit, true);
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let tags = repo.list_tags().unwrap();
+
+    let seen: Vec<(&str, &TagKind)> = tags.iter().map(|t| (t.name.as_str(), &t.kind)).collect();
+    assert_eq!(
+        seen,
+        vec![
+            (
+                "v1",
+                &TagKind::Remote {
+                    remote_name: "origin".to_owned()
+                }
+            ),
+            (
+                "v1",
+                &TagKind::Remote {
+                    remote_name: "upstream".to_owned()
+                }
+            ),
+        ],
+        "a remote-only tag is listed, and remotes of one name sort by remote_name"
+    );
+}
+
 // ── Tags: an untracked remote tag is skipped ─────────────────────────────────
 
 #[test]
@@ -247,6 +316,39 @@ fn tags_on_corrupt_repo_returns_backend_error() {
     );
 }
 
+/// The OTHER half of `list_tags`' documented `ViewError::Backend`: a failing STORE read, not a
+/// failing head resolution. Resolving a tag's target to a change id needs the commit object, so
+/// removing exactly that loose object exercises the `to_change` arm. jj-lib 0.44.0 internals — a
+/// pin bump may move where the failure surfaces; re-verify this test then.
+#[test]
+fn tags_store_read_failure_returns_backend_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let commit = add_commit_off_root(&fx.path, "9.2: tagged");
+    set_tag(&fx.path, "v1", &[&commit]);
+
+    // The handle must never have loaded the commit before it is removed — the store caches
+    // every commit it reads.
+    fs::remove_file(
+        fx.path
+            .join(".jj")
+            .join("repo")
+            .join("store")
+            .join("git")
+            .join("objects")
+            .join(&commit[..2])
+            .join(&commit[2..]),
+    )
+    .unwrap();
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let result = repo.list_tags();
+    assert!(
+        matches!(result, Err(ViewError::Backend(_))),
+        "an unreadable tag target must yield ViewError::Backend, got: {result:?}"
+    );
+}
+
 // ── Heads: the same set jj-lib holds, sorted by hex (our determinism guarantee) ─
 
 #[test]
@@ -263,11 +365,14 @@ fn heads_equal_the_view_oracle_and_are_sorted_by_hex() {
     assert_eq!(got, head_hexes(&fx.path), "heads must equal View::heads()");
     assert!(heads.len() >= 2, "the fixture plus the new head give >=2 heads");
 
-    let mut sorted = heads.iter().map(|id| id.0.clone()).collect::<Vec<_>>();
-    sorted.sort();
+    // The expected ORDER comes from the independent oracle, not from the result itself:
+    // comparing the result against a sorted copy of ITSELF would still pass whenever the
+    // HashSet happened to iterate in order, so dropping the sort would only fail some runs.
+    let mut expected: Vec<String> = head_hexes(&fx.path).into_iter().collect();
+    expected.sort();
     assert_eq!(
         heads.iter().map(|id| id.0.clone()).collect::<Vec<_>>(),
-        sorted,
+        expected,
         "heads must be sorted by hex — View::heads() is an unordered HashSet"
     );
 }

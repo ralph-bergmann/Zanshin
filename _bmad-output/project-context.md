@@ -177,7 +177,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   entirely Rust-side; NO mutation primitives cross FFI (impossible anyway — borrowed
   handles/locks + the `write()`-time `has_rewrites()` panic-assert). Reads also get one
   generic `eval_revset` joker (lazy `Box<dyn Revset>`, streamed per ADR-0002) + direct
-  `View` access. A shared support module re-ports the `cli_util` orchestration jj-lib does
+  `View` access. **As built (Story 9.2):** `eval_revset` is a VISITOR
+  (`Repo::eval_revset(&str, impl FnMut(Change) -> ControlFlow<()>)`), not a returned stream —
+  the evaluated revset borrows the `ReadonlyRepo` the call loads. Same inversion as
+  `Repo::walk_graph`; laziness, no-collect and mid-walk cancellation are preserved. The direct
+  `View` reads are `list_tags`/`list_heads`/`list_working_copies` (+ `list_bookmarks` from 2.8),
+  all `zanshin-jj`-only — none crosses FFI yet. A shared support module re-ports the `cli_util` orchestration jj-lib does
   NOT expose (immutable-heads check, insert-location resolution, message-combine,
   selected-tree plumbing). Granularity tracks the CLI verb set, re-evaluated at each pin bump.
 - **CLI behavior is the semantic reference (NFR-R-2, ADR-0003).** Mirror the jj CLI's

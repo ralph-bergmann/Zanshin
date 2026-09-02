@@ -101,9 +101,16 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
 /// Streams the commits `revset` denotes through `visit`, one [`Change`] at a time.
 ///
 /// The generic read primitive of ADR-0003 §5: the commit stream is driven item by item and is
-/// never collected, so a caller that stops early pays only for what it consumed. `visit`
-/// returning [`ControlFlow::Break`] stops the walk and yields `Ok(Break)`; an exhausted stream
-/// yields `Ok(Continue)`.
+/// never collected, so a caller that stops early pays for the rows it consumed rather than for
+/// the whole set. `visit` returning [`ControlFlow::Break`] stops the walk and yields `Ok(Break)`;
+/// an exhausted stream yields `Ok(Continue)`. Exactly one [`Change`] is built per visited row,
+/// but the *I/O* is not equally tight: jj-lib's `RevsetStreamExt::commits` pipelines commit loads
+/// with `.buffered(store.concurrency())`, so a `Break` may leave up to that many loads already
+/// dispatched. Bounded by a constant, never by the size of the set.
+///
+/// One row per COMMIT, not per change: unlike [`resolve_revset`], nothing is deduplicated, so a
+/// divergent change contributes one row per visible commit — each carrying the same
+/// [`Change::id`] with `divergent` set. A caller keying rows by change id must handle that.
 ///
 /// The five phases mirror [`crate::graph::walk_graph`]: load the effective config once, build
 /// the alias map, parse (no loaded operation needed, so a syntax error costs no `load_at_head`
@@ -138,7 +145,6 @@ pub(crate) fn eval_revset(
         .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
-    let view = readonly.view();
 
     // 3. Evaluate to a lazy revset borrowing `readonly`. The stream is never returned — items
     //    leave through `visit` — which is what keeps that borrow local.
@@ -151,7 +157,7 @@ pub(crate) fn eval_revset(
         let mut stream = std::pin::pin!(set.stream().commits(store));
         while let Some(item) = stream.next().await {
             let commit = item.map_err(|e| RevsetError::JjLibError(e.to_string()))?;
-            let change = change_from_commit(repo_dyn, store, view, &commit).map_err(RevsetError::JjLibError)?;
+            let change = change_from_commit(repo_dyn, &commit).map_err(RevsetError::JjLibError)?;
             if visit(change).is_break() {
                 return Ok(ControlFlow::Break(()));
             }

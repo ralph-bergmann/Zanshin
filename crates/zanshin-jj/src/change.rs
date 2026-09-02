@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
@@ -164,7 +163,6 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
-    let view = readonly.view();
 
     // 2. Public reverse-hex string → jj ChangeId. Empty or malformed ⇒ NotFound (D6).
     //    `try_from_reverse_hex("")` returns `Some(ChangeId([]))` (0 is even-length), and an
@@ -192,7 +190,7 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
     let commit = store.get_commit(&commit_id).map_err(be)?;
 
     // 5-9. Shared with `eval_revset` — one construction site for `Change`.
-    change_from_commit(repo_dyn, store, view, &commit).map_err(ChangeError::Backend)
+    change_from_commit(repo_dyn, &commit).map_err(ChangeError::Backend)
 }
 
 /// Builds the crate-owned [`Change`] for an already-loaded jj-lib `commit`.
@@ -202,8 +200,15 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
 /// jj-lib failure (a parent read, the divergence probe) is flattened to its opaque reason
 /// string, which each caller wraps in its own error type.
 ///
-/// `divergent` is re-derived here from `commit`'s own change id rather than passed in, so a
-/// stream caller gets the same D4 answer as [`get_change`] without repeating the probe.
+/// `divergent` is re-derived here from `commit`'s own change id rather than passed in, so that a
+/// caller holding only a commit — the stream — reaches the same D4 answer as [`get_change`]
+/// without duplicating the rule. The cost is that [`get_change`], which already resolved the id
+/// to find this commit, pays a SECOND `resolve_change_id`. That probe is index-only (no store
+/// read), and one construction site for [`Change`] is worth it; the alternative — passing
+/// `divergent` in — would put the D4 rule back at every call site.
+///
+/// `store` and `view` are taken from `repo_dyn` rather than as parameters, so they cannot come
+/// from a different head resolution than the repo the divergence probe runs against.
 ///
 /// # Errors
 ///
@@ -211,10 +216,11 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
 /// fails.
 pub(crate) fn change_from_commit(
     repo_dyn: &dyn jj_lib::repo::Repo,
-    store: &Arc<jj_lib::store::Store>,
-    view: &jj_lib::view::View,
     commit: &jj_lib::commit::Commit,
 ) -> Result<Change, String> {
+    let store = repo_dyn.store();
+    let view = repo_dyn.view();
+
     // 5. Parents: CommitIds → reverse-hex ChangeIds (mirrors status.rs:105-107).
     let mut parents = Vec::with_capacity(commit.parent_ids().len());
     for pid in commit.parent_ids() {

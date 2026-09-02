@@ -140,3 +140,20 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   decide whether MCP gets `eval_revset` or only named views.
 - **Interactive-verb contract** — finalize the exact `SelectedTree`/`TreeId` hand-off shape
   between the Flutter diff editor and the backend for `squash`/`split`/`diffedit`/`resolve`.
+
+## Implementation notes (as built)
+
+- **`eval_revset` ships as a visitor, not a returned stream (Story 9.2).** Decision pt. 5 writes
+  the primitive as `eval_revset(&str) -> Stream<Commit>`. jj-lib's `Revset::evaluate` returns
+  `Box<dyn Revset + 'index>` borrowing the `ReadonlyRepo` that the call itself loads (ADR-0002
+  reload-per-operation), so a stream cannot outlive the function that owns that repo. The shipped
+  shape inverts control instead —
+  `Repo::eval_revset(&str, impl FnMut(Change) -> ControlFlow<()>) -> Result<ControlFlow<()>, RevsetError>`
+  — which is the same inversion `Repo::walk_graph` already uses. **Every property this ADR asks
+  for is preserved:** the set is lazy (`Box<dyn Revset>`), never `try_collect`-ed, and cancellable
+  mid-walk (`ControlFlow::Break`). The item type is the crate's existing `Change`; there is no
+  public `Commit` type, and minting one would be a third commit shape.
+- **The read side landed `zanshin-jj`-only (Story 9.2).** `eval_revset` and the direct `View`
+  reads (`list_tags`, `list_heads`, `list_working_copies`; bookmarks shipped in Epic 2) stop at the
+  crate API. A `Stream` has no wire representation, and the FFI boundary is snapshot-only, so
+  surfacing is a separate decision — as is the `eval_revset`-to-MCP open question above.

@@ -888,6 +888,43 @@ fn eval_revset_break_on_the_first_item_constructs_exactly_one_change() {
     );
 }
 
+/// The ordinary GUI paging shape: take some rows, then stop. `Break` after N > 1 items stops
+/// exactly there — the first-item case alone would not show that `Continue` really continues.
+#[test]
+fn eval_revset_break_after_several_items_stops_exactly_there() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut out = Vec::new();
+    let flow = collect_changes_with(&repo, "all()", &mut out, 3);
+
+    assert_eq!(flow, ControlFlow::Break(()), "a mid-stream stop must report Break");
+    assert_eq!(out.len(), 3, "exactly the three rows taken; got {}", out.len());
+    let distinct: HashSet<&str> = out.iter().map(|c| c.commit_id.0.as_str()).collect();
+    assert_eq!(distinct.len(), 3, "the three rows are distinct commits");
+}
+
+/// An empty revset string is a caller pass-through like any other, so it fails at stage 1 rather
+/// than being special-cased into an empty walk — the same way `Repo::walk_graph` treats it.
+#[test]
+fn eval_revset_empty_expression_is_a_parse_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut calls = 0_usize;
+    let result = repo.eval_revset("", |_| {
+        calls += 1;
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(RevsetError::ParseError { .. })),
+        "an empty revset must be a ParseError, got: {result:?}"
+    );
+    assert_eq!(calls, 0, "a failed parse must not walk");
+}
+
 /// An empty set never calls the visitor and still reports `Continue`.
 #[test]
 fn eval_revset_none_never_calls_the_visitor() {
@@ -935,8 +972,12 @@ fn eval_revset_divergent_change_yields_one_flagged_row_per_visible_commit() {
     );
 }
 
-/// Rows carry the same metadata `Repo::get_change` reports for the same change — the reuse of
-/// `Change` is genuine, not a look-alike.
+/// A row carries the same metadata `Repo::get_change` reports for the same change.
+///
+/// What this pins is that `eval_revset` selects the right commit and routes it through the SHARED
+/// `change_from_commit` constructor — not that the field derivations themselves are correct: both
+/// sides run that one constructor, so a regression inside it moves both sides together. The
+/// derivations are pinned independently against jj-lib oracles in `tests/change.rs`.
 #[test]
 fn eval_revset_row_matches_get_change_for_the_same_change() {
     pin_env();

@@ -5528,6 +5528,8 @@ Re-port the orchestration jj-lib does NOT expose (lives in jj-cli's `cli_util`):
 ### Story 9.2: `eval_revset` generic read primitive + `View` read helpers (extends 2.5)
 A typed `eval_revset(&str) -> Stream<Commit>` over the verified parse→resolve→evaluate path (lazy `Box<dyn Revset>`, streamed per ADR-0002, never `try_collect`-ed); plus direct `View` reads (bookmarks/tags/heads/wc) so the GUI does not route everything through revsets. Preserve the 3-stage parse/resolution/evaluation error taxonomy.
 
+> **As built (2026-09-03):** shipped as a **visitor**, `Repo::eval_revset(&str, impl FnMut(Change) -> ControlFlow<()>)`, not a returned stream — the evaluated revset borrows the `ReadonlyRepo` the call loads, so a stream cannot outlive it (same inversion as `Repo::walk_graph`). Laziness, no-collect and mid-walk cancellation are all preserved; the item is the existing `Change`. Delivered `zanshin-jj`-only: bookmarks already existed (2.8), and `list_tags`/`list_heads`/`list_working_copies` are new. FFI/MCP surfacing was NOT part of this story — a `Stream` has no wire form and the boundary is snapshot-only. See `docs/adr/0003-…md` § Implementation notes.
+
 ### Tier A — cheap (start here)
 
 ### Story 9.3: Content ops — `restore`, `absorb` [M]

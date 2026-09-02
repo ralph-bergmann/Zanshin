@@ -324,7 +324,14 @@ impl Repo {
     /// The walk is LAZY and the set is never materialized: `visit` returning
     /// [`ControlFlow::Break`] stops it and the result is `Ok(Break)`, while `Ok(Continue)` means
     /// the stream was exhausted. `Break` IS the limit — there is no `limit`/`start`/`count`
-    /// parameter.
+    /// parameter. Exactly one [`crate::Change`] is built per visited row; commit *loads* are
+    /// pipelined a constant number ahead, so a `Break` may leave a few already dispatched —
+    /// bounded by the backend's concurrency, never by the size of the set.
+    ///
+    /// One row per COMMIT, not per change: unlike [`crate::resolve_revset`], nothing is
+    /// deduplicated, so a divergent change contributes one row per visible commit — each with the
+    /// same [`crate::Change::id`] and `divergent` set. A caller keying rows by change id must
+    /// handle that.
     ///
     /// Order is the RAW revset order — jj-lib's `Revset::stream()` contract, topological with
     /// children before parents. It is deliberately NOT `jj log`'s printed order: the

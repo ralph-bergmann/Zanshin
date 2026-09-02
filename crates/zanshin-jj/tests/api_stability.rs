@@ -129,8 +129,8 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
     }
 }
 
-/// Names every `Tag` / `WorkingCopy` field by its public path (Story 9.2), so a field rename,
-/// reorder, or type change in the `View` listings breaks this test at compile time.
+/// Names every `Tag` field by its public path (Story 9.2), so a field rename, reorder, or type
+/// change in the tag listing breaks this test at compile time.
 fn sample_tag() -> zanshin_jj::Tag {
     zanshin_jj::Tag {
         name: String::new(),
