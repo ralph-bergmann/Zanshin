@@ -30,9 +30,10 @@ use zanshin_ffi::repo::{
 };
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT,
-    JJ_NOTHING_TO_UNDO,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_IMMUTABLE,
+    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO,
 };
+use zanshin_jj::{ChangeId, Repo};
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
 
@@ -300,6 +301,111 @@ fn abandon_empty_change_ids_returns_jj_invalid_input() {
 
     assert!(!env.ok(), "empty change_ids must produce an error envelope");
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+
+    close_handle(handle);
+}
+
+// ── the immutability guard, across the boundary (Story 9.1) ───────────────────
+
+/// Extracts `tiny-3-commits` with `toml` written into its repo config layer, then opens it
+/// through the FFI. Returns the fixture (the caller must keep it alive so the `TempDir`
+/// outlives the handle), the handle, and the `@` change id.
+///
+/// `open_fixture_and_get_wc_change_id` leaks its fixture and so hands back no path; these
+/// tests need one, because the repo config is how the immutable set is chosen without
+/// having to plumb a commit hex through the FFI.
+///
+/// # Safety
+/// The returned handle must be closed with `zanshin_repo_close` before the fixture drops.
+unsafe fn open_fixture_with_repo_config(toml: &str) -> (test_helpers::FixtureHandle, u64, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    fs::write(fixture.path.join(".jj").join("repo").join("config.toml"), toml).expect("repo config must be writable");
+    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
+
+    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
+    let open_bytes = unsafe { read_and_free(open_token) };
+    let open_env = parse_envelope(&open_bytes);
+    assert!(open_env.ok(), "repo open must succeed");
+    let handle = open_env
+        .data_as_repo_handle()
+        .expect("data_as_repo_handle must succeed")
+        .handle();
+
+    let status_token = unsafe { zanshin_status(handle) };
+    let status_bytes = unsafe { read_and_free(status_token) };
+    let status_env = parse_envelope(&status_bytes);
+    assert!(status_env.ok(), "status must succeed");
+    let wc_change_id = status_env
+        .data_as_status()
+        .expect("data_as_status must succeed")
+        .working_copy_change_id()
+        .expect("working_copy_change_id must be present")
+        .to_owned();
+
+    (fixture, handle, wc_change_id)
+}
+
+/// `jj.immutable` must actually reach the Dart side. The inline mapper unit test only
+/// proves `MutateError::Immutable` maps to the constant; this proves the whole envelope —
+/// `ok = false`, that code, and the offending hex commit id in `context`, which is what a
+/// GUI needs in order to explain the refusal and offer a way out.
+#[test]
+fn describe_on_an_immutable_commit_returns_jj_immutable_with_the_commit_in_context() {
+    pin_env();
+    // `immutable_heads() = all()` makes every commit immutable, so this needs no tag setup.
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, wc_change_id) =
+        unsafe { open_fixture_with_repo_config("[revset-aliases]\n'immutable_heads()' = 'all()'\n") };
+
+    let id = cstr(&wc_change_id);
+    let desc = cstr("nope");
+    let token = unsafe { zanshin_describe(handle, id.as_ptr(), desc.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok(), "an immutable target must produce an error envelope");
+    let error = env.error().expect("error must be present");
+    assert_eq!(error.code(), Some(JJ_IMMUTABLE));
+    let context = error.context().expect("the offending commit id must be in context");
+    assert!(
+        context.len() == 40 && context.chars().all(|c| c.is_ascii_hexdigit()),
+        "context must be a hex commit id, got {context:?}"
+    );
+
+    // The refusal must be real, not cosmetic: the description is unchanged.
+    let repo = Repo::open(&fixture.path).expect("fixture reopens");
+    let change = repo
+        .get_change(&ChangeId(wc_change_id))
+        .expect("the working-copy change must still exist");
+    assert_ne!(change.description, "nope", "a refused describe must not have written");
+
+    close_handle(handle);
+}
+
+/// The guard's other new failure mode: it cannot determine what is protected. That must
+/// arrive as the same `jj.config_error` the read side already reports (Story 4.9), not as
+/// the unclassified `jj.jj_lib_error` bucket — otherwise a GUI that special-cases a broken
+/// config stops recognising it the moment the fault comes from a mutation.
+#[test]
+fn describe_with_a_malformed_repo_config_returns_jj_config_error() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (_fixture, handle, wc_change_id) = unsafe { open_fixture_with_repo_config("not = = toml\n") };
+
+    let id = cstr(&wc_change_id);
+    let desc = cstr("nope");
+    let token = unsafe { zanshin_describe(handle, id.as_ptr(), desc.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok(), "an unreadable config must produce an error envelope");
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CONFIG_ERROR));
+    assert!(
+        env.error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.contains("config.toml")),
+        "context must name the offending file, as the read side's rows do"
+    );
 
     close_handle(handle);
 }

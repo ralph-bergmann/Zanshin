@@ -23,9 +23,9 @@ use zanshin_jj::{
 
 use crate::envelope::{
     catch, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
-    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND,
-    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
+    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED,
+    JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
+    JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -72,7 +72,10 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// [`JJ_JJ_LIB_ERROR`] (same unclassified-jj-lib-failure semantics as every
 /// other wrapper); `InvalidInput`/`NothingToUndo`/`RemoteNotFound`/`NetworkError`
 /// are new codes introduced by Story 6.5, and `Immutable` (`jj.immutable`) by Story 9.1
-/// (`docs/rust-error-codes.md`).
+/// (`docs/rust-error-codes.md`). `Config` reuses [`JJ_CONFIG_ERROR`] — it is the same
+/// malformed-config/bad-alias fault `log_defaults.rs` and `graph.rs` already report under
+/// that code (Story 4.9), reached from the mutation side because the immutability guard
+/// reads the repo's effective config.
 fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::ChangeNotFound { id } => FfiErrorObj {
@@ -86,6 +89,10 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::Immutable { commit_id } => FfiErrorObj {
             code: JJ_IMMUTABLE.to_owned(),
             context: Some(commit_id),
+        },
+        MutateError::Config { reason } => FfiErrorObj {
+            code: JJ_CONFIG_ERROR.to_owned(),
+            context: Some(reason),
         },
         MutateError::NothingToUndo => FfiErrorObj {
             code: JJ_NOTHING_TO_UNDO.to_owned(),
@@ -563,6 +570,11 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
 /// - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
 /// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
 /// - `jj.invalid_input` — `change_id` resolves to the root commit.
+/// - `jj.immutable` — `change_id` resolves to a non-root commit inside the repo's
+///   effective immutable set; the offending hex commit id in `context`.
+/// - `jj.config_error` — the repo's jj config, or its
+///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+///   immutable set is unknown; detail in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -657,8 +669,14 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
 /// - `ffi.null_pointer` — `change_id` is a null pointer.
 /// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
 /// - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
-/// - `jj.jj_lib_error` — an underlying jj-lib failure (includes attempting to edit
-///   the root commit); detail in `context`.
+/// - `jj.immutable` — `change_id` resolves to a commit inside the repo's effective
+///   immutable set; the offending hex commit id in `context`. Unlike `zanshin_describe`
+///   and `zanshin_abandon`, this wrapper has no separate root-commit guard, so editing the
+///   ROOT commit reports this code too (which is what the jj CLI reports for it).
+/// - `jj.config_error` — the repo's jj config, or its
+///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+///   immutable set is unknown; detail in `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`,
@@ -707,6 +725,11 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
 /// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
 /// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+/// - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
+///   immutable set; the hex commit id of the FIRST such target in `context`.
+/// - `jj.config_error` — the repo's jj config, or its
+///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+///   immutable set is unknown; detail in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -945,6 +968,18 @@ mod tests {
         });
         assert_eq!(e.code, JJ_IMMUTABLE);
         assert_eq!(e.context.unwrap(), "deadbeef");
+    }
+
+    #[test]
+    fn map_mutate_err_config_maps_to_jj_config_error() {
+        let e = map_mutate_err(MutateError::Config {
+            reason: "config.toml: invalid TOML".to_owned(),
+        });
+        assert_eq!(
+            e.code, JJ_CONFIG_ERROR,
+            "a bad immutable_heads() alias is the SAME fault the read side reports"
+        );
+        assert_eq!(e.context.unwrap(), "config.toml: invalid TOML");
     }
 
     #[test]

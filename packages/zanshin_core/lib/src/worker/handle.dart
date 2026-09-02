@@ -197,7 +197,8 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.invalid_input`).
+  /// `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`,
+  /// `jj.config_error`).
   Future<MutationResult> describe({required String changeId, required String description}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -224,7 +225,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.change_not_found`).
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`). Unlike [describe]
+  /// and [abandon] this has no separate root-commit guard, so editing the root
+  /// commit reports `jj.immutable` (which is what the jj CLI reports for it).
   Future<MutationResult> edit(String changeId) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -237,7 +240,8 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`).
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`).
   Future<MutationResult> abandon(List<String> changeIds) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

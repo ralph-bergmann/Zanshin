@@ -634,6 +634,11 @@ ZanshinBuf *zanshin_repo_convert(const char *path);
  * - `ffi.utf8_error` — `change_id` or `description` is not valid UTF-8.
  * - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
  * - `jj.invalid_input` — `change_id` resolves to the root commit.
+ * - `jj.immutable` — `change_id` resolves to a non-root commit inside the repo's
+ *   effective immutable set; the offending hex commit id in `context`.
+ * - `jj.config_error` — the repo's jj config, or its
+ *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+ *   immutable set is unknown; detail in `context`.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -692,8 +697,14 @@ ZanshinBuf *zanshin_new_change(uint64_t handle, const uint8_t *data, uintptr_t l
  * - `ffi.null_pointer` — `change_id` is a null pointer.
  * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
  * - `jj.change_not_found` — `change_id` is malformed, absent, only-hidden, or divergent.
- * - `jj.jj_lib_error` — an underlying jj-lib failure (includes attempting to edit
- *   the root commit); detail in `context`.
+ * - `jj.immutable` — `change_id` resolves to a commit inside the repo's effective
+ *   immutable set; the offending hex commit id in `context`. Unlike `zanshin_describe`
+ *   and `zanshin_abandon`, this wrapper has no separate root-commit guard, so editing the
+ *   ROOT commit reports this code too (which is what the jj CLI reports for it).
+ * - `jj.config_error` — the repo's jj config, or its
+ *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+ *   immutable set is unknown; detail in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
  * `handle` must be a value returned by a successful `zanshin_repo_open`,
@@ -726,6 +737,11 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
  * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
  * - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
  * - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
+ * - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
+ *   immutable set; the hex commit id of the FIRST such target in `context`.
+ * - `jj.config_error` — the repo's jj config, or its
+ *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+ *   immutable set is unknown; detail in `context`.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety

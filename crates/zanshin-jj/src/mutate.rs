@@ -89,6 +89,23 @@ pub enum MutateError {
         /// Hex commit id of the first target found inside the immutable set.
         commit_id: String,
     },
+    /// The repo's effective jj config could not be read, or its
+    /// `revset-aliases."immutable_heads()"` does not parse or resolve — so the
+    /// immutability guard could not determine what is protected (Story 9.1).
+    ///
+    /// Same fault class the read side reports as [`crate::ConfigError`] /
+    /// [`crate::RevsetError::Config`], and the same one the CLI reports as
+    /// ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1139`). Never a
+    /// silent fall-back to the builtin immutable set: a config the user cannot see the
+    /// effect of must not silently widen — or narrow — what a rewrite may touch.
+    ///
+    /// Only the three REWRITING verbs (`describe`/`edit`/`abandon`) can raise it;
+    /// `new_change`, `undo` and `git_fetch` never read the config.
+    #[error("config error: {reason}")]
+    Config {
+        /// Human-readable reason, naming the offending file or alias.
+        reason: String,
+    },
     /// [`crate::Repo::undo`] was called with the head operation at the op-store root —
     /// there is no parent operation to restore to. Currently unreachable through this
     /// crate's own public API alone: `Workspace::init_*` always commits an
@@ -125,6 +142,13 @@ pub enum MutateError {
 /// [`crate::op_log::undo`] can reuse it instead of duplicating an identical helper.
 pub(crate) fn be<E: std::fmt::Display>(e: E) -> MutateError {
     MutateError::Backend(e.to_string())
+}
+
+/// Converts a config-or-alias failure to [`MutateError::Config`]. `pub(crate)` so
+/// [`crate::op_support`] can classify the immutable expression's own failures without
+/// them landing in the unclassified [`MutateError::Backend`] bucket.
+pub(crate) fn cfg<E: std::fmt::Display>(e: E) -> MutateError {
+    MutateError::Config { reason: e.to_string() }
 }
 
 /// Resolves `id` to its visible jj-lib [`Commit`] — same pattern as
@@ -232,6 +256,8 @@ pub(crate) fn sync_working_copy(
 ///   divergent.
 /// - [`MutateError::InvalidInput`] — `change_id` resolves to the root commit.
 /// - [`MutateError::Immutable`] — `change_id` resolves to a non-root immutable commit.
+/// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
+///   not be read, parsed, or resolved.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn describe(
@@ -357,6 +383,8 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
 ///   `describe`/`abandon`, `edit` has no explicit root-commit guard (jj-lib returns a
 ///   graceful error rather than asserting), so the ROOT commit is now caught by the
 ///   immutability guard too — which is exactly what the CLI reports for `jj edit root()`.
+/// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
+///   not be read, parsed, or resolved.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn edit(
@@ -407,6 +435,8 @@ pub(crate) fn edit(
 /// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, only-hidden, or
 ///   divergent.
 /// - [`MutateError::Immutable`] — a target resolves to a non-root immutable commit.
+/// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
+///   not be read, parsed, or resolved.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn abandon(
@@ -441,7 +471,10 @@ pub(crate) fn abandon(
     // CLI parity (`abandon.rs:85`): every target must be rewritable. Runs AFTER the
     // per-commit root guards above, so the root commit keeps its `InvalidInput` refusal.
     let target_ids: Vec<jj_lib::backend::CommitId> = commits.iter().map(|c| c.id().clone()).collect();
-    let immutable = guard_rewritable(&tx, immutable, &target_ids)?;
+    // NOT shadowing `immutable`: the parameter is the UNRESOLVED user expression, this is
+    // the set resolved against `tx.base_repo()`, and the distinction is what the
+    // `rebase_descendants_with_options` call ~30 lines below depends on.
+    let resolved_immutable = guard_rewritable(&tx, immutable, &target_ids)?;
     // Whether `@` itself is among the abandoned commits determines whether jj-lib's
     // own update_wc_commits() mints a genuinely NEW change to replace it (vs. `@`
     // merely being rebased because it descends from an abandoned ancestor, which
@@ -468,7 +501,7 @@ pub(crate) fn abandon(
     // which is also why the set is resolved against `tx.base_repo()`, not `tx.repo()`.
     pollster::block_on(
         tx.repo_mut()
-            .rebase_descendants_with_options(&immutable, &options, |_, _| {}),
+            .rebase_descendants_with_options(&resolved_immutable, &options, |_, _| {}),
     )
     .map_err(be)?;
 

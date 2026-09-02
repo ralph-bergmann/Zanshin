@@ -223,4 +223,10 @@ fn api_surface_resolves() {
     // git_fetch (Story 6.4a)
     _ = zanshin_jj::MutateError::RemoteNotFound { name: String::new() };
     _ = zanshin_jj::MutateError::NetworkError { reason: String::new() };
+
+    // op_support immutable guard (Story 9.1)
+    _ = zanshin_jj::MutateError::Immutable {
+        commit_id: String::new(),
+    };
+    _ = zanshin_jj::MutateError::Config { reason: String::new() };
 }

@@ -44,7 +44,7 @@ use jj_lib::rewrite::{restore_tree, CommitWithSelection};
 use jj_lib::store::Store;
 use jj_lib::trailer::{parse_description_trailers, Trailer};
 
-use crate::mutate::{be, MutateError};
+use crate::mutate::{be, cfg, MutateError};
 use crate::revset::{build_aliases_map, immutable_expression, resolve_expression};
 use crate::Repo;
 
@@ -63,13 +63,15 @@ use crate::Repo;
 ///
 /// # Errors
 ///
-/// - [`MutateError::Backend`] — the repo's jj config is malformed or unreadable, or the
-///   `immutable_heads()` alias does not parse. Both flatten into the opaque backend
-///   variant: `MutateError` is public API, and this story adds exactly one variant to it.
+/// - [`MutateError::Config`] — the repo's jj config is malformed or unreadable, or the
+///   `immutable_heads()` alias does not parse. Both are the SAME fault the CLI reports as
+///   ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1139`), and the same one
+///   the read side surfaces as [`crate::RevsetError::Config`] — never the unclassified
+///   backend bucket, and never a silent fall-back to the builtin set.
 pub(crate) fn immutable_user_expression(repo: &Repo) -> Result<Arc<UserRevsetExpression>, MutateError> {
-    let config = crate::config::load(repo).map_err(be)?;
-    let aliases = build_aliases_map(&config).map_err(be)?;
-    immutable_expression(repo, &aliases).map_err(be)
+    let config = crate::config::load(repo).map_err(cfg)?;
+    let aliases = build_aliases_map(&config).map_err(cfg)?;
+    immutable_expression(repo, &aliases).map_err(cfg)
 }
 
 /// Resolves the immutable expression's symbols against `repo`.
@@ -84,12 +86,16 @@ pub(crate) fn immutable_user_expression(repo: &Repo) -> Result<Arc<UserRevsetExp
 ///
 /// # Errors
 ///
-/// - [`MutateError::Backend`] — a symbol in the immutable expression cannot be resolved.
+/// - [`MutateError::Config`] — a symbol in the immutable expression cannot be resolved
+///   (e.g. the alias names a bookmark that does not exist). The CLI classifies this
+///   failure the same way — `resolve_immutable_expression` maps its `resolve()` error to
+///   ``Invalid `revset-aliases.immutable_heads()` `` — because the alias, not the caller's
+///   argument, is what is wrong.
 pub(crate) fn resolve_immutable(
     repo: &dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
-    resolve_expression(repo, expr).map_err(be)
+    resolve_expression(repo, expr).map_err(cfg)
 }
 
 /// Refuses the rewrite if any of `commit_ids` is inside the immutable set.
@@ -148,6 +154,23 @@ pub(crate) fn check_rewritable(
 /// `immutable` is threaded in rather than resolved here so this function stays free of
 /// config plumbing; the CLI reaches its equivalent through `WorkspaceCommandHelper`.
 ///
+/// # Input contract
+///
+/// The CLI gets these three slices from `resolve_revsets_ordered`, i.e. an `IndexSet` of
+/// commits that exist; taking raw slices moves that guarantee onto the caller, and NONE of
+/// it is re-checked here:
+///
+/// - Ids must be **resolved and existing**. An id no commit has is not an error: the `-A`
+///   branch simply finds no children for it and it is returned verbatim as a parent, so a
+///   caller that skips resolution gets a plausible-looking `Ok` with a bogus parent.
+/// - Ids must be **deduplicated**. Duplicates are passed through to the caller as
+///   duplicate parents/children (the `-B` PARENT computation dedups, because the CLI's
+///   does; the target lists themselves never are).
+/// - **Absence is `None`, never `Some(&[])`.** `Some(&[])` means "the flag was given with
+///   no revisions" and is honoured as such — for `-A` alone that resolves no parents and
+///   is refused with "No revisions found to use as parent", which is not the same thing as
+///   the "expected at least one of …" refusal an all-`None` call gets.
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `destination` combined with `insert_after`/
@@ -189,14 +212,19 @@ pub(crate) fn compute_commit_location(
             }
             (parents, before.to_vec())
         }
+        // WHY these two messages are NOT the CLI's: the CLI `panic!`s here, so its strings
+        // are internal assertion text naming Rust parameters. A refusal a GUI may surface
+        // names the user-facing flags instead. The CLI's genuinely user-facing refusals
+        // below ("No revisions found to use as parent", "Refusing to create a loop: …")
+        // stay verbatim.
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
             return Err(MutateError::InvalidInput {
-                reason: "destination cannot be used with insert_after/insert_before".to_owned(),
+                reason: "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
             })
         }
         (None, None, None) => {
             return Err(MutateError::InvalidInput {
-                reason: "expected at least one of destination or insert_after/insert_before".to_owned(),
+                reason: "expected at least one of --onto, -A/--insert-after or -B/--insert-before".to_owned(),
             })
         }
     };
@@ -284,6 +312,26 @@ pub(crate) fn try_combine_messages(sources: &[&str], destination: &str) -> Optio
 ///   `parse_description_trailers` of the EXISTING description. That parser is the lenient
 ///   one — it reads a whole message and returns nothing when the last paragraph is not a
 ///   clean trailer block; its strict sibling `parse_trailers` is for trailer-only text.
+///
+/// # Input contract
+///
+/// The CLI's inputs are always normalized — its trailers come from `parse_trailers` of
+/// rendered template text, its descriptions from jj itself. Taking a plain `&str` and
+/// caller-built [`Trailer`]s moves that onto the caller, and this port deliberately adds
+/// no validation (it would diverge from the verbatim behaviour NFR-R-2 pins). Three
+/// consequences follow:
+///
+/// - **`description` should end in `\n` when it is non-empty.** Trailers are appended with
+///   no separator beyond the paragraph rule above, so `"subject"` (no newline) plus one
+///   trailer yields `"subject\n\nkey: value\n"` when a trailer block is opened — but if the
+///   description ALREADY ends in a trailer block, the new line is glued straight onto
+///   whatever the last line is.
+/// - **A key or value containing `\n` corrupts the block silently.** The embedded newline
+///   splits the trailer paragraph, so a later `parse_description_trailers` of the result
+///   sees a non-trailer line and returns NO trailers at all — including the ones that were
+///   already there.
+/// - **`new_trailers` is not deduplicated against itself.** Dedup is only against the
+///   EXISTING description, so the same trailer listed twice is written twice.
 #[allow(dead_code)]
 pub(crate) fn apply_trailers(description: &str, new_trailers: &[Trailer]) -> String {
     let existing = parse_description_trailers(description);
@@ -615,7 +663,7 @@ mod tests {
         )
         .expect_err("the CLI panics here; a library must refuse");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be used with")),
+            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be combined with")),
             "unexpected error: {err:?}"
         );
     }
@@ -637,7 +685,7 @@ mod tests {
         )
         .expect_err("the CLI panics here; a library must refuse");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be used with")),
+            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be combined with")),
             "unexpected error: {err:?}"
         );
     }

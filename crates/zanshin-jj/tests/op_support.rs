@@ -64,6 +64,8 @@ struct Layout {
     commit2_commit_hex: String,
     commit3_change_id: String,
     commit3_commit_hex: String,
+    root_change_id: String,
+    root_commit_hex: String,
 }
 
 fn oracle_layout(workspace_root: &Path) -> Layout {
@@ -105,6 +107,8 @@ fn oracle_layout(workspace_root: &Path) -> Layout {
         commit2_commit_hex,
         commit3_change_id,
         commit3_commit_hex,
+        root_change_id: store.root_commit().change_id().reverse_hex(),
+        root_commit_hex: store.root_commit_id().hex(),
     }
 }
 
@@ -200,7 +204,7 @@ fn the_guard_is_ancestor_closed_so_a_tagged_head_protects_its_ancestors() {
 }
 
 #[test]
-fn abandon_names_the_first_immutable_target_even_when_several_are() {
+fn abandon_names_exactly_one_immutable_target_when_several_are() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let layout = oracle_layout(&fx.path);
@@ -210,9 +214,107 @@ fn abandon_names_the_first_immutable_target_even_when_several_are() {
     let err = repo
         .abandon(&[ChangeId(layout.commit2_change_id), ChangeId(layout.commit3_change_id)])
         .expect_err("both targets are immutable");
-    // The CLI takes `try_next` over the intersection, so exactly one offender is named —
-    // whichever the revset stream yields first (reverse-topological: the chain head).
-    assert_immutable(&err, &layout.commit3_commit_hex);
+    // The CLI takes `try_next` over the intersection, so EXACTLY ONE offender is named.
+    // WHY this asserts membership rather than a specific commit: which one arrives first is
+    // jj-lib's revset stream order, which is not a promised contract — pinning `Commit 3`
+    // here would turn an upstream index change into a red test with no behaviour regression.
+    // The contract is "one of the immutable targets, and only one".
+    let MutateError::Immutable { commit_id } = &err else {
+        panic!("expected Immutable, got {err:?}");
+    };
+    assert!(
+        [&layout.commit2_commit_hex, &layout.commit3_commit_hex].contains(&commit_id),
+        "named offender {commit_id} is not one of the two immutable targets"
+    );
+}
+
+#[test]
+fn edit_root_commit_returns_immutable() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before_op = head_op_id(&repo);
+
+    // WHY this test exists: Story 9.1 deliberately CHANGED this shipped error code.
+    // `describe`/`abandon` guard the root commit explicitly (pre-empting jj-lib's internal
+    // `assert!`) and keep refusing it as `InvalidInput` — see `tests/mutate.rs`'s
+    // `describe_root_commit_returns_invalid_input_not_a_panic` and its `abandon` twin.
+    // `edit` needs no such guard (jj-lib is graceful about editing root), so the new
+    // immutability guard now catches root first and reports `Immutable` — which is what
+    // the jj CLI reports for `jj edit root()` (NFR-R-2).
+    let err = repo
+        .edit(ChangeId(layout.root_change_id))
+        .expect_err("the root commit is immutable");
+    assert_immutable(&err, &layout.root_commit_hex);
+    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+}
+
+// ── A config fault is a config error, not an unclassified backend failure ─────────
+
+#[test]
+fn a_malformed_repo_config_makes_describe_fail_with_config_not_backend() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    // The rewriting verbs read the effective config to build the guard's set, so a broken
+    // config now reaches them — as the same fault the READ side reports (`RevsetError::
+    // Config` / `jj.config_error`), never the unclassified backend bucket, and never a
+    // silent fall-back to the builtin immutable set.
+    write_repo_config(&fx.path, "not = = toml");
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before_op = head_op_id(&repo);
+    let err = repo
+        .describe(ChangeId(layout.commit1_change_id), "nope")
+        .expect_err("a malformed config must not be silently ignored");
+
+    let MutateError::Config { reason } = &err else {
+        panic!("expected Config, got {err:?}");
+    };
+    assert!(
+        reason.contains("config.toml"),
+        "the reason must name the file: {reason}"
+    );
+    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+}
+
+#[test]
+fn an_unresolvable_immutable_heads_alias_is_a_config_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    // Parses fine, but names a bookmark that does not exist — the CLI reports this through
+    // the same "Invalid `revset-aliases.immutable_heads()`" path as a parse failure
+    // (`cli_util.rs:1139`), because the ALIAS is what is wrong, not the caller's argument.
+    write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'no-such-bookmark'\n");
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let err = repo
+        .describe(ChangeId(layout.commit1_change_id), "nope")
+        .expect_err("an unresolvable alias must not be silently ignored");
+    assert!(matches!(err, MutateError::Config { .. }), "unexpected error: {err:?}");
+}
+
+#[test]
+fn an_unparseable_immutable_heads_alias_is_a_config_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    // The PARSE half of the same contract (the sibling above is the RESOLVE half): a
+    // syntactically broken alias travels a different code path, and an implementation
+    // could easily classify only one of the two.
+    write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'bogus_function('\n");
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let err = repo
+        .describe(ChangeId(layout.commit3_change_id), "nope")
+        .expect_err("a guard that cannot determine what is protected must refuse");
+    assert!(
+        matches!(err, MutateError::Config { .. }),
+        "expected Config, got {err:?}"
+    );
 }
 
 // ── The guard lets mutable commits through ────────────────────────────────────────

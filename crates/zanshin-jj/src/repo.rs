@@ -276,6 +276,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `change_id` resolves to the root commit.
     /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a non-root commit
     ///   inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — the repo's jj config or its
+    ///   `revset-aliases."immutable_heads()"` could not be read, parsed, or resolved.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
@@ -316,6 +318,8 @@ impl Repo {
     /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a commit inside the
     ///   repo's effective immutable set (the root commit included — see
     ///   [`crate::MutateError::Immutable`]).
+    /// - [`crate::MutateError::Config`] — the repo's jj config or its
+    ///   `revset-aliases."immutable_heads()"` could not be read, parsed, or resolved.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
@@ -341,6 +345,8 @@ impl Repo {
     ///   only-hidden, or divergent.
     /// - [`crate::MutateError::Immutable`] — a target resolves to a non-root commit inside
     ///   the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — the repo's jj config or its
+    ///   `revset-aliases."immutable_heads()"` could not be read, parsed, or resolved.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn abandon(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {

@@ -653,7 +653,8 @@ class ZanshinWorker {
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.change_not_found`, `jj.invalid_input`). Completes with a [StateError]
+  /// `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`,
+  /// `jj.config_error`). Completes with a [StateError]
   /// after [close]. The close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.describe].
   Future<repo_ffi_mutate.MutationResult> describe(
@@ -696,8 +697,9 @@ class ZanshinWorker {
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.change_not_found`). Completes with a [StateError] after [close]. The
-  /// close-guard [StateError] is delivered synchronously by [RepoHandle.edit].
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`). Completes with a
+  /// [StateError] after [close]. The close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.edit].
   Future<repo_ffi_mutate.MutationResult> edit(int handleId, String changeId) async {
     final Uint8List bytes = await send(
       EditCommand(commandId: _correlator.allocateId(), handleId: handleId, changeId: changeId),
@@ -711,7 +713,8 @@ class ZanshinWorker {
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`). Completes with a [StateError]
   /// after [close]. The close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.abandon].
   Future<repo_ffi_mutate.MutationResult> abandon(int handleId, List<String> changeIds) async {
