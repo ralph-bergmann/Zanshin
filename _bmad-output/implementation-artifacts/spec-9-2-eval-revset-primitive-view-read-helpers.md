@@ -2,10 +2,10 @@
 title: 'Story 9.2: `eval_revset` generic read primitive + `View` read helpers'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'e5c0120c01023e0238adce29eadf3d75b1a9e82c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
 deferred:
@@ -21,8 +21,53 @@ deferred:
       this story's core constraint. The GUI is not blocked meanwhile: `zanshin_graph_slice` already
       accepts a caller-supplied revset. The still-open ADR-0003 question — whether MCP gets the raw
       revset joker or only named views — is part of what is deferred here.
+      Whoever surfaces these will also need error codes: `eval_revset` reuses the already-reserved
+      `jj.revset_parse_error` / `jj.revset_resolution_error`, but the three `View` listings return
+      the NEW `ViewError` and have no `<domain>.<reason>` code or envelope mapping yet.
     location: >-
       crates/zanshin-ffi/ (no file touched), schemas/envelope.fbs (unchanged), crates/zanshin-mcp/
+    severity: low
+  - summary: >-
+      `builtin_log()` is absent from Zanshin's builtin config layer, so a user who pastes it into
+      `eval_revset` — where it works in their CLI — gets a `RevsetError::ParseError`.
+    evidence: |-
+      Already recorded against Story 9.0a (`spec-9-0a-…md`, severity medium): `config.rs`'s
+      `BUILTIN_CONFIG_TOML` is documented as verbatim from `cli/src/config/revsets.toml` at
+      v0.42.0, while v0.44.0 sets `log = "builtin_log()"` and adds the alias. Cross-referenced
+      here because 9.2 raises the stakes: `eval_revset` is the primitive whose whole purpose is
+      passing an arbitrary user-typed revset through (FR-JJ-17), so it is exactly where a user
+      pastes an alias that their own CLI honours. The denoted default set is still identical, so
+      nothing renders wrongly today.
+    location: >-
+      crates/zanshin-jj/src/config.rs:74-105 (BUILTIN_CONFIG_TOML)
+    severity: medium
+  - summary: >-
+      Neither `list_tags` nor `list_bookmarks` excludes jj's `git` pseudo-remote, so in a
+      git-backed repo they may list every local ref a second time under `remote_name = "git"`.
+    evidence: |-
+      `list_tags` mirrors `list_bookmarks`' filter exactly (`is_present() && is_tracked()`), which
+      is deliberate — but neither skips `REMOTE_NAME_FOR_LOCAL_GIT_REPO`, while jj's own revset
+      parse context does (`revset.rs` sets `default_ignored_remote: Some("git")`). Whether such
+      rows actually appear depends on the tracking state jj gives `git`-remote refs, which the
+      committed fixtures cannot show: they carry no remote refs at all, and the in-test helpers
+      only construct named remotes. Settling it needs a colocated-repo fixture and a read of the
+      CLI's own handling; the root cause predates 9.2 (it is `list_bookmarks`' filter, shipped in
+      2.8), so fixing it belongs with a bookmark/tag story, not here.
+    location: >-
+      crates/zanshin-jj/src/view.rs (list_tags remote loop), crates/zanshin-jj/src/bookmarks.rs:97
+    severity: medium
+  - summary: >-
+      Parent-commit reads inside `eval_revset`'s streaming loop are synchronous
+      (`store.get_commit`), so they are not pipelined the way the commit stream itself is.
+    evidence: |-
+      `change_from_commit` reads each parent with the blocking `store.get_commit` — inherited
+      verbatim from `get_change`, where it was the only shape available — while the commit stream
+      around it uses `RevsetStreamExt::commits`' `.buffered(store.concurrency())` and `walk_graph`
+      uses `store.get_commit_async`. Correct, just not pipelined: a walk pays one serialized parent
+      read per row. Making it async ripples into `get_change`, and perf gates are deferred to the
+      release phase per project-context, so this is a recorded observation rather than a defect.
+    location: >-
+      crates/zanshin-jj/src/change.rs (change_from_commit parent loop)
     severity: low
 ---
 
@@ -140,9 +185,41 @@ Every anchor below was read and verified against the working tree at baseline `e
 
 ## Review Triage Log
 
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 15: (high 0, medium 3, low 12)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 11: (high 0, medium 0, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` The shipped signature contradicted three canonical documents and none had been reconciled: `docs/adr/0003-…md` §5, `epics.md:5529` and `project-context.md:179` all specify `eval_revset(&str) -> Stream<Commit>`, while the code ships a visitor. project-context.md's own rule makes such an inconsistency "a bug to fix, not a choice to make silently", so all three plus `epic-9-context.md` gained an as-built note (the ADR as a new `## Implementation notes` section, leaving its Decision text intact) recording the visitor shape, the borrow reason, and that laziness / no-collect / mid-walk cancellation are all preserved.
+  - `[medium]` `[patch]` `change_from_commit`'s doc claimed divergence was re-derived "without repeating the probe" — the opposite of what the code does. The extraction deleted `get_change`'s free `targets.is_divergent()` and replaced it with a second `resolve_change_id`, so every `get_change` call now pays two index probes. Documented honestly, with the reason the second (index-only) probe is worth one construction site for `Change`.
+  - `[medium]` `[patch]` No test could distinguish a remote tag row that reports the REMOTE ref's target from one that wrongly reuses the local tag's: every remote-tag test pointed both at the same commit, and the only remote-without-local case was untracked, so it produced no row at all. Added `tags_remote_row_reports_the_remote_refs_own_target` with genuinely differing targets — the ordinary state after a local retag or a fetch that moved the remote.
+  - `[low]` `[patch]` The committed spec file ended with stray `</content>` / `</invoke>` lines — authoring-harness markup that leaked into a tracked artifact. Removed.
+  - `[low]` `[patch]` `change_from_commit` took `store` and `view` as parameters although `jj_lib::repo::Repo` exposes both (`repo.rs:124,130`), which permitted a call mixing a view from one head resolution with a repo from another. Both are now derived from `repo_dyn`, making that unrepresentable and dropping two arguments (plus the now-unused `Arc` import and two dead locals).
+  - `[low]` `[patch]` The laziness claim overstated what is bounded: `RevsetStreamExt::commits` applies `.buffered(store.concurrency())`, so a `Break` may leave several commit loads dispatched. Reworded on both `revset::eval_revset` and `Repo::eval_revset` to promise one `Change` per visited row and I/O bounded by a constant rather than by the set.
+  - `[low]` `[patch]` Neither doc said that rows are NOT deduplicated by change id — `resolve_revset` dedups, `eval_revset` emits one row per commit, and every downstream consumer will key on change id. Stated explicitly on both, cross-referencing the divergent-row behaviour.
+  - `[low]` `[patch]` `list_tags`' documented "or a store read failed" `ViewError::Backend` had no test: the three `*_on_corrupt_repo_*` tests only exercise `load_at_head`. Added `tags_store_read_failure_returns_backend_error`, removing exactly the tagged commit's loose object.
+  - `[low]` `[patch]` `TagKind`'s declared secondary sort key (remotes by `remote_name`) was never exercised, and no test covered a tracked remote tag without a local counterpart. Added `tags_remote_only_rows_sort_by_remote_name` covering both.
+  - `[low]` `[patch]` The mid-stream `Break` case — visitor continuing N times then stopping, i.e. ordinary GUI paging — was untested; callers only ever passed `1` or `usize::MAX`. Added `eval_revset_break_after_several_items_stops_exactly_there`.
+  - `[low]` `[patch]` `eval_revset("")` had no documented behaviour and no test, on a primitive whose entire purpose is passing an arbitrary caller string through. Added `eval_revset_empty_expression_is_a_parse_error`, pinning it as a stage-1 fault with no walk.
+  - `[low]` `[patch]` `heads_equal_the_view_oracle_and_are_sorted_by_hex` compared the result against a sorted copy of ITSELF, so dropping the sort would only have failed on the runs where the `HashSet` happened to iterate out of order. The expected order is now built from the independent oracle.
+  - `[low]` `[patch]` `eval_revset_row_matches_get_change_for_the_same_change` claimed to prove "the reuse of `Change` is genuine, not a look-alike", but after the extraction both sides run the same constructor, so a regression inside it moves both sides together. Comment corrected to state what it actually pins, pointing at `tests/change.rs` for the field derivations.
+  - `[low]` `[patch]` `sample_tag`'s doc comment in `tests/api_stability.rs` claimed to name `WorkingCopy` fields as well; it constructs only `Tag`.
+  - `[low]` `[patch]` The Design Notes cited "Story 9.1 shipped `zanshin-jj`-only" as a scope signal. That overstates — 9.1 edited `zanshin-ffi`, ran `cargo make codegen` and committed the regenerated header and bindings; it added no new `extern "C"` *signature*. Replaced with three stronger signals drawn from the intent's own text (9.2's placement under `### Precursors`, its missing `[M]`/`[R]` tag, and "extends 2.5" pointing at a Rust-caller story), and extended the FFI deferred entry to record that the `View` listings' `ViewError` still has no `<domain>.<reason>` code.
+
+Notes on the two categories that stayed empty. **No `intent_gap`:** the intent-alignment audit enumerated four readings and confirmed the diff implements a determinate one, supplying two signals the spec had not cited (Precursors placement, no `[M]`/`[R]` tag) plus "extends 2.5" — all admissible scope authority from the intent itself. **No `bad_spec`:** every patch is additive; re-deriving from an amended spec would reproduce byte-identical `view.rs`/`revset.rs` Rust, so a loopback's entire yield would have been these doc and test edits (the same reasoning Story 9.1 recorded).
+
+The patches were applied directly rather than delegated back to the implementation subagent — Story 9.1's Process note records that re-engaging it in a loop that cannot block on its result clobbered files.
+
 ## Design Notes
 
-**Scope: `zanshin-jj` only — this is derived, not assumed.** Four independent signals select the crate-level reading. (1) epics.md:477 binds the `.fbs` → `extern "C"` → Dart → MCP chain to "each **verb**"; 9.2 delivers no verb. (2) ADR-0003 §5 states both halves as `zanshin-jj` API shape. (3) Story 9.1, the immediate predecessor in this epic, shipped `zanshin-jj`-only and made a required `extern "C"` signature an explicit *Block If*. (4) Decisively: `Stream<Commit>` has no wire representation — the FFI boundary is snapshot-only (`zanshin_graph_slice` returns a materialized `Vec<Row>`), so surfacing `eval_revset` faithfully would have to `try_collect`, contradicting the story's own core constraint. The GUI is not blocked meanwhile: `zanshin_graph_slice` already accepts a caller-supplied revset. FFI/MCP exposure — including the still-open ADR-0003 question of whether MCP gets the raw joker or only named views — is recorded as deferred.
+**Scope: `zanshin-jj` only — this is derived, not assumed.** Six independent signals select the crate-level reading. (1) epics.md:477 binds the `.fbs` → `extern "C"` → Dart → MCP chain to "each **verb**"; 9.2 delivers no verb. (2) ADR-0003 §5 states both halves as `zanshin-jj` API shape. (3) In epics.md, 9.2 sits under `### Precursors` (:5517) with 9.0/9.0a/9.1 — *not* under Tier A/B/C, where the verbs live. (4) It carries no `[M]`/`[R]` tag, while every Tier story does. (5) The intent's own "extends 2.5" points at Story 2.5, which is framed "As a **Rust caller**…" with all of its acceptance at `resolve_revset` + `tests/revset.rs`. (6) Decisively: `Stream<Commit>` has no wire representation — the FFI boundary is snapshot-only (`zanshin_graph_slice` returns a materialized `Vec<Row>`), so surfacing `eval_revset` faithfully would have to `try_collect`, contradicting the story's own core constraint. The GUI is not blocked meanwhile: `zanshin_graph_slice` already accepts a caller-supplied revset. FFI/MCP exposure — including the still-open ADR-0003 question of whether MCP gets the raw joker or only named views — is recorded as deferred.
+
+*Correction (review pass):* an earlier version of this note cited "Story 9.1 shipped `zanshin-jj`-only" as a signal. That overstates: 9.1 did edit `crates/zanshin-ffi/src/{envelope.rs,repo.rs}`, ran `cargo make codegen`, and committed the regenerated header and bindings. The accurate — and still supporting — statement is that 9.1 added no new `extern "C"` **signature**. Signals (3)-(5) replace it and are stronger, coming from the intent's own text.
+
+**The shipped signature deviates from ADR-0003's literal wording, and the canonical docs were reconciled.** ADR-0003 §5, epics.md:5529 and project-context.md all write `eval_revset(&str) -> Stream<Commit>`. What is buildable is a visitor, for the borrow reason above. Per project-context.md's own rule ("when a rule here conflicts with epics.md, raise it — an inconsistency is a bug to fix, not a choice to make silently"), all three plus `epic-9-context.md` were amended with an as-built note rather than left contradicting the code.
 
 **The visitor is the stream.** `Revset::evaluate` returns `Box<dyn Revset + 'index>` borrowing the repo, so a stream cannot be returned from a function that also owns the `ReadonlyRepo`. `walk_graph` solved this by inverting control, and that inversion *is* the ADR-0002 property the epic asks for: lazy, never collected, cancellable mid-walk. Copy it rather than reaching for a self-referential struct or the CLI's `RevsetExpressionEvaluator<'repo>` (which works only because the CLI's caller owns the repo borrow).
 
@@ -165,5 +242,103 @@ Every anchor below was read and verified against the working tree at baseline `e
 
 **Manual checks (if no CLI):**
 - Diff the crate's `pub` items: confirm the additions are exactly the four `Repo` methods plus `Tag`/`TagKind`/`WorkingCopy`/`ViewError`, and that no `jj_lib` type leaked into a public signature.
-</content>
-</invoke>
+
+## Auto Run Result
+
+Status: done
+Commits: `9d58e6ca5ff2329a505d4b9a8f28457432113339` (the primitive + the `View` listings),
+`0aecf67` (the mid-walk store-failure test) and the review-patch commit, all on `main`, baseline
+`e5c0120c01023e0238adce29eadf3d75b1a9e82c`.
+
+**Summary.** `Repo::eval_revset` is ADR-0003 §5's generic read joker: a lazy walk over the shipped
+parse→resolve→evaluate path that hands the caller one `Change` per commit and never collects the
+set. It ships as a **visitor** — `eval_revset(&str, impl FnMut(Change) -> ControlFlow<()>)` — not
+as the returned `Stream<Commit>` the ADR's wording asks for, because `Revset::evaluate` borrows
+the `ReadonlyRepo` that the call itself loads (ADR-0002 reload-per-operation), so a stream cannot
+outlive the function that owns it. That is the same inversion `Repo::walk_graph` already uses, and
+every property the ADR actually asks for survives it: lazy `Box<dyn Revset>`, no `try_collect`,
+cancellable mid-walk via `ControlFlow::Break`, which *is* the limit (there is no `limit`/`start`/
+`count` parameter). All four canonical documents that stated the stream signature were reconciled
+rather than left contradicting the code.
+
+The item type is the crate's **existing** `Change`: steps 5-9 of `get_change` moved into
+`change::change_from_commit`, so there is one construction site and no third commit shape.
+`CommitMeta` was deliberately not reused — it is `jj log` *display* decoration whose `LogMetaIndex`
+costs a prefix index and an immutable-set evaluation per call, which this primitive has no use for.
+
+The new `view.rs` adds the direct `View` reads: `list_tags`, `list_heads`, `list_working_copies`
+(bookmarks already shipped in 2.8). Three deliberate decisions are worth carrying forward. Tags
+carry a `ChangeId` like `Bookmark.target`, but heads and working copies carry `CommitId`, because
+that is what the view holds and because two divergent commits of one change can both be heads —
+collapsing to change ids would fabricate duplicates. `list_heads` sorts by hex: jj's `View::heads()`
+is an unordered `HashSet`, so the ordering is Zanshin's guarantee, not jj's. And `list_tags` does
+NOT apply the CLI's "hide a synced tracked remote" filter — that is a display default, and the
+project's split puts the filtered view in `CommitMeta::tags` and the unfiltered one here, exactly
+as `list_bookmarks` already does.
+
+The three-stage error taxonomy is preserved by **reuse, not extension**: parse and resolution keep
+their distinct variants, evaluation continues to share `JjLibError` with backend faults, and
+`docs/rust-error-codes.md` is untouched because it already reserves exactly those two revset codes
+for this story by name. What the tests prove is that the *new* path yields all three distinctly
+instead of collapsing them.
+
+**Scope.** `zanshin-jj` only — no `.fbs`, no `extern "C"`, no Dart, no MCP. Six signals select that
+reading (see Design Notes); the decisive one is that a `Stream` has no wire representation, so a
+faithful surfacing would have to `try_collect` and contradict the story's own constraint. The GUI
+is not blocked meanwhile: `zanshin_graph_slice` already takes a caller-supplied revset.
+
+**Files changed.**
+- `crates/zanshin-jj/src/revset.rs` — `eval_revset`, driving `set.stream().commits(store)` through
+  the visitor inside `pollster::block_on`.
+- `crates/zanshin-jj/src/change.rs` — `change_from_commit` extracted from `get_change`; takes only
+  `(repo_dyn, commit)`, deriving `store`/`view` from the repo so a mixed-snapshot call is
+  unrepresentable.
+- `crates/zanshin-jj/src/view.rs` — the three `View` listings plus `Tag`/`TagKind`/`WorkingCopy`/
+  `ViewError`.
+- `crates/zanshin-jj/src/repo.rs`, `src/lib.rs` — the four public facades and re-exports.
+- `crates/test-helpers/src/lib.rs` — `set_remote_tag`, mirroring `set_remote_bookmark`.
+- `docs/adr/0003-…md` (new `## Implementation notes`), `_bmad-output/planning-artifacts/epics.md`,
+  `_bmad-output/project-context.md`, `_bmad-output/implementation-artifacts/epic-9-context.md` —
+  as-built notes for the visitor signature.
+- Tests: 13 `eval_revset` rows in `tests/revset.rs`, 15 in the new `tests/view.rs`, and the four
+  new types plus the three listings pinned in `tests/api_stability.rs`.
+
+**Review findings.** 15 patched (0 high, 3 medium, 12 low), 3 deferred (2 medium, 1 low), 11
+rejected. No `intent_gap` and no `bad_spec` — see the Triage Log for why each stayed empty.
+
+**Follow-up review recommended:** true. Patched this pass: high 0, medium 3, low 12 →
+score `3×3 + 1×12 = 21`, at or above the threshold of 5. Note for whoever acts on it: the yield is
+likely to be small. The three mediums were a doc/code contradiction, a misleading doc sentence and
+one genuinely missing test, all now closed; the remaining low-severity space is test shape and
+wording. Per this run's instructions no optional extra pass was started.
+
+**Verification performed.** `cargo make test` run to completion twice, unpiped with the exit code
+captured — after implementation (`GATE_EXIT=0`, `Build Done in 314.48 seconds`) and again after the
+review patches (`GATE_EXIT=0`, `Build Done in 285.78 seconds`). It covers `cargo test --workspace`,
+clippy pedantic `-D warnings`, rustfmt, `flutter test` + `dart analyze`/`format`, `cargo deny`
+(`advisories ok, bans ok`), the coverage ratchet (`coverage-check: OK — coverage held at 99.04%
+(5584/5638 lines)`, so `coverage-baseline.txt` was neither raised nor lowered by the patches) and
+`extern-coverage: OK`. `git diff` against the FFI header, `bindings.dart`, the flatc outputs,
+`schemas/envelope.fbs` and `docs/rust-error-codes.md` is empty — `cargo make codegen` was never run.
+The CLI prior art was re-read at the pin (`git -C ../jj show v0.44.0:cli/src/commit_ref_list.rs`)
+and the `include_synced_remotes` / inclusion-predicate anchors confirmed before relying on them.
+Every I/O matrix row was audited against a test that actually appears in the run output; the one row
+the implementation had left uncovered — "mid-walk failure" — was closed rather than deferred, by
+removing a single loose object so `N ≥ 1` rows are visited before the failure (`Buffered` preserves
+output order, so the position is fixed, not racy).
+
+**Residual risks.**
+- Two tests depend on git's loose-object layout under `.jj/repo/store/git/objects/` and on the
+  store not having cached the commit. Both carry a "re-verify at the next pin bump" comment; the
+  layout itself is git's and stable, but where jj surfaces the failure is not contractual.
+- `eval_revset` emits one row per COMMIT and does not deduplicate by change id, unlike
+  `resolve_revset`. Now documented on both the free function and the facade, but it is a real trap
+  for a consumer that keys rows by change id.
+- `get_change` now performs a second, index-only `resolve_change_id` (the divergence probe moved
+  into the shared constructor). Documented at the site; the alternative would put the D4 rule back
+  at every call site.
+- The `View` listings' `ViewError` has no `<domain>.<reason>` code yet, because nothing crosses
+  FFI. Recorded in the deferred list so the surfacing story does not miss it.
+- Whether jj's `git` pseudo-remote can produce duplicate rows in `list_tags`/`list_bookmarks` could
+  not be settled from the committed fixtures (they carry no remote refs). Deferred with the
+  evidence needed to close it.
