@@ -1135,7 +1135,7 @@ git commit --no-gpg-sign -m "feat(app): drive theme from zanshin_shell and drop 
 **Files:**
 - Modify: `Makefile.toml` (the `[tasks.test]` dependency list around line 48, and new task blocks next to the existing `test-core*` blocks)
 
-- [ ] **Step 1: Add gate tasks**
+- [x] **Step 1: Add gate tasks**
 
 Append to the `[tasks.test]` `dependencies` list (after `"test-core-format"`):
 ```toml
@@ -1207,14 +1207,14 @@ args = ["format", "--output=none", "--set-exit-if-changed", "."]
 cwd = "packages/zanshin_shell_macos"
 ```
 
-- [ ] **Step 2: Run the full gate**
+- [x] **Step 2: Run the full gate**
 
 ```bash
 cargo make test
 ```
 Expected: PASS end-to-end, including the coverage ratchet reporting "coverage held" (no Rust changed; `coverage-baseline.txt` must NOT change).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Makefile.toml

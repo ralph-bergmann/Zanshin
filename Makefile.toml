@@ -56,6 +56,15 @@ dependencies = [
     "test-core",
     "test-core-analyze",
     "test-core-format",
+    "test-shell",
+    "test-shell-analyze",
+    "test-shell-format",
+    "test-shell-pi",
+    "test-shell-pi-analyze",
+    "test-shell-pi-format",
+    "test-shell-macos",
+    "test-shell-macos-analyze",
+    "test-shell-macos-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
     "test-jj-adapter-hygiene",
@@ -130,6 +139,60 @@ private = true
 command = "dart"
 args = ["format", "--output=none", "--set-exit-if-changed", "."]
 cwd = "packages/zanshin_core"
+
+[tasks.test-shell]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "packages/zanshin_shell"
+
+[tasks.test-shell-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_shell"
+
+[tasks.test-shell-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_shell"
+
+[tasks.test-shell-pi]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "packages/zanshin_shell_platform_interface"
+
+[tasks.test-shell-pi-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_shell_platform_interface"
+
+[tasks.test-shell-pi-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_shell_platform_interface"
+
+[tasks.test-shell-macos]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "packages/zanshin_shell_macos"
+
+[tasks.test-shell-macos-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_shell_macos"
+
+[tasks.test-shell-macos-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_shell_macos"
 
 [tasks.test-cargo-deny]
 private = true
