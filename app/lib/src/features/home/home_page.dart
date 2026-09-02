@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:material_ui/material_ui.dart';
 import 'package:inject_annotation/inject_annotation.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../shell/app_shell.dart';

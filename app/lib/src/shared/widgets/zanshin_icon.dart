@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:material_ui/material_ui.dart';
 
 // SVG-based icon widget. Uses assets/icons/svg/<name>.svg.
 // Replace with Icon(ZanshinIcons.xxx) once the icon font is generated.

@@ -4,6 +4,7 @@
 library zanshin.ffi;
 
 import 'dart:typed_data' show Uint8List;
+
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
 ///  How a working-copy file changed between @- and @.

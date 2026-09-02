@@ -18,6 +18,8 @@ class ZanshinApp extends StatelessWidget {
     @assisted super.key,
   });
 
+  // Temporarily unused while `home` shows the Yaru test page below.
+  // ignore: unused_field
   final HomePageFactory _homePageFactory;
 
   // static ThemeData _buildTheme(ZanshinColors zc, Brightness brightness) {
@@ -109,7 +111,7 @@ class _ExampleHome extends StatelessWidget {
 }
 
 class _Example extends StatelessWidget {
-  const _Example({super.key});
+  const _Example();
 
   @override
   Widget build(BuildContext context) => Scaffold(

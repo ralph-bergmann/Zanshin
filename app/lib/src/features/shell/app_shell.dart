@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
 import '../../shared/theme/zanshin_colors.dart';
