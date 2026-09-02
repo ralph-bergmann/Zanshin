@@ -493,7 +493,7 @@ git commit --no-gpg-sign -m "feat(zanshin_shell): macOS method-channel implement
 - Consumes: the channel protocol from Task 2 (names and payloads verbatim).
 - Produces: `ZanshinShellPlugin` (the `pluginClass` already declared in Task 2's pubspec).
 
-- [ ] **Step 1: podspec**
+- [x] **Step 1: podspec**
 
 `macos/zanshin_shell_macos.podspec` (check `app/macos/Runner.xcodeproj/project.pbxproj` for `MACOSX_DEPLOYMENT_TARGET` first; use that value, expected `10.15`):
 ```ruby
@@ -514,7 +514,7 @@ Pod::Spec.new do |s|
 end
 ```
 
-- [ ] **Step 2: Swift plugin**
+- [x] **Step 2: Swift plugin**
 
 `macos/Classes/ZanshinShellPlugin.swift`:
 ```swift
@@ -668,7 +668,7 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Native compile verification happens in Task 5 (the plugin only builds as part of the app).
 
