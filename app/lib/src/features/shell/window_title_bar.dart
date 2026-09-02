@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:material_ui/material_ui.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:zanshin_shell/zanshin_shell.dart';
 
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
@@ -23,7 +23,7 @@ class WindowTitleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ZanshinColors zc = context.zc;
-    return DragToMoveArea(
+    return WindowDragArea(
       child: Container(
         height: 44,
         decoration: BoxDecoration(

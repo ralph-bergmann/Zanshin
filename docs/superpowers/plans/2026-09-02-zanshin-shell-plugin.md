@@ -971,7 +971,7 @@ git commit --no-gpg-sign -m "feat(zanshin_shell): app-facing API and WindowDragA
 **Interfaces:**
 - Consumes: `ZanshinShell`, `WindowDragArea`, `ShellTheme` (Task 4); yaru 10.2.0 `createYaruLightTheme({required Color primaryColor})` / `createYaruDarkTheme({required Color primaryColor})` (verified present in `~/.pub-cache/hosted/pub.dev/yaru-10.2.0/lib/src/themes/common_themes.dart`; confirm they are exported from `package:yaru/yaru.dart`, otherwise fall back to `yaruLight.copyWith(colorScheme: yaruLight.colorScheme.copyWith(primary: accent))`).
 
-- [ ] **Step 1: pubspec + main.dart**
+- [x] **Step 1: pubspec + main.dart**
 
 In `app/pubspec.yaml`: delete the `window_manager: ^0.5.1` line; add under dependencies:
 ```yaml
@@ -987,7 +987,7 @@ In `app/lib/main.dart`: delete the `import 'package:window_manager/window_manage
 ```
 Run `flutter pub get` at the workspace root.
 
-- [ ] **Step 2: zanshin_app.dart theme wiring**
+- [x] **Step 2: zanshin_app.dart theme wiring**
 
 Rewrite `ZanshinApp` as a `StatefulWidget` (keep the `@assistedInject` constructor, the `_homePageFactory` field with its ignore-comment, the commented-out `_buildTheme` block, and the `part` directive untouched). The Linux `YaruTheme` branch and `_ExampleHome` stay; only the macOS path becomes theme-aware:
 
@@ -1092,7 +1092,7 @@ class _ExampleHome extends StatelessWidget {
 
 New imports needed in zanshin_app.dart: `dart:async` (unawaited, StreamSubscription), `package:zanshin_shell/zanshin_shell.dart`. `dart:io`, `flutter/foundation.dart`, `flutter/material.dart`, yaru are already imported.
 
-- [ ] **Step 3: Drag wiring**
+- [x] **Step 3: Drag wiring**
 
 In `zanshin_app.dart`, wrap the test page's AppBar:
 ```dart
@@ -1106,7 +1106,7 @@ In `zanshin_app.dart`, wrap the test page's AppBar:
 
 In `app/lib/src/features/shell/window_title_bar.dart`: replace the import `package:window_manager/window_manager.dart` with `package:zanshin_shell/zanshin_shell.dart` and `DragToMoveArea(` with `WindowDragArea(` (the closing paren stays; the child stays).
 
-- [ ] **Step 4: Verify analysis, tests, native build**
+- [x] **Step 4: Verify analysis, tests, native build**
 
 ```bash
 dart analyze --fatal-infos --fatal-warnings app
@@ -1121,7 +1121,7 @@ cd app && flutter build macos --debug
 ```
 Expected: build succeeds — this is the first compile of the Swift plugin; fix any Swift compile errors here (the plugin registrant should now list `ZanshinShellPlugin`, and `dart_plugin_registrant` should call `ZanshinShellMacOS.registerWith()` — verify `ZanshinShellPlugin` appears in `app/macos/Flutter/GeneratedPluginRegistrant.swift` after the build).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/pubspec.yaml app/lib/main.dart app/lib/src/features/app/zanshin_app.dart app/lib/src/features/shell/window_title_bar.dart pubspec.lock

@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:yaru/yaru.dart';
+import 'package:zanshin_shell/zanshin_shell.dart';
 
 import '../home/home_page.dart';
 
 part 'zanshin_app.factory.dart';
 
-class ZanshinApp extends StatelessWidget {
+class ZanshinApp extends StatefulWidget {
   @assistedInject
   const ZanshinApp({
     required this._homePageFactory,
@@ -68,23 +70,63 @@ class ZanshinApp extends StatelessWidget {
   // );
 
   @override
-  Widget build(BuildContext context) {
-    const ThemeMode themeMode = ThemeMode.light;
+  State<ZanshinApp> createState() => _ZanshinAppState();
+}
 
+class _ZanshinAppState extends State<ZanshinApp> {
+  ShellTheme? _shellTheme;
+  StreamSubscription<ShellTheme>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb && Platform.isMacOS) {
+      unawaited(ZanshinShell.getTheme().then(_applyShellTheme));
+      _subscription = ZanshinShell.onThemeChanged.listen(_applyShellTheme);
+    }
+  }
+
+  void _applyShellTheme(ShellTheme theme) {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _shellTheme = theme);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (!kIsWeb && Platform.isLinux) {
       return YaruTheme(
         builder: (context, yaru, child) => _ExampleHome(
-          themeMode: themeMode,
+          themeMode: ThemeMode.system,
           lightTheme: yaru.theme,
           darkTheme: yaru.darkTheme,
         ),
       );
     }
 
+    final ShellTheme? shellTheme = _shellTheme;
+    if (shellTheme == null) {
+      // First frame before the platform answered: follow the system via
+      // Flutter's own brightness until the shell theme arrives.
+      return const _ExampleHome(
+        themeMode: ThemeMode.system,
+        lightTheme: null,
+        darkTheme: null,
+      );
+    }
+
     return _ExampleHome(
-      themeMode: themeMode,
-      lightTheme: yaruLight,
-      darkTheme: yaruDark,
+      // The shell channel is authoritative for day/night on macOS.
+      themeMode: shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      lightTheme: createYaruLightTheme(primaryColor: shellTheme.accentColor),
+      darkTheme: createYaruDarkTheme(primaryColor: shellTheme.accentColor),
     );
   }
 }
@@ -96,16 +138,16 @@ class _ExampleHome extends StatelessWidget {
     required this.themeMode,
   });
 
-  final ThemeData lightTheme;
-  final ThemeData darkTheme;
+  final ThemeData? lightTheme;
+  final ThemeData? darkTheme;
   final ThemeMode themeMode;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Yaru Test',
-    theme: lightTheme,
+    theme: lightTheme ?? yaruLight,
     themeMode: themeMode,
-    darkTheme: darkTheme,
+    darkTheme: darkTheme ?? yaruDark,
     home: const _Example(),
   );
 }
@@ -115,7 +157,9 @@ class _Example extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('hallo ralph, dies ist dein Yaru Test')),
+    appBar: WindowDragArea(
+      child: AppBar(title: const Text('hallo ralph, dies ist dein Yaru Test')),
+    ),
     body: const CheckboxPage(),
   );
 }

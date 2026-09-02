@@ -7,7 +7,6 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
-import 'package:window_manager/window_manager.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import 'main.inject.dart' as g;
@@ -35,10 +34,6 @@ Future<void> main() async {
         );
         FlutterError.presentError(details);
       };
-
-      // Needed by DragToMoveArea in the title bar. All window geometry and
-      // titlebar styling lives in macos/Runner/MainFlutterWindow.swift.
-      await windowManager.ensureInitialized();
 
       // ignore: specify_nonobvious_local_variable_types
       final mainComponent = MainComponent.create();
