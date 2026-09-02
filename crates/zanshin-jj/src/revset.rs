@@ -9,8 +9,8 @@ use jj_lib::config::StackedConfig;
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
-    self, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions, RevsetParseContext,
-    RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
+    self, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions,
+    RevsetParseContext, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
 
 use crate::config::ConfigError;
@@ -184,6 +184,31 @@ pub(crate) fn parse_revset_with(
     revset::parse(&mut diagnostics, expr, &context).map_err(|e| RevsetError::ParseError { reason: e.to_string() })
 }
 
+/// Resolves the symbols of a parsed expression against `repo_dyn` without evaluating it.
+///
+/// `repo_dyn` is usually a head-resolved `ReadonlyRepo` (ADR-0002), but any
+/// `jj_lib::repo::Repo` works — including the `MutableRepo` a transaction hands out, which
+/// is how [`crate::op_support`] resolves the immutable set mid-mutation.
+///
+/// The resolved expression is what jj-lib's own rewrite plumbing consumes
+/// (`MutableRepo::rebase_descendants_with_options` takes a `ResolvedRevsetExpression`), so
+/// callers that need the expression itself — not the commits it denotes — stop here instead
+/// of going through [`evaluate_revset`].
+///
+/// # Errors
+///
+/// - [`RevsetError::ResolutionError`] — a symbol cannot be resolved (unknown bookmark/tag,
+///   no working-copy commit for `@`, unmatched/ambiguous id).
+pub(crate) fn resolve_expression(
+    repo_dyn: &dyn jj_lib::repo::Repo,
+    expr: &Arc<UserRevsetExpression>,
+) -> Result<Arc<ResolvedRevsetExpression>, RevsetError> {
+    let extensions = RevsetExtensions::default();
+    let symbol_resolver = SymbolResolver::new(repo_dyn, extensions.symbol_resolvers());
+    expr.resolve_user_expression(repo_dyn, &symbol_resolver)
+        .map_err(|e| RevsetError::ResolutionError { reason: e.to_string() })
+}
+
 /// Resolves the symbols of a parsed expression against `repo_dyn` (a head-resolved
 /// `ReadonlyRepo`, ADR-0002) and evaluates it to a lazy revset borrowing that repo.
 ///
@@ -196,12 +221,7 @@ pub(crate) fn evaluate_revset<'r>(
     repo_dyn: &'r dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Box<dyn Revset + 'r>, RevsetError> {
-    let extensions = RevsetExtensions::default();
-    let symbol_resolver = SymbolResolver::new(repo_dyn, extensions.symbol_resolvers());
-    let resolved = expr
-        .resolve_user_expression(repo_dyn, &symbol_resolver)
-        .map_err(|e| RevsetError::ResolutionError { reason: e.to_string() })?;
-    resolved
+    resolve_expression(repo_dyn, expr)?
         .evaluate(repo_dyn)
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }

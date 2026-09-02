@@ -274,6 +274,8 @@ impl Repo {
     /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
     ///   only-hidden, or divergent.
     /// - [`crate::MutateError::InvalidInput`] — `change_id` resolves to the root commit.
+    /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a non-root commit
+    ///   inside the repo's effective immutable set.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
@@ -284,7 +286,10 @@ impl Repo {
         change_id: crate::ChangeId,
         description: &str,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        crate::mutate::describe(self.workspace_mut(), &change_id, description)
+        // WHY: built from `&self` BEFORE `workspace_mut()` takes `&mut self`. The helper
+        // returns an owned `Arc`, so the shared borrow ends here (Story 9.1).
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        crate::mutate::describe(self.workspace_mut(), &immutable, &change_id, description)
     }
 
     /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit
@@ -308,13 +313,18 @@ impl Repo {
     ///
     /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
     ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a commit inside the
+    ///   repo's effective immutable set (the root commit included — see
+    ///   [`crate::MutateError::Immutable`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
     // implementation only needs to borrow it, but the public API takes ownership.
     #[allow(clippy::needless_pass_by_value)]
     pub fn edit(&mut self, change_id: crate::ChangeId) -> Result<crate::MutationResult, crate::MutateError> {
-        crate::mutate::edit(self.workspace_mut(), &change_id)
+        // WHY: see `describe` — the expression is built while `self` is still shared.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        crate::mutate::edit(self.workspace_mut(), &immutable, &change_id)
     }
 
     /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
@@ -329,10 +339,14 @@ impl Repo {
     ///   root commit.
     /// - [`crate::MutateError::ChangeNotFound`] — a target id is malformed, absent,
     ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a target resolves to a non-root commit inside
+    ///   the repo's effective immutable set.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn abandon(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
-        crate::mutate::abandon(self.workspace_mut(), change_ids)
+        // WHY: see `describe` — the expression is built while `self` is still shared.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        crate::mutate::abandon(self.workspace_mut(), &immutable, change_ids)
     }
 
     /// Reverts the last operation, one step back from the current head (FR-JJ-14a).

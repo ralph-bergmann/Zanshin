@@ -23,9 +23,9 @@ use zanshin_jj::{
 
 use crate::envelope::{
     catch, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
-    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_INVALID_INPUT,
-    JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND,
-    JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
+    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND,
+    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -71,7 +71,8 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// not-found semantics as the read-side `change.rs`); `Backend` reuses
 /// [`JJ_JJ_LIB_ERROR`] (same unclassified-jj-lib-failure semantics as every
 /// other wrapper); `InvalidInput`/`NothingToUndo`/`RemoteNotFound`/`NetworkError`
-/// are new codes introduced by Story 6.5 (`docs/rust-error-codes.md`).
+/// are new codes introduced by Story 6.5, and `Immutable` (`jj.immutable`) by Story 9.1
+/// (`docs/rust-error-codes.md`).
 fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::ChangeNotFound { id } => FfiErrorObj {
@@ -81,6 +82,10 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::InvalidInput { reason } => FfiErrorObj {
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some(reason),
+        },
+        MutateError::Immutable { commit_id } => FfiErrorObj {
+            code: JJ_IMMUTABLE.to_owned(),
+            context: Some(commit_id),
         },
         MutateError::NothingToUndo => FfiErrorObj {
             code: JJ_NOTHING_TO_UNDO.to_owned(),
@@ -931,6 +936,15 @@ mod tests {
         });
         assert_eq!(e.code, JJ_INVALID_INPUT);
         assert_eq!(e.context.unwrap(), "empty list");
+    }
+
+    #[test]
+    fn map_mutate_err_immutable_maps_to_jj_immutable() {
+        let e = map_mutate_err(MutateError::Immutable {
+            commit_id: "deadbeef".to_owned(),
+        });
+        assert_eq!(e.code, JJ_IMMUTABLE);
+        assert_eq!(e.context.unwrap(), "deadbeef");
     }
 
     #[test]

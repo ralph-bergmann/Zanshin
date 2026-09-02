@@ -37,6 +37,10 @@ pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
 /// AR-P-4: emitted by `repo.rs` (the mutation wrappers) when the caller's arguments are
 /// structurally invalid for the mutation (e.g. an empty `parents`/`change_ids` list).
 pub const JJ_INVALID_INPUT: &str = "jj.invalid_input";
+/// AR-P-4: emitted by `repo.rs` (the rewriting mutation wrappers) when the target is inside
+/// the repo's effective immutable set `::(immutable_heads() | root())`; the offending hex
+/// commit id in `context`. No operation is committed.
+pub const JJ_IMMUTABLE: &str = "jj.immutable";
 /// AR-P-4: emitted by `repo.rs::zanshin_undo` when the head operation is the op-store
 /// root — there is no parent operation to restore to.
 pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";

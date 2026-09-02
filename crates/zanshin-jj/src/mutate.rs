@@ -14,10 +14,12 @@ use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
-use jj_lib::revset::RevsetExpression;
+use jj_lib::revset::{ResolvedRevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
+use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
+use crate::op_support::{check_rewritable, resolve_immutable};
 use crate::ChangeId;
 
 /// Outcome of a successful mutation (FR-JJ-10a).
@@ -66,6 +68,26 @@ pub enum MutateError {
     InvalidInput {
         /// Human-readable reason the input was rejected.
         reason: String,
+    },
+    /// The target is inside the repo's immutable set — `::(immutable_heads() | root())`,
+    /// as the repo's EFFECTIVE config defines it — so jj refuses to rewrite it (CLI
+    /// parity, NFR-R-2). No operation is committed.
+    ///
+    /// Names the FIRST offender only, like the CLI (`cli_util.rs:2011` takes `try_next`,
+    /// never a list); more targets may also be immutable. There is deliberately no
+    /// `--ignore-immutable` escape hatch on any verb's signature.
+    ///
+    /// The ROOT commit is a special case. [`crate::Repo::describe`] and
+    /// [`crate::Repo::abandon`] guard it explicitly BEFORE this check — those guards
+    /// pre-empt jj-lib's own internal `assert!` (a process crash, not an error) — so root
+    /// keeps refusing as [`MutateError::InvalidInput`] there. [`crate::Repo::edit`] needs
+    /// no such guard (jj-lib is graceful about it) and therefore reports root here, as the
+    /// CLI does. Either way the call refuses and no op-log entry is written, which is the
+    /// observable behaviour NFR-R-2 pins; only the code differs.
+    #[error("commit is immutable: {commit_id}")]
+    Immutable {
+        /// Hex commit id of the first target found inside the immutable set.
+        commit_id: String,
     },
     /// [`crate::Repo::undo`] was called with the head operation at the op-store root —
     /// there is no parent operation to restore to. Currently unreachable through this
@@ -134,6 +156,31 @@ fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateErr
     repo.store().get_commit(commit_id).map_err(be)
 }
 
+/// Resolves the immutable set and refuses the rewrite if any of `commit_ids` is inside it
+/// (Story 9.1) — the CLI's `check_rewritable`, which every rewriting verb runs before it
+/// touches the repo.
+///
+/// Resolution happens against `tx.base_repo()`, mirroring `cli_util.rs:2927`
+/// `rebase_mutable_descendants`: a `jj git fetch` can update immutable commits, and only
+/// the ones still reachable from the pre-transaction state should constrain a rebase. The
+/// CLI runs the guard against its read-only repo before opening a transaction; running it
+/// here — inside the transaction but before ANY mutation — sees identical content, and
+/// dropping the transaction on refusal writes nothing, so no op-log entry appears either
+/// way.
+///
+/// Returns the RESOLVED set so a caller that also feeds it to
+/// `rebase_descendants_with_options` does not resolve twice.
+fn guard_rewritable(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    commit_ids: &[jj_lib::backend::CommitId],
+) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
+    let base: &ReadonlyRepo = tx.base_repo();
+    let resolved = resolve_immutable(base, immutable)?;
+    check_rewritable(base, &resolved, commit_ids)?;
+    Ok(resolved)
+}
+
 /// Captures the working-copy commit's id and tree BEFORE a transaction starts, so the
 /// post-commit sync step can tell whether this mutation moved `@`, and so
 /// `workspace.check_out` gets the pre-mutation tree for jj-lib's own
@@ -174,15 +221,22 @@ pub(crate) fn sync_working_copy(
 
 /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
 ///
+/// `immutable` is the repo's effective immutable-set expression
+/// ([`crate::op_support::immutable_user_expression`]); the target is refused if it falls
+/// inside it, mirroring the CLI's `check_rewritable` in `jj describe`
+/// (`cli/src/commands/describe.rs:101` @ v0.44.0).
+///
 /// # Errors
 ///
 /// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
 ///   divergent.
 /// - [`MutateError::InvalidInput`] — `change_id` resolves to the root commit.
+/// - [`MutateError::Immutable`] — `change_id` resolves to a non-root immutable commit.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn describe(
     workspace: &mut Workspace,
+    immutable: &Arc<UserRevsetExpression>,
     change_id: &ChangeId,
     description: &str,
 ) -> Result<MutationResult, MutateError> {
@@ -194,12 +248,15 @@ pub(crate) fn describe(
     let commit = resolve_commit(tx.repo(), change_id)?;
     // jj-lib's `rewrite_commit` internally asserts the target isn't the root commit
     // (`assert_ne!`) rather than returning an error — guard explicitly so a caller gets
-    // a normal `MutateError` instead of a process-crashing panic.
+    // a normal `MutateError` instead of a process-crashing panic. Keep this BEFORE the
+    // immutability guard: root would otherwise be reported as immutable (as the CLI does),
+    // changing a shipped error code and making these lines unreachable.
     if commit.id() == tx.repo().store().root_commit_id() {
         return Err(MutateError::InvalidInput {
             reason: "cannot describe the root commit".to_owned(),
         });
     }
+    guard_rewritable(&tx, immutable, std::slice::from_ref(commit.id()))?;
     pollster::block_on(
         tx.repo_mut()
             .rewrite_commit(&commit)
@@ -287,21 +344,33 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
 
 /// Switches the working copy to `change_id` without creating a new commit (FR-JJ-10a).
 ///
+/// `immutable` is the repo's effective immutable-set expression
+/// ([`crate::op_support::immutable_user_expression`]); the target is refused if it falls
+/// inside it, mirroring the CLI's `check_rewritable` in `jj edit`
+/// (`cli/src/commands/edit.rs:63` @ v0.44.0).
+///
 /// # Errors
 ///
 /// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
 ///   divergent.
-/// - [`MutateError::Backend`] — an underlying jj-lib failure (includes attempting to
-///   edit the root commit — jj-lib returns a graceful error for that case, unlike
-///   `describe`/`abandon`'s internal assertions).
+/// - [`MutateError::Immutable`] — `change_id` resolves to an immutable commit. Unlike
+///   `describe`/`abandon`, `edit` has no explicit root-commit guard (jj-lib returns a
+///   graceful error rather than asserting), so the ROOT commit is now caught by the
+///   immutability guard too — which is exactly what the CLI reports for `jj edit root()`.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn edit(workspace: &mut Workspace, change_id: &ChangeId) -> Result<MutationResult, MutateError> {
+pub(crate) fn edit(
+    workspace: &mut Workspace,
+    immutable: &Arc<UserRevsetExpression>,
+    change_id: &ChangeId,
+) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = readonly.start_transaction();
     let commit = resolve_commit(tx.repo(), change_id)?;
+    guard_rewritable(&tx, immutable, std::slice::from_ref(commit.id()))?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
     // See new_change's comment: edit() may implicitly abandon a discardable previous
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.
@@ -327,14 +396,24 @@ pub(crate) fn edit(workspace: &mut Workspace, change_id: &ChangeId) -> Result<Mu
 /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
 /// bookmarks that pointed only at the abandoned commits (FR-JJ-10a).
 ///
+/// `immutable` is the repo's effective immutable-set expression
+/// ([`crate::op_support::immutable_user_expression`]); a target inside it is refused,
+/// mirroring the CLI's `check_rewritable` in `jj abandon`
+/// (`cli/src/commands/abandon.rs:85` @ v0.44.0).
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `change_ids` is empty, or resolves the root commit.
 /// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, only-hidden, or
 ///   divergent.
+/// - [`MutateError::Immutable`] — a target resolves to a non-root immutable commit.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn abandon(workspace: &mut Workspace, change_ids: &[ChangeId]) -> Result<MutationResult, MutateError> {
+pub(crate) fn abandon(
+    workspace: &mut Workspace,
+    immutable: &Arc<UserRevsetExpression>,
+    change_ids: &[ChangeId],
+) -> Result<MutationResult, MutateError> {
     if change_ids.is_empty() {
         return Err(MutateError::InvalidInput {
             reason: "abandon requires at least one change id".to_owned(),
@@ -359,6 +438,10 @@ pub(crate) fn abandon(workspace: &mut Workspace, change_ids: &[ChangeId]) -> Res
         }
         commits.push(commit);
     }
+    // CLI parity (`abandon.rs:85`): every target must be rewritable. Runs AFTER the
+    // per-commit root guards above, so the root commit keeps its `InvalidInput` refusal.
+    let target_ids: Vec<jj_lib::backend::CommitId> = commits.iter().map(|c| c.id().clone()).collect();
+    let immutable = guard_rewritable(&tx, immutable, &target_ids)?;
     // Whether `@` itself is among the abandoned commits determines whether jj-lib's
     // own update_wc_commits() mints a genuinely NEW change to replace it (vs. `@`
     // merely being rebased because it descends from an abandoned ancestor, which
@@ -376,12 +459,16 @@ pub(crate) fn abandon(workspace: &mut Workspace, change_ids: &[ChangeId]) -> Res
         },
         ..Default::default()
     };
-    // WHY: jj 0.44 added the leading `immutable` argument. `RevsetExpression::none()` is exactly
-    // what jj-lib's own `rebase_descendants()` passes, so this preserves pre-0.44 semantics rather
-    // than newly constraining the rebase.
+    // WHY: jj 0.44 added the leading `immutable` argument; the CLI passes the resolved
+    // immutable set (`cli_util.rs:2927` `rebase_mutable_descendants`), so we do too. Note
+    // the algebra: immutability is ancestor-closed, so once `guard_rewritable` passed on
+    // the targets none of their descendants can be immutable and this argument cannot
+    // change the outcome here. It is passed for CLI parity and for the case the CLI's own
+    // comment names — `jj git fetch` updating immutable commits between base and tip —
+    // which is also why the set is resolved against `tx.base_repo()`, not `tx.repo()`.
     pollster::block_on(
         tx.repo_mut()
-            .rebase_descendants_with_options(&RevsetExpression::none(), &options, |_, _| {}),
+            .rebase_descendants_with_options(&immutable, &options, |_, _| {}),
     )
     .map_err(be)?;
 

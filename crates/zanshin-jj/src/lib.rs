@@ -36,6 +36,7 @@ pub(crate) mod detect;
 pub(crate) mod graph;
 pub(crate) mod mutate;
 pub(crate) mod op_log;
+pub(crate) mod op_support;
 pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
