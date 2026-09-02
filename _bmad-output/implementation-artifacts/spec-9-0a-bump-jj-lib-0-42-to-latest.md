@@ -73,6 +73,24 @@ deferred:
     location: >-
       crates/zanshin-jj/README.md:75-78
     severity: low
+  - summary: >-
+      No test compares Zanshin's builtin config layer against the pinned jj CLI's
+      `revsets.toml`, so the mirror can drift from the pin undetected.
+    evidence: |-
+      This is the verification gap underneath the first deferred item: when the pin moved
+      0.42 to 0.44 and the config mirror did not, nothing failed. Every assertion touching
+      the builtin log revset compares Zanshin's literal against a hardcoded copy of itself
+      -- tests/api_stability.rs (whose message even cites "v0.42.0 cli/src/config/revsets.toml"),
+      crates/zanshin-ffi/tests/log_defaults_ffi.rs, and
+      packages/zanshin_core/test/worker/graph_test.dart -- and
+      `every_builtin_revset_alias_expands_and_resolves` enumerates the seven v0.42 aliases by
+      name, so an alias the pinned CLI later added is simply absent from the list. All of them
+      pass whether or not the mirror matches the pin. Closing this means asserting the builtin
+      table against the CLI file at the pinned tag, or pinning semantics rather than text --
+      which only becomes possible once the mirror itself is re-synced (deferred item 1).
+    location: >-
+      crates/zanshin-jj/tests/api_stability.rs:189; crates/zanshin-jj/tests/revset.rs:258-276
+    severity: medium
 ---
 
 <intent-contract>
@@ -156,6 +174,22 @@ Nine breaking changes, all verified against the vendored `jj-lib-0.42.0` source 
   - `[low]` `[patch]` `Cargo.toml` chrono `# WHY:` claimed the pin tracked "jj-lib's exact transitive version" while jj-lib 0.44 declares a caret `^0.4.44`. Reworded to state the real relationship, since re-verifying this pin was explicitly in the story's scope.
   - `[low]` `[patch]` Both `GitFetch::fetch` call sites dropped one of two consecutive `None`s; removing the wrong one would have silently changed `depth` with no compile error. Made the surviving argument self-evident via a named `depth` local plus a note.
 
+### 2026-09-02 — Review pass (follow-up, triggered by `followup_review_recommended: true`)
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 0, low 7)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 16: (high 0, medium 5, low 11)
+- addressed_findings:
+  - `[low]` `[patch]` The `// WHY:` block the previous pass added to `parse_revset_with` announced "two USER-VISIBLE revset-language changes" — there are three. Verified directly in the vendored crates: `git_refs` and `git_head` are registered in jj-lib 0.42's revset function map (`revset.rs:982,991`) and absent in 0.44, which is precisely why this same story had to re-anchor `tests/convert.rs` and `tests/op_log.rs` off those functions. Added the removal as item 3, and closed the block by noting that changes 2 and 3 are LOUD (parse/resolution error) while change 1 is SILENT — which is the actual reason only change 1 carries a regression test.
+  - `[low]` `[patch]` The `tests/graph.rs` oracle note rewritten by the previous pass claimed the v0.42.0→v0.44.0 diff "showed the parity surface unchanged apart from `templates.toml`'s `workspace_list`" — false, and self-contradictory with the `revset.rs` block added in the same change, which cites `misc.toml` losing `revsets-use-glob-by-default`. Confirmed by running the diff: `misc.toml`, `revsets.toml`, `templates.toml` and `commit_templater.rs` all changed. Restored the claim's original scope (the log-RENDERING surface: the named template/`commit_templater` parity functions were byte-identical) and stated explicitly that the argument never covered `revsets.toml`/`misc.toml`, which drive revset resolution rather than row rendering.
+  - `[low]` `[patch]` The new regression test's doc asserted "Nothing else in the suite passes an argument to a pattern-taking revset function" — false. Bare `description("Commit N")` arguments appear in `zanshin-graph`'s `stream.rs`/`slice.rs`, this crate's `graph.rs`, and `zanshin-ffi`'s `graph_ffi.rs`. Corrected to the true and more useful statement: those call sites exist but pass under BOTH semantics because the tiny fixture's descriptions are exactly `Commit {n}`, so this test is the only place the two readings are made to disagree.
+  - `[low]` `[patch]` The same test pinned only the degenerate half of the new behaviour. The `// WHY:` block claims 0.44 "always parses it as a glob (and degrades to exact when the string holds no metacharacter)", but the test only proved the exact half, so it was equally consistent with the default kind being plain `exact`. Added a `bookmarks("release*")` assertion: under 0.42's substring default it matched NEITHER bookmark (no name contains a literal `*`), under 0.44 it matches BOTH — a sharper discriminator than the exact case.
+  - `[low]` `[patch]` The Story 9.20 deferral for `object_hash` existed only as prose inside a `// WHY:` comment, while the same function already uses the codebase's greppable convention (`// TODO(FR-JJ-13, Epic 6 Story 6.4a):`). Converted it to `// TODO(FR-JJ-17, Epic 9 Story 9.20):` and recorded the user-visible consequence of the interim state (a user configuring `git.object-hash = "sha256"` silently gets sha1).
+  - `[low]` `[patch]` The `add_remote` comment justified dropping `fetch_tags` by pointing at "the fetch refspec, which `fetch_expr` below already sets to glob("*")" — ambiguous, because `fetch_expr` sets `glob("*")` on BOTH `bookmark` and `tag`, and only the `tag` field carries the claim. Named the field so a reader cannot conclude the bookmark glob is what fetches tags.
+  - `[low]` `[patch]` `Cargo.toml`'s gix entry said "pinned to match jj-lib 0.44's transitive gix version" while using a caret range, so nothing enforced the promise. This bump newly matters: `gix::hash::Kind` is now passed INTO `Workspace::init_internal_git`, making gix effectively a public dependency of jj-lib where drift is a type mismatch rather than a warning. Changed to `=0.85.0` and restated the reason. Verified resolution-neutral: `Cargo.lock` is byte-unchanged and still resolves gix 0.85.0.
+
 ## Design Notes
 
 **`object_hash` is deliberately hardcoded, not threaded through.** `Workspace::init_internal_git` gained `object_hash: gix::hash::Kind` in 0.44. FR-JJ-17 ("pass CLI parameters through") would argue for exposing it — but jj's CLI applies it as a *config-driven default* (`git.object-hash`, default `"sha1"`), which FR-JJ-17's own carve-out permits mirroring, and the user-facing `git init`/`git clone` parameter surface is Story 9.20's scope. Passing `gix::hash::Kind::Sha1` reproduces 0.42 behavior exactly. Add a `// WHY:` comment pointing at 9.20 so the deferral is visible at the call site.
@@ -202,5 +236,26 @@ Commits: `7846914` (the bump) and `5a792b4` (review follow-up), both on `main`, 
 **Residual risks.**
 - Behavioral, not compile-visible: jj 0.44 fetches tags as tracked `<name>@<remote>` refs and no longer honours Git's `tagOpt`, so the first real fetch against a tag-bearing repo re-fetches tags to initialize tracking state, and cloned repos no longer carry `remote.origin.tagOpt`. Our refspecs already glob `*`, so selection is unchanged.
 - `CopyRecords::add_records` now de-duplicates identical records across merge parents, so a rename may be reported in a merge commit where 0.42 dropped it.
-- The revset string-pattern flip is now documented and tested, but any user-saved revset relying on substring semantics changes meaning; likewise Git-like symbols (`refs/heads/main`) no longer resolve.
+- The revset string-pattern flip is now documented and tested, but any user-saved revset relying on substring semantics changes meaning; likewise Git-like symbols (`refs/heads/main`) no longer resolve, and `git_head()` / `git_refs()` are no longer revset functions at all.
 - `object_hash` is hardcoded to SHA-1 (jj's own default, reproducing prior behavior). Exposing it is Story 9.20's scope; a SHA-256 remote is consequently not supported yet.
+
+---
+
+### Follow-up review pass (2026-09-02)
+
+Triggered by `followup_review_recommended: true` from the pass above. Four review layers ran against the full diff since baseline `6c815e8`. No `intent_gap` and no `bad_spec`: the implementation was not re-derived, and no code behaviour changed in this pass — all seven patches are comment-accuracy, test-strength, and pin-hardening fixes on top of the existing change.
+
+**Commit.** `17189df8abe543a91b79cdecbf451edeb1ff91ba` on `main`.
+
+**Files changed in this pass.**
+- `crates/zanshin-jj/src/revset.rs` — the user-visible revset-language delta list corrected from two entries to three (the `git_head()`/`git_refs()` removal), plus a loud-vs-silent note explaining why only one delta is regression-tested.
+- `crates/zanshin-jj/tests/graph.rs` — oracle note's cross-version claim re-scoped to the log-rendering surface it was actually true of; it had contradicted the `revset.rs` comment added in the same story.
+- `crates/zanshin-jj/tests/revset.rs` — corrected the test doc's false "nothing else passes a pattern argument" premise, and added a `bookmarks("release*")` assertion pinning that the new default kind is genuinely glob, not merely exact.
+- `crates/zanshin-jj/src/repo.rs` — `object_hash` deferral converted to a greppable `TODO(FR-JJ-17, Epic 9 Story 9.20)`; `add_remote` comment now names `fetch_expr.tag` as the field carrying the tag-selection claim.
+- `Cargo.toml` — gix changed from a caret range to an exact `=0.85.0`, matching what its own comment already promised and what the new jj-lib coupling requires.
+
+**Review findings.** 7 patched (all low), 1 deferred (medium — the verification gap that let the builtin config mirror drift from the pin unnoticed), 16 rejected. Two frequently-reported findings were deduplicated against existing `deferred` entries rather than re-added: the `builtin_log()` config-mirror staleness (item 1) and the missing `abandon()` immutable-descendants guard (item 2). The most-reported rejection was "read `object_hash` from `git.object-hash` config instead of hardcoding it" — rejected on the intent's own authority, which names Story 9.20 as the owner and prescribes mirroring jj's default.
+
+**Follow-up review recommended:** true. Patched this pass: high 0, medium 0, low 7 → score `3×0 + 1×7 = 7`, at or above the threshold of 5. Note for whoever acts on this: the remaining yield is diminishing — this pass produced no behavioural defect, and three of its seven patches (the TODO marker, the `fetch_expr.tag` naming, the gix operator) are polish rather than correctness. The open substantive work is in the `deferred` list, not in another review pass.
+
+**Verification performed.** `cargo make test` run unpiped to completion, exit code captured: `GATE_EXIT=0` (329.58s). Covers `cargo test --workspace`, clippy pedantic `-D warnings`, rustfmt, `flutter test` + `dart analyze`/`format`, `cargo deny` (`advisories ok, bans ok`), and the coverage ratchet: `coverage-check: OK — coverage held at 99.00% (4942/4992 lines)` — held, so `coverage-baseline.txt` was neither raised nor lowered and is not part of this commit. The added assertion was confirmed to have executed (`test revset_bare_pattern_arg_is_exact_not_substring ... ok`) rather than assumed. Lockfile re-checked directly: `jj-lib 0.44.0`, `gix 0.85.0`; `Cargo.lock` is byte-unchanged by the gix operator change, confirming it is resolution-neutral. Reviewer claims were verified at source before acting: the `git_head`/`git_refs` removal against both vendored crates, the bare-`description(...)` call sites by repo-wide grep, and the CLI config diff via `git -C ../jj diff v0.42.0 v0.44.0`.
