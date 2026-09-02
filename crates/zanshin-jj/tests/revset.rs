@@ -179,9 +179,15 @@ fn revset_on_bookmarks_medium_equals_oracle() {
 /// Pins the user-visible revset-language change the jj-lib 0.42 → 0.44 bump brought in:
 /// `RevsetParseContext::use_glob_by_default` is gone, so a bare/quoted pattern argument is now
 /// parsed as a glob — and a glob with no metacharacter is an EXACT match, where 0.42 defaulted
-/// to SUBSTRING. Nothing else in the suite passes an argument to a pattern-taking revset
-/// function, so without this the flip is invisible to the gate. See the `// WHY:` block in
-/// `parse_revset_with` (src/revset.rs) for why the new behaviour is the CLI-correct one.
+/// to SUBSTRING.
+///
+/// The flip was invisible to the gate before this test. Other suites DO pass bare pattern
+/// arguments — `description("Commit N")` in `zanshin-graph`'s `stream.rs`/`slice.rs`, this
+/// crate's `graph.rs`, and `zanshin-ffi`'s `graph_ffi.rs` — but the tiny fixture's descriptions
+/// are exactly `Commit {n}`, so substring and exact agree there and every one of them passes
+/// under BOTH semantics. This test is the only place the two readings are made to disagree.
+/// See the `// WHY:` block in `parse_revset_with` (src/revset.rs) for why the new behaviour is
+/// the CLI-correct one.
 #[test]
 fn revset_bare_pattern_arg_is_exact_not_substring() {
     pin_env();
@@ -210,6 +216,21 @@ fn revset_bare_pattern_arg_is_exact_not_substring() {
         bare,
         HashSet::from([exact_change.clone()]),
         "a bare pattern argument must match exactly, not as a substring"
+    );
+
+    // …and the default kind is genuinely GLOB, not merely "exact": a metacharacter is honoured.
+    // This is the sharper discriminator of the two semantics — under 0.42's substring default
+    // `"release*"` matched NEITHER bookmark (no name contains a literal `*`), under 0.44 it
+    // matches BOTH.
+    let glob: HashSet<String> = resolve_revset(&repo, r#"bookmarks("release*")"#)
+        .unwrap()
+        .iter()
+        .map(|id| id.0.clone())
+        .collect();
+    assert_eq!(
+        glob,
+        HashSet::from([exact_change.clone(), longer_change.clone()]),
+        "a bare pattern argument must honour glob metacharacters"
     );
 
     // The explicit kinds are untouched by the default change: `substring:` still matches both.

@@ -416,9 +416,10 @@ impl Repo {
         let (workspace, _repo) = match backend {
             // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
             // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
-            // mirrors that default and reproduces pre-0.44 behaviour exactly. Exposing it as a
-            // caller parameter (FR-JJ-17) belongs to Story 9.20 (`git init`/`git clone`), not to
-            // this pin bump.
+            // mirrors that default and reproduces pre-0.44 behaviour exactly.
+            // TODO(FR-JJ-17, Epic 9 Story 9.20): resolve `object_hash` the way the CLI does
+            // (`git.object-hash` config, caller-overridable) instead of hardcoding it here and in
+            // `clone_into`; until then a user configuring "sha256" silently gets sha1.
             Some(Backend::Git) => {
                 pollster::block_on(Workspace::init_internal_git(&settings, path, gix::hash::Kind::Sha1))
                     .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?
@@ -482,8 +483,9 @@ impl Repo {
         {
             let mut tx = repo.start_transaction();
             // WHY: jj 0.44 dropped `add_remote`'s trailing `fetch_tags` argument — tag selection
-            // is now driven purely by the fetch refspec, which `fetch_expr` below already sets to
-            // glob("*"), i.e. the same "all tags" behaviour the old `Tags::All` requested.
+            // is now driven purely by the fetch refspec, and it is `fetch_expr.tag` below (not
+            // `.bookmark`) that carries it: glob("*"), i.e. the same "all tags" behaviour the old
+            // `Tags::All` requested.
             jj_lib::git::add_remote(tx.repo_mut(), remote_name, url, None)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
             // tx is intentionally dropped without commit.

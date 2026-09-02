@@ -844,11 +844,16 @@ fn separate(parts: &[String]) -> String {
 ///
 /// The local binary is **0.44.0**, which as of Story 9.0a MATCHES the pinned `jj-lib =0.44.0`,
 /// so it is a directly sound oracle — no cross-version argument is needed. (Before that bump the
-/// pin was 0.42.0 and this note carried one: `git -C ../jj diff v0.42.0 v0.44.0 --
-/// cli/src/config/templates.toml cli/src/config/revsets.toml cli/src/config/misc.toml
-/// cli/src/commit_templater.rs` showed the parity surface unchanged apart from
-/// `templates.toml`'s `workspace_list`.) If the pin moves again, re-anchor that diff to the new
-/// tag pair and re-confirm before trusting a locally-generated expectation.
+/// pin was 0.42.0 and this note carried one, scoped to the LOG-RENDERING surface these
+/// expectations depend on: across `git -C ../jj diff v0.42.0 v0.44.0 --
+/// cli/src/config/templates.toml cli/src/commit_templater.rs`, `builtin_log_compact`,
+/// `format_short_commit_header`, `format_root_commit`,
+/// `format_short_change_id_with_change_offset`, `format_commit_labels` and every
+/// `commit_templater` parity function were byte-identical, `templates.toml` differing only in
+/// `workspace_list`. That argument never covered `revsets.toml` / `misc.toml`, which DID change
+/// across the pair — see the revset-language deltas documented in `src/revset.rs` — but those
+/// files drive revset resolution, not row rendering.) If the pin moves again, re-anchor that diff
+/// to the new tag pair and re-confirm before trusting a locally-generated expectation.
 ///
 /// **The one deliberate difference: the timestamp zone.** The CLI's `format_timestamp` is
 /// `timestamp.local()` — the VIEWER's zone — so its rendering is machine-dependent (the same

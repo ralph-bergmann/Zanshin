@@ -35,7 +35,7 @@ notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no 
 pollster = "0.3"
 tar = "0.4"
 tempfile = "3"
-gix = { version = "0.85.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; pinned to match jj-lib 0.44's transitive gix version
+gix = { version = "=0.85.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; exact-pinned because gix::hash::Kind is passed INTO jj-lib's Workspace::init_internal_git, so a gix that drifts from jj-lib 0.44's transitive one is a type mismatch, not a warning
 thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"

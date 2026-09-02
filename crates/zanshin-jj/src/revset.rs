@@ -139,8 +139,8 @@ pub(crate) fn parse_revset_with(
         path_converter: &path_converter,
         workspace_name: workspace.workspace_name(),
     };
-    // WHY: two USER-VISIBLE revset-language changes arrived with the jj-lib 0.42 → 0.44 bump
-    // (Story 9.0a). Neither is a no-op; both reach users through `resolve_revset` and through
+    // WHY: three USER-VISIBLE revset-language changes arrived with the jj-lib 0.42 → 0.44 bump
+    // (Story 9.0a). None is a no-op; all reach users through `resolve_revset` and through
     // `walk_graph` / the FFI `graphSlice(revset:)` pass-through, where the revset is user-typed.
     //
     // 1. `RevsetParseContext::use_glob_by_default` is GONE — this struct literal used to set it
@@ -159,6 +159,16 @@ pub(crate) fn parse_revset_with(
     // 2. Git-like symbols (e.g. `refs/heads/main`) are NO LONGER resolved to revisions; the
     //    bookmark/tag `<name>` or `<name>@<remote>` syntax replaces them. A revset that relied
     //    on the old form now fails to resolve rather than silently changing meaning.
+    //
+    // 3. The `git_head()` and `git_refs()` FUNCTIONS are gone from jj-lib's revset table
+    //    (present at `jj-lib-0.42.0/src/revset.rs:982,991`, absent in 0.44). A revset using
+    //    them is now a parse error. The underlying `View::git_head()` / `View::git_refs()` are
+    //    unchanged, so the property those functions exposed is still assertable one level down —
+    //    which is how `tests/convert.rs` and `tests/op_log.rs` were re-anchored in this story.
+    //
+    // Changes 2 and 3 are LOUD (the revset fails to parse or resolve, so the user is told);
+    // change 1 is SILENT — same input, different valid answer — which is why only it carries a
+    // regression test.
     let context = RevsetParseContext {
         aliases_map,
         local_variables: HashMap::new(),
