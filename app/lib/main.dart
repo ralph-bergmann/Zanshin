@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
@@ -18,6 +19,10 @@ Future<void> main() async {
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // The macOS engine does not invoke the generated Dart plugin registrant
+      // on its own, so dartPluginClass-based plugins (zanshin_shell_macos)
+      // would never register their platform instance. Idempotent.
+      DartPluginRegistrant.ensureInitialized();
       SemanticsBinding.instance.ensureSemantics();
 
       initLogForwarding(level: .ALL);
