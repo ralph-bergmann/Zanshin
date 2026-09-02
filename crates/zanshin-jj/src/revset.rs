@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{HashMap, HashSet};
+use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::Arc;
 
-use futures::TryStreamExt as _;
+use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::config::StackedConfig;
 use jj_lib::fileset::FilesetAliasesMap;
+use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
     self, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions,
-    RevsetParseContext, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
+    RevsetParseContext, RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
 
+use crate::change::change_from_commit;
 use crate::config::ConfigError;
-use crate::{ChangeId, Repo};
+use crate::{Change, ChangeId, Repo};
 
 /// The jj CLI's default `revsets.log` (`cli/src/config/revsets.toml` at v0.42.0) — the
 /// revset `jj log` shows without `-r`, and the CLI's fallback for
@@ -26,7 +29,7 @@ use crate::{ChangeId, Repo};
 /// config may override — is [`Repo::log_defaults`].
 pub const DEFAULT_LOG_REVSET: &str = "present(@) | ancestors(immutable_heads().., 2) | trunk()";
 
-/// Errors returned by [`resolve_revset`] and [`Repo::walk_graph`].
+/// Errors returned by [`resolve_revset`], [`Repo::eval_revset`] and [`Repo::walk_graph`].
 #[derive(Debug, thiserror::Error)]
 pub enum RevsetError {
     /// The expression is syntactically invalid or names an unknown function.
@@ -93,6 +96,68 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
         }
     }
     Ok(out)
+}
+
+/// Streams the commits `revset` denotes through `visit`, one [`Change`] at a time.
+///
+/// The generic read primitive of ADR-0003 §5: the commit stream is driven item by item and is
+/// never collected, so a caller that stops early pays only for what it consumed. `visit`
+/// returning [`ControlFlow::Break`] stops the walk and yields `Ok(Break)`; an exhausted stream
+/// yields `Ok(Continue)`.
+///
+/// The five phases mirror [`crate::graph::walk_graph`]: load the effective config once, build
+/// the alias map, parse (no loaded operation needed, so a syntax error costs no `load_at_head`
+/// I/O), reload to head (ADR-0002), evaluate, then drive `Revset::stream()` through
+/// jj-lib's own `RevsetStreamExt::commits` — the same hydration the CLI's `jj log` uses
+/// (`cli/src/commands/log.rs` @ v0.44.0).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — `revset` is syntactically invalid or names an unknown
+///   function; raised before any repo I/O.
+/// - [`RevsetError::ResolutionError`] — a symbol cannot be resolved (unknown bookmark/tag,
+///   no working-copy commit for `@`, unmatched/ambiguous id).
+/// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable. A
+///   single bad `[revset-aliases]` entry is NOT an error: like the CLI, it warns and is skipped.
+/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item stream/store
+///   failure. Changes already handed to `visit` before an `Err` are not retracted — discard
+///   partial output on `Err`.
+pub(crate) fn eval_revset(
+    repo: &Repo,
+    revset: &str,
+    mut visit: impl FnMut(Change) -> ControlFlow<()>,
+) -> Result<ControlFlow<()>, RevsetError> {
+    // 1. Effective config ONCE per walk (never cached — Story 4.9), then parse against the
+    //    alias map it feeds. Parsing needs no loaded operation.
+    let config = crate::config::load(repo)?;
+    let aliases = build_aliases_map(&config)?;
+    let parsed = parse_revset_with(repo, &aliases, revset)?;
+
+    // 2. Reload to head (ADR-0002; sync via pollster — mirrors `resolve_revset` above).
+    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
+        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+    let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+    let store = readonly.store();
+    let view = readonly.view();
+
+    // 3. Evaluate to a lazy revset borrowing `readonly`. The stream is never returned — items
+    //    leave through `visit` — which is what keeps that borrow local.
+    let set = evaluate_revset(repo_dyn, &parsed)?;
+
+    // 4. Drive the lazy stream into the visitor; stop at the first `Break`. The order is the
+    //    RAW revset order (topological, children before parents) — `jj log`'s printed order is
+    //    `walk_graph`'s job, not this primitive's.
+    pollster::block_on(async {
+        let mut stream = std::pin::pin!(set.stream().commits(store));
+        while let Some(item) = stream.next().await {
+            let commit = item.map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+            let change = change_from_commit(repo_dyn, store, view, &commit).map_err(RevsetError::JjLibError)?;
+            if visit(change).is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
+    })
 }
 
 /// Parses `expr` in this workspace's revset context, building a fresh alias map from the

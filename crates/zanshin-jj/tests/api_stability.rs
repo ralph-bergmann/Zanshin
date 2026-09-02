@@ -9,8 +9,10 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (32 types; the AC-1 table's 30 plus
-// --- Story 4.8's CommitMeta/CommitRef) -----------------------------------------
+// --- Type-path aliases: one alias per public type (41 types; the AC-1 table's 30 plus the
+// --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
+// --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
+// --- ViewError (9.2)) ----------------------------------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -75,6 +77,12 @@ type _MutateError = zanshin_jj::MutateError;
 // remotes: git_fetch progress (Story 6.4a)
 type _ProgressEvent = zanshin_jj::ProgressEvent;
 
+// view (Story 9.2)
+type _Tag = zanshin_jj::Tag;
+type _TagKind = zanshin_jj::TagKind;
+type _WorkingCopy = zanshin_jj::WorkingCopy;
+type _ViewError = zanshin_jj::ViewError;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 /// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
@@ -118,6 +126,26 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         working_copy_change_id: zanshin_jj::ChangeId(String::new()),
+    }
+}
+
+/// Names every `Tag` / `WorkingCopy` field by its public path (Story 9.2), so a field rename,
+/// reorder, or type change in the `View` listings breaks this test at compile time.
+fn sample_tag() -> zanshin_jj::Tag {
+    zanshin_jj::Tag {
+        name: String::new(),
+        target: zanshin_jj::ChangeId(String::new()),
+        kind: zanshin_jj::TagKind::Remote {
+            remote_name: String::new(),
+        },
+    }
+}
+
+/// Names every `WorkingCopy` field by its public path (Story 9.2).
+fn sample_working_copy() -> zanshin_jj::WorkingCopy {
+    zanshin_jj::WorkingCopy {
+        workspace_name: String::new(),
+        commit_id: zanshin_jj::CommitId(String::new()),
     }
 }
 
@@ -229,4 +257,18 @@ fn api_surface_resolves() {
         commit_id: String::new(),
     };
     _ = zanshin_jj::MutateError::Config { reason: String::new() };
+
+    // view + eval_revset (Story 9.2): 4 new types, all `Backend(String)`/plain — no jj_lib type.
+    // The three `View` listings are `fn`-pointer-pinned; `Repo::eval_revset` is a method generic
+    // over its visitor, so — exactly like `Repo::walk_graph` — it cannot be pinned that way and
+    // is pinned by the fixture tests in `tests/revset.rs` instead.
+    _ = zanshin_jj::ViewError::Backend(String::new());
+    _ = zanshin_jj::TagKind::Local;
+    _ = sample_tag();
+    _ = sample_working_copy();
+    _ = zanshin_jj::Repo::list_tags as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Tag>, zanshin_jj::ViewError>;
+    _ = zanshin_jj::Repo::list_heads
+        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::CommitId>, zanshin_jj::ViewError>;
+    _ = zanshin_jj::Repo::list_working_copies
+        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkingCopy>, zanshin_jj::ViewError>;
 }

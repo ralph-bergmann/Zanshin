@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
@@ -126,9 +127,15 @@ pub enum ChangeError {
     Backend(String),
 }
 
+/// Flattens any jj-lib error to its opaque reason string — the single failure mode of
+/// [`change_from_commit`], which each caller wraps in its own error type.
+fn reason<E: std::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
 /// Converts any jj-lib error to [`ChangeError::Backend`].
 fn be<E: std::fmt::Display>(e: E) -> ChangeError {
-    ChangeError::Backend(e.to_string())
+    ChangeError::Backend(reason(e))
 }
 
 /// Converts a jj-lib `Signature` to our crate's [`Signature`].
@@ -176,8 +183,6 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
         .resolve_change_id(&jj_id)
         .map_err(be)? // IndexError → Backend
         .ok_or_else(|| ChangeError::NotFound { id: id.0.clone() })?; // absent id
-    let divergent = targets.is_divergent();
-    // into_visible() consumes targets; call is_divergent() first.
     let commit_id = targets
         .into_visible()
         .and_then(|v| v.into_iter().next()) // index-first visible target (jj prefers newer-first; not guaranteed)
@@ -186,10 +191,34 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
     // 4. Load the chosen commit (sync; mirrors status.rs:92).
     let commit = store.get_commit(&commit_id).map_err(be)?;
 
+    // 5-9. Shared with `eval_revset` — one construction site for `Change`.
+    change_from_commit(repo_dyn, store, view, &commit).map_err(ChangeError::Backend)
+}
+
+/// Builds the crate-owned [`Change`] for an already-loaded jj-lib `commit`.
+///
+/// The single construction site for [`Change`]: [`get_change`] reaches it after resolving a
+/// change id, [`crate::revset::eval_revset`] after pulling a commit off a revset stream. Every
+/// jj-lib failure (a parent read, the divergence probe) is flattened to its opaque reason
+/// string, which each caller wraps in its own error type.
+///
+/// `divergent` is re-derived here from `commit`'s own change id rather than passed in, so a
+/// stream caller gets the same D4 answer as [`get_change`] without repeating the probe.
+///
+/// # Errors
+///
+/// Returns the jj-lib reason string when a parent commit read or the change-id resolution
+/// fails.
+pub(crate) fn change_from_commit(
+    repo_dyn: &dyn jj_lib::repo::Repo,
+    store: &Arc<jj_lib::store::Store>,
+    view: &jj_lib::view::View,
+    commit: &jj_lib::commit::Commit,
+) -> Result<Change, String> {
     // 5. Parents: CommitIds → reverse-hex ChangeIds (mirrors status.rs:105-107).
     let mut parents = Vec::with_capacity(commit.parent_ids().len());
     for pid in commit.parent_ids() {
-        let parent = store.get_commit(pid).map_err(be)?;
+        let parent = store.get_commit(pid).map_err(reason)?;
         parents.push(ChangeId(parent.change_id().reverse_hex()));
     }
 
@@ -216,6 +245,14 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
 
     // 8. Anonymity (D5): empty description AND no local bookmark targets this commit.
     let is_anonymous = commit.description().is_empty() && view.local_bookmarks_for_commit(commit.id()).next().is_none();
+
+    // 9. Divergence (D4): more than one VISIBLE commit carries this change id. A complete
+    //    change id is unambiguous, so `resolve_change_id` cannot hit its ambiguity panic.
+    let divergent = repo_dyn
+        .resolve_change_id(commit.change_id())
+        .map_err(reason)?
+        .as_ref()
+        .is_some_and(jj_lib::index::ResolvedChangeTargets::is_divergent);
 
     Ok(Change {
         id: ChangeId(commit.change_id().reverse_hex()),

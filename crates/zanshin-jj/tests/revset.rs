@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::env;
+use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -12,7 +13,7 @@ use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use test_helpers::{add_commit_off_root, extract_fixture, set_local_bookmark};
-use zanshin_jj::{resolve_revset, Repo, RevsetError};
+use zanshin_jj::{resolve_revset, Change, Repo, RevsetError};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // WHY: empty string pins jj-lib/git off the developer's globals for reproducibility.
@@ -790,5 +791,255 @@ fn revset_on_corrupt_repo_returns_jj_lib_error() {
     assert!(
         matches!(result, Err(RevsetError::JjLibError(_))),
         "corrupt op_heads must yield RevsetError::JjLibError, got: {result:?}"
+    );
+}
+
+// ── Story 9.2: `eval_revset` — the lazy, cancellable read primitive ──────────
+//
+// `Repo::eval_revset` is a method generic over its visitor, so `tests/api_stability.rs`
+// cannot fn-pointer-pin it (same as `Repo::walk_graph`); these fixture tests are its pin.
+
+/// Drives the whole stream into a Vec (the stream must be exhausted → `Continue`).
+fn collect_changes(repo: &Repo, revset: &str) -> Vec<Change> {
+    let mut out = Vec::new();
+    let flow = collect_changes_with(repo, revset, &mut out, usize::MAX);
+    assert_eq!(flow, ControlFlow::Continue(()), "an unbroken walk must report Continue");
+    out
+}
+
+/// Drives at most `max` items into `out`, breaking on the one after — the `ControlFlow` half of
+/// the contract (mirrors `tests/graph.rs`'s `collect_nodes_with`).
+fn collect_changes_with(repo: &Repo, revset: &str, out: &mut Vec<Change>, max: usize) -> ControlFlow<()> {
+    repo.eval_revset(revset, |change| {
+        out.push(change);
+        if out.len() >= max {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    })
+    .unwrap()
+}
+
+/// `all()` yields one row per commit, in `Revset::stream()`'s topological order — children
+/// before parents — and the row set equals `resolve_revset`'s.
+#[test]
+fn eval_revset_all_yields_one_row_per_commit_children_before_parents() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let changes = collect_changes(&repo, "all()");
+
+    let ids: Vec<&str> = changes.iter().map(|c| c.id.0.as_str()).collect();
+    let walked: HashSet<String> = ids.iter().map(|id| (*id).to_owned()).collect();
+    assert_eq!(
+        ids.len(),
+        walked.len(),
+        "no change appears twice in a non-divergent repo"
+    );
+    let materialized: HashSet<String> = resolve_revset(&repo, "all()")
+        .unwrap()
+        .iter()
+        .map(|id| id.0.clone())
+        .collect();
+    assert_eq!(
+        walked, materialized,
+        "the walk must denote exactly the set `resolve_revset` materializes"
+    );
+
+    // Children before parents: every parent that is itself in the set arrives LATER.
+    let position = |id: &str| ids.iter().position(|seen| *seen == id);
+    for (i, change) in changes.iter().enumerate() {
+        for parent in &change.parents {
+            if let Some(j) = position(&parent.0) {
+                assert!(
+                    j > i,
+                    "parent {} of {} must arrive after it (got #{j} vs #{i})",
+                    parent.0,
+                    change.id.0
+                );
+            }
+        }
+    }
+    assert!(
+        changes.iter().any(|c| c.parents.is_empty()),
+        "the root change has no parents"
+    );
+}
+
+/// The observable proof that the walk is per-item and the set is never materialized: breaking on
+/// the first item over a 1k-commit fixture constructs exactly ONE `Change`.
+#[test]
+fn eval_revset_break_on_the_first_item_constructs_exactly_one_change() {
+    pin_env();
+    let fx = extract_fixture("medium-1k-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut out = Vec::new();
+    let flow = collect_changes_with(&repo, "all()", &mut out, 1);
+
+    assert_eq!(flow, ControlFlow::Break(()), "an early stop must report Break");
+    assert_eq!(out.len(), 1, "exactly one Change may be constructed");
+    // Sanity: the fixture really is large, so "one" is not an artifact of a tiny set.
+    assert!(
+        resolve_revset(&repo, "all()").unwrap().len() > 100,
+        "the fixture must hold far more commits than the one row we took"
+    );
+}
+
+/// An empty set never calls the visitor and still reports `Continue`.
+#[test]
+fn eval_revset_none_never_calls_the_visitor() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut calls = 0_usize;
+    let flow = repo
+        .eval_revset("none()", |_| {
+            calls += 1;
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+
+    assert_eq!(calls, 0, "none() must not call the visitor");
+    assert_eq!(flow, ControlFlow::Continue(()), "an exhausted stream reports Continue");
+}
+
+/// Each visible commit of a divergent change is its own row, and every such row carries
+/// `divergent == true` (Decision D4).
+#[test]
+fn eval_revset_divergent_change_yields_one_flagged_row_per_visible_commit() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let div_change = make_divergent_change(&fx.path);
+
+    let repo = Repo::open(&fx.path).unwrap();
+    let changes = collect_changes(&repo, "all()");
+
+    let rows: Vec<&Change> = changes.iter().filter(|c| c.id.0 == div_change).collect();
+    assert_eq!(
+        rows.len(),
+        2,
+        "both visible commits of the change get a row; got {rows:?}"
+    );
+    assert_ne!(
+        rows[0].commit_id.0, rows[1].commit_id.0,
+        "the two rows are distinct COMMITS of one change"
+    );
+    assert!(rows.iter().all(|c| c.divergent), "every divergent row must be flagged");
+    assert!(
+        changes.iter().filter(|c| c.id.0 != div_change).all(|c| !c.divergent),
+        "no other row may be flagged divergent"
+    );
+}
+
+/// Rows carry the same metadata `Repo::get_change` reports for the same change — the reuse of
+/// `Change` is genuine, not a look-alike.
+#[test]
+fn eval_revset_row_matches_get_change_for_the_same_change() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let changes = collect_changes(&repo, "description(\"Commit 3\")");
+    assert_eq!(changes.len(), 1, "exactly one commit is described 'Commit 3'");
+    let row = &changes[0];
+    let direct = repo.get_change(&row.id).unwrap();
+
+    assert_eq!(row.commit_id.0, direct.commit_id.0);
+    assert_eq!(row.description, direct.description);
+    assert_eq!(row.parents.len(), direct.parents.len());
+    assert_eq!(row.author.email, direct.author.email);
+    assert_eq!(row.timestamps.committed_at, direct.timestamps.committed_at);
+    assert_eq!(row.is_anonymous, direct.is_anonymous);
+    assert_eq!(row.divergent, direct.divergent);
+    assert_eq!(row.conflict, direct.conflict);
+}
+
+/// Stage 1 (parse) runs BEFORE any `load_at_head` I/O: with `op_heads` already gone — which
+/// makes every head resolution fail — a syntax error still surfaces as `ParseError`, not as the
+/// backend failure the repo is in.
+#[test]
+fn eval_revset_parse_error_is_raised_before_any_head_io() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    std::fs::remove_dir_all(fx.path.join(".jj").join("repo").join("op_heads")).unwrap();
+
+    let result = repo.eval_revset("bogus_function()", |_| ControlFlow::Continue(()));
+    assert!(
+        matches!(result, Err(RevsetError::ParseError { .. })),
+        "a parse fault must win over the broken repo, got: {result:?}"
+    );
+
+    // …and the same repo state DOES yield JjLibError for a well-formed expression, so the
+    // assertion above is about ordering, not about the corruption being inert.
+    let backend = repo.eval_revset("all()", |_| ControlFlow::Continue(()));
+    assert!(
+        matches!(backend, Err(RevsetError::JjLibError(_))),
+        "corrupt op_heads must yield JjLibError for a parseable revset, got: {backend:?}"
+    );
+}
+
+/// Stage 2 (symbol resolution) is distinguishable from the other two fault classes.
+#[test]
+fn eval_revset_nonexistent_bookmark_returns_resolution_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let mut calls = 0_usize;
+    let result = repo.eval_revset("nonexistent-bookmark", |_| {
+        calls += 1;
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(RevsetError::ResolutionError { .. })),
+        "an unresolvable symbol must yield ResolutionError, got: {result:?}"
+    );
+    assert_eq!(calls, 0, "a failed resolution must not walk");
+}
+
+/// A malformed repo config is an ERROR, never a silent fall-back to the builtin aliases.
+#[test]
+fn eval_revset_malformed_repo_config_is_a_config_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+
+    write_repo_config(&fx.path, "not = = toml");
+    let result = repo.eval_revset("all()", |_| ControlFlow::Continue(()));
+    let Err(RevsetError::Config(err)) = result else {
+        panic!("a malformed config must yield RevsetError::Config, got: {result:?}");
+    };
+    assert!(
+        err.to_string().contains("config.toml"),
+        "the context must name the file, got: {err}"
+    );
+}
+
+/// The repo's EFFECTIVE config decides the denoted set — a `revset-aliases."trunk()"` override
+/// moves the walk, proving aliases are read from config rather than from Rust constants.
+#[test]
+fn eval_revset_honours_a_repo_config_alias_override() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&repo, "root()");
+    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+
+    // The fixture has no remote bookmarks, so the builtin trunk() degenerates to root().
+    let before = collect_changes(&repo, "trunk()");
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].commit_id.0, root);
+
+    write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 3\")'\n");
+    let after = collect_changes(&repo, "trunk()");
+    assert_eq!(after.len(), 1);
+    assert_eq!(
+        after[0].commit_id.0, c3,
+        "the repo layer's override must decide the denoted set"
     );
 }

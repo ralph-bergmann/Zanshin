@@ -41,6 +41,7 @@ pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
 pub(crate) mod status;
+pub(crate) mod view;
 
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
@@ -55,3 +56,4 @@ pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
+pub use view::{Tag, TagKind, ViewError, WorkingCopy};

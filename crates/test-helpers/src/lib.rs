@@ -308,6 +308,33 @@ pub fn set_remote_bookmark(workspace_root: &Path, name: &str, remote: &str, targ
     pollster::block_on(tx.commit("test: set remote bookmark")).unwrap();
 }
 
+/// Points the remote tag `name@remote` at `target`. `tracked` selects the remote-ref state the
+/// tag listing's tracked/untracked filter keys off.
+///
+/// # Panics
+/// Panics on any jj-lib failure — a failure here is a broken fixture.
+pub fn set_remote_tag(workspace_root: &Path, name: &str, remote: &str, target: &str, tracked: bool) {
+    let (_workspace, repo) = load(workspace_root);
+    let mut tx = repo.start_transaction();
+    let ref_name: RefNameBuf = name.into();
+    let remote_name: jj_lib::ref_name::RemoteNameBuf = remote.into();
+    tx.repo_mut().set_remote_tag(
+        RemoteRefSymbol {
+            name: &ref_name,
+            remote: &remote_name,
+        },
+        RemoteRef {
+            target: ref_target(&[target]),
+            state: if tracked {
+                RemoteRefState::Tracked
+            } else {
+                RemoteRefState::New
+            },
+        },
+    );
+    pollster::block_on(tx.commit("test: set remote tag")).unwrap();
+}
+
 /// Builds a `RefTarget` from hex commit ids: none = absent, one = normal, more = conflicted.
 fn ref_target(targets: &[&str]) -> RefTarget {
     match targets {

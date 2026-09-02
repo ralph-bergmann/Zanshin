@@ -171,6 +171,54 @@ impl Repo {
         crate::bookmarks::list_bookmarks(self.workspace())
     }
 
+    /// Lists local + tracked-remote tags, sorted by name then kind (ADR-0003 §5).
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj tag list` (AR-AP-1). A conflicted target resolves to the first added commit's
+    /// change id (listing scope only). Unlike the CLI's `jj tag list`, a tracked remote tag
+    /// whose target equals the local one is NOT hidden — that filter is a display default and
+    /// belongs to [`crate::CommitMeta::tags`], exactly as for [`Repo::list_bookmarks`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::ViewError::Backend`] — `load_at_head` or a store read failed; the jj-lib
+    ///   reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_tags(&self) -> Result<Vec<crate::Tag>, crate::ViewError> {
+        crate::view::list_tags(self.workspace())
+    }
+
+    /// Lists the repo's visible head commits, sorted by hex commit id (ADR-0003 §5).
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only. jj-lib's
+    /// `View::heads()` is an unordered set, so the sort is Zanshin's and is the determinism
+    /// guarantee. Heads are COMMIT ids: two divergent commits of one change can both be heads,
+    /// so a change-id form would fabricate duplicates.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded
+    ///   as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_heads(&self) -> Result<Vec<crate::CommitId>, crate::ViewError> {
+        crate::view::list_heads(self.workspace())
+    }
+
+    /// Lists every workspace of this repo with its working-copy commit id (ADR-0003 §5).
+    ///
+    /// The view half of `jj workspace list`, in jj-lib's own lexicographic-by-name order.
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only. No workspace *path*
+    /// is reported — that lives in the `WorkspaceStore`, not the `View`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded
+    ///   as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_working_copies(&self) -> Result<Vec<crate::WorkingCopy>, crate::ViewError> {
+        crate::view::list_working_copies(self.workspace())
+    }
+
     /// Lists configured git remotes with fetch URLs, sorted by name (FR-JJ-9).
     ///
     /// Re-resolves to the head operation per call (ADR-0002). Read-only; never
@@ -261,6 +309,49 @@ impl Repo {
         visit: impl FnMut(crate::GraphNode) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
         crate::graph::walk_graph(self, revset, prioritize, short_prefixes, visit)
+    }
+
+    /// Streams the commits `revset` denotes through `visit`, one [`crate::Change`] per commit
+    /// (ADR-0003 §5's generic read primitive).
+    ///
+    /// `revset` is a caller pass-through (FR-JJ-17); [`crate::DEFAULT_LOG_REVSET`] is the CLI's
+    /// default and the repo's *effective* value is [`Repo::log_defaults`]. Aliases resolve from
+    /// the repo's effective jj config, builtin defaults included, so a user's
+    /// `[revset-aliases]` override of `trunk()` changes the denoted set exactly as it does in
+    /// their CLI. The config is re-read per call and never cached; the repo is re-resolved to
+    /// the head operation per call (ADR-0002).
+    ///
+    /// The walk is LAZY and the set is never materialized: `visit` returning
+    /// [`ControlFlow::Break`] stops it and the result is `Ok(Break)`, while `Ok(Continue)` means
+    /// the stream was exhausted. `Break` IS the limit — there is no `limit`/`start`/`count`
+    /// parameter.
+    ///
+    /// Order is the RAW revset order — jj-lib's `Revset::stream()` contract, topological with
+    /// children before parents. It is deliberately NOT `jj log`'s printed order: the
+    /// topo-grouping and `revsets.log-graph-prioritize` handling that produce that order live in
+    /// [`Repo::walk_graph`], and this primitive is the unopinionated one. Read-only; never
+    /// shells to the `jj` CLI (AR-AP-1). Changes already handed to `visit` before an `Err` are
+    /// not retracted — discard partial output on `Err`. No internal locking: callers serialize
+    /// access (single worker isolate, AD-2).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::RevsetError::ParseError`] — `revset` is syntactically invalid or names an
+    ///   unknown function; raised before any repo I/O.
+    /// - [`crate::RevsetError::ResolutionError`] — a symbol cannot be resolved (unknown
+    ///   bookmark/tag, no working-copy commit for `@`, unmatched/ambiguous id).
+    /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
+    ///   unreadable. A single bad `[revset-aliases]` entry is NOT an error: like the CLI, it
+    ///   warns and is skipped.
+    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item
+    ///   stream/store failure; the jj-lib reason is forwarded as a string.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn eval_revset(
+        &self,
+        revset: &str,
+        visit: impl FnMut(crate::Change) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, crate::RevsetError> {
+        crate::revset::eval_revset(self, revset, visit)
     }
 
     /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
