@@ -1,0 +1,2 @@
+# Dart / Pub — the workspace root owns .dart_tool and pubspec.lock.
+build/

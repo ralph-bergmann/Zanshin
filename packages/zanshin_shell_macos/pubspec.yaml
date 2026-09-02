@@ -1,0 +1,28 @@
+name: zanshin_shell_macos
+description: macOS implementation of the zanshin_shell plugin.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.14.0-143.0.dev
+  flutter: ^3.48.0-1.0.pre-295
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  zanshin_shell_platform_interface:
+    path: ../zanshin_shell_platform_interface
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    implements: zanshin_shell
+    platforms:
+      macos:
+        pluginClass: ZanshinShellPlugin
+        dartPluginClass: ZanshinShellMacOS

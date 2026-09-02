@@ -265,7 +265,7 @@ git commit --no-gpg-sign -m "feat(zanshin_shell): platform interface package" -m
   - Dart→Swift methods: `getTheme` (returns `Map{'brightness': 'light'|'dark', 'accentColor': int ARGB}`), `setWindowAppearance` (arg `'light'|'dark'|'system'`), `startWindowDrag`, `performTitlebarDoubleClickAction`.
   - Swift→Dart: `onThemeChanged` with the same theme map.
 
-- [ ] **Step 1: pubspec + analysis options**
+- [x] **Step 1: pubspec + analysis options**
 
 `pubspec.yaml`:
 ```yaml
@@ -301,7 +301,7 @@ flutter:
 
 `analysis_options.yaml`: same one-liner as Task 1.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `test/zanshin_shell_macos_test.dart`:
 ```dart
@@ -390,12 +390,12 @@ void main() {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run (cwd `packages/zanshin_shell_macos`): `flutter test`
 Expected: FAIL (ZanshinShellMacOS undefined).
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `lib/zanshin_shell_macos.dart`:
 ```dart
@@ -469,12 +469,12 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
 ```
 (If the analyzer rejects `@visibleForTesting` on the private static, drop the annotation — the tests do not reference the field.)
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run (cwd `packages/zanshin_shell_macos`): `flutter test`, then `dart analyze --fatal-infos --fatal-warnings` and `dart format .`.
 Expected: PASS / clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/zanshin_shell_macos
