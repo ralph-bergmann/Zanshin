@@ -9,7 +9,9 @@ Pod::Spec.new do |s|
   s.license          = { :type => 'MIT' }
   s.author           = { 'Zanshin' => 'ralph@dasralph.de' }
   s.source           = { :path => '.' }
-  s.source_files     = 'Classes/**/*'
+  # CocoaPods fallback only — the Swift Package at zanshin_shell_macos/ is the
+  # primary integration and owns the same sources.
+  s.source_files     = 'zanshin_shell_macos/Sources/zanshin_shell_macos/**/*'
   s.dependency 'FlutterMacOS'
   # Matches MACOSX_DEPLOYMENT_TARGET in app/macos/Runner.xcodeproj and the
   # `platform :osx` line of the Flutter-generated Podfile; a higher value here
