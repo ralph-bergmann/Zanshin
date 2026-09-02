@@ -1,0 +1,30 @@
+name: zanshin_shell
+description: macOS shell integration for Zanshin - system theme (day/night + accent color) and native window dragging.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.14.0-143.0.dev
+  flutter: ^3.48.0-1.0.pre-295
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  zanshin_shell_macos:
+    path: ../zanshin_shell_macos
+  zanshin_shell_platform_interface:
+    path: ../zanshin_shell_platform_interface
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  # Test-only: the fake platform in test/ mixes in MockPlatformInterfaceMixin.
+  plugin_platform_interface: ^2.1.8
+
+flutter:
+  plugin:
+    platforms:
+      macos:
+        default_package: zanshin_shell_macos

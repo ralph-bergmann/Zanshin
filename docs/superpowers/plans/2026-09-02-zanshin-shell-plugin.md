@@ -694,7 +694,7 @@ git commit --no-gpg-sign -m "feat(zanshin_shell): macOS Swift plugin (theme even
 - Consumes: `ZanshinShellPlatform`, `ShellTheme`, `WindowAppearance` (Task 1).
 - Produces (Task 5 consumes): `class ZanshinShell` with static members `getTheme()`, `onThemeChanged`, `setWindowAppearance(WindowAppearance)`, `startWindowDrag()`, `performTitlebarDoubleClickAction()`; `class WindowDragArea extends StatelessWidget implements PreferredSizeWidget`; re-exports `ShellTheme` and `WindowAppearance`.
 
-- [ ] **Step 1: pubspec + analysis options**
+- [x] **Step 1: pubspec + analysis options**
 
 `pubspec.yaml` (the `default_package` line is the endorsement):
 ```yaml
@@ -730,7 +730,7 @@ flutter:
 
 `analysis_options.yaml`: same one-liner as Task 1.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `test/zanshin_shell_test.dart`:
 ```dart
@@ -862,12 +862,12 @@ void main() {
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run (cwd `packages/zanshin_shell`): `flutter test`
 Expected: FAIL (library does not exist).
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `lib/src/zanshin_shell.dart`:
 ```dart
@@ -946,12 +946,12 @@ export 'src/window_drag_area.dart';
 export 'src/zanshin_shell.dart';
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run (cwd `packages/zanshin_shell`): `flutter test`, then `dart analyze --fatal-infos --fatal-warnings` and `dart format .`.
 Expected: PASS / clean. If the double-tap test is flaky around `kDoubleTapMinTime`, use `await tester.pump(const Duration(milliseconds: 100));` between the taps instead.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/zanshin_shell
