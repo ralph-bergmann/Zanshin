@@ -197,6 +197,29 @@ fn commit_id(hex: &str) -> CommitId {
     CommitId::try_from_hex(hex).unwrap()
 }
 
+/// The hex tree id the commit `commit_id_hex` points at.
+///
+/// Trees are content-addressed, so comparing tree hexes is how a test asserts file CONTENT
+/// without reading blobs: a purpose-built commit holding the expected files has the same
+/// tree id as the expected result of a `restore`/`absorb`. Lives here rather than in one
+/// test file because both `zanshin-jj` and `zanshin-ffi` integration tests need it, and
+/// only this crate depends on `jj_lib` for test purposes.
+///
+/// # Panics
+/// Panics on any jj-lib failure, or if the commit's tree is CONFLICTED (a conflicted tree
+/// has no single id — a test that hits this wants a different assertion).
+#[must_use = "the tree hex is what the assertions compare against"]
+pub fn tree_hex(workspace_root: &Path, commit_id_hex: &str) -> String {
+    let (_workspace, repo) = load(workspace_root);
+    repo.store()
+        .get_commit(&commit_id(commit_id_hex))
+        .unwrap()
+        .tree_ids()
+        .as_resolved()
+        .expect("the commit's tree must be conflict-free")
+        .hex()
+}
+
 // ── Write helpers for Story 4.8's edge-state tests ────────────────────────────
 
 /// Rewrites `commit_id_hex`'s description in a new operation, as an external `jj describe`

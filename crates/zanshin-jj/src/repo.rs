@@ -507,9 +507,18 @@ impl Repo {
     /// combined with `from`/`into` — the CLI's clap `conflicts_with_all`.
     ///
     /// `paths` entries are repo-relative paths interpreted as PREFIXES (an empty list means
-    /// all paths); the fileset DSL is terminal input language and is not parsed here.
+    /// all paths); the fileset DSL is terminal input language and is not parsed here. An
+    /// empty-STRING entry is the repository root, which prefixes everything, so `paths = [""]`
+    /// matches all paths just as `paths = []` does — send an empty LIST to mean "no filter".
     /// `restore_descendants` reparents children (preserving their content) instead of
     /// rebasing them.
+    ///
+    /// A path that matches NOTHING in the two trees being compared is silently a no-op here,
+    /// where the CLI prints a warning (`print_unmatched_explicit_paths`). That divergence is
+    /// deliberate: [`crate::MutationResult`] has no warning channel, and adding one would
+    /// change the payload of all six already-shipped mutation verbs. The GUI can detect the
+    /// case itself — an unmatched filter leaves the destination tree unchanged, which this
+    /// call reports as the no-op described above.
     ///
     /// If the resulting tree already equals the destination's, NO operation is written and
     /// the returned `new_op_id` is the pre-call op-log head — the CLI's own
@@ -561,17 +570,31 @@ impl Repo {
     /// corresponding lines were last modified (Story 9.3) — the CLI's `jj absorb`,
     /// non-interactive only.
     ///
-    /// `destinations` is a revset EXPRESSION, not an id list: the CLI's `--into` is a set
-    /// whose default is the dynamic `mutable()` alias, and materializing it into ids would
-    /// destroy that meaning (FR-JJ-17). `None` applies the CLI's own clap default,
-    /// `"mutable()"` — an ALIAS resolved through the repo's effective config, so a user's
-    /// `[revset-aliases]` decides what it denotes. `from = None` is `@`.
+    /// `from = None` is `@`. `destinations` is a revset EXPRESSION, not an id list: the CLI's
+    /// `--into` is a set whose default is the dynamic `mutable()` alias, and materializing it
+    /// into ids would destroy that meaning (FR-JJ-17). `None` applies the CLI's own clap
+    /// default, `"mutable()"` — an ALIAS resolved through the repo's effective config, so a
+    /// user's `[revset-aliases]` decides what it denotes.
     ///
-    /// `paths` behaves exactly as for [`Repo::restore`]. Hunks that cannot be attributed
-    /// unambiguously stay in the source; paths jj-lib refuses to split are reported in
-    /// [`crate::AbsorbResult::skipped_paths`] instead of failing the call — the CLI prints
-    /// one warning per entry. If nothing is absorbable, NO operation is written and
-    /// `rewritten_change_ids` is empty.
+    /// Parameter order follows the CLI's own reading ("absorb FROM … INTO …") and matches
+    /// [`Repo::restore`], the `AbsorbRequest` wire table, and the Dart API.
+    ///
+    /// `paths` behaves exactly as for [`Repo::restore`], empty-string entry included. Hunks
+    /// that cannot be attributed unambiguously stay in the source; paths jj-lib refuses to
+    /// split are reported in [`crate::AbsorbResult::skipped_paths`] instead of failing the
+    /// call — the CLI prints one warning per entry. If nothing is absorbable, NO operation is
+    /// written and `rewritten_change_ids` is empty.
+    ///
+    /// Two CLI warnings have NO counterpart on the error path, because an `Err` carries no
+    /// payload:
+    ///
+    /// - **Skipped paths are lost on a refusal.** They are computed before the rewritability
+    ///   guard — the CLI's own order (`absorb.rs:154-158` warns, then `:160-162` checks) — but
+    ///   an [`crate::MutateError::Immutable`] return discards them, so a caller sees the
+    ///   refusal where a CLI user would ALSO have seen "Skipping <path>: <reason>". Surfacing
+    ///   them would require an error variant carrying data, which no verb in this crate has.
+    /// - **An explicitly named path that matches nothing is silent** — see [`Repo::restore`]
+    ///   for why.
     ///
     /// The working copy is NOT snapshotted first (D2) — see [`Repo::restore`].
     ///
@@ -595,8 +618,8 @@ impl Repo {
     #[allow(clippy::needless_pass_by_value)]
     pub fn absorb(
         &mut self,
-        destinations: Option<&str>,
         from: Option<crate::ChangeId>,
+        destinations: Option<&str>,
         paths: &[String],
     ) -> Result<crate::AbsorbResult, crate::MutateError> {
         // WHY: see `describe` — both expressions are built while `self` is still shared.
@@ -608,7 +631,7 @@ impl Repo {
         // through the effective config layer, never a hardcoded commit set.
         let destinations =
             crate::revset::parse_revset(self, destinations.unwrap_or("mutable()")).map_err(crate::mutate::rev)?;
-        crate::mutate::absorb(self.workspace_mut(), &immutable, &destinations, from.as_ref(), paths)
+        crate::mutate::absorb(self.workspace_mut(), &immutable, from.as_ref(), &destinations, paths)
     }
 
     /// Opens an existing jj workspace rooted at `path`.

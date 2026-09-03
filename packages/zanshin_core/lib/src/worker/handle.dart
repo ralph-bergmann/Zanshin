@@ -288,8 +288,13 @@ final class RepoHandle {
   /// combined with [from]/[into].
   ///
   /// [paths] entries are repo-relative paths interpreted as PREFIXES (an empty
-  /// list means all paths). [restoreDescendants] reparents children (preserving
-  /// their content) instead of rebasing them.
+  /// list means all paths); an empty-STRING entry is the repository root, which
+  /// prefixes everything, so `paths: ['']` matches all paths just as `paths: []`
+  /// does. [restoreDescendants] reparents children (preserving their content)
+  /// instead of rebasing them.
+  ///
+  /// A path that matches nothing is silently a no-op, where the CLI would warn —
+  /// `MutationResult` has no warning channel.
   ///
   /// If the resulting tree already equals the destination's, NO operation is
   /// written and `newOpId` is the pre-call op-log head. The working copy is not
@@ -330,7 +335,9 @@ final class RepoHandle {
   ///
   /// Paths jj-lib refuses to split are reported in `AbsorbResult.skippedPaths`
   /// rather than failing the call. If nothing was absorbable, no operation is
-  /// written and `rewrittenChangeIds` is empty.
+  /// written and `rewrittenChangeIds` is empty. On an ERROR the skipped-path list
+  /// is lost (an exception carries no payload), where a CLI user would still have
+  /// seen the per-path warnings.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,

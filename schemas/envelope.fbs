@@ -32,6 +32,11 @@ table FfiError {
 // NOT part of the Payload union below (that union is response-only). Dart builds
 // and owns/frees these buffers itself; Rust only borrows them for the call
 // (ADR-0001 composite-input pattern, Story 6-5).
+//
+// Field order IS the wire contract here too — a table's field ids are assigned by
+// declaration order and are baked into BOTH committed codegen sides. APPEND only,
+// never reorder or remove: a Dart writer and a Rust reader built from different
+// field orders would silently mis-read every field after the first change.
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
 /// `parents` and `zanshin_abandon`'s `change_ids`.
@@ -398,7 +403,9 @@ table AbsorbSkippedPath {
 /// `source_change_id` is ABSENT when jj-lib abandoned the source (it became discardable)
 /// or when nothing moved — null-for-absence.
 /// `num_rebased` excludes the destination commits and includes the rewritten source
-/// (jj-lib's own `AbsorbStats::num_rebased` accounting).
+/// (jj-lib's own `AbsorbStats::num_rebased` accounting). jj-lib counts in `usize`; a
+/// count above `uint`'s range SATURATES at 4294967295 rather than wrapping — it is a
+/// progress figure for the UI, never something a decision keys off.
 table AbsorbResult {
   mutation: MutationResult;
   rewritten_change_ids: [string];   // destination ChangeIds, reverse-hex, forward topological order

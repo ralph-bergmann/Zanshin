@@ -3406,7 +3406,9 @@ class AbsorbSkippedPathObjectBuilder extends fb.ObjectBuilder {
 ///  `source_change_id` is ABSENT when jj-lib abandoned the source (it became discardable)
 ///  or when nothing moved — null-for-absence.
 ///  `num_rebased` excludes the destination commits and includes the rewritten source
-///  (jj-lib's own `AbsorbStats::num_rebased` accounting).
+///  (jj-lib's own `AbsorbStats::num_rebased` accounting). jj-lib counts in `usize`; a
+///  count above `uint`'s range SATURATES at 4294967295 rather than wrapping — it is a
+///  progress figure for the UI, never something a decision keys off.
 class AbsorbResult {
   AbsorbResult._(this._bc, this._bcOffset);
   factory AbsorbResult(List<int> bytes) {

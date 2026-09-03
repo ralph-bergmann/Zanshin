@@ -207,6 +207,12 @@ pub struct AbsorbResult {
     /// Number of descendant commits jj-lib rebased. Excludes the destination commits
     /// themselves; INCLUDES the rewritten source (jj-lib's own `AbsorbStats::num_rebased`
     /// accounting).
+    ///
+    /// jj-lib counts in `usize`; this is `u32` because the wire form is (`envelope.fbs`'s
+    /// `AbsorbResult.num_rebased`). A count above `u32::MAX` SATURATES at `u32::MAX` rather
+    /// than wrapping or failing the call — a repo with four billion rebased descendants is
+    /// not a case worth failing an otherwise-successful absorb over, and the value is a
+    /// progress figure for the UI, never something a decision keys off.
     pub num_rebased: u32,
     /// Paths jj-lib refused to split, with its verbatim reason. The CLI prints one warning
     /// per entry; dropping them would leave a file silently unabsorbed with no way for a
@@ -261,10 +267,19 @@ pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
 /// observable behavior for the input a GUI actually produces (a file/directory selection).
 /// The DSL itself is terminal *input language*, which ADR-0003 replaces rather than ports.
 ///
+/// An EMPTY STRING entry is the repository ROOT (`RepoPathBuf::from_internal_string("")`
+/// succeeds — jj's validity rule is only "no leading/trailing `/`, no `//`"), and the root
+/// is a prefix of every path. So `paths = [""]` matches EVERYTHING, exactly as `paths = []`
+/// does, and mixing `""` into a list widens that list to everything. That is a DECISION,
+/// not an accident: it is what the CLI's own bare `prefix_path("")` does, and refusing it
+/// here would invent a validation rule jj does not have. A GUI that means "no paths" should
+/// send an empty LIST, not a list holding an empty string. Pinned by
+/// `build_matcher_treats_an_empty_path_entry_as_the_repo_root`.
+///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — an entry is not a valid repo path (leading or trailing
-///   `/`, or an empty component).
+/// - [`MutateError::InvalidInput`] — an entry is not a valid repo path (a leading or
+///   trailing `/`, or a `//`).
 fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
     if paths.is_empty() {
         return Ok(Box::new(EverythingMatcher));
@@ -858,6 +873,11 @@ pub(crate) fn restore(
 /// the CLI's own `tx.finish` refuses to write when `!tx.repo().has_changes()`
 /// (`cli_util.rs:2792-2795`). `AbsorbResult::rewritten_change_ids` is then empty.
 ///
+/// Two CLI WARNINGS have no counterpart here, because an `Err` carries no payload:
+/// `skipped_paths` is computed before the rewritability guard (as in the CLI, `absorb.rs:154-158`
+/// vs `:160-162`) but is DISCARDED when that guard refuses, and an explicitly named path that
+/// matches nothing is silently a no-op rather than a warning. See [`crate::Repo::absorb`].
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
@@ -874,8 +894,8 @@ pub(crate) fn restore(
 pub(crate) fn absorb(
     workspace: &mut Workspace,
     immutable: &Arc<UserRevsetExpression>,
-    destinations: &Arc<UserRevsetExpression>,
     from: Option<&ChangeId>,
+    destinations: &Arc<UserRevsetExpression>,
     paths: &[String],
 ) -> Result<AbsorbResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
@@ -919,6 +939,13 @@ pub(crate) fn absorb(
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     if !tx.repo().has_changes() {
         drop(tx);
+        // WHY the three literals instead of reading `stats`: nothing was committed, so the
+        // commits `stats` would name DO NOT EXIST in the repo the caller can now observe.
+        // Reporting them would hand the GUI ids it cannot resolve. `stats` is necessarily
+        // empty on this branch anyway (`has_changes()` is false exactly when `absorb_hunks`
+        // rewrote nothing), so this is a statement of intent, not a divergence.
+        // `skipped_paths` IS carried through: those are facts about the source's own trees,
+        // independent of whether anything was written.
         return Ok(AbsorbResult {
             mutation: no_op_result(
                 workspace,
@@ -943,6 +970,7 @@ pub(crate) fn absorb(
         .rewritten_source
         .as_ref()
         .map(|c| ChangeId(c.change_id().reverse_hex()));
+    // Saturating, not wrapping or fallible — see `AbsorbResult::num_rebased`'s doc.
     let num_rebased = u32::try_from(stats.num_rebased).unwrap_or(u32::MAX);
     let description = format!("absorb changes into {} commits", stats.rewritten_destinations.len());
     let new_repo = pollster::block_on(tx.commit(description)).map_err(be)?;
@@ -971,6 +999,8 @@ pub(crate) fn absorb(
 
 #[cfg(test)]
 mod tests {
+    use jj_lib::repo_path::{RepoPath, RepoPathBuf};
+
     use super::{build_matcher, rev, MutateError};
     use crate::config::ConfigError;
     use crate::RevsetError;
@@ -993,6 +1023,25 @@ mod tests {
             rev(RevsetError::JjLibError("b".to_owned())),
             MutateError::Backend(reason) if reason == "b"
         ));
+    }
+
+    /// An empty-string entry is the repo ROOT, which prefixes everything — so it widens the
+    /// filter to "all paths" instead of narrowing it to none. Pinned so the behaviour is a
+    /// decision rather than an accident (`build_matcher`'s doc explains why it is kept).
+    #[test]
+    fn build_matcher_treats_an_empty_path_entry_as_the_repo_root() {
+        let root = RepoPathBuf::root();
+        let matcher = build_matcher(&[String::new()]).expect("the empty string is a valid repo path");
+        assert!(matcher.matches(&root), "the root itself matches");
+        assert!(
+            matcher.matches(RepoPath::from_internal_string("deep/nested/file.txt").expect("valid path")),
+            "an empty entry is the root prefix, so every path matches"
+        );
+
+        // Contrast: a real prefix narrows.
+        let narrow = build_matcher(&["a".to_owned()]).expect("a valid prefix");
+        assert!(narrow.matches(RepoPath::from_internal_string("a/x.txt").expect("valid path")));
+        assert!(!narrow.matches(RepoPath::from_internal_string("b/x.txt").expect("valid path")));
     }
 
     #[test]

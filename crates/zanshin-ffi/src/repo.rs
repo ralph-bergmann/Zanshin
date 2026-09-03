@@ -125,55 +125,66 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     }
 }
 
-/// Parse a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001 composite-input
-/// pattern) into an owned `Vec<ChangeId>`.
-///
-/// `data`/`len` describe a caller-owned buffer Dart builds and owns/frees
-/// itself (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only borrows
-/// it for the duration of this call — the same AR-P-5 inbound rule as
-/// `cstr_to_string`'s `CString`s, generalized to raw bytes.
-///
-/// `flatbuffers::root_with_opts::<T>` works for any generated table `T`, not
-/// only `envelope.fbs`'s declared `root_type` — `root_as_envelope` is itself a
-/// thin wrapper over exactly this generic call (verified in
-/// `envelope_generated.rs`), so `ChangeIdList` needs no `root_type` change.
-///
-/// # Errors
-/// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
-fn read_change_id_list(data: *const u8, len: usize) -> Result<Vec<ChangeId>, FfiErrorObj> {
-    let list = read_request::<fbs::ChangeIdList>(data, len)?;
-    Ok(list
-        .change_ids()
-        .into_iter()
-        .flatten()
-        .map(|s| ChangeId(s.to_owned()))
-        .collect())
-}
+// ── Request-buffer readers (ADR-0001 composite-input pattern) ────────────────
+//
+// `data`/`len` describe a caller-owned buffer Dart builds and owns/frees itself
+// (`fbs.<Table>ObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+// the call — the same AR-P-5 inbound rule as `cstr_to_string`'s `CString`s, generalized
+// to raw bytes.
+//
+// `flatbuffers::root_with_opts::<T>` works for any generated table `T`, not only
+// `envelope.fbs`'s declared `root_type` — `root_as_envelope` is itself a thin wrapper
+// over exactly this generic call (verified in `envelope_generated.rs`), so these
+// request-only tables need no `root_type` change.
+//
+// WHY each reader builds its OWN byte slice and calls `root_with_opts` in its own scope
+// instead of sharing a generic `read_request<T>() -> T::Inner` helper: a generated table
+// is a BORROWING type, and `std::slice::from_raw_parts` produces an unbounded lifetime.
+// A shared helper would have to name that lifetime as a free parameter, letting a caller
+// infer `'static` and hold, say, a `RestoreRequest<'static>` after the Dart-owned buffer
+// is freed. Keeping the slice a local binding and returning only OWNED structs makes that
+// unrepresentable: the borrow provably cannot outlive the call. Only the null check and
+// the two error shapes are shared.
 
-/// Borrow `data`/`len` as a caller-owned request buffer and verify it as the generated
-/// table `T` — the shared body of [`read_change_id_list`], [`read_restore_request`] and
-/// [`read_absorb_request`].
+/// Reject a null request pointer before any dereference.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `T` buffer.
-fn read_request<'a, T>(data: *const u8, len: usize) -> Result<T::Inner, FfiErrorObj>
-where
-    T: 'a + flatbuffers::Follow<'a> + flatbuffers::Verifiable,
-{
+fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
     if data.is_null() {
         return Err(FfiErrorObj {
             code: FFI_NULL_POINTER.to_owned(),
             context: None,
         });
     }
-    // SAFETY: caller-owned, borrowed for this call only (see `read_change_id_list`).
-    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
-    flatbuffers::root_with_opts::<T>(&VerifierOptions::default(), bytes).map_err(|e| FfiErrorObj {
+    Ok(())
+}
+
+/// The `ffi.invalid_argument` error a failed request-buffer verification produces.
+fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
+    FfiErrorObj {
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(e.to_string()),
-    })
+    }
+}
+
+/// Parse a `ChangeIdList` request buffer into an owned `Vec<ChangeId>`.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+fn read_change_id_list(data: *const u8, len: usize) -> Result<Vec<ChangeId>, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let list = flatbuffers::root_with_opts::<fbs::ChangeIdList>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    Ok(list
+        .change_ids()
+        .into_iter()
+        .flatten()
+        .map(|s| ChangeId(s.to_owned()))
+        .collect())
 }
 
 /// Owned Rust form of a `RestoreRequest` buffer (Story 9.3).
@@ -197,14 +208,17 @@ struct AbsorbRequestOwned {
     paths: Vec<String>,
 }
 
-/// Parse a `RestoreRequest` `FlatBuffers` request buffer (ADR-0001 composite-input
-/// pattern) into an owned [`RestoreRequestOwned`].
+/// Parse a `RestoreRequest` request buffer into an owned [`RestoreRequestOwned`].
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
 fn read_restore_request(data: *const u8, len: usize) -> Result<RestoreRequestOwned, FfiErrorObj> {
-    let req = read_request::<fbs::RestoreRequest>(data, len)?;
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::RestoreRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
     Ok(RestoreRequestOwned {
         from: req.from().map(|s| ChangeId(s.to_owned())),
         // WHY the fully-qualified inherent call: the generated accessor is named after
@@ -217,14 +231,17 @@ fn read_restore_request(data: *const u8, len: usize) -> Result<RestoreRequestOwn
     })
 }
 
-/// Parse an `AbsorbRequest` `FlatBuffers` request buffer into an owned
-/// [`AbsorbRequestOwned`].
+/// Parse an `AbsorbRequest` request buffer into an owned [`AbsorbRequestOwned`].
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
 fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned, FfiErrorObj> {
-    let req = read_request::<fbs::AbsorbRequest>(data, len)?;
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::AbsorbRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
     Ok(AbsorbRequestOwned {
         from: req.from().map(|s| ChangeId(s.to_owned())),
         // WHY the fully-qualified inherent call: see `read_restore_request`.
@@ -1070,7 +1087,7 @@ pub unsafe extern "C" fn zanshin_absorb(handle: u64, data: *const u8, len: usize
         let req = read_absorb_request(data, len)?;
         let result = session
             .repo
-            .absorb(req.into.as_deref(), req.from, &req.paths)
+            .absorb(req.from, req.into.as_deref(), &req.paths)
             .map_err(map_mutate_err)?;
         Ok(ok_absorb_result(&result))
     });

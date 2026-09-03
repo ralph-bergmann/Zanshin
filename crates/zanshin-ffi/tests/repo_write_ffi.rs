@@ -759,25 +759,43 @@ unsafe fn open_content_fixture() -> (test_helpers::FixtureHandle, u64, String, S
     let a_change = change_id_for_commit(&fixture.path, &a);
     let b_change = change_id_for_commit(&fixture.path, &b);
     let s_change = change_id_for_commit(&fixture.path, &s);
-
-    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
-    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
-    let open_bytes = unsafe { read_and_free(open_token) };
-    let open_env = parse_envelope(&open_bytes);
-    assert!(open_env.ok(), "repo open must succeed");
-    let handle = open_env
-        .data_as_repo_handle()
-        .expect("data_as_repo_handle must succeed")
-        .handle();
+    let handle = open_handle(&fixture.path).0;
 
     (fixture, handle, a_change, b_change, s_change)
 }
 
+/// The hex tree id a change CURRENTLY points at — the FFI-side equivalent of
+/// `zanshin-jj/tests/content_ops.rs::tree_hex_of_change`, resolving the change through the
+/// crate's own read API and then reading the tree via `test_helpers`.
+///
+/// Trees are content-addressed, so comparing tree hexes asserts file CONTENT without
+/// reading blobs: a purpose-built commit holding the expected files has the same tree id as
+/// the expected result.
+fn tree_hex_of_change(path: &Path, change: &str) -> String {
+    let repo = Repo::open(path).expect("fixture opens");
+    let commit_hex = repo
+        .get_change(&ChangeId(change.to_owned()))
+        .expect("change resolves")
+        .commit_id
+        .0;
+    test_helpers::tree_hex(path, &commit_hex)
+}
+
+/// The happy path has to prove DATA MOVED, and in which DIRECTION. `ok` + a non-empty
+/// `new_op_id` + an empty `new_change_ids` are all satisfied by the no-op path (which
+/// returns the pre-call head op id) and by a `from`/`into` swap, so they prove nothing on
+/// their own — hence the tree assertions.
 #[test]
-fn restore_valid_round_trip_returns_ok_mutation_result() {
+fn restore_valid_round_trip_moves_the_source_tree_into_the_destination() {
     pin_env();
     // SAFETY: handle is closed below, before `fixture` drops at end of scope.
     let (fixture, handle, a_change, b_change, _) = unsafe { open_content_fixture() };
+    let a_tree_before = tree_hex_of_change(&fixture.path, &a_change);
+    let b_tree_before = tree_hex_of_change(&fixture.path, &b_change);
+    assert_ne!(
+        a_tree_before, b_tree_before,
+        "the two sides must differ, or the direction assertions below are vacuous"
+    );
 
     let req = restore_request_bytes(Some(&a_change), Some(&b_change), None, &[], false);
     let token = unsafe { zanshin_restore(handle, req.as_ptr(), req.len()) };
@@ -798,6 +816,94 @@ fn restore_valid_round_trip_returns_ok_mutation_result() {
     assert!(
         mr.new_change_ids().is_none_or(|v| v.is_empty()),
         "restore mints nothing"
+    );
+
+    assert_eq!(
+        tree_hex_of_change(&fixture.path, &b_change),
+        a_tree_before,
+        "the DESTINATION took the source's content"
+    );
+    assert_eq!(
+        tree_hex_of_change(&fixture.path, &a_change),
+        a_tree_before,
+        "the SOURCE is untouched — restore is one-directional"
+    );
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+/// `paths` must actually reach `zanshin_jj::Repo::restore`: with the field hardcoded to an
+/// empty list in `read_restore_request`, `b.txt` would take the source's content too.
+#[test]
+fn restore_with_a_path_filter_moves_only_the_named_path() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let a =
+        test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "A\n"), ("b.txt", "A-b\n")], "ancestor");
+    let d = test_helpers::add_commit_with_files(
+        &fixture.path,
+        &[&a],
+        &[("a.txt", "D\n"), ("b.txt", "D-b\n")],
+        "destination",
+    );
+    // Only a.txt moves, so the destination ends up `{a: "A", b: "D-b"}`.
+    let oracle =
+        test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "A\n"), ("b.txt", "D-b\n")], "oracle");
+    let expected_tree = test_helpers::tree_hex(&fixture.path, &oracle);
+    let a_change = change_id_for_commit(&fixture.path, &a);
+    let d_change = change_id_for_commit(&fixture.path, &d);
+    let handle = open_handle(&fixture.path).0;
+
+    let req = restore_request_bytes(Some(&a_change), Some(&d_change), None, &["a.txt"], false);
+    let token = unsafe { zanshin_restore(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    assert!(parse_envelope(&bytes).ok(), "restore must succeed");
+
+    assert_eq!(tree_hex_of_change(&fixture.path, &d_change), expected_tree);
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+/// `restore_descendants` must actually reach `zanshin_jj::Repo::restore`: with the field
+/// hardcoded to `false`, the descendant would be REBASED (its content re-derived) instead of
+/// reparented (its content preserved verbatim).
+#[test]
+fn restore_with_restore_descendants_preserves_the_childs_own_tree() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let a = test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "A\n")], "ancestor");
+    let d = test_helpers::add_commit_with_files(&fixture.path, &[&a], &[("a.txt", "D\n")], "destination");
+    // The child touches a DIFFERENT file, so a rebase would stay conflict-free and produce
+    // `{a: "A", c: "C"}` — a tree distinguishable from the reparented one.
+    let c = test_helpers::add_commit_with_files(&fixture.path, &[&d], &[("a.txt", "D\n"), ("c.txt", "C\n")], "child");
+    let rebased_oracle = test_helpers::add_commit_with_files(
+        &fixture.path,
+        &[],
+        &[("a.txt", "A\n"), ("c.txt", "C\n")],
+        "oracle rebased child",
+    );
+    let c_tree_before = test_helpers::tree_hex(&fixture.path, &c);
+    let c_tree_rebased = test_helpers::tree_hex(&fixture.path, &rebased_oracle);
+    assert_ne!(
+        c_tree_before, c_tree_rebased,
+        "the two outcomes must differ, or this test proves nothing"
+    );
+    let a_change = change_id_for_commit(&fixture.path, &a);
+    let d_change = change_id_for_commit(&fixture.path, &d);
+    let c_change = change_id_for_commit(&fixture.path, &c);
+    let handle = open_handle(&fixture.path).0;
+
+    let req = restore_request_bytes(Some(&a_change), Some(&d_change), None, &[], true);
+    let token = unsafe { zanshin_restore(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    assert!(parse_envelope(&bytes).ok(), "restore must succeed");
+
+    assert_eq!(
+        tree_hex_of_change(&fixture.path, &c_change),
+        c_tree_before,
+        "a reparented child keeps its own tree verbatim"
     );
 
     close_handle(handle);
@@ -849,6 +955,41 @@ fn absorb_valid_round_trip_returns_ok_absorb_result() {
         "the hunk lands in the annotating ancestor"
     );
     assert!(ar.skipped_paths().is_some_and(|v| v.is_empty()));
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+/// `paths` must actually reach `zanshin_jj::Repo::absorb`: with the field hardcoded to an
+/// empty list, `b.txt`'s hunk would move into the ancestor too.
+#[test]
+fn absorb_with_a_path_filter_moves_only_the_matching_paths_hunks() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let a =
+        test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "a1\n"), ("b.txt", "b1\n")], "ancestor");
+    let s =
+        test_helpers::add_commit_with_files(&fixture.path, &[&a], &[("a.txt", "a2\n"), ("b.txt", "b2\n")], "source");
+    // Only a.txt's hunk moves, so the ancestor ends up `{a: "a2", b: "b1"}`.
+    let oracle =
+        test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "a2\n"), ("b.txt", "b1\n")], "oracle");
+    let expected_tree = test_helpers::tree_hex(&fixture.path, &oracle);
+    let a_change = change_id_for_commit(&fixture.path, &a);
+    let s_change = change_id_for_commit(&fixture.path, &s);
+    let handle = open_handle(&fixture.path).0;
+
+    let req = absorb_request_bytes(Some(&s_change), None, &["a.txt"]);
+    let token = unsafe { zanshin_absorb(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(
+        env.ok(),
+        "absorb must succeed, error={:?}/{:?}",
+        env.error().and_then(|e| e.code()),
+        env.error().and_then(|e| e.context())
+    );
+
+    assert_eq!(tree_hex_of_change(&fixture.path, &a_change), expected_tree);
 
     close_handle(handle);
     drop(fixture);

@@ -318,8 +318,8 @@ fn content_ops_surface_resolves() {
     _ = zanshin_jj::Repo::absorb
         as fn(
             &mut zanshin_jj::Repo,
-            Option<&str>,
             Option<zanshin_jj::ChangeId>,
+            Option<&str>,
             &[String],
         ) -> Result<zanshin_jj::AbsorbResult, zanshin_jj::MutateError>;
 }

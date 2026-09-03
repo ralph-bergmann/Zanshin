@@ -170,7 +170,8 @@ Uint8List zanshinGitFetch(int rawHandle, String remoteName) {
 /// [from]/[into] is given the other is `@`; if neither is, the destination
 /// ([changesIn], else `@`) is restored from its PARENT tree. [changesIn] may not
 /// be combined with [from]/[into]. An empty [paths] means all paths; entries are
-/// repo-relative PREFIXES.
+/// repo-relative PREFIXES — and an empty-STRING entry is the repository root, which
+/// prefixes everything, so `paths: ['']` matches all paths just as `paths: []` does.
 Uint8List zanshinRestore(
   int rawHandle, {
   String? from,
@@ -210,6 +211,7 @@ Uint8List zanshinRestore(
 /// `--into` default, the `mutable()` ALIAS, resolved through the repo's effective
 /// config — so the user's `[revset-aliases]` decides what it denotes. Unlike
 /// every other mutation argument [into] is a revset EXPRESSION, not a change id.
+/// [paths] behaves exactly as in [zanshinRestore], empty-string entry included.
 Uint8List zanshinAbsorb(
   int rawHandle, {
   String? from,
@@ -301,6 +303,10 @@ final class AbsorbResult {
 
   /// Number of descendant commits rebased. Excludes the destinations; includes
   /// the rewritten source.
+  ///
+  /// Crosses the wire as a `uint`: jj-lib counts in `usize`, and a count above
+  /// 4294967295 SATURATES at that value rather than wrapping. It is a progress
+  /// figure for the UI, never something a decision should key off.
   final int numRebased;
 
   /// Paths jj-lib refused to split. The CLI prints one warning per entry; the

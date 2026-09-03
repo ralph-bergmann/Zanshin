@@ -29,7 +29,7 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use test_helpers::{
     add_commit_with_files, add_conflicted_merge_off_root, add_conflicted_merge_with_extra_files, extract_fixture,
-    set_tag, FixtureHandle,
+    set_tag, tree_hex, FixtureHandle,
 };
 use zanshin_jj::{AbsorbResult, ChangeId, MutateError, MutationResult, Repo};
 
@@ -104,20 +104,6 @@ fn tree_hex_of_change(workspace_root: &Path, change: &ChangeId) -> String {
         .hex()
 }
 
-/// The hex tree id of the commit named by `commit_hex` (used for a commit that only exists
-/// as an EXPECTED value and is never mutated).
-fn tree_hex_of_commit(workspace_root: &Path, commit_hex: &str) -> String {
-    let repo = jj_repo(workspace_root);
-    let id = JjCommitId::try_from_hex(commit_hex).expect("hex commit id");
-    repo.store()
-        .get_commit(&id)
-        .expect("commit")
-        .tree_ids()
-        .as_resolved()
-        .expect("purpose-built trees are conflict-free")
-        .hex()
-}
-
 /// The head operation's id, so a test can assert that a refusal — or a no-op — wrote nothing.
 fn head_op_id(repo: &Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
@@ -158,9 +144,9 @@ fn restore_chain() -> RestoreChain {
     // Content-addressing makes their tree ids equal to the expected results'.
     let c_rebased = add_commit_with_files(&fx.path, &[], &[("a.txt", "A\n"), ("b.txt", "C\n")], "oracle rebased C");
 
-    let b_tree_before = tree_hex_of_commit(&fx.path, &b);
-    let c_tree_before = tree_hex_of_commit(&fx.path, &c);
-    let c_tree_rebased = tree_hex_of_commit(&fx.path, &c_rebased);
+    let b_tree_before = tree_hex(&fx.path, &b);
+    let c_tree_before = tree_hex(&fx.path, &c);
+    let c_tree_rebased = tree_hex(&fx.path, &c_rebased);
     let (a, b, c) = (
         change_id_of(&fx.path, &a),
         change_id_of(&fx.path, &b),
@@ -310,7 +296,7 @@ fn restore_with_a_path_filter_touches_only_the_matching_path() {
     let b = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "B\n"), ("b.txt", "B-only\n")], "content B");
     // `{a: "A", b: "B-only"}` — a.txt takes A's content, b.txt keeps B's.
     let expected = add_commit_with_files(&fx.path, &[], &[("a.txt", "A\n"), ("b.txt", "B-only\n")], "oracle");
-    let expected_tree = tree_hex_of_commit(&fx.path, &expected);
+    let expected_tree = tree_hex(&fx.path, &expected);
     let (a, b) = (change_id_of(&fx.path, &a), change_id_of(&fx.path, &b));
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
 
@@ -530,7 +516,7 @@ fn absorb_chain() -> AbsorbChain {
     let a = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\ntwo\nthree\n")], "ancestor");
     let s = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "one\nCHANGED\nthree\n")], "source");
     let absorbed = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\nCHANGED\nthree\n")], "oracle absorbed");
-    let a_tree_absorbed = tree_hex_of_commit(&fx.path, &absorbed);
+    let a_tree_absorbed = tree_hex(&fx.path, &absorbed);
     AbsorbChain {
         a: change_id_of(&fx.path, &a),
         s: change_id_of(&fx.path, &s),
@@ -559,7 +545,7 @@ fn absorb_moves_the_hunk_into_the_annotating_ancestor() {
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
 
     let result = repo
-        .absorb(None, Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), None, &[])
         .expect("the edited line was introduced by A");
 
     assert_eq!(
@@ -579,7 +565,50 @@ fn absorb_moves_the_hunk_into_the_annotating_ancestor() {
     assert!(result.skipped_paths.is_empty());
     assert!(result.mutation.new_change_ids.is_empty());
     assert!(result.mutation.abandoned_change_ids.is_empty());
+    // jj-lib's `num_rebased` EXCLUDES the destination but INCLUDES the rewritten source, so
+    // absorbing S's only hunk into A counts exactly one: S itself, reparented onto the new A.
+    // Asserted here rather than only on the no-op branch, which returns a hardcoded 0.
+    assert_eq!(result.num_rebased, 1);
+    assert_eq!(
+        result.source_change_id.as_ref().map(|c| c.0.clone()),
+        Some(chain.s.0.clone()),
+        "the source survives: it still carries a description, so it is not discardable"
+    );
     let repo = Repo::open(&chain.fx.path).expect("fixture reopens");
+    assert_absorb_op(&repo, &result, 1);
+}
+
+/// The `None` arm of `AbsorbResult::source_change_id` on a REAL absorb (the no-op branch
+/// returns a hardcoded `None`, which proves nothing about it): a source whose whole diff
+/// moves and which carries no description becomes discardable, and jj-lib abandons it.
+#[test]
+fn absorb_abandons_a_discardable_source_and_reports_no_source_change_id() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let a = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\ntwo\nthree\n")], "ancestor");
+    // EMPTY description: once its only hunk has been absorbed the source has neither a diff
+    // nor a description left, which is jj-lib's definition of discardable.
+    let s = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "one\nCHANGED\nthree\n")], "");
+    let (a, s) = (change_id_of(&fx.path, &a), change_id_of(&fx.path, &s));
+    let mut repo = Repo::open(&fx.path).expect("fixture opens");
+    let before_op = head_op_id(&repo);
+
+    let result = repo.absorb(Some(s), None, &[]).expect("the whole diff absorbs into A");
+
+    assert_eq!(
+        result
+            .rewritten_change_ids
+            .iter()
+            .map(|c| c.0.clone())
+            .collect::<Vec<_>>(),
+        vec![a.0.clone()]
+    );
+    assert!(
+        result.source_change_id.is_none(),
+        "a discardable source is abandoned, not rewritten"
+    );
+    let repo = Repo::open(&fx.path).expect("fixture reopens");
+    assert_ne!(head_op_id(&repo), before_op, "this absorb DID write an operation");
     assert_absorb_op(&repo, &result, 1);
 }
 
@@ -612,7 +641,7 @@ fn absorb_with_destinations_that_exclude_the_ancestor_absorbs_nothing_and_writes
     // `@` is the fixture's own commit off root — unrelated to S's ancestry, so the
     // annotation finds no destination inside the domain.
     let result = repo
-        .absorb(Some("@"), Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), Some("@"), &[])
         .expect("an empty destination set is a no-op, not an error");
 
     assert!(result.rewritten_change_ids.is_empty());
@@ -630,12 +659,12 @@ fn absorb_with_a_path_filter_moves_only_the_matching_paths_hunks() {
     let s = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "a2\n"), ("b.txt", "b2\n")], "source");
     // Only a.txt's hunk moves, so A ends up `{a: "a2", b: "b1"}`.
     let expected = add_commit_with_files(&fx.path, &[], &[("a.txt", "a2\n"), ("b.txt", "b1\n")], "oracle");
-    let expected_tree = tree_hex_of_commit(&fx.path, &expected);
+    let expected_tree = tree_hex(&fx.path, &expected);
     let (a, s) = (change_id_of(&fx.path, &a), change_id_of(&fx.path, &s));
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
 
     let result = repo
-        .absorb(None, Some(s.clone()), &["a.txt".to_owned()])
+        .absorb(Some(s.clone()), None, &["a.txt".to_owned()])
         .expect("absorb a.txt only");
 
     assert_eq!(tree_hex_of_change(&fx.path, &a), expected_tree);
@@ -658,7 +687,7 @@ fn absorb_of_a_newly_added_file_absorbs_nothing_and_writes_no_operation() {
     let before_op = head_op_id(&repo);
 
     let result = repo
-        .absorb(None, Some(s), &[])
+        .absorb(Some(s), None, &[])
         .expect("nothing to absorb is not an error");
 
     assert!(result.rewritten_change_ids.is_empty());
@@ -682,7 +711,7 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
     let before_op = head_op_id(&repo);
 
     let result = repo
-        .absorb(None, Some(s), &[])
+        .absorb(Some(s), None, &[])
         .expect("a skipped path is a warning in the CLI, not a failure");
 
     let skipped: Vec<(String, String)> = result
@@ -718,7 +747,7 @@ fn absorb_keeps_absorbing_the_other_paths_when_one_is_skipped() {
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
 
     let result = repo
-        .absorb(None, Some(s), &[])
+        .absorb(Some(s), None, &[])
         .expect("a skipped path is a warning in the CLI, not a failure");
 
     assert_eq!(
@@ -752,7 +781,7 @@ fn absorb_into_an_immutable_destination_is_refused_and_writes_no_operation() {
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(Some("all()"), Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), Some("all()"), &[])
         .expect_err("A is tagged, hence immutable");
 
     assert!(
@@ -770,7 +799,7 @@ fn absorb_with_a_syntactically_invalid_destination_revset_is_refused() {
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(Some("bogus_function()"), Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), Some("bogus_function()"), &[])
         .expect_err("unknown revset function");
 
     assert!(
@@ -788,7 +817,7 @@ fn absorb_with_an_unresolvable_destination_symbol_is_refused() {
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(Some("nonexistent-bookmark"), Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), Some("nonexistent-bookmark"), &[])
         .expect_err("no such bookmark");
 
     assert!(
@@ -806,7 +835,7 @@ fn absorb_with_a_bogus_source_is_refused_and_writes_no_operation() {
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(None, Some(ChangeId("nonexistentchangeid".to_owned())), &[])
+        .absorb(Some(ChangeId("nonexistentchangeid".to_owned())), None, &[])
         .expect_err("a bogus source must not resolve");
 
     assert!(
@@ -824,7 +853,7 @@ fn absorb_with_a_malformed_path_is_refused_and_writes_no_operation() {
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(None, Some(chain.s.clone()), &["trailing/".to_owned()])
+        .absorb(Some(chain.s.clone()), None, &["trailing/".to_owned()])
         .expect_err("a trailing slash is not a repo path");
 
     assert!(
@@ -846,7 +875,7 @@ fn absorb_reports_a_config_fault_rather_than_falling_back_to_the_builtin_immutab
     let before_op = head_op_id(&repo);
 
     let err = repo
-        .absorb(None, Some(chain.s.clone()), &[])
+        .absorb(Some(chain.s.clone()), None, &[])
         .expect_err("an unparseable immutable_heads() alias must not be ignored");
 
     assert!(matches!(err, MutateError::Config { .. }), "unexpected error: {err:?}");
