@@ -605,9 +605,16 @@ final class RepoHandle {
   /// A `null` [revset] applies the CLI's own default `@` — here the
   /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. Unlike
   /// [interdiff]'s two sides, [revset] is a pass-through EXPRESSION, not a change
-  /// id: the CLI unions its revsets, so a DIVERGENT change yields both its visible
-  /// commits as two entries rather than a refusal. Aliases come from the repo's
-  /// effective jj config, re-read per call.
+  /// id: the CLI unions its revsets, so entries are per COMMIT — a revset naming
+  /// two commits of ONE divergent change yields two entries with the same
+  /// `Change.id`, both flagged `divergent`. A BARE divergent change-id symbol does
+  /// NOT get that far: jj-lib's own `SymbolResolver` refuses it
+  /// (`RevsetResolutionError::DivergentChangeId`), exactly as
+  /// `jj show <divergent-id>` fails in the CLI, so it throws
+  /// `jj.revset_resolution_error` — a DIFFERENT refusal from [interdiff]'s
+  /// `jj.change_not_found`. Address both commits by unioning their COMMIT hexes,
+  /// which are ordinary revset symbols. Aliases come from the repo's effective jj
+  /// config, re-read per call.
   ///
   /// Entries come in raw revset order (topological, children before parents). Each
   /// entry's `fileChanges` is the diff against the commit's MERGED parent tree —
@@ -631,8 +638,11 @@ final class RepoHandle {
   ///
   /// [revset] behaves as in [show]. [limit] is the CLI's `-n/--limit`, applied in
   /// WALK order (the CLI limits before reversing); `limit: 0` is an empty list,
-  /// not an error. The CLI's `--reversed` and its graph mode's re-ordering are
-  /// rendering the UI does itself and are not applied.
+  /// not an error. A [limit] above the wire field's `uint` ceiling (4294967295)
+  /// SATURATES there, so an over-large limit means "everything" rather than
+  /// wrapping to an empty list; a NEGATIVE [limit] throws [ArgumentError]. The
+  /// CLI's `--reversed` and its graph mode's re-ordering are rendering the UI does
+  /// itself and are not applied.
   ///
   /// Rows carry COMMIT ids, not change ids: every predecessor shares the change's
   /// id, and predecessors are hidden by construction. A `null`

@@ -166,11 +166,28 @@ fn interdiff_pair() -> InterdiffPair {
     InterdiffPair { fx, from, to }
 }
 
+/// A git-backed workspace in a fresh `TempDir`.
+///
+/// Copy records exist ONLY on the git backend — the native `SimpleBackend` yields an empty
+/// stream and every rename degrades to an `Added`+`Removed` pair (`status.rs:121-122`) — and no
+/// committed fixture is git-backed. Hand-built trees on top of this are the only way to
+/// construct a multi-parent rename or a copy, neither of which the snapshot harness below can
+/// express.
+fn git_workspace() -> TempDir {
+    let tmp = TempDir::new().expect("tempdir");
+    Repo::init(tmp.path(), Some(Backend::Git)).expect("git-backed init");
+    tmp
+}
+
+/// Four lines, so gix's 50 % similarity threshold has something to measure. An exact copy of
+/// this body scores 100 % against the pre-edit version of the file it was copied from.
+const COPY_BODY: &str = "line one\nline two\nline three\nline four\n";
+
 // ── Git-backed working-copy harness (rename detection) ────────────────────────────
 //
-// Copy records exist only on the git backend, and only between two committed trees — so the
-// rename rows need a real snapshot chain, not a hand-built tree. Both helpers are TEST SETUP
-// ONLY: production code never snapshots (D2). Mirrors `tests/status.rs`.
+// The `@`-relative rows additionally need a real snapshot chain rather than a hand-built tree,
+// because `@` itself must carry the rename. Both helpers are TEST SETUP ONLY: production code
+// never snapshots (D2). Mirrors `tests/status.rs`.
 
 fn snapshot_working_copy(workspace_root: &Path) {
     let settings = make_test_settings();
@@ -324,37 +341,142 @@ fn show_of_a_root_commit_reports_no_file_changes() {
     assert_eq!(head_op_id(&repo), before);
 }
 
+/// The payload's documented ORDER — "raw revset order, children before parents" — and the
+/// per-commit parent resolution, in one scenario.
+///
+/// A parent→child DAG range is what makes the order observable: the two rows are not siblings,
+/// so "children before parents" is a claim the assertion can actually falsify (appending
+/// `out.reverse()` to `show` fails here). Their diffs differ too, so an entry diffed against the
+/// wrong commit's parent would report the other's file.
 #[test]
-fn show_unions_a_multi_commit_revset_and_diffs_each_against_its_own_parent() {
+fn show_returns_children_before_parents_and_diffs_each_against_its_own_parent() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    // Two INDEPENDENT commits off root, each adding a different file — so an entry diffed
-    // against the wrong parent would report the other's file too.
-    let a = add_commit_with_files(&fx.path, &[], &[("a.txt", "alpha\n")], "adds a");
-    let b = add_commit_with_files(&fx.path, &[], &[("b.txt", "beta\n")], "adds b");
-    let a_change = change_id_of(&fx.path, &a);
-    let b_change = change_id_of(&fx.path, &b);
+    let parent = add_commit_with_files(&fx.path, &[], &[("a.txt", "alpha\n")], "adds a");
+    let child = add_commit_with_files(
+        &fx.path,
+        &[&parent],
+        &[("a.txt", "alpha\n"), ("b.txt", "beta\n")],
+        "adds b",
+    );
     let repo = open(&fx);
     let before = head_op_id(&repo);
 
-    let entries = repo
-        .show(Some(&format!("{} | {}", a_change.0, b_change.0)))
-        .expect("show succeeds");
+    let entries = repo.show(Some(&format!("{parent}::{child}"))).expect("show succeeds");
 
-    assert_eq!(entries.len(), 2, "a union revset yields one entry per commit");
-    let by_id: Vec<_> = entries
-        .iter()
-        .map(|e| (e.change.id.0.clone(), summary(&e.file_changes)))
-        .collect();
-    assert!(
-        by_id.contains(&(a_change.0.clone(), vec![("a.txt".to_owned(), "A")])),
-        "unexpected entries: {by_id:?}"
-    );
-    assert!(
-        by_id.contains(&(b_change.0.clone(), vec![("b.txt".to_owned(), "A")])),
-        "unexpected entries: {by_id:?}"
+    assert_eq!(
+        entries
+            .iter()
+            .map(|e| (e.change.commit_id.0.clone(), summary(&e.file_changes)))
+            .collect::<Vec<_>>(),
+        vec![
+            (child.clone(), vec![("b.txt".to_owned(), "A")]),
+            (parent.clone(), vec![("a.txt".to_owned(), "A")]),
+        ],
+        "raw revset order is children before parents, and each row is diffed against ITS OWN parent"
     );
     assert_eq!(head_op_id(&repo), before);
+}
+
+/// An ordinary EDIT — the single most common thing a GUI renders, and the one `ChangeKind` no
+/// other scenario in this suite produces (every other row is an add, a removal or a rename).
+#[test]
+fn show_reports_an_edited_file_as_modified() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let base = add_commit_with_files(&fx.path, &[], &[("a.txt", "alpha\n")], "base");
+    let edited = add_commit_with_files(&fx.path, &[&base], &[("a.txt", "alpha\nbeta\n")], "edit a.txt");
+    let change = change_id_of(&fx.path, &edited);
+    let repo = open(&fx);
+
+    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+
+    assert_eq!(
+        summary(&entries[0].file_changes),
+        vec![("a.txt".to_owned(), "M")],
+        "a path present in both trees with different content is Modified, not Added+Removed"
+    );
+}
+
+/// `show` accumulates copy records over EVERY parent (the CLI's `show_patch`), where
+/// `status.rs` deliberately uses only the first (its documented D4 approximation).
+///
+/// The rename here is visible ONLY against the SECOND parent — `p1` never held `old.txt`, so
+/// git finds no rewrite between `p1` and the merge. Restricting the loop to
+/// `parent_ids().first()` therefore turns this one `R` entry into an `Added`+`Removed` pair.
+#[test]
+fn show_accumulates_copy_records_over_every_parent_not_just_the_first() {
+    pin_env();
+    let tmp = git_workspace();
+    let p1 = add_commit_with_files(tmp.path(), &[], &[("a.txt", "alpha\n")], "p1");
+    let p2 = add_commit_with_files(tmp.path(), &[], &[("old.txt", COPY_BODY)], "p2");
+    let merge = add_commit_with_files(
+        tmp.path(),
+        &[&p1, &p2],
+        &[("a.txt", "alpha\n"), ("new.txt", COPY_BODY)],
+        "merge that renames old.txt",
+    );
+    let change = change_id_of(tmp.path(), &merge);
+    let repo = Repo::open(tmp.path()).expect("repo opens");
+
+    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+
+    assert_eq!(
+        summary(&entries[0].file_changes),
+        vec![("new.txt".to_owned(), "R")],
+        "the second parent's copy records must be consulted too, got {:?}",
+        entries[0].file_changes
+    );
+    assert!(
+        matches!(&entries[0].file_changes[0].kind, ChangeKind::Renamed { from } if from.to_str() == Some("old.txt")),
+        "the source path must survive: {:?}",
+        entries[0].file_changes[0].kind
+    );
+}
+
+/// The `Copied` arm of the classifier.
+///
+/// gix only looks for a copy SOURCE among the files the diff already reports as modified
+/// (`CopySource::FromSetOfModifiedFiles`, `git_backend.rs:1481-1486` @ 0.44.0), so a copy is
+/// detectable only when the ORIGINAL is edited in the same commit. `copy.txt` is a byte-exact
+/// copy of `a.txt`'s PRE-edit body, which scores 100 % against gix's 50 % threshold.
+#[test]
+fn show_reports_a_copy_whose_source_was_edited_in_the_same_commit() {
+    pin_env();
+    let tmp = git_workspace();
+    let base = add_commit_with_files(tmp.path(), &[], &[("a.txt", COPY_BODY)], "base");
+    let copied = add_commit_with_files(
+        tmp.path(),
+        &[&base],
+        &[
+            ("a.txt", "line zero\nline one\nline two\nline three\nline four\n"),
+            ("copy.txt", COPY_BODY),
+        ],
+        "copy a.txt and edit the original",
+    );
+    let change = change_id_of(tmp.path(), &copied);
+    let repo = Repo::open(tmp.path()).expect("repo opens");
+
+    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+
+    let mut labels = summary(&entries[0].file_changes);
+    labels.sort();
+    assert_eq!(
+        labels,
+        vec![("a.txt".to_owned(), "M"), ("copy.txt".to_owned(), "C")],
+        "the original stays Modified and the duplicate is Copied, not Added: {:?}",
+        entries[0].file_changes
+    );
+    let copy = entries[0]
+        .file_changes
+        .iter()
+        .find(|c| c.path.to_str() == Some("copy.txt"))
+        .expect("the copy entry");
+    assert!(
+        matches!(&copy.kind, ChangeKind::Copied { from } if from.to_str() == Some("a.txt")),
+        "the source path must survive: {:?}",
+        copy.kind
+    );
 }
 
 #[test]

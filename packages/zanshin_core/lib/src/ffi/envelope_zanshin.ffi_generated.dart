@@ -1426,8 +1426,13 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
 ///  Arguments of `zanshin_show` (Story 9.6, FR-JJ-17) — the CLI's `jj show`.
 ///
 ///  `revset` is a pass-through revset EXPRESSION, not a change id: the CLI takes
-///  `Vec<RevisionArg>` and UNIONS them, so a divergent change yields both its visible commits
-///  rather than a refusal, and materializing it into ids would destroy alias/config resolution.
+///  `Vec<RevisionArg>` and UNIONS them, and materializing that into ids would destroy
+///  alias/config resolution (FR-JJ-17). A bare DIVERGENT change-id symbol is nonetheless
+///  REFUSED — jj-lib's own `SymbolResolver` raises `RevsetResolutionError::DivergentChangeId`
+///  (`revset.rs:2827` @ 0.44.0) before evaluation, so `jj show <divergent-id>` fails in the CLI
+///  too; it surfaces here as `jj.revset_resolution_error`, a different refusal from
+///  InterdiffRequest's `jj.change_not_found`. Both commits stay addressable because their commit
+///  hexes are ordinary revset symbols: union them to get one entry per commit.
 ///  ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
 ///  `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
 ///  explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
@@ -5854,8 +5859,11 @@ class ShowEntryObjectBuilder extends fb.ObjectBuilder {
 
 ///  The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
 ///  (topological, children before parents). A revset matching nothing is an EMPTY list and a
-///  SUCCESS. A divergent change contributes one entry per visible commit — the CLI's `show`
-///  unions revsets and never refuses ambiguity.
+///  SUCCESS. Entries are per COMMIT, not per change: a revset naming two commits of ONE
+///  divergent change yields two entries carrying the same `Change.id`, both with
+///  `Change.divergent` set. Reaching that state takes their commit hexes, though — a bare
+///  divergent change-id symbol never gets this far, because jj-lib's `SymbolResolver` refuses it
+///  first (see ShowRequest).
 class ShowView {
   ShowView._(this._bc, this._bcOffset);
   factory ShowView(List<int> bytes) {

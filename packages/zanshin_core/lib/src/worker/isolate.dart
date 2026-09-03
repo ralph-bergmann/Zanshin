@@ -1062,8 +1062,12 @@ class ZanshinWorker {
   /// identified by [handleId] (Story 9.6) — the CLI's `jj show`.
   ///
   /// A `null` [revset] applies the CLI's own default `@`. [revset] is an
-  /// EXPRESSION, not a change id: a divergent change yields both visible commits
-  /// as two entries rather than a refusal. This read writes no operation.
+  /// EXPRESSION, not a change id, so entries are per COMMIT: a revset naming two
+  /// commits of ONE divergent change yields two entries with the same `Change.id`.
+  /// A BARE divergent change-id symbol is REFUSED by jj-lib's own `SymbolResolver`
+  /// (`jj.revset_resolution_error`), exactly as `jj show <divergent-id>` fails in
+  /// the CLI; union the two COMMIT hexes to address both. This read writes no
+  /// operation.
   ///
   /// Sends a [ShowCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<ShowView>` bytes into a `List<ShowEntry>`.
@@ -1083,7 +1087,9 @@ class ZanshinWorker {
   /// by [handleId] (Story 9.6) — the CLI's `jj evolog`.
   ///
   /// [limit] is applied in WALK order (the CLI limits before reversing); `0` is an
-  /// empty result, not an error. This read writes no operation.
+  /// empty result, not an error, and a limit above the wire field's `uint` ceiling
+  /// (4294967295) SATURATES there rather than wrapping to an empty result. A
+  /// negative [limit] is an [ArgumentError]. This read writes no operation.
   ///
   /// Sends an [EvologCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<EvologView>` bytes into a `List<EvologEntry>`.

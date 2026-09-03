@@ -223,10 +223,15 @@ unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, Ff
 /// composite-input pattern). An ABSENT `revset` is the wire form of "the user did not supply
 /// it", which applies the CLI's own default `@` — here the LAST-SNAPSHOTTED working-copy commit,
 /// because Zanshin never snapshots (D2). `revset` is an EXPRESSION, not a change id: the CLI
-/// unions its revsets, so a divergent change yields both visible commits as two entries rather
-/// than a refusal. Each entry's `file_changes` is the diff against the commit's MERGED parent
-/// tree; there is no path filter and no textual patch (Epic 5 owns hunks). This read writes NO
-/// operation.
+/// unions its revsets, so entries are per COMMIT — a revset naming two commits of ONE divergent
+/// change yields two entries carrying the same `Change.id`. A BARE divergent change-id symbol
+/// does NOT get that far: jj-lib's own `SymbolResolver` refuses it
+/// (`RevsetResolutionError::DivergentChangeId`, `revset.rs:2827` @ 0.44.0), exactly as
+/// `jj show <divergent-id>` fails in the CLI, and it surfaces here as
+/// `jj.revset_resolution_error` — a different refusal from `zanshin_interdiff`'s
+/// `jj.change_not_found`. Union the two COMMIT hexes to address both.
+/// Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
+/// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `ShowView` payload on success.
 ///

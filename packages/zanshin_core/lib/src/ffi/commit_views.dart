@@ -77,8 +77,12 @@ Uint8List _callWithRequest(
 /// A `null` [revset] is the wire form of "the user did not supply it", which
 /// applies the CLI's own default `@` — the LAST-SNAPSHOTTED working-copy commit,
 /// since Zanshin never snapshots. [revset] is an EXPRESSION, not a change id: the
-/// CLI unions its revsets, so a divergent change yields both visible commits as
-/// two entries rather than a refusal.
+/// CLI unions its revsets, so entries are per COMMIT — a revset naming two commits
+/// of ONE divergent change yields two entries with the same `Change.id`. A BARE
+/// divergent change-id symbol does NOT get that far: jj-lib's own `SymbolResolver`
+/// refuses it (`RevsetResolutionError::DivergentChangeId`), exactly as
+/// `jj show <divergent-id>` fails in the CLI, and it surfaces as
+/// `jj.revset_resolution_error`. Union the two COMMIT hexes to address both.
 Uint8List zanshinShow(int rawHandle, {String? revset}) {
   _rejectInteriorNul(revset, 'revset');
   final Uint8List request = fbs.ShowRequestObjectBuilder(revset: revset).toBytes();
@@ -91,6 +95,14 @@ Uint8List zanshinShow(int rawHandle, {String? revset}) {
 /// [revset] behaves as in [zanshinShow]. [limit] is the CLI's `-n/--limit`, sent
 /// as a presence-flag pair because `limit: 0` is a MEANINGFUL value (an empty
 /// result, not an error) and so cannot be encoded as absence.
+///
+/// [limit] SATURATES at [_maxWireLimit] (4294967295), the schema's documented
+/// saturating-`uint` convention. Dart ints are 64-bit while the wire field is a
+/// `uint`, so an unclamped `4294967296` would be written as `0` and come back as
+/// an EMPTY evolog — the most misleading possible answer to "give me lots of
+/// entries". Clamping makes an over-large limit mean "everything", which is what
+/// the caller asked for. A NEGATIVE limit is refused instead of clamped: it can
+/// only be a caller bug, and both `0` and "no limit" are already spelled.
 Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
   _rejectInteriorNul(revset, 'revset');
   if (limit != null && limit < 0) {
@@ -98,11 +110,17 @@ Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
   }
   final Uint8List request = fbs.EvologRequestObjectBuilder(
     revset: revset,
-    limit: limit ?? 0,
+    limit: limit == null ? 0 : (limit > _maxWireLimit ? _maxWireLimit : limit),
     hasLimit: limit != null,
   ).toBytes();
   return _callWithRequest(request, (ptr, len) => zanshin_evolog(rawHandle, ptr, len));
 }
+
+/// The largest value the `EvologRequest.limit` `uint` field can carry.
+///
+/// Above this a limit is a "give me everything" request in every practical sense
+/// — no evolution has four billion versions — so it saturates rather than wraps.
+const _maxWireLimit = 0xFFFFFFFF;
 
 /// Call `zanshin_interdiff` with the raw `u64` handle and an `InterdiffRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.

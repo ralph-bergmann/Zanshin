@@ -913,9 +913,18 @@ impl Repo {
     /// `jj show` (AR-AP-1), and never writes an operation — not even on a refusal.
     ///
     /// `revset` is a caller pass-through EXPRESSION, not a change id (FR-JJ-17): the CLI takes
-    /// `Vec<RevisionArg>` and unions them, so a divergent change yields BOTH its visible
-    /// commits as two entries rather than a refusal. `None` applies the CLI's own default `@` —
-    /// here the LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots (D2).
+    /// `Vec<RevisionArg>` and unions them, so entries are per COMMIT — a revset naming two
+    /// commits of ONE divergent change yields two entries carrying the same
+    /// [`crate::Change::id`], both with `divergent` set. A BARE divergent change-id symbol does
+    /// NOT get that far: jj-lib's own `SymbolResolver` refuses it
+    /// (`RevsetResolutionError::DivergentChangeId`, `revset.rs:2827` @ 0.44.0), exactly as
+    /// `jj show <divergent-id>` fails in the CLI, and it arrives here as
+    /// [`crate::CommitViewError::RevsetResolutionError`]. Address both commits by unioning their
+    /// COMMIT hexes, which are ordinary revset symbols. That is still a real, observable
+    /// difference from [`Repo::interdiff`], which refuses the same change as
+    /// [`crate::CommitViewError::ChangeNotFound`] from its own single-revision resolver.
+    /// `None` applies the CLI's own default `@` — here the LAST-SNAPSHOTTED working-copy commit,
+    /// because Zanshin never snapshots (D2).
     /// Aliases come from the repo's effective jj config, re-read per call and never cached.
     ///
     /// Entries come in RAW revset order (topological, children before parents); the CLI's
