@@ -2,10 +2,10 @@
 title: 'Story 9.3: Content ops — `restore`, `absorb`'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '8ab8e7d4fe810ba38347d3304c0abf6faac49d2f'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
 deferred:
@@ -45,15 +45,36 @@ deferred:
       `crates/zanshin-mcp/src/main.rs` is a five-line stub and the whole tool surface is
       Epic 7's scope, which is why the epic writes "**optional** MCP tool".
   - summary: >-
-      `absorb`'s "remaining paths still absorb" clause is not asserted alongside a skipped
-      path in one test.
+      `docs/ffi-abi.md` documents no mutation wrapper — neither Story 6.5's six nor Story
+      9.3's two, nor the composite-request pattern they share.
     evidence: |-
-      `absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason` pins the
-      load-bearing part — the `(path, reason)` pair forwarded verbatim from jj-lib, and that
-      no operation is written. Exercising a skip AND a successful absorb in the same call
-      would need a conflicted merge whose sides also share a normal file, which
-      `test_helpers::add_conflicted_merge_off_root` does not build; the "keep going" behavior
-      is jj-lib's own `continue` in `split_hunks_to_trees`.
+      The file has per-symbol sections for `zanshin_repo_detect`, `zanshin_repo_convert`,
+      `zanshin_graph_slice` and `zanshin_log_defaults` (C signature, payload pseudo-schema,
+      error-code table), but Story 6.5 shipped `zanshin_describe`/`_new_change`/`_edit`/
+      `_abandon`/`_undo`/`_git_fetch` without touching it, so the gap predates this story —
+      9.3 widens it by two symbols plus `RestoreRequest`/`AbsorbRequest`. Closing it well
+      means backfilling all eight in one pass with the request-buffer pattern documented
+      once, which is a doc story rather than a clause of this one.
+    location: >-
+      docs/ffi-abi.md
+    severity: low
+  - summary: >-
+      A workspace with no working-copy commit surfaces as `jj.jj_lib_error`, although
+      `jj.no_working_copy` is registered for exactly that condition.
+    evidence: |-
+      `resolve_or_wc` reports it as `MutateError::Backend("workspace has no working-copy
+      commit")`, copied verbatim from `sync_working_copy`, which has used that same string
+      for the same condition since Story 6.1 — so the two new verbs are consistent with the
+      shipped precedent rather than diverging from it. The registered `jj.no_working_copy`
+      (`envelope.rs:34`, raised by `status.rs`) would be the right code, but adopting it
+      needs a new `MutateError` variant, an `api_stability.rs` pin and a registry
+      annotation, and it would leave `sync_working_copy` inconsistent unless changed too.
+      The state is also unreachable through the crate's public API today: nothing can remove
+      a workspace's working-copy commit until `workspace forget` (Story 9.13).
+    location: >-
+      crates/zanshin-jj/src/mutate.rs (resolve_or_wc), crates/zanshin-jj/src/mutate.rs
+      (sync_working_copy)
+    severity: low
 ---
 
 <intent-contract>
@@ -305,8 +326,8 @@ every jj anchor at tag `v0.44.0`.
   + `reparent_descendants()`/`rebase_descendants()` + `tx.commit(format!("restore into commit {}",
   to.id().hex()))` -- reusing 9.1's `SelectedTree` is what that layer was built for and keeps the
   `restore_tree` argument inversion in exactly one place.
-- `crates/zanshin-jj/src/mutate.rs` -- add `pub(crate) fn absorb(workspace, immutable,
-  destinations, from, paths) -> Result<AbsorbResult, MutateError>` mirroring the CLI's order:
+- `crates/zanshin-jj/src/mutate.rs` -- add `pub(crate) fn absorb(workspace, immutable, from,
+  destinations, paths) -> Result<AbsorbResult, MutateError>` mirroring the CLI's order:
   `load_at_head` → `capture_old_wc` → resolve source → `revset::resolve_expression(readonly,
   destinations)` → matcher → `AbsorbSource::from_commit` → `split_hunks_to_trees` → collect
   `skipped_paths` → `resolve_immutable` + `check_rewritable(target ids)` **before**
@@ -413,6 +434,106 @@ every jj anchor at tag `v0.44.0`.
 
 ## Review Triage Log
 
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 14: (high 0, medium 5, low 9)
+- defer: 2: (high 0, medium 0, low 2)
+- reject: 12: (high 0, medium 0, low 12)
+- addressed_findings:
+  - `[medium]` `[patch]` `read_request<'a, T>` declared `'a` as a free parameter with nothing
+    tying it to `data`/`len`, and returned `T::Inner` — a BORROWING generated table — fed by
+    `slice::from_raw_parts`'s unbounded lifetime. A future caller in that file could have
+    inferred `'a = 'static` and held a `RestoreRequest<'static>` pointing at Dart-owned
+    memory. The generic helper is gone: each of the three readers now builds its byte slice
+    as a local binding, verifies in that scope and returns an owned struct, so the borrow
+    provably cannot escape; only the null check and the error shape stay shared.
+  - `[medium]` `[patch]` The only FFI happy-path test for `restore` asserted envelope shape,
+    a non-empty `new_op_id` and empty `new_change_ids` — all four of which the NO-OP path
+    satisfies by construction, and all four of which survive a `from`/`into` swap. On a verb
+    whose entire purpose is directional data movement, it proved nothing. It now captures
+    both trees, asserts they differ, then asserts the destination took the source's tree and
+    the source is untouched.
+  - `[medium]` `[patch]` `paths` and `restore_descendants` never left their defaults at any
+    layer above `Repo::*`: all eleven FFI request buffers passed `&[]`/`false` and no Dart
+    test sent them, so hardcoding them in `read_restore_request` would have passed the whole
+    gate — a silent whole-tree clobber and a silent lost-content rebase. Three FFI tests now
+    carry them through `zanshin_restore`/`zanshin_absorb` and assert the effect.
+  - `[medium]` `[patch]` `num_rebased` was asserted only on the branch that writes a literal
+    `0` without consulting `stats`, so `let num_rebased = 0;` would have passed. Now asserted
+    on a real absorb.
+  - `[medium]` `[patch]` `sprint-status.yaml` still read `backlog` for
+    `9-3-content-ops-restore-absorb`, although updating it is part of the verbatim intent.
+    Set to `done` with a summary comment in the 9.1/9.2 style.
+  - `[low]` `[patch]` `AbsorbResult::source_change_id`'s documented `Some`/`None` meaning —
+    `None` = jj-lib abandoned a discardable source — had no real case: every purpose-built
+    source carried a description, and the only `None` assertion was on the hardcoded no-op
+    branch. Added an absorb whose description-less source is fully absorbed and abandoned.
+  - `[low]` `[patch]` `u32::try_from(stats.num_rebased).unwrap_or(u32::MAX)` clamped silently
+    and the clamp was documented in none of the four places the field is described. Now
+    stated at the clamp site, on `AbsorbResult::num_rebased`, in `envelope.fbs` and on Dart's
+    `numRebased`.
+  - `[low]` `[patch]` Absorb's no-op branch hardcodes three fields instead of deriving them
+    from the `stats` it holds. That is correct — the commits `stats` names were never
+    committed, and `stats` is necessarily empty when `!has_changes()` — but a reader could
+    not tell it from an oversight. Commented.
+  - `[low]` `[patch]` `Repo::absorb` took `(destinations, from, paths)` while `Repo::restore`,
+    the CLI's "from … into …", `AbsorbRequest` and the Dart API all put `from` first — the
+    one layer in the chain ordering them differently. Reordered to `(from, destinations,
+    paths)` before any UI call site exists; the Tasks section above was corrected to match.
+  - `[low]` `[patch]` An empty-string `paths` entry parses to the repository ROOT, so
+    `PrefixMatcher` then matches everything and `paths = [""]` silently behaves like
+    `paths = []`. Documented on `build_matcher`, both `Repo` methods and both Dart entry
+    points, and pinned by an inline test with a narrowing-prefix contrast.
+  - `[low]` `[patch]` `skipped_paths` is computed before `guard_rewritable` and discarded by
+    its `?`, so on an `Immutable` refusal a caller sees nothing where the CLI prints one
+    warning per unsplittable path first (`absorb.rs:154-158` vs `:160-162`). Documented as a
+    divergence, with the reason surfacing it would need an error variant carrying data.
+  - `[low]` `[patch]` The CLI's `print_unmatched_explicit_paths` warning — an explicitly named
+    path that matched nothing — has no Zanshin equivalent; the call silently no-ops.
+    Documented on both `Repo` methods, with the reason (`MutationResult` has no warning
+    channel, and adding one would change the payload for all six shipped mutation verbs).
+  - `[low]` `[patch]` The request-only `.fbs` block carried no field-order invariant, although
+    those tables' field ids are now as binding a contract as the union's discriminants. Added
+    the APPEND-only note.
+  - `[low]` `[patch]` This spec's own `deferred` list claimed absorb's "remaining paths still
+    absorb" clause was unassertable because `add_conflicted_merge_off_root` cannot build the
+    scenario — while commit `9157be1`, made during this same run, added
+    `add_conflicted_merge_with_extra_files` and a test asserting exactly that. Stale entry
+    removed.
+
+Notes on the two empty categories. **No `intent_gap`:** the intent-alignment audit enumerated
+four readings (crate-local, full-chain-with-MCP, full-chain-without-MCP, CLI-maximal) and
+confirmed the diff implements a determinate one — full chain minus MCP, with the CLI carve-outs
+recorded as deferred — selected by 9.3's Tier A placement and `[M]` tag against 9.2's
+Precursors placement, plus the epic's own per-verb definition of done. **No `bad_spec`:** every
+patch is additive documentation or test strength; re-deriving from an amended spec would
+reproduce byte-identical `mutate.rs` verb bodies, so a loopback's entire yield would have been
+these same edits — the same reasoning Stories 9.1 and 9.2 recorded.
+
+Twelve findings were rejected: the absorb-abandons-source signal not appearing in
+`new_change_ids`/`abandoned_change_ids` (a documented deliberate contract — the signal is
+`source_change_id`); a present-but-empty `into` string yielding a revset parse error (the CLI's
+`--into ""` errors too, so this is parity); `.`/`..` path components (already refused by
+`RepoPathBuf::from_internal_string`, pinned by an existing test) and backslashes (a legal
+character in a jj internal path); a duplicate-path assert in a test helper; per-verb tests for
+the divergent and only-hidden `ChangeNotFound` spellings (`resolve_commit` is shared and
+already pinned in `tests/mutate.rs`); oracle commits living in the repo under test (they are
+created off root and cannot enter the source's ancestry, which is what bounds the annotation
+domain); the harness copy-paste between the three integration binaries (the established
+convention in `tests/mutate.rs` and `tests/op_support.rs`); `open_content_fixture`'s
+`unsafe fn` doc shape and its handle leak on an assertion failure (test-only); the inconsistent
+reopen ceremony (both forms re-resolve to head under ADR-0002, so they are equivalent); and
+three descriptive intent-audit observations that name choices already recorded as deferred
+(prefix matching vs filesets, no working-copy snapshot, no MCP tool).
+
+The patches were delegated back to the implementation subagent, which still held its context;
+it applied all twelve and committed them as `7076e0f`. Unlike Story 9.1's experience, the
+re-engagement was tracked to completion before this session touched a file, so no clobbering
+occurred — but note that the resume call returns immediately rather than blocking, so the
+completion has to be waited on explicitly.
+
 ## Design Notes
 
 **Scope is the full surfacing chain — and that is derived, not assumed.** Four signals: (1)
@@ -512,3 +633,116 @@ before opening the transaction.
 - Diff the crate's `pub` items: confirm the additions are exactly `Repo::restore`, `Repo::absorb`,
   `AbsorbResult`, `SkippedPath` and the two `MutateError` variants, and that no `jj_lib` type
   leaked into a public signature.
+
+## Auto Run Result
+
+Status: done
+Commits, all on `main` from baseline `8ab8e7d4fe810ba38347d3304c0abf6faac49d2f`:
+`8a8eaeddbbc5ca496e11ef3adf37e4aec31ba8a2` (the two verbs across the full chain),
+`78b105494c6a114bfe5cb4f0bb05e9d9c91d04f9` (deferred items),
+`9157be1` (the skipped-path matrix row, closed rather than deferred),
+`7076e0f` (the twelve review patches), plus this spec's close-out commit.
+
+**Summary.** Epic 9's first *verb* story. `Repo::restore` and `Repo::absorb` are typed,
+whole-transaction operations composed Rust-side against jj-lib, each lifted through the complete
+surfacing chain: `.fbs` request/payload tables → `extern "C"` → committed codegen → Dart
+adapter, `WorkerCommand`, `ZanshinWorker` method and `RepoHandle` method → tests. MCP is the one
+link left empty, because `crates/zanshin-mcp` is a five-line stub and the tool surface is Epic
+7's scope — which is why the epic writes "**optional** MCP tool".
+
+`restore` reproduces `jj restore` at v0.44.0 exactly: the two-branch default resolution (whichever
+of `from`/`into` is absent becomes `@`; with neither, the target is restored from its own parent
+tree), the `changes_in`-conflicts-with-`from`/`into` refusal, `check_rewritable` **before** any
+tree work, `reparent_descendants` vs `rebase_descendants`, and — load-bearing — the
+tree-id-equality no-op guard that runs *before* a transaction is opened. `absorb` reproduces
+`jj absorb`'s non-interactive path over `split_hunks_to_trees` / `absorb_hunks`, keeping jj-lib's
+per-path skip reasons instead of dropping them.
+
+Three shape decisions carry forward. **Parameter currency splits by kind:** a single revision is
+a `ChangeId` (the house currency all six shipped mutation verbs use, fixed by epics.md Story
+6.1), while absorb's `--into` is a revset *string* — its CLI default is the dynamic `mutable()`
+alias, and materializing a set into ids would destroy that meaning (FR-JJ-17). The default
+resolves through the effective config layer, proven by the immutable-destination test, which has
+to widen `into` past `mutable()` before a tagged commit becomes reachable at all. **`restore`
+reuses `MutationResult`; `absorb` gets `AbsorbResult`** (nesting it, so the op-id/working-copy
+contract has one definition), because absorb's real outcome — which ancestors absorbed hunks,
+whether the source survived, and which paths jj-lib **refused** to split and why — has no
+representation in the four shared fields, and a silently unabsorbed file is a CLI warning the UI
+must be able to show. **The error taxonomy is reused, not extended:** two new `MutateError`
+variants map onto `jj.revset_parse_error` / `jj.revset_resolution_error`, which the registry
+already carried, so `docs/rust-error-codes.md` gains only "also emitted — Story 9.3" clauses and
+no new row.
+
+**Files changed.**
+- `crates/zanshin-jj/src/mutate.rs` — `restore`, `absorb`, `AbsorbResult`/`SkippedPath`, two
+  `MutateError` variants, and the shared `build_matcher` / `resolve_or_wc` / `no_op_result` /
+  `rev` helpers.
+- `crates/zanshin-jj/src/repo.rs`, `src/lib.rs` — the two public facades and the re-exports.
+- `crates/zanshin-jj/src/op_support.rs` — `SelectedTree::from_paths` (Story 9.1's re-port of the
+  CLI's non-interactive `DiffSelector` arm) is now live; the two `#[allow(dead_code)]` attributes
+  moved onto the members that still await Story 9.15/9.17.
+- `schemas/envelope.fbs` — `RestoreRequest`, `AbsorbRequest` (request-only), `AbsorbSkippedPath`,
+  `AbsorbResult` at `Payload` slot 14.
+- `crates/zanshin-ffi/src/{envelope.rs,repo.rs}` — the shared `MutationResult` table builder,
+  `ok_absorb_result`, the three lifetime-safe request readers, two `map_mutate_err` arms, and
+  `zanshin_restore` / `zanshin_absorb`.
+- `packages/zanshin_core/lib/src/{ffi/mutate.dart,worker/{commands,isolate,handle}.dart}` — the
+  two adapters, the `AbsorbResult`/`SkippedPath` models and decoder, the two commands, the two
+  worker methods and switch arms, the two `RepoHandle` methods.
+- `crates/test-helpers/src/lib.rs` — `add_commit_with_files`, `add_conflicted_merge_with_extra_files`,
+  `tree_hex`; the committed fixtures give every commit a single unique file, so no fixture path
+  survives across commits and absorb's "an ancestor introduced this line" precondition is
+  unconstructible without them.
+- `docs/rust-error-codes.md` — six existing rows annotated; no new row.
+- Tests: `crates/zanshin-jj/tests/content_ops.rs` (NEW, 24 behavioural tests), the FFI suite in
+  `crates/zanshin-ffi/tests/repo_write_ffi.rs` (11 new cases plus both cross-cutting sweeps),
+  `packages/zanshin_core/test/{worker,ffi}/mutate_test.dart`, and `tests/api_stability.rs`.
+
+**Review findings.** 14 patched (0 high, 5 medium, 9 low), 2 deferred (both low), 12 rejected.
+No `intent_gap` and no `bad_spec` — see the Triage Log for why each stayed empty.
+
+**Follow-up review recommended:** true. Patched this pass: high 0, medium 5, low 9 →
+score `3×5 + 1×9 = 24`, well above the threshold of 5. Note for whoever acts on it: three of the
+five mediums were verification gaps rather than defects (tests that could not distinguish
+success from a no-op, from a swapped argument, or from a hardcoded field), and all are now
+closed; the remaining space is documentation of CLI divergences and the two deferred items.
+
+**Verification performed.** `cargo make test` was run to completion **three** times by this
+session, unpiped with the exit code captured — after implementation (`GATE_EXIT=0`, coverage
+99.04 %, 6005/6063 lines), after the matrix-closing test (`GATE_EXIT=0`), and after the review
+patches (`GATE_EXIT=0`, coverage 99.05 %, 6024/6082 lines). It covers `cargo test --workspace`,
+clippy pedantic `-D warnings`, rustfmt, `flutter test` + `dart analyze`/`format`, `cargo deny`
+(`advisories ok, bans ok`), the coverage ratchet and the extern-fn guard
+(`extern-coverage: OK — every zanshin-ffi extern "C" fn is covered`, so both new symbols are
+credited). `cargo make verify-codegen` was run twice on a clean tree: `EXIT=0`, no drift for
+`zanshin_ffi.h`, `bindings.dart`, `envelope_generated.rs` or `envelope_zanshin.ffi_generated.dart`.
+The CLI prior art was re-read at the pin (`git -C ../jj show v0.44.0:cli/src/commands/restore.rs`
+and `:cli/src/commands/absorb.rs`) before any anchor was relied on. Every I/O matrix row was
+audited against a test that appears in the run output; the one row the implementation had left
+partly open — "the remaining paths still absorb" alongside a skipped path — was **closed rather
+than deferred**, by building the one state where a skip and a successful absorb meet (only the
+right merge side introduces the clean file, so it resolves cleanly and annotates unambiguously).
+
+**Residual risks.**
+- Neither verb snapshots the working copy (D2), so `@` is the last-snapshotted commit where the
+  CLI's `workspace_helper` would have picked up on-disk edits. This bites `absorb` hardest — its
+  headline use is absorbing uncommitted edits — and it is structurally invisible to the gate,
+  because every behavioural test is built from committed commits. Story 9.22 owns the
+  `LockedWorkingCopy` lifecycle.
+- The behavioural proof lives almost entirely at the Rust surfaces. The Dart worker tests boot
+  the real isolate against the real cdylib and credit both extern fns, but they run against a
+  freshly-initialised empty repo and therefore only observe no-ops, error codes and closed-handle
+  guards — a multi-commit content scenario cannot be built from Dart, since Zanshin exposes no
+  way to write working-copy content (same D2 root cause). The FFI-level Rust tests now carry
+  `paths` and `restore_descendants` and assert their effect, which closes the gap the Dart layer
+  cannot.
+- A populated `AbsorbResult` is verified from Rust (real, jj-lib-produced) and from Dart (a
+  hand-built `ObjectBuilder` buffer), but no test consumes a Rust-*produced* populated
+  `AbsorbResult` from Dart, for the same reason.
+- `paths` are prefixes, not filesets: `glob:`/`~`/`all()` are accepted by the CLI and rejected
+  here. Recorded as deferred; Story 9.4's file reads face the same question and can settle it
+  once for both.
+- Two CLI warnings have no Zanshin channel — skipped paths on an `Immutable` refusal, and an
+  explicitly named path that matched nothing. Both are documented at the call sites; giving them
+  a channel would change the shared `MutationResult` payload or add a data-carrying error
+  variant.
