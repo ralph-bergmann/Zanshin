@@ -331,6 +331,74 @@ final class GitFetchCommand extends WorkerCommand {
   final String remoteName;
 }
 
+/// Give the paths selected here the content they have in another commit, in the
+/// repo identified by [handleId] (Story 9.3) — the CLI's `jj restore`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinRestore(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class RestoreCommand extends WorkerCommand {
+  const RestoreCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.from,
+    required this.into,
+    required this.changesIn,
+    required this.paths,
+    required this.restoreDescendants,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Source revision, jj reverse-hex change id; `null` = `@` (or, when [into]
+  /// and [changesIn] are also `null`, the destination's parent tree).
+  final String? from;
+
+  /// Destination revision, jj reverse-hex change id; `null` = `@`.
+  final String? into;
+
+  /// Undo this revision's own diff; `null` = not used. Cannot be combined with
+  /// [from]/[into].
+  final String? changesIn;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+
+  /// Reparent children (preserving their content) instead of rebasing them.
+  final bool restoreDescendants;
+}
+
+/// Move each hunk of the source revision into the closest destination where the
+/// corresponding lines were last modified, in the repo identified by [handleId]
+/// (Story 9.3) — the CLI's `jj absorb`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinAbsorb(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<AbsorbResult>` bytes.
+final class AbsorbCommand extends WorkerCommand {
+  const AbsorbCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.from,
+    required this.into,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Source revision, jj reverse-hex change id; `null` = `@`.
+  final String? from;
+
+  /// Destination REVSET expression (not a change id); `null` = the CLI's
+  /// `mutable()` default, resolved through the repo's effective config.
+  final String? into;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

@@ -20,9 +20,10 @@
 //!    `NonInteractive` arm is jj-lib's `restore_tree`.
 //!
 //! Every item is `pub(crate)`: no `jj_lib` type may appear in a public position
-//! (`lib.rs`, FR-JJ-16). Section 1 is wired into `describe`/`edit`/`abandon`; sections 2-4
-//! ship tested-but-unwired because their consumers (squash/split/rebase/duplicate/revert)
-//! are Tier C verbs that land in later stories.
+//! (`lib.rs`, FR-JJ-16). Section 1 is wired into `describe`/`edit`/`abandon` and both
+//! Story 9.3 content ops; §4's [`SelectedTree::from_paths`] is `restore`'s primitive. §2,
+//! §3 and §4's GUI-selected-tree arm ship tested-but-unwired because their consumers
+//! (squash/split/rebase/duplicate/revert) are Tier C verbs that land in later stories.
 //!
 //! The CLI's two `panic!`s in `compute_commit_location` become
 //! [`MutateError::InvalidInput`]: a library must not abort the process on a caller-reachable
@@ -363,10 +364,8 @@ pub(crate) fn apply_trailers(description: &str, new_trailers: &[Trailer]) -> Str
 /// replaced by [`SelectedTree::from_tree_id`], where the GUI has already done the hunk
 /// selection and hands back a written tree (ADR-0003).
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) struct SelectedTree(MergedTree);
 
-#[allow(dead_code)]
 impl SelectedTree {
     /// Selects by path: restores everything matching `matcher` from `trees.after` onto
     /// `trees.before`.
@@ -404,6 +403,14 @@ impl SelectedTree {
     ///
     /// - [`MutateError::InvalidInput`] — `tree_id_hex` is not valid hex.
     /// - [`MutateError::Backend`] — no such tree in the store, or a backend read failure.
+    // WHY `allow(dead_code)`: Story 9.3 wired `from_paths` (restore) but NOT this arm —
+    // its first caller is the GUI-supplied-tree side of squash/split (Story 9.15/9.17).
+    // Only this item and `into_commit_selection` are still unused, so the attribute moved
+    // here from the struct/impl rather than being deleted: a blanket allow that no longer
+    // shields anything would let a genuinely dead item pass unnoticed. `expect(dead_code)`
+    // would be wrong — the lint does not fire in the test build, where the module's own
+    // `#[cfg(test)]` tests call it, and an unfulfilled expectation is itself a warning.
+    #[allow(dead_code)]
     pub(crate) fn from_tree_id(store: &Arc<Store>, tree_id_hex: &str) -> Result<Self, MutateError> {
         let tree_id = TreeId::try_from_hex(tree_id_hex).ok_or_else(|| MutateError::InvalidInput {
             reason: format!("malformed tree id: {tree_id_hex}"),
@@ -423,6 +430,9 @@ impl SelectedTree {
 
     /// Assembles jj-lib's `CommitWithSelection`, the input of `rewrite::squash_commits`
     /// and friends.
+    // WHY `allow(dead_code)`: see `from_tree_id` — `squash_commits`' first caller is
+    // Story 9.15/9.17, so nothing in the crate consumes a `CommitWithSelection` yet.
+    #[allow(dead_code)]
     pub(crate) fn into_commit_selection(self, commit: Commit, parent_tree: MergedTree) -> CommitWithSelection {
         CommitWithSelection {
             commit,

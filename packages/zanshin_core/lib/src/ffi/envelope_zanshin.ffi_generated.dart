@@ -271,7 +271,8 @@ enum PayloadTypeId {
   Progress(10),
   GraphSlice(11),
   LogDefaults(12),
-  MutationResult(13);
+  MutationResult(13),
+  AbsorbResult(14);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -306,6 +307,8 @@ enum PayloadTypeId {
         return PayloadTypeId.LogDefaults;
       case 13:
         return PayloadTypeId.MutationResult;
+      case 14:
+        return PayloadTypeId.AbsorbResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -314,7 +317,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 13;
+  static const int maxValue = 14;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -479,6 +482,232 @@ class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_changeIds!.map(fbBuilder.writeString).toList());
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, changeIdsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_restore` (Story 9.3, FR-JJ-10a).
+///
+///  ABSENT (null) is the wire form of "the user did not supply it", which is what
+///  carries the CLI's own defaults through faithfully:
+///    from / into absent  → that side is `@` (whichever ONE is supplied fixes the other)
+///    all three absent    → `@` is restored from its PARENT tree (`jj restore`)
+///    changes_in present  → that commit is restored from ITS parent tree; it may NOT be
+///                          combined with from/into (the CLI's clap conflicts_with_all)
+///  `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths.
+///  `restore_descendants` reparents children (preserving their content) instead of
+///  rebasing them.
+class RestoreRequest {
+  RestoreRequest._(this._bc, this._bcOffset);
+  factory RestoreRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RestoreRequest> reader = _RestoreRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get changesIn => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'RestoreRequest{from: ${from}, into: ${into}, changesIn: ${changesIn}, paths: ${paths}, restoreDescendants: ${restoreDescendants}}';
+  }
+}
+
+class _RestoreRequestReader extends fb.TableReader<RestoreRequest> {
+  const _RestoreRequestReader();
+
+  @override
+  RestoreRequest createObject(fb.BufferContext bc, int offset) => RestoreRequest._(bc, offset);
+}
+
+class RestoreRequestBuilder {
+  RestoreRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIntoOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangesInOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRestoreDescendants(bool? restoreDescendants) {
+    fbBuilder.addBool(4, restoreDescendants);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RestoreRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _from;
+  final String? _into;
+  final String? _changesIn;
+  final List<String>? _paths;
+  final bool? _restoreDescendants;
+
+  RestoreRequestObjectBuilder({
+    String? from,
+    String? into,
+    String? changesIn,
+    List<String>? paths,
+    bool? restoreDescendants,
+  }) : _from = from,
+       _into = into,
+       _changesIn = changesIn,
+       _paths = paths,
+       _restoreDescendants = restoreDescendants;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? intoOffset = _into == null ? null : fbBuilder.writeString(_into!);
+    final int? changesInOffset = _changesIn == null ? null : fbBuilder.writeString(_changesIn!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, fromOffset);
+    fbBuilder.addOffset(1, intoOffset);
+    fbBuilder.addOffset(2, changesInOffset);
+    fbBuilder.addOffset(3, pathsOffset);
+    fbBuilder.addBool(4, _restoreDescendants);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+///
+///  `from` absent → the source is `@`. `into` absent → the CLI's own `--into` default,
+///  the `mutable()` ALIAS, resolved through the repo's effective config. Unlike every
+///  other mutation parameter `into` is a revset EXPRESSION, not a change id: the CLI's
+///  `--into` denotes a SET whose default is dynamic, and materializing it into ids would
+///  destroy that meaning (FR-JJ-17).
+///  `paths` behaves exactly as in RestoreRequest.
+class AbsorbRequest {
+  AbsorbRequest._(this._bc, this._bcOffset);
+  factory AbsorbRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<AbsorbRequest> reader = _AbsorbRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'AbsorbRequest{from: ${from}, into: ${into}, paths: ${paths}}';
+  }
+}
+
+class _AbsorbRequestReader extends fb.TableReader<AbsorbRequest> {
+  const _AbsorbRequestReader();
+
+  @override
+  AbsorbRequest createObject(fb.BufferContext bc, int offset) => AbsorbRequest._(bc, offset);
+}
+
+class AbsorbRequestBuilder {
+  AbsorbRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIntoOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _from;
+  final String? _into;
+  final List<String>? _paths;
+
+  AbsorbRequestObjectBuilder({
+    String? from,
+    String? into,
+    List<String>? paths,
+  }) : _from = from,
+       _into = into,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? intoOffset = _into == null ? null : fbBuilder.writeString(_into!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, fromOffset);
+    fbBuilder.addOffset(1, intoOffset);
+    fbBuilder.addOffset(2, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -3083,6 +3312,221 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
+///  ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
+///  The CLI prints one warning per entry; the remaining paths still absorb.
+class AbsorbSkippedPath {
+  AbsorbSkippedPath._(this._bc, this._bcOffset);
+  factory AbsorbSkippedPath(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<AbsorbSkippedPath> reader = _AbsorbSkippedPathReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get reason => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'AbsorbSkippedPath{path: ${path}, reason: ${reason}}';
+  }
+}
+
+class _AbsorbSkippedPathReader extends fb.TableReader<AbsorbSkippedPath> {
+  const _AbsorbSkippedPathReader();
+
+  @override
+  AbsorbSkippedPath createObject(fb.BufferContext bc, int offset) => AbsorbSkippedPath._(bc, offset);
+}
+
+class AbsorbSkippedPathBuilder {
+  AbsorbSkippedPathBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReasonOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class AbsorbSkippedPathObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final String? _reason;
+
+  AbsorbSkippedPathObjectBuilder({
+    String? path,
+    String? reason,
+  }) : _path = path,
+       _reason = reason;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? reasonOffset = _reason == null ? null : fbBuilder.writeString(_reason!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addOffset(1, reasonOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+///
+///  `mutation` is NESTED rather than flattened so the op-id / working-copy contract has
+///  one definition; its `new_change_ids` / `abandoned_change_ids` are always empty here.
+///  An EMPTY `rewritten_change_ids` means nothing was absorbable — and then no operation
+///  was written either, so `mutation.new_op_id` is the PRE-CALL op-log head.
+///  `source_change_id` is ABSENT when jj-lib abandoned the source (it became discardable)
+///  or when nothing moved — null-for-absence.
+///  `num_rebased` excludes the destination commits and includes the rewritten source
+///  (jj-lib's own `AbsorbStats::num_rebased` accounting).
+class AbsorbResult {
+  AbsorbResult._(this._bc, this._bcOffset);
+  factory AbsorbResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<AbsorbResult> reader = _AbsorbResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get rewrittenChangeIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get sourceChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  int get numRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  List<AbsorbSkippedPath>? get skippedPaths =>
+      const fb.ListReader<AbsorbSkippedPath>(AbsorbSkippedPath.reader).vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'AbsorbResult{mutation: ${mutation}, rewrittenChangeIds: ${rewrittenChangeIds}, sourceChangeId: ${sourceChangeId}, numRebased: ${numRebased}, skippedPaths: ${skippedPaths}}';
+  }
+}
+
+class _AbsorbResultReader extends fb.TableReader<AbsorbResult> {
+  const _AbsorbResultReader();
+
+  @override
+  AbsorbResult createObject(fb.BufferContext bc, int offset) => AbsorbResult._(bc, offset);
+}
+
+class AbsorbResultBuilder {
+  AbsorbResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRewrittenChangeIdsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSourceChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumRebased(int? numRebased) {
+    fbBuilder.addUint32(3, numRebased);
+    return fbBuilder.offset;
+  }
+
+  int addSkippedPathsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class AbsorbResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final List<String>? _rewrittenChangeIds;
+  final String? _sourceChangeId;
+  final int? _numRebased;
+  final List<AbsorbSkippedPathObjectBuilder>? _skippedPaths;
+
+  AbsorbResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    List<String>? rewrittenChangeIds,
+    String? sourceChangeId,
+    int? numRebased,
+    List<AbsorbSkippedPathObjectBuilder>? skippedPaths,
+  }) : _mutation = mutation,
+       _rewrittenChangeIds = rewrittenChangeIds,
+       _sourceChangeId = sourceChangeId,
+       _numRebased = numRebased,
+       _skippedPaths = skippedPaths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? rewrittenChangeIdsOffset = _rewrittenChangeIds == null
+        ? null
+        : fbBuilder.writeList(_rewrittenChangeIds!.map(fbBuilder.writeString).toList());
+    final int? sourceChangeIdOffset = _sourceChangeId == null ? null : fbBuilder.writeString(_sourceChangeId!);
+    final int? skippedPathsOffset = _skippedPaths == null
+        ? null
+        : fbBuilder.writeList(_skippedPaths!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, rewrittenChangeIdsOffset);
+    fbBuilder.addOffset(2, sourceChangeIdOffset);
+    fbBuilder.addUint32(3, _numRebased);
+    fbBuilder.addOffset(4, skippedPathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -3138,6 +3582,8 @@ class Envelope {
         return LogDefaults.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 13:
         return MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 14:
+        return AbsorbResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

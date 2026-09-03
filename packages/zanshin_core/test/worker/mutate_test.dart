@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// Worker round-trip tests for the Story 6.5 mutation surface: describe / newChange
-// / edit / abandon / undo / gitFetch, on both [ZanshinWorker] and [RepoHandle].
+// Worker round-trip tests for the whole mutation surface: Story 6.5's describe /
+// newChange / edit / abandon / undo / gitFetch and Story 9.3's restore / absorb, on
+// both [ZanshinWorker] and [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). Mirrors test/worker/change_test.dart
-// and test/worker/graph_test.dart. They are also what credits the six new
-// zanshin_* extern "C" functions in the coverage ratchet's extern-fn guard
+// and test/worker/graph_test.dart. They are also what credits each mutation
+// zanshin_* extern "C" function in the coverage ratchet's extern-fn guard
 // (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-flutter]
@@ -155,6 +156,85 @@ void main() {
 
       await handle.close();
     });
+
+    // WHY these two exercise the NO-OP path: a freshly-initialised repo's `@` is empty and
+    // its parent is the root commit, so restoring `@` from its parent selects a tree that
+    // already equals `@`'s, and there is nothing for absorb to move. Both are real,
+    // successful calls through the compiled cdylib — which is what credits `zanshin_restore`
+    // and `zanshin_absorb` in the coverage ratchet's extern-fn guard — and they assert the
+    // no-op contract itself (a success carrying the PRE-CALL op-log head, not an error).
+    // Building a multi-commit content scenario is Rust-side work; the behavioural rows live
+    // in crates/zanshin-jj/tests/content_ops.rs and crates/zanshin-ffi/tests/repo_write_ffi.rs.
+    test('restore_with_no_arguments_is_a_no_op_and_returns_a_mutation_result', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final WorkingCopyStatus status = await handle.status();
+
+      final MutationResult result = await handle.restore();
+
+      expect(result.newOpId, isNotEmpty);
+      expect(result.workingCopyChangeId, equals(status.workingCopyChangeId), reason: '@ did not move');
+      expect(result.newChangeIds, isEmpty, reason: 'restore mints nothing');
+      expect(result.abandonedChangeIds, isEmpty, reason: 'restore abandons nothing');
+
+      await handle.close();
+    });
+
+    test('restore_changes_in_with_from_surfaces_jj_invalid_input', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final WorkingCopyStatus status = await handle.status();
+
+      await expectLater(
+        handle.restore(from: status.workingCopyChangeId, changesIn: status.workingCopyChangeId),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+
+      await handle.close();
+    });
+
+    test('absorb_with_nothing_absorbable_returns_an_empty_absorb_result', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      final AbsorbResult result = await handle.absorb();
+
+      expect(result.rewrittenChangeIds, isEmpty, reason: 'an empty @ has no hunks to absorb');
+      expect(result.sourceChangeId, isNull, reason: 'null-for-absence: nothing moved');
+      expect(result.numRebased, equals(0));
+      expect(result.skippedPaths, isEmpty);
+      expect(result.mutation.newOpId, isNotEmpty, reason: 'the PRE-CALL op-log head');
+
+      await handle.close();
+    });
+
+    test('absorb_with_a_bogus_destination_revset_surfaces_jj_revset_parse_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      await expectLater(
+        handle.absorb(into: 'bogus_function()'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.revset_parse_error')),
+      );
+
+      await handle.close();
+    });
+
+    test('restore_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      await expectLater(
+        worker.restore(handle.handleId),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('absorb_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      await expectLater(
+        worker.absorb(handle.handleId),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
   });
 
   // ── RepoHandle closed-handle guards ───────────────────────────────────────
@@ -190,6 +270,20 @@ void main() {
       await handle.close();
 
       expect(handle.undo, throwsA(isA<StateError>()));
+    });
+
+    test('restore_on_explicitly_closed_handle_throws_state_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      expect(handle.restore, throwsA(isA<StateError>()));
+    });
+
+    test('absorb_on_explicitly_closed_handle_throws_state_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      expect(handle.absorb, throwsA(isA<StateError>()));
     });
   });
 }

@@ -759,6 +759,72 @@ class ZanshinWorker {
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
+
+  /// Give the paths in [paths] the content they have in another commit, in the
+  /// repo identified by [handleId] (Story 9.3).
+  ///
+  /// A `null` [from]/[into]/[changesIn] applies the CLI's own defaults — see
+  /// [RepoHandle.restore]. If the resulting tree already equals the
+  /// destination's, no operation is written and `newOpId` is the pre-call head.
+  ///
+  /// Sends a [RestoreCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`). Completes with a [StateError] after [close]. The
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.restore].
+  Future<repo_ffi_mutate.MutationResult> restore(
+    int handleId, {
+    String? from,
+    String? into,
+    String? changesIn,
+    List<String> paths = const <String>[],
+    bool restoreDescendants = false,
+  }) async {
+    final Uint8List bytes = await send(
+      RestoreCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        from: from,
+        into: into,
+        changesIn: changesIn,
+        paths: paths,
+        restoreDescendants: restoreDescendants,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Move each hunk of [from] into the closest commit in [into] where the
+  /// corresponding lines were last modified, in the repo identified by
+  /// [handleId] (Story 9.3).
+  ///
+  /// Sends an [AbsorbCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<AbsorbResult>` bytes into a [repo_ffi_mutate.AbsorbResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`). Completes with a
+  /// [StateError] after [close]. The close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.absorb].
+  Future<repo_ffi_mutate.AbsorbResult> absorb(
+    int handleId, {
+    String? from,
+    String? into,
+    List<String> paths = const <String>[],
+  }) async {
+    final Uint8List bytes = await send(
+      AbsorbCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        from: from,
+        into: into,
+        paths: paths,
+      ),
+    );
+    return repo_ffi_mutate.decodeAbsorbResultEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1104,6 +1170,59 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinGitFetch(raw, remoteName);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RestoreCommand(
+          :final int handleId,
+          :final String? from,
+          :final String? into,
+          :final String? changesIn,
+          :final List<String> paths,
+          :final bool restoreDescendants,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RestoreCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinRestore(
+              raw,
+              from: from,
+              into: into,
+              changesIn: changesIn,
+              paths: paths,
+              restoreDescendants: restoreDescendants,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case AbsorbCommand(
+          :final int handleId,
+          :final String? from,
+          :final String? into,
+          :final List<String> paths,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: AbsorbCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinAbsorb(raw, from: from, into: into, paths: paths);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

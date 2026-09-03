@@ -589,13 +589,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 13;
+        pub const ENUM_MAX_PAYLOAD: u8 = 14;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 14] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 15] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -610,6 +610,7 @@ pub mod zanshin {
             Payload::GraphSlice,
             Payload::LogDefaults,
             Payload::MutationResult,
+            Payload::AbsorbResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -631,9 +632,10 @@ pub mod zanshin {
             pub const GraphSlice: Self = Self(11);
             pub const LogDefaults: Self = Self(12);
             pub const MutationResult: Self = Self(13);
+            pub const AbsorbResult: Self = Self(14);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 13;
+            pub const ENUM_MAX: u8 = 14;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -649,6 +651,7 @@ pub mod zanshin {
                 Self::GraphSlice,
                 Self::LogDefaults,
                 Self::MutationResult,
+                Self::AbsorbResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -667,6 +670,7 @@ pub mod zanshin {
                     Self::GraphSlice => Some("GraphSlice"),
                     Self::LogDefaults => Some("LogDefaults"),
                     Self::MutationResult => Some("MutationResult"),
+                    Self::AbsorbResult => Some("AbsorbResult"),
                     _ => None,
                 }
             }
@@ -964,6 +968,380 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("ChangeIdList");
                 ds.field("change_ids", &self.change_ids());
+                ds.finish()
+            }
+        }
+        pub enum RestoreRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_restore` (Story 9.3, FR-JJ-10a).
+        ///
+        /// ABSENT (null) is the wire form of "the user did not supply it", which is what
+        /// carries the CLI's own defaults through faithfully:
+        ///   from / into absent  → that side is `@` (whichever ONE is supplied fixes the other)
+        ///   all three absent    → `@` is restored from its PARENT tree (`jj restore`)
+        ///   changes_in present  → that commit is restored from ITS parent tree; it may NOT be
+        ///                         combined with from/into (the CLI's clap conflicts_with_all)
+        /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths.
+        /// `restore_descendants` reparents children (preserving their content) instead of
+        /// rebasing them.
+        pub struct RestoreRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RestoreRequest<'a> {
+            type Inner = RestoreRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RestoreRequest<'a> {
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INTO: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CHANGES_IN: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RestoreRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RestoreRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RestoreRequest<'bldr>> {
+                let mut builder = RestoreRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.changes_in {
+                    builder.add_changes_in(x);
+                }
+                if let Some(x) = args.into {
+                    builder.add_into(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                builder.add_restore_descendants(args.restore_descendants);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RestoreRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn into(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RestoreRequest::VT_INTO, None)
+                }
+            }
+            #[inline]
+            pub fn changes_in(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RestoreRequest::VT_CHANGES_IN, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RestoreRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn restore_descendants(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RestoreRequest::VT_RESTORE_DESCENDANTS, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RestoreRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("into", Self::VT_INTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("changes_in", Self::VT_CHANGES_IN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<bool>("restore_descendants", Self::VT_RESTORE_DESCENDANTS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RestoreRequestArgs<'a> {
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub into: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub changes_in: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub restore_descendants: bool,
+        }
+        impl<'a> Default for RestoreRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RestoreRequestArgs {
+                    from: None,
+                    into: None,
+                    changes_in: None,
+                    paths: None,
+                    restore_descendants: false,
+                }
+            }
+        }
+
+        pub struct RestoreRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RestoreRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RestoreRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_into(&mut self, into: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RestoreRequest::VT_INTO, into);
+            }
+            #[inline]
+            pub fn add_changes_in(&mut self, changes_in: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RestoreRequest::VT_CHANGES_IN, changes_in);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RestoreRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_restore_descendants(&mut self, restore_descendants: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RestoreRequest::VT_RESTORE_DESCENDANTS, restore_descendants, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RestoreRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RestoreRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RestoreRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RestoreRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RestoreRequest");
+                ds.field("from", &self.from());
+                ds.field("into", &self.into());
+                ds.field("changes_in", &self.changes_in());
+                ds.field("paths", &self.paths());
+                ds.field("restore_descendants", &self.restore_descendants());
+                ds.finish()
+            }
+        }
+        pub enum AbsorbRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+        ///
+        /// `from` absent → the source is `@`. `into` absent → the CLI's own `--into` default,
+        /// the `mutable()` ALIAS, resolved through the repo's effective config. Unlike every
+        /// other mutation parameter `into` is a revset EXPRESSION, not a change id: the CLI's
+        /// `--into` denotes a SET whose default is dynamic, and materializing it into ids would
+        /// destroy that meaning (FR-JJ-17).
+        /// `paths` behaves exactly as in RestoreRequest.
+        pub struct AbsorbRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AbsorbRequest<'a> {
+            type Inner = AbsorbRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AbsorbRequest<'a> {
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INTO: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AbsorbRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AbsorbRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AbsorbRequest<'bldr>> {
+                let mut builder = AbsorbRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.into {
+                    builder.add_into(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn into(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbRequest::VT_INTO, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(AbsorbRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AbsorbRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("into", Self::VT_INTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct AbsorbRequestArgs<'a> {
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub into: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for AbsorbRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AbsorbRequestArgs {
+                    from: None,
+                    into: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct AbsorbRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AbsorbRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_into(&mut self, into: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbRequest::VT_INTO, into);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AbsorbRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AbsorbRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AbsorbRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AbsorbRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AbsorbRequest");
+                ds.field("from", &self.from());
+                ds.field("into", &self.into());
+                ds.field("paths", &self.paths());
                 ds.finish()
             }
         }
@@ -5243,6 +5621,361 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum AbsorbSkippedPathOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
+        /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
+        /// The CLI prints one warning per entry; the remaining paths still absorb.
+        pub struct AbsorbSkippedPath<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AbsorbSkippedPath<'a> {
+            type Inner = AbsorbSkippedPath<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AbsorbSkippedPath<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AbsorbSkippedPath { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AbsorbSkippedPathArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AbsorbSkippedPath<'bldr>> {
+                let mut builder = AbsorbSkippedPathBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbSkippedPath::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbSkippedPath::VT_REASON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AbsorbSkippedPath<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct AbsorbSkippedPathArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for AbsorbSkippedPathArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AbsorbSkippedPathArgs {
+                    path: None,
+                    reason: None,
+                }
+            }
+        }
+
+        pub struct AbsorbSkippedPathBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AbsorbSkippedPathBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbSkippedPath::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbSkippedPath::VT_REASON, reason);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AbsorbSkippedPathBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AbsorbSkippedPathBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AbsorbSkippedPath<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AbsorbSkippedPath<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AbsorbSkippedPath");
+                ds.field("path", &self.path());
+                ds.field("reason", &self.reason());
+                ds.finish()
+            }
+        }
+        pub enum AbsorbResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+        ///
+        /// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has
+        /// one definition; its `new_change_ids` / `abandoned_change_ids` are always empty here.
+        /// An EMPTY `rewritten_change_ids` means nothing was absorbable — and then no operation
+        /// was written either, so `mutation.new_op_id` is the PRE-CALL op-log head.
+        /// `source_change_id` is ABSENT when jj-lib abandoned the source (it became discardable)
+        /// or when nothing moved — null-for-absence.
+        /// `num_rebased` excludes the destination commits and includes the rewritten source
+        /// (jj-lib's own `AbsorbStats::num_rebased` accounting).
+        pub struct AbsorbResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AbsorbResult<'a> {
+            type Inner = AbsorbResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AbsorbResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REWRITTEN_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SOURCE_CHANGE_ID: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NUM_REBASED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SKIPPED_PATHS: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AbsorbResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AbsorbResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AbsorbResult<'bldr>> {
+                let mut builder = AbsorbResultBuilder::new(_fbb);
+                if let Some(x) = args.skipped_paths {
+                    builder.add_skipped_paths(x);
+                }
+                builder.add_num_rebased(args.num_rebased);
+                if let Some(x) = args.source_change_id {
+                    builder.add_source_change_id(x);
+                }
+                if let Some(x) = args.rewritten_change_ids {
+                    builder.add_rewritten_change_ids(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(AbsorbResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn rewritten_change_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(AbsorbResult::VT_REWRITTEN_CHANGE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn source_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbResult::VT_SOURCE_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn num_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(AbsorbResult::VT_NUM_REBASED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn skipped_paths(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath>>,
+                    >>(AbsorbResult::VT_SKIPPED_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AbsorbResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>("mutation", Self::VT_MUTATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("rewritten_change_ids", Self::VT_REWRITTEN_CHANGE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("source_change_id", Self::VT_SOURCE_CHANGE_ID, false)?
+     .visit_field::<u32>("num_rebased", Self::VT_NUM_REBASED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath>>>>("skipped_paths", Self::VT_SKIPPED_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct AbsorbResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub rewritten_change_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub source_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub num_rebased: u32,
+            pub skipped_paths: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for AbsorbResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AbsorbResultArgs {
+                    mutation: None,
+                    rewritten_change_ids: None,
+                    source_change_id: None,
+                    num_rebased: 0,
+                    skipped_paths: None,
+                }
+            }
+        }
+
+        pub struct AbsorbResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AbsorbResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(AbsorbResult::VT_MUTATION, mutation);
+            }
+            #[inline]
+            pub fn add_rewritten_change_ids(
+                &mut self,
+                rewritten_change_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    AbsorbResult::VT_REWRITTEN_CHANGE_IDS,
+                    rewritten_change_ids,
+                );
+            }
+            #[inline]
+            pub fn add_source_change_id(&mut self, source_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    AbsorbResult::VT_SOURCE_CHANGE_ID,
+                    source_change_id,
+                );
+            }
+            #[inline]
+            pub fn add_num_rebased(&mut self, num_rebased: u32) {
+                self.fbb_.push_slot::<u32>(AbsorbResult::VT_NUM_REBASED, num_rebased, 0);
+            }
+            #[inline]
+            pub fn add_skipped_paths(
+                &mut self,
+                skipped_paths: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbResult::VT_SKIPPED_PATHS, skipped_paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AbsorbResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AbsorbResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AbsorbResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AbsorbResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AbsorbResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("rewritten_change_ids", &self.rewritten_change_ids());
+                ds.field("source_change_id", &self.source_change_id());
+                ds.field("num_rebased", &self.num_rebased());
+                ds.field("skipped_paths", &self.skipped_paths());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -5530,6 +6263,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_absorb_result(&self) -> Option<AbsorbResult<'a>> {
+                if self.data_type() == Payload::AbsorbResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { AbsorbResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -5602,6 +6350,11 @@ pub mod zanshin {
                             Payload::MutationResult => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<MutationResult>>(
                                     "Payload::MutationResult",
+                                    pos,
+                                ),
+                            Payload::AbsorbResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<AbsorbResult>>(
+                                    "Payload::AbsorbResult",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -5761,6 +6514,13 @@ pub mod zanshin {
                     }
                     Payload::MutationResult => {
                         if let Some(x) = self.data_as_mutation_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::AbsorbResult => {
+                        if let Some(x) = self.data_as_absorb_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

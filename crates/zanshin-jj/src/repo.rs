@@ -497,6 +497,120 @@ impl Repo {
         crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, progress)
     }
 
+    /// Gives the paths matching `paths` in one commit the content they have in another
+    /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
+    ///
+    /// Default resolution is the CLI's (`cli/src/commands/restore.rs:119-137` @ v0.44.0):
+    /// if either `from` or `into` is given the omitted one is `@`; if NEITHER is given the
+    /// destination is `changes_in` (or `@`) and the source is that commit's PARENT tree,
+    /// which undoes its own diff while keeping its description. `changes_in` cannot be
+    /// combined with `from`/`into` — the CLI's clap `conflicts_with_all`.
+    ///
+    /// `paths` entries are repo-relative paths interpreted as PREFIXES (an empty list means
+    /// all paths); the fileset DSL is terminal input language and is not parsed here.
+    /// `restore_descendants` reparents children (preserving their content) instead of
+    /// rebasing them.
+    ///
+    /// If the resulting tree already equals the destination's, NO operation is written and
+    /// the returned `new_op_id` is the pre-call op-log head — the CLI's own
+    /// "Nothing changed." path.
+    ///
+    /// The working copy is NOT snapshotted first (D2): `@` is the last-snapshotted
+    /// working-copy commit, where the CLI's `workspace_helper` would have picked up
+    /// on-disk edits. Snapshotting is Story 9.22's scope.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`,
+    ///   or a `paths` entry is not a valid repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is
+    ///   malformed, absent, only-hidden, or divergent.
+    /// - [`crate::MutateError::Immutable`] — the destination resolves to a commit inside the
+    ///   repo's effective immutable set. Unlike `describe`/`abandon` this verb has no
+    ///   separate root-commit guard, so the ROOT commit reports this code too — which is
+    ///   what the CLI reports for it.
+    /// - [`crate::MutateError::Config`] — the repo's jj config or its
+    ///   `revset-aliases."immutable_heads()"` could not be read, parsed, or resolved.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: owned `ChangeId`s match the house currency for single-revision parameters
+    // (epics.md Story 6.1 / AC-1); the implementation only needs to borrow them.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn restore(
+        &mut self,
+        from: Option<crate::ChangeId>,
+        into: Option<crate::ChangeId>,
+        changes_in: Option<crate::ChangeId>,
+        paths: &[String],
+        restore_descendants: bool,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        // WHY: see `describe` — the expression is built while `self` is still shared.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        crate::mutate::restore(
+            self.workspace_mut(),
+            &immutable,
+            from.as_ref(),
+            into.as_ref(),
+            changes_in.as_ref(),
+            paths,
+            restore_descendants,
+        )
+    }
+
+    /// Moves each hunk of `from` into the closest commit in `destinations` where the
+    /// corresponding lines were last modified (Story 9.3) — the CLI's `jj absorb`,
+    /// non-interactive only.
+    ///
+    /// `destinations` is a revset EXPRESSION, not an id list: the CLI's `--into` is a set
+    /// whose default is the dynamic `mutable()` alias, and materializing it into ids would
+    /// destroy that meaning (FR-JJ-17). `None` applies the CLI's own clap default,
+    /// `"mutable()"` — an ALIAS resolved through the repo's effective config, so a user's
+    /// `[revset-aliases]` decides what it denotes. `from = None` is `@`.
+    ///
+    /// `paths` behaves exactly as for [`Repo::restore`]. Hunks that cannot be attributed
+    /// unambiguously stay in the source; paths jj-lib refuses to split are reported in
+    /// [`crate::AbsorbResult::skipped_paths`] instead of failing the call — the CLI prints
+    /// one warning per entry. If nothing is absorbable, NO operation is written and
+    /// `rewritten_change_ids` is empty.
+    ///
+    /// The working copy is NOT snapshotted first (D2) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::RevsetParseError`] — `destinations` is syntactically invalid
+    ///   or names an unknown function.
+    /// - [`crate::MutateError::RevsetResolutionError`] — a symbol in `destinations` cannot
+    ///   be resolved.
+    /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — `from` is malformed, absent, only-hidden,
+    ///   or divergent.
+    /// - [`crate::MutateError::Immutable`] — a commit the hunks would be absorbed into is
+    ///   inside the repo's effective immutable set. Unreachable with the `mutable()`
+    ///   default, which excludes that set by construction.
+    /// - [`crate::MutateError::Config`] — the repo's jj config or its
+    ///   `revset-aliases."immutable_heads()"` could not be read, parsed, or resolved.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: see `restore` — owned `ChangeId` is the house currency for a single revision.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn absorb(
+        &mut self,
+        destinations: Option<&str>,
+        from: Option<crate::ChangeId>,
+        paths: &[String],
+    ) -> Result<crate::AbsorbResult, crate::MutateError> {
+        // WHY: see `describe` — both expressions are built while `self` is still shared.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        // WHY the literal: it is the CLI's own clap default for `--into`
+        // (`cli/src/commands/absorb.rs:64` @ v0.44.0), and it is an ALIAS — `config.rs`'s
+        // builtin layer defines `'mutable()' = '~immutable()'`, which a user's config may
+        // replace. The default is therefore a pre-filled, user-editable value that resolves
+        // through the effective config layer, never a hardcoded commit set.
+        let destinations =
+            crate::revset::parse_revset(self, destinations.unwrap_or("mutable()")).map_err(crate::mutate::rev)?;
+        crate::mutate::absorb(self.workspace_mut(), &immutable, &destinations, from.as_ref(), paths)
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors

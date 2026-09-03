@@ -39,6 +39,39 @@ table ChangeIdList {
   change_ids: [string];
 }
 
+/// Arguments of `zanshin_restore` (Story 9.3, FR-JJ-10a).
+///
+/// ABSENT (null) is the wire form of "the user did not supply it", which is what
+/// carries the CLI's own defaults through faithfully:
+///   from / into absent  → that side is `@` (whichever ONE is supplied fixes the other)
+///   all three absent    → `@` is restored from its PARENT tree (`jj restore`)
+///   changes_in present  → that commit is restored from ITS parent tree; it may NOT be
+///                         combined with from/into (the CLI's clap conflicts_with_all)
+/// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths.
+/// `restore_descendants` reparents children (preserving their content) instead of
+/// rebasing them.
+table RestoreRequest {
+  from: string;
+  into: string;
+  changes_in: string;
+  paths: [string];
+  restore_descendants: bool;
+}
+
+/// Arguments of `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+///
+/// `from` absent → the source is `@`. `into` absent → the CLI's own `--into` default,
+/// the `mutable()` ALIAS, resolved through the repo's effective config. Unlike every
+/// other mutation parameter `into` is a revset EXPRESSION, not a change id: the CLI's
+/// `--into` denotes a SET whose default is dynamic, and materializing it into ids would
+/// destroy that meaning (FR-JJ-17).
+/// `paths` behaves exactly as in RestoreRequest.
+table AbsorbRequest {
+  from: string;
+  into: string;
+  paths: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -50,6 +83,7 @@ table ChangeIdList {
 //   Story 4-9  : LogDefaults ✓
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results ✓
+//   Story 9-3  : AbsorbResult ✓ (restore reuses MutationResult)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -347,6 +381,32 @@ table MutationResult {
   working_copy_change_id: string;
 }
 
+/// One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
+/// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
+/// The CLI prints one warning per entry; the remaining paths still absorb.
+table AbsorbSkippedPath {
+  path: string;      // repo-relative, jj's internal `/`-separated form
+  reason: string;    // jj-lib's own message, forwarded unchanged
+}
+
+/// Outcome of a successful `zanshin_absorb` (Story 9.3, FR-JJ-10a).
+///
+/// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has
+/// one definition; its `new_change_ids` / `abandoned_change_ids` are always empty here.
+/// An EMPTY `rewritten_change_ids` means nothing was absorbable — and then no operation
+/// was written either, so `mutation.new_op_id` is the PRE-CALL op-log head.
+/// `source_change_id` is ABSENT when jj-lib abandoned the source (it became discardable)
+/// or when nothing moved — null-for-absence.
+/// `num_rebased` excludes the destination commits and includes the rewritten source
+/// (jj-lib's own `AbsorbStats::num_rebased` accounting).
+table AbsorbResult {
+  mutation: MutationResult;
+  rewritten_change_ids: [string];   // destination ChangeIds, reverse-hex, forward topological order
+  source_change_id: string;         // absent when the source was abandoned or nothing moved
+  num_rebased: uint;
+  skipped_paths: [AbsorbSkippedPath];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -362,6 +422,7 @@ union Payload {
   // Member order IS the wire discriminant — APPEND only, never reorder.
   LogDefaults,
   MutationResult,
+  AbsorbResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

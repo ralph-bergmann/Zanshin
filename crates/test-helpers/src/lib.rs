@@ -131,20 +131,70 @@ fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
 
 /// Writes a single-file tree holding `content` at `path`.
 fn one_file_tree(store: &Arc<Store>, path: &str, content: &str) -> MergedTree {
+    multi_file_tree(store, &[(path, content)])
+}
+
+/// Writes a tree built from an EMPTY base holding exactly `files` (repo-relative internal
+/// path → content).
+fn multi_file_tree(store: &Arc<Store>, files: &[(&str, &str)]) -> MergedTree {
     let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
-    let path = RepoPathBuf::from_internal_string(path).unwrap();
-    let mut reader = content.as_bytes();
-    let file_id = pollster::block_on(store.write_file(&path, &mut reader)).unwrap();
-    builder.set(
-        path,
-        TreeValue::File {
-            id: file_id,
-            executable: false,
-            copy_id: CopyId::placeholder(),
-        },
-    );
+    for (path, content) in files {
+        let path = RepoPathBuf::from_internal_string(*path).unwrap();
+        let mut reader = content.as_bytes();
+        let file_id = pollster::block_on(store.write_file(&path, &mut reader)).unwrap();
+        builder.set(
+            path,
+            TreeValue::File {
+                id: file_id,
+                executable: false,
+                copy_id: CopyId::placeholder(),
+            },
+        );
+    }
     let tree_id = pollster::block_on(builder.write_tree()).unwrap();
     MergedTree::resolved(store.clone(), tree_id)
+}
+
+/// Adds a visible commit on top of `parents` (hex commit ids; an EMPTY slice parents it on
+/// the root commit) whose tree holds exactly `files`, and returns its hex commit id.
+///
+/// The committed fixtures give every commit a single unique file (`xtask`'s
+/// `gen_fixture.rs` builds each commit's tree from an empty base with only
+/// `commit-<n>.txt`), so no fixture path survives across commits. That makes
+/// "an ancestor introduced this line" — `absorb`'s precondition, and any multi-file
+/// `restore` — unconstructible from a fixture alone, and regenerating fixtures is
+/// forbidden (it would shift the revset oracles).
+///
+/// # Panics
+/// Panics on any jj-lib failure (workspace load, transaction, commit write) — this is a
+/// test helper; a failure here is a broken fixture, not a condition to recover from.
+#[must_use = "the new commit id is what the assertions compare against"]
+pub fn add_commit_with_files(
+    workspace_root: &Path,
+    parents: &[&str],
+    files: &[(&str, &str)],
+    description: &str,
+) -> String {
+    let (_workspace, repo) = load(workspace_root);
+    let store = repo.store().clone();
+    let parent_ids: Vec<CommitId> = if parents.is_empty() {
+        vec![store.root_commit_id().clone()]
+    } else {
+        parents.iter().map(|hex| commit_id(hex)).collect()
+    };
+    let tree = multi_file_tree(&store, files);
+
+    let mut tx = repo.start_transaction();
+    let commit = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(parent_ids, tree)
+            .set_description(description)
+            .write(),
+    )
+    .unwrap();
+    pollster::block_on(tx.repo_mut().add_head(&commit)).unwrap();
+    pollster::block_on(tx.commit("test: add commit with files")).unwrap();
+    commit.id().hex()
 }
 
 /// Parses a hex commit id.

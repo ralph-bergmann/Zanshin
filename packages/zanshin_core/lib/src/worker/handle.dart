@@ -5,7 +5,7 @@ import '../ffi/change.dart' show Change;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
 import '../ffi/log_defaults.dart' show LogDefaults;
-import '../ffi/mutate.dart' show MutationResult;
+import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -276,6 +276,71 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.gitFetch(_handleId, remoteName);
+  }
+
+  /// Give the paths in [paths] the content they have in another commit
+  /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
+  ///
+  /// A `null` [from]/[into]/[changesIn] applies the CLI's own defaults: if
+  /// exactly one of [from]/[into] is given the other is `@`; if neither is, the
+  /// destination ([changesIn], else `@`) is restored from its PARENT tree, which
+  /// undoes its own diff while keeping its description. [changesIn] cannot be
+  /// combined with [from]/[into].
+  ///
+  /// [paths] entries are repo-relative paths interpreted as PREFIXES (an empty
+  /// list means all paths). [restoreDescendants] reparents children (preserving
+  /// their content) instead of rebasing them.
+  ///
+  /// If the resulting tree already equals the destination's, NO operation is
+  /// written and `newOpId` is the pre-call op-log head. The working copy is not
+  /// snapshotted first — `@` is the last-snapshotted working-copy commit.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`).
+  Future<MutationResult> restore({
+    String? from,
+    String? into,
+    String? changesIn,
+    List<String> paths = const <String>[],
+    bool restoreDescendants = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.restore(
+      _handleId,
+      from: from,
+      into: into,
+      changesIn: changesIn,
+      paths: paths,
+      restoreDescendants: restoreDescendants,
+    );
+  }
+
+  /// Move each hunk of [from] into the closest commit in [into] where the
+  /// corresponding lines were last modified (Story 9.3) — the CLI's
+  /// `jj absorb`, non-interactive only.
+  ///
+  /// A `null` [from] means `@`. A `null` [into] applies the CLI's own default,
+  /// the `mutable()` ALIAS resolved through the repo's effective config — and
+  /// unlike every other mutation argument [into] is a revset EXPRESSION, not a
+  /// change id. [paths] behaves as in [restore].
+  ///
+  /// Paths jj-lib refuses to split are reported in `AbsorbResult.skippedPaths`
+  /// rather than failing the call. If nothing was absorbable, no operation is
+  /// written and `rewrittenChangeIds` is empty.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`).
+  Future<AbsorbResult> absorb({String? from, String? into, List<String> paths = const <String>[]}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.absorb(_handleId, from: from, into: into, paths: paths);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

@@ -50,7 +50,7 @@ pub use config::{ConfigError, LogDefaults};
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
-pub use mutate::{MutateError, MutationResult};
+pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};

@@ -143,31 +143,44 @@ pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
-/// Build a success `Envelope` with a `MutationResult` payload and return the finished buffer.
+/// Build the `MutationResult` table into `b` and return its offset.
 ///
-/// Sets `ok = true`, `data_type = Payload::MutationResult`. Children (the two
-/// string vectors) are built before the string scalars, before the
-/// `MutationResult` table, before the `Envelope` — the same bottom-up order as
-/// `ok_diagnostics`/`change_to_envelope`. Shared by all six Story 6.5 mutation
-/// wrappers (`repo.rs`), not owned by one noun file.
-#[must_use]
-pub fn ok_mutation_result(r: &zanshin_jj::MutationResult) -> Vec<u8> {
-    let mut b = FlatBufferBuilder::with_capacity(256);
+/// Children (the two string vectors) are built before the string scalars, before the
+/// table itself — the same bottom-up order as `ok_diagnostics`/`change_to_envelope`.
+///
+/// Extracted so the TOP-LEVEL form (`ok_mutation_result`, six Story 6.5 wrappers plus
+/// `zanshin_restore`) and the NESTED form (`ok_absorb_result`, Story 9.3) have exactly
+/// one construction site and cannot drift apart.
+fn build_mutation_result<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    r: &zanshin_jj::MutationResult,
+) -> flatbuffers::WIPOffset<fbs::MutationResult<'a>> {
     let new_change_offs: Vec<_> = r.new_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
     let new_change_vec = b.create_vector(&new_change_offs);
     let abandoned_offs: Vec<_> = r.abandoned_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
     let abandoned_vec = b.create_vector(&abandoned_offs);
     let new_op_id_off = b.create_string(&r.new_op_id.0);
     let working_copy_change_id_off = b.create_string(&r.working_copy_change_id.0);
-    let mutation_result = fbs::MutationResult::create(
-        &mut b,
+    fbs::MutationResult::create(
+        b,
         &fbs::MutationResultArgs {
             new_op_id: Some(new_op_id_off),
             new_change_ids: Some(new_change_vec),
             abandoned_change_ids: Some(abandoned_vec),
             working_copy_change_id: Some(working_copy_change_id_off),
         },
-    );
+    )
+}
+
+/// Build a success `Envelope` with a `MutationResult` payload and return the finished buffer.
+///
+/// Sets `ok = true`, `data_type = Payload::MutationResult`. Shared by all six Story 6.5
+/// mutation wrappers and Story 9.3's `zanshin_restore` (`repo.rs`), not owned by one noun
+/// file.
+#[must_use]
+pub fn ok_mutation_result(r: &zanshin_jj::MutationResult) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let mutation_result = build_mutation_result(&mut b, r);
     let envelope = fbs::Envelope::create(
         &mut b,
         &fbs::EnvelopeArgs {
@@ -175,6 +188,61 @@ pub fn ok_mutation_result(r: &zanshin_jj::MutationResult) -> Vec<u8> {
             error: None,
             data_type: fbs::Payload::MutationResult,
             data: Some(mutation_result.as_union_value()),
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
+}
+
+/// Build a success `Envelope` with an `AbsorbResult` payload and return the finished buffer.
+///
+/// Sets `ok = true`, `data_type = Payload::AbsorbResult` (Story 9.3). The nested
+/// `MutationResult` is built first through [`build_mutation_result`], then the string
+/// vector, the optional `source_change_id`, and each `AbsorbSkippedPath` — every child
+/// completed before the `AbsorbResult` table opens, as `FlatBuffers` requires.
+///
+/// `source_change_id` is written only when present: null-for-absence is the wire form of
+/// "jj-lib abandoned the source, or nothing moved".
+#[must_use]
+pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let rewritten_offs: Vec<_> = r.rewritten_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
+    let rewritten_vec = b.create_vector(&rewritten_offs);
+    let source_off = r.source_change_id.as_ref().map(|c| b.create_string(&c.0));
+    let skipped_offs: Vec<_> = r
+        .skipped_paths
+        .iter()
+        .map(|s| {
+            let path = b.create_string(&s.path);
+            let reason = b.create_string(&s.reason);
+            fbs::AbsorbSkippedPath::create(
+                &mut b,
+                &fbs::AbsorbSkippedPathArgs {
+                    path: Some(path),
+                    reason: Some(reason),
+                },
+            )
+        })
+        .collect();
+    let skipped_vec = b.create_vector(&skipped_offs);
+    let absorb_result = fbs::AbsorbResult::create(
+        &mut b,
+        &fbs::AbsorbResultArgs {
+            mutation: Some(mutation),
+            rewritten_change_ids: Some(rewritten_vec),
+            source_change_id: source_off,
+            num_rebased: r.num_rebased,
+            skipped_paths: Some(skipped_vec),
+        },
+    );
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type: fbs::Payload::AbsorbResult,
+            data: Some(absorb_result.as_union_value()),
         },
     );
     b.finish(envelope, None);
@@ -359,6 +427,73 @@ mod tests {
             Some(vec!["rlvkpnrz", "zsuskuln"])
         );
         assert_eq!(mr.working_copy_change_id(), Some("qpvuntsm"));
+    }
+
+    fn sample_mutation_result() -> zanshin_jj::MutationResult {
+        zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId("op99".to_owned()),
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+        }
+    }
+
+    #[test]
+    fn ok_absorb_result_produces_absorb_result_envelope() {
+        let r = zanshin_jj::AbsorbResult {
+            mutation: sample_mutation_result(),
+            rewritten_change_ids: vec![
+                zanshin_jj::ChangeId("rlvkpnrz".to_owned()),
+                zanshin_jj::ChangeId("zsuskuln".to_owned()),
+            ],
+            source_change_id: Some(zanshin_jj::ChangeId("kkmpptxz".to_owned())),
+            num_rebased: 3,
+            skipped_paths: vec![zanshin_jj::SkippedPath {
+                path: "dir/link".to_owned(),
+                reason: "Is a symlink".to_owned(),
+            }],
+        };
+        let buf = ok_absorb_result(&r);
+        let env = verified_envelope(&buf);
+        assert!(env.ok());
+        assert_eq!(env.data_type(), fbs::Payload::AbsorbResult);
+        let ar = env
+            .data_as_absorb_result()
+            .expect("AbsorbResult payload must be present");
+        let nested = ar.mutation().expect("the nested MutationResult must be present");
+        assert_eq!(nested.new_op_id(), Some("op99"));
+        assert_eq!(nested.working_copy_change_id(), Some("qpvuntsm"));
+        assert_eq!(
+            ar.rewritten_change_ids().map(|v| v.iter().collect::<Vec<_>>()),
+            Some(vec!["rlvkpnrz", "zsuskuln"])
+        );
+        assert_eq!(ar.source_change_id(), Some("kkmpptxz"));
+        assert_eq!(ar.num_rebased(), 3);
+        let skipped = ar.skipped_paths().expect("skipped_paths must be present");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped.get(0).path(), Some("dir/link"));
+        assert_eq!(skipped.get(0).reason(), Some("Is a symlink"));
+    }
+
+    /// `source_change_id` is null-for-absence: the abandoned-source / nothing-moved shape
+    /// must leave the field unset rather than writing an empty string.
+    #[test]
+    fn ok_absorb_result_omits_an_absent_source_change_id() {
+        let r = zanshin_jj::AbsorbResult {
+            mutation: sample_mutation_result(),
+            rewritten_change_ids: Vec::new(),
+            source_change_id: None,
+            num_rebased: 0,
+            skipped_paths: Vec::new(),
+        };
+        let buf = ok_absorb_result(&r);
+        let env = verified_envelope(&buf);
+        let ar = env
+            .data_as_absorb_result()
+            .expect("AbsorbResult payload must be present");
+        assert!(ar.source_change_id().is_none());
+        assert!(ar.rewritten_change_ids().is_some_and(|v| v.is_empty()));
+        assert!(ar.skipped_paths().is_some_and(|v| v.is_empty()));
     }
 
     #[test]

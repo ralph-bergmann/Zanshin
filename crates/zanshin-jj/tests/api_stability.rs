@@ -9,10 +9,10 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (41 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (43 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
-// --- ViewError (9.2)) ----------------------------------------------------------
+// --- ViewError (9.2), AbsorbResult/SkippedPath (9.3)) ---------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -74,6 +74,10 @@ type _LogDefaults = zanshin_jj::LogDefaults;
 type _MutationResult = zanshin_jj::MutationResult;
 type _MutateError = zanshin_jj::MutateError;
 
+// mutate: content ops (Story 9.3)
+type _AbsorbResult = zanshin_jj::AbsorbResult;
+type _SkippedPath = zanshin_jj::SkippedPath;
+
 // remotes: git_fetch progress (Story 6.4a)
 type _ProgressEvent = zanshin_jj::ProgressEvent;
 
@@ -126,6 +130,23 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         working_copy_change_id: zanshin_jj::ChangeId(String::new()),
+    }
+}
+
+/// Names every `AbsorbResult` / `SkippedPath` field by its public path (Story 9.3), so a field
+/// rename, reorder, or type change in absorb's outcome breaks this test at compile time. The
+/// nested `MutationResult` is deliberately reused rather than repeated — that nesting IS the
+/// contract.
+fn sample_absorb_result() -> zanshin_jj::AbsorbResult {
+    zanshin_jj::AbsorbResult {
+        mutation: sample_mutation_result(),
+        rewritten_change_ids: vec![zanshin_jj::ChangeId(String::new())],
+        source_change_id: Some(zanshin_jj::ChangeId(String::new())),
+        num_rebased: 0,
+        skipped_paths: vec![zanshin_jj::SkippedPath {
+            path: String::new(),
+            reason: String::new(),
+        }],
     }
 }
 
@@ -271,4 +292,34 @@ fn api_surface_resolves() {
         as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::CommitId>, zanshin_jj::ViewError>;
     _ = zanshin_jj::Repo::list_working_copies
         as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkingCopy>, zanshin_jj::ViewError>;
+}
+
+/// Content ops (Story 9.3): 2 new types, 2 new `MutateError` variants, 2 new `Repo` methods.
+///
+/// A separate test rather than more lines in `api_surface_resolves`, which is already at
+/// clippy's `too_many_lines` ceiling. Both methods ARE `fn`-pointer-pinnable (unlike
+/// `walk_graph`/`eval_revset`, which are generic over a visitor), so their full signatures —
+/// including which parameters are optional and which one is the revset pass-through — are
+/// pinned structurally here.
+#[test]
+fn content_ops_surface_resolves() {
+    _ = zanshin_jj::MutateError::RevsetParseError { reason: String::new() };
+    _ = zanshin_jj::MutateError::RevsetResolutionError { reason: String::new() };
+    _ = sample_absorb_result();
+    _ = zanshin_jj::Repo::restore
+        as fn(
+            &mut zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            Option<zanshin_jj::ChangeId>,
+            Option<zanshin_jj::ChangeId>,
+            &[String],
+            bool,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::absorb
+        as fn(
+            &mut zanshin_jj::Repo,
+            Option<&str>,
+            Option<zanshin_jj::ChangeId>,
+            &[String],
+        ) -> Result<zanshin_jj::AbsorbResult, zanshin_jj::MutateError>;
 }

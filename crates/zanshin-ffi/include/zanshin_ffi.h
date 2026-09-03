@@ -49,6 +49,16 @@ typedef struct {
 
 #define ChangeIdList_VT_CHANGE_IDS 4
 
+#define RestoreRequest_VT_FROM 4
+
+#define RestoreRequest_VT_INTO 6
+
+#define RestoreRequest_VT_CHANGES_IN 8
+
+#define RestoreRequest_VT_PATHS 10
+
+#define RestoreRequest_VT_RESTORE_DESCENDANTS 12
+
 #define RepoHandle_VT_SESSION_ID 6
 
 #define FileChange_VT_PATH 4
@@ -118,8 +128,6 @@ typedef struct {
 #define RepoDetect_VT_SUGGESTED_ROOT 6
 
 #define RepoDetect_VT_SUGGESTED_KIND 8
-
-#define WatcherEvent_VT_PATHS 8
 
 #define WatcherEvent_VT_MESSAGE 10
 
@@ -196,6 +204,18 @@ typedef struct {
 #define MutationResult_VT_NEW_CHANGE_IDS 6
 
 #define MutationResult_VT_ABANDONED_CHANGE_IDS 8
+
+#define AbsorbSkippedPath_VT_REASON 6
+
+#define AbsorbResult_VT_MUTATION 4
+
+#define AbsorbResult_VT_REWRITTEN_CHANGE_IDS 6
+
+#define AbsorbResult_VT_SOURCE_CHANGE_ID 8
+
+#define AbsorbResult_VT_NUM_REBASED 10
+
+#define AbsorbResult_VT_SKIPPED_PATHS 12
 
 /**
  * Build-stamp version string.
@@ -813,6 +833,102 @@ ZanshinBuf *zanshin_undo(uint64_t handle);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_git_fetch(uint64_t handle, const char *remote_name);
+
+/**
+ * Give the paths selected by the request the content they have in another commit, in the
+ * repo referenced by `handle` — the CLI's `jj restore`, whole-file only (no interactive
+ * or hunk selection).
+ *
+ * The arguments cross as a `RestoreRequest` `FlatBuffers` request buffer (ADR-0001
+ * composite-input pattern). An ABSENT string is the wire form of "the user did not supply
+ * it", which is what applies the CLI's own defaults: if exactly one of `from`/`into` is
+ * supplied the other is `@`; if neither is, the destination (`changes_in`, else `@`) is
+ * restored from its PARENT tree. `changes_in` may not be combined with `from`/`into`.
+ * An empty `paths` means all paths; entries are repo-relative PREFIXES.
+ *
+ * The working copy is NOT snapshotted first: `@` is the last-snapshotted working-copy
+ * commit (D2). If the resulting tree already equals the destination's, NO operation is
+ * written and `MutationResult.new_op_id` carries the PRE-CALL op-log head.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+ * - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
+ *   is not a valid repo path; detail in `context`.
+ * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, absent,
+ *   only-hidden, or divergent.
+ * - `jj.immutable` — the destination resolves to a commit inside the repo's effective
+ *   immutable set; the offending hex commit id in `context`. This wrapper has no separate
+ *   root-commit guard, so restoring INTO the root commit reports this code too (which is
+ *   what the jj CLI reports for it).
+ * - `jj.config_error` — the repo's jj config, or its
+ *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+ *   immutable set is unknown; detail in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+ * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+ * non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+ * (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and
+ * owned/freed by Dart (`fbs.RestoreRequestObjectBuilder(...).toBytes()`); Rust only
+ * borrows it for the duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Move each hunk of the source commit into the closest destination commit where the
+ * corresponding lines were last modified, in the repo referenced by `handle` — the CLI's
+ * `jj absorb`, non-interactive only.
+ *
+ * The arguments cross as an `AbsorbRequest` `FlatBuffers` request buffer. An absent `from`
+ * means `@`; an absent `into` applies the CLI's own `--into` default, the `mutable()`
+ * ALIAS, resolved through the repo's effective config — so a user's `[revset-aliases]`
+ * decides what it denotes. Unlike every other mutation argument, `into` is a revset
+ * EXPRESSION rather than a change id (FR-JJ-17).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `AbsorbResult` payload on success. Paths
+ * jj-lib refuses to split are reported in `AbsorbResult.skipped_paths` (the CLI prints one
+ * warning per entry) rather than failing the call. If nothing was absorbable, NO operation
+ * is written, `rewritten_change_ids` is empty, and the nested `MutationResult.new_op_id`
+ * carries the PRE-CALL op-log head. The working copy is NOT snapshotted first (D2).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+ * - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
+ *   function; jj-lib's reason in `context`.
+ * - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
+ *   resolved; jj-lib's reason in `context`.
+ * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
+ * - `jj.change_not_found` — `from` is malformed, absent, only-hidden, or divergent.
+ * - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
+ *   effective immutable set; the hex commit id of the FIRST such target in `context`.
+ *   Unreachable with the `mutable()` default, which excludes that set by construction.
+ * - `jj.config_error` — the repo's jj config, or its
+ *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved; detail in
+ *   `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+ * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+ * non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+ * (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and
+ * owned/freed by Dart (`fbs.AbsorbRequestObjectBuilder(...).toBytes()`); Rust only
+ * borrows it for the duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Read the working-copy status of the repo identified by `handle`.

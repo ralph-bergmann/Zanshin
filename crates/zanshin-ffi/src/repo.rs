@@ -22,10 +22,11 @@ use zanshin_jj::{
 };
 
 use crate::envelope::{
-    catch, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
-    FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED,
-    JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
-    JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, WATCHER_IO_ERROR,
+    catch, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
+    FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED,
+    JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO,
+    JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -72,7 +73,10 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// [`JJ_JJ_LIB_ERROR`] (same unclassified-jj-lib-failure semantics as every
 /// other wrapper); `InvalidInput`/`NothingToUndo`/`RemoteNotFound`/`NetworkError`
 /// are new codes introduced by Story 6.5, and `Immutable` (`jj.immutable`) by Story 9.1
-/// (`docs/rust-error-codes.md`). `Config` reuses [`JJ_CONFIG_ERROR`] — it is the same
+/// (`docs/rust-error-codes.md`). `RevsetParseError`/`RevsetResolutionError` (Story 9.3,
+/// raised by `zanshin_absorb`'s revset `into`) reuse [`JJ_REVSET_PARSE_ERROR`] /
+/// [`JJ_REVSET_RESOLUTION_ERROR`] — the same two-stage taxonomy `graph.rs` already
+/// reports under those codes. `Config` reuses [`JJ_CONFIG_ERROR`] — it is the same
 /// malformed-config/bad-alias fault `log_defaults.rs` and `graph.rs` already report under
 /// that code (Story 4.9), reached from the mutation side because the immutability guard
 /// reads the repo's effective config.
@@ -106,6 +110,14 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
         },
+        MutateError::RevsetParseError { reason } => FfiErrorObj {
+            code: JJ_REVSET_PARSE_ERROR.to_owned(),
+            context: Some(reason),
+        },
+        MutateError::RevsetResolutionError { reason } => FfiErrorObj {
+            code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
+            context: Some(reason),
+        },
         MutateError::Backend(reason) => FfiErrorObj {
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
@@ -130,26 +142,95 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
 fn read_change_id_list(data: *const u8, len: usize) -> Result<Vec<ChangeId>, FfiErrorObj> {
-    if data.is_null() {
-        return Err(FfiErrorObj {
-            code: FFI_NULL_POINTER.to_owned(),
-            context: None,
-        });
-    }
-    // SAFETY: caller-owned, borrowed for this call only (see doc comment above).
-    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
-    let list = flatbuffers::root_with_opts::<fbs::ChangeIdList>(&VerifierOptions::default(), bytes).map_err(|e| {
-        FfiErrorObj {
-            code: FFI_INVALID_ARGUMENT.to_owned(),
-            context: Some(e.to_string()),
-        }
-    })?;
+    let list = read_request::<fbs::ChangeIdList>(data, len)?;
     Ok(list
         .change_ids()
         .into_iter()
         .flatten()
         .map(|s| ChangeId(s.to_owned()))
         .collect())
+}
+
+/// Borrow `data`/`len` as a caller-owned request buffer and verify it as the generated
+/// table `T` — the shared body of [`read_change_id_list`], [`read_restore_request`] and
+/// [`read_absorb_request`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `T` buffer.
+fn read_request<'a, T>(data: *const u8, len: usize) -> Result<T::Inner, FfiErrorObj>
+where
+    T: 'a + flatbuffers::Follow<'a> + flatbuffers::Verifiable,
+{
+    if data.is_null() {
+        return Err(FfiErrorObj {
+            code: FFI_NULL_POINTER.to_owned(),
+            context: None,
+        });
+    }
+    // SAFETY: caller-owned, borrowed for this call only (see `read_change_id_list`).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    flatbuffers::root_with_opts::<T>(&VerifierOptions::default(), bytes).map_err(|e| FfiErrorObj {
+        code: FFI_INVALID_ARGUMENT.to_owned(),
+        context: Some(e.to_string()),
+    })
+}
+
+/// Owned Rust form of a `RestoreRequest` buffer (Story 9.3).
+///
+/// Every string is `Option`: ABSENT is the wire form of "the user did not supply it",
+/// which is what lets `zanshin_jj::Repo::restore` apply the CLI's own `@` / parent-tree
+/// defaults instead of a value this layer invented.
+struct RestoreRequestOwned {
+    from: Option<ChangeId>,
+    into: Option<ChangeId>,
+    changes_in: Option<ChangeId>,
+    paths: Vec<String>,
+    restore_descendants: bool,
+}
+
+/// Owned Rust form of an `AbsorbRequest` buffer (Story 9.3). `into` is a revset
+/// EXPRESSION, not a change id — see the schema's own comment.
+struct AbsorbRequestOwned {
+    from: Option<ChangeId>,
+    into: Option<String>,
+    paths: Vec<String>,
+}
+
+/// Parse a `RestoreRequest` `FlatBuffers` request buffer (ADR-0001 composite-input
+/// pattern) into an owned [`RestoreRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+fn read_restore_request(data: *const u8, len: usize) -> Result<RestoreRequestOwned, FfiErrorObj> {
+    let req = read_request::<fbs::RestoreRequest>(data, len)?;
+    Ok(RestoreRequestOwned {
+        from: req.from().map(|s| ChangeId(s.to_owned())),
+        // WHY the fully-qualified inherent call: the generated accessor is named after
+        // the schema field `into`, which collides with the blanket `Into::into`; a bare
+        // `req.into()` is ambiguous.
+        into: fbs::RestoreRequest::into(&req).map(|s| ChangeId(s.to_owned())),
+        changes_in: req.changes_in().map(|s| ChangeId(s.to_owned())),
+        paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
+        restore_descendants: req.restore_descendants(),
+    })
+}
+
+/// Parse an `AbsorbRequest` `FlatBuffers` request buffer into an owned
+/// [`AbsorbRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned, FfiErrorObj> {
+    let req = read_request::<fbs::AbsorbRequest>(data, len)?;
+    Ok(AbsorbRequestOwned {
+        from: req.from().map(|s| ChangeId(s.to_owned())),
+        // WHY the fully-qualified inherent call: see `read_restore_request`.
+        into: fbs::AbsorbRequest::into(&req).map(ToOwned::to_owned),
+        paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
+    })
 }
 
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
@@ -862,6 +943,140 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
     vec_into_token(buf)
 }
 
+// ── Content ops (Story 9.3) ──────────────────────────────────────────────────
+
+/// Give the paths selected by the request the content they have in another commit, in the
+/// repo referenced by `handle` — the CLI's `jj restore`, whole-file only (no interactive
+/// or hunk selection).
+///
+/// The arguments cross as a `RestoreRequest` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern). An ABSENT string is the wire form of "the user did not supply
+/// it", which is what applies the CLI's own defaults: if exactly one of `from`/`into` is
+/// supplied the other is `@`; if neither is, the destination (`changes_in`, else `@`) is
+/// restored from its PARENT tree. `changes_in` may not be combined with `from`/`into`.
+/// An empty `paths` means all paths; entries are repo-relative PREFIXES.
+///
+/// The working copy is NOT snapshotted first: `@` is the last-snapshotted working-copy
+/// commit (D2). If the resulting tree already equals the destination's, NO operation is
+/// written and `MutationResult.new_op_id` carries the PRE-CALL op-log head.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+/// - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
+///   is not a valid repo path; detail in `context`.
+/// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, absent,
+///   only-hidden, or divergent.
+/// - `jj.immutable` — the destination resolves to a commit inside the repo's effective
+///   immutable set; the offending hex commit id in `context`. This wrapper has no separate
+///   root-commit guard, so restoring INTO the root commit reports this code too (which is
+///   what the jj CLI reports for it).
+/// - `jj.config_error` — the repo's jj config, or its
+///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
+///   immutable set is unknown; detail in `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.RestoreRequestObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_restore", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        let req = read_restore_request(data, len)?;
+        let result = session
+            .repo
+            .restore(req.from, req.into, req.changes_in, &req.paths, req.restore_descendants)
+            .map_err(map_mutate_err)?;
+        Ok(ok_mutation_result(&result))
+    });
+    vec_into_token(buf)
+}
+
+/// Move each hunk of the source commit into the closest destination commit where the
+/// corresponding lines were last modified, in the repo referenced by `handle` — the CLI's
+/// `jj absorb`, non-interactive only.
+///
+/// The arguments cross as an `AbsorbRequest` `FlatBuffers` request buffer. An absent `from`
+/// means `@`; an absent `into` applies the CLI's own `--into` default, the `mutable()`
+/// ALIAS, resolved through the repo's effective config — so a user's `[revset-aliases]`
+/// decides what it denotes. Unlike every other mutation argument, `into` is a revset
+/// EXPRESSION rather than a change id (FR-JJ-17).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying an `AbsorbResult` payload on success. Paths
+/// jj-lib refuses to split are reported in `AbsorbResult.skipped_paths` (the CLI prints one
+/// warning per entry) rather than failing the call. If nothing was absorbable, NO operation
+/// is written, `rewritten_change_ids` is empty, and the nested `MutationResult.new_op_id`
+/// carries the PRE-CALL op-log head. The working copy is NOT snapshotted first (D2).
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+/// - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
+///   function; jj-lib's reason in `context`.
+/// - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
+///   resolved; jj-lib's reason in `context`.
+/// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
+/// - `jj.change_not_found` — `from` is malformed, absent, only-hidden, or divergent.
+/// - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
+///   effective immutable set; the hex commit id of the FIRST such target in `context`.
+///   Unreachable with the `mutable()` default, which excludes that set by construction.
+/// - `jj.config_error` — the repo's jj config, or its
+///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved; detail in
+///   `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.AbsorbRequestObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_absorb(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_absorb", handle);
+    let buf = catch(|| {
+        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
+        // model (AD-2) guarantees no concurrent access.
+        let session =
+            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+                code: FFI_INVALID_HANDLE.to_owned(),
+                context: None,
+            })?;
+        let req = read_absorb_request(data, len)?;
+        let result = session
+            .repo
+            .absorb(req.into.as_deref(), req.from, &req.paths)
+            .map_err(map_mutate_err)?;
+        Ok(ok_absorb_result(&result))
+    });
+    vec_into_token(buf)
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1005,6 +1220,24 @@ mod tests {
         });
         assert_eq!(e.code, JJ_NETWORK_ERROR);
         assert_eq!(e.context.unwrap(), "connection refused");
+    }
+
+    #[test]
+    fn map_mutate_err_revset_parse_error_maps_to_jj_revset_parse_error() {
+        let e = map_mutate_err(MutateError::RevsetParseError {
+            reason: "unknown function".to_owned(),
+        });
+        assert_eq!(e.code, JJ_REVSET_PARSE_ERROR);
+        assert_eq!(e.context.unwrap(), "unknown function");
+    }
+
+    #[test]
+    fn map_mutate_err_revset_resolution_error_maps_to_jj_revset_resolution_error() {
+        let e = map_mutate_err(MutateError::RevsetResolutionError {
+            reason: "no such bookmark".to_owned(),
+        });
+        assert_eq!(e.code, JJ_REVSET_RESOLUTION_ERROR);
+        assert_eq!(e.context.unwrap(), "no such bookmark");
     }
 
     #[test]

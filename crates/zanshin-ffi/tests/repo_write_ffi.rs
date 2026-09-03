@@ -2,7 +2,8 @@
 
 //! Integration tests for the Story 6.5 mutation wrappers (`zanshin_describe`,
 //! `zanshin_new_change`, `zanshin_edit`, `zanshin_abandon`, `zanshin_undo`,
-//! `zanshin_git_fetch`).
+//! `zanshin_git_fetch`) and Story 9.3's content ops (`zanshin_restore`,
+//! `zanshin_absorb`).
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the
 //! Verifier — a wrong-shape payload is a compile error, not a runtime assert.
@@ -25,15 +26,15 @@ use zanshin_ffi::events::{zanshin_events_register, zanshin_events_unregister};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{
-    zanshin_abandon, zanshin_describe, zanshin_edit, zanshin_git_fetch, zanshin_new_change, zanshin_repo_close,
-    zanshin_repo_init, zanshin_repo_open, zanshin_undo,
+    zanshin_abandon, zanshin_absorb, zanshin_describe, zanshin_edit, zanshin_git_fetch, zanshin_new_change,
+    zanshin_repo_close, zanshin_repo_init, zanshin_repo_open, zanshin_restore, zanshin_undo,
 };
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO,
+    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
-use zanshin_jj::{ChangeId, Repo};
+use zanshin_jj::{resolve_revset, ChangeId, Repo};
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,63 @@ fn change_id_list_bytes(ids: &[&str]) -> Vec<u8> {
     let list = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { change_ids: Some(vec) });
     b.finish(list, None);
     b.finished_data().to_vec()
+}
+
+/// Build a `RestoreRequest` request buffer (Story 9.3). A `None` string is left ABSENT —
+/// the wire form of "the user did not supply it", which is what selects the CLI's defaults.
+fn restore_request_bytes(
+    from: Option<&str>,
+    into: Option<&str>,
+    changes_in: Option<&str>,
+    paths: &[&str],
+    restore_descendants: bool,
+) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let from_off = from.map(|s| b.create_string(s));
+    let into_off = into.map(|s| b.create_string(s));
+    let changes_in_off = changes_in.map(|s| b.create_string(s));
+    let path_offs: Vec<_> = paths.iter().map(|s| b.create_string(s)).collect();
+    let paths_vec = b.create_vector(&path_offs);
+    let req = fbs::RestoreRequest::create(
+        &mut b,
+        &fbs::RestoreRequestArgs {
+            from: from_off,
+            into: into_off,
+            changes_in: changes_in_off,
+            paths: Some(paths_vec),
+            restore_descendants,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Build an `AbsorbRequest` request buffer (Story 9.3). `into` is a revset EXPRESSION.
+fn absorb_request_bytes(from: Option<&str>, into: Option<&str>, paths: &[&str]) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let from_off = from.map(|s| b.create_string(s));
+    let into_off = into.map(|s| b.create_string(s));
+    let path_offs: Vec<_> = paths.iter().map(|s| b.create_string(s)).collect();
+    let paths_vec = b.create_vector(&path_offs);
+    let req = fbs::AbsorbRequest::create(
+        &mut b,
+        &fbs::AbsorbRequestArgs {
+            from: from_off,
+            into: into_off,
+            paths: Some(paths_vec),
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// The reverse-hex change id of the commit named by `commit_hex`, via the crate's own
+/// revset resolver (a full commit hex is a revset symbol) — no `jj_lib` import needed.
+fn change_id_for_commit(path: &Path, commit_hex: &str) -> String {
+    let repo = Repo::open(path).expect("fixture opens");
+    let mut ids = resolve_revset(&repo, commit_hex).expect("a commit hex resolves as a revset symbol");
+    assert_eq!(ids.len(), 1, "a commit hex denotes exactly one change");
+    ids.swap_remove(0).0
 }
 
 /// Open `path` and return `(handle, session_id)`.
@@ -682,6 +740,218 @@ fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
     close_handle(handle);
 }
 
+// ── restore / absorb (Story 9.3) ──────────────────────────────────────────────
+
+/// `A(a.txt="A") -> B(a.txt="B")` off root, plus a source `S` whose one-line edit annotates
+/// back to `A`. Purpose-built: the committed fixtures give every commit its own unique file,
+/// so no fixture path survives across commits.
+///
+/// Returns the fixture (the caller must keep it alive so the `TempDir` outlives the handle),
+/// the handle, and the change ids of `A`, `B` and `S`.
+///
+/// # Safety
+/// The returned handle must be closed with `zanshin_repo_close` before the fixture drops.
+unsafe fn open_content_fixture() -> (test_helpers::FixtureHandle, u64, String, String, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let a = test_helpers::add_commit_with_files(&fixture.path, &[], &[("a.txt", "one\ntwo\n")], "ancestor");
+    let b = test_helpers::add_commit_with_files(&fixture.path, &[&a], &[("a.txt", "B\n")], "destination");
+    let s = test_helpers::add_commit_with_files(&fixture.path, &[&a], &[("a.txt", "one\nCHANGED\n")], "source");
+    let a_change = change_id_for_commit(&fixture.path, &a);
+    let b_change = change_id_for_commit(&fixture.path, &b);
+    let s_change = change_id_for_commit(&fixture.path, &s);
+
+    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
+    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
+    let open_bytes = unsafe { read_and_free(open_token) };
+    let open_env = parse_envelope(&open_bytes);
+    assert!(open_env.ok(), "repo open must succeed");
+    let handle = open_env
+        .data_as_repo_handle()
+        .expect("data_as_repo_handle must succeed")
+        .handle();
+
+    (fixture, handle, a_change, b_change, s_change)
+}
+
+#[test]
+fn restore_valid_round_trip_returns_ok_mutation_result() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, a_change, b_change, _) = unsafe { open_content_fixture() };
+
+    let req = restore_request_bytes(Some(&a_change), Some(&b_change), None, &[], false);
+    let token = unsafe { zanshin_restore(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(
+        env.ok(),
+        "restore must succeed, error={:?}/{:?}",
+        env.error().and_then(|e| e.code()),
+        env.error().and_then(|e| e.context())
+    );
+    assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    let mr = env
+        .data_as_mutation_result()
+        .expect("data_as_mutation_result must succeed");
+    assert!(mr.new_op_id().is_some_and(|s| !s.is_empty()), "new_op_id must be set");
+    assert!(
+        mr.new_change_ids().is_none_or(|v| v.is_empty()),
+        "restore mints nothing"
+    );
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+#[test]
+fn restore_changes_in_combined_with_from_returns_jj_invalid_input() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, a_change, b_change, _) = unsafe { open_content_fixture() };
+
+    let req = restore_request_bytes(Some(&a_change), None, Some(&b_change), &[], false);
+    let token = unsafe { zanshin_restore(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+#[test]
+fn absorb_valid_round_trip_returns_ok_absorb_result() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, a_change, _, s_change) = unsafe { open_content_fixture() };
+
+    let req = absorb_request_bytes(Some(&s_change), None, &[]);
+    let token = unsafe { zanshin_absorb(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(
+        env.ok(),
+        "absorb must succeed, error={:?}/{:?}",
+        env.error().and_then(|e| e.code()),
+        env.error().and_then(|e| e.context())
+    );
+    assert_eq!(env.data_type(), fbs::Payload::AbsorbResult);
+    let ar = env.data_as_absorb_result().expect("data_as_absorb_result must succeed");
+    let nested = ar.mutation().expect("the nested MutationResult must be present");
+    assert!(nested.new_op_id().is_some_and(|s| !s.is_empty()));
+    assert_eq!(
+        ar.rewritten_change_ids().map(|v| v.iter().collect::<Vec<_>>()),
+        Some(vec![a_change.as_str()]),
+        "the hunk lands in the annotating ancestor"
+    );
+    assert!(ar.skipped_paths().is_some_and(|v| v.is_empty()));
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+#[test]
+fn absorb_bogus_destination_revset_returns_jj_revset_parse_error() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, _, _, s_change) = unsafe { open_content_fixture() };
+
+    let req = absorb_request_bytes(Some(&s_change), Some("bogus_function()"), &[]);
+    let token = unsafe { zanshin_absorb(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_REVSET_PARSE_ERROR));
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+#[test]
+fn absorb_unresolvable_destination_revset_returns_jj_revset_resolution_error() {
+    pin_env();
+    // SAFETY: handle is closed below, before `fixture` drops at end of scope.
+    let (fixture, handle, _, _, s_change) = unsafe { open_content_fixture() };
+
+    let req = absorb_request_bytes(Some(&s_change), Some("nonexistent-bookmark"), &[]);
+    let token = unsafe { zanshin_absorb(handle, req.as_ptr(), req.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_REVSET_RESOLUTION_ERROR));
+
+    close_handle(handle);
+    drop(fixture);
+}
+
+#[test]
+fn restore_null_request_buffer_returns_ffi_null_pointer() {
+    pin_env();
+    let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    let token = unsafe { zanshin_restore(handle, std::ptr::null(), 0) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_NULL_POINTER));
+
+    close_handle(handle);
+}
+
+#[test]
+fn absorb_null_request_buffer_returns_ffi_null_pointer() {
+    pin_env();
+    let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    let token = unsafe { zanshin_absorb(handle, std::ptr::null(), 0) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_NULL_POINTER));
+
+    close_handle(handle);
+}
+
+#[test]
+fn restore_garbage_bytes_returns_ffi_invalid_argument() {
+    pin_env();
+    let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    let garbage: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let token = unsafe { zanshin_restore(handle, garbage.as_ptr(), garbage.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
+
+    close_handle(handle);
+}
+
+#[test]
+fn absorb_garbage_bytes_returns_ffi_invalid_argument() {
+    pin_env();
+    let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    let garbage: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let token = unsafe { zanshin_absorb(handle, garbage.as_ptr(), garbage.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
+
+    close_handle(handle);
+}
+
 // ── Cross-cutting edge cases ──────────────────────────────────────────────────
 
 /// A nonexistent change id (mirrors `tests/change_ffi.rs`'s own `bad_id`).
@@ -731,6 +1001,24 @@ fn every_wrapper_bogus_change_id_returns_jj_change_not_found() {
         parse_envelope(&abandon_bytes).error().and_then(|e| e.code()),
         Some(JJ_CHANGE_NOT_FOUND),
         "zanshin_abandon with a bogus change id"
+    );
+
+    let restore_req = restore_request_bytes(Some(bogus), None, None, &[], false);
+    let restore_token = unsafe { zanshin_restore(handle, restore_req.as_ptr(), restore_req.len()) };
+    let restore_bytes = unsafe { read_and_free(restore_token) };
+    assert_eq!(
+        parse_envelope(&restore_bytes).error().and_then(|e| e.code()),
+        Some(JJ_CHANGE_NOT_FOUND),
+        "zanshin_restore with a bogus source id"
+    );
+
+    let absorb_req = absorb_request_bytes(Some(bogus), None, &[]);
+    let absorb_token = unsafe { zanshin_absorb(handle, absorb_req.as_ptr(), absorb_req.len()) };
+    let absorb_bytes = unsafe { read_and_free(absorb_token) };
+    assert_eq!(
+        parse_envelope(&absorb_bytes).error().and_then(|e| e.code()),
+        Some(JJ_CHANGE_NOT_FOUND),
+        "zanshin_absorb with a bogus source id"
     );
 
     close_handle(handle);
@@ -916,6 +1204,22 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let git_fetch_bytes = unsafe { read_and_free(git_fetch_token) };
     assert_eq!(
         parse_envelope(&git_fetch_bytes).error().and_then(|e| e.code()),
+        Some(FFI_INVALID_HANDLE)
+    );
+
+    let restore_req = restore_request_bytes(None, Some("qpvuntsm"), None, &[], false);
+    let restore_token = unsafe { zanshin_restore(0, restore_req.as_ptr(), restore_req.len()) };
+    let restore_bytes = unsafe { read_and_free(restore_token) };
+    assert_eq!(
+        parse_envelope(&restore_bytes).error().and_then(|e| e.code()),
+        Some(FFI_INVALID_HANDLE)
+    );
+
+    let absorb_req = absorb_request_bytes(None, None, &[]);
+    let absorb_token = unsafe { zanshin_absorb(0, absorb_req.as_ptr(), absorb_req.len()) };
+    let absorb_bytes = unsafe { read_and_free(absorb_token) };
+    assert_eq!(
+        parse_envelope(&absorb_bytes).error().and_then(|e| e.code()),
         Some(FFI_INVALID_HANDLE)
     );
 }
