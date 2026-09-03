@@ -8,7 +8,7 @@
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
-use zanshin_jj::{ChangeKind, Status, StatusError};
+use zanshin_jj::{ChangeKind, FileChange, Status, StatusError};
 
 use crate::envelope::{catch, FfiErrorObj, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY};
 use crate::fbs;
@@ -33,17 +33,21 @@ fn map_status_err(e: StatusError) -> FfiErrorObj {
 
 // ── Status → FlatBuffers builder ──────────────────────────────────────────────
 
-/// Serialise `&Status` into a finished `FlatBuffers` `Envelope<Status>` buffer.
+/// Build the `[FileChange]` vector into `b` and return its offset.
 ///
-/// Children are built before parents (`FlatBuffers` requirement): each
-/// `FileChange` table is completed before its offset is collected; the
-/// `files` vector, id strings, and `Status` table are built after the loop.
-fn status_to_envelope(status: &Status) -> Vec<u8> {
-    let mut b = FlatBufferBuilder::with_capacity(1024);
-
-    // 1) Build one FileChange per entry — strings then table, in order.
-    let mut file_offsets = Vec::with_capacity(status.files.len());
-    for fc in &status.files {
+/// Children are built before parents (`FlatBuffers` requirement): each `FileChange` table is
+/// completed before its offset is collected, and the vector comes after the loop. `from_path`
+/// is written ONLY for Renamed/Copied — null-for-absence.
+///
+/// Extracted so `status`, Story 9.6's `ShowEntry` and its `InterdiffView` all serialise the
+/// shipped per-path change vocabulary through one construction site — the same move Story 9.5
+/// made for `build_mutation_result`.
+pub(crate) fn file_changes_vector<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    files: &[FileChange],
+) -> flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::FileChange<'a>>>> {
+    let mut file_offsets = Vec::with_capacity(files.len());
+    for fc in files {
         let path_off = b.create_string(&fc.path.to_string_lossy());
         let (kind, from_off) = match &fc.kind {
             ChangeKind::Added => (fbs::ChangeKind::Added, None),
@@ -53,7 +57,7 @@ fn status_to_envelope(status: &Status) -> Vec<u8> {
             ChangeKind::Copied { from } => (fbs::ChangeKind::Copied, Some(b.create_string(&from.to_string_lossy()))),
         };
         let fc_off = fbs::FileChange::create(
-            &mut b,
+            b,
             &fbs::FileChangeArgs {
                 path: Some(path_off),
                 kind,
@@ -62,9 +66,15 @@ fn status_to_envelope(status: &Status) -> Vec<u8> {
         );
         file_offsets.push(fc_off);
     }
+    b.create_vector(&file_offsets)
+}
 
-    // 2) Build the vector and the two change-id strings (after all FileChange tables).
-    let files_vec = b.create_vector(&file_offsets);
+/// Serialise `&Status` into a finished `FlatBuffers` `Envelope<Status>` buffer.
+fn status_to_envelope(status: &Status) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(1024);
+
+    // 1)+2) Build the FileChange vector, then the two change-id strings.
+    let files_vec = file_changes_vector(&mut b, &status.files);
     let wc_off = b.create_string(&status.working_copy_change_id.0);
     let parent_off = b.create_string(&status.parent_change_id.0);
 

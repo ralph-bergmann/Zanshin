@@ -161,6 +161,46 @@ table GitRemoteSetUrlRequest {
   push_url: string;
 }
 
+/// Arguments of `zanshin_show` (Story 9.6, FR-JJ-17) — the CLI's `jj show`.
+///
+/// `revset` is a pass-through revset EXPRESSION, not a change id: the CLI takes
+/// `Vec<RevisionArg>` and UNIONS them, so a divergent change yields both its visible commits
+/// rather than a refusal, and materializing it into ids would destroy alias/config resolution.
+/// ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
+/// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+/// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
+/// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+table ShowRequest {
+  revset: string;
+}
+
+/// Arguments of `zanshin_evolog` (Story 9.6) — the CLI's `jj evolog`.
+///
+/// `revset` behaves exactly as in ShowRequest. `limit` is the CLI's `-n/--limit`, meaningful
+/// ONLY when has_limit == true (presence pair, same rule as SearchMatch.conflict_side: flatc
+/// 25.12.19 rejects optional scalars for Dart). It is applied in WALK order — the CLI limits
+/// before reversing — and `limit = 0` is an empty result, not an error.
+table EvologRequest {
+  revset: string;
+  limit: uint;            // 0 / ignored when has_limit == false
+  has_limit: bool;
+}
+
+/// Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
+///
+/// Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS: the CLI
+/// resolves each with `resolve_single_rev`, which refuses an ambiguous revision, so a divergent
+/// id is refused rather than guessed. An ABSENT side is `@` — but omitting BOTH is refused with
+/// `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
+/// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
+/// fileset DSL is not parsed (ADR-0003). A filter matching nothing yields an EMPTY list, where
+/// the CLI only warns.
+table InterdiffRequest {
+  from: string;
+  to: string;
+  paths: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -176,6 +216,8 @@ table GitRemoteSetUrlRequest {
 //   Story 9-4  : FileList ✓, FileContents ✓, FileAnnotation ✓, FileSearch ✓
 //   Story 9-5  : GitImportResult ✓, GitExportResult ✓ (the four remote verbs reuse
 //                MutationResult)
+//   Story 9-6  : ShowView ✓, EvologView ✓, InterdiffView ✓ (all three reuse the shipped
+//                Change / FileChange tables — no second spelling of either shape)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -678,6 +720,65 @@ table GitExportResult {
   failed_tags: [GitExportFailure];
 }
 
+/// One revision as `zanshin_show` presents it (Story 9.6): its metadata plus what it changed.
+///
+/// `change` is the SHIPPED `Change` table — byte-identical to what `zanshin_change` returns for
+/// the same commit, because both come from one construction site in `zanshin-jj`.
+/// `file_changes` is the SHIPPED `FileChange` table: the diff of the commit's MERGED parent tree
+/// against its own tree, classified into Added/Modified/Removed/Renamed/Copied exactly as the
+/// CLI's `diff_status_inner` does. For a MERGE commit that is only what the merge itself
+/// changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
+/// (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
+///
+/// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
+/// EXTEND this payload rather than replace it.
+table ShowEntry {
+  change: Change;
+  file_changes: [FileChange];
+}
+
+/// The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
+/// (topological, children before parents). A revset matching nothing is an EMPTY list and a
+/// SUCCESS. A divergent change contributes one entry per visible commit — the CLI's `show`
+/// unions revsets and never refuses ambiguity.
+table ShowView {
+  entries: [ShowEntry];
+}
+
+/// One step of a change's evolution as `zanshin_evolog` walks it (Story 9.6).
+///
+/// `change` is the shipped `Change` table for THIS version of the change. Rows carry commit ids
+/// in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
+/// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+/// `operation_id` is the operation that created or rewrote this commit and is ABSENT
+/// (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
+/// operation storing no predecessors and could go no further. That absence is the ONLY signal a
+/// caller has that an evolution may be TRUNCATED; the CLI truncates silently. When it is absent
+/// `predecessor_commit_ids` is always empty.
+table EvologEntry {
+  change: Change;
+  predecessor_commit_ids: [string];  // CommitIds, hex; empty when operation_id is absent
+  operation_id: string;              // op id, plain forward hex; absent for the walk's flush tail
+}
+
+/// The result of `zanshin_evolog`: the evolution entries in RAW walk order (newest first). The
+/// CLI's `--reversed` and its graph mode's `TopoGroupedGraph` re-ordering are rendering the GUI
+/// does itself, and are not applied. `limit = 0` is an EMPTY list and a success.
+table EvologView {
+  entries: [EvologEntry];
+}
+
+/// The result of `zanshin_interdiff` (Story 9.6): what `to` changes that `from` does not, with
+/// the parent difference factored out by rebasing `from` onto `to`'s parents in memory.
+///
+/// Reuses the shipped `FileChange` table. `Renamed`/`Copied` NEVER appear here: the CLI's
+/// `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
+/// reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
+/// success, as is a path filter that matches nothing.
+table InterdiffView {
+  file_changes: [FileChange];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -700,6 +801,9 @@ union Payload {
   FileSearch,
   GitImportResult,
   GitExportResult,
+  ShowView,
+  EvologView,
+  InterdiffView,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

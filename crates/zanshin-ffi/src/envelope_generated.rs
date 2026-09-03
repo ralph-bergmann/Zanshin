@@ -797,13 +797,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 20;
+        pub const ENUM_MAX_PAYLOAD: u8 = 23;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 21] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 24] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -825,6 +825,9 @@ pub mod zanshin {
             Payload::FileSearch,
             Payload::GitImportResult,
             Payload::GitExportResult,
+            Payload::ShowView,
+            Payload::EvologView,
+            Payload::InterdiffView,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -853,9 +856,12 @@ pub mod zanshin {
             pub const FileSearch: Self = Self(18);
             pub const GitImportResult: Self = Self(19);
             pub const GitExportResult: Self = Self(20);
+            pub const ShowView: Self = Self(21);
+            pub const EvologView: Self = Self(22);
+            pub const InterdiffView: Self = Self(23);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 20;
+            pub const ENUM_MAX: u8 = 23;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -878,6 +884,9 @@ pub mod zanshin {
                 Self::FileSearch,
                 Self::GitImportResult,
                 Self::GitExportResult,
+                Self::ShowView,
+                Self::EvologView,
+                Self::InterdiffView,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -903,6 +912,9 @@ pub mod zanshin {
                     Self::FileSearch => Some("FileSearch"),
                     Self::GitImportResult => Some("GitImportResult"),
                     Self::GitExportResult => Some("GitExportResult"),
+                    Self::ShowView => Some("ShowView"),
+                    Self::EvologView => Some("EvologView"),
+                    Self::InterdiffView => Some("InterdiffView"),
                     _ => None,
                 }
             }
@@ -2494,6 +2506,426 @@ pub mod zanshin {
                 ds.field("name", &self.name());
                 ds.field("url", &self.url());
                 ds.field("push_url", &self.push_url());
+                ds.finish()
+            }
+        }
+        pub enum ShowRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_show` (Story 9.6, FR-JJ-17) — the CLI's `jj show`.
+        ///
+        /// `revset` is a pass-through revset EXPRESSION, not a change id: the CLI takes
+        /// `Vec<RevisionArg>` and UNIONS them, so a divergent change yields both its visible commits
+        /// rather than a refusal, and materializing it into ids would destroy alias/config resolution.
+        /// ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
+        /// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+        /// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
+        /// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+        pub struct ShowRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ShowRequest<'a> {
+            type Inner = ShowRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ShowRequest<'a> {
+            pub const VT_REVSET: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ShowRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ShowRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ShowRequest<'bldr>> {
+                let mut builder = ShowRequestBuilder::new(_fbb);
+                if let Some(x) = args.revset {
+                    builder.add_revset(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revset(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ShowRequest::VT_REVSET, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ShowRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revset", Self::VT_REVSET, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ShowRequestArgs<'a> {
+            pub revset: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ShowRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ShowRequestArgs { revset: None }
+            }
+        }
+
+        pub struct ShowRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ShowRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowRequest::VT_REVSET, revset);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ShowRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ShowRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ShowRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ShowRequest");
+                ds.field("revset", &self.revset());
+                ds.finish()
+            }
+        }
+        pub enum EvologRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_evolog` (Story 9.6) — the CLI's `jj evolog`.
+        ///
+        /// `revset` behaves exactly as in ShowRequest. `limit` is the CLI's `-n/--limit`, meaningful
+        /// ONLY when has_limit == true (presence pair, same rule as SearchMatch.conflict_side: flatc
+        /// 25.12.19 rejects optional scalars for Dart). It is applied in WALK order — the CLI limits
+        /// before reversing — and `limit = 0` is an empty result, not an error.
+        pub struct EvologRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for EvologRequest<'a> {
+            type Inner = EvologRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> EvologRequest<'a> {
+            pub const VT_REVSET: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                EvologRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args EvologRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<EvologRequest<'bldr>> {
+                let mut builder = EvologRequestBuilder::new(_fbb);
+                builder.add_limit(args.limit);
+                if let Some(x) = args.revset {
+                    builder.add_revset(x);
+                }
+                builder.add_has_limit(args.has_limit);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revset(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(EvologRequest::VT_REVSET, None)
+                }
+            }
+            #[inline]
+            pub fn limit(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(EvologRequest::VT_LIMIT, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn has_limit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(EvologRequest::VT_HAS_LIMIT, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for EvologRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revset", Self::VT_REVSET, false)?
+                    .visit_field::<u32>("limit", Self::VT_LIMIT, false)?
+                    .visit_field::<bool>("has_limit", Self::VT_HAS_LIMIT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct EvologRequestArgs<'a> {
+            pub revset: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub limit: u32,
+            pub has_limit: bool,
+        }
+        impl<'a> Default for EvologRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                EvologRequestArgs {
+                    revset: None,
+                    limit: 0,
+                    has_limit: false,
+                }
+            }
+        }
+
+        pub struct EvologRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EvologRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EvologRequest::VT_REVSET, revset);
+            }
+            #[inline]
+            pub fn add_limit(&mut self, limit: u32) {
+                self.fbb_.push_slot::<u32>(EvologRequest::VT_LIMIT, limit, 0);
+            }
+            #[inline]
+            pub fn add_has_limit(&mut self, has_limit: bool) {
+                self.fbb_
+                    .push_slot::<bool>(EvologRequest::VT_HAS_LIMIT, has_limit, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EvologRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                EvologRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<EvologRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for EvologRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("EvologRequest");
+                ds.field("revset", &self.revset());
+                ds.field("limit", &self.limit());
+                ds.field("has_limit", &self.has_limit());
+                ds.finish()
+            }
+        }
+        pub enum InterdiffRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
+        ///
+        /// Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS: the CLI
+        /// resolves each with `resolve_single_rev`, which refuses an ambiguous revision, so a divergent
+        /// id is refused rather than guessed. An ABSENT side is `@` — but omitting BOTH is refused with
+        /// `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
+        /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
+        /// fileset DSL is not parsed (ADR-0003). A filter matching nothing yields an EMPTY list, where
+        /// the CLI only warns.
+        pub struct InterdiffRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for InterdiffRequest<'a> {
+            type Inner = InterdiffRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> InterdiffRequest<'a> {
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                InterdiffRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args InterdiffRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<InterdiffRequest<'bldr>> {
+                let mut builder = InterdiffRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(InterdiffRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(InterdiffRequest::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(InterdiffRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for InterdiffRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct InterdiffRequestArgs<'a> {
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for InterdiffRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                InterdiffRequestArgs {
+                    from: None,
+                    to: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct InterdiffRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> InterdiffRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffRequest::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> InterdiffRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                InterdiffRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<InterdiffRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for InterdiffRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("InterdiffRequest");
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("paths", &self.paths());
                 ds.finish()
             }
         }
@@ -9178,6 +9610,682 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum ShowEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One revision as `zanshin_show` presents it (Story 9.6): its metadata plus what it changed.
+        ///
+        /// `change` is the SHIPPED `Change` table — byte-identical to what `zanshin_change` returns for
+        /// the same commit, because both come from one construction site in `zanshin-jj`.
+        /// `file_changes` is the SHIPPED `FileChange` table: the diff of the commit's MERGED parent tree
+        /// against its own tree, classified into Added/Modified/Removed/Renamed/Copied exactly as the
+        /// CLI's `diff_status_inner` does. For a MERGE commit that is only what the merge itself
+        /// changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
+        /// (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
+        ///
+        /// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
+        /// EXTEND this payload rather than replace it.
+        pub struct ShowEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ShowEntry<'a> {
+            type Inner = ShowEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ShowEntry<'a> {
+            pub const VT_CHANGE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ShowEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ShowEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ShowEntry<'bldr>> {
+                let mut builder = ShowEntryBuilder::new(_fbb);
+                if let Some(x) = args.file_changes {
+                    builder.add_file_changes(x);
+                }
+                if let Some(x) = args.change {
+                    builder.add_change(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn change(&self) -> Option<Change<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Change>>(ShowEntry::VT_CHANGE, None)
+                }
+            }
+            #[inline]
+            pub fn file_changes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>(ShowEntry::VT_FILE_CHANGES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ShowEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<Change>>("change", Self::VT_CHANGE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>("file_changes", Self::VT_FILE_CHANGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ShowEntryArgs<'a> {
+            pub change: Option<::flatbuffers::WIPOffset<Change<'a>>>,
+            pub file_changes: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ShowEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ShowEntryArgs {
+                    change: None,
+                    file_changes: None,
+                }
+            }
+        }
+
+        pub struct ShowEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ShowEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_change(&mut self, change: ::flatbuffers::WIPOffset<Change<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Change>>(ShowEntry::VT_CHANGE, change);
+            }
+            #[inline]
+            pub fn add_file_changes(
+                &mut self,
+                file_changes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_FILE_CHANGES, file_changes);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ShowEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ShowEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ShowEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ShowEntry");
+                ds.field("change", &self.change());
+                ds.field("file_changes", &self.file_changes());
+                ds.finish()
+            }
+        }
+        pub enum ShowViewOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
+        /// (topological, children before parents). A revset matching nothing is an EMPTY list and a
+        /// SUCCESS. A divergent change contributes one entry per visible commit — the CLI's `show`
+        /// unions revsets and never refuses ambiguity.
+        pub struct ShowView<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ShowView<'a> {
+            type Inner = ShowView<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ShowView<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ShowView { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ShowViewArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ShowView<'bldr>> {
+                let mut builder = ShowViewBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShowEntry<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShowEntry>>,
+                    >>(ShowView::VT_ENTRIES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ShowView<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ShowEntry>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ShowViewArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShowEntry<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ShowViewArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ShowViewArgs { entries: None }
+            }
+        }
+
+        pub struct ShowViewBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ShowViewBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ShowEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowView::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowViewBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ShowViewBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ShowView<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ShowView<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ShowView");
+                ds.field("entries", &self.entries());
+                ds.finish()
+            }
+        }
+        pub enum EvologEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One step of a change's evolution as `zanshin_evolog` walks it (Story 9.6).
+        ///
+        /// `change` is the shipped `Change` table for THIS version of the change. Rows carry commit ids
+        /// in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
+        /// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+        /// `operation_id` is the operation that created or rewrote this commit and is ABSENT
+        /// (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
+        /// operation storing no predecessors and could go no further. That absence is the ONLY signal a
+        /// caller has that an evolution may be TRUNCATED; the CLI truncates silently. When it is absent
+        /// `predecessor_commit_ids` is always empty.
+        pub struct EvologEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for EvologEntry<'a> {
+            type Inner = EvologEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> EvologEntry<'a> {
+            pub const VT_CHANGE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PREDECESSOR_COMMIT_IDS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                EvologEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args EvologEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<EvologEntry<'bldr>> {
+                let mut builder = EvologEntryBuilder::new(_fbb);
+                if let Some(x) = args.operation_id {
+                    builder.add_operation_id(x);
+                }
+                if let Some(x) = args.predecessor_commit_ids {
+                    builder.add_predecessor_commit_ids(x);
+                }
+                if let Some(x) = args.change {
+                    builder.add_change(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn change(&self) -> Option<Change<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Change>>(EvologEntry::VT_CHANGE, None)
+                }
+            }
+            #[inline]
+            pub fn predecessor_commit_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(EvologEntry::VT_PREDECESSOR_COMMIT_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn operation_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(EvologEntry::VT_OPERATION_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for EvologEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<Change>>("change", Self::VT_CHANGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("predecessor_commit_ids", Self::VT_PREDECESSOR_COMMIT_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct EvologEntryArgs<'a> {
+            pub change: Option<::flatbuffers::WIPOffset<Change<'a>>>,
+            pub predecessor_commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for EvologEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                EvologEntryArgs {
+                    change: None,
+                    predecessor_commit_ids: None,
+                    operation_id: None,
+                }
+            }
+        }
+
+        pub struct EvologEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EvologEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_change(&mut self, change: ::flatbuffers::WIPOffset<Change<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Change>>(EvologEntry::VT_CHANGE, change);
+            }
+            #[inline]
+            pub fn add_predecessor_commit_ids(
+                &mut self,
+                predecessor_commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    EvologEntry::VT_PREDECESSOR_COMMIT_IDS,
+                    predecessor_commit_ids,
+                );
+            }
+            #[inline]
+            pub fn add_operation_id(&mut self, operation_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EvologEntry::VT_OPERATION_ID, operation_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EvologEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                EvologEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<EvologEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for EvologEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("EvologEntry");
+                ds.field("change", &self.change());
+                ds.field("predecessor_commit_ids", &self.predecessor_commit_ids());
+                ds.field("operation_id", &self.operation_id());
+                ds.finish()
+            }
+        }
+        pub enum EvologViewOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_evolog`: the evolution entries in RAW walk order (newest first). The
+        /// CLI's `--reversed` and its graph mode's `TopoGroupedGraph` re-ordering are rendering the GUI
+        /// does itself, and are not applied. `limit = 0` is an EMPTY list and a success.
+        pub struct EvologView<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for EvologView<'a> {
+            type Inner = EvologView<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> EvologView<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                EvologView { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args EvologViewArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<EvologView<'bldr>> {
+                let mut builder = EvologViewBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EvologEntry<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EvologEntry>>,
+                    >>(EvologView::VT_ENTRIES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for EvologView<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<EvologEntry>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct EvologViewArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EvologEntry<'a>>>>,
+            >,
+        }
+        impl<'a> Default for EvologViewArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                EvologViewArgs { entries: None }
+            }
+        }
+
+        pub struct EvologViewBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EvologViewBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<EvologEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EvologView::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EvologViewBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                EvologViewBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<EvologView<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for EvologView<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("EvologView");
+                ds.field("entries", &self.entries());
+                ds.finish()
+            }
+        }
+        pub enum InterdiffViewOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_interdiff` (Story 9.6): what `to` changes that `from` does not, with
+        /// the parent difference factored out by rebasing `from` onto `to`'s parents in memory.
+        ///
+        /// Reuses the shipped `FileChange` table. `Renamed`/`Copied` NEVER appear here: the CLI's
+        /// `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
+        /// reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
+        /// success, as is a path filter that matches nothing.
+        pub struct InterdiffView<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for InterdiffView<'a> {
+            type Inner = InterdiffView<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> InterdiffView<'a> {
+            pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                InterdiffView { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args InterdiffViewArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<InterdiffView<'bldr>> {
+                let mut builder = InterdiffViewBuilder::new(_fbb);
+                if let Some(x) = args.file_changes {
+                    builder.add_file_changes(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn file_changes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>(InterdiffView::VT_FILE_CHANGES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for InterdiffView<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>,
+                    >>("file_changes", Self::VT_FILE_CHANGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct InterdiffViewArgs<'a> {
+            pub file_changes: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>>,
+            >,
+        }
+        impl<'a> Default for InterdiffViewArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                InterdiffViewArgs { file_changes: None }
+            }
+        }
+
+        pub struct InterdiffViewBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> InterdiffViewBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_file_changes(
+                &mut self,
+                file_changes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffView::VT_FILE_CHANGES, file_changes);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> InterdiffViewBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                InterdiffViewBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<InterdiffView<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for InterdiffView<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("InterdiffView");
+                ds.field("file_changes", &self.file_changes());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -9570,6 +10678,51 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_show_view(&self) -> Option<ShowView<'a>> {
+                if self.data_type() == Payload::ShowView {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ShowView::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_evolog_view(&self) -> Option<EvologView<'a>> {
+                if self.data_type() == Payload::EvologView {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { EvologView::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_interdiff_view(&self) -> Option<InterdiffView<'a>> {
+                if self.data_type() == Payload::InterdiffView {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { InterdiffView::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -9676,6 +10829,20 @@ pub mod zanshin {
                             Payload::GitExportResult => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<GitExportResult>>(
                                     "Payload::GitExportResult",
+                                    pos,
+                                ),
+                            Payload::ShowView => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ShowView>>(
+                                "Payload::ShowView",
+                                pos,
+                            ),
+                            Payload::EvologView => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<EvologView>>(
+                                    "Payload::EvologView",
+                                    pos,
+                                ),
+                            Payload::InterdiffView => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<InterdiffView>>(
+                                    "Payload::InterdiffView",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -9884,6 +11051,27 @@ pub mod zanshin {
                     }
                     Payload::GitExportResult => {
                         if let Some(x) = self.data_as_git_export_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ShowView => {
+                        if let Some(x) = self.data_as_show_view() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::EvologView => {
+                        if let Some(x) = self.data_as_evolog_view() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::InterdiffView => {
+                        if let Some(x) = self.data_as_interdiff_view() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

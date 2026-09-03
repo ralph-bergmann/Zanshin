@@ -369,7 +369,10 @@ enum PayloadTypeId {
   FileAnnotation(17),
   FileSearch(18),
   GitImportResult(19),
-  GitExportResult(20);
+  GitExportResult(20),
+  ShowView(21),
+  EvologView(22),
+  InterdiffView(23);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -418,6 +421,12 @@ enum PayloadTypeId {
         return PayloadTypeId.GitImportResult;
       case 20:
         return PayloadTypeId.GitExportResult;
+      case 21:
+        return PayloadTypeId.ShowView;
+      case 22:
+        return PayloadTypeId.EvologView;
+      case 23:
+        return PayloadTypeId.InterdiffView;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -426,7 +435,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 20;
+  static const int maxValue = 23;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1402,6 +1411,285 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, nameOffset);
     fbBuilder.addOffset(1, urlOffset);
     fbBuilder.addOffset(2, pushUrlOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_show` (Story 9.6, FR-JJ-17) — the CLI's `jj show`.
+///
+///  `revset` is a pass-through revset EXPRESSION, not a change id: the CLI takes
+///  `Vec<RevisionArg>` and UNIONS them, so a divergent change yields both its visible commits
+///  rather than a refusal, and materializing it into ids would destroy alias/config resolution.
+///  ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
+///  `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+///  explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
+///  There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+class ShowRequest {
+  ShowRequest._(this._bc, this._bcOffset);
+  factory ShowRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ShowRequest> reader = _ShowRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ShowRequest{revset: ${revset}}';
+  }
+}
+
+class _ShowRequestReader extends fb.TableReader<ShowRequest> {
+  const _ShowRequestReader();
+
+  @override
+  ShowRequest createObject(fb.BufferContext bc, int offset) => ShowRequest._(bc, offset);
+}
+
+class ShowRequestBuilder {
+  ShowRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addRevsetOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ShowRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revset;
+
+  ShowRequestObjectBuilder({
+    String? revset,
+  }) : _revset = revset;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, revsetOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_evolog` (Story 9.6) — the CLI's `jj evolog`.
+///
+///  `revset` behaves exactly as in ShowRequest. `limit` is the CLI's `-n/--limit`, meaningful
+///  ONLY when has_limit == true (presence pair, same rule as SearchMatch.conflict_side: flatc
+///  25.12.19 rejects optional scalars for Dart). It is applied in WALK order — the CLI limits
+///  before reversing — and `limit = 0` is an empty result, not an error.
+class EvologRequest {
+  EvologRequest._(this._bc, this._bcOffset);
+  factory EvologRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<EvologRequest> reader = _EvologRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'EvologRequest{revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
+  }
+}
+
+class _EvologRequestReader extends fb.TableReader<EvologRequest> {
+  const _EvologRequestReader();
+
+  @override
+  EvologRequest createObject(fb.BufferContext bc, int offset) => EvologRequest._(bc, offset);
+}
+
+class EvologRequestBuilder {
+  EvologRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addRevsetOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLimit(int? limit) {
+    fbBuilder.addUint32(1, limit);
+    return fbBuilder.offset;
+  }
+
+  int addHasLimit(bool? hasLimit) {
+    fbBuilder.addBool(2, hasLimit);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class EvologRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revset;
+  final int? _limit;
+  final bool? _hasLimit;
+
+  EvologRequestObjectBuilder({
+    String? revset,
+    int? limit,
+    bool? hasLimit,
+  }) : _revset = revset,
+       _limit = limit,
+       _hasLimit = hasLimit;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, revsetOffset);
+    fbBuilder.addUint32(1, _limit);
+    fbBuilder.addBool(2, _hasLimit);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
+///
+///  Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS: the CLI
+///  resolves each with `resolve_single_rev`, which refuses an ambiguous revision, so a divergent
+///  id is refused rather than guessed. An ABSENT side is `@` — but omitting BOTH is refused with
+///  `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
+///  `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
+///  fileset DSL is not parsed (ADR-0003). A filter matching nothing yields an EMPTY list, where
+///  the CLI only warns.
+class InterdiffRequest {
+  InterdiffRequest._(this._bc, this._bcOffset);
+  factory InterdiffRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<InterdiffRequest> reader = _InterdiffRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'InterdiffRequest{from: ${from}, to: ${to}, paths: ${paths}}';
+  }
+}
+
+class _InterdiffRequestReader extends fb.TableReader<InterdiffRequest> {
+  const _InterdiffRequestReader();
+
+  @override
+  InterdiffRequest createObject(fb.BufferContext bc, int offset) => InterdiffRequest._(bc, offset);
+}
+
+class InterdiffRequestBuilder {
+  InterdiffRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class InterdiffRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _from;
+  final String? _to;
+  final List<String>? _paths;
+
+  InterdiffRequestObjectBuilder({
+    String? from,
+    String? to,
+    List<String>? paths,
+  }) : _from = from,
+       _to = to,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, fromOffset);
+    fbBuilder.addOffset(1, toOffset);
+    fbBuilder.addOffset(2, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -5467,6 +5755,444 @@ class GitExportResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One revision as `zanshin_show` presents it (Story 9.6): its metadata plus what it changed.
+///
+///  `change` is the SHIPPED `Change` table — byte-identical to what `zanshin_change` returns for
+///  the same commit, because both come from one construction site in `zanshin-jj`.
+///  `file_changes` is the SHIPPED `FileChange` table: the diff of the commit's MERGED parent tree
+///  against its own tree, classified into Added/Modified/Removed/Renamed/Copied exactly as the
+///  CLI's `diff_status_inner` does. For a MERGE commit that is only what the merge itself
+///  changed; for the ROOT commit it is empty. Copy records are accumulated over EVERY parent
+///  (the CLI's `show_patch`), so `Renamed`/`Copied` CAN appear here — unlike in `InterdiffView`.
+///
+///  There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
+///  EXTEND this payload rather than replace it.
+class ShowEntry {
+  ShowEntry._(this._bc, this._bcOffset);
+  factory ShowEntry(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ShowEntry> reader = _ShowEntryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  Change? get change => Change.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<FileChange>? get fileChanges =>
+      const fb.ListReader<FileChange>(FileChange.reader).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ShowEntry{change: ${change}, fileChanges: ${fileChanges}}';
+  }
+}
+
+class _ShowEntryReader extends fb.TableReader<ShowEntry> {
+  const _ShowEntryReader();
+
+  @override
+  ShowEntry createObject(fb.BufferContext bc, int offset) => ShowEntry._(bc, offset);
+}
+
+class ShowEntryBuilder {
+  ShowEntryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addChangeOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFileChangesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ShowEntryObjectBuilder extends fb.ObjectBuilder {
+  final ChangeObjectBuilder? _change;
+  final List<FileChangeObjectBuilder>? _fileChanges;
+
+  ShowEntryObjectBuilder({
+    ChangeObjectBuilder? change,
+    List<FileChangeObjectBuilder>? fileChanges,
+  }) : _change = change,
+       _fileChanges = fileChanges;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeOffset = _change?.getOrCreateOffset(fbBuilder);
+    final int? fileChangesOffset = _fileChanges == null
+        ? null
+        : fbBuilder.writeList(_fileChanges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, changeOffset);
+    fbBuilder.addOffset(1, fileChangesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
+///  (topological, children before parents). A revset matching nothing is an EMPTY list and a
+///  SUCCESS. A divergent change contributes one entry per visible commit — the CLI's `show`
+///  unions revsets and never refuses ambiguity.
+class ShowView {
+  ShowView._(this._bc, this._bcOffset);
+  factory ShowView(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ShowView> reader = _ShowViewReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<ShowEntry>? get entries => const fb.ListReader<ShowEntry>(ShowEntry.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ShowView{entries: ${entries}}';
+  }
+}
+
+class _ShowViewReader extends fb.TableReader<ShowView> {
+  const _ShowViewReader();
+
+  @override
+  ShowView createObject(fb.BufferContext bc, int offset) => ShowView._(bc, offset);
+}
+
+class ShowViewBuilder {
+  ShowViewBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ShowViewObjectBuilder extends fb.ObjectBuilder {
+  final List<ShowEntryObjectBuilder>? _entries;
+
+  ShowViewObjectBuilder({
+    List<ShowEntryObjectBuilder>? entries,
+  }) : _entries = entries;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, entriesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One step of a change's evolution as `zanshin_evolog` walks it (Story 9.6).
+///
+///  `change` is the shipped `Change` table for THIS version of the change. Rows carry commit ids
+///  in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
+///  id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+///  `operation_id` is the operation that created or rewrote this commit and is ABSENT
+///  (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
+///  operation storing no predecessors and could go no further. That absence is the ONLY signal a
+///  caller has that an evolution may be TRUNCATED; the CLI truncates silently. When it is absent
+///  `predecessor_commit_ids` is always empty.
+class EvologEntry {
+  EvologEntry._(this._bc, this._bcOffset);
+  factory EvologEntry(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<EvologEntry> reader = _EvologEntryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  Change? get change => Change.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get predecessorCommitIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'EvologEntry{change: ${change}, predecessorCommitIds: ${predecessorCommitIds}, operationId: ${operationId}}';
+  }
+}
+
+class _EvologEntryReader extends fb.TableReader<EvologEntry> {
+  const _EvologEntryReader();
+
+  @override
+  EvologEntry createObject(fb.BufferContext bc, int offset) => EvologEntry._(bc, offset);
+}
+
+class EvologEntryBuilder {
+  EvologEntryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addChangeOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPredecessorCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOperationIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class EvologEntryObjectBuilder extends fb.ObjectBuilder {
+  final ChangeObjectBuilder? _change;
+  final List<String>? _predecessorCommitIds;
+  final String? _operationId;
+
+  EvologEntryObjectBuilder({
+    ChangeObjectBuilder? change,
+    List<String>? predecessorCommitIds,
+    String? operationId,
+  }) : _change = change,
+       _predecessorCommitIds = predecessorCommitIds,
+       _operationId = operationId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeOffset = _change?.getOrCreateOffset(fbBuilder);
+    final int? predecessorCommitIdsOffset = _predecessorCommitIds == null
+        ? null
+        : fbBuilder.writeList(_predecessorCommitIds!.map(fbBuilder.writeString).toList());
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, changeOffset);
+    fbBuilder.addOffset(1, predecessorCommitIdsOffset);
+    fbBuilder.addOffset(2, operationIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_evolog`: the evolution entries in RAW walk order (newest first). The
+///  CLI's `--reversed` and its graph mode's `TopoGroupedGraph` re-ordering are rendering the GUI
+///  does itself, and are not applied. `limit = 0` is an EMPTY list and a success.
+class EvologView {
+  EvologView._(this._bc, this._bcOffset);
+  factory EvologView(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<EvologView> reader = _EvologViewReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<EvologEntry>? get entries =>
+      const fb.ListReader<EvologEntry>(EvologEntry.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'EvologView{entries: ${entries}}';
+  }
+}
+
+class _EvologViewReader extends fb.TableReader<EvologView> {
+  const _EvologViewReader();
+
+  @override
+  EvologView createObject(fb.BufferContext bc, int offset) => EvologView._(bc, offset);
+}
+
+class EvologViewBuilder {
+  EvologViewBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class EvologViewObjectBuilder extends fb.ObjectBuilder {
+  final List<EvologEntryObjectBuilder>? _entries;
+
+  EvologViewObjectBuilder({
+    List<EvologEntryObjectBuilder>? entries,
+  }) : _entries = entries;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, entriesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_interdiff` (Story 9.6): what `to` changes that `from` does not, with
+///  the parent difference factored out by rebasing `from` onto `to`'s parents in memory.
+///
+///  Reuses the shipped `FileChange` table. `Renamed`/`Copied` NEVER appear here: the CLI's
+///  `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
+///  reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
+///  success, as is a path filter that matches nothing.
+class InterdiffView {
+  InterdiffView._(this._bc, this._bcOffset);
+  factory InterdiffView(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<InterdiffView> reader = _InterdiffViewReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<FileChange>? get fileChanges =>
+      const fb.ListReader<FileChange>(FileChange.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'InterdiffView{fileChanges: ${fileChanges}}';
+  }
+}
+
+class _InterdiffViewReader extends fb.TableReader<InterdiffView> {
+  const _InterdiffViewReader();
+
+  @override
+  InterdiffView createObject(fb.BufferContext bc, int offset) => InterdiffView._(bc, offset);
+}
+
+class InterdiffViewBuilder {
+  InterdiffViewBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addFileChangesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class InterdiffViewObjectBuilder extends fb.ObjectBuilder {
+  final List<FileChangeObjectBuilder>? _fileChanges;
+
+  InterdiffViewObjectBuilder({
+    List<FileChangeObjectBuilder>? fileChanges,
+  }) : _fileChanges = fileChanges;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? fileChangesOffset = _fileChanges == null
+        ? null
+        : fbBuilder.writeList(_fileChanges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, fileChangesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -5536,6 +6262,12 @@ class Envelope {
         return GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 20:
         return GitExportResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 21:
+        return ShowView.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 22:
+        return EvologView.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 23:
+        return InterdiffView.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

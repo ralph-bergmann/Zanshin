@@ -156,20 +156,28 @@ Change _decodeChangeEnvelope(Uint8List bytes) {
       'expected Change payload, got ${env.dataType}',
     );
   }
-  return Change(
-    id: payload.id ?? '',
-    commitId: payload.commitId ?? '',
-    parents: payload.parents?.toList() ?? const [],
-    description: payload.description ?? '',
-    author: _mapSignature(payload.author),
-    committer: _mapSignature(payload.committer),
-    isSigned: payload.isSigned,
-    conflict: _mapConflictState(payload.conflict),
-    conflictedPaths: payload.conflictedPaths?.toList() ?? const [],
-    isAnonymous: payload.isAnonymous,
-    divergent: payload.divergent,
-  );
+  return mapChangeTable(payload);
 }
+
+/// Map a generated `Change` TABLE into the Dart model.
+///
+/// Library-internal: the `Change` table is nested inside other payloads since
+/// Story 9.6 (`ShowEntry.change`, `EvologEntry.change`), and both this file's
+/// top-level decoder and `commit_views.dart` go through this one mapper — so a
+/// field added to `Change` cannot be wired into one decoder only.
+Change mapChangeTable(fbs.Change payload) => Change(
+  id: payload.id ?? '',
+  commitId: payload.commitId ?? '',
+  parents: payload.parents?.toList() ?? const [],
+  description: payload.description ?? '',
+  author: _mapSignature(payload.author),
+  committer: _mapSignature(payload.committer),
+  isSigned: payload.isSigned,
+  conflict: _mapConflictState(payload.conflict),
+  conflictedPaths: payload.conflictedPaths?.toList() ?? const [],
+  isAnonymous: payload.isAnonymous,
+  divergent: payload.divergent,
+);
 
 Signature _mapSignature(fbs.Signature? sig) => Signature(
   name: sig?.name ?? '',

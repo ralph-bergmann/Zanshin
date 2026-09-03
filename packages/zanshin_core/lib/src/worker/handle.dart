@@ -2,6 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
+import '../ffi/commit_views.dart' show EvologEntry, ShowEntry;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, SearchMatch;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
@@ -10,7 +11,7 @@ import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
-import '../ffi/status.dart' show WorkingCopyStatus;
+import '../ffi/status.dart' show FileChange, WorkingCopyStatus;
 import 'isolate.dart';
 import 'responses.dart';
 
@@ -596,6 +597,90 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.gitRemoteSetUrl(_handleId, name: name, url: url, pushUrl: pushUrl);
+  }
+
+  /// Show each revision [revset] denotes with what it changed (Story 9.6) — the
+  /// CLI's `jj show`.
+  ///
+  /// A `null` [revset] applies the CLI's own default `@` — here the
+  /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. Unlike
+  /// [interdiff]'s two sides, [revset] is a pass-through EXPRESSION, not a change
+  /// id: the CLI unions its revsets, so a DIVERGENT change yields both its visible
+  /// commits as two entries rather than a refusal. Aliases come from the repo's
+  /// effective jj config, re-read per call.
+  ///
+  /// Entries come in raw revset order (topological, children before parents). Each
+  /// entry's `fileChanges` is the diff against the commit's MERGED parent tree —
+  /// for a merge, only what the merge itself changed; for the root commit, empty.
+  /// There is no path filter and no textual patch: the CLI has no path argument
+  /// here, and line/word-level diffing is Epic 5's.
+  ///
+  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  /// `jj.config_error`, `jj.jj_lib_error`).
+  Future<List<ShowEntry>> show({String? revset}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.show(_handleId, revset: revset);
+  }
+
+  /// Walk the evolution of the changes [revset] denotes (Story 9.6) — the CLI's
+  /// `jj evolog`.
+  ///
+  /// [revset] behaves as in [show]. [limit] is the CLI's `-n/--limit`, applied in
+  /// WALK order (the CLI limits before reversing); `limit: 0` is an empty list,
+  /// not an error. The CLI's `--reversed` and its graph mode's re-ordering are
+  /// rendering the UI does itself and are not applied.
+  ///
+  /// Rows carry COMMIT ids, not change ids: every predecessor shares the change's
+  /// id, and predecessors are hidden by construction. A `null`
+  /// `EvologEntry.operationId` marks an entry the walk emitted from its flush tail
+  /// — the only signal that an evolution may be TRUNCATED, which the CLI leaves
+  /// silent.
+  ///
+  /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each
+  /// entry's predecessors, so compose this with [interdiff].
+  ///
+  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  /// `jj.config_error`, `jj.jj_lib_error`).
+  Future<List<EvologEntry>> evolog({String? revset, int? limit}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.evolog(_handleId, revset: revset, limit: limit);
+  }
+
+  /// Compare what two revisions each CHANGE, with the parent difference factored
+  /// out (Story 9.6) — the CLI's `jj interdiff`.
+  ///
+  /// Unlike [show], each side is a SINGLE revision (a jj reverse-hex change id),
+  /// so a divergent id is refused rather than guessed. An absent side is `@` — but
+  /// omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
+  /// required argument group: interdiffing `@` against itself is trivially empty
+  /// and never what a caller meant.
+  ///
+  /// [paths] entries are repo-relative paths interpreted as PREFIXES (an empty
+  /// list means all paths); an empty-STRING entry is the repository root, which
+  /// prefixes everything. A filter matching nothing yields an empty list, where
+  /// the CLI prints a warning.
+  ///
+  /// No `renamed`/`copied` entry is ever produced: `interdiff` passes no copy
+  /// records, and that asymmetry with [show] is the CLI's own, reproduced
+  /// deliberately.
+  ///
+  /// This read writes no operation — the rebase behind it is in-memory only.
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
+  Future<List<FileChange>> interdiff({String? from, String? to, List<String> paths = const <String>[]}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.interdiff(_handleId, from: from, to: to, paths: paths);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

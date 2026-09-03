@@ -9,12 +9,13 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (55 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (58 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
 // --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
-// --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5)) -------------------
+// --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
+// --- CommitViewError (9.6)) -----------------------------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -98,6 +99,11 @@ type _GitRefUpdate = zanshin_jj::GitRefUpdate;
 type _GitRefUpdateKind = zanshin_jj::GitRefUpdateKind;
 type _GitExportResult = zanshin_jj::GitExportResult;
 type _GitExportFailure = zanshin_jj::GitExportFailure;
+
+// commit views (Story 9.6)
+type _ShowEntry = zanshin_jj::ShowEntry;
+type _EvologEntry = zanshin_jj::EvologEntry;
+type _CommitViewError = zanshin_jj::CommitViewError;
 
 // view (Story 9.2)
 type _Tag = zanshin_jj::Tag;
@@ -245,6 +251,56 @@ fn sample_git_export_result() -> zanshin_jj::GitExportResult {
             reason: String::new(),
         }],
         failed_tags: vec![],
+    }
+}
+
+/// Names every `Change` field by its public path — the shape both Story 9.6 views nest.
+fn sample_change() -> zanshin_jj::Change {
+    let signature = zanshin_jj::Signature {
+        name: String::new(),
+        email: String::new(),
+        timestamp: zanshin_jj::Timestamp {
+            millis_since_epoch: 0,
+            tz_offset_minutes: 0,
+        },
+    };
+    zanshin_jj::Change {
+        id: zanshin_jj::ChangeId(String::new()),
+        commit_id: zanshin_jj::CommitId(String::new()),
+        parents: vec![],
+        description: String::new(),
+        author: signature.clone(),
+        committer: signature.clone(),
+        timestamps: zanshin_jj::Timestamps {
+            authored_at: signature.timestamp,
+            committed_at: signature.timestamp,
+        },
+        is_signed: false,
+        conflict: zanshin_jj::ConflictState::Clean,
+        is_anonymous: false,
+        divergent: false,
+    }
+}
+
+/// Names every `ShowEntry` field by its public path (Story 9.6). The nested types are the
+/// SHIPPED `Change` and `FileChange` — a second spelling of either would fail to compile here.
+fn sample_show_entry() -> zanshin_jj::ShowEntry {
+    zanshin_jj::ShowEntry {
+        change: sample_change(),
+        file_changes: vec![zanshin_jj::FileChange {
+            path: std::path::PathBuf::new(),
+            kind: zanshin_jj::ChangeKind::Added,
+        }],
+    }
+}
+
+/// Names every `EvologEntry` field by its public path (Story 9.6). The edges are `CommitId`s,
+/// not `ChangeId`s — every predecessor shares the change's own id.
+fn sample_evolog_entry() -> zanshin_jj::EvologEntry {
+    zanshin_jj::EvologEntry {
+        change: sample_change(),
+        predecessor_commit_ids: vec![zanshin_jj::CommitId(String::new())],
+        operation_id: Some(zanshin_jj::OperationId(String::new())),
     }
 }
 
@@ -535,4 +591,65 @@ fn git_ops_surface_resolves() {
             Option<&str>,
             Option<&str>,
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
+/// Commit views (Story 9.6): 3 new types and 3 new `Repo` methods.
+///
+/// A separate test for the same reason the three above are — `api_surface_resolves` sits at
+/// clippy's `too_many_lines` ceiling. All three methods are `fn`-pointer-pinnable (none takes a
+/// visitor), so the PARAMETER CURRENCY SPLIT is pinned structurally: `show`/`evolog` take a
+/// revset `Option<&str>` because their CLI form is a SET whose aliases must survive (FR-JJ-17),
+/// while `interdiff` takes two owned `Option<ChangeId>` because the CLI resolves each side with
+/// `resolve_single_rev`. Swapping either currency breaks this test at compile time.
+///
+/// Each `CommitViewError` variant is constructed AND its `Display` asserted: an unexercised
+/// `thiserror` arm is an uncovered line in `commit_views.rs`, which the coverage ratchet pins.
+#[test]
+fn commit_views_surface_resolves() {
+    let not_found = zanshin_jj::CommitViewError::ChangeNotFound {
+        id: "qpvuntsm".to_owned(),
+    };
+    assert_eq!(not_found.to_string(), "change not found: qpvuntsm");
+    let invalid = zanshin_jj::CommitViewError::InvalidInput {
+        reason: "at least one of `from` or `to` is required".to_owned(),
+    };
+    assert_eq!(
+        invalid.to_string(),
+        "invalid input: at least one of `from` or `to` is required"
+    );
+    let parse = zanshin_jj::CommitViewError::RevsetParseError {
+        reason: "syntax error".to_owned(),
+    };
+    assert_eq!(parse.to_string(), "invalid revset: syntax error");
+    let resolution = zanshin_jj::CommitViewError::RevsetResolutionError {
+        reason: "no such bookmark".to_owned(),
+    };
+    assert_eq!(resolution.to_string(), "cannot resolve revset: no such bookmark");
+    let config = zanshin_jj::CommitViewError::Config {
+        reason: "not a table".to_owned(),
+    };
+    assert_eq!(config.to_string(), "config error: not a table");
+    assert_eq!(
+        zanshin_jj::CommitViewError::Backend("boom".to_owned()).to_string(),
+        "jj-lib error: boom"
+    );
+
+    _ = sample_show_entry();
+    _ = sample_evolog_entry();
+
+    _ = zanshin_jj::Repo::show
+        as fn(&zanshin_jj::Repo, Option<&str>) -> Result<Vec<zanshin_jj::ShowEntry>, zanshin_jj::CommitViewError>;
+    _ = zanshin_jj::Repo::evolog
+        as fn(
+            &zanshin_jj::Repo,
+            Option<&str>,
+            Option<usize>,
+        ) -> Result<Vec<zanshin_jj::EvologEntry>, zanshin_jj::CommitViewError>;
+    _ = zanshin_jj::Repo::interdiff
+        as fn(
+            &zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            Option<zanshin_jj::ChangeId>,
+            &[String],
+        ) -> Result<Vec<zanshin_jj::FileChange>, zanshin_jj::CommitViewError>;
 }

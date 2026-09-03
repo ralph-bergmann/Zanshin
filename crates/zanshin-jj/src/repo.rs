@@ -906,6 +906,123 @@ impl Repo {
         self.reload_after_config_write(result)
     }
 
+    /// Shows each revision `revset` denotes with what it changed (Story 9.6) — the CLI's
+    /// `jj show`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj show` (AR-AP-1), and never writes an operation — not even on a refusal.
+    ///
+    /// `revset` is a caller pass-through EXPRESSION, not a change id (FR-JJ-17): the CLI takes
+    /// `Vec<RevisionArg>` and unions them, so a divergent change yields BOTH its visible
+    /// commits as two entries rather than a refusal. `None` applies the CLI's own default `@` —
+    /// here the LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots (D2).
+    /// Aliases come from the repo's effective jj config, re-read per call and never cached.
+    ///
+    /// Entries come in RAW revset order (topological, children before parents); the CLI's
+    /// `--reversed` is rendering and is not ported. Each entry's
+    /// [`crate::ShowEntry::file_changes`] is the diff of the commit's MERGED parent tree
+    /// against its own tree — for a merge commit, only what the merge itself changed; for the
+    /// root commit, empty. Copy records are accumulated over EVERY parent, as the CLI's
+    /// `show_patch` does, so a rename surfaces as one [`crate::ChangeKind::Renamed`] entry on a
+    /// git-backed repo (the native backend reports no copies and degrades to an
+    /// `Added`+`Removed` pair).
+    ///
+    /// There is no path argument and no textual patch: the CLI hardcodes `EverythingMatcher`,
+    /// and line/word-level diffing is Epic 5's (`zanshin-diff`).
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::CommitViewError::RevsetParseError`] — `revset` is syntactically invalid or
+    ///   names an unknown function; raised before any repo read.
+    /// - [`crate::CommitViewError::RevsetResolutionError`] — a symbol cannot be resolved.
+    /// - [`crate::CommitViewError::Config`] — the repo's effective jj config is malformed or
+    ///   unreadable.
+    /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn show(&self, revset: Option<&str>) -> Result<Vec<crate::ShowEntry>, crate::CommitViewError> {
+        crate::commit_views::show(self, revset)
+    }
+
+    /// Walks the evolution of the changes `revset` denotes (Story 9.6) — the CLI's `jj evolog`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj evolog` (AR-AP-1), and never writes an operation — not even on a refusal.
+    ///
+    /// `revset` behaves exactly as for [`Repo::show`] (a pass-through expression, `None` = `@`).
+    /// `limit` is the CLI's `-n/--limit`, applied as `take(limit)` in WALK order: the CLI limits
+    /// before reversing, and both the reversal and the `TopoGroupedGraph` re-ordering its graph
+    /// mode applies are rendering the GUI does itself. `Some(0)` is an empty result, not an
+    /// error.
+    ///
+    /// Rows carry COMMIT ids, not change ids: every predecessor shares the change's id, and
+    /// predecessors are hidden by construction. [`crate::EvologEntry::operation_id`] is `None`
+    /// exactly for the entries the walk flushes when it reaches an operation that stores no
+    /// predecessors — the only signal that an evolution may be TRUNCATED, which the CLI leaves
+    /// silent.
+    ///
+    /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each entry's
+    /// predecessors, so a caller composes this with [`Repo::interdiff`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::CommitViewError::RevsetParseError`] — `revset` is syntactically invalid.
+    /// - [`crate::CommitViewError::RevsetResolutionError`] — a symbol cannot be resolved.
+    /// - [`crate::CommitViewError::Config`] — the repo's effective jj config is malformed or
+    ///   unreadable.
+    /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure, including jj-lib's
+    ///   own predecessor-cycle detection.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn evolog(
+        &self,
+        revset: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<crate::EvologEntry>, crate::CommitViewError> {
+        crate::commit_views::evolog(self, revset, limit)
+    }
+
+    /// Compares what two revisions each CHANGE, with the parent difference factored out
+    /// (Story 9.6) — the CLI's `jj interdiff`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj interdiff` (AR-AP-1), and never writes an operation — not even on a refusal. Nothing
+    /// is written by the rebase either: `rebase_to_dest_parent` merges in memory.
+    ///
+    /// Unlike [`Repo::show`], each side is a SINGLE revision (the CLI resolves both with
+    /// `resolve_single_rev`), so a divergent id is refused rather than guessed. An absent side
+    /// defaults to `@` — but omitting BOTH is a refusal, mirroring the CLI's
+    /// `ArgGroup … required(true)`: interdiffing `@` against itself is trivially empty and
+    /// never what a caller meant.
+    ///
+    /// `paths` entries are repo-relative paths interpreted as PREFIXES (an empty list means all
+    /// paths); an empty-STRING entry is the repository root, which prefixes everything, so
+    /// `paths = [""]` matches all paths just as `paths = []` does. The fileset DSL is terminal
+    /// input language and is not parsed here. A filter that matches nothing yields an empty
+    /// list, where the CLI prints a warning.
+    ///
+    /// NO `Renamed`/`Copied` entry is ever produced: the CLI's `show_inter_diff` passes
+    /// `CopyRecords::default()`, and that asymmetry with [`Repo::show`] is reproduced
+    /// deliberately, not corrected.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, or a
+    ///   `paths` entry is not a valid repo path.
+    /// - [`crate::CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: owned `ChangeId`s match the house currency for single-revision parameters
+    // (epics.md Story 6.1 / AC-1); the implementation only needs to borrow them.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn interdiff(
+        &self,
+        from: Option<crate::ChangeId>,
+        to: Option<crate::ChangeId>,
+        paths: &[String],
+    ) -> Result<Vec<crate::FileChange>, crate::CommitViewError> {
+        crate::commit_views::interdiff(self.workspace(), from.as_ref(), to.as_ref(), paths)
+    }
+
     /// Gives the paths matching `paths` in one commit the content they have in another
     /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
     ///

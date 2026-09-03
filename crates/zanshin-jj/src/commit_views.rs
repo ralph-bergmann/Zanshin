@@ -1,0 +1,456 @@
+// SPDX-License-Identifier: MIT
+
+//! `commit_views.rs` — the three commit READ views of ADR-0003: `show`, `evolog` and
+//! `interdiff` (Story 9.6, Epic 9 Tier A).
+//!
+//! All three are READS: they resolve to the head operation per call (ADR-0002), read
+//! committed trees and the operation log, and return `jj_lib`-type-free owned data. None of
+//! them opens a transaction, so none writes an operation — not even on a refusal — unlike the
+//! CLI, whose `workspace_helper` snapshots the working copy first and can therefore write an
+//! op from a read. Zanshin never snapshots (D2 — `status.rs:84`), so an omitted revision is
+//! the LAST-SNAPSHOTTED `@`.
+//!
+//! CLI parity is at tag **v0.44.0** (`cli/src/commands/{show,evolog,interdiff}.rs` plus
+//! `cli/src/diff_util.rs::{show_patch,show_inter_diff,diff_status_inner}`) for the observable
+//! behavior — argument arity, defaults, refusals, copy-record handling and walk order — never
+//! for its terminal UX (NFR-R-2, ADR-0003). Deliberate divergences:
+//!
+//! - **No textual diff.** The CLI renders hunks through `DiffRenderer` in a format the user
+//!   picks (`--git`, `--color-words`, `--stat`, `--summary`). Line- and word-level diffing is
+//!   Epic 5 (`zanshin-diff`); the two mechanisms this story is built on —
+//!   `Commit::parent_tree` and `MergedTree::diff_stream*` — produce `(path, before, after)`,
+//!   which the CLI classifies into A/M/D/C/R. That per-path change list is what travels here,
+//!   reusing the shipped [`crate::FileChange`] / [`crate::ChangeKind`] vocabulary so `status`,
+//!   `show` and `interdiff` speak one language.
+//! - **No terminal UX**: no templates, `-T`, pager, colors, graph glyphs or `--reversed`, and
+//!   none of the `TopoGroupedGraph` re-ordering `evolog`'s graph mode applies — the GUI draws
+//!   its own graph, so the returned order is the RAW walk order (the CLI's `--no-graph` order).
+//! - **No `evolog --patch`**: the CLI's `-p` *is* an interdiff of each entry's predecessors
+//!   (`cli/src/commands/evolog.rs`), so a caller composes [`evolog`] with [`interdiff`].
+//! - **No path filter on `show`**: the CLI hardcodes `EverythingMatcher`
+//!   (`cli/src/commands/show.rs`), and this does too.
+//!
+//! Parameter currency splits by kind, exactly as Story 9.3 recorded it: a single revision is a
+//! [`crate::ChangeId`], but a parameter whose CLI form is a *set* stays a revset STRING so
+//! aliases and config resolution survive (FR-JJ-17). `jj show` and `jj evolog` both take
+//! `Vec<RevisionArg>` and union them, so they take `Option<&str>`; `jj interdiff` takes two
+//! `resolve_single_rev` arguments, so it takes `Option<&ChangeId>` twice.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use futures::{StreamExt as _, TryStreamExt as _};
+use jj_lib::commit::Commit;
+use jj_lib::copies::{CopyOperation, CopyRecords};
+use jj_lib::matchers::{EverythingMatcher, Matcher};
+use jj_lib::merged_tree::MergedTree;
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::Repo as _;
+use jj_lib::revset::RevsetStreamExt as _;
+use jj_lib::store::Store;
+use jj_lib::workspace::Workspace;
+
+use crate::change::change_from_commit;
+use crate::op_support::{build_matcher, resolve_or_wc, ResolveError};
+use crate::{Change, ChangeId, ChangeKind, CommitId, FileChange, OperationId};
+
+/// One revision as `jj show` presents it: its metadata plus what it changed relative to its
+/// parents (Story 9.6).
+///
+/// `change` is built by the crate's single [`Change`] construction site, so it is byte-identical
+/// to what [`crate::Repo::get_change`] reports for the same commit. `file_changes` is the diff of
+/// `Commit::parent_tree` (all parents merged) against the commit's own tree, classified exactly
+/// as the CLI's `diff_status_inner` does — for a MERGE that is only what the merge itself
+/// changed.
+#[derive(Debug)]
+pub struct ShowEntry {
+    /// Full metadata for the revision.
+    pub change: Change,
+    /// Per-path changes relative to the merged parent tree, in jj-lib's own diff order.
+    pub file_changes: Vec<FileChange>,
+}
+
+/// One step of a change's evolution as `jj evolog` walks it (Story 9.6).
+///
+/// Rows are keyed by COMMIT id rather than change id: every predecessor of a change shares its
+/// change id, so a list of [`Change`] rows would differ only in `commit_id` — and predecessors
+/// are HIDDEN by construction, which the crate's single-revision resolver refuses.
+#[derive(Debug)]
+pub struct EvologEntry {
+    /// Full metadata for this version of the change.
+    pub change: Change,
+    /// The commit ids this version was rewritten FROM, as the recording operation stored them.
+    /// Empty when `operation_id` is `None`, and for a commit that was never rewritten.
+    pub predecessor_commit_ids: Vec<CommitId>,
+    /// The operation that created or rewrote this commit, or `None` for an entry the walk
+    /// emitted from its flush tail — it reached an operation that stores no predecessors and
+    /// could go no further. `None` is therefore the only signal a caller has that an evolution
+    /// may be TRUNCATED; the CLI truncates silently.
+    pub operation_id: Option<OperationId>,
+}
+
+/// Errors returned by [`crate::Repo::show`], [`crate::Repo::evolog`] and
+/// [`crate::Repo::interdiff`].
+///
+/// Named `CommitViewError` because `ViewError` is already taken by `view.rs`. Every variant maps
+/// onto an error code the registry already carries — this story mints none.
+#[derive(Debug, thiserror::Error)]
+pub enum CommitViewError {
+    /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed, absent, only-hidden,
+    /// or DIVERGENT — the same refusal every other single-revision parameter makes, because the
+    /// CLI resolves both sides with `resolve_single_rev`.
+    #[error("change not found: {id}")]
+    ChangeNotFound {
+        /// The reverse-hex change id that could not be resolved.
+        id: String,
+    },
+    /// The caller's arguments are structurally invalid: `interdiff` was given NEITHER `from` nor
+    /// `to` (the CLI's `ArgGroup … required(true)`), or a `paths` entry is not a valid repo path.
+    #[error("invalid input: {reason}")]
+    InvalidInput {
+        /// Human-readable reason the input was rejected.
+        reason: String,
+    },
+    /// A revset expression is syntactically invalid or names an unknown function.
+    #[error("invalid revset: {reason}")]
+    RevsetParseError {
+        /// Human-readable parse failure from jj-lib.
+        reason: String,
+    },
+    /// A revset expression is well-formed but a symbol could not be resolved (unknown
+    /// bookmark/tag, missing `@`, unmatched id).
+    #[error("cannot resolve revset: {reason}")]
+    RevsetResolutionError {
+        /// Human-readable resolution failure from jj-lib.
+        reason: String,
+    },
+    /// The repo's effective jj config is unreadable or malformed, so the revset aliases
+    /// [`show`]/[`evolog`] parse against could not be built. Reported separately from
+    /// [`CommitViewError::Backend`] because it is the user's own config that is wrong, not the
+    /// repository — the distinction every other config-reading verb makes.
+    #[error("config error: {reason}")]
+    Config {
+        /// Human-readable reason the effective config could not be used.
+        reason: String,
+    },
+    /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes the
+    /// public API (FR-JJ-16).
+    #[error("jj-lib error: {0}")]
+    Backend(String),
+}
+
+/// Converts any jj-lib error to [`CommitViewError::Backend`].
+fn be<E: std::fmt::Display>(e: E) -> CommitViewError {
+    CommitViewError::Backend(e.to_string())
+}
+
+/// Converts a read-side [`crate::RevsetError`] to the matching variant, preserving the
+/// three-stage taxonomy rather than collapsing it — the same mapping `mutate.rs::rev` makes for
+/// the mutation side.
+fn rev(e: crate::RevsetError) -> CommitViewError {
+    match e {
+        crate::RevsetError::ParseError { reason } => CommitViewError::RevsetParseError { reason },
+        crate::RevsetError::ResolutionError { reason } => CommitViewError::RevsetResolutionError { reason },
+        crate::RevsetError::Config(inner) => CommitViewError::Config {
+            reason: inner.to_string(),
+        },
+        crate::RevsetError::JjLibError(reason) => CommitViewError::Backend(reason),
+    }
+}
+
+/// Converts a shared [`ResolveError`] to this module's taxonomy, preserving the
+/// `ChangeNotFound { id }` / `Backend` split (`file.rs::res` is the template).
+fn res(e: ResolveError, id: Option<&ChangeId>) -> CommitViewError {
+    match e {
+        ResolveError::NotFound => CommitViewError::ChangeNotFound {
+            id: id.map(|i| i.0.clone()).unwrap_or_default(),
+        },
+        ResolveError::Backend(reason) => CommitViewError::Backend(reason),
+    }
+}
+
+/// Converts a `RepoPath` to a `PathBuf`.
+///
+/// Infallible: jj-lib enforces UTF-8 on all repo paths (`RepoPathBuf` wraps `String`). A local
+/// twin of `status.rs`'s identical two-liner rather than a lift: the shared VOCABULARY
+/// ([`FileChange`], [`ChangeKind`]) is reused, the derivation stays with its verb.
+fn repo_path_to_pathbuf(p: &jj_lib::repo_path::RepoPath) -> PathBuf {
+    PathBuf::from(p.as_internal_file_string())
+}
+
+/// Diffs two trees into the shipped per-path change vocabulary.
+///
+/// The classification is the CLI's `diff_status_inner` (`cli/src/diff_util.rs` @ v0.44.0): a
+/// copy SOURCE decides first (`Rename`/`Copy`), otherwise absent-before is `Added`,
+/// absent-after is `Removed`, and anything else is `Modified`. `TreeDiffEntry.values` is a
+/// PER-PATH `BackendResult`; like the CLI this aborts on the first error rather than inventing
+/// a per-path skip channel.
+///
+/// An EMPTY `CopyRecords` makes `diff_stream_with_copies` behave exactly like the plain
+/// `diff_stream`, which is why one helper serves both the copy-aware [`show`] and the
+/// deliberately copy-blind [`interdiff`].
+async fn tree_file_changes(
+    before: &MergedTree,
+    after: &MergedTree,
+    matcher: &dyn Matcher,
+    records: &CopyRecords,
+) -> Result<Vec<FileChange>, CommitViewError> {
+    let mut stream = before.diff_stream_with_copies(after, matcher, records);
+    let mut out = Vec::new();
+    while let Some(entry) = stream.next().await {
+        let d = entry.values.map_err(be)?;
+        let kind = if let Some((src, op)) = entry.path.source {
+            match op {
+                CopyOperation::Rename => ChangeKind::Renamed {
+                    from: repo_path_to_pathbuf(&src),
+                },
+                CopyOperation::Copy => ChangeKind::Copied {
+                    from: repo_path_to_pathbuf(&src),
+                },
+            }
+        } else if d.before.is_absent() && d.after.is_present() {
+            ChangeKind::Added
+        } else if d.before.is_present() && d.after.is_absent() {
+            ChangeKind::Removed
+        } else {
+            ChangeKind::Modified
+        };
+        out.push(FileChange {
+            path: repo_path_to_pathbuf(&entry.path.target),
+            kind,
+        });
+    }
+    Ok(out)
+}
+
+/// Accumulates copy records over EVERY parent of `commit`, as the CLI's `show_patch` does.
+///
+/// On the native (`SimpleBackend`) store the stream is empty, so renames degrade gracefully to
+/// an `Added`+`Removed` pair — the same degradation `status.rs` documents.
+async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> Result<CopyRecords, CommitViewError> {
+    let mut records = CopyRecords::default();
+    for parent_id in commit.parent_ids() {
+        let mut stream = store.get_copy_records(None, parent_id, commit.id()).map_err(be)?;
+        while let Some(record) = stream.next().await {
+            records.add_records([record.map_err(be)?]);
+        }
+    }
+    Ok(records)
+}
+
+/// Shows each revision `revset` denotes with what it changed (Story 9.6) — `jj show`.
+///
+/// Ports `cli/src/commands/show.rs::cmd_show` @ v0.44.0: the CLI UNIONS its `Vec<RevisionArg>`
+/// and defaults to `@` when none is given, so `revset` is a pass-through expression whose
+/// absence means `"@"`. The revset is parsed against the repo's effective config per call
+/// (never cached), then evaluated against ONE head-resolved snapshot, so a commit's metadata and
+/// its diff can never come from different operations.
+///
+/// # Errors
+///
+/// - [`CommitViewError::RevsetParseError`] — `revset` is syntactically invalid; raised before
+///   any repo read.
+/// - [`CommitViewError::RevsetResolutionError`] — a symbol in `revset` cannot be resolved.
+/// - [`CommitViewError::Config`] — the repo's effective jj config is unreadable or malformed.
+/// - [`CommitViewError::Backend`] — `load_at_head`, evaluation, or a tree/store read failed.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn show(repo: &crate::Repo, revset: Option<&str>) -> Result<Vec<ShowEntry>, CommitViewError> {
+    // Parse first: a syntax error costs no `load_at_head` I/O (the `eval_revset` ordering).
+    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@")).map_err(rev)?;
+
+    // Re-resolve to head ONCE (ADR-0002); every read below is taken from this snapshot.
+    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
+    let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+    let store = readonly.store();
+    let set = crate::revset::evaluate_revset(repo_dyn, &parsed).map_err(rev)?;
+
+    let mut out = Vec::new();
+    pollster::block_on(async {
+        // RAW revset order (topological, children before parents) — the CLI's own order
+        // without `--reversed`, which is rendering and is not ported.
+        let mut stream = std::pin::pin!(set.stream().commits(store));
+        while let Some(item) = stream.next().await {
+            let commit = item.map_err(be)?;
+            let change = change_from_commit(repo_dyn, &commit).map_err(CommitViewError::Backend)?;
+            let after = commit.tree();
+            // Merges ALL parents (root-safe): for a merge commit this is what the merge
+            // itself changed. NEVER surface it as "the parent tree id" — it short-circuits
+            // to the commit's own tree for an index-empty commit (`commit.rs:134-143`).
+            let before = commit.parent_tree(repo_dyn).await.map_err(be)?;
+            let records = copy_records_over_all_parents(store, &commit).await?;
+            // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:109`).
+            let file_changes = tree_file_changes(&before, &after, &EverythingMatcher, &records).await?;
+            out.push(ShowEntry { change, file_changes });
+        }
+        Ok::<(), CommitViewError>(())
+    })?;
+    Ok(out)
+}
+
+/// Walks the evolution of the changes `revset` denotes (Story 9.6) — `jj evolog`.
+///
+/// Ports `cli/src/commands/evolog.rs::cmd_evolog` @ v0.44.0 in its `--no-graph` shape: the
+/// start set is the UNION of the CLI's `-r` revsets (default `@`) evaluated to commit ids, and
+/// `limit` is `take(limit)` applied in walk order — the CLI limits BEFORE reversing, and the
+/// reversal itself is rendering.
+///
+/// # Errors
+///
+/// - [`CommitViewError::RevsetParseError`] — `revset` is syntactically invalid.
+/// - [`CommitViewError::RevsetResolutionError`] — a symbol in `revset` cannot be resolved.
+/// - [`CommitViewError::Config`] — the repo's effective jj config is unreadable or malformed.
+/// - [`CommitViewError::Backend`] — `load_at_head`, evaluation, or an operation/store read
+///   failed (including jj-lib's own predecessor-cycle detection).
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn evolog(
+    repo: &crate::Repo,
+    revset: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<EvologEntry>, CommitViewError> {
+    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@")).map_err(rev)?;
+    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
+
+    // Start set: commit ids, not change ids — `walk_predecessors` walks the operation log by
+    // commit id, and a change's predecessors all share its change id anyway.
+    let start_ids: Vec<jj_lib::backend::CommitId> = {
+        let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+        let set = crate::revset::evaluate_revset(repo_dyn, &parsed).map_err(rev)?;
+        pollster::block_on(set.stream().try_collect()).map_err(be)?
+    };
+
+    let mut out = Vec::new();
+    pollster::block_on(async {
+        // `walk_predecessors` is a SYNC fn returning a Stream, and takes `&ReadonlyRepo`
+        // (not `&dyn Repo`) — hence the `Arc` deref rather than the usual `repo_dyn`.
+        let stream = jj_lib::evolution::walk_predecessors(&readonly, &start_ids);
+        let mut stream = std::pin::pin!(stream.take(limit.unwrap_or(usize::MAX)));
+        while let Some(item) = stream.next().await {
+            let entry = item.map_err(be)?;
+            let change = change_from_commit(readonly.as_ref(), &entry.commit).map_err(CommitViewError::Backend)?;
+            out.push(EvologEntry {
+                change,
+                // `&[]` exactly when `operation` is `None` (`evolution.rs:55-60`).
+                predecessor_commit_ids: entry.predecessor_ids().iter().map(|id| CommitId(id.hex())).collect(),
+                operation_id: entry.operation.as_ref().map(|op| OperationId(op.id().hex())),
+            });
+        }
+        Ok::<(), CommitViewError>(())
+    })?;
+    Ok(out)
+}
+
+/// Compares what two revisions each CHANGE, with the parent difference factored out
+/// (Story 9.6) — `jj interdiff`.
+///
+/// Ports `cli/src/commands/interdiff.rs::cmd_interdiff` @ v0.44.0: both sides default to `@`
+/// individually, but omitting BOTH is a refusal (the CLI's `ArgGroup … required(true)`) —
+/// interdiffing `@` against itself is trivially empty and never what a caller meant. Each side
+/// is a single revision resolved the way `resolve_single_rev` resolves it, so a divergent id is
+/// refused rather than guessed.
+///
+/// `from` is rebased onto `to`'s parents in memory (`rewrite::rebase_to_dest_parent` — no
+/// transaction, nothing written) and the result is diffed against `to`'s tree. Copy records are
+/// deliberately EMPTY, mirroring `show_inter_diff`'s own `CopyRecords::default()`: unlike
+/// [`show`], `interdiff` never reports a `Renamed`/`Copied` entry. That asymmetry is the CLI's.
+///
+/// The 3-way merge behind the rebase can leave conflict states in the resulting tree, and the
+/// fast path returns `from`'s own tree when the parents already match — so an interdiff between
+/// a commit and itself is trivially empty.
+///
+/// # Errors
+///
+/// - [`CommitViewError::InvalidInput`] — BOTH `from` and `to` are absent, or a `paths` entry is
+///   not a valid repo path.
+/// - [`CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, absent, only-hidden, or
+///   divergent.
+/// - [`CommitViewError::Backend`] — `load_at_head`, the in-memory rebase, or a tree read failed.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn interdiff(
+    workspace: &Workspace,
+    from: Option<&ChangeId>,
+    to: Option<&ChangeId>,
+    paths: &[String],
+) -> Result<Vec<FileChange>, CommitViewError> {
+    // The CLI's ArgGroup refusal, BEFORE any repo read.
+    if from.is_none() && to.is_none() {
+        return Err(CommitViewError::InvalidInput {
+            reason: "at least one of `from` or `to` is required".to_owned(),
+        });
+    }
+    let matcher = build_matcher(paths).map_err(|reason| CommitViewError::InvalidInput { reason })?;
+
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
+    let name = workspace.workspace_name();
+    let from_commit = resolve_or_wc(repo_dyn, name, from).map_err(|e| res(e, from))?;
+    let to_commit = resolve_or_wc(repo_dyn, name, to).map_err(|e| res(e, to))?;
+
+    pollster::block_on(async {
+        let from_tree =
+            jj_lib::rewrite::rebase_to_dest_parent(repo_dyn, std::slice::from_ref(&from_commit), &to_commit)
+                .await
+                .map_err(be)?;
+        let to_tree = to_commit.tree();
+        // `CopyRecords::default()` — `show_inter_diff` passes no copy records (diff_util.rs:650).
+        tree_file_changes(&from_tree, &to_tree, matcher.as_ref(), &CopyRecords::default()).await
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{res, rev, CommitViewError};
+    use crate::op_support::ResolveError;
+    use crate::{ChangeId, ConfigError, RevsetError};
+
+    /// The three-stage revset taxonomy must survive the mapping: a parse failure, a resolution
+    /// failure and a config failure each land in their OWN variant rather than collapsing into
+    /// `Backend`, which is what lets the FFI layer emit three different codes. Pinned directly,
+    /// exactly as `mutate.rs` pins its own `rev`, because two of the four arms need failures no
+    /// fixture provokes deterministically.
+    #[test]
+    fn rev_preserves_the_three_stage_revset_taxonomy() {
+        assert!(matches!(
+            rev(RevsetError::ParseError { reason: "bad".to_owned() }),
+            CommitViewError::RevsetParseError { reason } if reason == "bad"
+        ));
+        assert!(matches!(
+            rev(RevsetError::ResolutionError {
+                reason: "no such bookmark".to_owned()
+            }),
+            CommitViewError::RevsetResolutionError { reason } if reason == "no such bookmark"
+        ));
+        assert!(matches!(
+            rev(RevsetError::Config(ConfigError::Load {
+                reason: "not a table".to_owned()
+            })),
+            CommitViewError::Config { reason } if reason.contains("not a table")
+        ));
+        assert!(matches!(
+            rev(RevsetError::JjLibError("index read failed".to_owned())),
+            CommitViewError::Backend(reason) if reason == "index read failed"
+        ));
+    }
+
+    /// The shared resolver's two outcomes keep landing in the two DIFFERENT variants: "that
+    /// revision does not resolve" is the caller's problem (`ChangeNotFound`, id echoed), an
+    /// index/store failure is not (`Backend`).
+    #[test]
+    fn res_preserves_the_not_found_and_backend_split() {
+        let id = ChangeId("zzzzzzzz".to_owned());
+        assert!(matches!(
+            res(ResolveError::NotFound, Some(&id)),
+            CommitViewError::ChangeNotFound { id } if id == "zzzzzzzz"
+        ));
+        // `interdiff` refuses when BOTH sides are absent, so a `None` id can only reach here
+        // for a side that defaulted to `@` — where `resolve_or_wc` fails as `Backend`. The
+        // `None` arm is therefore defensive and must still produce an EMPTY id, not a panic.
+        assert!(matches!(
+            res(ResolveError::NotFound, None),
+            CommitViewError::ChangeNotFound { id } if id.is_empty()
+        ));
+        assert!(matches!(
+            res(ResolveError::Backend("store read failed".to_owned()), Some(&id)),
+            CommitViewError::Backend(reason) if reason == "store read failed"
+        ));
+    }
+}

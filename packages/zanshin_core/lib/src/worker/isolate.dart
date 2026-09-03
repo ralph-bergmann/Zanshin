@@ -10,6 +10,7 @@ import 'package:meta/meta.dart';
 
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
+import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/events.dart'
@@ -1056,6 +1057,80 @@ class ZanshinWorker {
     );
     return repo_ffi_git.decodeGitRemoteEnvelopeInternal(bytes);
   }
+
+  /// Show each revision [revset] denotes with what it changed, in the repo
+  /// identified by [handleId] (Story 9.6) — the CLI's `jj show`.
+  ///
+  /// A `null` [revset] applies the CLI's own default `@`. [revset] is an
+  /// EXPRESSION, not a change id: a divergent change yields both visible commits
+  /// as two entries rather than a refusal. This read writes no operation.
+  ///
+  /// Sends a [ShowCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<ShowView>` bytes into a `List<ShowEntry>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`).
+  /// Completes with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.show].
+  Future<List<repo_ffi_commit_views.ShowEntry>> show(int handleId, {String? revset}) async {
+    final Uint8List bytes = await send(
+      ShowCommand(commandId: _correlator.allocateId(), handleId: handleId, revset: revset),
+    );
+    return repo_ffi_commit_views.decodeShowViewEnvelopeInternal(bytes);
+  }
+
+  /// Walk the evolution of the changes [revset] denotes, in the repo identified
+  /// by [handleId] (Story 9.6) — the CLI's `jj evolog`.
+  ///
+  /// [limit] is applied in WALK order (the CLI limits before reversing); `0` is an
+  /// empty result, not an error. This read writes no operation.
+  ///
+  /// Sends an [EvologCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<EvologView>` bytes into a `List<EvologEntry>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`).
+  /// Completes with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.evolog].
+  Future<List<repo_ffi_commit_views.EvologEntry>> evolog(int handleId, {String? revset, int? limit}) async {
+    final Uint8List bytes = await send(
+      EvologCommand(commandId: _correlator.allocateId(), handleId: handleId, revset: revset, limit: limit),
+    );
+    return repo_ffi_commit_views.decodeEvologViewEnvelopeInternal(bytes);
+  }
+
+  /// Compare what two revisions each CHANGE, with the parent difference factored
+  /// out, in the repo identified by [handleId] (Story 9.6) — the CLI's
+  /// `jj interdiff`.
+  ///
+  /// An absent side is `@`; omitting BOTH is refused with `jj.invalid_input`. No
+  /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
+  /// records, the CLI's own asymmetry with `show`. This read writes no operation.
+  ///
+  /// Sends an [InterdiffCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<InterdiffView>` bytes into a `List<FileChange>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.interdiff].
+  Future<List<repo_ffi_status.FileChange>> interdiff(
+    int handleId, {
+    String? from,
+    String? to,
+    List<String> paths = const <String>[],
+  }) async {
+    final Uint8List bytes = await send(
+      InterdiffCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        from: from,
+        to: to,
+        paths: paths,
+      ),
+    );
+    return repo_ffi_commit_views.decodeInterdiffViewEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1658,6 +1733,62 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitRemoteSetUrl(raw, name: name, url: url, pushUrl: pushUrl);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ShowCommand(:final int handleId, :final String? revset):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ShowCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_commit_views.zanshinShow(raw, revset: revset);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case EvologCommand(:final int handleId, :final String? revset, :final int? limit):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: EvologCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_commit_views.zanshinEvolog(raw, revset: revset, limit: limit);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case InterdiffCommand(
+          :final int handleId,
+          :final String? from,
+          :final String? to,
+          :final List<String> paths,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: InterdiffCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_commit_views.zanshinInterdiff(raw, from: from, to: to, paths: paths);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

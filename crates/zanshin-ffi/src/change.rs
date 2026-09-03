@@ -53,19 +53,25 @@ fn signature_offset<'a>(b: &mut FlatBufferBuilder<'a>, sig: &Signature) -> flatb
     )
 }
 
-/// Serialise `&Change` into a finished `FlatBuffers` `Envelope<Change>` buffer.
+/// Build the `Change` table into `b` and return its offset.
 ///
 /// Children are built before parents (`FlatBuffers` requirement):
 /// - Both `Signature` tables (author/committer) are built first.
 /// - `parents` string vector and `conflicted_paths` string vector next.
 /// - `id`, `commit_id`, and `description` strings after.
-/// - `Change` table, then `Envelope` last.
-fn change_to_envelope(change: &Change) -> Vec<u8> {
-    let mut b = FlatBufferBuilder::with_capacity(1024);
-
+/// - `Change` table last.
+///
+/// Extracted so the TOP-LEVEL form ([`change_to_envelope`], `zanshin_change`) and the NESTED
+/// form (Story 9.6's `ShowEntry`/`EvologEntry` in `commit_views.rs`) have exactly one
+/// construction site and cannot drift apart — the same move Story 9.5 made for
+/// `build_mutation_result`.
+pub(crate) fn change_offset<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    change: &Change,
+) -> flatbuffers::WIPOffset<fbs::Change<'a>> {
     // 1) Children: both Signature tables (their strings first, then the table).
-    let author_off = signature_offset(&mut b, &change.author);
-    let committer_off = signature_offset(&mut b, &change.committer);
+    let author_off = signature_offset(b, &change.author);
+    let committer_off = signature_offset(b, &change.committer);
 
     // 2) parents vector: ChangeId.0 strings → [string].
     let parent_offs: Vec<_> = change.parents.iter().map(|p| b.create_string(&p.0)).collect();
@@ -89,8 +95,8 @@ fn change_to_envelope(change: &Change) -> Vec<u8> {
     let desc_off = b.create_string(&change.description);
 
     // 5) Change table.
-    let change_off = fbs::Change::create(
-        &mut b,
+    fbs::Change::create(
+        b,
         &fbs::ChangeArgs {
             id: Some(id_off),
             commit_id: Some(commit_id_off),
@@ -104,9 +110,15 @@ fn change_to_envelope(change: &Change) -> Vec<u8> {
             is_anonymous: change.is_anonymous,
             divergent: change.divergent,
         },
-    );
+    )
+}
 
-    // 6) Envelope — plain finish (NOT size-prefixed; length rides in ZanshinBuf.len).
+/// Serialise `&Change` into a finished `FlatBuffers` `Envelope<Change>` buffer.
+fn change_to_envelope(change: &Change) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(1024);
+    let change_off = change_offset(&mut b, change);
+
+    // Envelope — plain finish (NOT size-prefixed; length rides in ZanshinBuf.len).
     let envelope = fbs::Envelope::create(
         &mut b,
         &fbs::EnvelopeArgs {

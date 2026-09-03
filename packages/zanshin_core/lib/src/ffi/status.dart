@@ -119,15 +119,17 @@ List<FileChange> _mapFiles(fbs.Status payload) {
   if (fbFiles == null) {
     return const [];
   }
-  return List.generate(fbFiles.length, (i) {
-    final fbs.FileChange f = fbFiles[i];
-    return FileChange(
-      path: f.path ?? '',
-      kind: _mapChangeKind(f.kind),
-      fromPath: f.fromPath,
-    );
-  });
+  return List.generate(fbFiles.length, (i) => mapFileChangeTable(fbFiles[i]));
 }
+
+/// Map a generated `FileChange` TABLE into the Dart model.
+///
+/// Library-internal: the `FileChange` table is the shipped per-path change
+/// vocabulary, carried by `Status` and — since Story 9.6 — by `ShowEntry` and
+/// `InterdiffView`. Every decoder goes through this one mapper, so a field added
+/// to `FileChange` cannot be wired into one decoder only.
+FileChange mapFileChangeTable(fbs.FileChange f) =>
+    FileChange(path: f.path ?? '', kind: _mapChangeKind(f.kind), fromPath: f.fromPath);
 
 FileChangeKind _mapChangeKind(fbs.ChangeKind kind) => switch (kind) {
   fbs.ChangeKind.Added => FileChangeKind.added,

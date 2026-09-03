@@ -301,8 +301,9 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
 /// ADR-0002:34 defines the repo handle as a warm `Workspace` loader **and**
 /// the owner of the repo's op-heads watcher; this struct makes that literal.
 /// All four handle-producing wrappers (open/init/clone/convert) construct one
-/// via [`arm_session`]; the five read wrappers (`status.rs`, `change.rs`,
-/// `op_log.rs`, `bookmarks.rs`, `remotes.rs`) borrow `.repo`; `zanshin_repo_close`
+/// via [`arm_session`]; the read wrappers borrow `.repo` — `status.rs`,
+/// `change.rs`, `op_log.rs`, `bookmarks.rs`, `remotes.rs`, plus `file.rs`'s four
+/// (Story 9.4) and `commit_views.rs`'s three (Story 9.6); `zanshin_repo_close`
 /// tears it down via [`RepoSession::close`]. Wire handles stay `u64` — no ABI
 /// change from this refactor.
 pub(crate) struct RepoSession {

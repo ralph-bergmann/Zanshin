@@ -635,6 +635,82 @@ final class GitRemoteSetUrlCommand extends WorkerCommand {
   final String? pushUrl;
 }
 
+/// Show each revision [revset] denotes with what it changed, in the repo
+/// identified by [handleId] (Story 9.6) — the CLI's `jj show`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinShow(raw, …)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<ShowView>` bytes.
+final class ShowCommand extends WorkerCommand {
+  const ShowCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revset,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revset EXPRESSION (not a change id — the CLI unions its revsets); `null` =
+  /// `@`, the CLI's own default.
+  final String? revset;
+}
+
+/// Walk the evolution of the changes [revset] denotes, in the repo identified by
+/// [handleId] (Story 9.6) — the CLI's `jj evolog`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinEvolog(raw, …)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<EvologView>` bytes.
+final class EvologCommand extends WorkerCommand {
+  const EvologCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revset,
+    required this.limit,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revset EXPRESSION; `null` = `@`, as in [ShowCommand].
+  final String? revset;
+
+  /// The CLI's `-n/--limit`, applied in walk order; `null` = no limit. `0` is a
+  /// meaningful value — an empty result, not an error.
+  final int? limit;
+}
+
+/// Compare what two revisions each CHANGE, with the parent difference factored
+/// out, in the repo identified by [handleId] (Story 9.6) — the CLI's
+/// `jj interdiff`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinInterdiff(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<InterdiffView>` bytes.
+final class InterdiffCommand extends WorkerCommand {
+  const InterdiffCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.from,
+    required this.to,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// First revision, jj reverse-hex change id; `null` = `@`. Omitting BOTH sides
+  /// is refused (`jj.invalid_input`).
+  final String? from;
+
+  /// Second revision, jj reverse-hex change id; `null` = `@`.
+  final String? to;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

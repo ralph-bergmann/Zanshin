@@ -81,6 +81,14 @@ typedef struct {
 
 #define GitRemoteAddRequest_VT_PUSH_URL 8
 
+#define ShowRequest_VT_REVSET 4
+
+#define EvologRequest_VT_LIMIT 6
+
+#define EvologRequest_VT_HAS_LIMIT 8
+
+#define InterdiffRequest_VT_TO 6
+
 #define RepoHandle_VT_SESSION_ID 6
 
 #define FileChange_VT_KIND 6
@@ -273,6 +281,14 @@ typedef struct {
 
 #define GitExportResult_VT_FAILED_TAGS 8
 
+#define ShowEntry_VT_CHANGE 4
+
+#define ShowEntry_VT_FILE_CHANGES 6
+
+#define EvologEntry_VT_PREDECESSOR_COMMIT_IDS 6
+
+#define EvologEntry_VT_OPERATION_ID 8
+
 /**
  * Build-stamp version string.
  *
@@ -332,6 +348,109 @@ ZanshinBuf *zanshin_bookmarks(uint64_t handle);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
+
+/**
+ * Show each revision the request's revset denotes, with what it changed, in the repo
+ * identified by `handle` — the CLI's `jj show`.
+ *
+ * The argument crosses as a `ShowRequest` `FlatBuffers` request buffer (ADR-0001
+ * composite-input pattern). An ABSENT `revset` is the wire form of "the user did not supply
+ * it", which applies the CLI's own default `@` — here the LAST-SNAPSHOTTED working-copy commit,
+ * because Zanshin never snapshots (D2). `revset` is an EXPRESSION, not a change id: the CLI
+ * unions its revsets, so a divergent change yields both visible commits as two entries rather
+ * than a refusal. Each entry's `file_changes` is the diff against the commit's MERGED parent
+ * tree; there is no path filter and no textual patch (Epic 5 owns hunks). This read writes NO
+ * operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `ShowView` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer.
+ * - `jj.revset_parse_error` — `revset` is syntactically invalid or names an unknown function;
+ *   jj-lib's reason in `context`.
+ * - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved; reason in
+ *   `context`.
+ * - `jj.config_error` — the repo's effective jj config, which the revset aliases come from, is
+ *   unreadable or malformed.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.ShowRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+ * of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_show(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Walk the evolution of the changes the request's revset denotes, in the repo identified by
+ * `handle` — the CLI's `jj evolog`.
+ *
+ * The arguments cross as an `EvologRequest` `FlatBuffers` request buffer. `revset` behaves as
+ * for `zanshin_show`. `limit` uses the established presence-flag pair (`has_limit`) because
+ * `limit = 0` is a MEANINGFUL value — an empty result, not an error — so absence cannot be
+ * encoded as zero. It is applied in WALK order: the CLI limits before reversing, and both the
+ * reversal and its graph mode's re-ordering are rendering the GUI does itself. This read writes
+ * NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `EvologView` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer.
+ * - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
+ * - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
+ * - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure, including jj-lib's own
+ *   predecessor-cycle detection; detail in `context`.
+ *
+ * # Safety
+ * Same handle and buffer contract as `zanshin_show`; `data` is a
+ * `fbs.EvologRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Compare what two revisions each CHANGE, with the parent difference factored out, in the repo
+ * identified by `handle` — the CLI's `jj interdiff`.
+ *
+ * The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
+ * `zanshin_show`, both sides are single jj reverse-hex CHANGE IDS resolved the way the CLI's
+ * `resolve_single_rev` resolves them, so a divergent id is refused rather than guessed. An
+ * absent side is `@`; omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
+ * `ArgGroup … required(true)`. `paths` entries are repo-relative PREFIXES; an empty list means
+ * all paths, and a filter matching nothing yields an empty list rather than a refusal.
+ *
+ * No `Renamed`/`Copied` entry is ever produced — the CLI's `show_inter_diff` passes no copy
+ * records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
+ * it is in-memory only, so this read writes NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `InterdiffView` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
+ * - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
+ *   not a valid repo path; detail in `context`.
+ * - `jj.change_not_found` — `from` or `to` is malformed, absent, only-hidden, or divergent; the
+ *   offending id in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * Same handle and buffer contract as `zanshin_show`; `data` is a
+ * `fbs.InterdiffRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
