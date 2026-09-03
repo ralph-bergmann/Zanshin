@@ -354,6 +354,30 @@ pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str) -> Vec<u
     b.finished_data().to_vec()
 }
 
+/// Wrap an already-built payload offset in an ok `Envelope` and finish the buffer.
+///
+/// The generic tail every noun-module payload builder ends with (`file.rs`'s four, `git.rs`'s
+/// two). The payload BUILDERS stay in their noun file — `status.rs:41` / `bookmarks.rs:33`
+/// set that rule — but the envelope shape itself has exactly one construction site, so a
+/// third noun cannot introduce a fourth spelling of it.
+pub(crate) fn finish_envelope(
+    mut b: FlatBufferBuilder<'_>,
+    data_type: fbs::Payload,
+    data: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>,
+) -> Vec<u8> {
+    let envelope = fbs::Envelope::create(
+        &mut b,
+        &fbs::EnvelopeArgs {
+            ok: true,
+            error: None,
+            data_type,
+            data: Some(data),
+        },
+    );
+    b.finish(envelope, None);
+    b.finished_data().to_vec()
+}
+
 /// Build an error `Envelope` and return the finished buffer.
 ///
 /// Sets `ok = false`, `data_type = Payload::NONE`, and populates `FfiError { code, context }`.

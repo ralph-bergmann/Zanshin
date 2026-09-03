@@ -164,8 +164,13 @@ Uint8List zanshinGitRemoteSetUrl(int rawHandle, {required String name, String? u
 
 /// How one remote ref changed during a `git import` (mirrors
 /// `zanshin_jj::GitRefUpdateKind`).
+///
+/// The first member is [created], not `new`, ONLY because `new` is a Dart keyword — it is
+/// the same wire value as the schema's and Rust's `New` (discriminant 0). The other two
+/// members keep their upstream spelling.
 enum GitRefUpdateKind {
-  /// jj had no such remote ref; the import created it.
+  /// jj had no such remote ref; the import created it. The wire/Rust member is `New`;
+  /// `new` is a Dart keyword, so this layer spells it [created].
   created,
 
   /// The remote ref existed and now points somewhere else.

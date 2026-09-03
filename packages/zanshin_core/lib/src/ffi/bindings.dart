@@ -562,6 +562,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_import(
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
+///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -600,6 +606,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
+///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `name` is a null pointer.
@@ -635,6 +647,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_remove(
 /// own and is reproduced, not corrected.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -675,6 +693,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_rename(
 /// URL.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

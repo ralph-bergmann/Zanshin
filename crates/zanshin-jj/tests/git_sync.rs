@@ -219,6 +219,14 @@ fn git_import_abandoning_the_working_copy_reports_it_and_moves_at() {
 
     let result = repo.git_import().expect("second import must succeed");
 
+    // The ref went away, so this run also exercises the `(false, true) => Deleted` arm.
+    let update = result
+        .changed_bookmarks
+        .iter()
+        .find(|u| u.name == "feature")
+        .expect("the vanished ref must be reported");
+    assert_eq!(update.kind, GitRefUpdateKind::Deleted);
+    assert_eq!(update.remote, "git");
     assert_eq!(
         result.abandoned_change_ids,
         vec![change.clone()],
@@ -380,8 +388,13 @@ fn git_export_reports_a_conflicting_ref_name_as_a_failure_and_still_succeeds() {
     set_local_bookmark(tmp.path(), "foo/bar", &[&commit]);
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
+    let before = head_op_id(&repo);
     let result = repo.git_export().expect("a failed ref is not an error");
 
+    // A PARTLY-failed export still exported something, so it must still write the CLI's own
+    // operation — a failure list is not a refusal (module doc's second invariant).
+    assert_ne!(result.mutation.new_op_id.0, before);
+    assert_eq!(head_op_description(&repo), "export git refs");
     assert_eq!(
         result.failed_bookmarks.len(),
         1,
@@ -400,4 +413,142 @@ fn git_export_reports_a_conflicting_ref_name_as_a_failure_and_still_succeeds() {
     // The other bookmark still exported — a failure does not abort the run.
     let (ok, _) = git_try(&["show-ref", "refs/heads/foo"], &git_store(tmp.path()));
     assert!(ok, "the exportable bookmark must still have been written");
+}
+
+/// The `Updated` arm: an already-imported ref that moves to a different commit. Without
+/// this row only `New` and `Deleted` are ever observed, so the `(false, false)` arm's
+/// classification is unpinned.
+#[test]
+fn git_import_reports_a_moved_ref_as_updated() {
+    pin_env();
+    let (tmp, first) = git_repo_with_one_commit();
+    let store = git_store(tmp.path());
+    git_cmd(&["update-ref", "refs/heads/feature", &first], &store);
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen");
+    repo.git_import().expect("first import establishes the old target");
+
+    // A SECOND commit for the ref to move to, then re-import.
+    let second = add_commit_off_root(tmp.path(), "the ref's new target");
+    git_cmd(&["update-ref", "refs/heads/feature", &second], &store);
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the moved ref");
+
+    let result = repo.git_import().expect("second import must succeed");
+
+    let update = result
+        .changed_bookmarks
+        .iter()
+        .find(|u| u.name == "feature")
+        .expect("the moved ref must be reported");
+    assert_eq!(
+        update.kind,
+        GitRefUpdateKind::Updated,
+        "old and new targets both present => Updated"
+    );
+    assert_eq!(update.remote, "git");
+    assert!(update.tracked);
+}
+
+/// TAGS take a different branch of the projection than bookmarks — the tracking flag is
+/// read from `get_remote_tag`, not `get_remote_bookmark`. Without a real imported tag that
+/// branch is never executed, so swapping the two lookups would go unnoticed.
+#[test]
+fn git_import_projects_a_real_git_tag_through_the_tag_branch() {
+    pin_env();
+    let (tmp, commit) = git_repo_with_one_commit();
+    git_cmd(&["update-ref", "refs/tags/v1", &commit], &git_store(tmp.path()));
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen");
+    let result = repo.git_import().expect("import must succeed");
+
+    assert_eq!(result.changed_tags.len(), 1, "got {:?}", result.changed_tags);
+    let tag = &result.changed_tags[0];
+    assert_eq!(tag.name, "v1");
+    assert_eq!(tag.remote, "git");
+    assert_eq!(tag.kind, GitRefUpdateKind::New);
+    assert!(
+        tag.tracked,
+        "jj-lib tracks remote tags unconditionally (`default_remote_ref_state_for`), which is \
+         what the tag branch of the projection must report"
+    );
+    assert!(
+        result.changed_bookmarks.is_empty(),
+        "a tag must not leak into the bookmark vector"
+    );
+}
+
+/// The second key `config::git_import_options` reads. Mirrors the
+/// `abandon-unreachable-commits` row: a wrong-typed value is the SAME fault class, so
+/// leaving it untested would let a mis-keyed lookup ship silently.
+#[test]
+fn git_import_with_a_non_boolean_record_synthetic_predecessors_refuses_as_config() {
+    pin_env();
+    let (tmp, _commit) = git_repo_with_one_commit();
+    write_repo_config(tmp.path(), "[git]\nrecord-synthetic-predecessors = 3\n");
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen");
+    let before = head_op_id(&repo);
+
+    let err = repo.git_import().expect_err("a wrong-typed value must refuse");
+
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("record-synthetic-predecessors")),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(head_op_id(&repo), before, "a refusal writes nothing");
+}
+
+// ── The colocated divergence ──────────────────────────────────────────────────────
+
+/// The one surface where this story deliberately diverges from the CLI: `jj git import` and
+/// `jj git export` REFUSE in a colocated workspace (exit 0 with an informational message),
+/// because the CLI imports refs during its implicit per-command snapshot and auto-exports
+/// after every op. Zanshin does neither (D2), so the guard's premise is false here and both
+/// verbs run unconditionally.
+///
+/// Without this row the module doc's central claim is unasserted: a future port of the CLI
+/// guard would keep every other test green while making both verbs useless in exactly the
+/// repos that need them.
+#[test]
+fn both_sync_verbs_do_real_work_in_a_colocated_workspace() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    // A real git repo with one commit on `main`, converted in place — `.git` and `.jj` now
+    // share the same object store, which is what "colocated" means.
+    git_cmd(&["init", "--initial-branch=main"], tmp.path());
+    git_cmd(&["config", "user.email", "test@zanshin.test"], tmp.path());
+    git_cmd(&["config", "user.name", "Fixture"], tmp.path());
+    fs::write(tmp.path().join("README.md"), "hello").expect("write README");
+    git_cmd(&["add", "."], tmp.path());
+    git_cmd(&["commit", "-m", "initial"], tmp.path());
+    zanshin_jj::convert_colocated(tmp.path()).expect("convert to colocated");
+
+    let head = {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(tmp.path())
+            .output()
+            .expect("git rev-parse");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    // A git ref the conversion did not import, and a jj bookmark git has never seen.
+    git_cmd(&["update-ref", "refs/heads/colocated-only", &head], tmp.path());
+    set_local_bookmark(tmp.path(), "from-jj", &[&head]);
+
+    let mut repo = Repo::open(tmp.path()).expect("open the colocated workspace");
+
+    let imported = repo.git_import().expect("import must not be skipped here");
+    assert!(
+        imported.changed_bookmarks.iter().any(|u| u.name == "colocated-only"),
+        "the CLI would have skipped and imported nothing; got {:?}",
+        imported.changed_bookmarks
+    );
+
+    let exported = repo.git_export().expect("export must not be skipped here");
+    assert!(exported.failed_bookmarks.is_empty(), "got {exported:?}");
+    let (ok, _) = git_try(&["show-ref", "refs/heads/from-jj"], tmp.path());
+    assert!(
+        ok,
+        "the jj-only bookmark must now exist in the colocated git repo — export really ran"
+    );
 }

@@ -414,6 +414,34 @@ fn git_remote_set_url_changes_the_fetch_url_without_writing_an_operation() {
     assert!(!has_push, "a fetch-only set-url must not invent a push url");
 }
 
+/// set-url's `push_url` argument, which no other row exercises: every other call passes
+/// `None`, so replacing the parameter with a literal `None` would leave them all green. The
+/// oracle is the raw git config, because `list_remotes` only reports the FETCH url.
+#[test]
+fn git_remote_set_url_changes_only_the_push_url_when_only_that_is_given() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let push = format!("{url}-push");
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None)
+        .expect("add without a push url");
+    let before = head_op_id(&repo);
+
+    let result = repo
+        .git_remote_set_url("origin", None, Some(&push))
+        .expect("a push-only set-url must succeed");
+
+    assert_eq!(result.new_op_id.0, before, "set-url never opens a transaction");
+    let (ok, out) = git_try(&["config", "--get", "remote.origin.pushurl"], &git_store(tmp.path()));
+    assert!(ok, "git config must now hold a pushurl");
+    assert_eq!(out, push, "the push url must reach jj-lib verbatim");
+    assert_eq!(
+        remote_url(&repo, "origin").as_deref(),
+        Some(url.as_str()),
+        "an absent fetch url means LEAVE IT ALONE, not clear it"
+    );
+}
+
 /// jj-lib returns `Ok(())` for two absent URLs in `set_remote_urls`' first two lines —
 /// BEFORE its own existence check — so the call succeeds even for a remote that does not
 /// exist. Mirrored deliberately; inventing a refusal there would be a divergence.
@@ -498,9 +526,10 @@ fn a_remote_added_externally_can_be_renamed_and_removed_through_the_same_handle(
     assert!(remote_names(&repo).is_empty());
 }
 
-/// `Repo::open` is not the only path to these verbs; a freshly-initialised handle carries
-/// the same reload behaviour, and its `.jj/repo/config.toml` is untouched by remove/rename
-/// (the CLI edits it; this crate deliberately does not).
+/// `.jj/repo/config.toml` is untouched by remove (and rename): the CLI edits it — dropping
+/// `[remotes.<name>]` and rewriting the `revset-aliases.'trunk()'` alias — and this crate
+/// deliberately does not, because `config.rs` is read-only. This row pins the resulting
+/// divergence so it stays a decision rather than drifting into an accident.
 #[test]
 fn remove_does_not_edit_the_jj_repo_config() {
     pin_env();
@@ -521,5 +550,52 @@ fn remove_does_not_edit_the_jj_repo_config() {
         after.contains("exact:\"origin\""),
         "the jj repo config is deliberately NOT rewritten — a `trunk()` alias pinned to a \
          removed remote keeps naming it (documented divergence), got: {after:?}"
+    );
+}
+
+/// The reload's own failure path: `Repo::reload_after_config_write` runs the reopen on the
+/// FAILURE path too — `remove_remote`/`rename_remote` write the git config BEFORE the
+/// git-ref edits that can still fail, so a mid-verb failure would otherwise leave a stale
+/// gix config cache behind for the rest of the session.
+///
+/// Provoked by removing `.jj/working_copy` from under an open handle: `Workspace::load`
+/// needs it, while the already-built repo loader does not — so the verbs still run and only
+/// the reopen fails. Both halves of the contract are asserted, and the second assertion is
+/// also what proves the reload really is failing (otherwise it would read as a success).
+#[test]
+fn a_failed_reload_is_surfaced_only_when_the_verb_itself_succeeded() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    fs::remove_dir_all(tmp.path().join(".jj").join("working_copy")).expect("remove working copy state");
+
+    // Verb fails AND reload fails: the VERB's error survives — it is the one that explains
+    // what the user did. The reload's is traced (`tracing::warn!`), never silently dropped.
+    let refused = repo
+        .git_remote_remove("nonexistent")
+        .expect_err("the verb itself must still refuse");
+    assert!(
+        matches!(&refused, MutateError::RemoteNotFound { name } if name == "nonexistent"),
+        "a failed reload must NOT replace the verb's own error: {refused:?}"
+    );
+
+    // Verb SUCCEEDS and reload fails: the reload error is surfaced. This is exactly the
+    // "an `Err` does not mean nothing happened" case the four facades document — the remote
+    // really was added, and a caller that assumed otherwise would be wrong.
+    let reload_err = repo
+        .git_remote_add("origin", &url, None)
+        .expect_err("a failed reopen must surface once the verb itself succeeded");
+    assert!(
+        matches!(&reload_err, MutateError::Backend(_)),
+        "unexpected error: {reload_err:?}"
+    );
+    // The oracle is the raw git config, not another `Repo`: with `.jj/working_copy` gone,
+    // `Workspace::load` fails for EVERY handle — which is itself the proof that the reload
+    // above really failed rather than quietly succeeding.
+    let (ok, out) = git_try(&["config", "--get", "remote.origin.url"], &git_store(tmp.path()));
+    assert!(ok, "the remote really was written despite the Err");
+    assert_eq!(
+        out, url,
+        "the mutation landed despite the Err — that is the documented trap"
     );
 }

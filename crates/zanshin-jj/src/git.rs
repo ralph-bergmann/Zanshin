@@ -188,6 +188,11 @@ fn flatten_chain(err: &(dyn std::error::Error + 'static)) -> String {
 /// The three [`jj_lib::git::GitRemoteNameError`] cases (reserved `git`, a slash, a
 /// gix-invalid name) all become [`MutateError::InvalidInput`] carrying jj-lib's own reason
 /// verbatim — they are one fault class ("that name is not usable") with one remedy.
+///
+/// Matched EXHAUSTIVELY, like the two mappers below: none of jj-lib's three git error enums
+/// is `#[non_exhaustive]` at the 0.44.0 pin, so a variant added by a future bump should fail
+/// to compile here — and be classified deliberately — rather than land silently in the
+/// unclassified [`MutateError::Backend`] bucket.
 fn map_remote_mgmt_err(e: GitRemoteManagementError) -> MutateError {
     match e {
         GitRemoteManagementError::NoSuchRemote(name) => MutateError::RemoteNotFound {
@@ -203,28 +208,33 @@ fn map_remote_mgmt_err(e: GitRemoteManagementError) -> MutateError {
             name: name.as_str().to_owned(),
         },
         GitRemoteManagementError::UnexpectedBackend(_) => MutateError::NotAGitRepo,
-        other => MutateError::Backend(flatten_chain(&other)),
+        other @ (GitRemoteManagementError::GitConfigSaveError(_)
+        | GitRemoteManagementError::InternalGitError(_)
+        | GitRemoteManagementError::RefExpansionError(_)) => MutateError::Backend(flatten_chain(&other)),
     }
 }
 
 /// Maps a [`GitImportError`] onto this crate's taxonomy: "no git backend" is its own
-/// answerable refusal, everything else is an unclassified jj-lib failure.
+/// answerable refusal, everything else is an unclassified jj-lib failure. Exhaustive — see
+/// [`map_remote_mgmt_err`].
 fn map_import_err(e: GitImportError) -> MutateError {
     match e {
         GitImportError::UnexpectedBackend(_) => MutateError::NotAGitRepo,
-        other => MutateError::Backend(flatten_chain(&other)),
+        other @ (GitImportError::MissingHeadTarget { .. }
+        | GitImportError::MissingRefAncestor { .. }
+        | GitImportError::Backend(_)
+        | GitImportError::Index(_)
+        | GitImportError::RevsetEvaluation(_)
+        | GitImportError::Git(_)) => MutateError::Backend(flatten_chain(&other)),
     }
 }
 
 /// Maps a [`GitExportError`] onto this crate's taxonomy — same split as
-/// [`map_import_err`]. A FAILED REF is not an error at all; see [`GitExportResult`].
+/// [`map_import_err`], and exhaustive for the same reason. A FAILED REF is not an error at
+/// all; see [`GitExportResult`].
 fn map_export_err(e: GitExportError) -> MutateError {
     match e {
         GitExportError::UnexpectedBackend(_) => MutateError::NotAGitRepo,
-        // `GitExportError` has exactly two variants today, so this is written out rather
-        // than wildcarded — clippy::pedantic refuses a wildcard over a single variant, and
-        // an added variant should fail to compile here rather than silently land in the
-        // unclassified bucket.
         other @ GitExportError::Git(_) => MutateError::Backend(flatten_chain(&other)),
     }
 }
@@ -240,8 +250,12 @@ struct Finished<T> {
     mutation: MutationResult,
     /// The repo AFTER the call — the just-committed one, or (on the no-op path) the same
     /// head-resolved one the dropped transaction started from. `git_import` reads the
-    /// tracking state of each changed ref out of this view.
+    /// tracking state of each changed ref out of this view, which is only meaningful when
+    /// [`Finished::committed`] is true.
     repo: Arc<ReadonlyRepo>,
+    /// Whether an operation was actually written. `false` means [`Finished::repo`] is the
+    /// PRE-transaction repo, so it is NOT a post-verb view — see `git_import`'s use of it.
+    committed: bool,
 }
 
 /// Runs `work` inside a transaction and commits it as `description`, or — when `work`
@@ -277,6 +291,7 @@ where
             value,
             mutation,
             repo: readonly,
+            committed: false,
         });
     }
 
@@ -298,6 +313,7 @@ where
             working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
         },
         repo: new_repo,
+        committed: true,
     })
 }
 
@@ -305,8 +321,9 @@ where
 
 /// Projects jj-lib's `GitImportRefUpdate`s into the owned [`GitRefUpdate`] shape.
 ///
-/// `repo` must be the POST-import view: the tracking flag is read from it, exactly as
-/// `cli/src/git_util.rs:412-433` does.
+/// `repo` MUST be the POST-import view: the tracking flag is read from it, exactly as
+/// `cli/src/git_util.rs:412-433` does. Callers are responsible for not calling this with a
+/// pre-transaction repo — see `git_import`'s no-op branch.
 fn project_updates(repo: &Arc<ReadonlyRepo>, updates: &[GitImportRefUpdate], tags: bool) -> Vec<GitRefUpdate> {
     updates
         .iter()
@@ -378,9 +395,27 @@ pub(crate) fn git_import(
     })?;
 
     let stats = finished.value;
+    // WHY the branch instead of projecting unconditionally: on the no-op path
+    // `finished.repo` is the PRE-transaction repo, so `project_updates`' post-import
+    // tracking-flag read would be answered by a stale view. It cannot currently produce a
+    // wrong value — jj-lib reports no changed refs exactly when nothing was written — but
+    // that is a coupling between two independent jj-lib facts, so it is asserted rather
+    // than relied on.
+    let (changed_bookmarks, changed_tags) = if finished.committed {
+        (
+            project_updates(&finished.repo, &stats.changed_remote_bookmarks, false),
+            project_updates(&finished.repo, &stats.changed_remote_tags, true),
+        )
+    } else {
+        debug_assert!(
+            stats.changed_remote_bookmarks.is_empty() && stats.changed_remote_tags.is_empty(),
+            "an import that wrote no operation cannot have changed a remote ref"
+        );
+        (Vec::new(), Vec::new())
+    };
     Ok(GitImportResult {
-        changed_bookmarks: project_updates(&finished.repo, &stats.changed_remote_bookmarks, false),
-        changed_tags: project_updates(&finished.repo, &stats.changed_remote_tags, true),
+        changed_bookmarks,
+        changed_tags,
         abandoned_change_ids: stats
             .abandoned_commits
             .iter()

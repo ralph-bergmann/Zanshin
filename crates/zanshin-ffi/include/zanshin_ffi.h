@@ -626,6 +626,12 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
  *
+ * An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+ * git config file BEFORE the git-ref edits, and both happen before the transaction
+ * commits, so a late refusal can leave the config already rewritten — and a failed
+ * workspace reload is reported after the operation has already committed. Re-read
+ * `zanshin_remotes` rather than assuming the pre-call state.
+ *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -661,6 +667,12 @@ ZanshinBuf *zanshin_git_remote_add(uint64_t handle, const uint8_t *data, uintptr
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
  *
+ * An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+ * git config file BEFORE the git-ref edits, and both happen before the transaction
+ * commits, so a late refusal can leave the config already rewritten — and a failed
+ * workspace reload is reported after the operation has already committed. Re-read
+ * `zanshin_remotes` rather than assuming the pre-call state.
+ *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `name` is a null pointer.
@@ -694,6 +706,12 @@ ZanshinBuf *zanshin_git_remote_remove(uint64_t handle, const char *name);
  * own and is reproduced, not corrected.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+ *
+ * An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+ * git config file BEFORE the git-ref edits, and both happen before the transaction
+ * commits, so a late refusal can leave the config already rewritten — and a failed
+ * workspace reload is reported after the operation has already committed. Re-read
+ * `zanshin_remotes` rather than assuming the pre-call state.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -731,6 +749,12 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  * URL.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+ *
+ * An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+ * git config file BEFORE the git-ref edits, and both happen before the transaction
+ * commits, so a late refusal can leave the config already rewritten — and a failed
+ * workspace reload is reported after the operation has already committed. Re-read
+ * `zanshin_remotes` rather than assuming the pre-call state.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

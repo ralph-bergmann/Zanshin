@@ -94,6 +94,8 @@ void main() {
       expect((await handle.remotes()).map((r) => r.name), equals(['origin']));
       expect((await handle.remotes()).single.url, equals(url), reason: 'the url crosses verbatim');
 
+      // Fetch-url only: a push url would make the remote nonstandard, and the rename and
+      // remove below would then (correctly) refuse — see the dedicated push-url row.
       await handle.gitRemoteSetUrl(name: 'origin', url: '$url-elsewhere');
       expect((await handle.remotes()).single.url, equals('$url-elsewhere'));
 
@@ -102,6 +104,25 @@ void main() {
 
       await handle.gitRemoteRemove('upstream');
       expect(await handle.remotes(), isEmpty);
+
+      await handle.close();
+    });
+
+    // `gitRemoteSetUrl`'s optional pushUrl, which the sequence above deliberately cannot
+    // carry. `remotes()` reports only the FETCH url, so what is asserted here is that the
+    // fetch side is LEFT ALONE — the push url's own oracle is the raw git config, read
+    // Rust-side in git_remotes.rs and git_ffi.rs.
+    test('gitRemoteSetUrl_with_only_a_push_url_leaves_the_fetch_url_alone', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path);
+
+      final MutationResult result = await handle.gitRemoteSetUrl(
+        name: 'origin',
+        pushUrl: '${remoteDir.path}-push',
+      );
+
+      expect(result.newOpId, isNotEmpty, reason: 'set-url never opens a transaction');
+      expect((await handle.remotes()).single.url, equals(remoteDir.path));
 
       await handle.close();
     });

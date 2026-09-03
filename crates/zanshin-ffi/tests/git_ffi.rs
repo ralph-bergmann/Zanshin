@@ -30,8 +30,8 @@ use zanshin_ffi::git::{
 use zanshin_ffi::remotes::zanshin_remotes;
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_init};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_NOT_A_GIT_REPO,
-    JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
+    JJ_NOT_A_GIT_REPO, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
 };
 use zanshin_jj::Repo;
 
@@ -557,6 +557,78 @@ fn git_remote_set_url_happy_path_carries_the_new_url_through_the_request_buffer(
         Some("/tmp/repointed"),
         "the SAME handle must see the new url — the request buffer's url reached jj-lib"
     );
+
+    close_handle(handle);
+}
+
+/// The `GitRemoteSetUrlRequest.push_url` field, which no other row carries: every other
+/// buffer leaves it ABSENT, so a reader that hardcoded `None` would go unnoticed. The
+/// oracle is the raw git config — `zanshin_remotes` only reports the FETCH url.
+#[test]
+fn git_remote_set_url_carries_a_push_only_request_through_the_buffer() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    let add = add_request_bytes(Some("origin"), Some("/tmp/nowhere"), None);
+    // SAFETY: add outlives the call.
+    unsafe { read_and_free(zanshin_git_remote_add(handle, add.as_ptr(), add.len())) };
+
+    let set = set_url_request_bytes(Some("origin"), None, Some("/tmp/pushed"));
+    // SAFETY: set outlives the call.
+    let bytes = unsafe { read_and_free(zanshin_git_remote_set_url(handle, set.as_ptr(), set.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "set-url failed: {:?}", env.error().and_then(|e| e.code()));
+
+    let out = std::process::Command::new("git")
+        .args(["config", "--get", "remote.origin.pushurl"])
+        .current_dir(git_store(tmp.path()))
+        .output()
+        .expect("git config");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "/tmp/pushed",
+        "the request buffer's push_url must reach jj-lib"
+    );
+
+    // SAFETY: handle is live for the duration of the call.
+    let listed = unsafe { read_and_free(zanshin_remotes(handle)) };
+    let env = parse_envelope(&listed);
+    let remotes = env
+        .data_as_remotes()
+        .expect("Remotes payload")
+        .remotes()
+        .expect("remotes");
+    assert_eq!(
+        remotes.get(0).url(),
+        Some("/tmp/nowhere"),
+        "an absent fetch url means LEAVE IT ALONE"
+    );
+
+    close_handle(handle);
+}
+
+/// The documented `ffi.utf8_error` on the two C-string wrappers. Without this row the code
+/// is in their `# Errors` blocks and in the registry but unreachable in any test.
+#[test]
+fn git_remote_remove_and_rename_reject_an_invalid_utf8_name() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    // A lone 0xff byte is never valid UTF-8, and carries no interior NUL.
+    let invalid = CString::new(vec![0xff_u8, 0xfe]).expect("no interior NUL");
+    let valid = cstr("origin");
+
+    // SAFETY: invalid is a valid NUL-terminated C string; only its CONTENT is not UTF-8.
+    let removed = unsafe { read_and_free(zanshin_git_remote_remove(handle, invalid.as_ptr())) };
+    assert_eq!(error_code(&removed), FFI_UTF8_ERROR);
+
+    // SAFETY: see above.
+    let renamed_old = unsafe { read_and_free(zanshin_git_remote_rename(handle, invalid.as_ptr(), valid.as_ptr())) };
+    assert_eq!(error_code(&renamed_old), FFI_UTF8_ERROR);
+
+    // SAFETY: see above.
+    let renamed_new = unsafe { read_and_free(zanshin_git_remote_rename(handle, valid.as_ptr(), invalid.as_ptr())) };
+    assert_eq!(error_code(&renamed_new), FFI_UTF8_ERROR);
 
     close_handle(handle);
 }

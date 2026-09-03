@@ -16,8 +16,8 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileType, SearchMatch};
 
 use crate::envelope::{
-    catch, invalid_request, missing_field, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND,
-    JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    catch, finish_envelope, invalid_request, missing_field, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE,
+    JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -286,29 +286,6 @@ fn file_search_to_envelope(matches: &[SearchMatch]) -> Vec<u8> {
     let vec = b.create_vector(&offsets);
     let table = fbs::FileSearch::create(&mut b, &fbs::FileSearchArgs { matches: Some(vec) });
     finish_envelope(b, fbs::Payload::FileSearch, table.as_union_value())
-}
-
-/// Wrap an already-built payload offset in an ok `Envelope` and finish the buffer.
-///
-/// Shared by the four builders above so the envelope shape has exactly one construction
-/// site in this file; single-noun payload builders stay in the noun file, not `envelope.rs`
-/// (`status.rs:41`, `bookmarks.rs:33`).
-fn finish_envelope(
-    mut b: FlatBufferBuilder<'_>,
-    data_type: fbs::Payload,
-    data: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>,
-) -> Vec<u8> {
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type,
-            data: Some(data),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────

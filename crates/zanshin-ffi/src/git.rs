@@ -21,8 +21,8 @@ use tracing::debug;
 use zanshin_jj::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 
 use crate::envelope::{
-    build_mutation_result, catch, invalid_request, missing_field, ok_mutation_result, reject_null_request, FfiErrorObj,
-    FFI_INVALID_HANDLE,
+    build_mutation_result, catch, finish_envelope, invalid_request, missing_field, ok_mutation_result,
+    reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -194,28 +194,6 @@ fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
     finish_envelope(b, fbs::Payload::GitExportResult, table.as_union_value())
 }
 
-/// Wrap an already-built payload offset in an ok `Envelope` and finish the buffer.
-///
-/// Same rationale as `file.rs`'s identical helper: single-noun payload builders stay in the
-/// noun file, so this file has exactly one envelope construction site.
-fn finish_envelope(
-    mut b: FlatBufferBuilder<'_>,
-    data_type: fbs::Payload,
-    data: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>,
-) -> Vec<u8> {
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type,
-            data: Some(data),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
-}
-
 /// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
 ///
 /// # Safety
@@ -321,6 +299,12 @@ pub unsafe extern "C" fn zanshin_git_export(handle: u64) -> *mut ZanshinBuf {
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
+///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -368,6 +352,12 @@ pub unsafe extern "C" fn zanshin_git_remote_add(handle: u64, data: *const u8, le
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
+///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `name` is a null pointer.
@@ -411,6 +401,12 @@ pub unsafe extern "C" fn zanshin_git_remote_remove(handle: u64, name: *const cor
 /// own and is reproduced, not corrected.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -467,6 +463,12 @@ pub unsafe extern "C" fn zanshin_git_remote_rename(
 /// URL.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
+/// git config file BEFORE the git-ref edits, and both happen before the transaction
+/// commits, so a late refusal can leave the config already rewritten — and a failed
+/// workspace reload is reported after the operation has already committed. Re-read
+/// `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

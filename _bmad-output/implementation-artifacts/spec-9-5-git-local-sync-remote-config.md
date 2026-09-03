@@ -2,7 +2,7 @@
 title: 'Story 9.5: Git local sync + remote config — `git import`, `git export`, `git remote add`/`remove`/`rename`/`set-url`'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'd797d3a09ad9b5438d8cd3582c180bdcc4af199c'
 review_loop_iteration: 0
 followup_review_recommended: false

@@ -689,12 +689,19 @@ impl Repo {
     /// leave a stale cache behind.
     ///
     /// A reload failure is surfaced only when the verb itself succeeded: an already-failing
-    /// call must keep its own error, which is the one that explains what the user did.
+    /// call must keep its own error, which is the one that explains what the user did. That
+    /// swallowing is why the reload failure is ALWAYS traced first — otherwise a stale
+    /// config cache would silently outlive the call for the rest of the session, which is
+    /// exactly the condition this helper exists to prevent.
+    ///
+    /// Neither ordering makes an `Err` mean "nothing happened" — see the four facades' docs.
     fn reload_after_config_write(
         &mut self,
         result: Result<crate::MutationResult, crate::MutateError>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let reload = self.reload_workspace();
+        let reload = self.reload_workspace().inspect_err(|e| {
+            tracing::warn!(error = %e, "git config was rewritten but the workspace could not be reloaded");
+        });
         let value = result?;
         reload.map(|()| value)
     }
@@ -767,6 +774,13 @@ impl Repo {
     /// and its own `remove_remote` then refuses that remote as
     /// [`crate::MutateError::RemoteNonstandardConfig`].
     ///
+    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
+    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
+    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// reported only AFTER the operation has committed, discarding an otherwise-successful
+    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
+    /// rather than assuming the pre-call one.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::RemoteExists`] — `name` is already taken.
@@ -796,6 +810,13 @@ impl Repo {
     /// Unlike the CLI, `.jj/repo/config.toml` is NOT edited: a `[remotes.<name>]` section
     /// survives, and a `revset-aliases.'trunk()'` pinned to this remote keeps naming it.
     ///
+    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
+    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
+    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// reported only AFTER the operation has committed, discarding an otherwise-successful
+    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
+    /// rather than assuming the pre-call one.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::RemoteNotFound`] — no such remote.
@@ -818,6 +839,13 @@ impl Repo {
     /// jj-lib validates `new_name` BEFORE it reports that `old_name` is missing, so
     /// `git_remote_rename("nonexistent", "git")` reports the reserved-name refusal. That
     /// ordering is jj-lib's own and is reproduced, not corrected.
+    ///
+    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
+    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
+    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// reported only AFTER the operation has committed, discarding an otherwise-successful
+    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
+    /// rather than assuming the pre-call one.
     ///
     /// # Errors
     ///
@@ -851,6 +879,13 @@ impl Repo {
     /// `None` the call succeeds and does nothing — even for a remote that does not exist,
     /// because jj-lib returns early before its own existence check. That is mirrored
     /// deliberately.
+    ///
+    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
+    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
+    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// reported only AFTER the operation has committed, discarding an otherwise-successful
+    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
+    /// rather than assuming the pre-call one.
     ///
     /// # Errors
     ///
