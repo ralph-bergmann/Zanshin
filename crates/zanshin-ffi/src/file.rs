@@ -16,8 +16,8 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileType, SearchMatch};
 
 use crate::envelope::{
-    catch, invalid_request, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
-    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    catch, invalid_request, missing_field, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND,
+    JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -47,20 +47,6 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
 // byte slice in its own scope and returns an OWNED struct, so the unbounded lifetime
 // `std::slice::from_raw_parts` produces provably cannot outlive the call. The null check
 // and the invalid-buffer error shape are shared with `repo.rs` via `envelope.rs`.
-
-/// The `jj.invalid_input` refusal an ABSENT required request field produces.
-///
-/// Argument arity is observable CLI behavior: `jj file annotate`'s positional `path` and
-/// `jj file search`'s `-p/--pattern` are both required at v0.44.0, so an omitted field is a
-/// caller bug and must be named as one. An explicitly present EMPTY string is a VALUE, not
-/// an absence, and is passed through unchanged (an empty regex matches every line, exactly
-/// as `jj file search -p ""` does).
-fn missing_field(field: &str) -> FfiErrorObj {
-    FfiErrorObj {
-        code: JJ_INVALID_INPUT.to_owned(),
-        context: Some(format!("{field} is required")),
-    }
-}
 
 /// Owned Rust form of a `FileListRequest` or `FileShowRequest` buffer — the two are
 /// shape-identical, and this is the shape, not either table. `revision` is `Option`: ABSENT

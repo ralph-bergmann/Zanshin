@@ -439,6 +439,38 @@ pub(crate) fn conflict_marker_style(
     config.get("ui.conflict-marker-style").map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `git import` options out of a loaded stack (Story 9.5).
+///
+/// Mirrors `cli/src/git_util.rs::load_git_import_options` @ v0.44.0 for the two keys it
+/// reads off config: `git.abandon-unreachable-commits` and
+/// `git.record-synthetic-predecessors`. Both already resolve through
+/// `StackedConfig::with_defaults()` — they are jj-lib's own `config/misc.toml` defaults
+/// (`true`/`true`) — so no [`BUILTIN_CONFIG_TOML`] entry is added and no Rust constant
+/// decides for a user who set `abandon-unreachable-commits = false` (FR-JJ-17).
+///
+/// `remote_auto_track_bookmarks` stays EMPTY, exactly as
+/// [`crate::Repo::git_fetch`] and `clone_into` already leave it: porting the CLI's
+/// `remotes.<name>.auto-track-bookmarks` string-expression parser would have to change all
+/// three call sites at once, and that is not this story's scope.
+///
+/// Returns a `jj_lib` type, which is why it is `pub(crate)` (FR-JJ-16).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — either key is present with a non-boolean value, or is missing
+///   from every layer (impossible while jj-lib's own defaults layer is present).
+pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::GitImportOptions, ConfigError> {
+    Ok(jj_lib::git::GitImportOptions {
+        abandon_unreachable_commits: config
+            .get("git.abandon-unreachable-commits")
+            .map_err(|e| value_error(&e))?,
+        record_synthetic_predecessors: config
+            .get("git.record-synthetic-predecessors")
+            .map_err(|e| value_error(&e))?,
+        remote_auto_track_bookmarks: HashMap::new(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;

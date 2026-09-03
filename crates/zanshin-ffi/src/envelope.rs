@@ -51,8 +51,27 @@ pub const JJ_IMMUTABLE: &str = "jj.immutable";
 /// root — there is no parent operation to restore to.
 pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured
-/// git remote, or the repo has no git backend at all.
+/// git remote, or the repo has no git backend at all; and — since Story 9.5 — by
+/// `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does not
+/// exist (for `rename`, the OLD name; for `set_url`, only when at least one URL was given).
 pub const JJ_REMOTE_NOT_FOUND: &str = "jj.remote_not_found";
+/// AR-P-4: emitted by `git.rs::zanshin_git_remote_add` when the name already has a
+/// configured git remote, and by `zanshin_git_remote_rename` when the NEW name does; the
+/// offending remote name in `context` (Story 9.5).
+///
+/// Its own code rather than `jj.invalid_input` because the remedy differs: the remote is
+/// already there — re-point it with `zanshin_git_remote_set_url` instead of adding it again.
+pub const JJ_REMOTE_EXISTS: &str = "jj.remote_exists";
+/// AR-P-4: emitted by `git.rs::zanshin_git_remote_remove`/`_rename` when jj refuses to
+/// rewrite the remote's git config — it carries a key outside `url`/`fetch`/`tagOpt`, or a
+/// `[branch]` section referencing it carries one outside `remote`/`merge`/`rebase`; the
+/// remote name in `context` (Story 9.5).
+///
+/// Not exotic: jj-lib's own `save_remote` writes a `pushurl` key, so a remote ADDED with a
+/// push URL cannot afterwards be removed. The only remedy is editing the git config by
+/// hand, which no code in this workspace offers — hence its own code rather than the
+/// unclassified `jj.jj_lib_error`.
+pub const JJ_REMOTE_NONSTANDARD_CONFIG: &str = "jj.remote_nonstandard_config";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
 /// fails (network, authentication, or transport error); detail in `context`.
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
@@ -61,6 +80,9 @@ pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";
 /// AR-P-4: emitted by `repo.rs` when the path is already a jj workspace (`.jj/` present); convert skipped.
 pub const JJ_ALREADY_JJ_REPO: &str = "jj.already_jj_repo";
 /// AR-P-4: emitted by `repo.rs` when the path is not a Git repository or does not exist; convert refused.
+/// Since Story 9.5 the meaning is WIDENED: `git.rs`'s six wrappers emit it when the OPEN
+/// WORKSPACE has no git backend at all (jj-lib's `UnexpectedGitBackendError`), which has no
+/// path to name and therefore carries no `context`.
 pub const JJ_NOT_A_GIT_REPO: &str = "jj.not_a_git_repo";
 /// AR-P-4: emitted by `repo.rs` when a jj-lib failure occurred during colocated conversion; detail in `context`.
 pub const JJ_CONVERT_FAILED: &str = "jj.convert_failed";
@@ -133,6 +155,20 @@ pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj
     }
 }
 
+/// The `jj.invalid_input` refusal an ABSENT required request field produces.
+///
+/// Argument arity is observable CLI behavior: `jj file annotate`'s positional `path`,
+/// `jj file search`'s `-p/--pattern`, and `jj git remote add`'s two positionals are all
+/// required at v0.44.0, so an omitted field is a caller bug and must be named as one. An
+/// explicitly present EMPTY string is a VALUE, not an absence, and is passed through
+/// unchanged.
+pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
+    FfiErrorObj {
+        code: JJ_INVALID_INPUT.to_owned(),
+        context: Some(format!("{field} is required")),
+    }
+}
+
 /// Build a success `Envelope` with no payload and return the finished buffer.
 ///
 /// Sets `ok = true`, `error = None`, `data_type = Payload::NONE`. The first real
@@ -184,9 +220,11 @@ pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
 /// table itself — the same bottom-up order as `ok_diagnostics`/`change_to_envelope`.
 ///
 /// Extracted so the TOP-LEVEL form (`ok_mutation_result`, six Story 6.5 wrappers plus
-/// `zanshin_restore`) and the NESTED form (`ok_absorb_result`, Story 9.3) have exactly
-/// one construction site and cannot drift apart.
-fn build_mutation_result<'a>(
+/// `zanshin_restore`) and the NESTED form (`ok_absorb_result`, Story 9.3, plus Story 9.5's
+/// `GitImportResult`/`GitExportResult` in `git.rs`) have exactly one construction site and
+/// cannot drift apart. `pub(crate)` since Story 9.5, whose two nested payloads are built in
+/// their own noun file.
+pub(crate) fn build_mutation_result<'a>(
     b: &mut FlatBufferBuilder<'a>,
     r: &zanshin_jj::MutationResult,
 ) -> flatbuffers::WIPOffset<fbs::MutationResult<'a>> {

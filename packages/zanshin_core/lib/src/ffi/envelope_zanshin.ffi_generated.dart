@@ -306,6 +306,48 @@ class _FileTypeReader extends fb.Reader<FileType> {
   FileType read(fb.BufferContext bc, int offset) => FileType.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  How one remote ref changed during `zanshin_git_import` (Story 9.5) — the CLI's own
+///  derivation from `(old_remote_ref.target.is_absent(), new_target.is_absent())`
+///  (`cli/src/git_util.rs:418-425` @ v0.44.0).
+enum GitRefUpdateKind {
+  New(0),
+  Updated(1),
+  Deleted(2);
+
+  final int value;
+  const GitRefUpdateKind(this.value);
+
+  factory GitRefUpdateKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return GitRefUpdateKind.New;
+      case 1:
+        return GitRefUpdateKind.Updated;
+      case 2:
+        return GitRefUpdateKind.Deleted;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static GitRefUpdateKind? _createOrNull(int? value) => value == null ? null : GitRefUpdateKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<GitRefUpdateKind> reader = _GitRefUpdateKindReader();
+}
+
+class _GitRefUpdateKindReader extends fb.Reader<GitRefUpdateKind> {
+  const _GitRefUpdateKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  GitRefUpdateKind read(fb.BufferContext bc, int offset) =>
+      GitRefUpdateKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -325,7 +367,9 @@ enum PayloadTypeId {
   FileList(15),
   FileContents(16),
   FileAnnotation(17),
-  FileSearch(18);
+  FileSearch(18),
+  GitImportResult(19),
+  GitExportResult(20);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -370,6 +414,10 @@ enum PayloadTypeId {
         return PayloadTypeId.FileAnnotation;
       case 18:
         return PayloadTypeId.FileSearch;
+      case 19:
+        return PayloadTypeId.GitImportResult;
+      case 20:
+        return PayloadTypeId.GitExportResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -378,7 +426,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 18;
+  static const int maxValue = 20;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1146,6 +1194,214 @@ class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(1, patternOffset);
     fbBuilder.addOffset(2, pathsOffset);
     fbBuilder.addBool(3, _nameOnly);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_git_remote_add` (Story 9.5) — the CLI's `jj git remote add`.
+///
+///  `name` and `url` are REQUIRED; an absent field is refused with `jj.invalid_input`,
+///  mirroring the CLI's two required positionals. `push_url` is null-for-absence: ABSENT
+///  means the remote pushes to its fetch URL, which is git's own behaviour and the CLI's
+///  `--push-url` default. Both URLs cross VERBATIM — unlike the CLI, a relative local path
+///  is NOT resolved against a process CWD (a GUI backend has none worth consulting).
+///
+///  Adding a remote WITH a push url makes it non-removable by `zanshin_git_remote_remove`:
+///  jj-lib's own `save_remote` writes a `pushurl` key, and its `remove_remote` refuses any
+///  key outside `url`/`fetch`/`tagOpt` (`jj.remote_nonstandard_config`).
+class GitRemoteAddRequest {
+  GitRemoteAddRequest._(this._bc, this._bcOffset);
+  factory GitRemoteAddRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitRemoteAddRequest> reader = _GitRemoteAddRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'GitRemoteAddRequest{name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
+  }
+}
+
+class _GitRemoteAddRequestReader extends fb.TableReader<GitRemoteAddRequest> {
+  const _GitRemoteAddRequestReader();
+
+  @override
+  GitRemoteAddRequest createObject(fb.BufferContext bc, int offset) => GitRemoteAddRequest._(bc, offset);
+}
+
+class GitRemoteAddRequestBuilder {
+  GitRemoteAddRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUrlOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPushUrlOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitRemoteAddRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _url;
+  final String? _pushUrl;
+
+  GitRemoteAddRequestObjectBuilder({
+    String? name,
+    String? url,
+    String? pushUrl,
+  }) : _name = name,
+       _url = url,
+       _pushUrl = pushUrl;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
+    final int? pushUrlOffset = _pushUrl == null ? null : fbBuilder.writeString(_pushUrl!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, urlOffset);
+    fbBuilder.addOffset(2, pushUrlOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_git_remote_set_url` (Story 9.5) — the CLI's
+///  `jj git remote set-url`.
+///
+///  `name` is REQUIRED. `url` (fetch) and `push_url` are BOTH null-for-absence, and absence
+///  means "leave that side unchanged" — jj-lib cannot REMOVE a URL from a remote. With both
+///  absent the call succeeds and does nothing, EVEN for a remote that does not exist: jj-lib
+///  returns `Ok(())` in `set_remote_urls`' first two lines, before its own existence check.
+///  That is mirrored deliberately; inventing a refusal there would be a divergence.
+///
+///  This verb never writes an operation — jj-lib takes a `&Store`, not a transaction — so
+///  the returned `MutationResult.new_op_id` is always the PRE-CALL op-log head.
+class GitRemoteSetUrlRequest {
+  GitRemoteSetUrlRequest._(this._bc, this._bcOffset);
+  factory GitRemoteSetUrlRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitRemoteSetUrlRequest> reader = _GitRemoteSetUrlRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'GitRemoteSetUrlRequest{name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
+  }
+}
+
+class _GitRemoteSetUrlRequestReader extends fb.TableReader<GitRemoteSetUrlRequest> {
+  const _GitRemoteSetUrlRequestReader();
+
+  @override
+  GitRemoteSetUrlRequest createObject(fb.BufferContext bc, int offset) => GitRemoteSetUrlRequest._(bc, offset);
+}
+
+class GitRemoteSetUrlRequestBuilder {
+  GitRemoteSetUrlRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUrlOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPushUrlOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _url;
+  final String? _pushUrl;
+
+  GitRemoteSetUrlRequestObjectBuilder({
+    String? name,
+    String? url,
+    String? pushUrl,
+  }) : _name = name,
+       _url = url,
+       _pushUrl = pushUrl;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
+    final int? pushUrlOffset = _pushUrl == null ? null : fbBuilder.writeString(_pushUrl!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, urlOffset);
+    fbBuilder.addOffset(2, pushUrlOffset);
     return fbBuilder.endTable();
   }
 
@@ -4738,6 +4994,479 @@ class FileSearchObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One remote bookmark or tag `zanshin_git_import` changed (Story 9.5).
+///
+///  These are the four facts the CLI renders per line
+///  (`"{label}: {symbol} [{import_status}] {tracking_status}"`); the column padding and the
+///  colouring are the terminal UX Zanshin replaces. `tracked` is read from the POST-import
+///  view, not from the old remote ref — a freshly-imported ref's tracking state is decided
+///  during the import itself.
+class GitRefUpdate {
+  GitRefUpdate._(this._bc, this._bcOffset);
+  factory GitRefUpdate(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitRefUpdate> reader = _GitRefUpdateReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  GitRefUpdateKind get kind => GitRefUpdateKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'GitRefUpdate{name: ${name}, remote: ${remote}, kind: ${kind}, tracked: ${tracked}}';
+  }
+}
+
+class _GitRefUpdateReader extends fb.TableReader<GitRefUpdate> {
+  const _GitRefUpdateReader();
+
+  @override
+  GitRefUpdate createObject(fb.BufferContext bc, int offset) => GitRefUpdate._(bc, offset);
+}
+
+class GitRefUpdateBuilder {
+  GitRefUpdateBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addKind(GitRefUpdateKind? kind) {
+    fbBuilder.addInt8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(3, tracked);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitRefUpdateObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _remote;
+  final GitRefUpdateKind? _kind;
+  final bool? _tracked;
+
+  GitRefUpdateObjectBuilder({
+    String? name,
+    String? remote,
+    GitRefUpdateKind? kind,
+    bool? tracked,
+  }) : _name = name,
+       _remote = remote,
+       _kind = kind,
+       _tracked = tracked;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, remoteOffset);
+    fbBuilder.addInt8(2, _kind?.value);
+    fbBuilder.addBool(3, _tracked);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_git_import` (Story 9.5) — the CLI's `jj git import`.
+///
+///  `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+///  definition (the `AbsorbResult` precedent); its `new_change_ids` /
+///  `abandoned_change_ids` are always empty here — an import's own abandonments are
+///  `abandoned_change_ids` on THIS table, a different fact from the caller-supplied id list
+///  `MutationResult.abandoned_change_ids` echoes for `zanshin_abandon`.
+///
+///  If nothing needed importing NO operation was written, and `mutation.new_op_id` is the
+///  PRE-CALL op-log head. `failed_ref_names` is still reported in that case: a run where
+///  every pending ref failed changes nothing yet must say so, and nothing in the repository
+///  state lets a caller re-derive the list afterwards. A failed ref is NEVER an error — the
+///  CLI warns and exits 0. Names are lossy-UTF-8 (a git ref name is not guaranteed UTF-8);
+///  one under `refs/remotes/git/` is the reserved-namespace case.
+///
+///  `num_rewritten` is a plain COUNT because a count is all the CLI reports
+///  ("Updated {n} rewritten commits."); it saturates at 4294967295, as `AbsorbResult`'s own
+///  count does.
+class GitImportResult {
+  GitImportResult._(this._bc, this._bcOffset);
+  factory GitImportResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitImportResult> reader = _GitImportResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<GitRefUpdate>? get changedBookmarks =>
+      const fb.ListReader<GitRefUpdate>(GitRefUpdate.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<GitRefUpdate>? get changedTags =>
+      const fb.ListReader<GitRefUpdate>(GitRefUpdate.reader).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get abandonedChangeIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  int get numRewritten => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 12, 0);
+  List<String>? get failedRefNames =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'GitImportResult{mutation: ${mutation}, changedBookmarks: ${changedBookmarks}, changedTags: ${changedTags}, abandonedChangeIds: ${abandonedChangeIds}, numRewritten: ${numRewritten}, failedRefNames: ${failedRefNames}}';
+  }
+}
+
+class _GitImportResultReader extends fb.TableReader<GitImportResult> {
+  const _GitImportResultReader();
+
+  @override
+  GitImportResult createObject(fb.BufferContext bc, int offset) => GitImportResult._(bc, offset);
+}
+
+class GitImportResultBuilder {
+  GitImportResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangedTagsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAbandonedChangeIdsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumRewritten(int? numRewritten) {
+    fbBuilder.addUint32(4, numRewritten);
+    return fbBuilder.offset;
+  }
+
+  int addFailedRefNamesOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitImportResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final List<GitRefUpdateObjectBuilder>? _changedBookmarks;
+  final List<GitRefUpdateObjectBuilder>? _changedTags;
+  final List<String>? _abandonedChangeIds;
+  final int? _numRewritten;
+  final List<String>? _failedRefNames;
+
+  GitImportResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    List<GitRefUpdateObjectBuilder>? changedBookmarks,
+    List<GitRefUpdateObjectBuilder>? changedTags,
+    List<String>? abandonedChangeIds,
+    int? numRewritten,
+    List<String>? failedRefNames,
+  }) : _mutation = mutation,
+       _changedBookmarks = changedBookmarks,
+       _changedTags = changedTags,
+       _abandonedChangeIds = abandonedChangeIds,
+       _numRewritten = numRewritten,
+       _failedRefNames = failedRefNames;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? changedBookmarksOffset = _changedBookmarks == null
+        ? null
+        : fbBuilder.writeList(_changedBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? changedTagsOffset = _changedTags == null
+        ? null
+        : fbBuilder.writeList(_changedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? abandonedChangeIdsOffset = _abandonedChangeIds == null
+        ? null
+        : fbBuilder.writeList(_abandonedChangeIds!.map(fbBuilder.writeString).toList());
+    final int? failedRefNamesOffset = _failedRefNames == null
+        ? null
+        : fbBuilder.writeList(_failedRefNames!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, changedBookmarksOffset);
+    fbBuilder.addOffset(2, changedTagsOffset);
+    fbBuilder.addOffset(3, abandonedChangeIdsOffset);
+    fbBuilder.addUint32(4, _numRewritten);
+    fbBuilder.addOffset(5, failedRefNamesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One remote ref `zanshin_git_export` could not write to git (Story 9.5).
+///
+///  `reason` is jj-lib's own reason rendered as the FLATTENED `source()` chain joined by
+///  `": "`, exactly as the CLI prints it: the two interesting variants
+///  (`FailedToDelete`/`FailedToSet`) hide the real cause behind `#[source]`, so the
+///  top-level message alone would say only "Failed to set".
+class GitExportFailure {
+  GitExportFailure._(this._bc, this._bcOffset);
+  factory GitExportFailure(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitExportFailure> reader = _GitExportFailureReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get reason => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'GitExportFailure{name: ${name}, remote: ${remote}, reason: ${reason}}';
+  }
+}
+
+class _GitExportFailureReader extends fb.TableReader<GitExportFailure> {
+  const _GitExportFailureReader();
+
+  @override
+  GitExportFailure createObject(fb.BufferContext bc, int offset) => GitExportFailure._(bc, offset);
+}
+
+class GitExportFailureBuilder {
+  GitExportFailureBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReasonOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitExportFailureObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _remote;
+  final String? _reason;
+
+  GitExportFailureObjectBuilder({
+    String? name,
+    String? remote,
+    String? reason,
+  }) : _name = name,
+       _remote = remote,
+       _reason = reason;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
+    final int? reasonOffset = _reason == null ? null : fbBuilder.writeString(_reason!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, remoteOffset);
+    fbBuilder.addOffset(2, reasonOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_git_export` (Story 9.5) — the CLI's `jj git export`.
+///
+///  `mutation` is NESTED for the same reason as in `GitImportResult`; export never moves `@`
+///  and never mints or abandons a change, so its two id vectors are always empty. If git
+///  already matched, NO operation was written and `mutation.new_op_id` is the PRE-CALL
+///  op-log head.
+///
+///  Failed refs ride in the RESULT, never as an error envelope: the CLI warns and exits 0,
+///  and an export whose only outcome is a failure list must still be readable. The classic
+///  case is two bookmarks named `foo` and `foo/bar`, which git cannot both hold.
+///  `failed_tags` only ever contains `@git` tags — git has no remote tags.
+class GitExportResult {
+  GitExportResult._(this._bc, this._bcOffset);
+  factory GitExportResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitExportResult> reader = _GitExportResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<GitExportFailure>? get failedBookmarks =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<GitExportFailure>? get failedTags =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'GitExportResult{mutation: ${mutation}, failedBookmarks: ${failedBookmarks}, failedTags: ${failedTags}}';
+  }
+}
+
+class _GitExportResultReader extends fb.TableReader<GitExportResult> {
+  const _GitExportResultReader();
+
+  @override
+  GitExportResult createObject(fb.BufferContext bc, int offset) => GitExportResult._(bc, offset);
+}
+
+class GitExportResultBuilder {
+  GitExportResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedTagsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitExportResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final List<GitExportFailureObjectBuilder>? _failedBookmarks;
+  final List<GitExportFailureObjectBuilder>? _failedTags;
+
+  GitExportResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    List<GitExportFailureObjectBuilder>? failedBookmarks,
+    List<GitExportFailureObjectBuilder>? failedTags,
+  }) : _mutation = mutation,
+       _failedBookmarks = failedBookmarks,
+       _failedTags = failedTags;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? failedBookmarksOffset = _failedBookmarks == null
+        ? null
+        : fbBuilder.writeList(_failedBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? failedTagsOffset = _failedTags == null
+        ? null
+        : fbBuilder.writeList(_failedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, failedBookmarksOffset);
+    fbBuilder.addOffset(2, failedTagsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -4803,6 +5532,10 @@ class Envelope {
         return FileAnnotation.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 18:
         return FileSearch.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 19:
+        return GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 20:
+        return GitExportResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

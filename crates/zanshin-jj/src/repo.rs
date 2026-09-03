@@ -663,6 +663,214 @@ impl Repo {
         crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, progress)
     }
 
+    /// Reloads the workspace from disk so a freshly-written git config is visible.
+    ///
+    /// jj-lib's four remote mutators call `save_git_config()`, which writes the git config
+    /// file immediately but does NOT update the already-loaded `GitBackend`'s in-memory gix
+    /// config cache. Without this reload, `git_remote_add(…)` followed by `list_remotes()`
+    /// on the SAME handle would return the pre-call list. This is exactly step 3 of
+    /// [`Repo::clone_into`], which drops its throwaway transaction and reloads for the same
+    /// reason.
+    fn reload_workspace(&mut self) -> Result<(), crate::MutateError> {
+        let root = self.workspace.workspace_root().to_owned();
+        self.workspace = Workspace::load(
+            &self.settings,
+            &root,
+            &default_backend_factories(),
+            &default_working_copy_factories(),
+        )
+        .map_err(crate::mutate::be)?;
+        Ok(())
+    }
+
+    /// Runs [`Repo::reload_workspace`] after a verb that rewrote the git config, on BOTH
+    /// the success and the failure path — `remove_remote`/`rename_remote` write the config
+    /// BEFORE the git-ref edits that can still fail, so a mid-verb failure would otherwise
+    /// leave a stale cache behind.
+    ///
+    /// A reload failure is surfaced only when the verb itself succeeded: an already-failing
+    /// call must keep its own error, which is the one that explains what the user did.
+    fn reload_after_config_write(
+        &mut self,
+        result: Result<crate::MutationResult, crate::MutateError>,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let reload = self.reload_workspace();
+        let value = result?;
+        reload.map(|()| value)
+    }
+
+    /// Imports the backing git repo's refs into jj's view (Story 9.5) — the CLI's
+    /// `jj git import`.
+    ///
+    /// Unlike the CLI this is NOT skipped in a colocated workspace. The CLI's skip exists
+    /// because its own `workspace_helper` imports refs during its implicit per-command
+    /// snapshot; Zanshin never snapshots (D2), so the premise is false here and the skip
+    /// would make the verb unusable in exactly the repos that need it.
+    ///
+    /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are read
+    /// from the repo's EFFECTIVE config per call and never cached (FR-JJ-17). Per-remote
+    /// `auto-track-bookmarks` is NOT honoured — [`Repo::git_fetch`] and `clone` already
+    /// leave it empty, and changing that is a separate, three-call-site change.
+    ///
+    /// If nothing needed importing, NO operation is written and
+    /// `GitImportResult::mutation.new_op_id` is the pre-call op-log head. A ref that could
+    /// not be imported is reported in `failed_ref_names` and never fails the call — the CLI
+    /// warns and exits 0.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Config`] — the repo's jj config, its
+    ///   `revset-aliases."immutable_heads()"`, or one of the two `git.*` keys above could
+    ///   not be read, parsed, or resolved.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_import(&mut self) -> Result<crate::GitImportResult, crate::MutateError> {
+        // WHY: both are built from `&self` BEFORE `workspace_mut()` takes `&mut self` —
+        // the same borrow split `describe`/`restore` use.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
+        let config = crate::config::load(self).map_err(crate::mutate::cfg)?;
+        let options = crate::config::git_import_options(&config).map_err(crate::mutate::cfg)?;
+        crate::git::git_import(self.workspace_mut(), &immutable, &options)
+    }
+
+    /// Writes jj's bookmarks and tags back to the backing git repo (Story 9.5) — the CLI's
+    /// `jj git export`.
+    ///
+    /// Not skipped in a colocated workspace either — see [`Repo::git_import`] for why.
+    /// Export rewrites no commit, so it needs neither the immutable set nor a descendant
+    /// pass, and it never moves `@`.
+    ///
+    /// If git already matched, NO operation is written and
+    /// `GitExportResult::mutation.new_op_id` is the pre-call op-log head. Refs that could
+    /// not be written are reported in `failed_bookmarks` / `failed_tags` and never fail the
+    /// call — the CLI warns and exits 0. The classic case is two bookmarks named `foo` and
+    /// `foo/bar`, which git cannot both hold.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_export(&mut self) -> Result<crate::GitExportResult, crate::MutateError> {
+        crate::git::git_export(self.workspace_mut())
+    }
+
+    /// Registers a new git remote (Story 9.5) — the CLI's `jj git remote add`.
+    ///
+    /// `url` and `push_url` are passed through VERBATIM (FR-JJ-17); unlike the CLI, a
+    /// relative local path is NOT resolved against a process CWD a GUI backend has no
+    /// business consulting. The workspace is reloaded before returning, so
+    /// [`Repo::list_remotes`] on this SAME handle sees the new remote immediately.
+    ///
+    /// Adding a remote WITH a push URL is worth one warning: jj-lib writes a `pushurl` key,
+    /// and its own `remove_remote` then refuses that remote as
+    /// [`crate::MutateError::RemoteNonstandardConfig`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::RemoteExists`] — `name` is already taken.
+    /// - [`crate::MutateError::InvalidInput`] — `name` is the reserved `git`, contains a
+    ///   slash, or is not a valid gix remote name.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_remote_add(
+        &mut self,
+        name: &str,
+        url: &str,
+        push_url: Option<&str>,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let result = crate::git::git_remote_add(self.workspace_mut(), name, url, push_url);
+        self.reload_after_config_write(result)
+    }
+
+    /// Removes a git remote and forgets its bookmarks (Story 9.5) — the CLI's
+    /// `jj git remote remove`.
+    ///
+    /// The workspace is reloaded before returning (see [`Repo::git_remote_add`]).
+    /// Removing the reserved remote `git` succeeds and updates the git config and refs, but
+    /// changes no jj view state, so NO operation is written and the returned `new_op_id` is
+    /// the pre-call op-log head — the CLI behaves identically.
+    ///
+    /// Unlike the CLI, `.jj/repo/config.toml` is NOT edited: a `[remotes.<name>]` section
+    /// survives, and a `revset-aliases.'trunk()'` pinned to this remote keeps naming it.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::RemoteNotFound`] — no such remote.
+    /// - [`crate::MutateError::RemoteNonstandardConfig`] — jj refuses to rewrite this
+    ///   remote's git config (a remote added with a push URL is exactly this case).
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_remote_remove(&mut self, name: &str) -> Result<crate::MutationResult, crate::MutateError> {
+        let result = crate::git::git_remote_remove(self.workspace_mut(), name);
+        self.reload_after_config_write(result)
+    }
+
+    /// Renames a git remote (Story 9.5) — the CLI's `jj git remote rename`.
+    ///
+    /// The workspace is reloaded before returning (see [`Repo::git_remote_add`]). Renaming
+    /// FROM the reserved remote `git` writes no operation, for the same reason removing it
+    /// does not. `.jj/repo/config.toml` is NOT edited — see [`Repo::git_remote_remove`].
+    ///
+    /// jj-lib validates `new_name` BEFORE it reports that `old_name` is missing, so
+    /// `git_remote_rename("nonexistent", "git")` reports the reserved-name refusal. That
+    /// ordering is jj-lib's own and is reproduced, not corrected.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `new_name` is the reserved `git`, contains
+    ///   a slash, or is not a valid gix remote name.
+    /// - [`crate::MutateError::RemoteNotFound`] — `old_name` has no configured remote.
+    /// - [`crate::MutateError::RemoteExists`] — `new_name` is already taken.
+    /// - [`crate::MutateError::RemoteNonstandardConfig`] — `old_name`'s git config is not
+    ///   the plain single-fetch-refspec shape jj knows how to rewrite.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_remote_rename(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let result = crate::git::git_remote_rename(self.workspace_mut(), old_name, new_name);
+        self.reload_after_config_write(result)
+    }
+
+    /// Re-points a git remote's fetch and/or push URL (Story 9.5) — the CLI's
+    /// `jj git remote set-url`.
+    ///
+    /// NO operation is ever written: jj-lib's `set_remote_urls` takes a `&Store`, and the
+    /// CLI opens no transaction either — so the returned `new_op_id` is always the pre-call
+    /// op-log head. The workspace is still reloaded, so [`Repo::list_remotes`] on this same
+    /// handle reports the new URL.
+    ///
+    /// A `None` URL leaves that side unchanged (jj-lib cannot REMOVE a URL). With BOTH
+    /// `None` the call succeeds and does nothing — even for a remote that does not exist,
+    /// because jj-lib returns early before its own existence check. That is mirrored
+    /// deliberately.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::RemoteNotFound`] — at least one URL was supplied and `name`
+    ///   has no configured remote.
+    /// - [`crate::MutateError::InvalidInput`] — `name` is the reserved `git`, contains a
+    ///   slash, or is not a valid gix remote name.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_remote_set_url(
+        &mut self,
+        name: &str,
+        url: Option<&str>,
+        push_url: Option<&str>,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let result = crate::git::git_remote_set_url(self.workspace_mut(), name, url, push_url);
+        self.reload_after_config_write(result)
+    }
+
     /// Gives the paths matching `paths` in one commit the content they have in another
     /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
     ///

@@ -452,6 +452,33 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_show(
   int len,
 );
 
+/// Write jj's bookmarks and tags back to the backing git repo, in the repo referenced by
+/// `handle` — the CLI's `jj git export`.
+///
+/// Takes no arguments, and — like `zanshin_git_import` — is NOT skipped in a colocated
+/// workspace. Export never moves `@` and rewrites no commit.
+///
+/// If git already matched, NO operation is written and the nested
+/// `MutationResult.new_op_id` carries the PRE-CALL op-log head. Refs that could not be
+/// written land in `GitExportResult.failed_bookmarks` / `failed_tags` and do NOT fail the
+/// call; the classic case is two bookmarks named `foo` and `foo/bar`, which git cannot both
+/// hold.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitExportResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_export(
+  int handle,
+);
+
 /// Fetch all branches and tags from `remote_name` and import them, in the repo
 /// referenced by `handle`. Never moves `@` — fetch only updates remote-tracking refs.
 ///
@@ -485,6 +512,192 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_show(
 external ffi.Pointer<ZanshinBuf> zanshin_git_fetch(
   int handle,
   ffi.Pointer<ffi.Char> remote_name,
+);
+
+/// Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
+/// the CLI's `jj git import`.
+///
+/// Takes no arguments: the CLI's own `GitImportArgs` is empty. Unlike the CLI this is NOT
+/// skipped in a colocated workspace — that skip exists because the CLI imports refs during
+/// its implicit per-command snapshot, which Zanshin never performs (D2).
+///
+/// If nothing needed importing, NO operation is written and the nested
+/// `MutationResult.new_op_id` carries the PRE-CALL op-log head. A ref that could not be
+/// imported lands in `GitImportResult.failed_ref_names` and does NOT fail the call — the
+/// CLI warns and exits 0.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitImportResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the repo's effective jj config, its
+/// `revset-aliases."immutable_heads()"`, or `git.abandon-unreachable-commits` /
+/// `git.record-synthetic-predecessors` could not be read, parsed, or resolved.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+/// closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero handle is
+/// undefined behaviour; the Dart worker's Model-A handle table (Story 3.9) makes a stale
+/// handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_import(
+  int handle,
+);
+
+/// Register a new git remote in the repo referenced by `handle` — the CLI's
+/// `jj git remote add`.
+///
+/// The arguments cross as a `GitRemoteAddRequest` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern): `push_url` must be distinguishably ABSENT, which is what means
+/// "push to the fetch URL". Both URLs are passed to jj-lib VERBATIM — unlike the CLI, a
+/// relative local path is not resolved against a process CWD.
+///
+/// The workspace is reloaded before returning, so `zanshin_remotes` on this SAME handle
+/// reports the new remote immediately (jj-lib writes the git config file but leaves the
+/// loaded backend's gix config cache stale).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteAddRequest` buffer.
+/// - `jj.invalid_input` — `name` or `url` is absent from the buffer, or `name` is the
+/// reserved `git`, contains a slash, or is not a valid gix remote name.
+/// - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.GitRemoteAddRequestObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Remove a git remote and forget its bookmarks, in the repo referenced by `handle` — the
+/// CLI's `jj git remote remove`.
+///
+/// `name` is a required lone string, which ADR-0001 routes to a `CString`, not to
+/// `FlatBuffers`. The workspace is reloaded before returning (see
+/// `zanshin_git_remote_add`).
+///
+/// Removing the reserved remote `git` SUCCEEDS and updates the git config and refs, but
+/// changes no jj view state — so NO operation is written and `MutationResult.new_op_id`
+/// carries the PRE-CALL op-log head, exactly as in the CLI. Unlike the CLI,
+/// `.jj/repo/config.toml` is not edited: a `[remotes.<name>]` section survives and a
+/// `trunk()` alias pinned to this remote keeps naming it.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `name` is a null pointer.
+/// - `ffi.utf8_error` — `name` is not valid UTF-8.
+/// - `jj.remote_not_found` — no such remote; the name in `context`.
+/// - `jj.remote_nonstandard_config` — jj refuses to rewrite this remote's git config (a
+/// remote ADDED with a push URL is exactly this case); the name in `context`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// `name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart allocates via
+/// `toNativeUtf8()` and frees with `calloc.free()` after this call returns — AR-P-5 inbound
+/// rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_remote_remove(
+  int handle,
+  ffi.Pointer<ffi.Char> name,
+);
+
+/// Rename a git remote in the repo referenced by `handle` — the CLI's
+/// `jj git remote rename`.
+///
+/// Both names are required lone strings (ADR-0001 → `CString`). The workspace is reloaded
+/// before returning (see `zanshin_git_remote_add`). Renaming FROM the reserved remote `git`
+/// writes no operation, for the same reason removing it does not, and
+/// `.jj/repo/config.toml` is not edited.
+///
+/// jj-lib validates `new_name` BEFORE it reports that `old_name` is missing, so renaming a
+/// nonexistent remote to `git` reports the reserved-name refusal. That ordering is jj-lib's
+/// own and is reproduced, not corrected.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `old_name` or `new_name` is a null pointer.
+/// - `ffi.utf8_error` — either name is not valid UTF-8.
+/// - `jj.invalid_input` — `new_name` is the reserved `git`, contains a slash, or is not a
+/// valid gix remote name.
+/// - `jj.remote_not_found` — `old_name` has no configured remote; the name in `context`.
+/// - `jj.remote_exists` — `new_name` is already taken; the name in `context`.
+/// - `jj.remote_nonstandard_config` — `old_name`'s git config is not the plain
+/// single-fetch-refspec shape jj knows how to rewrite; the name in `context`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`; both names follow the same caller-owned
+/// C-string contract as `zanshin_git_remote_remove`'s `name`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_remote_rename(
+  int handle,
+  ffi.Pointer<ffi.Char> old_name,
+  ffi.Pointer<ffi.Char> new_name,
+);
+
+/// Re-point a git remote's fetch and/or push URL, in the repo referenced by `handle` — the
+/// CLI's `jj git remote set-url`.
+///
+/// The arguments cross as a `GitRemoteSetUrlRequest` `FlatBuffers` request buffer: BOTH
+/// URLs must be distinguishably ABSENT, and absence means "leave that side unchanged"
+/// (jj-lib cannot REMOVE a URL). With both absent the call succeeds and does nothing, EVEN
+/// for a remote that does not exist — jj-lib returns early before its own existence check,
+/// and inventing a refusal there would be a divergence.
+///
+/// This verb NEVER writes an operation (jj-lib takes a `&Store`, and the CLI opens no
+/// transaction either), so `MutationResult.new_op_id` is always the PRE-CALL op-log head.
+/// The workspace is still reloaded, so `zanshin_remotes` on this same handle reports the new
+/// URL.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteSetUrlRequest` buffer.
+/// - `jj.invalid_input` — `name` is absent from the buffer, or is the reserved `git`,
+/// contains a slash, or is not a valid gix remote name.
+/// - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
+/// remote; the name in `context`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and
+/// owned/freed by Dart (`fbs.GitRemoteSetUrlRequestObjectBuilder(...).toBytes()`); Rust only
+/// borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_remote_set_url(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
 );
 
 /// Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
@@ -983,6 +1196,8 @@ const int ENUM_MAX_CONFLICT_STATE = 1;
 
 const int ENUM_MAX_FILE_TYPE = 4;
 
+const int ENUM_MAX_GIT_REF_UPDATE_KIND = 2;
+
 const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
@@ -996,6 +1211,8 @@ const int ENUM_MIN_CHANGE_KIND = 0;
 const int ENUM_MIN_CONFLICT_STATE = 0;
 
 const int ENUM_MIN_FILE_TYPE = 0;
+
+const int ENUM_MIN_GIT_REF_UPDATE_KIND = 0;
 
 const int ENUM_MIN_GRAPH_EDGE_KIND = 0;
 
@@ -1028,6 +1245,26 @@ const int FileSearchRequest_VT_NAME_ONLY = 10;
 const int FileSearchRequest_VT_PATTERN = 6;
 
 const int FileSearch_VT_MATCHES = 4;
+
+const int GitExportResult_VT_FAILED_BOOKMARKS = 6;
+
+const int GitExportResult_VT_FAILED_TAGS = 8;
+
+const int GitImportResult_VT_CHANGED_BOOKMARKS = 6;
+
+const int GitImportResult_VT_CHANGED_TAGS = 8;
+
+const int GitImportResult_VT_FAILED_REF_NAMES = 14;
+
+const int GitImportResult_VT_NUM_REWRITTEN = 12;
+
+const int GitRefUpdate_VT_TRACKED = 10;
+
+const int GitRemoteAddRequest_VT_NAME = 4;
+
+const int GitRemoteAddRequest_VT_PUSH_URL = 8;
+
+const int GitRemoteAddRequest_VT_URL = 6;
 
 const int GraphActiveLane_VT_LANE = 4;
 
@@ -1115,8 +1352,6 @@ const int Progress_VT_OPERATION = 6;
 
 const int Progress_VT_PROGRESS = 8;
 
-const int Remote_VT_URL = 6;
-
 const int Remotes_VT_REMOTES = 4;
 
 const int RepoDetect_VT_SUGGESTED_KIND = 8;
@@ -1144,8 +1379,6 @@ const int SearchMatch_VT_LINE_NUMBER = 6;
 const int ShownFile_VT_CONTENT = 6;
 
 const int Signature_VT_EMAIL = 6;
-
-const int Signature_VT_NAME = 4;
 
 const int Signature_VT_TIMESTAMP_MILLIS = 8;
 

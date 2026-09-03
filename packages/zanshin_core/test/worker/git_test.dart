@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: MIT
+
+// Worker round-trip tests for Story 9.5's six `jj git` verbs: gitImport, gitExport,
+// gitRemoteAdd, gitRemoteRemove, gitRemoteRename and gitRemoteSetUrl, on both
+// [ZanshinWorker] and [RepoHandle].
+//
+// These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
+// via @ffi.Native native assets. No mocked isolates, no mocked FFI
+// (project-context: "Worker / isolate testing"). Mirrors test/worker/mutate_test.dart
+// and test/worker/file_test.dart. They are also what credits each of the six new
+// zanshin_git_* extern "C" functions in the coverage ratchet's extern-fn guard
+// (mem:project-coverage-extern-fn-needs-zanshin-core-test).
+//
+// The behavioural rows live Rust-side, where a scenario can be built cheaply:
+// crates/zanshin-jj/tests/git_sync.rs, crates/zanshin-jj/tests/git_remotes.rs and
+// crates/zanshin-ffi/tests/git_ffi.rs. What is asserted here is the seam: a real
+// cdylib call, a decoded payload, and the three refusal shapes a UI must handle.
+//
+// JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-flutter]
+// in Makefile.toml (project-context "Property of every test suite").
+
+import 'dart:io';
+
+import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/git.dart';
+import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
+import 'package:zanshin_core/src/worker/handle.dart';
+import 'package:zanshin_core/src/worker/isolate.dart';
+import 'package:zanshin_core/src/worker/responses.dart';
+
+void main() {
+  group('ZanshinWorker git round-trips (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+    late Directory remoteDir;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_git_test_');
+      remoteDir = Directory.systemTemp.createTempSync('zanshin_git_remote_');
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      for (final dir in [tempDir, remoteDir]) {
+        if (dir.existsSync()) {
+          dir.deleteSync(recursive: true);
+        }
+      }
+    });
+
+    // WHY the no-op path: a freshly-initialised git-backed workspace has no git ref
+    // jj has not seen and no jj bookmark git has not seen, so both sync verbs
+    // legitimately write nothing. Both are still REAL, successful calls through the
+    // compiled cdylib — which is what credits `zanshin_git_import` and
+    // `zanshin_git_export` in the extern-fn guard — and they assert the no-op
+    // contract itself (a success carrying the pre-call op-log head, not an error).
+    test('gitImport_on_a_fresh_git_workspace_is_a_no_op_success', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+
+      final GitImportResult result = await handle.gitImport();
+
+      expect(result.mutation.newOpId, isNotEmpty);
+      expect(result.changedBookmarks, isEmpty);
+      expect(result.changedTags, isEmpty);
+      expect(result.abandonedChangeIds, isEmpty);
+      expect(result.failedRefNames, isEmpty);
+      expect(result.numRewritten, equals(0));
+
+      await handle.close();
+    });
+
+    test('gitExport_on_a_fresh_git_workspace_is_a_no_op_success', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+
+      final GitExportResult result = await handle.gitExport();
+
+      expect(result.mutation.newOpId, isNotEmpty);
+      expect(result.failedBookmarks, isEmpty);
+      expect(result.failedTags, isEmpty);
+
+      await handle.close();
+    });
+
+    // The whole point of Story 9.5's workspace reload: `remotes()` on the SAME
+    // handle must reflect each config write with no reopen. Driving all four remote
+    // verbs in one sequence also credits all four extern fns.
+    test('the_four_remote_verbs_are_visible_through_the_same_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final String url = remoteDir.path;
+
+      final MutationResult added = await handle.gitRemoteAdd(name: 'origin', url: url);
+      expect(added.newOpId, isNotEmpty);
+      expect((await handle.remotes()).map((r) => r.name), equals(['origin']));
+      expect((await handle.remotes()).single.url, equals(url), reason: 'the url crosses verbatim');
+
+      await handle.gitRemoteSetUrl(name: 'origin', url: '$url-elsewhere');
+      expect((await handle.remotes()).single.url, equals('$url-elsewhere'));
+
+      await handle.gitRemoteRename('origin', 'upstream');
+      expect((await handle.remotes()).map((r) => r.name), equals(['upstream']));
+
+      await handle.gitRemoteRemove('upstream');
+      expect(await handle.remotes(), isEmpty);
+
+      await handle.close();
+    });
+
+    // One of the two error codes this story adds, surfacing as a real
+    // ZanshinFfiException through the whole worker seam.
+    test('gitRemoteAdd_duplicate_surfaces_jj_remote_exists', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path);
+
+      await expectLater(
+        handle.gitRemoteAdd(name: 'origin', url: remoteDir.path),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.remote_exists')
+              .having((e) => e.context, 'context', 'origin'),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    // The other new code: jj-lib writes a `pushurl` key for a remote added WITH a
+    // push url, and its own remove then refuses that remote.
+    test('gitRemoteRemove_of_a_remote_added_with_a_push_url_surfaces_jj_remote_nonstandard_config', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path, pushUrl: '${remoteDir.path}-push');
+
+      await expectLater(
+        handle.gitRemoteRemove('origin'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.remote_nonstandard_config')),
+      );
+
+      await handle.close();
+    });
+
+    // The reused-but-widened code: a native workspace has no git backend at all.
+    test('gitImport_on_a_native_workspace_surfaces_jj_not_a_git_repo', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      await expectLater(
+        handle.gitImport(),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.not_a_git_repo')),
+      );
+
+      await handle.close();
+    });
+
+    test('gitRemoteRemove_of_a_missing_remote_surfaces_jj_remote_not_found', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+
+      await expectLater(
+        handle.gitRemoteRemove('nonexistent'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.remote_not_found')
+              .having((e) => e.context, 'context', 'nonexistent'),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    // Model A: the worker's handle table is the only owner, so a command for a
+    // closed handle is answered with a synthesized envelope, never a stale pointer.
+    test('gitExport_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitExport(handleId),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    // The RepoHandle close-guard is SYNCHRONOUS for every verb — a closed handle
+    // must not even reach the worker.
+    test('every_git_verb_throws_StateError_synchronously_after_close', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      await handle.close();
+
+      expect(handle.gitImport, throwsStateError);
+      expect(handle.gitExport, throwsStateError);
+      expect(() => handle.gitRemoteAdd(name: 'origin', url: remoteDir.path), throwsStateError);
+      expect(() => handle.gitRemoteRemove('origin'), throwsStateError);
+      expect(() => handle.gitRemoteRename('origin', 'upstream'), throwsStateError);
+      expect(() => handle.gitRemoteSetUrl(name: 'origin', url: remoteDir.path), throwsStateError);
+    });
+  });
+}

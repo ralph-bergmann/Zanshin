@@ -505,6 +505,136 @@ final class FileSearchCommand extends WorkerCommand {
   final bool nameOnly;
 }
 
+/// Import the backing git repo's refs into jj's view, in the repo identified by
+/// [handleId] (Story 9.5) — the CLI's `jj git import`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitImport(raw)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<GitImportResult>` bytes. Takes no arguments — the CLI's
+/// own `jj git import` has none either.
+final class GitImportCommand extends WorkerCommand {
+  const GitImportCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}
+
+/// Write jj's bookmarks and tags back to the backing git repo, in the repo
+/// identified by [handleId] (Story 9.5) — the CLI's `jj git export`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitExport(raw)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<GitExportResult>` bytes.
+final class GitExportCommand extends WorkerCommand {
+  const GitExportCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}
+
+/// Register a new git remote in the repo identified by [handleId] (Story 9.5) —
+/// the CLI's `jj git remote add`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitRemoteAdd(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<MutationResult>` bytes.
+final class GitRemoteAddCommand extends WorkerCommand {
+  const GitRemoteAddCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.name,
+    required this.url,
+    required this.pushUrl,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// The remote's name, e.g. `origin`.
+  final String name;
+
+  /// The remote's fetch URL or path, passed through verbatim.
+  final String url;
+
+  /// The URL used for push; `null` = push to [url], which is git's own behaviour.
+  final String? pushUrl;
+}
+
+/// Remove a git remote and forget its bookmarks, in the repo identified by
+/// [handleId] (Story 9.5) — the CLI's `jj git remote remove`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitRemoteRemove(raw, name)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class GitRemoteRemoveCommand extends WorkerCommand {
+  const GitRemoteRemoveCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.name,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// The remote to remove. The reserved remote `git` is removable and writes no
+  /// operation.
+  final String name;
+}
+
+/// Rename a git remote in the repo identified by [handleId] (Story 9.5) — the
+/// CLI's `jj git remote rename`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitRemoteRename(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class GitRemoteRenameCommand extends WorkerCommand {
+  const GitRemoteRenameCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.oldName,
+    required this.newName,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// The name of an existing remote.
+  final String oldName;
+
+  /// The desired name for [oldName]. Validated BEFORE [oldName]'s existence is
+  /// checked — jj-lib's own ordering.
+  final String newName;
+}
+
+/// Re-point a git remote's fetch and/or push URL, in the repo identified by
+/// [handleId] (Story 9.5) — the CLI's `jj git remote set-url`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinGitRemoteSetUrl(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes. This verb never
+/// writes an operation.
+final class GitRemoteSetUrlCommand extends WorkerCommand {
+  const GitRemoteSetUrlCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.name,
+    required this.url,
+    required this.pushUrl,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// The remote to re-point.
+  final String name;
+
+  /// New fetch URL; `null` = leave it unchanged (a URL cannot be removed).
+  final String? url;
+
+  /// New push URL; `null` = leave it unchanged.
+  final String? pushUrl;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

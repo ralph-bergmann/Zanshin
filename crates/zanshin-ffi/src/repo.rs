@@ -25,8 +25,8 @@ use crate::envelope::{
     catch, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, reject_null_request,
     FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
     JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
-    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG,
+    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -79,8 +79,14 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// reports under those codes. `Config` reuses [`JJ_CONFIG_ERROR`] — it is the same
 /// malformed-config/bad-alias fault `log_defaults.rs` and `graph.rs` already report under
 /// that code (Story 4.9), reached from the mutation side because the immutability guard
-/// reads the repo's effective config.
-fn map_mutate_err(e: MutateError) -> FfiErrorObj {
+/// reads the repo's effective config. Story 9.5 adds three arms — `RemoteExists`
+/// (`jj.remote_exists`) and `RemoteNonstandardConfig` (`jj.remote_nonstandard_config`) are
+/// new codes, while `NotAGitRepo` reuses [`JJ_NOT_A_GIT_REPO`] with its meaning widened from
+/// "this path" to "this workspace's backend" and therefore carries no `context`.
+///
+/// `pub(crate)` since Story 9.5: `git.rs`'s six wrappers return the same [`MutateError`]
+/// taxonomy, and a second mapper would be a second, desyncable spelling of one mapping.
+pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::ChangeNotFound { id } => FfiErrorObj {
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
@@ -109,6 +115,20 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::NetworkError { reason } => FfiErrorObj {
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
+        },
+        MutateError::RemoteExists { name } => FfiErrorObj {
+            code: JJ_REMOTE_EXISTS.to_owned(),
+            context: Some(name),
+        },
+        MutateError::RemoteNonstandardConfig { name } => FfiErrorObj {
+            code: JJ_REMOTE_NONSTANDARD_CONFIG.to_owned(),
+            context: Some(name),
+        },
+        // No `context`: this variant names no path and no remote — the fault is the whole
+        // workspace's backend, which the code already says.
+        MutateError::NotAGitRepo => FfiErrorObj {
+            code: JJ_NOT_A_GIT_REPO.to_owned(),
+            context: None,
         },
         MutateError::RevsetParseError { reason } => FfiErrorObj {
             code: JJ_REVSET_PARSE_ERROR.to_owned(),

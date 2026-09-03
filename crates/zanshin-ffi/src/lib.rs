@@ -35,6 +35,7 @@ pub mod diagnostics;
 pub mod events;
 pub mod ffi_strings;
 pub mod file;
+pub mod git;
 pub mod graph;
 pub mod handle;
 pub mod log_defaults;

@@ -695,18 +695,115 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_GIT_REF_UPDATE_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 18;
+        pub const ENUM_MAX_GIT_REF_UPDATE_KIND: i8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 19] = [
+        pub const ENUM_VALUES_GIT_REF_UPDATE_KIND: [GitRefUpdateKind; 3] = [
+            GitRefUpdateKind::New,
+            GitRefUpdateKind::Updated,
+            GitRefUpdateKind::Deleted,
+        ];
+
+        /// How one remote ref changed during `zanshin_git_import` (Story 9.5) — the CLI's own
+        /// derivation from `(old_remote_ref.target.is_absent(), new_target.is_absent())`
+        /// (`cli/src/git_util.rs:418-425` @ v0.44.0).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct GitRefUpdateKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl GitRefUpdateKind {
+            pub const New: Self = Self(0);
+            pub const Updated: Self = Self(1);
+            pub const Deleted: Self = Self(2);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::New, Self::Updated, Self::Deleted];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::New => Some("New"),
+                    Self::Updated => Some("Updated"),
+                    Self::Deleted => Some("Deleted"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for GitRefUpdateKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for GitRefUpdateKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for GitRefUpdateKind {
+            type Output = GitRefUpdateKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for GitRefUpdateKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for GitRefUpdateKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for GitRefUpdateKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 20;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 21] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -726,6 +823,8 @@ pub mod zanshin {
             Payload::FileContents,
             Payload::FileAnnotation,
             Payload::FileSearch,
+            Payload::GitImportResult,
+            Payload::GitExportResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -752,9 +851,11 @@ pub mod zanshin {
             pub const FileContents: Self = Self(16);
             pub const FileAnnotation: Self = Self(17);
             pub const FileSearch: Self = Self(18);
+            pub const GitImportResult: Self = Self(19);
+            pub const GitExportResult: Self = Self(20);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 18;
+            pub const ENUM_MAX: u8 = 20;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -775,6 +876,8 @@ pub mod zanshin {
                 Self::FileContents,
                 Self::FileAnnotation,
                 Self::FileSearch,
+                Self::GitImportResult,
+                Self::GitExportResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -798,6 +901,8 @@ pub mod zanshin {
                     Self::FileContents => Some("FileContents"),
                     Self::FileAnnotation => Some("FileAnnotation"),
                     Self::FileSearch => Some("FileSearch"),
+                    Self::GitImportResult => Some("GitImportResult"),
+                    Self::GitExportResult => Some("GitExportResult"),
                     _ => None,
                 }
             }
@@ -2065,6 +2170,330 @@ pub mod zanshin {
                 ds.field("pattern", &self.pattern());
                 ds.field("paths", &self.paths());
                 ds.field("name_only", &self.name_only());
+                ds.finish()
+            }
+        }
+        pub enum GitRemoteAddRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_git_remote_add` (Story 9.5) — the CLI's `jj git remote add`.
+        ///
+        /// `name` and `url` are REQUIRED; an absent field is refused with `jj.invalid_input`,
+        /// mirroring the CLI's two required positionals. `push_url` is null-for-absence: ABSENT
+        /// means the remote pushes to its fetch URL, which is git's own behaviour and the CLI's
+        /// `--push-url` default. Both URLs cross VERBATIM — unlike the CLI, a relative local path
+        /// is NOT resolved against a process CWD (a GUI backend has none worth consulting).
+        ///
+        /// Adding a remote WITH a push url makes it non-removable by `zanshin_git_remote_remove`:
+        /// jj-lib's own `save_remote` writes a `pushurl` key, and its `remove_remote` refuses any
+        /// key outside `url`/`fetch`/`tagOpt` (`jj.remote_nonstandard_config`).
+        pub struct GitRemoteAddRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitRemoteAddRequest<'a> {
+            type Inner = GitRemoteAddRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitRemoteAddRequest<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitRemoteAddRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitRemoteAddRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitRemoteAddRequest<'bldr>> {
+                let mut builder = GitRemoteAddRequestBuilder::new(_fbb);
+                if let Some(x) = args.push_url {
+                    builder.add_push_url(x);
+                }
+                if let Some(x) = args.url {
+                    builder.add_url(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteAddRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteAddRequest::VT_URL, None)
+                }
+            }
+            #[inline]
+            pub fn push_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteAddRequest::VT_PUSH_URL, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitRemoteAddRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("push_url", Self::VT_PUSH_URL, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitRemoteAddRequestArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub push_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for GitRemoteAddRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitRemoteAddRequestArgs {
+                    name: None,
+                    url: None,
+                    push_url: None,
+                }
+            }
+        }
+
+        pub struct GitRemoteAddRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitRemoteAddRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteAddRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteAddRequest::VT_URL, url);
+            }
+            #[inline]
+            pub fn add_push_url(&mut self, push_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteAddRequest::VT_PUSH_URL, push_url);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitRemoteAddRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitRemoteAddRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitRemoteAddRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitRemoteAddRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitRemoteAddRequest");
+                ds.field("name", &self.name());
+                ds.field("url", &self.url());
+                ds.field("push_url", &self.push_url());
+                ds.finish()
+            }
+        }
+        pub enum GitRemoteSetUrlRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_git_remote_set_url` (Story 9.5) — the CLI's
+        /// `jj git remote set-url`.
+        ///
+        /// `name` is REQUIRED. `url` (fetch) and `push_url` are BOTH null-for-absence, and absence
+        /// means "leave that side unchanged" — jj-lib cannot REMOVE a URL from a remote. With both
+        /// absent the call succeeds and does nothing, EVEN for a remote that does not exist: jj-lib
+        /// returns `Ok(())` in `set_remote_urls`' first two lines, before its own existence check.
+        /// That is mirrored deliberately; inventing a refusal there would be a divergence.
+        ///
+        /// This verb never writes an operation — jj-lib takes a `&Store`, not a transaction — so
+        /// the returned `MutationResult.new_op_id` is always the PRE-CALL op-log head.
+        pub struct GitRemoteSetUrlRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitRemoteSetUrlRequest<'a> {
+            type Inner = GitRemoteSetUrlRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitRemoteSetUrlRequest<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitRemoteSetUrlRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitRemoteSetUrlRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitRemoteSetUrlRequest<'bldr>> {
+                let mut builder = GitRemoteSetUrlRequestBuilder::new(_fbb);
+                if let Some(x) = args.push_url {
+                    builder.add_push_url(x);
+                }
+                if let Some(x) = args.url {
+                    builder.add_url(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteSetUrlRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteSetUrlRequest::VT_URL, None)
+                }
+            }
+            #[inline]
+            pub fn push_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRemoteSetUrlRequest::VT_PUSH_URL, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitRemoteSetUrlRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("push_url", Self::VT_PUSH_URL, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitRemoteSetUrlRequestArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub push_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for GitRemoteSetUrlRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitRemoteSetUrlRequestArgs {
+                    name: None,
+                    url: None,
+                    push_url: None,
+                }
+            }
+        }
+
+        pub struct GitRemoteSetUrlRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitRemoteSetUrlRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteSetUrlRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteSetUrlRequest::VT_URL, url);
+            }
+            #[inline]
+            pub fn add_push_url(&mut self, push_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRemoteSetUrlRequest::VT_PUSH_URL, push_url);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> GitRemoteSetUrlRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitRemoteSetUrlRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitRemoteSetUrlRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitRemoteSetUrlRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitRemoteSetUrlRequest");
+                ds.field("name", &self.name());
+                ds.field("url", &self.url());
+                ds.field("push_url", &self.push_url());
                 ds.finish()
             }
         }
@@ -7941,6 +8370,814 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum GitRefUpdateOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One remote bookmark or tag `zanshin_git_import` changed (Story 9.5).
+        ///
+        /// These are the four facts the CLI renders per line
+        /// (`"{label}: {symbol} [{import_status}] {tracking_status}"`); the column padding and the
+        /// colouring are the terminal UX Zanshin replaces. `tracked` is read from the POST-import
+        /// view, not from the old remote ref — a freshly-imported ref's tracking state is decided
+        /// during the import itself.
+        pub struct GitRefUpdate<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitRefUpdate<'a> {
+            type Inner = GitRefUpdate<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitRefUpdate<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TRACKED: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitRefUpdate { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitRefUpdateArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitRefUpdate<'bldr>> {
+                let mut builder = GitRefUpdateBuilder::new(_fbb);
+                if let Some(x) = args.remote {
+                    builder.add_remote(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_tracked(args.tracked);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRefUpdate::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn remote(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitRefUpdate::VT_REMOTE, None)
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> GitRefUpdateKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<GitRefUpdateKind>(GitRefUpdate::VT_KIND, Some(GitRefUpdateKind::New))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitRefUpdate::VT_TRACKED, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitRefUpdate<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote", Self::VT_REMOTE, false)?
+                    .visit_field::<GitRefUpdateKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<bool>("tracked", Self::VT_TRACKED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitRefUpdateArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remote: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: GitRefUpdateKind,
+            pub tracked: bool,
+        }
+        impl<'a> Default for GitRefUpdateArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitRefUpdateArgs {
+                    name: None,
+                    remote: None,
+                    kind: GitRefUpdateKind::New,
+                    tracked: false,
+                }
+            }
+        }
+
+        pub struct GitRefUpdateBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitRefUpdateBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRefUpdate::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_remote(&mut self, remote: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitRefUpdate::VT_REMOTE, remote);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: GitRefUpdateKind) {
+                self.fbb_
+                    .push_slot::<GitRefUpdateKind>(GitRefUpdate::VT_KIND, kind, GitRefUpdateKind::New);
+            }
+            #[inline]
+            pub fn add_tracked(&mut self, tracked: bool) {
+                self.fbb_.push_slot::<bool>(GitRefUpdate::VT_TRACKED, tracked, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitRefUpdateBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitRefUpdateBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitRefUpdate<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitRefUpdate<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitRefUpdate");
+                ds.field("name", &self.name());
+                ds.field("remote", &self.remote());
+                ds.field("kind", &self.kind());
+                ds.field("tracked", &self.tracked());
+                ds.finish()
+            }
+        }
+        pub enum GitImportResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_git_import` (Story 9.5) — the CLI's `jj git import`.
+        ///
+        /// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+        /// definition (the `AbsorbResult` precedent); its `new_change_ids` /
+        /// `abandoned_change_ids` are always empty here — an import's own abandonments are
+        /// `abandoned_change_ids` on THIS table, a different fact from the caller-supplied id list
+        /// `MutationResult.abandoned_change_ids` echoes for `zanshin_abandon`.
+        ///
+        /// If nothing needed importing NO operation was written, and `mutation.new_op_id` is the
+        /// PRE-CALL op-log head. `failed_ref_names` is still reported in that case: a run where
+        /// every pending ref failed changes nothing yet must say so, and nothing in the repository
+        /// state lets a caller re-derive the list afterwards. A failed ref is NEVER an error — the
+        /// CLI warns and exits 0. Names are lossy-UTF-8 (a git ref name is not guaranteed UTF-8);
+        /// one under `refs/remotes/git/` is the reserved-namespace case.
+        ///
+        /// `num_rewritten` is a plain COUNT because a count is all the CLI reports
+        /// ("Updated {n} rewritten commits."); it saturates at 4294967295, as `AbsorbResult`'s own
+        /// count does.
+        pub struct GitImportResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitImportResult<'a> {
+            type Inner = GitImportResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitImportResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGED_BOOKMARKS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CHANGED_TAGS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NUM_REWRITTEN: ::flatbuffers::VOffsetT = 12;
+            pub const VT_FAILED_REF_NAMES: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitImportResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitImportResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitImportResult<'bldr>> {
+                let mut builder = GitImportResultBuilder::new(_fbb);
+                if let Some(x) = args.failed_ref_names {
+                    builder.add_failed_ref_names(x);
+                }
+                builder.add_num_rewritten(args.num_rewritten);
+                if let Some(x) = args.abandoned_change_ids {
+                    builder.add_abandoned_change_ids(x);
+                }
+                if let Some(x) = args.changed_tags {
+                    builder.add_changed_tags(x);
+                }
+                if let Some(x) = args.changed_bookmarks {
+                    builder.add_changed_bookmarks(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(GitImportResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn changed_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>,
+                    >>(GitImportResult::VT_CHANGED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn changed_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>,
+                    >>(GitImportResult::VT_CHANGED_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn abandoned_change_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitImportResult::VT_ABANDONED_CHANGE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn num_rewritten(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(GitImportResult::VT_NUM_REWRITTEN, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn failed_ref_names(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitImportResult::VT_FAILED_REF_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitImportResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>("mutation", Self::VT_MUTATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>>>("changed_bookmarks", Self::VT_CHANGED_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>>>("changed_tags", Self::VT_CHANGED_TAGS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
+     .visit_field::<u32>("num_rewritten", Self::VT_NUM_REWRITTEN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("failed_ref_names", Self::VT_FAILED_REF_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitImportResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub changed_bookmarks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>>,
+            >,
+            pub changed_tags: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>>,
+            >,
+            pub abandoned_change_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub num_rewritten: u32,
+            pub failed_ref_names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitImportResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitImportResultArgs {
+                    mutation: None,
+                    changed_bookmarks: None,
+                    changed_tags: None,
+                    abandoned_change_ids: None,
+                    num_rewritten: 0,
+                    failed_ref_names: None,
+                }
+            }
+        }
+
+        pub struct GitImportResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitImportResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    GitImportResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_changed_bookmarks(
+                &mut self,
+                changed_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitImportResult::VT_CHANGED_BOOKMARKS,
+                    changed_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_changed_tags(
+                &mut self,
+                changed_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitImportResult::VT_CHANGED_TAGS, changed_tags);
+            }
+            #[inline]
+            pub fn add_abandoned_change_ids(
+                &mut self,
+                abandoned_change_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitImportResult::VT_ABANDONED_CHANGE_IDS,
+                    abandoned_change_ids,
+                );
+            }
+            #[inline]
+            pub fn add_num_rewritten(&mut self, num_rewritten: u32) {
+                self.fbb_
+                    .push_slot::<u32>(GitImportResult::VT_NUM_REWRITTEN, num_rewritten, 0);
+            }
+            #[inline]
+            pub fn add_failed_ref_names(
+                &mut self,
+                failed_ref_names: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitImportResult::VT_FAILED_REF_NAMES,
+                    failed_ref_names,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitImportResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitImportResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitImportResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitImportResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitImportResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("changed_bookmarks", &self.changed_bookmarks());
+                ds.field("changed_tags", &self.changed_tags());
+                ds.field("abandoned_change_ids", &self.abandoned_change_ids());
+                ds.field("num_rewritten", &self.num_rewritten());
+                ds.field("failed_ref_names", &self.failed_ref_names());
+                ds.finish()
+            }
+        }
+        pub enum GitExportFailureOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One remote ref `zanshin_git_export` could not write to git (Story 9.5).
+        ///
+        /// `reason` is jj-lib's own reason rendered as the FLATTENED `source()` chain joined by
+        /// `": "`, exactly as the CLI prints it: the two interesting variants
+        /// (`FailedToDelete`/`FailedToSet`) hide the real cause behind `#[source]`, so the
+        /// top-level message alone would say only "Failed to set".
+        pub struct GitExportFailure<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitExportFailure<'a> {
+            type Inner = GitExportFailure<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitExportFailure<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitExportFailure { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitExportFailureArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitExportFailure<'bldr>> {
+                let mut builder = GitExportFailureBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.remote {
+                    builder.add_remote(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitExportFailure::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn remote(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitExportFailure::VT_REMOTE, None)
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitExportFailure::VT_REASON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitExportFailure<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote", Self::VT_REMOTE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitExportFailureArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remote: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for GitExportFailureArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitExportFailureArgs {
+                    name: None,
+                    remote: None,
+                    reason: None,
+                }
+            }
+        }
+
+        pub struct GitExportFailureBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitExportFailureBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitExportFailure::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_remote(&mut self, remote: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitExportFailure::VT_REMOTE, remote);
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitExportFailure::VT_REASON, reason);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitExportFailureBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitExportFailureBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitExportFailure<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitExportFailure<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitExportFailure");
+                ds.field("name", &self.name());
+                ds.field("remote", &self.remote());
+                ds.field("reason", &self.reason());
+                ds.finish()
+            }
+        }
+        pub enum GitExportResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_git_export` (Story 9.5) — the CLI's `jj git export`.
+        ///
+        /// `mutation` is NESTED for the same reason as in `GitImportResult`; export never moves `@`
+        /// and never mints or abandons a change, so its two id vectors are always empty. If git
+        /// already matched, NO operation was written and `mutation.new_op_id` is the PRE-CALL
+        /// op-log head.
+        ///
+        /// Failed refs ride in the RESULT, never as an error envelope: the CLI warns and exits 0,
+        /// and an export whose only outcome is a failure list must still be readable. The classic
+        /// case is two bookmarks named `foo` and `foo/bar`, which git cannot both hold.
+        /// `failed_tags` only ever contains `@git` tags — git has no remote tags.
+        pub struct GitExportResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitExportResult<'a> {
+            type Inner = GitExportResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitExportResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FAILED_BOOKMARKS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FAILED_TAGS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitExportResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitExportResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitExportResult<'bldr>> {
+                let mut builder = GitExportResultBuilder::new(_fbb);
+                if let Some(x) = args.failed_tags {
+                    builder.add_failed_tags(x);
+                }
+                if let Some(x) = args.failed_bookmarks {
+                    builder.add_failed_bookmarks(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(GitExportResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn failed_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(GitExportResult::VT_FAILED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn failed_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(GitExportResult::VT_FAILED_TAGS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitExportResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>("failed_bookmarks", Self::VT_FAILED_BOOKMARKS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>("failed_tags", Self::VT_FAILED_TAGS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitExportResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub failed_bookmarks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+            pub failed_tags: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for GitExportResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitExportResultArgs {
+                    mutation: None,
+                    failed_bookmarks: None,
+                    failed_tags: None,
+                }
+            }
+        }
+
+        pub struct GitExportResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitExportResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    GitExportResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_failed_bookmarks(
+                &mut self,
+                failed_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitExportResult::VT_FAILED_BOOKMARKS,
+                    failed_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_failed_tags(
+                &mut self,
+                failed_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitExportResult::VT_FAILED_TAGS, failed_tags);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitExportResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitExportResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitExportResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitExportResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitExportResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("failed_bookmarks", &self.failed_bookmarks());
+                ds.field("failed_tags", &self.failed_tags());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -8303,6 +9540,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_import_result(&self) -> Option<GitImportResult<'a>> {
+                if self.data_type() == Payload::GitImportResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitImportResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_export_result(&self) -> Option<GitExportResult<'a>> {
+                if self.data_type() == Payload::GitExportResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitExportResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -8399,6 +9666,16 @@ pub mod zanshin {
                             Payload::FileSearch => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileSearch>>(
                                     "Payload::FileSearch",
+                                    pos,
+                                ),
+                            Payload::GitImportResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GitImportResult>>(
+                                    "Payload::GitImportResult",
+                                    pos,
+                                ),
+                            Payload::GitExportResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GitExportResult>>(
+                                    "Payload::GitExportResult",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -8593,6 +9870,20 @@ pub mod zanshin {
                     }
                     Payload::FileSearch => {
                         if let Some(x) = self.data_as_file_search() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitImportResult => {
+                        if let Some(x) = self.data_as_git_import_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitExportResult => {
+                        if let Some(x) = self.data_as_git_export_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

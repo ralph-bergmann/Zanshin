@@ -153,6 +153,37 @@ pub enum MutateError {
         /// The underlying `git`/jj-lib failure message, forwarded verbatim.
         reason: String,
     },
+    /// [`crate::Repo::git_remote_add`] was called with a name that already has a
+    /// configured git remote, or [`crate::Repo::git_remote_rename`] with a NEW name that
+    /// does (Story 9.5).
+    ///
+    /// Distinct from [`MutateError::InvalidInput`] because the remedy is: the remote is
+    /// already there — re-point it with `git_remote_set_url` instead of adding it again.
+    #[error("git remote already exists: {name}")]
+    RemoteExists {
+        /// The remote name that is already taken.
+        name: String,
+    },
+    /// jj refuses to rewrite this remote's git config because it carries a key outside
+    /// `url`/`fetch`/`tagOpt`, or a `[branch]` section referencing it carries one outside
+    /// `remote`/`merge`/`rebase` (Story 9.5).
+    ///
+    /// Not exotic: jj-lib's own `save_remote` writes a `pushurl` key, so ADDING a remote
+    /// with a push URL and then REMOVING it hits this. The remedy is to edit the git config
+    /// by hand — nothing this crate offers can unblock it, which is why it is not
+    /// [`MutateError::InvalidInput`] and not the unclassified [`MutateError::Backend`].
+    #[error("git remote has nonstandard configuration: {name}")]
+    RemoteNonstandardConfig {
+        /// The remote whose git config jj refuses to rewrite.
+        name: String,
+    },
+    /// The open workspace has no git backend, so a git-only verb cannot run at all
+    /// (Story 9.5) — jj-lib's `UnexpectedGitBackendError`.
+    ///
+    /// Reuses the already-registered `jj.not_a_git_repo` code, whose meaning widens from
+    /// "this PATH is not a git repo" to "this WORKSPACE has no git backend".
+    #[error("not a git repository")]
+    NotAGitRepo,
     /// A caller-supplied revset expression is syntactically invalid or names an unknown
     /// function — [`crate::Repo::absorb`]'s `destinations` is the first mutation parameter
     /// that is a revset rather than a change id (Story 9.3).
@@ -663,7 +694,11 @@ pub(crate) fn abandon(
 /// `readonly` is the SAME head-resolved repo the (now dropped) transaction started from, so
 /// the op-log head is unchanged and `@` cannot have moved — `sync_working_copy` therefore
 /// never reaches `workspace.check_out` here and is reused only to read the current `@`.
-fn no_op_result(
+///
+/// `pub(crate)` so [`crate::git`]'s shared `finish_or_no_op` skeleton — and
+/// `git_remote_set_url`, which never opens a transaction at all — build the same shape
+/// instead of a second, desyncable copy (Story 9.5).
+pub(crate) fn no_op_result(
     workspace: &mut Workspace,
     workspace_name: &WorkspaceName,
     old_wc_id: Option<&jj_lib::backend::CommitId>,

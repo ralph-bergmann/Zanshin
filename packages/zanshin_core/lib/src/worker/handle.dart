@@ -3,6 +3,7 @@
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, SearchMatch;
+import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
 import '../ffi/log_defaults.dart' show LogDefaults;
@@ -458,6 +459,143 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.fileSearch(_handleId, pattern: pattern, revision: revision, paths: paths, nameOnly: nameOnly);
+  }
+
+  /// Import the backing git repo's refs into jj's view (Story 9.5) — the CLI's
+  /// `jj git import`.
+  ///
+  /// Takes no arguments; the CLI's own `jj git import` has none either. Unlike the
+  /// CLI this is NOT skipped in a colocated workspace: that skip exists because the
+  /// CLI imports refs during its implicit per-command snapshot, which Zanshin never
+  /// performs, so the skip's premise is false here.
+  ///
+  /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are
+  /// read from the repo's effective jj config per call. Per-remote
+  /// `auto-track-bookmarks` is not honoured — [gitFetch] and clone leave it empty
+  /// too, and changing that is a separate, three-call-site change.
+  ///
+  /// If nothing needed importing, no operation is written and `mutation.newOpId` is
+  /// the pre-call op-log head. A ref that could not be imported lands in
+  /// `failedRefNames` and does NOT fail the call — the CLI warns and exits 0.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error`).
+  Future<GitImportResult> gitImport() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitImport(_handleId);
+  }
+
+  /// Write jj's bookmarks and tags back to the backing git repo (Story 9.5) — the
+  /// CLI's `jj git export`.
+  ///
+  /// Not skipped in a colocated workspace either — see [gitImport]. Export never
+  /// moves `@` and rewrites no commit.
+  ///
+  /// If git already matched, no operation is written and `mutation.newOpId` is the
+  /// pre-call op-log head. Refs that could not be written land in `failedBookmarks`
+  /// / `failedTags` and do NOT fail the call; the classic case is two bookmarks
+  /// named `foo` and `foo/bar`, which git cannot both hold.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.jj_lib_error`).
+  Future<GitExportResult> gitExport() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitExport(_handleId);
+  }
+
+  /// Register a new git remote (Story 9.5) — the CLI's `jj git remote add`.
+  ///
+  /// [url] and [pushUrl] are passed through verbatim; unlike the CLI, a relative
+  /// local path is not resolved against a process CWD. A `null` [pushUrl] means the
+  /// remote pushes to [url], which is git's own behaviour.
+  ///
+  /// [remotes] on this SAME handle reflects the new remote immediately.
+  ///
+  /// One caveat worth surfacing in a UI: a remote added WITH a push URL cannot
+  /// later be removed — jj writes a `pushurl` key, which its own remove refuses as
+  /// `jj.remote_nonstandard_config`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.remote_exists`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> gitRemoteAdd({required String name, required String url, String? pushUrl}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitRemoteAdd(_handleId, name: name, url: url, pushUrl: pushUrl);
+  }
+
+  /// Remove a git remote and forget its bookmarks (Story 9.5) — the CLI's
+  /// `jj git remote remove`.
+  ///
+  /// [remotes] on this SAME handle reflects the removal immediately. Removing the
+  /// reserved remote `git` SUCCEEDS but writes no operation — it changes the git
+  /// config and refs, not jj's view.
+  ///
+  /// Unlike the CLI, `.jj/repo/config.toml` is not edited: a `[remotes.<name>]`
+  /// section survives, and a `revset-aliases.'trunk()'` pinned to this remote keeps
+  /// naming it.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> gitRemoteRemove(String name) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitRemoteRemove(_handleId, name);
+  }
+
+  /// Rename a git remote (Story 9.5) — the CLI's `jj git remote rename`.
+  ///
+  /// [remotes] on this SAME handle reflects the rename immediately. Renaming FROM
+  /// the reserved remote `git` writes no operation, for the same reason removing it
+  /// does not, and `.jj/repo/config.toml` is not edited — see [gitRemoteRemove].
+  ///
+  /// jj validates [newName] BEFORE it reports that [oldName] is missing, so
+  /// renaming a nonexistent remote to `git` reports the reserved-name refusal. That
+  /// ordering is jj's own and is reproduced, not corrected.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`,
+  /// `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error`).
+  Future<MutationResult> gitRemoteRename(String oldName, String newName) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitRemoteRename(_handleId, oldName, newName);
+  }
+
+  /// Re-point a git remote's fetch and/or push URL (Story 9.5) — the CLI's
+  /// `jj git remote set-url`.
+  ///
+  /// NEVER writes an operation: jj takes no transaction for this verb, and neither
+  /// does the CLI — so the returned `newOpId` is always the pre-call op-log head.
+  /// [remotes] on this SAME handle still reports the new URL.
+  ///
+  /// A `null` [url]/[pushUrl] leaves that side unchanged (a URL cannot be REMOVED
+  /// from a remote). With BOTH null the call succeeds and does nothing, even for a
+  /// remote that does not exist — jj returns early before its own existence check,
+  /// and inventing a refusal there would be a divergence.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.invalid_input`, `jj.not_a_git_repo`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> gitRemoteSetUrl({required String name, String? url, String? pushUrl}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitRemoteSetUrl(_handleId, name: name, url: url, pushUrl: pushUrl);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

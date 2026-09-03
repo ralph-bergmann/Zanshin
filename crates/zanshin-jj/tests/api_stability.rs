@@ -9,11 +9,12 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (50 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (55 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
-// --- FileContents/AnnotationLine/SearchMatch/FileError (9.4)) -------------------
+// --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
+// --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5)) -------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -90,6 +91,13 @@ type _FileContents = zanshin_jj::FileContents;
 type _AnnotationLine = zanshin_jj::AnnotationLine;
 type _SearchMatch = zanshin_jj::SearchMatch;
 type _FileError = zanshin_jj::FileError;
+
+// git sync + remote config (Story 9.5)
+type _GitImportResult = zanshin_jj::GitImportResult;
+type _GitRefUpdate = zanshin_jj::GitRefUpdate;
+type _GitRefUpdateKind = zanshin_jj::GitRefUpdateKind;
+type _GitExportResult = zanshin_jj::GitExportResult;
+type _GitExportFailure = zanshin_jj::GitExportFailure;
 
 // view (Story 9.2)
 type _Tag = zanshin_jj::Tag;
@@ -205,6 +213,38 @@ fn sample_search_match() -> zanshin_jj::SearchMatch {
         line_number: 0,
         content: Vec::new(),
         conflict_side: Some(0),
+    }
+}
+
+/// Names every `GitImportResult` / `GitRefUpdate` field by its public path (Story 9.5). The
+/// nested `MutationResult` is deliberately reused rather than repeated — that nesting IS the
+/// contract, as it is for `AbsorbResult`.
+fn sample_git_import_result() -> zanshin_jj::GitImportResult {
+    zanshin_jj::GitImportResult {
+        mutation: sample_mutation_result(),
+        changed_bookmarks: vec![zanshin_jj::GitRefUpdate {
+            name: String::new(),
+            remote: String::new(),
+            kind: zanshin_jj::GitRefUpdateKind::New,
+            tracked: false,
+        }],
+        changed_tags: vec![],
+        abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
+        num_rewritten: 0,
+        failed_ref_names: vec![String::new()],
+    }
+}
+
+/// Names every `GitExportResult` / `GitExportFailure` field by its public path (Story 9.5).
+fn sample_git_export_result() -> zanshin_jj::GitExportResult {
+    zanshin_jj::GitExportResult {
+        mutation: sample_mutation_result(),
+        failed_bookmarks: vec![zanshin_jj::GitExportFailure {
+            name: String::new(),
+            remote: String::new(),
+            reason: String::new(),
+        }],
+        failed_tags: vec![],
     }
 }
 
@@ -437,4 +477,62 @@ fn file_reads_surface_resolves() {
             &[String],
             bool,
         ) -> Result<Vec<zanshin_jj::SearchMatch>, zanshin_jj::FileError>;
+}
+
+/// Git sync + remote config (Story 9.5): 5 new types, 3 new `MutateError` variants, 6 new
+/// `Repo` methods.
+///
+/// A separate test for the same reason `content_ops_surface_resolves` and
+/// `file_reads_surface_resolves` are — `api_surface_resolves` sits at clippy's
+/// `too_many_lines` ceiling. All six methods are `fn`-pointer-pinnable (none takes a
+/// visitor), so their full signatures — which parameters are optional URLs, which verb takes
+/// no arguments at all — are pinned structurally here.
+///
+/// Each new `MutateError` variant is constructed AND its `Display` asserted: an unexercised
+/// `thiserror` arm is an uncovered line in `mutate.rs`, which the coverage ratchet pins.
+#[test]
+fn git_ops_surface_resolves() {
+    let exists = zanshin_jj::MutateError::RemoteExists {
+        name: "origin".to_owned(),
+    };
+    assert_eq!(exists.to_string(), "git remote already exists: origin");
+    let nonstandard = zanshin_jj::MutateError::RemoteNonstandardConfig {
+        name: "origin".to_owned(),
+    };
+    assert_eq!(
+        nonstandard.to_string(),
+        "git remote has nonstandard configuration: origin"
+    );
+    assert_eq!(zanshin_jj::MutateError::NotAGitRepo.to_string(), "not a git repository");
+
+    // Every `GitRefUpdateKind` member — the wire discriminant order is pinned by the schema.
+    _ = zanshin_jj::GitRefUpdateKind::New;
+    _ = zanshin_jj::GitRefUpdateKind::Updated;
+    _ = zanshin_jj::GitRefUpdateKind::Deleted;
+
+    _ = sample_git_import_result();
+    _ = sample_git_export_result();
+
+    _ = zanshin_jj::Repo::git_import
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::GitImportResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_export
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::GitExportResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_remote_add
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            &str,
+            Option<&str>,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_remote_remove
+        as fn(&mut zanshin_jj::Repo, &str) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_remote_rename
+        as fn(&mut zanshin_jj::Repo, &str, &str) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_remote_set_url
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            Option<&str>,
+            Option<&str>,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }

@@ -127,6 +127,40 @@ table FileSearchRequest {
   name_only: bool;
 }
 
+/// Arguments of `zanshin_git_remote_add` (Story 9.5) — the CLI's `jj git remote add`.
+///
+/// `name` and `url` are REQUIRED; an absent field is refused with `jj.invalid_input`,
+/// mirroring the CLI's two required positionals. `push_url` is null-for-absence: ABSENT
+/// means the remote pushes to its fetch URL, which is git's own behaviour and the CLI's
+/// `--push-url` default. Both URLs cross VERBATIM — unlike the CLI, a relative local path
+/// is NOT resolved against a process CWD (a GUI backend has none worth consulting).
+///
+/// Adding a remote WITH a push url makes it non-removable by `zanshin_git_remote_remove`:
+/// jj-lib's own `save_remote` writes a `pushurl` key, and its `remove_remote` refuses any
+/// key outside `url`/`fetch`/`tagOpt` (`jj.remote_nonstandard_config`).
+table GitRemoteAddRequest {
+  name: string;
+  url: string;
+  push_url: string;
+}
+
+/// Arguments of `zanshin_git_remote_set_url` (Story 9.5) — the CLI's
+/// `jj git remote set-url`.
+///
+/// `name` is REQUIRED. `url` (fetch) and `push_url` are BOTH null-for-absence, and absence
+/// means "leave that side unchanged" — jj-lib cannot REMOVE a URL from a remote. With both
+/// absent the call succeeds and does nothing, EVEN for a remote that does not exist: jj-lib
+/// returns `Ok(())` in `set_remote_urls`' first two lines, before its own existence check.
+/// That is mirrored deliberately; inventing a refusal there would be a divergence.
+///
+/// This verb never writes an operation — jj-lib takes a `&Store`, not a transaction — so
+/// the returned `MutationResult.new_op_id` is always the PRE-CALL op-log head.
+table GitRemoteSetUrlRequest {
+  name: string;
+  url: string;
+  push_url: string;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -140,6 +174,8 @@ table FileSearchRequest {
 //   Story 6-5  : mutation results ✓
 //   Story 9-3  : AbsorbResult ✓ (restore reuses MutationResult)
 //   Story 9-4  : FileList ✓, FileContents ✓, FileAnnotation ✓, FileSearch ✓
+//   Story 9-5  : GitImportResult ✓, GitExportResult ✓ (the four remote verbs reuse
+//                MutationResult)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -565,6 +601,83 @@ table FileSearch {
   matches: [SearchMatch];
 }
 
+/// How one remote ref changed during `zanshin_git_import` (Story 9.5) — the CLI's own
+/// derivation from `(old_remote_ref.target.is_absent(), new_target.is_absent())`
+/// (`cli/src/git_util.rs:418-425` @ v0.44.0).
+// Member order IS the wire value (New == 0, the FlatBuffers default) — APPEND only, never
+// reorder, exactly as for `FileType` above and `union Payload` below.
+enum GitRefUpdateKind : byte { New, Updated, Deleted }
+
+/// One remote bookmark or tag `zanshin_git_import` changed (Story 9.5).
+///
+/// These are the four facts the CLI renders per line
+/// (`"{label}: {symbol} [{import_status}] {tracking_status}"`); the column padding and the
+/// colouring are the terminal UX Zanshin replaces. `tracked` is read from the POST-import
+/// view, not from the old remote ref — a freshly-imported ref's tracking state is decided
+/// during the import itself.
+table GitRefUpdate {
+  name: string;      // bookmark/tag name, UTF-8
+  remote: string;    // the remote it belongs to, e.g. "origin"
+  kind: GitRefUpdateKind;
+  tracked: bool;
+}
+
+/// Outcome of a successful `zanshin_git_import` (Story 9.5) — the CLI's `jj git import`.
+///
+/// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+/// definition (the `AbsorbResult` precedent); its `new_change_ids` /
+/// `abandoned_change_ids` are always empty here — an import's own abandonments are
+/// `abandoned_change_ids` on THIS table, a different fact from the caller-supplied id list
+/// `MutationResult.abandoned_change_ids` echoes for `zanshin_abandon`.
+///
+/// If nothing needed importing NO operation was written, and `mutation.new_op_id` is the
+/// PRE-CALL op-log head. `failed_ref_names` is still reported in that case: a run where
+/// every pending ref failed changes nothing yet must say so, and nothing in the repository
+/// state lets a caller re-derive the list afterwards. A failed ref is NEVER an error — the
+/// CLI warns and exits 0. Names are lossy-UTF-8 (a git ref name is not guaranteed UTF-8);
+/// one under `refs/remotes/git/` is the reserved-namespace case.
+///
+/// `num_rewritten` is a plain COUNT because a count is all the CLI reports
+/// ("Updated {n} rewritten commits."); it saturates at 4294967295, as `AbsorbResult`'s own
+/// count does.
+table GitImportResult {
+  mutation: MutationResult;
+  changed_bookmarks: [GitRefUpdate];
+  changed_tags: [GitRefUpdate];
+  abandoned_change_ids: [string];   // ChangeIds, reverse-hex, of commits unreachable in git
+  num_rewritten: uint;
+  failed_ref_names: [string];
+}
+
+/// One remote ref `zanshin_git_export` could not write to git (Story 9.5).
+///
+/// `reason` is jj-lib's own reason rendered as the FLATTENED `source()` chain joined by
+/// `": "`, exactly as the CLI prints it: the two interesting variants
+/// (`FailedToDelete`/`FailedToSet`) hide the real cause behind `#[source]`, so the
+/// top-level message alone would say only "Failed to set".
+table GitExportFailure {
+  name: string;      // bookmark/tag name, UTF-8
+  remote: string;    // the remote it belongs to; "git" for the local git repo's own refs
+  reason: string;
+}
+
+/// Outcome of a successful `zanshin_git_export` (Story 9.5) — the CLI's `jj git export`.
+///
+/// `mutation` is NESTED for the same reason as in `GitImportResult`; export never moves `@`
+/// and never mints or abandons a change, so its two id vectors are always empty. If git
+/// already matched, NO operation was written and `mutation.new_op_id` is the PRE-CALL
+/// op-log head.
+///
+/// Failed refs ride in the RESULT, never as an error envelope: the CLI warns and exits 0,
+/// and an export whose only outcome is a failure list must still be readable. The classic
+/// case is two bookmarks named `foo` and `foo/bar`, which git cannot both hold.
+/// `failed_tags` only ever contains `@git` tags — git has no remote tags.
+table GitExportResult {
+  mutation: MutationResult;
+  failed_bookmarks: [GitExportFailure];
+  failed_tags: [GitExportFailure];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -585,6 +698,8 @@ union Payload {
   FileContents,
   FileAnnotation,
   FileSearch,
+  GitImportResult,
+  GitExportResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

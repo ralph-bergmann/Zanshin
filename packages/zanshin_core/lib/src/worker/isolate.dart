@@ -23,6 +23,7 @@ import '../ffi/events.dart'
         registerEventSink,
         unregisterEventSink;
 import '../ffi/file.dart' as repo_ffi_file;
+import '../ffi/git.dart' as repo_ffi_git;
 import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
@@ -927,6 +928,134 @@ class ZanshinWorker {
     );
     return repo_ffi_file.decodeFileSearchEnvelopeInternal(bytes);
   }
+
+  /// Import the backing git repo's refs into jj's view, in the repo identified by
+  /// [handleId] (Story 9.5) — the CLI's `jj git import`.
+  ///
+  /// Not skipped in a colocated workspace, unlike the CLI — see
+  /// [RepoHandle.gitImport]. If nothing needed importing, no operation is written
+  /// and `mutation.newOpId` is the pre-call op-log head. A ref that could not be
+  /// imported lands in `failedRefNames` and does NOT fail the call.
+  ///
+  /// Sends a [GitImportCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<GitImportResult>` bytes into a [repo_ffi_git.GitImportResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.config_error`). Completes with a [StateError] after
+  /// [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitImport].
+  Future<repo_ffi_git.GitImportResult> gitImport(int handleId) async {
+    final Uint8List bytes = await send(GitImportCommand(commandId: _correlator.allocateId(), handleId: handleId));
+    return repo_ffi_git.decodeGitImportResultEnvelopeInternal(bytes);
+  }
+
+  /// Write jj's bookmarks and tags back to the backing git repo, in the repo
+  /// identified by [handleId] (Story 9.5) — the CLI's `jj git export`.
+  ///
+  /// Sends a [GitExportCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<GitExportResult>` bytes into a [repo_ffi_git.GitExportResult].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.gitExport].
+  Future<repo_ffi_git.GitExportResult> gitExport(int handleId) async {
+    final Uint8List bytes = await send(GitExportCommand(commandId: _correlator.allocateId(), handleId: handleId));
+    return repo_ffi_git.decodeGitExportResultEnvelopeInternal(bytes);
+  }
+
+  /// Register a new git remote in the repo identified by [handleId] (Story 9.5).
+  ///
+  /// Sends a [GitRemoteAddCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.remote_exists`, `jj.invalid_input`, `jj.not_a_git_repo`). Completes with
+  /// a [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.gitRemoteAdd].
+  Future<repo_ffi_mutate.MutationResult> gitRemoteAdd(
+    int handleId, {
+    required String name,
+    required String url,
+    String? pushUrl,
+  }) async {
+    final Uint8List bytes = await send(
+      GitRemoteAddCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        name: name,
+        url: url,
+        pushUrl: pushUrl,
+      ),
+    );
+    return repo_ffi_git.decodeGitRemoteEnvelopeInternal(bytes);
+  }
+
+  /// Remove a git remote and forget its bookmarks, in the repo identified by
+  /// [handleId] (Story 9.5).
+  ///
+  /// Sends a [GitRemoteRemoveCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.remote_nonstandard_config`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.gitRemoteRemove].
+  Future<repo_ffi_mutate.MutationResult> gitRemoteRemove(int handleId, String name) async {
+    final Uint8List bytes = await send(
+      GitRemoteRemoveCommand(commandId: _correlator.allocateId(), handleId: handleId, name: name),
+    );
+    return repo_ffi_git.decodeGitRemoteEnvelopeInternal(bytes);
+  }
+
+  /// Rename a git remote in the repo identified by [handleId] (Story 9.5).
+  ///
+  /// Sends a [GitRemoteRenameCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.remote_exists`, `jj.invalid_input`,
+  /// `jj.remote_nonstandard_config`). Completes with a [StateError] after [close];
+  /// the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitRemoteRename].
+  Future<repo_ffi_mutate.MutationResult> gitRemoteRename(int handleId, String oldName, String newName) async {
+    final Uint8List bytes = await send(
+      GitRemoteRenameCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        oldName: oldName,
+        newName: newName,
+      ),
+    );
+    return repo_ffi_git.decodeGitRemoteEnvelopeInternal(bytes);
+  }
+
+  /// Re-point a git remote's fetch and/or push URL, in the repo identified by
+  /// [handleId] (Story 9.5). Never writes an operation.
+  ///
+  /// Sends a [GitRemoteSetUrlCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.remote_not_found`, `jj.invalid_input`). Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitRemoteSetUrl].
+  Future<repo_ffi_mutate.MutationResult> gitRemoteSetUrl(
+    int handleId, {
+    required String name,
+    String? url,
+    String? pushUrl,
+  }) async {
+    final Uint8List bytes = await send(
+      GitRemoteSetUrlCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        name: name,
+        url: url,
+        pushUrl: pushUrl,
+      ),
+    );
+    return repo_ffi_git.decodeGitRemoteEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1417,6 +1546,118 @@ void _workerEntry(_WorkerInit init) {
               paths: paths,
               nameOnly: nameOnly,
             );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitImportCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitImportCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitImport(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitExportCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitExportCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitExport(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitRemoteAddCommand(
+          :final int handleId,
+          :final String name,
+          :final String url,
+          :final String? pushUrl,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitRemoteAddCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitRemoteAdd(raw, name: name, url: url, pushUrl: pushUrl);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitRemoteRemoveCommand(:final int handleId, :final String name):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitRemoteRemoveCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitRemoteRemove(raw, name);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitRemoteRenameCommand(:final int handleId, :final String oldName, :final String newName):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitRemoteRenameCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitRemoteRename(raw, oldName, newName);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitRemoteSetUrlCommand(
+          :final int handleId,
+          :final String name,
+          :final String? url,
+          :final String? pushUrl,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitRemoteSetUrlCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_git.zanshinGitRemoteSetUrl(raw, name: name, url: url, pushUrl: pushUrl);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
