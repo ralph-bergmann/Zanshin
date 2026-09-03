@@ -2,10 +2,10 @@
 title: 'Story 9.5: Git local sync + remote config — `git import`, `git export`, `git remote add`/`remove`/`rename`/`set-url`'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'd797d3a09ad9b5438d8cd3582c180bdcc4af199c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
 deferred:
@@ -29,6 +29,62 @@ deferred:
   - 'No `absolute_git_url` resolution of a relative local path for `remote add`/`set-url`.
     The CLI resolves against its process CWD, which a GUI backend has none worth consulting;
     URLs cross verbatim (FR-JJ-17).'
+  - summary: >-
+      A push URL can be SET through the new verbs but never read back — `zanshin_jj::Remote`
+      carries only the fetch URL.
+    evidence: |-
+      `crates/zanshin-jj/src/remotes.rs` models a remote as `{ name, url }`, where `url` is
+      `Remote::url(Direction::Fetch)`. Story 9.5 adds `push_url` to both `git_remote_add` and
+      `git_remote_set_url`, so the write side now carries a field the read side cannot show;
+      the tests have to fall back to a raw `git config --get remote.<n>.pushurl` oracle,
+      which is the tell. `jj git remote list` itself prints `(push: <url>)`, so `list_remotes`
+      also diverges from the CLI here. Widening `Remote` changes the shipped `Remotes` payload
+      and belongs to a focused change on the Story 2.9 read surface.
+    location: >-
+      crates/zanshin-jj/src/remotes.rs (Remote) + schemas/envelope.fbs (Remotes)
+    severity: medium
+  - summary: >-
+      "This workspace has no git backend" maps to two different error codes depending on the
+      verb.
+    evidence: |-
+      `Repo::git_fetch` reports jj-lib's `UnexpectedGitBackendError` as
+      `MutateError::RemoteNotFound` → `jj.remote_not_found` (Story 6.4a's reasoning: a native
+      backend categorically has no remotes), while Story 9.5's six verbs report the identical
+      condition as `MutateError::NotAGitRepo` → `jj.not_a_git_repo`. Both are documented in
+      `docs/rust-error-codes.md`, but a UI cannot branch on "no git backend" with one arm.
+      Reconciling it means changing a shipped verb's observable error code.
+    location: >-
+      crates/zanshin-jj/src/remotes.rs (git_fetch) vs crates/zanshin-jj/src/git.rs
+    severity: medium
+  - summary: >-
+      `git_fetch` and `clone_into` still hardcode the two `GitImportOptions` booleans that
+      `git_import` now reads from the effective config.
+    evidence: |-
+      Story 9.5 added `config::git_import_options`, so `git.abandon-unreachable-commits` and
+      `git.record-synthetic-predecessors` are honoured by `git_import` (pinned by
+      `tests/git_sync.rs::git_import_honours_abandon_unreachable_commits_false`). The other two
+      jj-lib ref-import call sites — `remotes.rs::git_fetch` and `repo.rs::clone_into` — still
+      build the options from Rust constants, so the same user setting is respected by one verb
+      and overridden by two others in the same crate. No test asserts either behaviour at those
+      sites. Fixing it changes two shipped verbs and needs its own tests.
+    location: >-
+      crates/zanshin-jj/src/remotes.rs (git_fetch) + crates/zanshin-jj/src/repo.rs (clone_into)
+    severity: medium
+  - summary: >-
+      The jj-repo-config-rewrite reading of the intent ("Remote remove/rename also rewrite the
+      repo config") was resolved against porting the CLI's `.jj/repo/config.toml` edit.
+    evidence: |-
+      The intent's clause points at Story 2.9, whose own spec records jj-lib's
+      `add_remote` as "(stores url verbatim; writes .git/config)" and whose harness discovered
+      the gix in-memory config staleness — the reload this story implements. 2.9 contains no
+      TOML-writing pattern to mirror, so the sentence reads as a statement about jj-lib's own
+      out-of-transaction git-config write. The CLI's additional `.jj/repo/config.toml` edit
+      (`[remotes.<name>]` + the `trunk()` alias) is therefore recorded here rather than
+      implemented; it is the same item as the first entry in this list, kept separate because
+      the reading itself — not just the omission — is what a later pass may want to revisit.
+    location: >-
+      crates/zanshin-jj/src/git.rs (git_remote_remove / git_remote_rename)
+    severity: medium
 ---
 
 <intent-contract>
@@ -514,6 +570,52 @@ tag `v0.44.0`; every jj-lib anchor in the vendored `jj-lib-0.44.0`.
 
 ## Review Triage Log
 
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 13: (high 0, medium 5, low 8)
+- defer: 4: (high 0, medium 4, low 0)
+- reject: 14: (high 0, medium 0, low 14)
+- addressed_findings:
+  - `[medium]` `[patch]` `reload_after_config_write` dropped a failed reopen silently on the
+    verb-failure path, and an `Err` from the four remote verbs did not tell the caller that
+    the git config may already be rewritten (or the operation already committed) — added a
+    `tracing::warn!` on the dropped reload, documented the contract on all four `Repo`
+    methods and the four FFI wrappers, and pinned both arms with a reload-failure test.
+  - `[medium]` `[patch]` `git_remote_set_url`'s `push_url` crossed no test at any layer —
+    replacing it with `None` in `git.rs`, the FFI reader or the Dart builder left the suite
+    green. Added a jj-level row with a raw-git-config oracle, an FFI request-buffer row and a
+    Dart row.
+  - `[medium]` `[patch]` `GitRefUpdateKind::Deleted`/`Updated` were never asserted from a real
+    import although the abandon row already executed the `Deleted` arm — added the assertion
+    there and a new moved-ref row for `Updated`.
+  - `[medium]` `[patch]` the tag branch of `project_updates` was never reached by a real
+    import (every real-repo assertion checked `changed_tags` was empty), so flipping its
+    `tags` flag kept the suite green — added a real `refs/tags/…` import row asserting
+    name/remote/kind/tracked.
+  - `[medium]` `[patch]` no test exercised a COLOCATED workspace, the one surface where this
+    story deliberately diverges from the CLI — added
+    `both_sync_verbs_do_real_work_in_a_colocated_workspace` over `convert_colocated`.
+  - `[low]` `[patch]` `project_updates`' "must be the POST-import view" contract was violated
+    on the no-op path and held only by an unasserted coupling — the no-op path now skips the
+    projection behind a `debug_assert!`.
+  - `[low]` `[patch]` the three error mappers disagreed about wildcard-vs-exhaustive matching
+    — all three are exhaustive now (none of the jj-lib enums is `#[non_exhaustive]` at 0.44.0).
+  - `[low]` `[patch]` `ffi.utf8_error` was documented on two new wrappers but its registry row
+    was never extended and no test reached it — row extended, invalid-UTF-8 test added.
+  - `[low]` `[patch]` the partly-failed export row omitted the op-log assertion its own module
+    doc declares is repeated throughout — added.
+  - `[low]` `[patch]` only one of the two keys `config::git_import_options` reads had a
+    malformed-value refusal test — added the mirror row for
+    `git.record-synthetic-predecessors`.
+  - `[low]` `[patch]` `finish_envelope` was a second copy of `file.rs`'s in the very change
+    that lifted `missing_field` to avoid exactly that — lifted into `envelope.rs`.
+  - `[low]` `[patch]` the Dart `GitRefUpdateKind.created` rename diverged from the wire member
+    `New` with no explanation — documented as the forced Dart-keyword rename.
+  - `[low]` `[patch]` `remove_does_not_edit_the_jj_repo_config`'s doc comment described a
+    fresh-init path the test does not take — trimmed to what it asserts.
+
 ## Design Notes
 
 **Why all six verbs live in one new module.** `remotes.rs` owns the FR-JJ-9 remote *list* and the
@@ -600,3 +702,120 @@ ref names are not guaranteed UTF-8.
 - Diff the crate's `pub` items: confirm the additions are exactly the six `Repo` methods, the five
   new types and the three `MutateError` variants, and that no `jj_lib` type leaked into a public
   signature.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+The six `jj git` sync and remote-config verbs — `git import`, `git export`, `git remote add`,
+`remove`, `rename`, `set-url` — are implemented in a new `zanshin-jj` noun module against jj-lib
+and surfaced through the full chain this epic requires: two `.fbs` request tables, two new
+`Payload` slots (19–20) plus their payload tables, six `extern "C"` wrappers in a new
+`zanshin-ffi` noun module, regenerated committed codegen, a Dart adapter, six `WorkerCommand`s,
+six `ZanshinWorker` methods and six `RepoHandle` methods. The jj CLI at tag `v0.44.0` is the
+behavioral oracle throughout: guard order, refusal conditions, the transaction descriptions, the
+`has_changes()` no-op guard, the reserved-`git`-remote asymmetry and the import/export stat
+projection are ports of its observable behavior, not of its terminal UX.
+
+Two structural facts drove the design. First, jj-lib's four remote mutators write the git config
+file immediately via `save_git_config()` but leave the already-loaded `GitBackend`'s gix config
+cache stale, so every one of them reloads the workspace afterwards — on the failure path too,
+because the config is written before the git-ref edits that can still fail. Without that reload
+`Repo::list_remotes()` on the same handle would not see the change, which is an acceptance
+criterion, not a note. Second, `import_refs` records abandoned commits, so `git_import` resolves
+the immutable expression against `tx.base_repo()` and rebases descendants before committing —
+the CLI's own `tx.finish` step — or `Transaction::write` would panic on outstanding rewrites.
+
+Failed refs never fail the call: `git import` carries `failed_ref_names` and `git export` carries
+per-ref failure reasons (the flattened `source()` chain, exactly as the CLI renders it) in the
+payload, because the CLI warns and exits 0 and nothing in the repository state lets a caller
+re-derive them.
+
+### Files changed
+
+- `crates/zanshin-jj/src/git.rs` (new) — the six typed verbs, their owned result types
+  (`GitImportResult`, `GitRefUpdate`, `GitRefUpdateKind`, `GitExportResult`, `GitExportFailure`),
+  the shared `finish_or_no_op` transaction skeleton, `flatten_chain` and three exhaustive error
+  mappers.
+- `crates/zanshin-jj/src/mutate.rs` — three new `MutateError` variants (`RemoteExists`,
+  `RemoteNonstandardConfig`, `NotAGitRepo`); `no_op_result` lifted to `pub(crate)`.
+- `crates/zanshin-jj/src/config.rs` — `git_import_options`, reading
+  `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` off the effective
+  config (both already resolve through jj-lib's own builtin defaults).
+- `crates/zanshin-jj/src/repo.rs` — the six public facades plus `reload_workspace` /
+  `reload_after_config_write`.
+- `crates/zanshin-jj/src/lib.rs` — the module and the five new re-exports.
+- `schemas/envelope.fbs` — `GitRemoteAddRequest`, `GitRemoteSetUrlRequest`, the payload tables,
+  `enum GitRefUpdateKind : byte`, and `Payload` slots 19–20.
+- `crates/zanshin-ffi/src/git.rs` (new) — two request readers, two payload builders and the six
+  `extern "C"` wrappers; `crates/zanshin-ffi/src/envelope.rs` — the two new codes plus the shared
+  `finish_envelope`/`missing_field`/`build_mutation_result`; `repo.rs` — `map_mutate_err` made
+  `pub(crate)` with three new arms; `file.rs` — now uses the shared `finish_envelope`.
+- Committed codegen: `crates/zanshin-ffi/src/envelope_generated.rs`,
+  `crates/zanshin-ffi/include/zanshin_ffi.h`,
+  `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart`,
+  `packages/zanshin_core/lib/src/ffi/bindings.dart`.
+- `packages/zanshin_core/lib/src/ffi/git.dart` (new) — six adapters, the models and two decoder
+  triples; `lib/src/worker/{commands,isolate,handle}.dart` — commands, worker methods, switch
+  arms and handle methods.
+- Tests: `crates/zanshin-jj/tests/git_sync.rs` (new, 14), `crates/zanshin-jj/tests/git_remotes.rs`
+  (new, 20), `crates/zanshin-ffi/tests/git_ffi.rs` (new, 16),
+  `packages/zanshin_core/test/{ffi,worker}/git_test.dart` (new, 26 rows),
+  `crates/zanshin-jj/tests/api_stability.rs` (a new `git_ops_surface_resolves` pinning test).
+- `docs/rust-error-codes.md` — the `jj.remote_exists` and `jj.remote_nonstandard_config` rows plus
+  Story 9.5 emitter clauses on seven reused rows.
+- `coverage-baseline.txt` — two new files plus `crates/zanshin-jj/src/repo.rs` raised
+  94.92 → 95.74 and `crates/zanshin-jj/src/git.rs` raised 98.03 → 98.87 by the review pass.
+
+### Review findings breakdown
+
+- Patches applied: 13 (high 0, medium 5, low 8) — see the 2026-09-03 entry in the Review Triage
+  Log for each finding and the action taken.
+- Items deferred: 4 (medium 4) — appended to the frontmatter `deferred` list, which now also
+  carries the four scope decisions recorded during implementation.
+- Items rejected: 14 — chiefly the cyclic-`source()` guard for `flatten_chain` (unconstructible
+  with `thiserror`/std error types), the demand that `set-url` with both URLs absent refuse on a
+  native backend (jj-lib's own early return, which the CLI shares and the I/O matrix pins), the
+  `calloc.free`/`toNativeUtf8` pairing (byte-identical to the shipped `zanshinGitFetch`
+  adapter), the claim that `envelope.rs` misattributes the new codes (its convention names the
+  surfacing wrapper, exactly as the pre-existing `JJ_REMOTE_NOT_FOUND` doc does), the per-file
+  test-harness duplication (a deliberate, documented convention in this crate), the
+  `session_from_handle`/`isolate.dart` invalid-handle duplication and the stale
+  `docs/ffi-abi.md` (both already recorded as deferred by Story 9.4), and a non-zero
+  `num_rewritten` assertion (no fixture can construct the rewrite it counts).
+- Follow-up review recommended: **true**. Patched severities: high 0, medium 5, low 8; score
+  = 3 × 5 + 1 × 8 = 23, at or above the threshold of 5.
+
+### Verification performed
+
+- `cargo make test` — exit 0, run unpiped, both before and after the review patches (cargo test
+  + clippy pedantic `-D warnings` + rustfmt + flutter/dart analyze + format + `cargo deny` + the
+  coverage ratchet). Overall coverage 99.11% (7474/7541 lines over 40 files); no file dropped, no
+  `exclude_prefix` added, and `extern-coverage` reports every `zanshin-ffi` `extern "C"` fn
+  covered.
+- `cargo make verify-codegen` — exit 0 on the clean tree after each commit; no drift for
+  `zanshin_ffi.h`, `bindings.dart`, `envelope_generated.rs` or
+  `envelope_zanshin.ffi_generated.dart`.
+- Matrix audit — every row of the I/O & Edge-Case Matrix maps to a named test that ran and passed
+  in the gate output, including a zero-handle assertion for each of the six wrappers.
+- `git status --porcelain` — clean after each commit.
+
+### Residual risks
+
+- **Nothing about these verbs is atomic.** jj-lib writes the git config, then edits the git refs,
+  and only then does the transaction commit. A failure at either later step leaves the config
+  already rewritten while no operation is written. The behaviour is jj's own, is documented on
+  all four remote verbs and their wrappers, and is not otherwise mitigated.
+- **`git_import`'s abandoned-working-copy path depends on jj-lib's `pinned_commit_ids` not
+  including working-copy commits.** That holds at 0.44.0 and is covered by a test, but it is an
+  internal-behaviour dependency a pin bump could shift.
+- **`GitImportResult.num_rewritten` is only ever observed as zero from a real import.**
+  Constructing a non-zero value needs a synthetic-predecessor rewrite no fixture can build, so
+  the field's derivation is exercised only through synthetic buffers.
+- **The reload after a git-config write turns a landed mutation into an `Err` if
+  `Workspace::load` then fails.** The operation is committed and the config written, but the
+  `MutationResult` — including `new_op_id` — is discarded. Documented on every affected method;
+  reaching it requires the repo to break between the commit and the reopen.
