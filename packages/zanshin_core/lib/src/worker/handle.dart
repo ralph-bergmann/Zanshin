@@ -651,7 +651,13 @@ final class RepoHandle {
   /// silent.
   ///
   /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each
-  /// entry's predecessors, so compose this with [interdiff].
+  /// entry's predecessors — which [interdiff]'s change-id currency cannot address,
+  /// since they are hidden, so the two verbs do NOT currently compose into it.
+  ///
+  /// `EvologEntry.change` carries two fields derived against the CURRENT view
+  /// rather than this version's moment: `divergent` (whether the change has
+  /// several visible commits right now — the same answer on every row) and
+  /// `isAnonymous` (today's local bookmarks).
   ///
   /// This read writes no operation. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
@@ -667,9 +673,15 @@ final class RepoHandle {
   /// Compare what two revisions each CHANGE, with the parent difference factored
   /// out (Story 9.6) — the CLI's `jj interdiff`.
   ///
-  /// Unlike [show], each side is a SINGLE revision (a jj reverse-hex change id),
-  /// so a divergent id is refused rather than guessed. An absent side is `@` — but
-  /// omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
+  /// Unlike [show], each side is a SINGLE revision (a jj reverse-hex CHANGE id).
+  /// Each inherits the CLI `resolve_single_rev`'s REFUSAL — a divergent id is
+  /// rejected rather than guessed — but NOT its address space: a side resolves to
+  /// the one VISIBLE commit carrying that change-id prefix, so a commit hex, a
+  /// revset expression (`main`, `@-`) and a HIDDEN commit are all unaddressable
+  /// here, where the CLI accepts all three. In particular the
+  /// `EvologEntry.predecessorCommitIds` [evolog] reports are hidden, so the two
+  /// verbs do NOT compose into a version-to-version diff. An absent side is `@` —
+  /// but omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
   /// required argument group: interdiffing `@` against itself is trivially empty
   /// and never what a caller meant.
   ///

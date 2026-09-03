@@ -34,7 +34,10 @@
 //! [`crate::ChangeId`], but a parameter whose CLI form is a *set* stays a revset STRING so
 //! aliases and config resolution survive (FR-JJ-17). `jj show` and `jj evolog` both take
 //! `Vec<RevisionArg>` and union them, so they take `Option<&str>`; `jj interdiff` takes two
-//! `resolve_single_rev` arguments, so it takes `Option<&ChangeId>` twice.
+//! `resolve_single_rev` arguments, so it takes `Option<&ChangeId>` twice. The change-id
+//! currency inherits `resolve_single_rev`'s ambiguity REFUSAL but not its address space: a
+//! commit hex, a revset expression and a HIDDEN commit are all unaddressable through it. See
+//! [`interdiff`] for the consequence.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -78,6 +81,14 @@ pub struct ShowEntry {
 #[derive(Debug)]
 pub struct EvologEntry {
     /// Full metadata for this version of the change.
+    ///
+    /// Two of its fields are derived against the CURRENT view rather than against the moment
+    /// this version existed, because they come from the single [`Change`] construction site
+    /// (`change.rs::change_from_commit`) that every other verb uses: `divergent` reports
+    /// whether the change has several VISIBLE commits right now — the same answer on every
+    /// row of one evolution, and never a statement about this historical version — and
+    /// `is_anonymous` reads today's local bookmarks. Everything else (`commit_id`, `parents`,
+    /// `description`, signatures, timestamps, `conflict`) is this version's own.
     pub change: Change,
     /// The commit ids this version was rewritten FROM, as the recording operation stored them.
     /// Empty when `operation_id` is `None`, and for a commit that was never rewritten.
@@ -344,9 +355,16 @@ pub(crate) fn evolog(
 ///
 /// Ports `cli/src/commands/interdiff.rs::cmd_interdiff` @ v0.44.0: both sides default to `@`
 /// individually, but omitting BOTH is a refusal (the CLI's `ArgGroup … required(true)`) —
-/// interdiffing `@` against itself is trivially empty and never what a caller meant. Each side
-/// is a single revision resolved the way `resolve_single_rev` resolves it, so a divergent id is
-/// refused rather than guessed.
+/// interdiffing `@` against itself is trivially empty and never what a caller meant.
+///
+/// Each side is a SINGLE revision, and it inherits the CLI's `resolve_single_rev` REFUSAL —
+/// an ambiguous (divergent) id is rejected rather than guessed. It does NOT inherit the CLI's
+/// address space: [`op_support::resolve_commit`] takes a reverse-hex CHANGE-ID prefix and
+/// resolves it to the one VISIBLE commit carrying it, so a commit hex, a revset expression
+/// (`main`, `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all
+/// three. That is the house currency (9.3, FR-JJ-17) and it has a consequence worth naming:
+/// the predecessors [`evolog`] reports are hidden by construction, so the two verbs cannot be
+/// composed to diff one version of a change against the next.
 ///
 /// `from` is rebased onto `to`'s parents in memory (`rewrite::rebase_to_dest_parent` — no
 /// transaction, nothing written) and the result is diffed against `to`'s tree. Copy records are

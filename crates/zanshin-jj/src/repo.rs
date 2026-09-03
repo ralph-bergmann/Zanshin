@@ -970,7 +970,11 @@ impl Repo {
     /// silent.
     ///
     /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each entry's
-    /// predecessors, so a caller composes this with [`Repo::interdiff`].
+    /// predecessors. Note that [`Repo::interdiff`]'s change-id currency cannot address those
+    /// predecessors — they are hidden — so the two verbs do NOT currently compose into it.
+    ///
+    /// [`crate::EvologEntry::change`] carries two fields derived against the CURRENT view
+    /// rather than this version's moment (`divergent`, `is_anonymous`); see its doc.
     ///
     /// # Errors
     ///
@@ -996,9 +1000,15 @@ impl Repo {
     /// `jj interdiff` (AR-AP-1), and never writes an operation — not even on a refusal. Nothing
     /// is written by the rebase either: `rebase_to_dest_parent` merges in memory.
     ///
-    /// Unlike [`Repo::show`], each side is a SINGLE revision (the CLI resolves both with
-    /// `resolve_single_rev`), so a divergent id is refused rather than guessed. An absent side
-    /// defaults to `@` — but omitting BOTH is a refusal, mirroring the CLI's
+    /// Unlike [`Repo::show`], each side is a SINGLE revision, and it inherits the CLI's
+    /// `resolve_single_rev` REFUSAL — a divergent id is rejected rather than guessed. It does
+    /// NOT inherit the CLI's address space: a side is a reverse-hex CHANGE-ID prefix resolved
+    /// to the one VISIBLE commit carrying it, so a commit hex, a revset expression (`main`,
+    /// `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all three.
+    /// That is the house currency (Story 9.3, FR-JJ-17); its consequence is that the
+    /// predecessors [`Repo::evolog`] reports — hidden by construction — cannot be fed back in,
+    /// so the two verbs do not compose into a diff of one version against the next.
+    /// An absent side defaults to `@` — but omitting BOTH is a refusal, mirroring the CLI's
     /// `ArgGroup … required(true)`: interdiffing `@` against itself is trivially empty and
     /// never what a caller meant.
     ///

@@ -97,6 +97,20 @@ void main() {
       expect(await handle.evolog(limit: 0), isEmpty);
       // A limit above the walk length is not an error either.
       expect(await handle.evolog(limit: 5), hasLength(1));
+
+      // Above the wire field's `uint` ceiling the adapter SATURATES. Dart ints are
+      // 64-bit, so without the clamp 2^32 is written as `0` and comes back as an
+      // EMPTY evolog - the most misleading possible answer to "give me everything".
+      expect(
+        await handle.evolog(limit: 0x100000000),
+        hasLength(1),
+        reason: 'an over-large limit must mean "everything", not wrap to zero',
+      );
+
+      // The negative-limit guard is documented on this method, so it must be
+      // rejected on the CALLING side: thrown inside the worker isolate it would
+      // come back as `internal.dispatch_error`, not as an ArgumentError.
+      await expectLater(handle.evolog(limit: -1), throwsArgumentError);
       await handle.close();
     });
 

@@ -1066,8 +1066,9 @@ class ZanshinWorker {
   /// commits of ONE divergent change yields two entries with the same `Change.id`.
   /// A BARE divergent change-id symbol is REFUSED by jj-lib's own `SymbolResolver`
   /// (`jj.revset_resolution_error`), exactly as `jj show <divergent-id>` fails in
-  /// the CLI; union the two COMMIT hexes to address both. This read writes no
-  /// operation.
+  /// the CLI; union the two COMMIT hexes to address both. Unlike [interdiff]'s
+  /// change-id sides, a revset can therefore reach a commit by its hex. This read
+  /// writes no operation.
   ///
   /// Sends a [ShowCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<ShowView>` bytes into a `List<ShowEntry>`.
@@ -1099,6 +1100,15 @@ class ZanshinWorker {
   /// Completes with a [StateError] after [close]; the close-guard [StateError] is
   /// delivered synchronously by [RepoHandle.evolog].
   Future<List<repo_ffi_commit_views.EvologEntry>> evolog(int handleId, {String? revset, int? limit}) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw is caught by the dispatch loop and comes back as
+    // `internal.dispatch_error` — not as the [ArgumentError] this method and
+    // [RepoHandle.evolog] both document. Rejecting on the calling side keeps the
+    // documented type and spares the round trip. The adapter keeps its own guard
+    // as the backstop for a direct caller.
+    if (limit != null && limit < 0) {
+      throw ArgumentError.value(limit, 'limit', 'must not be negative');
+    }
     final Uint8List bytes = await send(
       EvologCommand(commandId: _correlator.allocateId(), handleId: handleId, revset: revset, limit: limit),
     );
@@ -1109,7 +1119,11 @@ class ZanshinWorker {
   /// out, in the repo identified by [handleId] (Story 9.6) — the CLI's
   /// `jj interdiff`.
   ///
-  /// An absent side is `@`; omitting BOTH is refused with `jj.invalid_input`. No
+  /// Both sides are jj reverse-hex CHANGE ids. They inherit the CLI
+  /// `resolve_single_rev`'s ambiguity REFUSAL but not its address space: a commit
+  /// hex, a revset expression and a HIDDEN commit are all unaddressable, so
+  /// [evolog]'s hidden predecessors cannot be fed back in. An absent side is `@`;
+  /// omitting BOTH is refused with `jj.invalid_input`. No
   /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
   /// records, the CLI's own asymmetry with `show`. This read writes no operation.
   ///

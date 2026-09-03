@@ -587,6 +587,18 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
         "unexpected error: {err:?}"
     );
 
+    // An explicitly PRESENT empty string is a VALUE, not an absence: it must reach the parser
+    // rather than silently becoming the `@` default that `None` applies. Without this row,
+    // normalizing `""` to `None` anywhere along the wire would pass the whole suite while
+    // turning a cleared revset box into a silent answer about the working copy.
+    let err = repo
+        .show(Some(""))
+        .expect_err("an empty revset is a VALUE, not an absence");
+    assert!(
+        matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
+        "unexpected error: {err:?}"
+    );
+
     assert_eq!(
         head_op_id(&repo),
         before,
@@ -768,6 +780,27 @@ fn evolog_refuses_a_malformed_revset_without_writing_an_operation() {
     assert_eq!(head_op_id(&repo), before);
 }
 
+/// `docs/rust-error-codes.md` registers `jj.config_error` for `evolog` as well as `show`, and
+/// `evolog` reaches it through its own `parse_revset` call, not `show`'s — so the registry's
+/// claim needs its own witness.
+#[test]
+fn evolog_reports_a_malformed_repo_config_as_a_config_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+    write_repo_config(&fx.path, "revset-aliases = 42\n");
+
+    let err = repo
+        .evolog(None, None)
+        .expect_err("a non-table revset-aliases is refused");
+    assert!(
+        matches!(&err, CommitViewError::Config { reason } if reason.contains("revset-aliases")),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(head_op_id(&repo), before);
+}
+
 // ── interdiff ─────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -859,17 +892,25 @@ fn interdiff_defaults_the_omitted_side_to_the_working_copy() {
     assert_eq!(summary(&defaulted), summary(&explicit), "an absent `to` is `@`");
 }
 
+/// Every unresolvable spelling is refused on BOTH sides, with the OFFENDING id echoed.
+///
+/// Running each id through `from` and `to` is what makes the two symmetric `map_err` closures
+/// distinguishable: with only the `from` rows, mistyping the second one as `res(e, from)` — a
+/// one-token copy-paste slip between two adjacent lines — reports the side the caller got
+/// RIGHT, and nothing fails.
 #[test]
-fn interdiff_refuses_an_unknown_divergent_or_empty_revision() {
+fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let original = add_commit_off_root(&fx.path, "original");
     _ = add_divergent_twin(&fx.path, &original, "twin");
     let divergent = change_id_of(&fx.path, &original);
+    // A resolvable counterpart, so the OTHER side is never the reason for the refusal.
+    let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
     let repo = open(&fx);
     let before = head_op_id(&repo);
 
-    for (side, id) in [
+    for (spelling, id) in [
         // NOT "zzzzzzzz" — that is a prefix of the ROOT commit's all-zero change id.
         ("unknown", ChangeId("nonexistentchangeid".to_owned())),
         // `resolve_single_rev` parity: two visible commits is ambiguous, and this verb refuses
@@ -878,15 +919,21 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision() {
         // An empty id would otherwise reach jj-lib's `panic!` on an empty hex prefix.
         ("empty", ChangeId(String::new())),
     ] {
-        let expected = id.0.clone();
-        let err = match repo.interdiff(Some(id), None, &[]) {
-            Ok(changes) => panic!("the {side} id must be refused, got {changes:?}"),
-            Err(e) => e,
-        };
-        assert!(
-            matches!(&err, CommitViewError::ChangeNotFound { id } if *id == expected),
-            "the {side} id must be refused with its own id echoed, got: {err:?}"
-        );
+        for side in ["from", "to"] {
+            let (from, to) = if side == "from" {
+                (Some(id.clone()), Some(good.clone()))
+            } else {
+                (Some(good.clone()), Some(id.clone()))
+            };
+            let err = match repo.interdiff(from, to, &[]) {
+                Ok(changes) => panic!("the {spelling} id must be refused as `{side}`, got {changes:?}"),
+                Err(e) => e,
+            };
+            assert!(
+                matches!(&err, CommitViewError::ChangeNotFound { id: echoed } if *echoed == id.0),
+                "the {spelling} id given as `{side}` must echo ITS OWN id, got: {err:?}"
+            );
+        }
     }
 
     assert_eq!(head_op_id(&repo), before);

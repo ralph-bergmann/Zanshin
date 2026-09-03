@@ -2775,9 +2775,14 @@ pub mod zanshin {
 
         /// Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
         ///
-        /// Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS: the CLI
-        /// resolves each with `resolve_single_rev`, which refuses an ambiguous revision, so a divergent
-        /// id is refused rather than guessed. An ABSENT side is `@` — but omitting BOTH is refused with
+        /// Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS. They
+        /// inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous (divergent) revision is
+        /// rejected rather than guessed — but NOT its address space: each side resolves to the one
+        /// VISIBLE commit carrying that change-id prefix, so a commit hex, a revset expression
+        /// (`main`, `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all
+        /// three. In particular EvologEntry's predecessor_commit_ids are hidden by construction, so
+        /// evolog and interdiff do NOT compose into a version-to-version diff.
+        /// An ABSENT side is `@` — but omitting BOTH is refused with
         /// `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
         /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
         /// fileset DSL is not parsed (ADR-0003). A filter matching nothing yields an EMPTY list, where
@@ -9890,9 +9895,16 @@ pub mod zanshin {
 
         /// One step of a change's evolution as `zanshin_evolog` walks it (Story 9.6).
         ///
-        /// `change` is the shipped `Change` table for THIS version of the change. Rows carry commit ids
+        /// `change` is the shipped `Change` table for THIS version of the change — with two exceptions
+        /// that come from reusing the single `Change` construction site: `divergent` reports whether
+        /// the change has several VISIBLE commits RIGHT NOW (the same answer on every row of one
+        /// evolution, never a statement about this historical version) and `is_anonymous` reads today's
+        /// local bookmarks. Everything else (commit_id, parents, description, signatures, timestamps,
+        /// conflict) is this version's own.
+        /// Rows carry commit ids
         /// in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
-        /// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+        /// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back —
+        /// which is also why they cannot be fed to `zanshin_interdiff` (see InterdiffRequest).
         /// `operation_id` is the operation that created or rewrote this commit and is ABSENT
         /// (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
         /// operation storing no predecessors and could go no further. That absence is the ONLY signal a

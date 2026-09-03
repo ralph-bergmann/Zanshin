@@ -315,8 +315,12 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// identified by `handle` — the CLI's `jj interdiff`.
 ///
 /// The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
-/// `zanshin_show`, both sides are single jj reverse-hex CHANGE IDS resolved the way the CLI's
-/// `resolve_single_rev` resolves them, so a divergent id is refused rather than guessed. An
+/// `zanshin_show`, both sides are single jj reverse-hex CHANGE IDS. They inherit the CLI
+/// `resolve_single_rev`'s REFUSAL — a divergent id is rejected rather than guessed — but NOT
+/// its address space: each side resolves to the one VISIBLE commit carrying that change-id
+/// prefix, so a commit hex, a revset expression and a HIDDEN commit are all unaddressable
+/// here, where the CLI accepts all three. In particular the predecessors `zanshin_evolog`
+/// reports are hidden, so the two cannot be composed into a version-to-version diff. An
 /// absent side is `@`; omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
 /// `ArgGroup … required(true)`. `paths` entries are repo-relative PREFIXES; an empty list means
 /// all paths, and a filter matching nothing yields an empty list rather than a refusal.

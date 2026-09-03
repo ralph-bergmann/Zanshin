@@ -125,7 +125,11 @@ const _maxWireLimit = 0xFFFFFFFF;
 /// Call `zanshin_interdiff` with the raw `u64` handle and an `InterdiffRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///
-/// Unlike [zanshinShow], [from] and [to] are single jj reverse-hex CHANGE IDS; an
+/// Unlike [zanshinShow], [from] and [to] are single jj reverse-hex CHANGE IDS.
+/// They inherit the CLI `resolve_single_rev`'s ambiguity REFUSAL but NOT its
+/// address space: each side resolves to the one VISIBLE commit carrying that
+/// change-id prefix, so a commit hex, a revset expression and a HIDDEN commit are
+/// all unaddressable here — [EvologEntry.predecessorCommitIds] among them. An
 /// absent side is `@`, but omitting BOTH is refused with `jj.invalid_input`
 /// (the CLI's `ArgGroup … required(true)`). [paths] entries are repo-relative
 /// PREFIXES; an empty list means all paths.
@@ -169,11 +173,18 @@ final class EvologEntry {
     required this.operationId,
   });
 
-  /// Full metadata for this version of the change.
+  /// Full metadata for this version of the change — with two exceptions that come
+  /// from reusing the single [Change] construction site: `divergent` reports
+  /// whether the change has several VISIBLE commits RIGHT NOW (the same answer on
+  /// every row of one evolution, never a statement about this historical version)
+  /// and `isAnonymous` reads today's local bookmarks. Everything else (`commitId`,
+  /// `parents`, `description`, signatures, timestamps, `conflict`) is this
+  /// version's own.
   final Change change;
 
   /// The commit ids (hex) this version was rewritten FROM. Empty when
-  /// [operationId] is `null`, and for a commit that was never rewritten.
+  /// [operationId] is `null`, and for a commit that was never rewritten. These are
+  /// HIDDEN commits, so they cannot be passed to [zanshinInterdiff].
   final List<String> predecessorCommitIds;
 
   /// The operation that created or rewrote this commit, or `null` for an entry
