@@ -326,7 +326,8 @@ external ffi.Pointer<ffi.Char> zanshin_ffi_version();
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
 /// - `jj.change_not_found` — `revision` does not resolve.
-/// - `jj.invalid_input` — `path` is not a valid repo path.
+/// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
+/// path.
 /// - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
 /// - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
 /// submodule, or a conflict with a non-file side); the path in `context`.
@@ -397,8 +398,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_list(
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
 /// - `jj.change_not_found` — `revision` does not resolve.
-/// - `jj.invalid_input` — `pattern` names an unknown kind or does not parse, or a `paths`
-/// entry is not a valid repo path; detail in `context`.
+/// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
+/// or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -436,8 +437,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_search(
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
 /// tree; the path in `context`.
-/// - `jj.jj_lib_error` — an underlying jj-lib failure, including an unreadable or malformed
-/// config stack; detail in `context`.
+/// - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
+/// `ui.conflict-marker-style` this verb materializes conflicts with cannot be read.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
 /// Same handle and buffer contract as `zanshin_file_list`; `data` is a

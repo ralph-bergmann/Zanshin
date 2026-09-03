@@ -862,13 +862,14 @@ class ZanshinWorker {
   /// `Envelope<FileContents>` bytes into a [repo_ffi_file.FileContents].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`). Completes
-  /// with a [StateError] after [close]; the close-guard [StateError] is delivered
-  /// synchronously by [RepoHandle.fileShow].
+  /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`,
+  /// `jj.config_error` — this is the only file read that consults the repo's
+  /// effective jj config). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.fileShow].
   Future<repo_ffi_file.FileContents> fileShow(
     int handleId, {
+    required List<String> paths,
     String? revision,
-    List<String> paths = const <String>[],
   }) async {
     final Uint8List bytes = await send(
       FileShowCommand(commandId: _correlator.allocateId(), handleId: handleId, revision: revision, paths: paths),

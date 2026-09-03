@@ -311,9 +311,11 @@ impl Repo {
     /// A conflicted file's content is the MATERIALIZED merge, with markers in the style the
     /// repo's effective `ui.conflict-marker-style` selects — re-read per call and never
     /// cached, so the user's own jj config decides how a conflict renders. Paths that exist
-    /// but are not renderable as file content (a symlink, a Git submodule, an unreadable
-    /// blob) land in [`crate::FileContents::skipped`] with the CLI's own wording instead of
-    /// failing the call.
+    /// but are not renderable as file content (a symlink, a Git submodule, a blob whose
+    /// access is denied) land in [`crate::FileContents::skipped`] instead of failing the
+    /// call — carrying the CLI's own wording for the three cases it warns about, and
+    /// Zanshin's own for the two it `panic!`s on rather than reports. A blob that
+    /// materializes but then fails to READ still fails the whole call, as it does in the CLI.
     ///
     /// Whole files are held in memory (jj-lib's `read_all` has no size cap) where the CLI
     /// streams to stdout — a resource divergence, not a behavioral one.
@@ -325,8 +327,11 @@ impl Repo {
     /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
     /// - [`crate::FileError::PathNotFound`] — exactly one path was given and it is absent
     ///   from the revision's tree.
-    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure, including a
-    ///   malformed or unreadable config stack (these verbs have no separate config error).
+    /// - [`crate::FileError::Config`] — the repo's effective jj config is unreadable or
+    ///   malformed, so the `ui.conflict-marker-style` to materialize a conflict with cannot
+    ///   be determined. `file_show` is the only one of the four verbs that reads config, and
+    ///   the only one that can return this variant.
+    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: see `file_list`.
     #[allow(clippy::needless_pass_by_value)]

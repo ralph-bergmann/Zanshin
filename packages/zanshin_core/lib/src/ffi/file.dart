@@ -90,9 +90,10 @@ Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths =
 /// Call `zanshin_file_show` with the raw `u64` handle and a `FileShowRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///
-/// [paths] may NOT be empty — the CLI marks its FILESETS argument `required`, and
-/// an empty list surfaces as `jj.invalid_input`.
-Uint8List zanshinFileShow(int rawHandle, {String? revision, List<String> paths = const <String>[]}) {
+/// [paths] is required at the call site, mirroring the CLI's `required` FILESETS
+/// argument, and may NOT be empty either — an empty list surfaces as
+/// `jj.invalid_input`.
+Uint8List zanshinFileShow(int rawHandle, {required List<String> paths, String? revision}) {
   _rejectPathNuls(revision, paths);
   final Uint8List request = fbs.FileShowRequestObjectBuilder(revision: revision, paths: paths).toBytes();
   return _callWithRequest(request, (ptr, len) => zanshin_file_show(rawHandle, ptr, len));
@@ -102,7 +103,10 @@ Uint8List zanshinFileShow(int rawHandle, {String? revision, List<String> paths =
 /// `FileAnnotateRequest` request buffer, and return the FlatBuffers `Envelope`
 /// bytes.
 ///
-/// [path] is a single PLAIN repo-relative path, not a prefix and not a fileset.
+/// [path] is a single PLAIN repo-relative path, not a prefix and not a fileset. It
+/// is required on the wire too: a `FileAnnotateRequest` whose `path` field is absent
+/// is refused with `jj.invalid_input`, mirroring the CLI's required positional
+/// argument.
 Uint8List zanshinFileAnnotate(int rawHandle, {required String path, String? revision}) {
   _rejectInteriorNul(revision, 'revision');
   _rejectInteriorNul(path, 'path');
@@ -116,6 +120,11 @@ Uint8List zanshinFileAnnotate(int rawHandle, {required String path, String? revi
 /// [pattern] is jj's own `kind:pattern` string-pattern syntax, passed through
 /// verbatim; a bare pattern defaults to kind `regex`. [nameOnly] stops a file's
 /// scan at its first match.
+///
+/// [pattern] is required on the wire too: a `FileSearchRequest` whose `pattern`
+/// field is absent is refused with `jj.invalid_input`, mirroring the CLI's
+/// `required = true`. An explicitly EMPTY pattern is a value, not an absence — it is
+/// the empty regex, which matches every line, exactly as `jj file search -p ""`.
 Uint8List zanshinFileSearch(
   int rawHandle, {
   required String pattern,
@@ -176,8 +185,9 @@ final class FileEntry {
   /// sides disagree about it.
   final bool executable;
 
-  /// Number of sides of the simplified merge: `1` for a resolved entry, `>= 3`
-  /// for a conflict.
+  /// Number of sides of the simplified merge: `1` for a resolved entry, `>= 2`
+  /// for a conflict — jj's `Merge.num_sides()` is `values.length / 2 + 1`, so the
+  /// smallest conflict has two sides.
   final int conflictSideCount;
 }
 
@@ -205,8 +215,10 @@ final class FileContents {
   /// One entry per rendered file, in jj's own tree order.
   final List<ShownFile> files;
 
-  /// Paths that exist but are not renderable as file content (a symlink, a Git
-  /// submodule, an unreadable blob). A skipped path does not fail the call.
+  /// Paths that are not renderable as file content: a symlink, a Git submodule,
+  /// an unreadable blob, and the two cases the CLI panics on rather than reports
+  /// (`"Path '…' is absent."`, `"Path '…' is a directory."`). A skipped path does
+  /// not fail the call.
   final List<SkippedPath> skipped;
 }
 

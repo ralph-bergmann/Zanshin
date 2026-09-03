@@ -88,9 +88,10 @@ void main() {
     test('fileShow_with_no_paths_surfaces_jj_invalid_input', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 
-      // The CLI marks its FILESETS argument `required`; an empty list is refused.
+      // The CLI marks its FILESETS argument `required`, so `paths` is required at the
+      // call site too; a deliberately EMPTY list is still refused at runtime.
       await expectLater(
-        handle.fileShow(),
+        handle.fileShow(paths: const <String>[]),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
 
@@ -127,6 +128,22 @@ void main() {
       // An unbalanced paren is only refused if `pattern` actually reached Rust.
       await expectLater(
         handle.fileSearch(pattern: '('),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+
+      await handle.close();
+    });
+
+    test('fileSearch_carries_the_path_filter_through_the_request_buffer', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // `pattern` is valid here, so the refusal can only come from `paths` - a hop
+      // that dropped the field would return an empty ok payload instead. Without
+      // this case, deleting `paths:` from the RepoHandle or worker-arm forwarding
+      // leaves every Dart test green (`nameOnly` has no such witness - proving it
+      // needs committed file content, which no shipped verb can write from Dart).
+      await expectLater(
+        handle.fileSearch(pattern: 'needle', paths: ['/absolute.txt']),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
 

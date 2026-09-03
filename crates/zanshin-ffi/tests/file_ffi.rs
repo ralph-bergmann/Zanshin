@@ -24,8 +24,8 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::file::{zanshin_file_annotate, zanshin_file_list, zanshin_file_search, zanshin_file_show};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT, JJ_NOT_A_FILE,
-    JJ_PATH_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
+    JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use zanshin_jj::{resolve_revset, Repo};
 
@@ -140,6 +140,37 @@ fn annotate_request_bytes(revision: Option<&str>, path: &str) -> Vec<u8> {
         &fbs::FileAnnotateRequestArgs {
             revision: revision_off,
             path: Some(path_off),
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `FileAnnotateRequest` whose `path` field is ABSENT from the buffer — the wire form of
+/// "the caller omitted a required argument", which is NOT an explicitly empty string.
+fn annotate_request_without_path() -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::FileAnnotateRequest::create(
+        &mut b,
+        &fbs::FileAnnotateRequestArgs {
+            revision: None,
+            path: None,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `FileSearchRequest` whose `pattern` field is ABSENT from the buffer.
+fn search_request_without_pattern() -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::FileSearchRequest::create(
+        &mut b,
+        &fbs::FileSearchRequestArgs {
+            revision: None,
+            pattern: None,
+            paths: None,
+            name_only: false,
         },
     );
     b.finish(req, None);
@@ -362,6 +393,43 @@ fn file_show_surfaces_path_not_found_and_invalid_input() {
     close_handle(handle);
 }
 
+/// `file show` is the ONE file read that consults the repo's effective jj config, so it is
+/// also the only one that can answer `jj.config_error`. Pinned at the FFI layer because
+/// `map_file_err`'s `Config` arm has no other crossing: every other test in this file drives
+/// a repo whose config is fine, and a code that never crosses the boundary in a test is a
+/// code a GUI cannot rely on.
+#[test]
+fn file_show_surfaces_a_malformed_conflict_marker_style_as_jj_config_error() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let commit_hex = add_commit_with_entries(
+        &fixture.path,
+        &[],
+        &[("a.txt", Entry::File("alpha\n"))],
+        "config-error scenario",
+    );
+    let change_id = change_id_for_commit(&fixture.path, &commit_hex);
+    // Not one of jj's four style names: the USER's config is wrong, not the repository.
+    fs::write(
+        fixture.path.join(".jj").join("repo").join("config.toml"),
+        "[ui]\nconflict-marker-style = \"nonsense\"\n",
+    )
+    .expect("repo config must be writable");
+    let handle = open_handle(&fixture.path);
+    std::mem::forget(fixture);
+
+    let req = list_request_bytes(Some(&change_id), &["a.txt"], true);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_file_show(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CONFIG_ERROR));
+
+    close_handle(handle);
+}
+
 #[test]
 fn file_show_rejects_a_null_request_a_garbage_request_and_a_zero_handle() {
     pin_env();
@@ -497,6 +565,31 @@ fn file_annotate_surfaces_not_a_file_and_the_three_ffi_guards() {
     close_handle(handle);
 }
 
+#[test]
+fn file_annotate_refuses_an_absent_path_field() {
+    pin_env();
+    let (handle, _) = open_scenario();
+
+    // The CLI's positional `path` is required, and argument arity is observable behavior —
+    // an omitted field must be NAMED, not silently defaulted to the empty string.
+    let req = annotate_request_without_path();
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_file_annotate(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        env.error().and_then(|e| e.context()),
+        Some("path is required"),
+        "the refusal must name the missing field"
+    );
+
+    close_handle(handle);
+}
+
 // ── zanshin_file_search ───────────────────────────────────────────────────────
 
 #[test]
@@ -616,6 +709,48 @@ fn file_search_surfaces_invalid_input_and_the_three_ffi_guards() {
     close_handle(handle);
 }
 
+#[test]
+fn file_search_refuses_an_absent_pattern_but_honours_an_explicitly_empty_one() {
+    pin_env();
+    let (handle, change_id) = open_scenario();
+
+    // ABSENT: the CLI marks `-p/--pattern` `required = true`, so an omitted field is named.
+    let req = search_request_without_pattern();
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_file_search(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        env.error().and_then(|e| e.context()),
+        Some("pattern is required"),
+        "the refusal must name the missing field"
+    );
+
+    // PRESENT but empty: a VALUE, not an absence. `jj file search -p ""` is the empty regex,
+    // which matches every line — the scenario's three files hold 3 + 1 + 1 lines, and the
+    // symlink is never searched.
+    let req = search_request_bytes(Some(&change_id), "", &[], false);
+    // SAFETY: see above.
+    let token = unsafe { zanshin_file_search(handle, req.as_ptr(), req.len()) };
+    // SAFETY: see above.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
+    assert_eq!(
+        env.data_as_file_search()
+            .expect("FileSearch payload")
+            .matches()
+            .map_or(0, |m| m.len()),
+        5,
+        "an empty regex matches every line of every searchable file"
+    );
+
+    close_handle(handle);
+}
+
 // ── Op-log invariant across the whole wrapper layer ───────────────────────────
 
 #[test]
@@ -632,10 +767,13 @@ fn no_file_read_wrapper_writes_an_operation() {
     // The op-heads directory names the head operation, so its contents are a byte-level
     // witness that no operation was written — no jj_lib import needed.
     let op_heads = fixture.path.join(".jj").join("repo").join("op_heads").join("heads");
-    let before: Vec<String> = fs::read_dir(&op_heads)
+    // Sorted: `read_dir` order is unspecified, so an unsorted comparison would be a latent
+    // flake the moment the store holds more than one head.
+    let mut before: Vec<String> = fs::read_dir(&op_heads)
         .expect("op heads dir")
         .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
         .collect();
+    before.sort();
 
     let handle = open_handle(&fixture.path);
     for (req, call) in [
@@ -683,9 +821,10 @@ fn no_file_read_wrapper_writes_an_operation() {
     }
     close_handle(handle);
 
-    let after: Vec<String> = fs::read_dir(&op_heads)
+    let mut after: Vec<String> = fs::read_dir(&op_heads)
         .expect("op heads dir")
         .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
         .collect();
+    after.sort();
     assert_eq!(before, after, "a read never writes an operation, success or refusal");
 }

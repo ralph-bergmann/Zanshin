@@ -428,6 +428,53 @@ fn file_show_refuses_an_empty_path_list() {
 }
 
 #[test]
+fn file_show_refuses_a_malformed_path_on_both_parse_sites() {
+    pin_env();
+    let t = mixed_tree();
+    let repo = open(&t.fx);
+
+    // `file_show` is the only verb with TWO path-parse sites: the single-path fast path
+    // parses with `parse_path`, the multi-path branch with `build_matcher`. Both must refuse.
+    let err = repo
+        .file_show(Some(t.change.clone()), &["/absolute.txt".to_owned()])
+        .expect_err("the single-path fast path refuses a leading slash");
+    assert!(
+        matches!(&err, FileError::InvalidInput { reason } if reason.contains("invalid path")),
+        "unexpected error from the fast path: {err:?}"
+    );
+
+    let err = repo
+        .file_show(Some(t.change), &["a.txt".to_owned(), "dir/".to_owned()])
+        .expect_err("the multi-path branch refuses a trailing slash");
+    assert!(
+        matches!(&err, FileError::InvalidInput { reason } if reason.contains("invalid path")),
+        "unexpected error from the matcher branch: {err:?}"
+    );
+}
+
+#[test]
+fn file_show_reports_a_malformed_conflict_marker_style_as_a_config_error() {
+    pin_env();
+    let t = mixed_tree();
+    let repo = open(&t.fx);
+
+    // `file show` is the one file read that consults the effective config. A value that is
+    // not one of jj's four style names is the USER's config being wrong, not the repository
+    // — which is why it is `Config`, not `Backend`, exactly as every other config-reading
+    // verb reports it.
+    write_repo_config(&t.fx.path, "[ui]\nconflict-marker-style = \"nonsense\"\n");
+
+    let err = repo
+        .file_show(Some(t.change), &["a.txt".to_owned()])
+        .expect_err("an unknown marker style is refused");
+
+    assert!(
+        matches!(&err, FileError::Config { reason } if reason.contains("conflict-marker-style")),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[test]
 fn file_show_materializes_a_conflict_in_the_style_the_repo_config_selects() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
@@ -514,9 +561,10 @@ fn file_annotate_refuses_an_absent_path_and_a_non_file() {
 
     // A directory and a symlink are both "exists but is not a regular file".
     for path in ["dir", "link"] {
-        let err = repo
-            .file_annotate(Some(t.change.clone()), path)
-            .unwrap_err_or_else_panic(path);
+        let err = match repo.file_annotate(Some(t.change.clone()), path) {
+            Ok(lines) => panic!("{path} must be refused, got Ok({lines:?})"),
+            Err(e) => e,
+        };
         assert!(
             matches!(&err, FileError::NotAFile { path: p } if p == path),
             "unexpected error for {path}: {err:?}"
@@ -692,6 +740,41 @@ fn file_search_with_no_match_is_an_empty_success() {
 }
 
 #[test]
+fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    // `conflicted.txt` is "left\n" on one side and "right\n" on the other, so the substring
+    // "t" matches on BOTH — the only way to observe the per-side early exit.
+    let merge_hex = add_conflicted_merge_off_root(&fx.path);
+    let change = change_id_of(&fx.path, &merge_hex);
+    let repo = open(&fx);
+
+    let both: Vec<_> = repo
+        .file_search(Some(change.clone()), "substring:t", &[], false)
+        .expect("search succeeds")
+        .into_iter()
+        .filter(|m| m.path == "conflicted.txt")
+        .collect();
+    assert_eq!(both.len(), 2, "without name_only every matching side reports");
+    assert_ne!(
+        both[0].conflict_side, both[1].conflict_side,
+        "the two matches come from different sides"
+    );
+
+    let first: Vec<_> = repo
+        .file_search(Some(change), "substring:t", &[], true)
+        .expect("search succeeds")
+        .into_iter()
+        .filter(|m| m.path == "conflicted.txt")
+        .collect();
+    assert_eq!(
+        first.len(),
+        1,
+        "--name-only names a FILE: one hit on any side ends the whole file"
+    );
+}
+
+#[test]
 fn file_search_refuses_a_malformed_path_filter() {
     pin_env();
     let t = mixed_tree();
@@ -707,19 +790,23 @@ fn file_search_refuses_a_malformed_path_filter() {
     );
 }
 
-// ── Small local helper ────────────────────────────────────────────────────────────
+// ── Repository corruption is Backend, never ChangeNotFound ────────────────────────
 
-/// `expect_err` with the offending path in the panic message — a loop over several paths
-/// otherwise reports only "called `Result::unwrap_err()` on an `Ok` value".
-trait UnwrapErrOrElsePanic<T, E> {
-    fn unwrap_err_or_else_panic(self, what: &str) -> E;
-}
+#[test]
+fn a_corrupt_op_log_is_a_backend_error_not_a_missing_change() {
+    pin_env();
+    let t = mixed_tree();
+    let repo = open(&t.fx);
 
-impl<T: std::fmt::Debug, E> UnwrapErrOrElsePanic<T, E> for Result<T, E> {
-    fn unwrap_err_or_else_panic(self, what: &str) -> E {
-        match self {
-            Ok(v) => panic!("{what} must be refused, got Ok({v:?})"),
-            Err(e) => e,
-        }
-    }
+    // Corrupt AFTER open: every read re-resolves to head per call (ADR-0002). This is the
+    // `FileError::Backend` driver (`tests/view.rs::corrupt_op_heads`'s idiom). Reporting it
+    // as `ChangeNotFound` would tell a GUI the user mistyped a revision when the repository
+    // is in fact unreadable.
+    fs::remove_dir_all(t.fx.path.join(".jj").join("repo").join("op_heads")).expect("op_heads is removable");
+
+    let err = repo
+        .file_list(Some(t.change), &[])
+        .expect_err("head resolution must fail on a corrupt op log");
+
+    assert!(matches!(&err, FileError::Backend(_)), "unexpected error: {err:?}");
 }

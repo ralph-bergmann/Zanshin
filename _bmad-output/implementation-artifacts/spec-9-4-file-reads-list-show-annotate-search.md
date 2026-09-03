@@ -2,13 +2,98 @@
 title: 'Story 9.4: File reads — `file list`, `file show`, `file annotate`, `file search`'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'c6f90d35724ca611c76c380a08a08baef16f790b'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      An omitted revision means the LAST-SNAPSHOTTED `@`, not the working copy's on-disk
+      state, because Zanshin never snapshots.
+    evidence: |-
+      The CLI's `workspace_helper` snapshots before all four `jj file` commands, so
+      `jj file list` there sees uncommitted on-disk edits while these verbs see the last
+      snapshot. Pre-existing project decision D2 (`status.rs:82-89`, `revset.rs:61-62`);
+      `LockedWorkingCopy::{snapshot,reset}` is Story 9.22. The intent contract mandates
+      recording it here. All four verbs stay fully useful without it — any revision other
+      than `@` is pure committed-tree work.
+    location: >-
+      crates/zanshin-jj/src/file.rs (head_commit) — Story 9.22
+    severity: medium
+  - summary: >-
+      "The workspace has no working-copy commit" flattens to `jj.jj_lib_error` although
+      `jj.no_working_copy` is registered and used by `status`.
+    evidence: |-
+      `op_support::resolve_or_wc` reports the missing-`@` case as `ResolveError::Backend`,
+      which becomes `FileError::Backend`. That is the default call shape for a GUI file
+      browser (`revision: null`). It cannot be fixed inside this story: the helper is shared
+      verbatim with the mutation verbs, whose observable behavior an acceptance criterion
+      requires to stay byte-identical after the lift. Fixing it is a crate-wide change that
+      should move `mutate.rs` and `file.rs` together.
+    location: >-
+      crates/zanshin-jj/src/op_support.rs (resolve_or_wc)
+    severity: medium
+  - summary: >-
+      `FileSearch` carries no `skipped` channel, so a GUI cannot tell "no match in this file"
+      from "this file's blob could not be read".
+    evidence: |-
+      `file_search` silently drops `MaterializedTreeValue::AccessDenied`, where the CLI prints
+      "Skipping '…' due to permission error: …" (`cli/src/commands/file/search.rs` @ v0.44.0).
+      The divergence is documented in the module doc, but `FileContents` has a `skipped`
+      vector for exactly this and `FileSearch` does not. Adding one is a wire change
+      (`.fbs` + codegen + Dart decoder) beyond this story's settled result shape.
+    location: >-
+      crates/zanshin-jj/src/file.rs (file_search) + schemas/envelope.fbs (FileSearch)
+    severity: low
+  - summary: >-
+      `docs/ffi-abi.md` has been stale since Story 4.9 — it documents none of Epic 9's
+      wrappers, payload discriminants, or the `AbsorbSkippedPath` → `SkippedPath` rename.
+    evidence: |-
+      Its "Exported symbols" section stops at `zanshin_repo_convert` / `zanshin_graph_slice` /
+      `zanshin_log_defaults`; `zanshin_restore`, `zanshin_absorb` and the four file reads
+      appear nowhere. Stories 9.1 and 9.3 did not update it either, so this is accumulated
+      drift rather than a Story 9.4 regression, and closing it is a doc pass across Epic 9.
+    location: >-
+      docs/ffi-abi.md
+    severity: low
+  - summary: >-
+      `nameOnly` cannot be pinned by any Dart-side assertion.
+    evidence: |-
+      Proving the flag reached Rust needs a file with several matching lines, and no shipped
+      verb can write a tree from Dart (`test/worker/file_test.dart`'s SCOPE NOTE). `paths`,
+      `pattern` and `revision` all have an error-producing value that witnesses them; a
+      boolean has none. It is covered in Rust
+      (`file_ffi.rs::file_search_round_trip_carries_name_only_and_the_path_filter`); only the
+      Dart hops are unwitnessed. A write verb (Story 9.22) or an exposed request-bytes builder
+      would close it.
+    location: >-
+      packages/zanshin_core/test/worker/file_test.dart
+    severity: low
+  - summary: >-
+      `isolate.dart` now holds a dozen verbatim copies of the synthesized `ffi.invalid_handle`
+      envelope, four of them added by this story.
+    evidence: |-
+      Each worker switch arm rebuilds the same ~12-line `fbs.EnvelopeObjectBuilder` for the
+      closed-handle case. Extracting one `_invalidHandleEnvelope(handleId)` helper would
+      remove roughly 130 lines file-wide, but it touches eight arms this story does not own —
+      a separate focused refactor, not a surgical change here.
+    location: >-
+      packages/zanshin_core/lib/src/worker/isolate.dart
+    severity: low
+  - summary: >-
+      `file_annotate` does not reproduce the CLI's root-commit fallback for an origin commit
+      that is absent from the store.
+    evidence: |-
+      The CLI substitutes the root commit when `get_commit_async` fails for a line's origin
+      (shallow-then-unshallowed repos); this API propagates the store failure as
+      `FileError::Backend` instead, documented as a `# KNOWN DIVERGENCE`. No fixture can
+      construct the state, so the fallback branch would be permanently unreachable code and
+      the coverage ratchet would reject it.
+    location: >-
+      crates/zanshin-jj/src/file.rs (file_annotate)
+    severity: low
 ---
 
 <intent-contract>
@@ -327,7 +412,8 @@ jj anchor at tag `v0.44.0`.
   config loader, rebuilt per call and never cached"), and `"diff"` is the CLI's own default at
   `cli/src/config/misc.toml:45`, surfaced as an editable pre-fill rather than a Rust constant.
 - `crates/zanshin-jj/src/file.rs` (NEW) -- add `FileError` (`ChangeNotFound { id }`,
-  `PathNotFound { path }`, `NotAFile { path }`, `InvalidInput { reason }`, `Backend(String)`), the
+  `PathNotFound { path }`, `NotAFile { path }`, `InvalidInput { reason }`, `Config { reason }`
+  (added during implementation -- see the Spec Change Log entry of 2026-09-03), `Backend(String)`), the
   `be` converter, and `pub(crate) fn file_list(workspace, revision, paths) ->
   Result<Vec<FileEntry>, FileError>` over `entries_matching`, projecting each entry into the CLI's
   own keyword set -- `FileEntry { path, file_type, executable, conflict_side_count }` with
@@ -467,7 +553,71 @@ jj anchor at tag `v0.44.0`.
 
 ## Spec Change Log
 
+### 2026-09-03 — `FileError::Config` added to the enumerated variant set
+
+- **Triggering finding:** the shipped `FileError` carries six variants; the Tasks bullet
+  enumerated five. The deviation was made during implementation and never recorded, so the
+  spec's own enumeration, `Repo::file_show`'s `# Errors` doc, and both Dart error-code lists
+  disagreed with the code (review pass 2026-09-03, four findings).
+- **What was amended:** the `crates/zanshin-jj/src/file.rs` Tasks bullet now names
+  `Config { reason }` and points here. Nothing inside `<intent-contract>` was touched.
+- **Known-bad state avoided:** flattening a malformed `ui.conflict-marker-style` into
+  `FileError::Backend` / `jj.jj_lib_error`. That would tell a GUI the *repository* is broken
+  when the user's own config is, and it would make `file_show` the only config-reading verb in
+  the crate that does not report `jj.config_error` (`log_defaults`, `graph_slice` and the Story
+  9.1/9.3 mutations all do). `jj.config_error` is already in the registry, so the variant adds
+  no new code -- it reuses one, which is why the "exactly one new row (`jj.not_a_file`)"
+  acceptance criterion still holds.
+- **KEEP:** `file_show` is the ONLY verb that reads config, so it stays the only verb that can
+  return `Config`; `list`/`annotate`/`search` keep taking `&Workspace` and stay config-free.
+
 ## Review Triage Log
+
+_Note: the review pass that ran immediately before the one below was interrupted by an
+infrastructure failure after its patches had been dispatched but before its log entry was
+written. Its 14 patch findings are present in the code but have no entry here; the pass below
+re-reviewed the resulting tree in full, so its findings supersede that lost record._
+
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 11: (high 0, medium 6, low 5)
+- defer: 7: (high 0, medium 2, low 5)
+- reject: 14: (high 0, medium 0, low 14)
+- addressed_findings:
+  - `[medium]` `[patch]` `Repo::file_show`'s `# Errors` omitted `FileError::Config` and
+    asserted "these verbs have no separate config error", which the shipped enum contradicts
+    — added the bullet, removed the false claim (`crates/zanshin-jj/src/repo.rs`).
+  - `[medium]` `[patch]` `RepoHandle.fileShow` and `ZanshinWorker.fileShow` omitted
+    `jj.config_error` from their error-code lists — added, naming `file_show` as the only file
+    read that consults the effective jj config.
+  - `[medium]` `[patch]` `map_file_err`'s `Config → jj.config_error` arm never crossed the FFI
+    boundary in a test — added
+    `file_show_surfaces_a_malformed_conflict_marker_style_as_jj_config_error` to
+    `crates/zanshin-ffi/tests/file_ffi.rs`.
+  - `[medium]` `[patch]` Dart `fileShow`'s `paths` defaulted to `const []` at all three layers
+    although an empty list is always a refusal (the CLI marks FILESETS `required`) — made it a
+    `required` named parameter in `ffi/file.dart`, `worker/isolate.dart` and `worker/handle.dart`;
+    the runtime refusal is still pinned by an explicitly empty list.
+  - `[medium]` `[patch]` `fileSearch`'s `paths` crossed no Dart assertion — deleting the
+    argument at the worker arm or the handle left every Dart test green. Added
+    `fileSearch_carries_the_path_filter_through_the_request_buffer`.
+  - `[medium]` `[patch]` the `FileError::Config` deviation from the Tasks enumeration was
+    unrecorded — logged in `## Spec Change Log` and the Tasks bullet amended.
+  - `[low]` `[patch]` `no_file_read_wrapper_writes_an_operation` compared two unsorted
+    `fs::read_dir` listings — both are sorted now.
+  - `[low]` `[patch]` `crates/zanshin-jj/src/file.rs::res` had no unit test although
+    `mutate.rs::res` does, leaving its `revision: None ⇒ empty id` arm unexercised — added the
+    mirror test.
+  - `[low]` `[patch]` `Repo::file_show`'s doc claimed every skipped path carries "the CLI's own
+    wording" (false for the two cases the CLI `panic!`s on) and called `AccessDenied` "an
+    unreadable blob" (a `read_all` failure aborts the call instead) — both phrases tightened.
+  - `[low]` `[patch]` `enum FileType : byte` carried no append-only note although member order
+    is the wire value — added, matching `union Payload`'s.
+  - `[low]` `[patch]` `original_line_number`, `line_number` and `conflict_side` saturate at
+    `u32::MAX` undocumented while `conflict_side_count` documents it — documented consistently
+    in the Rust types and the `.fbs` field comments.
 
 ## Design Notes
 
@@ -557,3 +707,99 @@ and is recorded as a residual risk rather than papered over with an invented lim
 **Manual checks (if no CLI):**
 - Diff the crate's `pub` items: confirm the additions are exactly the four `Repo` methods and the
   seven new types, and that no `jj_lib` type leaked into a public signature.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+The four `jj file` read verbs — `file list`, `file show`, `file annotate`, `file search` — are
+implemented in a new `zanshin-jj` noun module against jj-lib and surfaced through the full chain
+this epic requires: `.fbs` request + payload tables, `Payload` slots 15–18, four `extern "C"`
+wrappers, regenerated committed codegen, a Dart adapter, four `WorkerCommand`s, four
+`ZanshinWorker` methods and four `RepoHandle` methods. The jj CLI at tag `v0.44.0` is the
+behavioral oracle throughout: guard ordering, refusal conditions, skip rules, the `kind:pattern`
+split and the per-side conflict line numbering are ports of its observable behavior, not of its
+terminal UX. `build_matcher`, `resolve_commit` and `resolve_or_wc` were lifted from `mutate.rs`
+into `op_support.rs` behind a crate-internal `ResolveError`, with thin mapping wrappers left
+behind so the mutation verbs' observable behavior is byte-identical after the lift. No read writes
+an operation, on success or on refusal, and that is asserted at both the `zanshin-jj` and the FFI
+layer.
+
+### Files changed
+
+- `crates/zanshin-jj/src/file.rs` (new) — the four typed read operations, their owned result
+  types, and `FileError`.
+- `crates/zanshin-jj/src/op_support.rs` — the three resolver/matcher helpers lifted out of
+  `mutate.rs`, generalized to `&dyn Repo`.
+- `crates/zanshin-jj/src/mutate.rs` — the helpers replaced by thin mapping wrappers.
+- `crates/zanshin-jj/src/repo.rs` — the four public `Repo` facades.
+- `crates/zanshin-jj/src/config.rs` — `ui.conflict-marker-style = "diff"` in the builtin config
+  plus its effective-config getter.
+- `crates/zanshin-jj/src/lib.rs` — re-exports for the seven new public types.
+- `crates/zanshin-ffi/src/file.rs` (new) — four request readers, four payload builders and the
+  four `extern "C"` wrappers.
+- `crates/zanshin-ffi/src/envelope.rs` — the `jj.not_a_file` code; `crates/zanshin-ffi/src/lib.rs`
+  and `repo.rs` — module wiring and the shared request-reader shape.
+- `schemas/envelope.fbs` — four request tables, the payload tables, `enum FileType`, the
+  `AbsorbSkippedPath` → `SkippedPath` rename, and `Payload` slots 15–18.
+- Committed codegen: `crates/zanshin-ffi/src/envelope_generated.rs`,
+  `crates/zanshin-ffi/include/zanshin_ffi.h`,
+  `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart`,
+  `packages/zanshin_core/lib/src/ffi/bindings.dart`.
+- `packages/zanshin_core/lib/src/ffi/file.dart` (new) — adapters, models and decoders;
+  `lib/src/worker/{commands,isolate,handle}.dart` — commands, worker methods and handle methods.
+- Tests: `crates/zanshin-jj/tests/file_reads.rs` (new), `crates/zanshin-ffi/tests/file_ffi.rs`
+  (new), `packages/zanshin_core/test/{ffi,worker}/file_test.dart` (new),
+  `crates/zanshin-jj/tests/api_stability.rs` (new pinning test),
+  `crates/test-helpers/src/lib.rs` (the `Entry` spec helper — the committed fixtures hold no
+  executable, symlink or multi-file commit and regenerating them is forbidden).
+- `docs/rust-error-codes.md` — the `jj.not_a_file` row plus Story 9.4 emitter clauses.
+- `coverage-baseline.txt` — two new files, `zanshin-jj/src/repo.rs` raised 94.34 → 94.92 and
+  `zanshin-jj/src/file.rs` raised 97.76 → 98.15 by the review pass's added test.
+
+### Review findings breakdown
+
+- Patches applied: 11 (high 0, medium 6, low 5) — see the 2026-09-03 entry in the Review Triage
+  Log for each finding and the action taken.
+- Items deferred: 7 (medium 2, low 5) — recorded in the frontmatter `deferred` list.
+- Items rejected: 14 — chiefly the cross-verb guard-ordering precedence (every ordering yields a
+  valid refusal), the unreachable `render_entry`/`file_search` defensive arms, the per-verb
+  repetition of the `@`-default test (all four route through one `head_commit` helper, pinned
+  once), the deliberate `mem::forget` in the FFI test harness (the established pattern in
+  `change_ffi.rs` and `repo_write_ffi.rs`), the unchanged `mutate.rs`/`op_support.rs` baselines
+  (the ratchet ran and held them within `epsilon_pct`), and a claim that `file_search`'s skip
+  comment misstates CLI parity (it names the divergence explicitly).
+- Follow-up review recommended: **true**. Patched severities: high 0, medium 6, low 5; score
+  = 3 × 6 + 1 × 5 = 23, at or above the threshold of 5.
+
+### Verification performed
+
+- `cargo make test` — green end to end after the patches (cargo test + clippy pedantic
+  `-D warnings` + rustfmt + flutter/dart analyze + format + `cargo deny` + the coverage ratchet).
+  Overall coverage 99.07% (6845/6909 lines over 38 files); the ratchet raised
+  `crates/zanshin-jj/src/file.rs` and the updated `coverage-baseline.txt` is committed with the
+  test that earned it. `extern-coverage` reports every `zanshin-ffi` `extern "C"` fn covered.
+- `cargo make verify-codegen` — run on the clean tree after the finalization commit; no drift.
+  The review pass's `.fbs` edits are deliberately non-doc `//` comments, which `flatc` does not
+  propagate into generated code.
+- `git status --porcelain` — clean after finalization.
+
+### Residual risks
+
+- **Whole files are held in memory.** `file show` and `file search` buffer each file's full
+  contents (`MaterializedFileValue::read_all` and `materialize_merge_result_to_bytes` have no size
+  cap) where the CLI streams to stdout. A resource divergence, not a behavioral one; no invented
+  limit was added to paper over it.
+- **The four verbs' guard order is fixed by code shape, not by a pinned contract.** A call with
+  two simultaneous faults (a bad revision *and* a bad path, or a broken config *and* a bad
+  revision on `file_show`) surfaces whichever guard runs first. Every outcome is a valid refusal,
+  but the precedence is not asserted anywhere.
+- **`AnnotationLine.origin_found == false` is unreachable with any constructible fixture.** The
+  domain is `all()`, so the `Err(origin)` branch needs a shallow-then-unshallowed repo, which is
+  also the state where the subsequent store read fails and the call becomes `Backend`. The field's
+  contract is exercised only through synthetic buffers.
+- **`nameOnly` reaches Rust unwitnessed by the Dart layer** — see the `deferred` entry; it is
+  covered in `file_ffi.rs`, but no Dart-side assertion changes value with the flag.

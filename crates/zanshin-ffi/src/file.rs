@@ -16,7 +16,7 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileType, SearchMatch};
 
 use crate::envelope::{
-    catch, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND,
+    catch, invalid_request, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
     JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
@@ -31,6 +31,7 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
         FileError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path),
         FileError::NotAFile { path } => (JJ_NOT_A_FILE, path),
         FileError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
+        FileError::Config { reason } => (JJ_CONFIG_ERROR, reason),
         FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
@@ -44,37 +45,35 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
 // Same discipline as `repo.rs`'s readers: `data`/`len` describe a caller-owned buffer Dart
 // builds and frees itself; Rust borrows it for the call only. Each reader builds its OWN
 // byte slice in its own scope and returns an OWNED struct, so the unbounded lifetime
-// `std::slice::from_raw_parts` produces provably cannot outlive the call.
+// `std::slice::from_raw_parts` produces provably cannot outlive the call. The null check
+// and the invalid-buffer error shape are shared with `repo.rs` via `envelope.rs`.
 
-/// Reject a null request pointer before any dereference.
-fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
-    if data.is_null() {
-        return Err(FfiErrorObj {
-            code: FFI_NULL_POINTER.to_owned(),
-            context: None,
-        });
-    }
-    Ok(())
-}
-
-/// The `ffi.invalid_argument` error a failed request-buffer verification produces.
-fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
+/// The `jj.invalid_input` refusal an ABSENT required request field produces.
+///
+/// Argument arity is observable CLI behavior: `jj file annotate`'s positional `path` and
+/// `jj file search`'s `-p/--pattern` are both required at v0.44.0, so an omitted field is a
+/// caller bug and must be named as one. An explicitly present EMPTY string is a VALUE, not
+/// an absence, and is passed through unchanged (an empty regex matches every line, exactly
+/// as `jj file search -p ""` does).
+fn missing_field(field: &str) -> FfiErrorObj {
     FfiErrorObj {
-        code: FFI_INVALID_ARGUMENT.to_owned(),
-        context: Some(e.to_string()),
+        code: JJ_INVALID_INPUT.to_owned(),
+        context: Some(format!("{field} is required")),
     }
 }
 
-/// Owned Rust form of a `FileListRequest` buffer. `revision` is `Option`: ABSENT is the
-/// wire form of "the user did not supply it", which applies the CLI's own `@` default.
-struct FileListRequestOwned {
+/// Owned Rust form of a `FileListRequest` or `FileShowRequest` buffer — the two are
+/// shape-identical, and this is the shape, not either table. `revision` is `Option`: ABSENT
+/// is the wire form of "the user did not supply it", which applies the CLI's own `@`
+/// default.
+struct RevisionAndPathsOwned {
     revision: Option<ChangeId>,
     paths: Vec<String>,
 }
 
-/// Owned Rust form of a `FileAnnotateRequest` buffer. `path` is a single PLAIN path; an
-/// absent one is the empty string, which `Repo::file_annotate` refuses as `PathNotFound`
-/// (the repository root is not a regular file).
+/// Owned Rust form of a `FileAnnotateRequest` buffer. `path` is a single PLAIN path and is
+/// REQUIRED: an absent field is refused with `jj.invalid_input` before the call reaches
+/// `Repo::file_annotate`.
 struct FileAnnotateRequestOwned {
     revision: Option<ChangeId>,
     path: String,
@@ -88,18 +87,18 @@ struct FileSearchRequestOwned {
     name_only: bool,
 }
 
-/// Parse a `FileListRequest` buffer into an owned [`FileListRequestOwned`].
+/// Parse a `FileListRequest` buffer into an owned [`RevisionAndPathsOwned`].
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
-fn read_file_list_request(data: *const u8, len: usize) -> Result<FileListRequestOwned, FfiErrorObj> {
+fn read_file_list_request(data: *const u8, len: usize) -> Result<RevisionAndPathsOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileListRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
-    Ok(FileListRequestOwned {
+    Ok(RevisionAndPathsOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
@@ -111,13 +110,13 @@ fn read_file_list_request(data: *const u8, len: usize) -> Result<FileListRequest
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
-fn read_file_show_request(data: *const u8, len: usize) -> Result<FileListRequestOwned, FfiErrorObj> {
+fn read_file_show_request(data: *const u8, len: usize) -> Result<RevisionAndPathsOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileShowRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
-    Ok(FileListRequestOwned {
+    Ok(RevisionAndPathsOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
@@ -128,6 +127,8 @@ fn read_file_show_request(data: *const u8, len: usize) -> Result<FileListRequest
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+/// - `jj.invalid_input` — `path` is ABSENT from the buffer (the CLI's positional `path` is
+///   required); an explicitly empty string is a value and is passed through.
 fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotateRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
@@ -136,7 +137,7 @@ fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotat
         .map_err(|e| invalid_request(&e))?;
     Ok(FileAnnotateRequestOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
-        path: req.path().unwrap_or_default().to_owned(),
+        path: req.path().ok_or_else(|| missing_field("path"))?.to_owned(),
     })
 }
 
@@ -145,6 +146,9 @@ fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotat
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+/// - `jj.invalid_input` — `pattern` is ABSENT from the buffer (the CLI marks `-p/--pattern`
+///   `required = true`); an explicitly empty string is a value and is passed through, where
+///   it is the empty regex and matches every line.
 fn read_file_search_request(data: *const u8, len: usize) -> Result<FileSearchRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
@@ -153,7 +157,7 @@ fn read_file_search_request(data: *const u8, len: usize) -> Result<FileSearchReq
         .map_err(|e| invalid_request(&e))?;
     Ok(FileSearchRequestOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
-        pattern: req.pattern().unwrap_or_default().to_owned(),
+        pattern: req.pattern().ok_or_else(|| missing_field("pattern"))?.to_owned(),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
         name_only: req.name_only(),
     })
@@ -395,8 +399,9 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
 ///   tree; the path in `context`.
-/// - `jj.jj_lib_error` — an underlying jj-lib failure, including an unreadable or malformed
-///   config stack; detail in `context`.
+/// - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
+///   `ui.conflict-marker-style` this verb materializes conflicts with cannot be read.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
 /// Same handle and buffer contract as `zanshin_file_list`; `data` is a
@@ -435,7 +440,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
 /// - `jj.change_not_found` — `revision` does not resolve.
-/// - `jj.invalid_input` — `path` is not a valid repo path.
+/// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
+///   path.
 /// - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
 /// - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
 ///   submodule, or a conflict with a non-file side); the path in `context`.
@@ -483,8 +489,8 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
 /// - `jj.change_not_found` — `revision` does not resolve.
-/// - `jj.invalid_input` — `pattern` names an unknown kind or does not parse, or a `paths`
-///   entry is not a valid repo path; detail in `context`.
+/// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
+///   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -524,7 +530,9 @@ mod tests {
         map_file_err,
     };
     use crate::fbs;
-    use crate::{JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND};
+    use crate::{
+        JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    };
 
     fn verified(bytes: &[u8]) -> fbs::Envelope<'_> {
         fb_root::<fbs::Envelope>(bytes).expect("FlatBuffers Verifier must pass")
@@ -558,6 +566,13 @@ mod tests {
                 "bad pattern",
             ),
             (
+                map_file_err(FileError::Config {
+                    reason: "bad marker style".to_owned(),
+                }),
+                JJ_CONFIG_ERROR,
+                "bad marker style",
+            ),
+            (
                 map_file_err(FileError::Backend("boom".to_owned())),
                 JJ_JJ_LIB_ERROR,
                 "boom",
@@ -585,10 +600,12 @@ mod tests {
                 conflict_side_count: 1,
             },
             FileEntry {
+                // A MINIMAL conflict has TWO sides: `Merge::num_sides()` is
+                // `values.len() / 2 + 1`, so a 3-term merge simplifies to 2.
                 path: "c.txt".to_owned(),
                 file_type: FileType::Conflict,
                 executable: false,
-                conflict_side_count: 3,
+                conflict_side_count: 2,
             },
         ];
 
@@ -606,7 +623,7 @@ mod tests {
         assert_eq!(fbs_entries.get(1).file_type(), fbs::FileType::Symlink);
         assert!(!fbs_entries.get(1).executable());
         assert_eq!(fbs_entries.get(2).file_type(), fbs::FileType::Conflict);
-        assert_eq!(fbs_entries.get(2).conflict_side_count(), 3);
+        assert_eq!(fbs_entries.get(2).conflict_side_count(), 2);
     }
 
     /// The two remaining `FileType` members have no jj-side constructor a unit test can

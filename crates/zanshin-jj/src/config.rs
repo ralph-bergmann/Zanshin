@@ -56,8 +56,8 @@ use crate::Repo;
 /// user's `[revset-aliases]` or `[revsets]` entry overrides.
 ///
 /// The `[revsets] log` / `log-graph-prioritize` values and the whole `[revset-aliases]`
-/// table are verbatim from `cli/src/config/revsets.toml` at v0.42.0;
-/// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:43` and
+/// table are verbatim from `cli/src/config/revsets.toml` at v0.44.0;
+/// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:44` and
 /// `ui.conflict-marker-style` from `cli/src/config/misc.toml:45` (Story 9.4 — the style
 /// `file show` materializes a conflicted file with).
 ///

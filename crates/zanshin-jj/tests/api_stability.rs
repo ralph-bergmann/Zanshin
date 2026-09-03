@@ -396,6 +396,7 @@ fn file_reads_surface_resolves() {
     _ = zanshin_jj::FileError::PathNotFound { path: String::new() };
     _ = zanshin_jj::FileError::NotAFile { path: String::new() };
     _ = zanshin_jj::FileError::InvalidInput { reason: String::new() };
+    _ = zanshin_jj::FileError::Config { reason: String::new() };
     _ = zanshin_jj::FileError::Backend(String::new());
 
     // Every `FileType` member — the wire discriminant order is pinned by the schema.

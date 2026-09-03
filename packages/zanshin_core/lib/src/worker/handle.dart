@@ -392,14 +392,15 @@ final class RepoHandle {
   /// CLI's, reproduced deliberately. A conflicted file's content is the
   /// MATERIALIZED merge, with markers in the style the repo's effective
   /// `ui.conflict-marker-style` selects. Paths that exist but are not renderable
-  /// as file content (a symlink, a submodule, an unreadable blob) land in
-  /// `FileContents.skipped` instead of failing the call.
+  /// as file content (a symlink, a submodule, a blob whose access is denied) land
+  /// in `FileContents.skipped` instead of failing the call.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`,
-  /// `jj.jj_lib_error`).
-  Future<FileContents> fileShow({String? revision, List<String> paths = const <String>[]}) {
+  /// `jj.config_error` — this is the only file read that consults the repo's
+  /// effective jj config — `jj.jj_lib_error`).
+  Future<FileContents> fileShow({required List<String> paths, String? revision}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }

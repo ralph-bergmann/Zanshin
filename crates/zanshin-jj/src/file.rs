@@ -65,7 +65,11 @@ pub enum FileType {
     Conflict,
 }
 
-/// One entry of a revision's tree — the CLI's `TreeEntry` keyword set, typed.
+/// One entry of a revision's tree, modelled on the CLI's `TreeEntry` keywords.
+///
+/// The CLI's `conflict` keyword (`!value.is_resolved()`) has no field of its own: it is
+/// exactly `file_type == FileType::Conflict`, so carrying it too would be a second,
+/// desyncable spelling of one fact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
     /// Repo-relative path in jj's internal (`/`-separated) form.
@@ -75,8 +79,10 @@ pub struct FileEntry {
     /// The executable bit. `false` for a symlink, a submodule, and for a conflict whose
     /// sides disagree about it — the CLI's `is_executable_file(...).unwrap_or_default()`.
     pub executable: bool,
-    /// Number of sides of the SIMPLIFIED merge: `1` for a resolved entry, `≥ 3` for a
-    /// conflict (the CLI's `conflict_side_count` keyword). Saturates at [`u32::MAX`].
+    /// Number of sides of the SIMPLIFIED merge: `1` for a resolved entry, `≥ 2` for a
+    /// conflict (the CLI's `conflict_side_count` keyword). `Merge::num_sides()` is
+    /// `values.len() / 2 + 1`, so the SMALLEST conflict — a 3-term merge — has two sides.
+    /// Saturates at [`u32::MAX`].
     pub conflict_side_count: u32,
 }
 
@@ -99,10 +105,11 @@ pub struct ShownFile {
 pub struct FileContents {
     /// One entry per rendered file, in `entries_matching` (tree) order.
     pub files: Vec<ShownFile>,
-    /// Paths that exist but are not renderable as file content — a symlink, a Git
-    /// submodule, or a path whose blob could not be read. The CLI prints one warning per
-    /// entry and keeps going; dropping them would leave a file silently missing from the
-    /// result with no way for a GUI to say why.
+    /// Paths that are not renderable as file content — a symlink, a Git submodule, a path
+    /// whose blob could not be read, and the two cases the CLI `panic!`s on rather than
+    /// reports (`"Path '…' is absent."`, `"Path '…' is a directory."`). The CLI prints one
+    /// warning per entry and keeps going; dropping them would leave a file silently missing
+    /// from the result with no way for a GUI to say why.
     pub skipped: Vec<SkippedPath>,
 }
 
@@ -115,7 +122,8 @@ pub struct AnnotationLine {
     /// (the CLI does one `get_commit_async` per LINE).
     pub change_id: ChangeId,
     /// 1-BASED line number the line had in `commit_id`'s version of the file. jj-lib
-    /// reports this 0-based; the `+1` matches what the CLI renders.
+    /// reports this 0-based; the `+1` matches what the CLI renders. Saturates at
+    /// 4294967295, as [`FileEntry::conflict_side_count`] does.
     pub original_line_number: u32,
     /// The raw line, newline included when the source line had one. NOT guaranteed UTF-8.
     pub content: Vec<u8>,
@@ -134,12 +142,14 @@ pub struct SearchMatch {
     pub path: String,
     /// 1-based line number WITHIN the searched content. For a conflicted path the count
     /// restarts at each side (`conflict_side`) — there is no meaningful unified numbering
-    /// across sides, which is the CLI's own reasoning at `search.rs:146-147`.
+    /// across sides, which is the CLI's own reasoning at `search.rs:146-147`. Saturates at
+    /// 4294967295, as [`FileEntry::conflict_side_count`] does.
     pub line_number: u32,
     /// The raw matching line, newline included when the source line had one.
     pub content: Vec<u8>,
     /// 0-based index of the conflict side this line came from, or `None` for a resolved
-    /// file — null-for-absence.
+    /// file — null-for-absence. Saturates at 4294967295, as
+    /// [`FileEntry::conflict_side_count`] does.
     pub conflict_side: Option<u32>,
 }
 
@@ -179,9 +189,19 @@ pub enum FileError {
         /// Human-readable reason the input was rejected.
         reason: String,
     },
-    /// An underlying jj-lib failure — including a config-stack read failure, since these
-    /// verbs have no separate config error — opaque-string-wrapped so no `jj_lib` type
-    /// escapes the public API (FR-JJ-16).
+    /// The repo's effective jj config is unreadable or malformed, so
+    /// [`crate::Repo::file_show`] cannot learn which `ui.conflict-marker-style` to
+    /// materialize a conflict with. Reported separately from [`FileError::Backend`] because
+    /// it is the user's own config that is wrong, not the repository — the same distinction
+    /// every other config-reading verb makes (`log_defaults`, `graph_slice`, the Story
+    /// 9.1/9.3 mutations).
+    #[error("config error: {reason}")]
+    Config {
+        /// Human-readable reason the effective config could not be used.
+        reason: String,
+    },
+    /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes the
+    /// public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
     Backend(String),
 }
@@ -189,6 +209,11 @@ pub enum FileError {
 /// Converts any jj-lib error to [`FileError::Backend`].
 fn be<E: std::fmt::Display>(e: E) -> FileError {
     FileError::Backend(e.to_string())
+}
+
+/// Converts a config-stack failure to [`FileError::Config`].
+fn cfg<E: std::fmt::Display>(e: E) -> FileError {
+    FileError::Config { reason: e.to_string() }
 }
 
 /// Converts a shared [`ResolveError`] to this module's taxonomy.
@@ -328,7 +353,8 @@ fn render_entry(
             Err(skipped(format!("Path '{display}' exists but access is denied: {e}")))
         }
         // The CLI `panic!`s on both; a library must not abort the process on a path a
-        // caller could in principle reach, so they become an opaque backend error.
+        // caller could in principle reach, so each becomes a SkippedPath naming what it is
+        // — the call still succeeds for the remaining paths.
         // `entries_matching` never yields either, and the single-path branch guards absent.
         MaterializedTreeValue::Absent => Err(skipped(format!("Path '{display}' is absent."))),
         MaterializedTreeValue::Tree(_) => Err(skipped(format!("Path '{display}' is a directory."))),
@@ -353,7 +379,9 @@ fn render_entry(
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
 /// - [`FileError::PathNotFound`] — exactly one path was given and it is absent from the
 ///   tree.
-/// - [`FileError::Backend`] — `load_at_head`, the config stack, or a blob read failed.
+/// - [`FileError::Config`] — the effective jj config is unreadable or malformed (including
+///   an `ui.conflict-marker-style` that is not one of jj's four style names).
+/// - [`FileError::Backend`] — `load_at_head` or a blob read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_show(
     repo: &crate::Repo,
@@ -365,8 +393,8 @@ pub(crate) fn file_show(
             reason: "at least one path is required".to_owned(),
         });
     }
-    let config = crate::config::load(repo).map_err(be)?;
-    let marker_style = crate::config::conflict_marker_style(&config).map_err(be)?;
+    let config = crate::config::load(repo).map_err(cfg)?;
+    let marker_style = crate::config::conflict_marker_style(&config).map_err(cfg)?;
 
     let (readonly, commit) = head_commit(repo.workspace(), revision)?;
     let store = readonly.store().clone();
@@ -421,6 +449,19 @@ pub(crate) fn file_show(
 /// upstream TODO about exposing one, and jj-lib silently under-reports for a non-contiguous
 /// domain — an option that can only produce wrong answers is not offered).
 ///
+/// # KNOWN DIVERGENCE: a missing origin commit fails the call
+///
+/// For a line whose origin search stopped outside the domain, this resolves
+/// `origin.commit_id` in the store; the CLI substitutes the ROOT commit instead
+/// (`cli/src/commands/file/annotate.rs:124-129` @ v0.44.0), and its comment says WHY: a repo
+/// that was jj-initialized shallowly and then unshallow'd with git has commits jj never
+/// imported, so that id may be ABSENT from the store. There, the CLI still renders every
+/// line; here the store read fails and the whole call becomes [`FileError::Backend`].
+/// The fallback is deliberately NOT implemented: no fixture in this repo can construct a
+/// shallow-then-unshallowed history, so the extra branch would be unreachable by any test
+/// and the coverage ratchet would reject it. Implement it together with a test that can
+/// reach it.
+///
 /// # Errors
 ///
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
@@ -464,6 +505,10 @@ pub(crate) fn file_annotate(
         let change_id = if let Some(id) = change_ids.get(&origin.commit_id) {
             id.clone()
         } else {
+            // DIVERGENCE (documented on this fn): the CLI substitutes the root commit here
+            // because on a shallow-then-unshallowed repo this id may be absent from the
+            // store; ours propagates the read failure instead — no fixture can reach that
+            // state, so a fallback branch would be untestable.
             let commit = readonly.store().get_commit(&origin.commit_id).map_err(be)?;
             let id = ChangeId(commit.change_id().reverse_hex());
             change_ids.insert(origin.commit_id.clone(), id.clone());
@@ -601,7 +646,35 @@ mod tests {
     use jj_lib::backend::{CopyId, FileId, SymlinkId, TreeId, TreeValue};
     use jj_lib::merge::Merge;
 
-    use super::{collect_matches, file_type_of, is_executable, parse_path, parse_pattern, FileError, FileType};
+    use super::{
+        collect_matches, file_type_of, is_executable, parse_path, parse_pattern, res, ChangeId, FileError, FileType,
+        ResolveError,
+    };
+
+    /// The shared resolver's two outcomes must keep landing in the two DIFFERENT read
+    /// variants: "that revision does not resolve" is the caller's problem (`ChangeNotFound`,
+    /// id echoed), an index/store failure is not (`Backend`). Pinned directly, exactly as
+    /// `mutate.rs` pins its own mapping, because the `Backend` arm needs a store failure
+    /// mid-resolution that no fixture can provoke deterministically.
+    #[test]
+    fn res_preserves_the_not_found_and_backend_split() {
+        let id = ChangeId("zzzzzzzz".to_owned());
+        assert!(matches!(
+            res(ResolveError::NotFound, Some(&id)),
+            FileError::ChangeNotFound { id } if id == "zzzzzzzz"
+        ));
+        // `head_commit(None)` delegates to `resolve_or_wc`, which can only fail with
+        // `Backend`, so the `None` id is the defensive arm: it must still produce a
+        // ChangeNotFound with an EMPTY id rather than panicking.
+        assert!(matches!(
+            res(ResolveError::NotFound, None),
+            FileError::ChangeNotFound { id } if id.is_empty()
+        ));
+        assert!(matches!(
+            res(ResolveError::Backend("index read failed".to_owned()), Some(&id)),
+            FileError::Backend(reason) if reason == "index read failed"
+        ));
+    }
 
     fn file(executable: bool) -> TreeValue {
         TreeValue::File {

@@ -104,6 +104,35 @@ pub struct FfiErrorObj {
     pub context: Option<String>,
 }
 
+// ── Shared request-buffer guards ─────────────────────────────────────────────
+//
+// Every request-BUFFER reader (`repo.rs`, `file.rs`) builds its OWN byte slice in its own
+// scope and returns an OWNED struct — see the module comment in `repo.rs` for why a shared
+// generic reader would be unsound. Only the null check and the two error shapes are
+// genuinely shared, so they live here rather than once per noun module.
+
+/// Reject a null request pointer before any dereference.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+pub(crate) fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
+    if data.is_null() {
+        return Err(FfiErrorObj {
+            code: FFI_NULL_POINTER.to_owned(),
+            context: None,
+        });
+    }
+    Ok(())
+}
+
+/// The `ffi.invalid_argument` error a failed request-buffer verification produces.
+pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
+    FfiErrorObj {
+        code: FFI_INVALID_ARGUMENT.to_owned(),
+        context: Some(e.to_string()),
+    }
+}
+
 /// Build a success `Envelope` with no payload and return the finished buffer.
 ///
 /// Sets `ok = true`, `error = None`, `data_type = Payload::NONE`. The first real

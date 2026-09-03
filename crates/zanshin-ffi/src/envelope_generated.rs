@@ -1753,7 +1753,9 @@ pub mod zanshin {
 
         /// Arguments of `zanshin_file_annotate` (Story 9.4). `revision` as in FileListRequest.
         /// `path` is a single PLAIN repo-relative path, not a prefix and not a fileset — it is
-        /// `parse_file_path` in the CLI too.
+        /// `parse_file_path` in the CLI too. It is REQUIRED — an absent field is refused with
+        /// `jj.invalid_input`, mirroring the CLI's required positional argument; an explicitly
+        /// present EMPTY string is a value, not an absence, and means the repository root.
         pub struct FileAnnotateRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -1885,7 +1887,10 @@ pub mod zanshin {
         /// FileListRequest.
         ///
         /// `pattern` is jj's own `kind:pattern` string-pattern syntax, passed through verbatim
-        /// (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` separates.
+        /// (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` separates. It is
+        /// REQUIRED — an absent field is refused with `jj.invalid_input`, mirroring the CLI's
+        /// `required = true` on `-p/--pattern`; an explicitly present EMPTY string is a value, not
+        /// an absence, and is the empty regex, which matches every line (`jj file search -p ""`).
         /// `name_only` stops a file's scan at its first match — it changes the WORK done, not the
         /// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
         /// (the result always carries `SearchMatch.line_number`).
@@ -6346,9 +6351,11 @@ pub mod zanshin {
         ///
         /// Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
         /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
-        /// `FileContents.skipped` — a path that exists but is not renderable as file content
-        /// ("Path '…' exists but is not a file."). In both cases the call SUCCEEDS for the
-        /// remaining paths; the CLI prints one warning per entry.
+        /// `FileContents.skipped` — a path that is not renderable as file content
+        /// ("Path '…' exists but is not a file.", "Path '…' exists but access is denied: …",
+        /// "Path '…' is absent.", "Path '…' is a directory." — the last two are the cases the CLI
+        /// `panic!`s on, which a library reports instead of aborting the process). In both cases
+        /// the call SUCCEEDS for the remaining paths; the CLI prints one warning per entry.
         pub struct SkippedPath<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -6701,11 +6708,15 @@ pub mod zanshin {
         pub enum FileEntryOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One entry of a revision's tree (Story 9.4), the CLI's `TreeEntry` keyword set.
+        /// One entry of a revision's tree (Story 9.4), modelled on the CLI's `TreeEntry` keywords.
         ///
+        /// The CLI's `conflict` keyword (`!value.is_resolved()`) has no field of its own: it is
+        /// exactly `file_type == Conflict`, so carrying it too would be a second, desyncable
+        /// spelling of one fact.
         /// `executable` is false for a symlink, a submodule, and a conflict whose sides disagree
         /// about the bit (the CLI's `unwrap_or_default()`). `conflict_side_count` is the SIMPLIFIED
-        /// merge's side count: 1 for a resolved entry, >= 3 for a conflict; it saturates at
+        /// merge's side count: 1 for a resolved entry, >= 2 for a conflict (`Merge::num_sides()` is
+        /// `values.len() / 2 + 1`, so the smallest conflict has two sides); it saturates at
         /// 4294967295. A subtree that CONFLICTS with a non-tree is emitted as one entry with
         /// file_type == Conflict and is not descended into — render it as an opaque conflict, not
         /// an empty directory.
@@ -7144,8 +7155,10 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// The result of `zanshin_file_show` (Story 9.4): the files that could be rendered, plus
-        /// the paths that could not (a symlink, a Git submodule, an unreadable blob). A skipped
-        /// path does NOT fail the call — the CLI prints a warning per entry and keeps going.
+        /// the paths that could not — a symlink, a Git submodule, an unreadable blob, and the two
+        /// cases the CLI `panic!`s on rather than reports (an absent value, a bare directory). A
+        /// skipped path does NOT fail the call — the CLI prints a warning per entry and keeps
+        /// going. Every reason string is listed on SkippedPath.
         pub struct FileContents<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

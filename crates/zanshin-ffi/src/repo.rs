@@ -22,11 +22,11 @@ use zanshin_jj::{
 };
 
 use crate::envelope::{
-    catch, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
-    FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED,
-    JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO,
-    JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    catch, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, reject_null_request,
+    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
+    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
+    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -144,29 +144,8 @@ fn map_mutate_err(e: MutateError) -> FfiErrorObj {
 // infer `'static` and hold, say, a `RestoreRequest<'static>` after the Dart-owned buffer
 // is freed. Keeping the slice a local binding and returning only OWNED structs makes that
 // unrepresentable: the borrow provably cannot outlive the call. Only the null check and
-// the two error shapes are shared.
-
-/// Reject a null request pointer before any dereference.
-///
-/// # Errors
-/// - `ffi.null_pointer` — `data` is a null pointer.
-fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
-    if data.is_null() {
-        return Err(FfiErrorObj {
-            code: FFI_NULL_POINTER.to_owned(),
-            context: None,
-        });
-    }
-    Ok(())
-}
-
-/// The `ffi.invalid_argument` error a failed request-buffer verification produces.
-fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
-    FfiErrorObj {
-        code: FFI_INVALID_ARGUMENT.to_owned(),
-        context: Some(e.to_string()),
-    }
-}
+// the two error shapes are shared — they live in `envelope.rs`, since `file.rs`'s readers
+// need exactly the same two.
 
 /// Parse a `ChangeIdList` request buffer into an owned `Vec<ChangeId>`.
 ///
