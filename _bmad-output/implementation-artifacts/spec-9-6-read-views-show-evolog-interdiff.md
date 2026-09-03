@@ -5,10 +5,95 @@ created: '2026-09-03'
 status: 'done'
 baseline_revision: 'a81d1f0410c97057d7ad259fa8c2e742bb75067e'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `interdiff`'s change-id currency cannot address a hidden predecessor or a commit hex, so
+      `evolog` and `interdiff` do not compose into a version-to-version diff.
+    evidence: |-
+      `op_support::resolve_commit` takes a reverse-hex CHANGE-ID prefix and calls
+      `into_visible()`, so only the one currently-visible commit of a change is addressable.
+      `EvologEntry.predecessor_commit_ids` are COMMIT ids of HIDDEN commits. The CLI's
+      `--from`/`--to` are `RevisionArg`s resolved by `resolve_single_rev`, which accepts a
+      commit hex and therefore reaches a hidden predecessor — so `jj interdiff` CAN diff two
+      versions of one change and this cannot. That makes the spec's own stand-in for the
+      unported `evolog --patch` ("a caller composes `evolog` + `interdiff`") inexpressible,
+      and leaves the story's motivating question — "what differs between two versions of the
+      same work" — unanswerable through the shipped API. The currency itself is mandated by
+      the intent contract (Story 9.3's rule, FR-JJ-17), so widening it is a deliberate
+      follow-up decision, not a patch. Documented at every layer in the meantime.
+    location: >-
+      crates/zanshin-jj/src/commit_views.rs::interdiff
+    severity: medium
+  - summary: >-
+      `show` returns an unbounded entry list in one envelope, with a per-parent copy-record
+      stream and a full tree diff per entry.
+    evidence: |-
+      `show` collects `Vec<ShowEntry>` with no limit, cursor or early stop, while `evolog`
+      has `limit` and `zanshin-graph` streams. `show("all()")` on `medium-1k-commits`
+      materializes a thousand entries, each paying `parent_tree` (a merge over all parents),
+      one `get_copy_records` stream PER parent, a full `diff_stream_with_copies`, and a
+      `change_from_commit` that itself reads every parent commit plus a `resolve_change_id`
+      probe. The CLI's `jj show` is likewise unbounded, so matching it is CLI parity
+      (NFR-R-2) rather than an oversight — but the CLI streams to a pager where this builds
+      one FlatBuffers buffer. Nothing in the story bounds or measures it.
+    location: >-
+      crates/zanshin-jj/src/commit_views.rs::show
+    severity: medium
+  - summary: >-
+      `InterdiffView` carries no signal that the rebase behind it left conflict states in the
+      computed base tree.
+    evidence: |-
+      `rewrite::rebase_to_dest_parent` performs a 3-way merge that can leave conflicts in the
+      returned `MergedTree` — the module doc calls this out as a trap. The payload is only
+      `file_changes`, so a caller sees a plausible change list derived from a conflicted
+      rebase with no way to distinguish it; `ShowEntry` at least carries `Change.conflict`.
+      No test constructs a rebase that actually conflicts. The CLI renders conflict markers
+      in the patch text, which is Epic 5's surface, so the fix is likely a presence flag on
+      `InterdiffView` rather than anything textual.
+    location: >-
+      schemas/envelope.fbs::InterdiffView
+    severity: medium
+  - summary: >-
+      A workspace with no working-copy commit still surfaces as `jj.jj_lib_error` instead of
+      the registered `jj.no_working_copy`; `interdiff`'s `@` default widens the reach.
+    evidence: |-
+      `op_support::resolve_or_wc` maps a missing `@` to `ResolveError::Backend("workspace has
+      no working-copy commit")`, which becomes `CommitViewError::Backend` and then
+      `jj.jj_lib_error`. Story 9.4 already deferred this as a crate-wide fix (the mutation
+      verbs share the behavior verbatim and an AC requires it to stay byte-identical);
+      `interdiff` is one more verb reaching it, so the fix stays crate-wide.
+    location: >-
+      crates/zanshin-jj/src/op_support.rs::resolve_or_wc
+    severity: low
+  - summary: >-
+      Request tables are structurally interchangeable, so a hand-crafted `ShowRequest`
+      verifies as an `EvologRequest` and is answered rather than refused.
+    evidence: |-
+      `schemas/envelope.fbs` declares no `file_identifier` (only `root_type Envelope`), and
+      `ShowRequest` / `EvologRequest` / `InterdiffRequest` all put a string in the first
+      slot. Feeding `zanshin_evolog` a `ShowRequest` buffer verifies, reads `has_limit ==
+      false`, and returns a plausible answer instead of `ffi.invalid_argument`; the wrappers'
+      malformed-buffer test uses all-`0xff` garbage, which is the easy case. House-wide since
+      Story 9.3 — every request table has the property — and only reachable by a caller that
+      bypasses the generated Dart adapters, so the fix belongs with the schema convention,
+      not with one story.
+    location: >-
+      schemas/envelope.fbs
+    severity: low
+  - summary: >-
+      `evolog`'s start set is unbounded and entries from several start commits interleave
+      with no per-start grouping.
+    evidence: |-
+      `limit` bounds the OUTPUT of `walk_predecessors`, not the start set the revset
+      evaluates to, and the returned rows carry no marker for which start commit produced
+      them. For the CLI this is invisible because its graph mode re-groups; a GUI drawing its
+      own graph has to reconstruct the grouping from `predecessor_commit_ids`.
+    location: >-
+      crates/zanshin-jj/src/commit_views.rs::evolog
+    severity: low
 ---
 
 <intent-contract>
@@ -440,7 +525,67 @@ Zanshin anchors read against the working tree at baseline `a81d1f0`; jj CLI anch
    (`evolog_walks_every_version_newest_first_with_its_predecessors` +
    `evolog_of_the_root_commit_is_emitted_from_the_flush_tail`).
 
+**2026-09-04 — a third I/O-matrix row's scenario substituted (review).**
+
+3. *"interdiff, rewrite pair → `from` = pre-describe commit, `to` = its rewrite that also adds
+   `b.txt`"* prescribes a scenario that cannot exercise the mechanism the row exists to prove. A
+   `describe_commit` rewrite keeps its parents, and `rebase_to_dest_parent` fast-paths to
+   `source.tree()` when the parents already match (`rewrite.rs:456-460`, recorded in this spec's
+   own Code Map) — so the row's pair never reaches the rebase, and a plain two-tree diff would
+   satisfy it. The tests substitute a pair whose PARENTS differ (`interdiff_pair`): `from` on
+   `p1`, `to` on `p2` which carries `extra.txt`, so a plain diff would report `extra.txt` and
+   only the real rebase factors it out. That is a strictly stronger witness for "the parent
+   difference is factored out". It does NOT witness the row's other, unstated half — comparing
+   two versions of one change — which the shipped `ChangeId` currency cannot express at all; that
+   gap is recorded in `deferred` rather than papered over.
+
 ## Review Triage Log
+
+### 2026-09-04 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 2, low 7)
+- defer: 6: (high 0, medium 3, low 3)
+- reject: 14: (high 0, medium 2, low 12)
+- addressed_findings:
+  - `[medium]` `[patch]` `interdiff`'s doc claimed both sides are "resolved the way the CLI's
+    `resolve_single_rev` resolves them" — true only of the ambiguity refusal. `resolve_commit`
+    takes a reverse-hex CHANGE-ID prefix and `into_visible()`, so a commit hex, a revset
+    expression and a hidden commit are all unaddressable, where the CLI accepts all three.
+    Corrected at every layer (`commit_views.rs` module + `interdiff` doc, `Repo::interdiff`,
+    `zanshin_interdiff`, `InterdiffRequest`, `zanshinInterdiff`, `ZanshinWorker.interdiff`,
+    `RepoHandle.interdiff`) and the composition consequence named explicitly.
+  - `[medium]` `[patch]` `interdiff`'s two symmetric `map_err` closures were exercised only on
+    the `from` side, so mistyping the second as `res(e, from)` echoed the side the caller got
+    RIGHT and the whole suite still passed. `interdiff_refuses_an_unknown_divergent_or_empty_
+    revision_on_either_side` now runs every spelling through both sides against a resolvable
+    counterpart.
+  - `[low]` `[patch]` `EvologEntry.change` inherits two fields derived against the CURRENT view
+    rather than that version's moment (`divergent`, `is_anonymous`), a consequence of reusing
+    the single `Change` construction site. Documented on the Rust struct, the `.fbs` table, the
+    Dart model, and both `evolog` facades.
+  - `[low]` `[patch]` `evolog`'s negative-limit guard lived only in the FFI adapter, which runs
+    in the WORKER isolate — so the `ArgumentError` that `ZanshinWorker.evolog` and
+    `RepoHandle.evolog` both document was caught by the dispatch loop and reached the caller as
+    `internal.dispatch_error`. Guard added on the calling side; the adapter keeps its own as the
+    backstop for a direct caller.
+  - `[low]` `[patch]` The `uint` saturation clamp in `zanshinEvolog` was documented in four
+    places and asserted in none; replacing it with the obvious `limit ?? 0` passed every test
+    while turning "give me everything" into an empty evolog. Pinned by a real-cdylib worker test
+    at `limit: 0x100000000`.
+  - `[low]` `[patch]` The documented absent-vs-explicitly-empty revset distinction had no
+    witness, so normalizing `""` to `None` anywhere on the wire would have turned a cleared
+    revset box into a silent answer about `@`. Pinned in
+    `show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation`.
+  - `[low]` `[patch]` `docs/rust-error-codes.md` registers `jj.config_error` for `evolog`, which
+    reaches it through its own `parse_revset` call, but only `show` had a witness. Added
+    `evolog_reports_a_malformed_repo_config_as_a_config_error`.
+  - `[low]` `[patch]` `sprint-status.yaml` recorded `zanshin-jj/src/commit_views.rs 95.63` while
+    `coverage-baseline.txt` had been raised to 98.13. Summary comment refreshed to the reviewed
+    final state.
+  - `[low]` `[patch]` The `interdiff` rewrite-pair I/O-matrix row's scenario was substituted in
+    the tests with no Spec Change Log entry; entry 3 now records the substitution and why the
+    row's own scenario cannot reach the rebase.
 
 ## Design Notes
 
@@ -455,9 +600,22 @@ per-path change list; the hunks arrive with Epic 5 and will extend, not replace,
 **Why the parameter currency splits.** Story 9.3 already recorded the rule: a single revision is a
 `ChangeId`, but a parameter whose CLI form is a *set* stays a revset string, because materializing
 it would destroy alias and config resolution (FR-JJ-17). `jj show` and `jj evolog` both take
-`Vec<RevisionArg>` and union them; `jj interdiff` takes two `resolve_single_rev` arguments. Matching
-that arity is not cosmetic: with a `ChangeId`, `show` of a divergent change would refuse, while the
-CLI shows both commits -- an observable divergence on a case the fixtures can construct.
+`Vec<RevisionArg>` and union them; `jj interdiff` takes two `resolve_single_rev` arguments.
+
+Matching that arity is not cosmetic, but the ORIGINAL argument for it was wrong and is corrected
+here (see the Spec Change Log): "with a `ChangeId`, `show` of a divergent change would refuse,
+while the CLI shows both commits" does not hold at v0.44.0 — a bare divergent change-id symbol is
+refused by jj-lib's own `SymbolResolver` before evaluation, so the CLI refuses it too. The real,
+still-observable difference is **which stage refuses, and under which code**: a revset verb fails
+during symbol RESOLUTION (`jj.revset_resolution_error`, jj-lib's `DivergentChangeId`, raised for
+the whole expression), while `interdiff` fails in its own single-revision resolver
+(`jj.change_not_found`, with the offending id echoed in `context`). A GUI needs that split: the
+first says "your expression is ambiguous — disambiguate it" and the second says "that revision
+does not resolve". Two further consequences of the arity are unaffected by the correction and are
+themselves observable: a revset verb accepts `a | b`, `none()`, `root()` and every alias the
+user's config defines, none of which a `ChangeId` parameter could carry (FR-JJ-17); and its rows
+are per COMMIT, so unioning two commit hexes of one divergent change yields two entries sharing a
+`Change.id` — a shape `interdiff`'s currency cannot express at all.
 
 **Why `evolog` rows are keyed by commit id.** Every predecessor of a change shares its change id, so
 a list of `Change` rows would differ only in `commit_id`; and predecessors are *hidden* by
@@ -505,3 +663,119 @@ inventing a per-path skip channel. An unmatched path filter is a CLI *warning*, 
 **Manual checks (if no CLI):**
 - Diff the crate's `pub` items: the additions are exactly three `Repo` methods, two structs and one
   error enum, and no `jj_lib` type appears in a public signature.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+Story 9.6 adds the jj CLI's three commit READ views — `show`, `evolog`, `interdiff` — as typed
+`zanshin-jj` operations in a new `commit_views.rs` noun module, and surfaces each through the full
+chain Stories 9.3–9.5 established: `schemas/envelope.fbs` request + payload tables, an `extern "C"`
+wrapper in `zanshin-ffi`, committed `flatc`/cbindgen/ffigen output, and the Dart
+adapter → `WorkerCommand` → `ZanshinWorker` → `RepoHandle` path. `show` diffs each commit against
+its MERGED parent tree with copy records accumulated over EVERY parent; `evolog` walks
+`evolution::walk_predecessors` in raw walk order with `take(limit)` applied before any reversal;
+`interdiff` rebases `from` onto `to`'s parents in memory (`rewrite::rebase_to_dest_parent`) with
+deliberately EMPTY copy records. The diff half is the CLI's per-path change list (`FileChange` /
+`ChangeKind`), not hunks — Epic 5 owns textual diffing. Zero new `error.code` rows; nine registry
+rows gained "also emitted" clauses. `zanshin-mcp` untouched (Epic 7 owns the tool surface).
+
+This run resumed a spec left at `in-review` after two interrupted predecessors: the feature commit
+and a close-out commit existed, but no review had been recorded and the working tree carried a
+half-applied patch round. That work was completed, codegen regenerated, the gate driven green, and
+then the full review pass below was run over the whole diff since baseline.
+
+### Files changed
+
+- `crates/zanshin-jj/src/commit_views.rs` (new) — the three verbs, `ShowEntry`, `EvologEntry`,
+  `CommitViewError`, the tree-diff → `Vec<FileChange>` classifier, the per-parent copy-record
+  accumulator, and the `RevsetError`/`ResolveError` mappers.
+- `crates/zanshin-jj/src/repo.rs` — the three `#[must_use]` `Repo` facades and their doc blocks.
+- `crates/zanshin-jj/src/lib.rs` — module declaration and re-exports.
+- `crates/zanshin-jj/tests/commit_views.rs` (new) — 22 integration scenarios against a raw jj-lib
+  oracle, including a git-backed workspace for the rename/copy rows.
+- `crates/zanshin-jj/tests/api_stability.rs` — the Story 9.6 alias block, `sample_*` constructors
+  and `commit_views_surface_resolves`.
+- `schemas/envelope.fbs` — `ShowRequest`, `EvologRequest` (presence-flag limit pair),
+  `InterdiffRequest`; `ShowEntry`, `ShowView`, `EvologEntry`, `EvologView`, `InterdiffView`;
+  `Payload` slots 21–23; the Story 9-6 ledger line.
+- `crates/zanshin-ffi/src/commit_views.rs` (new) — request readers, payload builders and the three
+  `extern "C"` wrappers.
+- `crates/zanshin-ffi/src/{change,status}.rs` — `change_offset` / `file_changes_vector` extracted so
+  the new payloads nest a `Change` and a `[FileChange]` without a second builder.
+- `crates/zanshin-ffi/src/{lib,repo}.rs` — module declaration; `RepoSession`'s read-wrapper doc.
+- `crates/zanshin-ffi/tests/commit_views_ffi.rs` (new) — envelope/verifier contract, request-reader
+  variants, per-wrapper zero-handle assertions, and the cross-cutting no-operation-written test.
+- `packages/zanshin_core/lib/src/ffi/commit_views.dart` (new) — adapters, models, decoders.
+- `packages/zanshin_core/lib/src/ffi/{change,status}.dart` — `mapChangeTable` /
+  `mapFileChangeTable` extracted so a future field cannot reach one decoder only.
+- `packages/zanshin_core/lib/src/worker/{commands,isolate,handle}.dart` — the three commands,
+  switch arms, `ZanshinWorker` methods and `RepoHandle` methods.
+- `packages/zanshin_core/test/{ffi,worker}/commit_views_test.dart` (new) — decode-contract tests
+  over synthetic buffers plus real-cdylib worker tests.
+- Committed codegen: `crates/zanshin-ffi/include/zanshin_ffi.h`,
+  `crates/zanshin-ffi/src/envelope_generated.rs`,
+  `packages/zanshin_core/lib/src/ffi/{bindings.dart,envelope_zanshin.ffi_generated.dart}`.
+- `docs/rust-error-codes.md` — "also emitted" clauses on nine reused rows; no new row.
+- `coverage-baseline.txt` — `zanshin-jj/src/commit_views.rs` 95.63 → 98.13, `repo.rs` 95.74 →
+  95.97; nothing lowered, no `exclude_prefix` added.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — the story flipped to `done` with the
+  summary comment refreshed to this reviewed final state.
+
+### Review findings breakdown
+
+Four review layers ran in parallel (blind hunter, edge-case hunter, verification-gap, intent
+alignment).
+
+- Patches applied: 9 — 0 high, 2 medium, 7 low. Listed individually in the Review Triage Log.
+- Items deferred: 6 — 3 medium, 3 low. In the `deferred` frontmatter, with evidence.
+- Items rejected: 14. The substantive ones and why: the duplicated `session_from_handle` and the
+  duplicated `status.rs` classifier are the crate's existing per-module pattern, and this spec's
+  Design Notes explicitly forbid refactoring `status.rs`; the classifier's `(absent, absent)`
+  fall-through to `Modified` (where the CLI `panic!`s) is unreachable — a tree diff never yields an
+  equal pair — and an error arm would add a line the coverage ratchet could not cover;
+  `res(NotFound, None)` producing an empty `context` is a defensive arm `resolve_or_wc` cannot
+  reach (an absent id fails as `Backend`) and is deliberately unit-tested as such; the four Dart
+  copies of `_withRequestBytes`/`_rejectInteriorNul` and `isolate.dart`'s repeated synthesized
+  `ffi.invalid_handle` envelope are already on Story 9.4's deferred list; the read wrappers' `&mut`
+  session borrow matches every existing read wrapper and changing it is a crate-wide refactor; and
+  "the spec artifact was never closed out" is precisely what this run does.
+
+### Follow-up review recommendation
+
+`followup_review_recommended: true`. Patched findings by severity: high 0, medium 2, low 7. No
+high-severity patch, so the score decides: `3 × 2 + 1 × 7 = 13`, which is ≥ 5.
+
+### Verification performed
+
+- `cargo make test` — exit 0, run unpiped, three times across this run (on the inherited dirty tree,
+  after completing the half-applied patch round, and after the review patches). Final run: all Rust
+  suites green, clippy pedantic `-D warnings` clean, rustfmt clean, `dart analyze --fatal-infos
+  --fatal-warnings` clean, `dart format` clean, `cargo deny` clean, coverage held at 99.13 %
+  (7964/8034 lines over 42 files) with no baseline entry lowered and no `exclude_prefix` added, and
+  `extern-coverage: OK — every zanshin-ffi extern "C" fn is covered`.
+- `cargo make codegen` then `cargo make verify-codegen` — run after each of the two commits this run
+  created, since both carried `.fbs` / `extern "C"` doc corrections. Both times: no drift.
+- `git status --porcelain` — clean after each commit.
+- Note for future runs: the inherited `.fbs` edit was doc-comment only, but `flatc` propagates doc
+  comments into both generated accessors, so codegen had to be regenerated BEFORE gating; the
+  header and `bindings.dart` moved too, because cbindgen and ffigen lift the `extern "C"` doc block.
+
+### Residual risks
+
+- The `interdiff` currency gap (first `deferred` item) is the substantive one: the story's own
+  motivating question — what differs between two versions of the same work — is not answerable
+  through the shipped API, because a hidden predecessor has no address in a `ChangeId` parameter.
+  Every layer now documents this and no test claims otherwise, but a GUI author reading only the
+  story title could reasonably expect it to work.
+- `show` is unbounded by design (CLI parity), so a broad revset on a large repository builds one
+  large FlatBuffers envelope. Not measured; no committed fixture is large enough for the suite to
+  notice.
+- Copy/rename classification produces `Renamed`/`Copied` only on the git backend; on the native
+  backend it degrades to `Added`+`Removed`. That is jj-lib's own behavior and is documented, but it
+  means the two backends give observably different `show` output for the same operation.
+- The interrupted predecessor runs leave this story's history spread over four commits rather than
+  the usual two; the feature commit and the first close-out commit predate any review.
