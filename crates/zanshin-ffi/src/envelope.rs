@@ -34,6 +34,12 @@ pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 /// AR-P-4: emitted by `change.rs` when no change exists for the given id.
 pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
+/// AR-P-4: emitted by `file.rs::zanshin_file_annotate` when the path exists in the target
+/// revision's tree but is not a regular file (a directory, a symlink, a Git submodule, or a
+/// conflict with a non-file side); the repo-relative path in `context`. Distinct from
+/// `jj.path_not_found`, which means the path is not there at all — a GUI must be able to
+/// tell "you selected a directory" from "you mistyped the path".
+pub const JJ_NOT_A_FILE: &str = "jj.not_a_file";
 /// AR-P-4: emitted by `repo.rs` (the mutation wrappers) when the caller's arguments are
 /// structurally invalid for the mutation (e.g. an empty `parents`/`change_ids` list).
 pub const JJ_INVALID_INPUT: &str = "jj.invalid_input";
@@ -198,7 +204,7 @@ pub fn ok_mutation_result(r: &zanshin_jj::MutationResult) -> Vec<u8> {
 ///
 /// Sets `ok = true`, `data_type = Payload::AbsorbResult` (Story 9.3). The nested
 /// `MutationResult` is built first through [`build_mutation_result`], then the string
-/// vector, the optional `source_change_id`, and each `AbsorbSkippedPath` — every child
+/// vector, the optional `source_change_id`, and each `SkippedPath` — every child
 /// completed before the `AbsorbResult` table opens, as `FlatBuffers` requires.
 ///
 /// `source_change_id` is written only when present: null-for-absence is the wire form of
@@ -216,9 +222,9 @@ pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult) -> Vec<u8> {
         .map(|s| {
             let path = b.create_string(&s.path);
             let reason = b.create_string(&s.reason);
-            fbs::AbsorbSkippedPath::create(
+            fbs::SkippedPath::create(
                 &mut b,
-                &fbs::AbsorbSkippedPathArgs {
+                &fbs::SkippedPathArgs {
                     path: Some(path),
                     reason: Some(reason),
                 },

@@ -77,6 +77,51 @@ table AbsorbRequest {
   paths: [string];
 }
 
+/// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
+///
+/// `revision` ABSENT is the wire form of "the user did not supply it", which applies the
+/// CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
+/// Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+/// `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
+/// rather than guessed.
+/// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
+/// fileset DSL is terminal input language and is not parsed (ADR-0003).
+table FileListRequest {
+  revision: string;
+  paths: [string];
+}
+
+/// Arguments of `zanshin_file_show` (Story 9.4). `revision`/`paths` as in FileListRequest,
+/// except `paths` may NOT be empty — the CLI marks its FILESETS argument `required`, and an
+/// empty list is `jj.invalid_input`.
+table FileShowRequest {
+  revision: string;
+  paths: [string];
+}
+
+/// Arguments of `zanshin_file_annotate` (Story 9.4). `revision` as in FileListRequest.
+/// `path` is a single PLAIN repo-relative path, not a prefix and not a fileset — it is
+/// `parse_file_path` in the CLI too.
+table FileAnnotateRequest {
+  revision: string;
+  path: string;
+}
+
+/// Arguments of `zanshin_file_search` (Story 9.4). `revision`/`paths` as in
+/// FileListRequest.
+///
+/// `pattern` is jj's own `kind:pattern` string-pattern syntax, passed through verbatim
+/// (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` separates.
+/// `name_only` stops a file's scan at its first match — it changes the WORK done, not the
+/// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
+/// (the result always carries `SearchMatch.line_number`).
+table FileSearchRequest {
+  revision: string;
+  pattern: string;
+  paths: [string];
+  name_only: bool;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -89,6 +134,7 @@ table AbsorbRequest {
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results ✓
 //   Story 9-3  : AbsorbResult ✓ (restore reuses MutationResult)
+//   Story 9-4  : FileList ✓, FileContents ✓, FileAnnotation ✓, FileSearch ✓
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -386,12 +432,16 @@ table MutationResult {
   working_copy_change_id: string;
 }
 
-/// One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
-/// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
-/// The CLI prints one warning per entry; the remaining paths still absorb.
-table AbsorbSkippedPath {
+/// One path an operation could not process, with the verbatim reason.
+///
+/// Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
+/// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
+/// `FileContents.skipped` — a path that exists but is not renderable as file content
+/// ("Path '…' exists but is not a file."). In both cases the call SUCCEEDS for the
+/// remaining paths; the CLI prints one warning per entry.
+table SkippedPath {
   path: string;      // repo-relative, jj's internal `/`-separated form
-  reason: string;    // jj-lib's own message, forwarded unchanged
+  reason: string;    // the CLI's / jj-lib's own message, forwarded unchanged
 }
 
 /// Outcome of a successful `zanshin_absorb` (Story 9.3, FR-JJ-10a).
@@ -411,7 +461,93 @@ table AbsorbResult {
   rewritten_change_ids: [string];   // destination ChangeIds, reverse-hex, forward topological order
   source_change_id: string;         // absent when the source was abandoned or nothing moved
   num_rebased: uint;
-  skipped_paths: [AbsorbSkippedPath];
+  skipped_paths: [SkippedPath];
+}
+
+/// What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
+/// (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
+/// `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
+/// into subtrees rather than yielding them) but is modelled so the mapping is total. jj's
+/// sixth case — an ABSENT entry, rendered as `""` — is never emitted and has no member.
+enum FileType : byte { File, Symlink, Tree, GitSubmodule, Conflict }
+
+/// One entry of a revision's tree (Story 9.4), the CLI's `TreeEntry` keyword set.
+///
+/// `executable` is false for a symlink, a submodule, and a conflict whose sides disagree
+/// about the bit (the CLI's `unwrap_or_default()`). `conflict_side_count` is the SIMPLIFIED
+/// merge's side count: 1 for a resolved entry, >= 3 for a conflict; it saturates at
+/// 4294967295. A subtree that CONFLICTS with a non-tree is emitted as one entry with
+/// file_type == Conflict and is not descended into — render it as an opaque conflict, not
+/// an empty directory.
+table FileEntry {
+  path: string;                // repo-relative, jj's internal `/`-separated form
+  file_type: FileType;
+  executable: bool;
+  conflict_side_count: uint;
+}
+
+/// The entries of a revision's tree, in jj-lib's own `entries_matching` (tree) order.
+table FileList {
+  entries: [FileEntry];
+}
+
+/// One file's content as `jj file show` would print it (Story 9.4).
+///
+/// `content` is `[ubyte]`, not `string`: a tracked file is not guaranteed UTF-8. For a
+/// conflicted path it is the MATERIALIZED merge, with markers in the style the repo's
+/// EFFECTIVE `ui.conflict-marker-style` selects (re-read per call, never cached).
+table ShownFile {
+  path: string;
+  content: [ubyte];
+  conflict: bool;
+}
+
+/// The result of `zanshin_file_show` (Story 9.4): the files that could be rendered, plus
+/// the paths that could not (a symlink, a Git submodule, an unreadable blob). A skipped
+/// path does NOT fail the call — the CLI prints a warning per entry and keeps going.
+table FileContents {
+  files: [ShownFile];
+  skipped: [SkippedPath];
+}
+
+/// One annotated line of a file (Story 9.4) — `jj file annotate`'s per-line row.
+///
+/// `original_line_number` is 1-BASED: jj-lib reports it 0-based and the CLI adds 1. There is
+/// deliberately no `line_number` field — a line's own number is its 1-based index in
+/// `FileAnnotation.lines`. `origin_found` is false when the search stopped at the domain
+/// boundary and `commit_id` is only where it stopped; the CLI collapses that case to the
+/// root commit for display, this payload keeps the distinction.
+table AnnotationLine {
+  commit_id: string;           // CommitId hex of the originating commit
+  change_id: string;           // that commit's ChangeId, reverse-hex
+  original_line_number: uint;  // 1-based, in the ORIGINATING commit's version
+  content: [ubyte];            // the raw line, newline included when the source had one
+  origin_found: bool;
+}
+
+/// A file's annotation: one entry per line, in file order.
+table FileAnnotation {
+  lines: [AnnotationLine];
+}
+
+/// One matching line of `zanshin_file_search` (Story 9.4).
+///
+/// `line_number` is 1-based within the searched content. `conflict_side` is meaningful ONLY
+/// when has_conflict_side == true (presence pair, same rule as GraphRowMeta.change_offset:
+/// flatc 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
+/// path, whose line numbers restart at each side — there is no meaningful unified numbering
+/// across sides (the CLI's own reasoning at `search.rs:146-147`).
+table SearchMatch {
+  path: string;
+  line_number: uint;
+  content: [ubyte];            // the raw matching line, newline included
+  conflict_side: uint;         // 0 / ignored when has_conflict_side == false
+  has_conflict_side: bool;
+}
+
+/// The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order.
+table FileSearch {
+  matches: [SearchMatch];
 }
 
 union Payload {
@@ -430,6 +566,10 @@ union Payload {
   LogDefaults,
   MutationResult,
   AbsorbResult,
+  FileList,
+  FileContents,
+  FileAnnotation,
+  FileSearch,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

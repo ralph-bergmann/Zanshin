@@ -57,7 +57,9 @@ use crate::Repo;
 ///
 /// The `[revsets] log` / `log-graph-prioritize` values and the whole `[revset-aliases]`
 /// table are verbatim from `cli/src/config/revsets.toml` at v0.42.0;
-/// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:43`.
+/// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:43` and
+/// `ui.conflict-marker-style` from `cli/src/config/misc.toml:45` (Story 9.4 — the style
+/// `file show` materializes a conflicted file with).
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -78,6 +80,7 @@ log-graph-prioritize = "present(@)"
 
 [ui]
 log-synthetic-elided-nodes = true
+conflict-marker-style = "diff"
 
 [revset-aliases]
 # trunk() can be overridden as '<bookmark>@<remote>'.
@@ -413,6 +416,27 @@ pub(crate) fn log_defaults(config: &StackedConfig) -> Result<LogDefaults, Config
         short_prefixes,
         synthetic_elided,
     })
+}
+
+/// Reads the effective `ui.conflict-marker-style` out of a loaded stack (Story 9.4).
+///
+/// Mirrors `cli/src/cli_util.rs:962`/`:1074`, where the CLI reads exactly this key to build
+/// `ConflictMaterializeOptions.marker_style` for `jj file show`. The value comes from the
+/// user's own config through [`load`], with [`BUILTIN_CONFIG_TOML`]'s `"diff"` — the CLI's
+/// own default (`cli/src/config/misc.toml:45`) — as the lowest layer, so a Rust constant
+/// never decides how a conflict is rendered.
+///
+/// Returns a `jj_lib` type, which is why it is `pub(crate)`: no `jj_lib` type may appear in
+/// a public position (FR-JJ-16).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not one of jj's four style names, or is missing
+///   from every layer (impossible while the builtin layer is present).
+pub(crate) fn conflict_marker_style(
+    config: &StackedConfig,
+) -> Result<jj_lib::conflicts::ConflictMarkerStyle, ConfigError> {
+    config.get("ui.conflict-marker-style").map_err(|e| value_error(&e))
 }
 
 #[cfg(test)]

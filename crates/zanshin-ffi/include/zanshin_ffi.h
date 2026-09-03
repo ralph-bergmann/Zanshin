@@ -36,6 +36,10 @@
 
 #define ENUM_MAX_GRAPH_EDGE_KIND 2
 
+#define ENUM_MIN_FILE_TYPE 0
+
+#define ENUM_MAX_FILE_TYPE 4
+
 /**
  * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
  * boundary.  Dart holds a `Pointer<ZanshinBuf>` and registers it with
@@ -59,9 +63,15 @@ typedef struct {
 
 #define RestoreRequest_VT_RESTORE_DESCENDANTS 12
 
-#define RepoHandle_VT_SESSION_ID 6
+#define FileListRequest_VT_REVISION 4
 
-#define FileChange_VT_PATH 4
+#define FileAnnotateRequest_VT_PATH 6
+
+#define FileSearchRequest_VT_PATTERN 6
+
+#define FileSearchRequest_VT_NAME_ONLY 10
+
+#define RepoHandle_VT_SESSION_ID 6
 
 #define FileChange_VT_KIND 6
 
@@ -205,7 +215,7 @@ typedef struct {
 
 #define MutationResult_VT_ABANDONED_CHANGE_IDS 8
 
-#define AbsorbSkippedPath_VT_REASON 6
+#define SkippedPath_VT_REASON 6
 
 #define AbsorbResult_VT_MUTATION 4
 
@@ -216,6 +226,32 @@ typedef struct {
 #define AbsorbResult_VT_NUM_REBASED 10
 
 #define AbsorbResult_VT_SKIPPED_PATHS 12
+
+#define FileEntry_VT_FILE_TYPE 6
+
+#define FileEntry_VT_EXECUTABLE 8
+
+#define FileEntry_VT_CONFLICT_SIDE_COUNT 10
+
+#define FileList_VT_ENTRIES 4
+
+#define ShownFile_VT_CONTENT 6
+
+#define FileContents_VT_SKIPPED 6
+
+#define AnnotationLine_VT_ORIGINAL_LINE_NUMBER 8
+
+#define AnnotationLine_VT_ORIGIN_FOUND 12
+
+#define FileAnnotation_VT_LINES 4
+
+#define SearchMatch_VT_LINE_NUMBER 6
+
+#define SearchMatch_VT_CONFLICT_SIDE 10
+
+#define SearchMatch_VT_HAS_CONFLICT_SIDE 12
+
+#define FileSearch_VT_MATCHES 4
 
 /**
  * Build-stamp version string.
@@ -320,6 +356,134 @@ void zanshin_events_register(void (*callback)(ZanshinBuf *event));
  * Infallible and `catch_unwind`-wrapped; callable from any isolate/thread.
  */
 void zanshin_events_unregister(void);
+
+/**
+ * List the entries of a revision's tree in the repo identified by `handle` — the CLI's
+ * `jj file list`.
+ *
+ * The arguments cross as a `FileListRequest` `FlatBuffers` request buffer (ADR-0001
+ * composite-input pattern). An ABSENT `revision` is the wire form of "the user did not
+ * supply it", which applies the CLI's own `-r` default `@` — here the LAST-SNAPSHOTTED
+ * working-copy commit, because Zanshin never snapshots (D2). `paths` entries are
+ * repo-relative PREFIXES; an empty list means all paths. This read writes NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `FileList` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
+ * - `jj.change_not_found` — `revision` is malformed, absent, only-hidden, or divergent.
+ * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+ * closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero handle is
+ * undefined behaviour; the Dart worker's Model-A handle table (Story 3.9) makes a stale
+ * handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and
+ * owned/freed by Dart (`fbs.FileListRequestObjectBuilder(...).toBytes()`); Rust only
+ * borrows it for the duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Read the contents of the files selected by the request in the repo identified by
+ * `handle` — the CLI's `jj file show`.
+ *
+ * The arguments cross as a `FileShowRequest` `FlatBuffers` request buffer. `revision` and
+ * `paths` behave as for `zanshin_file_list`, except that `paths` may NOT be empty (the CLI
+ * marks its FILESETS argument `required`). A directory is visited recursively.
+ *
+ * With exactly ONE path an absent path is REFUSED (`jj.path_not_found`, the CLI's own fast
+ * path); with several, an absent path simply contributes nothing. A conflicted file's
+ * content is the MATERIALIZED merge, in the style the repo's effective
+ * `ui.conflict-marker-style` selects. Paths that exist but are not renderable as file
+ * content land in `FileContents.skipped` instead of failing the call. This read writes NO
+ * operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `FileContents` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
+ * - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
+ * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
+ *   tree; the path in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure, including an unreadable or malformed
+ *   config stack; detail in `context`.
+ *
+ * # Safety
+ * Same handle and buffer contract as `zanshin_file_list`; `data` is a
+ * `fbs.FileShowRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Annotate one file line by line in the repo identified by `handle` — the CLI's
+ * `jj file annotate`.
+ *
+ * The arguments cross as a `FileAnnotateRequest` `FlatBuffers` request buffer. `path` is a
+ * single PLAIN repo-relative path, not a prefix and not a fileset. The search domain is
+ * `all()`, hardcoded exactly as the CLI hardcodes it. One entry per line, in file order —
+ * a line's own 1-based number is its index in `FileAnnotation.lines` + 1, which is why the
+ * payload carries only `original_line_number`. This read writes NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `FileAnnotation` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+ * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.invalid_input` — `path` is not a valid repo path.
+ * - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
+ * - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
+ *   submodule, or a conflict with a non-file side); the path in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * Same handle and buffer contract as `zanshin_file_list`; `data` is a
+ * `fbs.FileAnnotateRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_file_annotate(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Search the files of a revision for a pattern in the repo identified by `handle` — the
+ * CLI's `jj file search`.
+ *
+ * The arguments cross as a `FileSearchRequest` `FlatBuffers` request buffer. `pattern` is
+ * jj's own `kind:pattern` string-pattern syntax passed through verbatim; a bare pattern
+ * defaults to kind `regex`. `name_only` stops a file's scan at its FIRST match — it changes
+ * the work done, not the result shape, so each matching file still contributes its first
+ * matching line. A conflicted path is searched side by side, with `conflict_side` set and
+ * line numbers restarting per side. Symlinks, submodules, non-file conflicts and unreadable
+ * blobs are silently not searched (CLI parity). This read writes NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `FileSearch` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+ * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.invalid_input` — `pattern` names an unknown kind or does not parse, or a `paths`
+ *   entry is not a valid repo path; detail in `context`.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * Same handle and buffer contract as `zanshin_file_list`; `data` is a
+ * `fbs.FileSearchRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_file_search(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Release a C string that was allocated by `string_to_cstring`.

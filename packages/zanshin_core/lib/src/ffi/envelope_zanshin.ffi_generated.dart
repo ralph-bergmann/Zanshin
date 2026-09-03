@@ -257,6 +257,55 @@ class _GraphEdgeKindReader extends fb.Reader<GraphEdgeKind> {
       GraphEdgeKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
+///  (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
+///  `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
+///  into subtrees rather than yielding them) but is modelled so the mapping is total. jj's
+///  sixth case — an ABSENT entry, rendered as `""` — is never emitted and has no member.
+enum FileType {
+  File(0),
+  Symlink(1),
+  Tree(2),
+  GitSubmodule(3),
+  Conflict(4);
+
+  final int value;
+  const FileType(this.value);
+
+  factory FileType.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return FileType.File;
+      case 1:
+        return FileType.Symlink;
+      case 2:
+        return FileType.Tree;
+      case 3:
+        return FileType.GitSubmodule;
+      case 4:
+        return FileType.Conflict;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static FileType? _createOrNull(int? value) => value == null ? null : FileType.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<FileType> reader = _FileTypeReader();
+}
+
+class _FileTypeReader extends fb.Reader<FileType> {
+  const _FileTypeReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  FileType read(fb.BufferContext bc, int offset) => FileType.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -272,7 +321,11 @@ enum PayloadTypeId {
   GraphSlice(11),
   LogDefaults(12),
   MutationResult(13),
-  AbsorbResult(14);
+  AbsorbResult(14),
+  FileList(15),
+  FileContents(16),
+  FileAnnotation(17),
+  FileSearch(18);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -309,6 +362,14 @@ enum PayloadTypeId {
         return PayloadTypeId.MutationResult;
       case 14:
         return PayloadTypeId.AbsorbResult;
+      case 15:
+        return PayloadTypeId.FileList;
+      case 16:
+        return PayloadTypeId.FileContents;
+      case 17:
+        return PayloadTypeId.FileAnnotation;
+      case 18:
+        return PayloadTypeId.FileSearch;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -317,7 +378,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 14;
+  static const int maxValue = 18;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -708,6 +769,378 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, fromOffset);
     fbBuilder.addOffset(1, intoOffset);
     fbBuilder.addOffset(2, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
+///
+///  `revision` ABSENT is the wire form of "the user did not supply it", which applies the
+///  CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
+///  Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+///  `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
+///  rather than guessed.
+///  `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
+///  fileset DSL is terminal input language and is not parsed (ADR-0003).
+class FileListRequest {
+  FileListRequest._(this._bc, this._bcOffset);
+  factory FileListRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileListRequest> reader = _FileListRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FileListRequest{revision: ${revision}, paths: ${paths}}';
+  }
+}
+
+class _FileListRequestReader extends fb.TableReader<FileListRequest> {
+  const _FileListRequestReader();
+
+  @override
+  FileListRequest createObject(fb.BufferContext bc, int offset) => FileListRequest._(bc, offset);
+}
+
+class FileListRequestBuilder {
+  FileListRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileListRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revision;
+  final List<String>? _paths;
+
+  FileListRequestObjectBuilder({
+    String? revision,
+    List<String>? paths,
+  }) : _revision = revision,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, revisionOffset);
+    fbBuilder.addOffset(1, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_show` (Story 9.4). `revision`/`paths` as in FileListRequest,
+///  except `paths` may NOT be empty — the CLI marks its FILESETS argument `required`, and an
+///  empty list is `jj.invalid_input`.
+class FileShowRequest {
+  FileShowRequest._(this._bc, this._bcOffset);
+  factory FileShowRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileShowRequest> reader = _FileShowRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FileShowRequest{revision: ${revision}, paths: ${paths}}';
+  }
+}
+
+class _FileShowRequestReader extends fb.TableReader<FileShowRequest> {
+  const _FileShowRequestReader();
+
+  @override
+  FileShowRequest createObject(fb.BufferContext bc, int offset) => FileShowRequest._(bc, offset);
+}
+
+class FileShowRequestBuilder {
+  FileShowRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileShowRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revision;
+  final List<String>? _paths;
+
+  FileShowRequestObjectBuilder({
+    String? revision,
+    List<String>? paths,
+  }) : _revision = revision,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, revisionOffset);
+    fbBuilder.addOffset(1, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_annotate` (Story 9.4). `revision` as in FileListRequest.
+///  `path` is a single PLAIN repo-relative path, not a prefix and not a fileset — it is
+///  `parse_file_path` in the CLI too.
+class FileAnnotateRequest {
+  FileAnnotateRequest._(this._bc, this._bcOffset);
+  factory FileAnnotateRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileAnnotateRequest> reader = _FileAnnotateRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FileAnnotateRequest{revision: ${revision}, path: ${path}}';
+  }
+}
+
+class _FileAnnotateRequestReader extends fb.TableReader<FileAnnotateRequest> {
+  const _FileAnnotateRequestReader();
+
+  @override
+  FileAnnotateRequest createObject(fb.BufferContext bc, int offset) => FileAnnotateRequest._(bc, offset);
+}
+
+class FileAnnotateRequestBuilder {
+  FileAnnotateRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileAnnotateRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revision;
+  final String? _path;
+
+  FileAnnotateRequestObjectBuilder({
+    String? revision,
+    String? path,
+  }) : _revision = revision,
+       _path = path;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, revisionOffset);
+    fbBuilder.addOffset(1, pathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_search` (Story 9.4). `revision`/`paths` as in
+///  FileListRequest.
+///
+///  `pattern` is jj's own `kind:pattern` string-pattern syntax, passed through verbatim
+///  (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` separates.
+///  `name_only` stops a file's scan at its first match — it changes the WORK done, not the
+///  result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
+///  (the result always carries `SearchMatch.line_number`).
+class FileSearchRequest {
+  FileSearchRequest._(this._bc, this._bcOffset);
+  factory FileSearchRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileSearchRequest> reader = _FileSearchRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get pattern => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  bool get nameOnly => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'FileSearchRequest{revision: ${revision}, pattern: ${pattern}, paths: ${paths}, nameOnly: ${nameOnly}}';
+  }
+}
+
+class _FileSearchRequestReader extends fb.TableReader<FileSearchRequest> {
+  const _FileSearchRequestReader();
+
+  @override
+  FileSearchRequest createObject(fb.BufferContext bc, int offset) => FileSearchRequest._(bc, offset);
+}
+
+class FileSearchRequestBuilder {
+  FileSearchRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPatternOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNameOnly(bool? nameOnly) {
+    fbBuilder.addBool(3, nameOnly);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _revision;
+  final String? _pattern;
+  final List<String>? _paths;
+  final bool? _nameOnly;
+
+  FileSearchRequestObjectBuilder({
+    String? revision,
+    String? pattern,
+    List<String>? paths,
+    bool? nameOnly,
+  }) : _revision = revision,
+       _pattern = pattern,
+       _paths = paths,
+       _nameOnly = nameOnly;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? patternOffset = _pattern == null ? null : fbBuilder.writeString(_pattern!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, revisionOffset);
+    fbBuilder.addOffset(1, patternOffset);
+    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.addBool(3, _nameOnly);
     return fbBuilder.endTable();
   }
 
@@ -3312,17 +3745,21 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
-///  ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
-///  The CLI prints one warning per entry; the remaining paths still absorb.
-class AbsorbSkippedPath {
-  AbsorbSkippedPath._(this._bc, this._bcOffset);
-  factory AbsorbSkippedPath(List<int> bytes) {
+///  One path an operation could not process, with the verbatim reason.
+///
+///  Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
+///  ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
+///  `FileContents.skipped` — a path that exists but is not renderable as file content
+///  ("Path '…' exists but is not a file."). In both cases the call SUCCEEDS for the
+///  remaining paths; the CLI prints one warning per entry.
+class SkippedPath {
+  SkippedPath._(this._bc, this._bcOffset);
+  factory SkippedPath(List<int> bytes) {
     final rootRef = fb.BufferContext.fromBytes(bytes);
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<AbsorbSkippedPath> reader = _AbsorbSkippedPathReader();
+  static const fb.Reader<SkippedPath> reader = _SkippedPathReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
@@ -3332,19 +3769,19 @@ class AbsorbSkippedPath {
 
   @override
   String toString() {
-    return 'AbsorbSkippedPath{path: ${path}, reason: ${reason}}';
+    return 'SkippedPath{path: ${path}, reason: ${reason}}';
   }
 }
 
-class _AbsorbSkippedPathReader extends fb.TableReader<AbsorbSkippedPath> {
-  const _AbsorbSkippedPathReader();
+class _SkippedPathReader extends fb.TableReader<SkippedPath> {
+  const _SkippedPathReader();
 
   @override
-  AbsorbSkippedPath createObject(fb.BufferContext bc, int offset) => AbsorbSkippedPath._(bc, offset);
+  SkippedPath createObject(fb.BufferContext bc, int offset) => SkippedPath._(bc, offset);
 }
 
-class AbsorbSkippedPathBuilder {
-  AbsorbSkippedPathBuilder(this.fbBuilder);
+class SkippedPathBuilder {
+  SkippedPathBuilder(this.fbBuilder);
 
   final fb.Builder fbBuilder;
 
@@ -3367,11 +3804,11 @@ class AbsorbSkippedPathBuilder {
   }
 }
 
-class AbsorbSkippedPathObjectBuilder extends fb.ObjectBuilder {
+class SkippedPathObjectBuilder extends fb.ObjectBuilder {
   final String? _path;
   final String? _reason;
 
-  AbsorbSkippedPathObjectBuilder({
+  SkippedPathObjectBuilder({
     String? path,
     String? reason,
   }) : _path = path,
@@ -3426,8 +3863,8 @@ class AbsorbResult {
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
   String? get sourceChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
   int get numRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
-  List<AbsorbSkippedPath>? get skippedPaths =>
-      const fb.ListReader<AbsorbSkippedPath>(AbsorbSkippedPath.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  List<SkippedPath>? get skippedPaths =>
+      const fb.ListReader<SkippedPath>(SkippedPath.reader).vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
@@ -3486,14 +3923,14 @@ class AbsorbResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _rewrittenChangeIds;
   final String? _sourceChangeId;
   final int? _numRebased;
-  final List<AbsorbSkippedPathObjectBuilder>? _skippedPaths;
+  final List<SkippedPathObjectBuilder>? _skippedPaths;
 
   AbsorbResultObjectBuilder({
     MutationResultObjectBuilder? mutation,
     List<String>? rewrittenChangeIds,
     String? sourceChangeId,
     int? numRebased,
-    List<AbsorbSkippedPathObjectBuilder>? skippedPaths,
+    List<SkippedPathObjectBuilder>? skippedPaths,
   }) : _mutation = mutation,
        _rewrittenChangeIds = rewrittenChangeIds,
        _sourceChangeId = sourceChangeId,
@@ -3517,6 +3954,765 @@ class AbsorbResultObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(2, sourceChangeIdOffset);
     fbBuilder.addUint32(3, _numRebased);
     fbBuilder.addOffset(4, skippedPathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One entry of a revision's tree (Story 9.4), the CLI's `TreeEntry` keyword set.
+///
+///  `executable` is false for a symlink, a submodule, and a conflict whose sides disagree
+///  about the bit (the CLI's `unwrap_or_default()`). `conflict_side_count` is the SIMPLIFIED
+///  merge's side count: 1 for a resolved entry, >= 3 for a conflict; it saturates at
+///  4294967295. A subtree that CONFLICTS with a non-tree is emitted as one entry with
+///  file_type == Conflict and is not descended into — render it as an opaque conflict, not
+///  an empty directory.
+class FileEntry {
+  FileEntry._(this._bc, this._bcOffset);
+  factory FileEntry(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileEntry> reader = _FileEntryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  FileType get fileType => FileType.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  bool get executable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  int get conflictSideCount => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'FileEntry{path: ${path}, fileType: ${fileType}, executable: ${executable}, conflictSideCount: ${conflictSideCount}}';
+  }
+}
+
+class _FileEntryReader extends fb.TableReader<FileEntry> {
+  const _FileEntryReader();
+
+  @override
+  FileEntry createObject(fb.BufferContext bc, int offset) => FileEntry._(bc, offset);
+}
+
+class FileEntryBuilder {
+  FileEntryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFileType(FileType? fileType) {
+    fbBuilder.addInt8(1, fileType?.value);
+    return fbBuilder.offset;
+  }
+
+  int addExecutable(bool? executable) {
+    fbBuilder.addBool(2, executable);
+    return fbBuilder.offset;
+  }
+
+  int addConflictSideCount(int? conflictSideCount) {
+    fbBuilder.addUint32(3, conflictSideCount);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileEntryObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final FileType? _fileType;
+  final bool? _executable;
+  final int? _conflictSideCount;
+
+  FileEntryObjectBuilder({
+    String? path,
+    FileType? fileType,
+    bool? executable,
+    int? conflictSideCount,
+  }) : _path = path,
+       _fileType = fileType,
+       _executable = executable,
+       _conflictSideCount = conflictSideCount;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addInt8(1, _fileType?.value);
+    fbBuilder.addBool(2, _executable);
+    fbBuilder.addUint32(3, _conflictSideCount);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The entries of a revision's tree, in jj-lib's own `entries_matching` (tree) order.
+class FileList {
+  FileList._(this._bc, this._bcOffset);
+  factory FileList(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileList> reader = _FileListReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<FileEntry>? get entries => const fb.ListReader<FileEntry>(FileEntry.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'FileList{entries: ${entries}}';
+  }
+}
+
+class _FileListReader extends fb.TableReader<FileList> {
+  const _FileListReader();
+
+  @override
+  FileList createObject(fb.BufferContext bc, int offset) => FileList._(bc, offset);
+}
+
+class FileListBuilder {
+  FileListBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileListObjectBuilder extends fb.ObjectBuilder {
+  final List<FileEntryObjectBuilder>? _entries;
+
+  FileListObjectBuilder({
+    List<FileEntryObjectBuilder>? entries,
+  }) : _entries = entries;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, entriesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One file's content as `jj file show` would print it (Story 9.4).
+///
+///  `content` is `[ubyte]`, not `string`: a tracked file is not guaranteed UTF-8. For a
+///  conflicted path it is the MATERIALIZED merge, with markers in the style the repo's
+///  EFFECTIVE `ui.conflict-marker-style` selects (re-read per call, never cached).
+class ShownFile {
+  ShownFile._(this._bc, this._bcOffset);
+  factory ShownFile(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ShownFile> reader = _ShownFileReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 6);
+  bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'ShownFile{path: ${path}, content: ${content}, conflict: ${conflict}}';
+  }
+}
+
+class _ShownFileReader extends fb.TableReader<ShownFile> {
+  const _ShownFileReader();
+
+  @override
+  ShownFile createObject(fb.BufferContext bc, int offset) => ShownFile._(bc, offset);
+}
+
+class ShownFileBuilder {
+  ShownFileBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addContentOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConflict(bool? conflict) {
+    fbBuilder.addBool(2, conflict);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ShownFileObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final List<int>? _content;
+  final bool? _conflict;
+
+  ShownFileObjectBuilder({
+    String? path,
+    List<int>? content,
+    bool? conflict,
+  }) : _path = path,
+       _content = content,
+       _conflict = conflict;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addOffset(1, contentOffset);
+    fbBuilder.addBool(2, _conflict);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_file_show` (Story 9.4): the files that could be rendered, plus
+///  the paths that could not (a symlink, a Git submodule, an unreadable blob). A skipped
+///  path does NOT fail the call — the CLI prints a warning per entry and keeps going.
+class FileContents {
+  FileContents._(this._bc, this._bcOffset);
+  factory FileContents(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileContents> reader = _FileContentsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<ShownFile>? get files => const fb.ListReader<ShownFile>(ShownFile.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  List<SkippedPath>? get skipped =>
+      const fb.ListReader<SkippedPath>(SkippedPath.reader).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FileContents{files: ${files}, skipped: ${skipped}}';
+  }
+}
+
+class _FileContentsReader extends fb.TableReader<FileContents> {
+  const _FileContentsReader();
+
+  @override
+  FileContents createObject(fb.BufferContext bc, int offset) => FileContents._(bc, offset);
+}
+
+class FileContentsBuilder {
+  FileContentsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addFilesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSkippedOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileContentsObjectBuilder extends fb.ObjectBuilder {
+  final List<ShownFileObjectBuilder>? _files;
+  final List<SkippedPathObjectBuilder>? _skipped;
+
+  FileContentsObjectBuilder({
+    List<ShownFileObjectBuilder>? files,
+    List<SkippedPathObjectBuilder>? skipped,
+  }) : _files = files,
+       _skipped = skipped;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? filesOffset = _files == null
+        ? null
+        : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? skippedOffset = _skipped == null
+        ? null
+        : fbBuilder.writeList(_skipped!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, filesOffset);
+    fbBuilder.addOffset(1, skippedOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One annotated line of a file (Story 9.4) — `jj file annotate`'s per-line row.
+///
+///  `original_line_number` is 1-BASED: jj-lib reports it 0-based and the CLI adds 1. There is
+///  deliberately no `line_number` field — a line's own number is its 1-based index in
+///  `FileAnnotation.lines`. `origin_found` is false when the search stopped at the domain
+///  boundary and `commit_id` is only where it stopped; the CLI collapses that case to the
+///  root commit for display, this payload keeps the distinction.
+class AnnotationLine {
+  AnnotationLine._(this._bc, this._bcOffset);
+  factory AnnotationLine(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<AnnotationLine> reader = _AnnotationLineReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get originalLineNumber => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get originFound => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'AnnotationLine{commitId: ${commitId}, changeId: ${changeId}, originalLineNumber: ${originalLineNumber}, content: ${content}, originFound: ${originFound}}';
+  }
+}
+
+class _AnnotationLineReader extends fb.TableReader<AnnotationLine> {
+  const _AnnotationLineReader();
+
+  @override
+  AnnotationLine createObject(fb.BufferContext bc, int offset) => AnnotationLine._(bc, offset);
+}
+
+class AnnotationLineBuilder {
+  AnnotationLineBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOriginalLineNumber(int? originalLineNumber) {
+    fbBuilder.addUint32(2, originalLineNumber);
+    return fbBuilder.offset;
+  }
+
+  int addContentOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOriginFound(bool? originFound) {
+    fbBuilder.addBool(4, originFound);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class AnnotationLineObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final String? _changeId;
+  final int? _originalLineNumber;
+  final List<int>? _content;
+  final bool? _originFound;
+
+  AnnotationLineObjectBuilder({
+    String? commitId,
+    String? changeId,
+    int? originalLineNumber,
+    List<int>? content,
+    bool? originFound,
+  }) : _commitId = commitId,
+       _changeId = changeId,
+       _originalLineNumber = originalLineNumber,
+       _content = content,
+       _originFound = originFound;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addOffset(1, changeIdOffset);
+    fbBuilder.addUint32(2, _originalLineNumber);
+    fbBuilder.addOffset(3, contentOffset);
+    fbBuilder.addBool(4, _originFound);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A file's annotation: one entry per line, in file order.
+class FileAnnotation {
+  FileAnnotation._(this._bc, this._bcOffset);
+  factory FileAnnotation(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileAnnotation> reader = _FileAnnotationReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<AnnotationLine>? get lines =>
+      const fb.ListReader<AnnotationLine>(AnnotationLine.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'FileAnnotation{lines: ${lines}}';
+  }
+}
+
+class _FileAnnotationReader extends fb.TableReader<FileAnnotation> {
+  const _FileAnnotationReader();
+
+  @override
+  FileAnnotation createObject(fb.BufferContext bc, int offset) => FileAnnotation._(bc, offset);
+}
+
+class FileAnnotationBuilder {
+  FileAnnotationBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addLinesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileAnnotationObjectBuilder extends fb.ObjectBuilder {
+  final List<AnnotationLineObjectBuilder>? _lines;
+
+  FileAnnotationObjectBuilder({
+    List<AnnotationLineObjectBuilder>? lines,
+  }) : _lines = lines;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? linesOffset = _lines == null
+        ? null
+        : fbBuilder.writeList(_lines!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, linesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One matching line of `zanshin_file_search` (Story 9.4).
+///
+///  `line_number` is 1-based within the searched content. `conflict_side` is meaningful ONLY
+///  when has_conflict_side == true (presence pair, same rule as GraphRowMeta.change_offset:
+///  flatc 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
+///  path, whose line numbers restart at each side — there is no meaningful unified numbering
+///  across sides (the CLI's own reasoning at `search.rs:146-147`).
+class SearchMatch {
+  SearchMatch._(this._bc, this._bcOffset);
+  factory SearchMatch(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SearchMatch> reader = _SearchMatchReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get lineNumber => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 8);
+  int get conflictSide => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  bool get hasConflictSide => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'SearchMatch{path: ${path}, lineNumber: ${lineNumber}, content: ${content}, conflictSide: ${conflictSide}, hasConflictSide: ${hasConflictSide}}';
+  }
+}
+
+class _SearchMatchReader extends fb.TableReader<SearchMatch> {
+  const _SearchMatchReader();
+
+  @override
+  SearchMatch createObject(fb.BufferContext bc, int offset) => SearchMatch._(bc, offset);
+}
+
+class SearchMatchBuilder {
+  SearchMatchBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLineNumber(int? lineNumber) {
+    fbBuilder.addUint32(1, lineNumber);
+    return fbBuilder.offset;
+  }
+
+  int addContentOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConflictSide(int? conflictSide) {
+    fbBuilder.addUint32(3, conflictSide);
+    return fbBuilder.offset;
+  }
+
+  int addHasConflictSide(bool? hasConflictSide) {
+    fbBuilder.addBool(4, hasConflictSide);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SearchMatchObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final int? _lineNumber;
+  final List<int>? _content;
+  final int? _conflictSide;
+  final bool? _hasConflictSide;
+
+  SearchMatchObjectBuilder({
+    String? path,
+    int? lineNumber,
+    List<int>? content,
+    int? conflictSide,
+    bool? hasConflictSide,
+  }) : _path = path,
+       _lineNumber = lineNumber,
+       _content = content,
+       _conflictSide = conflictSide,
+       _hasConflictSide = hasConflictSide;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addUint32(1, _lineNumber);
+    fbBuilder.addOffset(2, contentOffset);
+    fbBuilder.addUint32(3, _conflictSide);
+    fbBuilder.addBool(4, _hasConflictSide);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order.
+class FileSearch {
+  FileSearch._(this._bc, this._bcOffset);
+  factory FileSearch(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileSearch> reader = _FileSearchReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<SearchMatch>? get matches =>
+      const fb.ListReader<SearchMatch>(SearchMatch.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'FileSearch{matches: ${matches}}';
+  }
+}
+
+class _FileSearchReader extends fb.TableReader<FileSearch> {
+  const _FileSearchReader();
+
+  @override
+  FileSearch createObject(fb.BufferContext bc, int offset) => FileSearch._(bc, offset);
+}
+
+class FileSearchBuilder {
+  FileSearchBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addMatchesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileSearchObjectBuilder extends fb.ObjectBuilder {
+  final List<SearchMatchObjectBuilder>? _matches;
+
+  FileSearchObjectBuilder({
+    List<SearchMatchObjectBuilder>? matches,
+  }) : _matches = matches;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? matchesOffset = _matches == null
+        ? null
+        : fbBuilder.writeList(_matches!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, matchesOffset);
     return fbBuilder.endTable();
   }
 
@@ -3586,6 +4782,14 @@ class Envelope {
         return MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 14:
         return AbsorbResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 15:
+        return FileList.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 16:
+        return FileContents.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 17:
+        return FileAnnotation.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 18:
+        return FileSearch.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

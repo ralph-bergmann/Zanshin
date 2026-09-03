@@ -584,18 +584,129 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_FILE_TYPE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 14;
+        pub const ENUM_MAX_FILE_TYPE: i8 = 4;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 15] = [
+        pub const ENUM_VALUES_FILE_TYPE: [FileType; 5] = [
+            FileType::File,
+            FileType::Symlink,
+            FileType::Tree,
+            FileType::GitSubmodule,
+            FileType::Conflict,
+        ];
+
+        /// What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
+        /// (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
+        /// `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
+        /// into subtrees rather than yielding them) but is modelled so the mapping is total. jj's
+        /// sixth case — an ABSENT entry, rendered as `""` — is never emitted and has no member.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct FileType(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl FileType {
+            pub const File: Self = Self(0);
+            pub const Symlink: Self = Self(1);
+            pub const Tree: Self = Self(2);
+            pub const GitSubmodule: Self = Self(3);
+            pub const Conflict: Self = Self(4);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::File,
+                Self::Symlink,
+                Self::Tree,
+                Self::GitSubmodule,
+                Self::Conflict,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::File => Some("File"),
+                    Self::Symlink => Some("Symlink"),
+                    Self::Tree => Some("Tree"),
+                    Self::GitSubmodule => Some("GitSubmodule"),
+                    Self::Conflict => Some("Conflict"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for FileType {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for FileType {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for FileType {
+            type Output = FileType;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for FileType {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for FileType {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for FileType {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 18;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 19] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -611,6 +722,10 @@ pub mod zanshin {
             Payload::LogDefaults,
             Payload::MutationResult,
             Payload::AbsorbResult,
+            Payload::FileList,
+            Payload::FileContents,
+            Payload::FileAnnotation,
+            Payload::FileSearch,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -633,9 +748,13 @@ pub mod zanshin {
             pub const LogDefaults: Self = Self(12);
             pub const MutationResult: Self = Self(13);
             pub const AbsorbResult: Self = Self(14);
+            pub const FileList: Self = Self(15);
+            pub const FileContents: Self = Self(16);
+            pub const FileAnnotation: Self = Self(17);
+            pub const FileSearch: Self = Self(18);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 14;
+            pub const ENUM_MAX: u8 = 18;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -652,6 +771,10 @@ pub mod zanshin {
                 Self::LogDefaults,
                 Self::MutationResult,
                 Self::AbsorbResult,
+                Self::FileList,
+                Self::FileContents,
+                Self::FileAnnotation,
+                Self::FileSearch,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -671,6 +794,10 @@ pub mod zanshin {
                     Self::LogDefaults => Some("LogDefaults"),
                     Self::MutationResult => Some("MutationResult"),
                     Self::AbsorbResult => Some("AbsorbResult"),
+                    Self::FileList => Some("FileList"),
+                    Self::FileContents => Some("FileContents"),
+                    Self::FileAnnotation => Some("FileAnnotation"),
+                    Self::FileSearch => Some("FileSearch"),
                     _ => None,
                 }
             }
@@ -1342,6 +1469,597 @@ pub mod zanshin {
                 ds.field("from", &self.from());
                 ds.field("into", &self.into());
                 ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum FileListRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
+        ///
+        /// `revision` ABSENT is the wire form of "the user did not supply it", which applies the
+        /// CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
+        /// Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+        /// `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
+        /// rather than guessed.
+        /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
+        /// fileset DSL is terminal input language and is not parsed (ADR-0003).
+        pub struct FileListRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileListRequest<'a> {
+            type Inner = FileListRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileListRequest<'a> {
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileListRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileListRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileListRequest<'bldr>> {
+                let mut builder = FileListRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileListRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileListRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileListRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileListRequestArgs<'a> {
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for FileListRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileListRequestArgs {
+                    revision: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct FileListRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileListRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileListRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileListRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileListRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileListRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileListRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileListRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileListRequest");
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum FileShowRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_show` (Story 9.4). `revision`/`paths` as in FileListRequest,
+        /// except `paths` may NOT be empty — the CLI marks its FILESETS argument `required`, and an
+        /// empty list is `jj.invalid_input`.
+        pub struct FileShowRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileShowRequest<'a> {
+            type Inner = FileShowRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileShowRequest<'a> {
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileShowRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileShowRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileShowRequest<'bldr>> {
+                let mut builder = FileShowRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileShowRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileShowRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileShowRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileShowRequestArgs<'a> {
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for FileShowRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileShowRequestArgs {
+                    revision: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct FileShowRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileShowRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileShowRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileShowRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileShowRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileShowRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileShowRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileShowRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileShowRequest");
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum FileAnnotateRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_annotate` (Story 9.4). `revision` as in FileListRequest.
+        /// `path` is a single PLAIN repo-relative path, not a prefix and not a fileset — it is
+        /// `parse_file_path` in the CLI too.
+        pub struct FileAnnotateRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileAnnotateRequest<'a> {
+            type Inner = FileAnnotateRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileAnnotateRequest<'a> {
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileAnnotateRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileAnnotateRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileAnnotateRequest<'bldr>> {
+                let mut builder = FileAnnotateRequestBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileAnnotateRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileAnnotateRequest::VT_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileAnnotateRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileAnnotateRequestArgs<'a> {
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FileAnnotateRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileAnnotateRequestArgs {
+                    revision: None,
+                    path: None,
+                }
+            }
+        }
+
+        pub struct FileAnnotateRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileAnnotateRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileAnnotateRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileAnnotateRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileAnnotateRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileAnnotateRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileAnnotateRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileAnnotateRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileAnnotateRequest");
+                ds.field("revision", &self.revision());
+                ds.field("path", &self.path());
+                ds.finish()
+            }
+        }
+        pub enum FileSearchRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_search` (Story 9.4). `revision`/`paths` as in
+        /// FileListRequest.
+        ///
+        /// `pattern` is jj's own `kind:pattern` string-pattern syntax, passed through verbatim
+        /// (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` separates.
+        /// `name_only` stops a file's scan at its first match — it changes the WORK done, not the
+        /// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
+        /// (the result always carries `SearchMatch.line_number`).
+        pub struct FileSearchRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileSearchRequest<'a> {
+            type Inner = FileSearchRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileSearchRequest<'a> {
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATTERN: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NAME_ONLY: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileSearchRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileSearchRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileSearchRequest<'bldr>> {
+                let mut builder = FileSearchRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.pattern {
+                    builder.add_pattern(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_name_only(args.name_only);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileSearchRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn pattern(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileSearchRequest::VT_PATTERN, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileSearchRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn name_only(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FileSearchRequest::VT_NAME_ONLY, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileSearchRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pattern", Self::VT_PATTERN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<bool>("name_only", Self::VT_NAME_ONLY, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileSearchRequestArgs<'a> {
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub pattern: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub name_only: bool,
+        }
+        impl<'a> Default for FileSearchRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileSearchRequestArgs {
+                    revision: None,
+                    pattern: None,
+                    paths: None,
+                    name_only: false,
+                }
+            }
+        }
+
+        pub struct FileSearchRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileSearchRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearchRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_pattern(&mut self, pattern: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearchRequest::VT_PATTERN, pattern);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearchRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_name_only(&mut self, name_only: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileSearchRequest::VT_NAME_ONLY, name_only, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSearchRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileSearchRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileSearchRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileSearchRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileSearchRequest");
+                ds.field("revision", &self.revision());
+                ds.field("pattern", &self.pattern());
+                ds.field("paths", &self.paths());
+                ds.field("name_only", &self.name_only());
                 ds.finish()
             }
         }
@@ -5621,18 +6339,22 @@ pub mod zanshin {
                 ds.finish()
             }
         }
-        pub enum AbsorbSkippedPathOffset {}
+        pub enum SkippedPathOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One path `zanshin_absorb` could not split, with jj-lib's verbatim reason
-        /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …").
-        /// The CLI prints one warning per entry; the remaining paths still absorb.
-        pub struct AbsorbSkippedPath<'a> {
+        /// One path an operation could not process, with the verbatim reason.
+        ///
+        /// Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
+        /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
+        /// `FileContents.skipped` — a path that exists but is not renderable as file content
+        /// ("Path '…' exists but is not a file."). In both cases the call SUCCEEDS for the
+        /// remaining paths; the CLI prints one warning per entry.
+        pub struct SkippedPath<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for AbsorbSkippedPath<'a> {
-            type Inner = AbsorbSkippedPath<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for SkippedPath<'a> {
+            type Inner = SkippedPath<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -5641,20 +6363,20 @@ pub mod zanshin {
             }
         }
 
-        impl<'a> AbsorbSkippedPath<'a> {
+        impl<'a> SkippedPath<'a> {
             pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
             pub const VT_REASON: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                AbsorbSkippedPath { _tab: table }
+                SkippedPath { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args AbsorbSkippedPathArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<AbsorbSkippedPath<'bldr>> {
-                let mut builder = AbsorbSkippedPathBuilder::new(_fbb);
+                args: &'args SkippedPathArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SkippedPath<'bldr>> {
+                let mut builder = SkippedPathBuilder::new(_fbb);
                 if let Some(x) = args.reason {
                     builder.add_reason(x);
                 }
@@ -5671,7 +6393,7 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbSkippedPath::VT_PATH, None)
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SkippedPath::VT_PATH, None)
                 }
             }
             #[inline]
@@ -5681,12 +6403,12 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AbsorbSkippedPath::VT_REASON, None)
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SkippedPath::VT_REASON, None)
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for AbsorbSkippedPath<'_> {
+        impl ::flatbuffers::Verifiable for SkippedPath<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -5699,53 +6421,53 @@ pub mod zanshin {
                 Ok(())
             }
         }
-        pub struct AbsorbSkippedPathArgs<'a> {
+        pub struct SkippedPathArgs<'a> {
             pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
-        impl<'a> Default for AbsorbSkippedPathArgs<'a> {
+        impl<'a> Default for SkippedPathArgs<'a> {
             #[inline]
             fn default() -> Self {
-                AbsorbSkippedPathArgs {
+                SkippedPathArgs {
                     path: None,
                     reason: None,
                 }
             }
         }
 
-        pub struct AbsorbSkippedPathBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct SkippedPathBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AbsorbSkippedPathBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SkippedPathBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbSkippedPath::VT_PATH, path);
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SkippedPath::VT_PATH, path);
             }
             #[inline]
             pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AbsorbSkippedPath::VT_REASON, reason);
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SkippedPath::VT_REASON, reason);
             }
             #[inline]
-            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AbsorbSkippedPathBuilder<'a, 'b, A> {
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SkippedPathBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                AbsorbSkippedPathBuilder {
+                SkippedPathBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<AbsorbSkippedPath<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SkippedPath<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for AbsorbSkippedPath<'_> {
+        impl ::core::fmt::Debug for SkippedPath<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("AbsorbSkippedPath");
+                let mut ds = f.debug_struct("SkippedPath");
                 ds.field("path", &self.path());
                 ds.field("reason", &self.reason());
                 ds.finish()
@@ -5856,13 +6578,13 @@ pub mod zanshin {
             #[inline]
             pub fn skipped_paths(
                 &self,
-            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'a>>>> {
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath>>,
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath>>,
                     >>(AbsorbResult::VT_SKIPPED_PATHS, None)
                 }
             }
@@ -5879,7 +6601,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("rewritten_change_ids", Self::VT_REWRITTEN_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("source_change_id", Self::VT_SOURCE_CHANGE_ID, false)?
      .visit_field::<u32>("num_rebased", Self::VT_NUM_REBASED, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath>>>>("skipped_paths", Self::VT_SKIPPED_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SkippedPath>>>>("skipped_paths", Self::VT_SKIPPED_PATHS, false)?
      .finish();
                 Ok(())
             }
@@ -5891,9 +6613,7 @@ pub mod zanshin {
             pub source_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub num_rebased: u32,
             pub skipped_paths: Option<
-                ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'a>>>,
-                >,
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>>,
             >,
         }
         impl<'a> Default for AbsorbResultArgs<'a> {
@@ -5946,7 +6666,7 @@ pub mod zanshin {
             pub fn add_skipped_paths(
                 &mut self,
                 skipped_paths: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<AbsorbSkippedPath<'b>>>,
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<SkippedPath<'b>>>,
                 >,
             ) {
                 self.fbb_
@@ -5975,6 +6695,1236 @@ pub mod zanshin {
                 ds.field("source_change_id", &self.source_change_id());
                 ds.field("num_rebased", &self.num_rebased());
                 ds.field("skipped_paths", &self.skipped_paths());
+                ds.finish()
+            }
+        }
+        pub enum FileEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One entry of a revision's tree (Story 9.4), the CLI's `TreeEntry` keyword set.
+        ///
+        /// `executable` is false for a symlink, a submodule, and a conflict whose sides disagree
+        /// about the bit (the CLI's `unwrap_or_default()`). `conflict_side_count` is the SIMPLIFIED
+        /// merge's side count: 1 for a resolved entry, >= 3 for a conflict; it saturates at
+        /// 4294967295. A subtree that CONFLICTS with a non-tree is emitted as one entry with
+        /// file_type == Conflict and is not descended into — render it as an opaque conflict, not
+        /// an empty directory.
+        pub struct FileEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileEntry<'a> {
+            type Inner = FileEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileEntry<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FILE_TYPE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_EXECUTABLE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONFLICT_SIDE_COUNT: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileEntry<'bldr>> {
+                let mut builder = FileEntryBuilder::new(_fbb);
+                builder.add_conflict_side_count(args.conflict_side_count);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_executable(args.executable);
+                builder.add_file_type(args.file_type);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileEntry::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn file_type(&self) -> FileType {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<FileType>(FileEntry::VT_FILE_TYPE, Some(FileType::File))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn executable(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FileEntry::VT_EXECUTABLE, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn conflict_side_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(FileEntry::VT_CONFLICT_SIDE_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<FileType>("file_type", Self::VT_FILE_TYPE, false)?
+                    .visit_field::<bool>("executable", Self::VT_EXECUTABLE, false)?
+                    .visit_field::<u32>("conflict_side_count", Self::VT_CONFLICT_SIDE_COUNT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileEntryArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub file_type: FileType,
+            pub executable: bool,
+            pub conflict_side_count: u32,
+        }
+        impl<'a> Default for FileEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileEntryArgs {
+                    path: None,
+                    file_type: FileType::File,
+                    executable: false,
+                    conflict_side_count: 0,
+                }
+            }
+        }
+
+        pub struct FileEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileEntry::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_file_type(&mut self, file_type: FileType) {
+                self.fbb_
+                    .push_slot::<FileType>(FileEntry::VT_FILE_TYPE, file_type, FileType::File);
+            }
+            #[inline]
+            pub fn add_executable(&mut self, executable: bool) {
+                self.fbb_.push_slot::<bool>(FileEntry::VT_EXECUTABLE, executable, false);
+            }
+            #[inline]
+            pub fn add_conflict_side_count(&mut self, conflict_side_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FileEntry::VT_CONFLICT_SIDE_COUNT, conflict_side_count, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileEntry");
+                ds.field("path", &self.path());
+                ds.field("file_type", &self.file_type());
+                ds.field("executable", &self.executable());
+                ds.field("conflict_side_count", &self.conflict_side_count());
+                ds.finish()
+            }
+        }
+        pub enum FileListOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The entries of a revision's tree, in jj-lib's own `entries_matching` (tree) order.
+        pub struct FileList<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileList<'a> {
+            type Inner = FileList<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileList<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileList { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileListArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileList<'bldr>> {
+                let mut builder = FileListBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileEntry<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileEntry>>,
+                    >>(FileList::VT_ENTRIES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileList<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileEntry>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileListArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileEntry<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FileListArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileListArgs { entries: None }
+            }
+        }
+
+        pub struct FileListBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileList::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileListBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileListBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileList<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileList<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileList");
+                ds.field("entries", &self.entries());
+                ds.finish()
+            }
+        }
+        pub enum ShownFileOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One file's content as `jj file show` would print it (Story 9.4).
+        ///
+        /// `content` is `[ubyte]`, not `string`: a tracked file is not guaranteed UTF-8. For a
+        /// conflicted path it is the MATERIALIZED merge, with markers in the style the repo's
+        /// EFFECTIVE `ui.conflict-marker-style` selects (re-read per call, never cached).
+        pub struct ShownFile<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ShownFile<'a> {
+            type Inner = ShownFile<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ShownFile<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ShownFile { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ShownFileArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ShownFile<'bldr>> {
+                let mut builder = ShownFileBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_conflict(args.conflict);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ShownFile::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            ShownFile::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn conflict(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(ShownFile::VT_CONFLICT, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ShownFile<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<bool>("conflict", Self::VT_CONFLICT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ShownFileArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+            pub conflict: bool,
+        }
+        impl<'a> Default for ShownFileArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ShownFileArgs {
+                    path: None,
+                    content: None,
+                    conflict: false,
+                }
+            }
+        }
+
+        pub struct ShownFileBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ShownFileBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShownFile::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShownFile::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn add_conflict(&mut self, conflict: bool) {
+                self.fbb_.push_slot::<bool>(ShownFile::VT_CONFLICT, conflict, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShownFileBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ShownFileBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ShownFile<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ShownFile<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ShownFile");
+                ds.field("path", &self.path());
+                ds.field("content", &self.content());
+                ds.field("conflict", &self.conflict());
+                ds.finish()
+            }
+        }
+        pub enum FileContentsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_file_show` (Story 9.4): the files that could be rendered, plus
+        /// the paths that could not (a symlink, a Git submodule, an unreadable blob). A skipped
+        /// path does NOT fail the call — the CLI prints a warning per entry and keeps going.
+        pub struct FileContents<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileContents<'a> {
+            type Inner = FileContents<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileContents<'a> {
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SKIPPED: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileContents { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileContentsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileContents<'bldr>> {
+                let mut builder = FileContentsBuilder::new(_fbb);
+                if let Some(x) = args.skipped {
+                    builder.add_skipped(x);
+                }
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn files(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShownFile<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShownFile>>,
+                    >>(FileContents::VT_FILES, None)
+                }
+            }
+            #[inline]
+            pub fn skipped(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath>>,
+                    >>(FileContents::VT_SKIPPED, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileContents<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ShownFile>>,
+                    >>("files", Self::VT_FILES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SkippedPath>>,
+                    >>("skipped", Self::VT_SKIPPED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileContentsArgs<'a> {
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ShownFile<'a>>>>,
+            >,
+            pub skipped: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FileContentsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileContentsArgs {
+                    files: None,
+                    skipped: None,
+                }
+            }
+        }
+
+        pub struct FileContentsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileContentsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ShownFile<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileContents::VT_FILES, files);
+            }
+            #[inline]
+            pub fn add_skipped(
+                &mut self,
+                skipped: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<SkippedPath<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileContents::VT_SKIPPED, skipped);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileContentsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileContentsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileContents<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileContents<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileContents");
+                ds.field("files", &self.files());
+                ds.field("skipped", &self.skipped());
+                ds.finish()
+            }
+        }
+        pub enum AnnotationLineOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One annotated line of a file (Story 9.4) — `jj file annotate`'s per-line row.
+        ///
+        /// `original_line_number` is 1-BASED: jj-lib reports it 0-based and the CLI adds 1. There is
+        /// deliberately no `line_number` field — a line's own number is its 1-based index in
+        /// `FileAnnotation.lines`. `origin_found` is false when the search stopped at the domain
+        /// boundary and `commit_id` is only where it stopped; the CLI collapses that case to the
+        /// root commit for display, this payload keeps the distinction.
+        pub struct AnnotationLine<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AnnotationLine<'a> {
+            type Inner = AnnotationLine<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AnnotationLine<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ORIGINAL_LINE_NUMBER: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ORIGIN_FOUND: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AnnotationLine { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AnnotationLineArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AnnotationLine<'bldr>> {
+                let mut builder = AnnotationLineBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                builder.add_original_line_number(args.original_line_number);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.add_origin_found(args.origin_found);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AnnotationLine::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AnnotationLine::VT_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn original_line_number(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(AnnotationLine::VT_ORIGINAL_LINE_NUMBER, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            AnnotationLine::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn origin_found(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(AnnotationLine::VT_ORIGIN_FOUND, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AnnotationLine<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+                    .visit_field::<u32>("original_line_number", Self::VT_ORIGINAL_LINE_NUMBER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<bool>("origin_found", Self::VT_ORIGIN_FOUND, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct AnnotationLineArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub original_line_number: u32,
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+            pub origin_found: bool,
+        }
+        impl<'a> Default for AnnotationLineArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AnnotationLineArgs {
+                    commit_id: None,
+                    change_id: None,
+                    original_line_number: 0,
+                    content: None,
+                    origin_found: false,
+                }
+            }
+        }
+
+        pub struct AnnotationLineBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AnnotationLineBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AnnotationLine::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AnnotationLine::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn add_original_line_number(&mut self, original_line_number: u32) {
+                self.fbb_
+                    .push_slot::<u32>(AnnotationLine::VT_ORIGINAL_LINE_NUMBER, original_line_number, 0);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AnnotationLine::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn add_origin_found(&mut self, origin_found: bool) {
+                self.fbb_
+                    .push_slot::<bool>(AnnotationLine::VT_ORIGIN_FOUND, origin_found, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AnnotationLineBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AnnotationLineBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AnnotationLine<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AnnotationLine<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AnnotationLine");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("change_id", &self.change_id());
+                ds.field("original_line_number", &self.original_line_number());
+                ds.field("content", &self.content());
+                ds.field("origin_found", &self.origin_found());
+                ds.finish()
+            }
+        }
+        pub enum FileAnnotationOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A file's annotation: one entry per line, in file order.
+        pub struct FileAnnotation<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileAnnotation<'a> {
+            type Inner = FileAnnotation<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileAnnotation<'a> {
+            pub const VT_LINES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileAnnotation { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileAnnotationArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileAnnotation<'bldr>> {
+                let mut builder = FileAnnotationBuilder::new(_fbb);
+                if let Some(x) = args.lines {
+                    builder.add_lines(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn lines(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AnnotationLine<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AnnotationLine>>,
+                    >>(FileAnnotation::VT_LINES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileAnnotation<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<AnnotationLine>>,
+                    >>("lines", Self::VT_LINES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileAnnotationArgs<'a> {
+            pub lines: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<AnnotationLine<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FileAnnotationArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileAnnotationArgs { lines: None }
+            }
+        }
+
+        pub struct FileAnnotationBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileAnnotationBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_lines(
+                &mut self,
+                lines: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<AnnotationLine<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileAnnotation::VT_LINES, lines);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileAnnotationBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileAnnotationBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileAnnotation<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileAnnotation<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileAnnotation");
+                ds.field("lines", &self.lines());
+                ds.finish()
+            }
+        }
+        pub enum SearchMatchOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One matching line of `zanshin_file_search` (Story 9.4).
+        ///
+        /// `line_number` is 1-based within the searched content. `conflict_side` is meaningful ONLY
+        /// when has_conflict_side == true (presence pair, same rule as GraphRowMeta.change_offset:
+        /// flatc 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
+        /// path, whose line numbers restart at each side — there is no meaningful unified numbering
+        /// across sides (the CLI's own reasoning at `search.rs:146-147`).
+        pub struct SearchMatch<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SearchMatch<'a> {
+            type Inner = SearchMatch<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SearchMatch<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LINE_NUMBER: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONFLICT_SIDE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_CONFLICT_SIDE: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SearchMatch { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SearchMatchArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SearchMatch<'bldr>> {
+                let mut builder = SearchMatchBuilder::new(_fbb);
+                builder.add_conflict_side(args.conflict_side);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                builder.add_line_number(args.line_number);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_has_conflict_side(args.has_conflict_side);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SearchMatch::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn line_number(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(SearchMatch::VT_LINE_NUMBER, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            SearchMatch::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn conflict_side(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(SearchMatch::VT_CONFLICT_SIDE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn has_conflict_side(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SearchMatch::VT_HAS_CONFLICT_SIDE, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SearchMatch<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<u32>("line_number", Self::VT_LINE_NUMBER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<u32>("conflict_side", Self::VT_CONFLICT_SIDE, false)?
+                    .visit_field::<bool>("has_conflict_side", Self::VT_HAS_CONFLICT_SIDE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SearchMatchArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub line_number: u32,
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+            pub conflict_side: u32,
+            pub has_conflict_side: bool,
+        }
+        impl<'a> Default for SearchMatchArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SearchMatchArgs {
+                    path: None,
+                    line_number: 0,
+                    content: None,
+                    conflict_side: 0,
+                    has_conflict_side: false,
+                }
+            }
+        }
+
+        pub struct SearchMatchBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SearchMatchBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SearchMatch::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_line_number(&mut self, line_number: u32) {
+                self.fbb_.push_slot::<u32>(SearchMatch::VT_LINE_NUMBER, line_number, 0);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SearchMatch::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn add_conflict_side(&mut self, conflict_side: u32) {
+                self.fbb_
+                    .push_slot::<u32>(SearchMatch::VT_CONFLICT_SIDE, conflict_side, 0);
+            }
+            #[inline]
+            pub fn add_has_conflict_side(&mut self, has_conflict_side: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SearchMatch::VT_HAS_CONFLICT_SIDE, has_conflict_side, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SearchMatchBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SearchMatchBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SearchMatch<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SearchMatch<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SearchMatch");
+                ds.field("path", &self.path());
+                ds.field("line_number", &self.line_number());
+                ds.field("content", &self.content());
+                ds.field("conflict_side", &self.conflict_side());
+                ds.field("has_conflict_side", &self.has_conflict_side());
+                ds.finish()
+            }
+        }
+        pub enum FileSearchOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order.
+        pub struct FileSearch<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileSearch<'a> {
+            type Inner = FileSearch<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileSearch<'a> {
+            pub const VT_MATCHES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileSearch { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileSearchArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileSearch<'bldr>> {
+                let mut builder = FileSearchBuilder::new(_fbb);
+                if let Some(x) = args.matches {
+                    builder.add_matches(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn matches(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SearchMatch<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SearchMatch>>,
+                    >>(FileSearch::VT_MATCHES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileSearch<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SearchMatch>>,
+                    >>("matches", Self::VT_MATCHES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileSearchArgs<'a> {
+            pub matches: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SearchMatch<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FileSearchArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileSearchArgs { matches: None }
+            }
+        }
+
+        pub struct FileSearchBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileSearchBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_matches(
+                &mut self,
+                matches: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<SearchMatch<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearch::VT_MATCHES, matches);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSearchBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileSearchBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileSearch<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileSearch<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileSearch");
+                ds.field("matches", &self.matches());
                 ds.finish()
             }
         }
@@ -6280,6 +8230,66 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_file_list(&self) -> Option<FileList<'a>> {
+                if self.data_type() == Payload::FileList {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileList::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_file_contents(&self) -> Option<FileContents<'a>> {
+                if self.data_type() == Payload::FileContents {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileContents::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_file_annotation(&self) -> Option<FileAnnotation<'a>> {
+                if self.data_type() == Payload::FileAnnotation {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileAnnotation::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_file_search(&self) -> Option<FileSearch<'a>> {
+                if self.data_type() == Payload::FileSearch {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileSearch::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -6357,6 +8367,25 @@ pub mod zanshin {
                             Payload::AbsorbResult => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<AbsorbResult>>(
                                     "Payload::AbsorbResult",
+                                    pos,
+                                ),
+                            Payload::FileList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileList>>(
+                                "Payload::FileList",
+                                pos,
+                            ),
+                            Payload::FileContents => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileContents>>(
+                                    "Payload::FileContents",
+                                    pos,
+                                ),
+                            Payload::FileAnnotation => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileAnnotation>>(
+                                    "Payload::FileAnnotation",
+                                    pos,
+                                ),
+                            Payload::FileSearch => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileSearch>>(
+                                    "Payload::FileSearch",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -6523,6 +8552,34 @@ pub mod zanshin {
                     }
                     Payload::AbsorbResult => {
                         if let Some(x) = self.data_as_absorb_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FileList => {
+                        if let Some(x) = self.data_as_file_list() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FileContents => {
+                        if let Some(x) = self.data_as_file_contents() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FileAnnotation => {
+                        if let Some(x) = self.data_as_file_annotation() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FileSearch => {
+                        if let Some(x) = self.data_as_file_search() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

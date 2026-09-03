@@ -22,6 +22,7 @@ import '../ffi/events.dart'
         closeEventSink,
         registerEventSink,
         unregisterEventSink;
+import '../ffi/file.dart' as repo_ffi_file;
 import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
@@ -825,6 +826,106 @@ class ZanshinWorker {
     );
     return repo_ffi_mutate.decodeAbsorbResultEnvelopeInternal(bytes);
   }
+
+  /// List the entries of a revision's tree in the repo identified by [handleId]
+  /// (Story 9.4) — the CLI's `jj file list`.
+  ///
+  /// A `null` [revision] applies the CLI's own `-r` default `@`, which here is the
+  /// last-snapshotted working-copy commit. [paths] entries are repo-relative
+  /// PREFIXES; an empty list means all paths. This read writes no operation.
+  ///
+  /// Sends a [FileListCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<FileList>` bytes into a `List<FileEntry>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.invalid_input`). Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.fileList].
+  Future<List<repo_ffi_file.FileEntry>> fileList(
+    int handleId, {
+    String? revision,
+    List<String> paths = const <String>[],
+  }) async {
+    final Uint8List bytes = await send(
+      FileListCommand(commandId: _correlator.allocateId(), handleId: handleId, revision: revision, paths: paths),
+    );
+    return repo_ffi_file.decodeFileListEnvelopeInternal(bytes);
+  }
+
+  /// Read the contents of the files selected by [paths] in the repo identified by
+  /// [handleId] (Story 9.4) — the CLI's `jj file show`.
+  ///
+  /// [paths] may not be empty. Paths that exist but are not renderable as file
+  /// content are reported in `FileContents.skipped` rather than failing the call.
+  ///
+  /// Sends a [FileShowCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<FileContents>` bytes into a [repo_ffi_file.FileContents].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.fileShow].
+  Future<repo_ffi_file.FileContents> fileShow(
+    int handleId, {
+    String? revision,
+    List<String> paths = const <String>[],
+  }) async {
+    final Uint8List bytes = await send(
+      FileShowCommand(commandId: _correlator.allocateId(), handleId: handleId, revision: revision, paths: paths),
+    );
+    return repo_ffi_file.decodeFileContentsEnvelopeInternal(bytes);
+  }
+
+  /// Annotate [path] line by line in the repo identified by [handleId]
+  /// (Story 9.4) — the CLI's `jj file annotate`.
+  ///
+  /// Sends a [FileAnnotateCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<FileAnnotation>` bytes into a `List<AnnotationLine>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.path_not_found`, `jj.not_a_file`, `jj.change_not_found`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.fileAnnotate].
+  Future<List<repo_ffi_file.AnnotationLine>> fileAnnotate(
+    int handleId, {
+    required String path,
+    String? revision,
+  }) async {
+    final Uint8List bytes = await send(
+      FileAnnotateCommand(commandId: _correlator.allocateId(), handleId: handleId, revision: revision, path: path),
+    );
+    return repo_ffi_file.decodeFileAnnotationEnvelopeInternal(bytes);
+  }
+
+  /// Search the files of a revision for [pattern] in the repo identified by
+  /// [handleId] (Story 9.4) — the CLI's `jj file search`.
+  ///
+  /// Sends a [FileSearchCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<FileSearch>` bytes into a `List<SearchMatch>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.fileSearch].
+  Future<List<repo_ffi_file.SearchMatch>> fileSearch(
+    int handleId, {
+    required String pattern,
+    String? revision,
+    List<String> paths = const <String>[],
+    bool nameOnly = false,
+  }) async {
+    final Uint8List bytes = await send(
+      FileSearchCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        pattern: pattern,
+        paths: paths,
+        nameOnly: nameOnly,
+      ),
+    );
+    return repo_ffi_file.decodeFileSearchEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1223,6 +1324,98 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbsorb(raw, from: from, into: into, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileListCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> paths,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileListCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file.zanshinFileList(raw, revision: revision, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileShowCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> paths,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileShowCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file.zanshinFileShow(raw, revision: revision, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileAnnotateCommand(
+          :final int handleId,
+          :final String? revision,
+          :final String path,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileAnnotateCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file.zanshinFileAnnotate(raw, path: path, revision: revision);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileSearchCommand(
+          :final int handleId,
+          :final String? revision,
+          :final String pattern,
+          :final List<String> paths,
+          :final bool nameOnly,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileSearchCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file.zanshinFileSearch(
+              raw,
+              pattern: pattern,
+              revision: revision,
+              paths: paths,
+              nameOnly: nameOnly,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

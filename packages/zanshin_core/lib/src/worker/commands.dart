@@ -399,6 +399,112 @@ final class AbsorbCommand extends WorkerCommand {
   final List<String> paths;
 }
 
+/// List the entries of a revision's tree in the repo identified by [handleId]
+/// (Story 9.4) — the CLI's `jj file list`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinFileList(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<FileList>` bytes.
+final class FileListCommand extends WorkerCommand {
+  const FileListCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revision to list, jj reverse-hex change id; `null` = `@` (the CLI's `-r`
+  /// default, here the last-snapshotted working-copy commit).
+  final String? revision;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+}
+
+/// Read the contents of the files selected by [paths] in the repo identified by
+/// [handleId] (Story 9.4) — the CLI's `jj file show`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinFileShow(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<FileContents>` bytes.
+final class FileShowCommand extends WorkerCommand {
+  const FileShowCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revision to read from, jj reverse-hex change id; `null` = `@`.
+  final String? revision;
+
+  /// Repo-relative paths interpreted as PREFIXES. Unlike every other verb this
+  /// list may NOT be empty — the CLI marks its FILESETS argument `required`.
+  final List<String> paths;
+}
+
+/// Annotate [path] line by line in the repo identified by [handleId]
+/// (Story 9.4) — the CLI's `jj file annotate`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinFileAnnotate(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<FileAnnotation>` bytes.
+final class FileAnnotateCommand extends WorkerCommand {
+  const FileAnnotateCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.path,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revision to annotate, jj reverse-hex change id; `null` = `@`.
+  final String? revision;
+
+  /// A single PLAIN repo-relative path — not a prefix, not a fileset.
+  final String path;
+}
+
+/// Search the files of a revision for [pattern] in the repo identified by
+/// [handleId] (Story 9.4) — the CLI's `jj file search`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinFileSearch(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<FileSearch>` bytes.
+final class FileSearchCommand extends WorkerCommand {
+  const FileSearchCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.pattern,
+    required this.paths,
+    required this.nameOnly,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Revision to search, jj reverse-hex change id; `null` = `@`.
+  final String? revision;
+
+  /// jj's `kind:pattern` string-pattern syntax; a bare pattern is a `regex`.
+  final String pattern;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+
+  /// Stop a file's scan at its first match.
+  final bool nameOnly;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

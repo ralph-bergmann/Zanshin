@@ -257,6 +257,167 @@ impl Repo {
         crate::config::log_defaults(&crate::config::load(self)?)
     }
 
+    /// Lists the entries of a revision's tree (Story 9.4) — the CLI's `jj file list`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj file list` (AR-AP-1), and never writes an operation — unlike the CLI, whose
+    /// `workspace_helper` snapshots the working copy first.
+    ///
+    /// `revision = None` is the CLI's own `-r` default, `@` — which here is the
+    /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots (D2). `paths`
+    /// entries are repo-relative paths interpreted as PREFIXES (an empty list means all
+    /// paths); an empty-STRING entry is the repository root, which prefixes everything, so
+    /// `paths = [""]` matches all paths just as `paths = []` does. The fileset DSL is
+    /// terminal input language and is not parsed here.
+    ///
+    /// Entries come in jj-lib's own `entries_matching` (tree) order. Like the CLI, this verb
+    /// has NO refusals for the paths themselves: a path matching nothing simply contributes
+    /// no entry, where the CLI prints a trailing warning. Subtrees are visited recursively
+    /// and never yielded — except a subtree that CONFLICTS with a non-tree, which is emitted
+    /// as one [`crate::FileType::Conflict`] entry and not descended into.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` is malformed, absent,
+    ///   only-hidden, or divergent (the CLI's `-r` refuses an ambiguous revision too).
+    /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
+    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: owned `ChangeId` is the house currency for a single-revision parameter
+    // (epics.md Story 6.1 / AC-1); the implementation only needs to borrow it.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn file_list(
+        &self,
+        revision: Option<crate::ChangeId>,
+        paths: &[String],
+    ) -> Result<Vec<crate::FileEntry>, crate::FileError> {
+        crate::file::file_list(self.workspace(), revision.as_ref(), paths)
+    }
+
+    /// Reads the contents of the files selected by `paths` in a revision (Story 9.4) — the
+    /// CLI's `jj file show`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj file show` (AR-AP-1), and never writes an operation.
+    ///
+    /// `revision` and `paths` behave exactly as for [`Repo::file_list`], with one
+    /// difference the CLI also makes: `paths` may not be EMPTY (its FILESETS argument is
+    /// `required`). A directory is visited recursively.
+    ///
+    /// With exactly ONE path the CLI takes a fast path that refuses an absent path
+    /// ([`crate::FileError::PathNotFound`]); with several, a path that is absent simply
+    /// contributes nothing. That asymmetry is the CLI's, reproduced deliberately.
+    ///
+    /// A conflicted file's content is the MATERIALIZED merge, with markers in the style the
+    /// repo's effective `ui.conflict-marker-style` selects — re-read per call and never
+    /// cached, so the user's own jj config decides how a conflict renders. Paths that exist
+    /// but are not renderable as file content (a symlink, a Git submodule, an unreadable
+    /// blob) land in [`crate::FileContents::skipped`] with the CLI's own wording instead of
+    /// failing the call.
+    ///
+    /// Whole files are held in memory (jj-lib's `read_all` has no size cap) where the CLI
+    /// streams to stdout — a resource divergence, not a behavioral one.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::FileError::InvalidInput`] — `paths` is empty, or an entry is not a valid
+    ///   repo path.
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::PathNotFound`] — exactly one path was given and it is absent
+    ///   from the revision's tree.
+    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure, including a
+    ///   malformed or unreadable config stack (these verbs have no separate config error).
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: see `file_list`.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn file_show(
+        &self,
+        revision: Option<crate::ChangeId>,
+        paths: &[String],
+    ) -> Result<crate::FileContents, crate::FileError> {
+        crate::file::file_show(self, revision.as_ref(), paths)
+    }
+
+    /// Annotates one file line by line (Story 9.4) — the CLI's `jj file annotate`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj file annotate` (AR-AP-1), and never writes an operation.
+    ///
+    /// `path` is a PLAIN repo-relative path, not a fileset — it is `parse_file_path` in the
+    /// CLI too, and prefix semantics would be meaningless for a single annotated file.
+    /// `revision = None` is `@`, as for [`Repo::file_list`].
+    ///
+    /// The search domain is `all()`, hardcoded exactly as the CLI hardcodes it (it carries
+    /// an upstream TODO about exposing one, and jj-lib silently under-reports for a
+    /// non-contiguous domain — an option that can only produce wrong answers is not
+    /// offered).
+    ///
+    /// One entry per line of the file, in file order, so a line's own 1-based number is its
+    /// index in the returned `Vec` + 1 — which is why
+    /// [`crate::AnnotationLine`] carries only `original_line_number`, the line's number in
+    /// the ORIGINATING commit. Where the CLI collapses "the search stopped outside the
+    /// domain" to the root commit for display, [`crate::AnnotationLine::origin_found`]
+    /// keeps the distinction.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::InvalidInput`] — `path` is not a valid repo path.
+    /// - [`crate::FileError::PathNotFound`] — `path` is absent from the revision's tree.
+    /// - [`crate::FileError::NotAFile`] — `path` exists but is not a regular file (a
+    ///   directory, a symlink, a submodule, or a conflict with a non-file side).
+    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: see `file_list`.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn file_annotate(
+        &self,
+        revision: Option<crate::ChangeId>,
+        path: &str,
+    ) -> Result<Vec<crate::AnnotationLine>, crate::FileError> {
+        crate::file::file_annotate(self.workspace(), revision.as_ref(), path)
+    }
+
+    /// Searches the files of a revision for `pattern` (Story 9.4) — the CLI's
+    /// `jj file search`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj file search` (AR-AP-1), and never writes an operation.
+    ///
+    /// `pattern` is jj's own `kind:pattern` string-pattern syntax passed through verbatim
+    /// (FR-JJ-17); a bare pattern defaults to kind `regex`, and the FIRST `:` is the
+    /// separator. `revision` and `paths` behave as for [`Repo::file_list`].
+    ///
+    /// `name_only` is carried through because it changes the WORK done — a file's scan stops
+    /// at its first match — not the rendering; the result shape is unchanged, so each
+    /// matching file still contributes its first matching line, a superset of what the CLI
+    /// prints. The CLI's `--line-number` has no counterpart: the result always carries
+    /// [`crate::SearchMatch::line_number`], so there is nothing left for the flag to switch.
+    ///
+    /// A conflicted path is searched side by side, with `conflict_side` set and line numbers
+    /// restarting at each side (the CLI's own choice — there is no meaningful unified
+    /// numbering across sides). Symlinks, Git submodules, non-file conflicts, and paths whose
+    /// blob cannot be read are silently not searched, as the CLI skips them.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` does not resolve.
+    /// - [`crate::FileError::InvalidInput`] — `pattern` names an unknown kind or does not
+    ///   parse, or a `paths` entry is not a valid repo path.
+    /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    // WHY: see `file_list`.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn file_search(
+        &self,
+        revision: Option<crate::ChangeId>,
+        pattern: &str,
+        paths: &[String],
+        name_only: bool,
+    ) -> Result<Vec<crate::SearchMatch>, crate::FileError> {
+        crate::file::file_search(self.workspace(), revision.as_ref(), pattern, paths, name_only)
+    }
+
     /// Streams the commit graph of `revset` — one [`crate::GraphNode`] per commit, children
     /// before parents — through `visit`, in the order `jj log -r <revset>` prints it with
     /// `revsets.log-graph-prioritize = <prioritize>` (NFR-R-2, ADR-0003).

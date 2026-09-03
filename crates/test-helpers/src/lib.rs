@@ -129,25 +129,54 @@ fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     (workspace, repo)
 }
 
-/// Writes a tree built from an EMPTY base holding exactly `files` (repo-relative internal
-/// path → content).
-fn multi_file_tree(store: &Arc<Store>, files: &[(&str, &str)]) -> MergedTree {
+/// What a tree entry should BE, for [`add_commit_with_entries`].
+///
+/// The committed fixtures hold only plain, non-executable files (`xtask`'s
+/// `gen_fixture.rs` writes one `commit-<n>.txt` per commit) and regenerating them is
+/// forbidden — it would shift the revset oracles. So an executable file, a symlink, and a
+/// multi-entry tree are all unconstructible from a fixture alone, which is exactly what
+/// `jj file list`'s `file_type`/`executable` fields and `jj file show`'s skip rules need.
+#[derive(Clone, Copy, Debug)]
+pub enum Entry<'a> {
+    /// A regular, non-executable file with this content.
+    File(&'a str),
+    /// A regular file with this content and the executable bit SET.
+    Executable(&'a str),
+    /// A symbolic link pointing at this target.
+    Symlink(&'a str),
+}
+
+/// Writes a tree built from an EMPTY base holding exactly `entries` (repo-relative internal
+/// path → what the entry is).
+fn entry_tree(store: &Arc<Store>, entries: &[(&str, Entry<'_>)]) -> MergedTree {
     let mut builder = TreeBuilder::new(store.clone(), store.empty_tree_id().clone());
-    for (path, content) in files {
+    for (path, entry) in entries {
         let path = RepoPathBuf::from_internal_string(*path).unwrap();
-        let mut reader = content.as_bytes();
-        let file_id = pollster::block_on(store.write_file(&path, &mut reader)).unwrap();
-        builder.set(
-            path,
-            TreeValue::File {
-                id: file_id,
-                executable: false,
-                copy_id: CopyId::placeholder(),
-            },
-        );
+        let value = match entry {
+            Entry::File(content) | Entry::Executable(content) => {
+                let mut reader = content.as_bytes();
+                let id = pollster::block_on(store.write_file(&path, &mut reader)).unwrap();
+                TreeValue::File {
+                    id,
+                    executable: matches!(entry, Entry::Executable(_)),
+                    copy_id: CopyId::placeholder(),
+                }
+            }
+            Entry::Symlink(target) => {
+                TreeValue::Symlink(pollster::block_on(store.write_symlink(&path, target)).unwrap())
+            }
+        };
+        builder.set(path, value);
     }
     let tree_id = pollster::block_on(builder.write_tree()).unwrap();
     MergedTree::resolved(store.clone(), tree_id)
+}
+
+/// Writes a tree built from an EMPTY base holding exactly `files` (repo-relative internal
+/// path → content), all plain non-executable files.
+fn multi_file_tree(store: &Arc<Store>, files: &[(&str, &str)]) -> MergedTree {
+    let entries: Vec<(&str, Entry<'_>)> = files.iter().map(|(p, c)| (*p, Entry::File(c))).collect();
+    entry_tree(store, &entries)
 }
 
 /// Adds a visible commit on top of `parents` (hex commit ids; an EMPTY slice parents it on
@@ -189,6 +218,46 @@ pub fn add_commit_with_files(
     .unwrap();
     pollster::block_on(tx.repo_mut().add_head(&commit)).unwrap();
     pollster::block_on(tx.commit("test: add commit with files")).unwrap();
+    commit.id().hex()
+}
+
+/// Like [`add_commit_with_files`], but each entry says what it IS — a plain file, an
+/// EXECUTABLE file, or a SYMLINK — instead of only carrying content.
+///
+/// The one way to build a tree holding an executable or a symlink: the committed fixtures
+/// contain neither, and regenerating them is forbidden. `jj file list`'s `file_type` and
+/// `executable` fields, and `jj file show`'s "exists but is not a file" skip rule, are
+/// otherwise unconstructible.
+///
+/// # Panics
+/// Panics on any jj-lib failure (workspace load, transaction, commit write) — this is a
+/// test helper; a failure here is a broken fixture, not a condition to recover from.
+#[must_use = "the new commit id is what the assertions compare against"]
+pub fn add_commit_with_entries(
+    workspace_root: &Path,
+    parents: &[&str],
+    entries: &[(&str, Entry<'_>)],
+    description: &str,
+) -> String {
+    let (_workspace, repo) = load(workspace_root);
+    let store = repo.store().clone();
+    let parent_ids: Vec<CommitId> = if parents.is_empty() {
+        vec![store.root_commit_id().clone()]
+    } else {
+        parents.iter().map(|hex| commit_id(hex)).collect()
+    };
+    let tree = entry_tree(&store, entries);
+
+    let mut tx = repo.start_transaction();
+    let commit = pollster::block_on(
+        tx.repo_mut()
+            .new_commit(parent_ids, tree)
+            .set_description(description)
+            .write(),
+    )
+    .unwrap();
+    pollster::block_on(tx.repo_mut().add_head(&commit)).unwrap();
+    pollster::block_on(tx.commit("test: add commit with entries")).unwrap();
     commit.id().hex()
 }
 

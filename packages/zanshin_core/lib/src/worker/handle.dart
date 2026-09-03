@@ -2,6 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
+import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, SearchMatch;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
 import '../ffi/log_defaults.dart' show LogDefaults;
@@ -348,6 +349,114 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.absorb(_handleId, from: from, into: into, paths: paths);
+  }
+
+  /// List the entries of a revision's tree (Story 9.4) — the CLI's
+  /// `jj file list`.
+  ///
+  /// A `null` [revision] applies the CLI's own `-r` default `@` — here the
+  /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. It is
+  /// a jj reverse-hex CHANGE ID, not a revset; a divergent id is refused rather
+  /// than guessed, exactly as the CLI's `-r` refuses an ambiguous revision.
+  ///
+  /// [paths] entries are repo-relative paths interpreted as PREFIXES (an empty
+  /// list means all paths); an empty-STRING entry is the repository root, which
+  /// prefixes everything, so `paths: ['']` matches all paths just as `paths: []`
+  /// does. The fileset DSL is not parsed.
+  ///
+  /// Entries come in jj's own tree order. A path matching nothing simply
+  /// contributes no entry, where the CLI prints a warning. Subtrees are visited
+  /// recursively and never listed — except a subtree that CONFLICTS with a
+  /// non-tree, which arrives as one `FileType.conflict` entry.
+  ///
+  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.change_not_found`, `jj.invalid_input`,
+  /// `jj.jj_lib_error`).
+  Future<List<FileEntry>> fileList({String? revision, List<String> paths = const <String>[]}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileList(_handleId, revision: revision, paths: paths);
+  }
+
+  /// Read the contents of the files selected by [paths] (Story 9.4) — the CLI's
+  /// `jj file show`.
+  ///
+  /// [revision] and [paths] behave as in [fileList], with one difference the CLI
+  /// also makes: [paths] may NOT be empty (its FILESETS argument is `required`).
+  /// A directory is read recursively.
+  ///
+  /// With exactly ONE path an absent path is refused (`jj.path_not_found`); with
+  /// several, an absent path simply contributes nothing — that asymmetry is the
+  /// CLI's, reproduced deliberately. A conflicted file's content is the
+  /// MATERIALIZED merge, with markers in the style the repo's effective
+  /// `ui.conflict-marker-style` selects. Paths that exist but are not renderable
+  /// as file content (a symlink, a submodule, an unreadable blob) land in
+  /// `FileContents.skipped` instead of failing the call.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.path_not_found`, `jj.change_not_found`,
+  /// `jj.jj_lib_error`).
+  Future<FileContents> fileShow({String? revision, List<String> paths = const <String>[]}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileShow(_handleId, revision: revision, paths: paths);
+  }
+
+  /// Annotate [path] line by line (Story 9.4) — the CLI's `jj file annotate`.
+  ///
+  /// [path] is a single PLAIN repo-relative path, not a prefix and not a fileset.
+  /// The search domain is `all()`, hardcoded exactly as the CLI hardcodes it.
+  ///
+  /// One entry per line of the file, in file order, so a line's own 1-based
+  /// number is its index in the returned list + 1 — which is why
+  /// `AnnotationLine` carries only `originalLineNumber`, the line's number in the
+  /// ORIGINATING commit. Where the CLI collapses "the search stopped outside the
+  /// domain" to the root commit, `AnnotationLine.originFound` keeps it.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`,
+  /// `jj.change_not_found`, `jj.jj_lib_error`).
+  Future<List<AnnotationLine>> fileAnnotate({required String path, String? revision}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileAnnotate(_handleId, path: path, revision: revision);
+  }
+
+  /// Search the files of a revision for [pattern] (Story 9.4) — the CLI's
+  /// `jj file search`.
+  ///
+  /// [pattern] is jj's own `kind:pattern` string-pattern syntax passed through
+  /// verbatim; a bare pattern defaults to kind `regex`, and the FIRST `:`
+  /// separates. [revision] and [paths] behave as in [fileList].
+  ///
+  /// [nameOnly] stops a file's scan at its first match — it changes the WORK done,
+  /// not the result shape, so each matching file still contributes its first
+  /// matching line (a superset of what the CLI prints). The CLI's `--line-number`
+  /// has no counterpart: `SearchMatch.lineNumber` is always carried.
+  ///
+  /// A conflicted path is searched side by side, with `conflictSide` set and line
+  /// numbers restarting at each side. Symlinks, submodules, non-file conflicts and
+  /// unreadable blobs are silently not searched, as the CLI skips them.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
+  Future<List<SearchMatch>> fileSearch({
+    required String pattern,
+    String? revision,
+    List<String> paths = const <String>[],
+    bool nameOnly = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileSearch(_handleId, pattern: pattern, revision: revision, paths: paths, nameOnly: nameOnly);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

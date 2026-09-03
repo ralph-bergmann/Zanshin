@@ -442,6 +442,127 @@ impl SelectedTree {
     }
 }
 
+// ── §5 Shared revision + path resolution ──────────────────────────────────────────
+//
+// Both families of verbs — the mutations in `mutate.rs` and the file reads in `file.rs` —
+// resolve "which revision" and "which paths" by exactly the same rules, but flatten a
+// failure into different public error types. The RULES therefore live here once and each
+// family maps [`ResolveError`] into its own taxonomy; a second copy would drift from the
+// mutation verbs' semantics the first time either rule is touched.
+
+/// Why a revision could not be resolved — the part of the rule that is shared, in a form
+/// neither [`MutateError`] nor [`crate::FileError`] owns.
+#[derive(Debug)]
+pub(crate) enum ResolveError {
+    /// The id is empty, is not valid reverse-hex, is absent from the index, points only
+    /// at hidden/abandoned commits, or is DIVERGENT — all indistinguishable, and all a
+    /// refusal rather than a guess.
+    NotFound,
+    /// An underlying jj-lib failure (index lookup or store read).
+    Backend(String),
+}
+
+/// Resolves `id` to its visible jj-lib [`Commit`].
+///
+/// Same pattern as `change.rs::get_change` (empty/malformed reverse-hex, absent, or
+/// only-hidden all collapse to [`ResolveError::NotFound`]), but against any `Repo` — a
+/// `MutableRepo` mid-transaction or a head-resolved `ReadonlyRepo`; `resolve_change_id` and
+/// `store()` are both on the `Repo` trait and work identically on either.
+///
+/// Unlike the read-only `get_change` (which reports divergence via `Change::divergent` and
+/// silently picks the first visible target), a DIVERGENT id also collapses to `NotFound`
+/// here: silently acting on an arbitrary one of several ambiguous commits would be unsafe,
+/// and the real `jj` CLI likewise refuses an ambiguous revision argument (`-r` is
+/// `resolve_single_rev`) rather than guessing.
+///
+/// # Errors
+///
+/// - [`ResolveError::NotFound`] — see the variant's doc.
+/// - [`ResolveError::Backend`] — an index or store read failed.
+pub(crate) fn resolve_commit(repo: &dyn jj_lib::repo::Repo, id: &crate::ChangeId) -> Result<Commit, ResolveError> {
+    // WHY the explicit empty guard: `HexPrefix::from_id` on an empty id would reach
+    // jj-lib's `panic!("complete change_id should be unambiguous")` path.
+    if id.0.is_empty() {
+        return Err(ResolveError::NotFound);
+    }
+    let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0).ok_or(ResolveError::NotFound)?;
+    let targets = repo
+        .resolve_change_id(&jj_id)
+        .map_err(|e| ResolveError::Backend(e.to_string()))?
+        .ok_or(ResolveError::NotFound)?;
+    let visible = targets.into_visible().ok_or(ResolveError::NotFound)?;
+    let [commit_id] = visible.as_slice() else {
+        return Err(ResolveError::NotFound);
+    };
+    repo.store()
+        .get_commit(commit_id)
+        .map_err(|e| ResolveError::Backend(e.to_string()))
+}
+
+/// Resolves `id`, or — when it is `None` — the workspace's working-copy commit, mirroring
+/// the CLI's `RevisionArg::AT` (`@`) default for every omitted revision argument.
+///
+/// `@` is the LAST-SNAPSHOTTED working-copy commit: Zanshin never snapshots (D2).
+///
+/// # Errors
+///
+/// - [`ResolveError::NotFound`] — `id` is present but does not resolve (see
+///   [`resolve_commit`]).
+/// - [`ResolveError::Backend`] — the workspace has no working-copy commit at all, or a
+///   store read failed.
+pub(crate) fn resolve_or_wc(
+    repo: &dyn jj_lib::repo::Repo,
+    workspace_name: &jj_lib::ref_name::WorkspaceName,
+    id: Option<&crate::ChangeId>,
+) -> Result<Commit, ResolveError> {
+    if let Some(id) = id {
+        return resolve_commit(repo, id);
+    }
+    let wc_id = repo
+        .view()
+        .get_wc_commit_id(workspace_name)
+        .ok_or_else(|| ResolveError::Backend("workspace has no working-copy commit".to_owned()))?
+        .clone();
+    repo.store()
+        .get_commit(&wc_id)
+        .map_err(|e| ResolveError::Backend(e.to_string()))
+}
+
+/// Builds the file matcher every path-filtered verb — both content ops and all four file
+/// reads — filters with.
+///
+/// An EMPTY `paths` means "all paths" (`EverythingMatcher`); otherwise each entry is a
+/// repo-relative path interpreted as a PREFIX.
+///
+/// WHY not the fileset DSL: the CLI parses `paths` with `fileset::parse_maybe_bare`, whose
+/// *bare* form is exactly `prefix_path` — so `PrefixMatcher` reproduces the CLI's
+/// observable behavior for the input a GUI actually produces (a file/directory selection).
+/// The DSL itself is terminal *input language*, which ADR-0003 replaces rather than ports.
+///
+/// An EMPTY STRING entry is the repository ROOT (`RepoPathBuf::from_internal_string("")`
+/// succeeds — jj's validity rule is only "no leading/trailing `/`, no `//`"), and the root
+/// is a prefix of every path. So `paths = [""]` matches EVERYTHING, exactly as `paths = []`
+/// does, and mixing `""` into a list widens that list to everything. That is a DECISION,
+/// not an accident: it is what the CLI's own bare `prefix_path("")` does, and refusing it
+/// here would invent a validation rule jj does not have. A GUI that means "no paths" should
+/// send an empty LIST, not a list holding an empty string. Pinned by
+/// `build_matcher_treats_an_empty_path_entry_as_the_repo_root` in `mutate.rs`.
+///
+/// # Errors
+///
+/// Returns the human-readable reason an entry is not a valid repo path (a leading or
+/// trailing `/`, or a `//`); each caller wraps it in its own "invalid input" variant.
+pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String> {
+    if paths.is_empty() {
+        return Ok(Box::new(jj_lib::matchers::EverythingMatcher));
+    }
+    let mut prefixes = Vec::with_capacity(paths.len());
+    for path in paths {
+        prefixes.push(RepoPathBuf::from_internal_string(path.clone()).map_err(|e| format!("invalid path: {e}"))?);
+    }
+    Ok(Box::new(jj_lib::matchers::PrefixMatcher::new(prefixes)))
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

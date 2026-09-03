@@ -21,19 +21,18 @@ use std::sync::Arc;
 
 use jj_lib::absorb::{absorb_hunks, split_hunks_to_trees, AbsorbSource};
 use jj_lib::commit::{conflict_label_for_commits, Commit};
-use jj_lib::matchers::{EverythingMatcher, Matcher, PrefixMatcher};
+use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
-use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::revset::{ResolvedRevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
-use crate::op_support::{check_rewritable, resolve_immutable, SelectedTree};
+use crate::op_support::{check_rewritable, resolve_immutable, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
 use crate::ChangeId;
 
@@ -220,14 +219,20 @@ pub struct AbsorbResult {
     pub skipped_paths: Vec<SkippedPath>,
 }
 
-/// One path [`crate::Repo::absorb`] could not split, and jj-lib's reason (Story 9.3).
-#[derive(Debug)]
+/// One path an operation could not process, and the reason (Story 9.3, reused by Story 9.4).
+///
+/// Two verbs report it today: [`crate::Repo::absorb`], for a path jj-lib refuses to split,
+/// and [`crate::Repo::file_show`], for a path that exists but is not renderable as file
+/// content. In both cases the operation SUCCEEDS for the remaining paths — dropping these
+/// entries would leave a file silently missing with no way for a GUI to say why.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedPath {
     /// Repo-relative path in jj's internal (`/`-separated) form.
     pub path: String,
-    /// jj-lib's verbatim reason — e.g. `Is a symlink`, `Is a conflict`,
-    /// `Is a Git submodule`, `Access is denied: …`. Forwarded unchanged so the GUI shows
-    /// what `jj absorb` would print.
+    /// The verbatim reason, forwarded so the GUI shows what the `jj` CLI would print —
+    /// jj-lib's own message for `absorb` (`Is a symlink`, `Is a conflict`, `Is a Git
+    /// submodule`, `Access is denied: …`), the CLI's own sentence for `file show`
+    /// (`Path '…' exists but is not a file.`).
     pub reason: String,
 }
 
@@ -257,91 +262,43 @@ pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
     }
 }
 
-/// Builds the file matcher both content ops filter with.
-///
-/// An EMPTY `paths` means "all paths" (`EverythingMatcher`); otherwise each entry is a
-/// repo-relative path interpreted as a PREFIX.
-///
-/// WHY not the fileset DSL: the CLI parses `paths` with `fileset::parse_maybe_bare`, whose
-/// *bare* form is exactly `prefix_path` — so `PrefixMatcher` reproduces the CLI's
-/// observable behavior for the input a GUI actually produces (a file/directory selection).
-/// The DSL itself is terminal *input language*, which ADR-0003 replaces rather than ports.
-///
-/// An EMPTY STRING entry is the repository ROOT (`RepoPathBuf::from_internal_string("")`
-/// succeeds — jj's validity rule is only "no leading/trailing `/`, no `//`"), and the root
-/// is a prefix of every path. So `paths = [""]` matches EVERYTHING, exactly as `paths = []`
-/// does, and mixing `""` into a list widens that list to everything. That is a DECISION,
-/// not an accident: it is what the CLI's own bare `prefix_path("")` does, and refusing it
-/// here would invent a validation rule jj does not have. A GUI that means "no paths" should
-/// send an empty LIST, not a list holding an empty string. Pinned by
-/// `build_matcher_treats_an_empty_path_entry_as_the_repo_root`.
+/// Maps a shared [`ResolveError`] into this module's taxonomy, preserving the exact
+/// `ChangeNotFound { id }` / `Backend` split the mutation verbs have always reported.
+fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
+    match e {
+        ResolveError::NotFound => MutateError::ChangeNotFound {
+            id: id.map(|i| i.0.clone()).unwrap_or_default(),
+        },
+        ResolveError::Backend(reason) => MutateError::Backend(reason),
+    }
+}
+
+/// Wraps [`crate::op_support::build_matcher`] in this module's error type. The rule —
+/// empty list = everything, entries are PREFIXES, an empty-string entry is the root —
+/// lives in `op_support` because the file reads apply it identically.
 ///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — an entry is not a valid repo path (a leading or
 ///   trailing `/`, or a `//`).
 fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
-    if paths.is_empty() {
-        return Ok(Box::new(EverythingMatcher));
-    }
-    let mut prefixes = Vec::with_capacity(paths.len());
-    for path in paths {
-        prefixes.push(
-            RepoPathBuf::from_internal_string(path.clone()).map_err(|e| MutateError::InvalidInput {
-                reason: format!("invalid path: {e}"),
-            })?,
-        );
-    }
-    Ok(Box::new(PrefixMatcher::new(prefixes)))
+    crate::op_support::build_matcher(paths).map_err(|reason| MutateError::InvalidInput { reason })
 }
 
-/// Resolves `id`, or — when it is `None` — the workspace's working-copy commit, mirroring
-/// the CLI's `RevisionArg::AT` (`@`) default for every omitted revision argument.
-///
-/// `@` is the LAST-SNAPSHOTTED working-copy commit: Zanshin never snapshots (D2).
+/// Wraps [`crate::op_support::resolve_or_wc`] in this module's error type: `id`, or — when
+/// it is `None` — the workspace's `@` (the CLI's `RevisionArg::AT` default).
 fn resolve_or_wc(
     repo: &MutableRepo,
     workspace_name: &WorkspaceName,
     id: Option<&ChangeId>,
 ) -> Result<Commit, MutateError> {
-    if let Some(id) = id {
-        return resolve_commit(repo, id);
-    }
-    let wc_id = repo
-        .view()
-        .get_wc_commit_id(workspace_name)
-        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?
-        .clone();
-    repo.store().get_commit(&wc_id).map_err(be)
+    crate::op_support::resolve_or_wc(repo, workspace_name, id).map_err(|e| res(e, id))
 }
 
-/// Resolves `id` to its visible jj-lib [`Commit`] — same pattern as
-/// `change.rs::get_change` (empty/malformed reverse-hex, absent, or only-hidden all
-/// collapse to `ChangeNotFound`), but against `repo`, which may be a `MutableRepo`
-/// mid-transaction — `resolve_change_id` works identically on both.
-///
-/// Unlike the read-only `get_change` (which reports divergence via `Change::divergent`
-/// and silently picks the first visible target), a DIVERGENT id also collapses to
-/// `ChangeNotFound` here: silently mutating an arbitrary one of several ambiguous
-/// commits would be unsafe, and the real `jj` CLI likewise refuses an ambiguous
-/// revision argument rather than guessing.
+/// Wraps [`crate::op_support::resolve_commit`] in this module's error type: a malformed,
+/// absent, only-hidden or DIVERGENT id is a `ChangeNotFound` refusal, never a guess.
 fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateError> {
-    if id.0.is_empty() {
-        return Err(MutateError::ChangeNotFound { id: id.0.clone() });
-    }
-    let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0)
-        .ok_or_else(|| MutateError::ChangeNotFound { id: id.0.clone() })?;
-    let targets = repo
-        .resolve_change_id(&jj_id)
-        .map_err(be)?
-        .ok_or_else(|| MutateError::ChangeNotFound { id: id.0.clone() })?;
-    let visible = targets
-        .into_visible()
-        .ok_or_else(|| MutateError::ChangeNotFound { id: id.0.clone() })?;
-    let [commit_id] = visible.as_slice() else {
-        return Err(MutateError::ChangeNotFound { id: id.0.clone() });
-    };
-    repo.store().get_commit(commit_id).map_err(be)
+    crate::op_support::resolve_commit(repo, id).map_err(|e| res(e, Some(id)))
 }
 
 /// Resolves the immutable set and refuses the rewrite if any of `commit_ids` is inside it
@@ -1001,9 +958,34 @@ pub(crate) fn absorb(
 mod tests {
     use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 
-    use super::{build_matcher, rev, MutateError};
+    use super::{build_matcher, res, rev, MutateError};
     use crate::config::ConfigError;
-    use crate::RevsetError;
+    use crate::op_support::ResolveError;
+    use crate::{ChangeId, RevsetError};
+
+    /// The two shared-resolver outcomes must keep landing in the two DIFFERENT mutation
+    /// variants they always have: "that revision does not resolve" is the caller's problem
+    /// (`ChangeNotFound`, id echoed), an index/store failure is not (`Backend`). Pinned
+    /// directly because the `Backend` arm needs a store failure mid-resolution, which no
+    /// integration fixture can provoke deterministically.
+    #[test]
+    fn res_preserves_the_not_found_and_backend_split() {
+        let id = ChangeId("zzzzzzzz".to_owned());
+        assert!(matches!(
+            res(ResolveError::NotFound, Some(&id)),
+            MutateError::ChangeNotFound { id } if id == "zzzzzzzz"
+        ));
+        // `resolve_or_wc(None)` can only fail with `Backend`, so the `None` id is the
+        // defensive arm: it must still produce a ChangeNotFound rather than panicking.
+        assert!(matches!(
+            res(ResolveError::NotFound, None),
+            MutateError::ChangeNotFound { id } if id.is_empty()
+        ));
+        assert!(matches!(
+            res(ResolveError::Backend("index read failed".to_owned()), Some(&id)),
+            MutateError::Backend(reason) if reason == "index read failed"
+        ));
+    }
 
     #[test]
     fn rev_preserves_the_three_stage_revset_taxonomy() {

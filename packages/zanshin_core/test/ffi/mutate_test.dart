@@ -166,7 +166,7 @@ void main() {
           rewrittenChangeIds: ['rlvkpnrz', 'zsuskuln'],
           sourceChangeId: 'kkmpptxz',
           numRebased: 3,
-          skippedPaths: [fbs.AbsorbSkippedPathObjectBuilder(path: 'dir/link', reason: 'Is a symlink')],
+          skippedPaths: [fbs.SkippedPathObjectBuilder(path: 'dir/link', reason: 'Is a symlink')],
         ),
       ).toBytes();
 

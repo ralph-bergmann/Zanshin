@@ -9,10 +9,11 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (43 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (50 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
-// --- ViewError (9.2), AbsorbResult/SkippedPath (9.3)) ---------------------------
+// --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
+// --- FileContents/AnnotationLine/SearchMatch/FileError (9.4)) -------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -81,6 +82,15 @@ type _SkippedPath = zanshin_jj::SkippedPath;
 // remotes: git_fetch progress (Story 6.4a)
 type _ProgressEvent = zanshin_jj::ProgressEvent;
 
+// file reads (Story 9.4)
+type _FileEntry = zanshin_jj::FileEntry;
+type _FileType = zanshin_jj::FileType;
+type _ShownFile = zanshin_jj::ShownFile;
+type _FileContents = zanshin_jj::FileContents;
+type _AnnotationLine = zanshin_jj::AnnotationLine;
+type _SearchMatch = zanshin_jj::SearchMatch;
+type _FileError = zanshin_jj::FileError;
+
 // view (Story 9.2)
 type _Tag = zanshin_jj::Tag;
 type _TagKind = zanshin_jj::TagKind;
@@ -147,6 +157,54 @@ fn sample_absorb_result() -> zanshin_jj::AbsorbResult {
             path: String::new(),
             reason: String::new(),
         }],
+    }
+}
+
+/// Names every `FileEntry` field by its public path (Story 9.4).
+fn sample_file_entry() -> zanshin_jj::FileEntry {
+    zanshin_jj::FileEntry {
+        path: String::new(),
+        file_type: zanshin_jj::FileType::File,
+        executable: false,
+        conflict_side_count: 0,
+    }
+}
+
+/// Names every `FileContents` / `ShownFile` field by its public path (Story 9.4). `skipped`
+/// deliberately reuses [`zanshin_jj::SkippedPath`] rather than a second type — that reuse IS
+/// the contract Story 9.3 established.
+fn sample_file_contents() -> zanshin_jj::FileContents {
+    zanshin_jj::FileContents {
+        files: vec![zanshin_jj::ShownFile {
+            path: String::new(),
+            content: Vec::new(),
+            conflict: false,
+        }],
+        skipped: vec![zanshin_jj::SkippedPath {
+            path: String::new(),
+            reason: String::new(),
+        }],
+    }
+}
+
+/// Names every `AnnotationLine` field by its public path (Story 9.4).
+fn sample_annotation_line() -> zanshin_jj::AnnotationLine {
+    zanshin_jj::AnnotationLine {
+        commit_id: zanshin_jj::CommitId(String::new()),
+        change_id: zanshin_jj::ChangeId(String::new()),
+        original_line_number: 0,
+        content: Vec::new(),
+        origin_found: false,
+    }
+}
+
+/// Names every `SearchMatch` field by its public path (Story 9.4).
+fn sample_search_match() -> zanshin_jj::SearchMatch {
+    zanshin_jj::SearchMatch {
+        path: String::new(),
+        line_number: 0,
+        content: Vec::new(),
+        conflict_side: Some(0),
     }
 }
 
@@ -322,4 +380,60 @@ fn content_ops_surface_resolves() {
             Option<&str>,
             &[String],
         ) -> Result<zanshin_jj::AbsorbResult, zanshin_jj::MutateError>;
+}
+
+/// File reads (Story 9.4): 7 new types and 4 new `Repo` methods.
+///
+/// A separate test for the same reason `content_ops_surface_resolves` is one —
+/// `api_surface_resolves` sits at clippy's `too_many_lines` ceiling. All four methods are
+/// `fn`-pointer-pinnable (they take no visitor), so their full signatures — which parameter
+/// is the optional revision, which is the prefix list, which is the pass-through pattern —
+/// are pinned structurally here.
+#[test]
+fn file_reads_surface_resolves() {
+    // Every `FileError` variant, each carrying only owned std types — no jj_lib type.
+    _ = zanshin_jj::FileError::ChangeNotFound { id: String::new() };
+    _ = zanshin_jj::FileError::PathNotFound { path: String::new() };
+    _ = zanshin_jj::FileError::NotAFile { path: String::new() };
+    _ = zanshin_jj::FileError::InvalidInput { reason: String::new() };
+    _ = zanshin_jj::FileError::Backend(String::new());
+
+    // Every `FileType` member — the wire discriminant order is pinned by the schema.
+    _ = zanshin_jj::FileType::File;
+    _ = zanshin_jj::FileType::Symlink;
+    _ = zanshin_jj::FileType::Tree;
+    _ = zanshin_jj::FileType::GitSubmodule;
+    _ = zanshin_jj::FileType::Conflict;
+
+    _ = sample_file_entry();
+    _ = sample_file_contents();
+    _ = sample_annotation_line();
+    _ = sample_search_match();
+
+    _ = zanshin_jj::Repo::file_list
+        as fn(
+            &zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            &[String],
+        ) -> Result<Vec<zanshin_jj::FileEntry>, zanshin_jj::FileError>;
+    _ = zanshin_jj::Repo::file_show
+        as fn(
+            &zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            &[String],
+        ) -> Result<zanshin_jj::FileContents, zanshin_jj::FileError>;
+    _ = zanshin_jj::Repo::file_annotate
+        as fn(
+            &zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            &str,
+        ) -> Result<Vec<zanshin_jj::AnnotationLine>, zanshin_jj::FileError>;
+    _ = zanshin_jj::Repo::file_search
+        as fn(
+            &zanshin_jj::Repo,
+            Option<zanshin_jj::ChangeId>,
+            &str,
+            &[String],
+            bool,
+        ) -> Result<Vec<zanshin_jj::SearchMatch>, zanshin_jj::FileError>;
 }
