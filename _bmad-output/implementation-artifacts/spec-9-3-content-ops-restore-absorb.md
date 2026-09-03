@@ -8,7 +8,52 @@ review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      No working-copy snapshot: both verbs read the last-snapshotted `@`, where the CLI's
+      `workspace_helper` would have picked up on-disk edits first.
+    evidence: |-
+      A pre-existing project decision (D2), not a shortcut for this story: `status.rs:84` and
+      `revset.rs:61-62` already document that Zanshin re-resolves to head and never snapshots.
+      Building the snapshot path here would pull in `LockedWorkingCopy::{snapshot,reset}` +
+      `SnapshotOptions`, which epics.md:5596 assigns to Story 9.22. Both verbs are fully useful
+      and fully testable without it (any `from`/`into` other than `@` is pure committed-tree
+      work). Documented on `Repo::restore`, `Repo::absorb`, both `extern "C"` wrappers, and
+      `mutate.rs`'s module doc.
+  - summary: >-
+      No fileset-DSL parsing: `paths` entries are repo-relative paths interpreted as prefixes
+      (`PrefixMatcher`), not `fileset::parse_maybe_bare` expressions.
+    evidence: |-
+      The CLI's *bare* fileset form is exactly `prefix_path`, so `PrefixMatcher` reproduces the
+      CLI's observable behavior for the input a GUI actually produces (a file/directory
+      selection); an empty list maps to `EverythingMatcher`. The DSL itself is terminal input
+      language, which ADR-0003 replaces rather than ports — the same reasoning by which a
+      GUI-supplied `TreeId` replaces the interactive diff editor. Story 9.4's file reads face
+      the same question and can settle it once for both.
+  - summary: >-
+      No interactive/hunk selection for either verb; `SelectedTree::from_tree_id` and
+      `into_commit_selection` stay unwired.
+    evidence: |-
+      epics.md:5536 scopes `restore` to whole files and puts interactive selection out of
+      scope; `absorb`'s `--interactive`/`--tool` arm is likewise out. The two `SelectedTree`
+      members that serve the GUI-supplied-tree path kept their `#[allow(dead_code)]`
+      (moved off the struct/impl onto the items themselves), each naming Story 9.15/9.17 as
+      the first caller.
+  - summary: >-
+      No MCP tool for either verb.
+    evidence: |-
+      `crates/zanshin-mcp/src/main.rs` is a five-line stub and the whole tool surface is
+      Epic 7's scope, which is why the epic writes "**optional** MCP tool".
+  - summary: >-
+      `absorb`'s "remaining paths still absorb" clause is not asserted alongside a skipped
+      path in one test.
+    evidence: |-
+      `absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason` pins the
+      load-bearing part — the `(path, reason)` pair forwarded verbatim from jj-lib, and that
+      no operation is written. Exercising a skip AND a successful absorb in the same call
+      would need a conflicted merge whose sides also share a normal file, which
+      `test_helpers::add_conflicted_merge_off_root` does not build; the "keep going" behavior
+      is jj-lib's own `continue` in `split_hunks_to_trees`.
 ---
 
 <intent-contract>
