@@ -358,6 +358,51 @@ void zanshin_events_register(void (*callback)(ZanshinBuf *event));
 void zanshin_events_unregister(void);
 
 /**
+ * Release a C string that was allocated by `string_to_cstring`.
+ *
+ * Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
+ * produced by `string_to_cstring` is undefined behaviour.
+ *
+ * # Safety
+ * `ptr` must be a pointer previously returned by `string_to_cstring`, or
+ * `ptr::null_mut()`.
+ */
+void zanshin_string_free(char *ptr);
+
+/**
+ * Free both the `FlatBuffers` buffer and the `ZanshinBuf` token struct.
+ *
+ * This is the `NativeFinalizer` callback registered in Dart's `FfiBuffer`.
+ * Also called directly by `FfiBuffer.dispose()` (which detaches the finalizer
+ * first to prevent a double-free).
+ *
+ * Passing `null` is a no-op.
+ *
+ * # Safety
+ * `token` must be a non-null pointer produced by `vec_into_token` that has
+ * not been freed before.
+ */
+void zanshin_buffer_free_token(ZanshinBuf *token);
+
+/**
+ * Release a `FlatBuffers` buffer allocated by a Rust FFI function, given the
+ * raw `(ptr, len)` pair produced by `vec_into_ffi_buf`.
+ *
+ * This is the direct release path for synchronous read-then-free call sites.
+ * The GC-backed alternative is the token path (`vec_into_token` +
+ * `zanshin_buffer_free_token`), which Dart's `FfiBuffer`/`NativeFinalizer`
+ * uses; both reclaim the identical Rust allocation. Never call `free()` on the
+ * pointer directly — it was allocated by the Rust allocator, not `malloc`.
+ *
+ * Passing `ptr::null_mut()` or `len == 0` is a no-op.
+ *
+ * # Safety
+ * `ptr` and `len` must be the exact pair returned by a `zanshin_*` FFI
+ * function.  The buffer must not have been freed before.
+ */
+void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
+
+/**
  * List the entries of a revision's tree in the repo identified by `handle` — the CLI's
  * `jj file list`.
  *
@@ -484,51 +529,6 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle, const uint8_t *data, uintptr_
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_file_search(uint64_t handle, const uint8_t *data, uintptr_t len);
-
-/**
- * Release a C string that was allocated by `string_to_cstring`.
- *
- * Passing `ptr::null_mut()` is a no-op.  Passing any other pointer not
- * produced by `string_to_cstring` is undefined behaviour.
- *
- * # Safety
- * `ptr` must be a pointer previously returned by `string_to_cstring`, or
- * `ptr::null_mut()`.
- */
-void zanshin_string_free(char *ptr);
-
-/**
- * Free both the `FlatBuffers` buffer and the `ZanshinBuf` token struct.
- *
- * This is the `NativeFinalizer` callback registered in Dart's `FfiBuffer`.
- * Also called directly by `FfiBuffer.dispose()` (which detaches the finalizer
- * first to prevent a double-free).
- *
- * Passing `null` is a no-op.
- *
- * # Safety
- * `token` must be a non-null pointer produced by `vec_into_token` that has
- * not been freed before.
- */
-void zanshin_buffer_free_token(ZanshinBuf *token);
-
-/**
- * Release a `FlatBuffers` buffer allocated by a Rust FFI function, given the
- * raw `(ptr, len)` pair produced by `vec_into_ffi_buf`.
- *
- * This is the direct release path for synchronous read-then-free call sites.
- * The GC-backed alternative is the token path (`vec_into_token` +
- * `zanshin_buffer_free_token`), which Dart's `FfiBuffer`/`NativeFinalizer`
- * uses; both reclaim the identical Rust allocation. Never call `free()` on the
- * pointer directly — it was allocated by the Rust allocator, not `malloc`.
- *
- * Passing `ptr::null_mut()` or `len == 0` is a no-op.
- *
- * # Safety
- * `ptr` and `len` must be the exact pair returned by a `zanshin_*` FFI
- * function.  The buffer must not have been freed before.
- */
-void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
 
 /**
  * Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
