@@ -27,7 +27,10 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
-use test_helpers::{add_commit_with_files, add_conflicted_merge_off_root, extract_fixture, set_tag, FixtureHandle};
+use test_helpers::{
+    add_commit_with_files, add_conflicted_merge_off_root, add_conflicted_merge_with_extra_files, extract_fixture,
+    set_tag, FixtureHandle,
+};
 use zanshin_jj::{AbsorbResult, ChangeId, MutateError, MutationResult, Repo};
 
 // ── Harness ───────────────────────────────────────────────────────────────────────
@@ -694,6 +697,42 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
     );
     assert!(result.rewritten_change_ids.is_empty());
     assert_eq!(head_op_id(&repo), before_op);
+}
+
+#[test]
+fn absorb_keeps_absorbing_the_other_paths_when_one_is_skipped() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    // Only the RIGHT side introduces `clean.txt`, so the merge resolves it cleanly (and its
+    // line annotates unambiguously to that side) while still conflicting at
+    // `conflicted.txt`. That is the one state where a skip and a successful absorb meet in a
+    // single call.
+    let merge = add_conflicted_merge_with_extra_files(&fx.path, &[("clean.txt", "c1\n")]);
+    let s = add_commit_with_files(
+        &fx.path,
+        &[&merge],
+        &[("conflicted.txt", "resolved\n"), ("clean.txt", "c2\n")],
+        "source",
+    );
+    let s = change_id_of(&fx.path, &s);
+    let mut repo = Repo::open(&fx.path).expect("fixture opens");
+
+    let result = repo
+        .absorb(None, Some(s), &[])
+        .expect("a skipped path is a warning in the CLI, not a failure");
+
+    assert_eq!(
+        result.skipped_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>(),
+        vec!["conflicted.txt".to_owned()],
+        "the conflicted path is the only one jj-lib refuses to split"
+    );
+    assert_eq!(
+        result.rewritten_change_ids.len(),
+        1,
+        "the skip must not stop clean.txt's hunk from landing in the side that introduced it"
+    );
+    let repo = Repo::open(&fx.path).expect("fixture reopens");
+    assert_absorb_op(&repo, &result, 1);
 }
 
 #[test]

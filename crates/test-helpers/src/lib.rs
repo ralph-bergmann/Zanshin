@@ -129,11 +129,6 @@ fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     (workspace, repo)
 }
 
-/// Writes a single-file tree holding `content` at `path`.
-fn one_file_tree(store: &Arc<Store>, path: &str, content: &str) -> MergedTree {
-    multi_file_tree(store, &[(path, content)])
-}
-
 /// Writes a tree built from an EMPTY base holding exactly `files` (repo-relative internal
 /// path → content).
 fn multi_file_tree(store: &Arc<Store>, files: &[(&str, &str)]) -> MergedTree {
@@ -274,14 +269,35 @@ pub fn abandon_commit(workspace_root: &Path, commit_id_hex: &str) {
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 #[must_use = "the conflicted merge's commit id is what the assertions compare against"]
 pub fn add_conflicted_merge_off_root(workspace_root: &Path) -> String {
+    conflicted_merge(workspace_root, &[])
+}
+
+/// Like [`add_conflicted_merge_off_root`], but the RIGHT side additionally introduces
+/// `right_extra` (repo-relative internal path → content). The left side does not have those
+/// paths, so the merge resolves them cleanly while still conflicting at `conflicted.txt`.
+///
+/// That combination is what an absorb test needs: one path jj-lib refuses to split and one
+/// whose line annotates unambiguously to a single mutable ancestor.
+///
+/// # Panics
+/// Panics on any jj-lib failure — a failure here is a broken fixture.
+#[must_use = "the conflicted merge's commit id is what the assertions compare against"]
+pub fn add_conflicted_merge_with_extra_files(workspace_root: &Path, right_extra: &[(&str, &str)]) -> String {
+    conflicted_merge(workspace_root, right_extra)
+}
+
+/// Shared body of the two conflicted-merge helpers.
+fn conflicted_merge(workspace_root: &Path, right_extra: &[(&str, &str)]) -> String {
     let (_workspace, repo) = load(workspace_root);
     let store = repo.store().clone();
     let root_id = store.root_commit_id().clone();
 
     let mut tx = repo.start_transaction();
     let mut side = Vec::with_capacity(2);
-    for content in ["left\n", "right\n"] {
-        let tree = one_file_tree(&store, "conflicted.txt", content);
+    for (content, extra) in [("left\n", &[][..]), ("right\n", right_extra)] {
+        let mut files: Vec<(&str, &str)> = vec![("conflicted.txt", content)];
+        files.extend_from_slice(extra);
+        let tree = multi_file_tree(&store, &files);
         let commit = pollster::block_on(
             tx.repo_mut()
                 .new_commit(vec![root_id.clone()], tree)
