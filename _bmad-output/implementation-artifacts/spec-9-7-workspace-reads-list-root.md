@@ -2,13 +2,69 @@
 title: 'Story 9.7: Workspace reads — `workspace list`, `workspace root`'
 type: 'feature'
 created: '2026-09-04'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '7989ca05cb22a332f6a4a55efa6d50aedd63adc8'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A repo initialised through a path containing a symlink records a store entry its own reads
+      cannot resolve, so the workspace's own root reports as absent.
+    evidence: |-
+      `SimpleWorkspaceStore::add` stores `relative_path(store.repo_path, workspace_root)`
+      (`jj-lib-0.44.0/src/workspace_store.rs:176-181`) using the RAW `repo_path` it was handed,
+      while `Workspace::new` canonicalizes the workspace root (`workspace.rs:170`) and every
+      READ joins the recorded path onto the canonicalized `Workspace::repo_path()`. On macOS
+      the system temp dir is `/var/folders/…`, a symlink to `/private/var/folders/…`, so an
+      init through the raw path records one `..` too few and nothing resolves. The real jj CLI
+      never hits it because its workspace loader canonicalizes before either side runs. The
+      fault is in the INIT path (`Repo::init`/`Repo::open`, Story 2.3), not in this story's
+      read-only verbs, so it is out of scope here — but it is reached THROUGH them, and all
+      three new test suites work around it with a documented canonicalize
+      (`add_resolvable_workspace`, `open_two_workspace_scenario`,
+      `tempDir.resolveSymbolicLinksSync()`), so no test pins the defect itself.
+    location: >-
+      crates/zanshin-jj/src/repo.rs::init
+    severity: medium
+  - summary: >-
+      Request tables are structurally interchangeable, so a hand-crafted `ShowRequest` verifies
+      as a `WorkspaceRootRequest` and its revset is read as a workspace name.
+    evidence: |-
+      `schemas/envelope.fbs` declares no `file_identifier` (only `root_type Envelope`), and
+      `WorkspaceRootRequest` puts a single string in the first slot exactly as `ShowRequest`
+      does. House-wide since Story 9.3 and already on 9.6's deferred list; 9.7 adds a table
+      that makes the collision exact, so it is carried forward rather than dropped. Only
+      reachable by a caller that bypasses the generated Dart adapters, so the fix belongs with
+      the schema convention, not with one story.
+    location: >-
+      schemas/envelope.fbs
+    severity: low
+  - summary: >-
+      `docs/ffi-abi.md` has been stale since Story 4.9 and gains no entry for the two new
+      `extern "C"` functions.
+    evidence: |-
+      The file lists none of the verbs added by Stories 9.4–9.6 either (`zanshin_file_list`,
+      `zanshin_git_import`, `zanshin_show`, `zanshin_evolog` all return no match). Each of
+      those stories recorded the staleness in its `sprint-status.yaml` summary; carried
+      forward here so the debt stays on the ledger while the ABI surface keeps growing.
+    location: >-
+      docs/ffi-abi.md
+    severity: low
+  - summary: >-
+      `WorkspaceEntry.wc_commit_id` is the LAST-SNAPSHOTTED working-copy commit, where the
+      CLI's `jj workspace list` snapshots first.
+    evidence: |-
+      `cmd_workspace_list` uses `command.workspace_helper(ui)`, which snapshots the working
+      copy (`cli/src/cli_util.rs:459-477` @ v0.44.0), while `workspace root --name` uses
+      `workspace_helper_no_snapshot`. Zanshin snapshots in neither — the epic-wide D2
+      deferral — so an uncommitted edit made outside Zanshin leaves the reported commit id
+      behind the CLI's. Recorded by Stories 9.4/9.5/9.6 the same way; carried forward because
+      it is now a COLUMN of a shipped payload rather than a defaulted argument.
+    location: >-
+      crates/zanshin-jj/src/workspace.rs::list_workspaces
+    severity: low
 ---
 
 <intent-contract>
@@ -382,6 +438,57 @@ Zanshin anchors read against the working tree at baseline `7989ca0`; jj CLI anch
 
 ## Review Triage Log
 
+### 2026-09-04 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 1, low 8)
+- defer: 4: (high 0, medium 1, low 3)
+- reject: 13: (high 0, medium 2, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` No test ever opened the SECONDARY workspace — every case did
+    `Repo::open(&fx.path)` and used the sibling root only as an expected value. In a secondary
+    workspace `.jj/repo` is a FILE pointing at the shared repo, and `Workspace::repo_path()`
+    resolving that indirection is the join base for every store lookup; deriving it locally as
+    `workspace_root().join(".jj").join("repo")` left the whole suite green while every root went
+    absent from the secondary side. `secondary_workspace_sees_the_shared_store_through_the_repo_file`
+    now asserts the `.jj/repo` file, both rows with a resolvable sibling root,
+    `resolve_workspace_root(None)` being that workspace's own root, and `Some("default")` reaching
+    the shared store.
+  - `[low]` `[patch]` `workspaceRoot`'s interior-NUL guard lived only in the FFI adapter, which
+    runs in the WORKER isolate — so the `ArgumentError` was caught by the dispatch loop and reached
+    the caller as `internal.dispatch_error`. The same defect Story 9.6's review fixed for `evolog`'s
+    limit. Guard moved to the calling side, adapter guard kept as the direct-caller backstop, and
+    the `ArgumentError` now documented on both `ZanshinWorker.workspaceRoot` and
+    `RepoHandle.workspaceRoot`.
+  - `[low]` `[patch]` Both store-LOAD failure branches (`list`'s `.ok()` degradation and `root`'s
+    `map_err(be)`) shipped unpinned: `SimpleWorkspaceStore::load` never reads the index, so the
+    corrupt-index tests hit `get_workspace_path` instead, and line coverage cannot see the
+    difference. A dangling symlink at the store path makes `load` itself fail deterministically
+    (`exists()` follows the link → `create_dir` returns EEXIST), driving two new tests.
+  - `[low]` `[patch]` `jj.jj_lib_error` is documented for both wrappers and had no witness at the
+    FFI layer — the jj-level `Backend` test and the inline mapper unit test never compose the
+    wrapper's own path. `both_wrappers_report_jj_lib_error_when_the_head_cannot_be_resolved`
+    destroys `op_heads` under an already-open handle.
+  - `[low]` `[patch]` The `BTreeMap`-order assertion `["default", "second"]` was satisfied by
+    insertion, creation and lexicographic order alike, so it pinned nothing. A workspace named
+    `aaa` is now added LAST, and only lexicographic order yields `["aaa", "default", "second"]`.
+  - `[low]` `[patch]` Three doc sites promise the returned root is "ABSOLUTE and canonicalized",
+    but `resolve_root(None)` returns `workspace.workspace_root()` verbatim and every assertion
+    canonicalized BOTH sides, so a non-canonical return would have passed. The returned path is now
+    asserted to be already canonical, with the WHY naming jj-lib's `Workspace::new`
+    (`workspace.rs:170`) as where the guarantee actually comes from.
+  - `[low]` `[patch]` The GUI's null-root path and two of the three new codes were never witnessed
+    end to end through the real cdylib. A worker test now wipes the store from Dart and asserts both
+    a `null` root and `jj.workspace_no_recorded_path`; the file's SCOPE NOTE was corrected, since
+    the degraded-path rows turned out to be reachable from Dart after all.
+  - `[low]` `[patch]` `WorkspaceEntry.wcCommitId`'s Dart doc referenced `WorkingCopy.commitId`, a
+    type that exists only in Rust — nothing named `WorkingCopy` exists in `packages/zanshin_core`.
+    Reworded against `View::wc_commit_ids()` and `WorkingCopyStatus`.
+  - `[low]` `[patch]` The `sprint-status.yaml` entry was written before the review and carried no
+    commit hashes, no `Review: …` clause, and had dropped two ledger items its three predecessor
+    stories carried forward (`docs/ffi-abi.md` stale since 4.9, and the D2 no-snapshot note that now
+    affects a shipped payload column). Refreshed to the reviewed final state.
+
 ## Design Notes
 
 **Why a new noun module rather than extending `view.rs`.** `view.rs` is "the direct `View` reads" and
@@ -446,3 +553,126 @@ does, but do not "optimize" it into `WorkspaceStore::add`-adjacent internals.
 **Manual checks (if no CLI):**
 - Diff the crate's `pub` items: the additions are exactly two `Repo` methods, one struct and one error
   enum, and no `jj_lib` type appears in a public signature.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+Story 9.7 adds the jj CLI's two workspace READ verbs — `workspace list` and `workspace root` — as
+typed `zanshin-jj` operations in a new `workspace.rs` noun module, and surfaces both through the full
+chain Stories 9.3–9.6 established: `schemas/envelope.fbs` request + payload tables, `extern "C"`
+wrappers in `zanshin-ffi`, committed `flatc`/cbindgen/ffigen output, and the Dart
+adapter → `WorkerCommand` → `ZanshinWorker` → `RepoHandle` path. This is the crate's FIRST use of
+`jj_lib::workspace_store`: Story 9.2 shipped the VIEW half (`view.rs::list_working_copies`) and
+stopped at the boundary its own doc draws — "the path lives in the `WorkspaceStore`, not the `View`" —
+so `list_workspaces` COMPOSES on top of that shipped read rather than widening `WorkingCopy`, and the
+two shapes stay distinct (`WorkingCopy` = the raw View row, `WorkspaceEntry` = the `jj workspace list`
+row). The story is the CLI's own asymmetry reproduced rather than smoothed over: `list` DEGRADES
+(every path-side failure collapses to `root: None`, so a broken path can never fail the listing)
+while `root --name` REFUSES with three distinct errors, each minted as its own code because the
+remedies differ. `resolve_root(None)` reads the loader alone and is the one path that cannot fail;
+naming the current workspace can still refuse, because the named path never shortcuts to the loader.
+`zanshin-mcp` untouched (Epic 7 owns the tool surface).
+
+### Files changed
+
+- `crates/zanshin-jj/src/workspace.rs` (new) — the two verbs, `WorkspaceEntry`, `WorkspaceError`, and
+  the shared `resolve_recorded_root` path resolver whose three failure stages `list` discards and
+  `root` reports.
+- `crates/zanshin-jj/src/repo.rs` — the two `#[must_use]` `Repo` facades and their doc blocks; the
+  infallible `workspace_root()` accessor is deliberately untouched.
+- `crates/zanshin-jj/src/lib.rs` — module declaration and re-exports.
+- `crates/zanshin-jj/tests/workspace.rs` (new) — 15 integration scenarios against a raw jj-lib
+  oracle, including a real secondary workspace and three distinct store-damage modes.
+- `crates/zanshin-jj/tests/api_stability.rs` — the Story 9.7 alias block, `sample_workspace_entry`
+  and `workspace_surface_resolves`.
+- `schemas/envelope.fbs` — `WorkspaceRootRequest`; `WorkspaceEntry`, `WorkspaceList`,
+  `WorkspaceRoot`; `Payload` slots 24–25; the Story 9-7 ledger line.
+- `crates/zanshin-ffi/src/envelope.rs` — three new code constants (single-emission-point rule).
+- `crates/zanshin-ffi/src/workspace.rs` (new) — request reader, payload builders and the two
+  `extern "C"` wrappers; `zanshin_workspace_list` is handle-only, matching the CLI verb's zero
+  arguments.
+- `crates/zanshin-ffi/src/{lib,repo}.rs` — module declaration; `RepoSession`'s read-wrapper doc.
+- `crates/zanshin-ffi/tests/workspace_ffi.rs` (new) — 7 tests: envelope/verifier contract, the
+  request reader, a per-wrapper guard table (with a second fn-pointer alias for the handle-only
+  verb), the `jj.jj_lib_error` witness, and the cross-cutting no-operation-written test.
+- `packages/zanshin_core/lib/src/ffi/workspace.dart` (new) — adapters, model, decoders.
+- `packages/zanshin_core/lib/src/worker/{commands,isolate,handle}.dart` — the two commands, switch
+  arms, `ZanshinWorker` methods and `RepoHandle` methods.
+- `packages/zanshin_core/test/{ffi,worker}/workspace_test.dart` (new) — decode-contract tests over
+  synthetic buffers plus real-cdylib worker tests.
+- Committed codegen: `crates/zanshin-ffi/include/zanshin_ffi.h`,
+  `crates/zanshin-ffi/src/envelope_generated.rs`,
+  `packages/zanshin_core/lib/src/ffi/{bindings.dart,envelope_zanshin.ffi_generated.dart}`.
+- `docs/rust-error-codes.md` — three new rows plus "also emitted" clauses on four reused ones.
+- `coverage-baseline.txt` — two new entries at 100.00; nothing lowered, no `exclude_prefix` added.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — the story flipped to `done` with the
+  summary comment refreshed to this reviewed final state.
+
+### Review findings breakdown
+
+Four review layers ran (blind hunter, edge-case hunter, verification-gap, intent alignment).
+
+- Patches applied: 9 — 0 high, 1 medium, 8 low. Listed individually in the Review Triage Log.
+- Items deferred: 4 — 1 medium, 3 low. In the `deferred` frontmatter, with evidence.
+- Items rejected: 13. The substantive ones and why: guarding against an ABSOLUTE recorded store path
+  or against a recorded path that is not a directory would DIVERGE from jj-lib and the CLI (an
+  absolute entry is what `add` deliberately stores when there is no common prefix, and `join`
+  handling it is the intended behavior); `to_string_lossy` at the FFI boundary and `?? ''` for a
+  required wire string are both the established house patterns (`repo.rs:271`, `_mapRemote`), and
+  changing them in one new module would create the inconsistency the finding complains about;
+  `PathUnresolved`'s `"{name}: {reason}"` context does not force string-matching, because the caller
+  supplied the name and `context` is diagnostic text by definition (AR-P-4); a `tracing` line for the
+  swallowed path errors would duplicate a diagnostic the design already provides — `list` degrades
+  and points at `resolve_root`, which reports the exact cause on demand; loading the store BEFORE
+  validating the name mirrors `root.rs:48-50` exactly and is what the spec's own stage enumeration
+  prescribes, and the two orders are observationally identical; the duplicated `session_from_handle`
+  and Dart request helpers are the crate's existing per-module pattern, already on 9.4's and 9.6's
+  deferred lists and rejected by 9.6's review for the same reason; and "the spec artifact is not
+  closed out" is precisely what this pass does.
+
+### Follow-up review recommendation
+
+`followup_review_recommended: true`. Patched findings by severity: high 0, medium 1, low 8. No
+high-severity patch, so the score decides: `3 × 1 + 1 × 8 = 11`, which is ≥ 5.
+
+### Verification performed
+
+- `cargo make test` — exit 0, run unpiped (redirected to a log with the exit code captured
+  separately, never piped to `tail`), twice: once on the feature commit and once on the final review
+  commit. Final run: all Rust suites green (15 `zanshin-jj` + 7 `zanshin-ffi` workspace tests), 273
+  Dart tests green, clippy pedantic `-D warnings` clean, rustfmt clean, `dart analyze
+  --fatal-infos --fatal-warnings` and `dart format` clean, `cargo deny` clean, coverage held at
+  99.15 % (8152/8222 lines over 44 files) with both new source files at 100.00, no baseline entry
+  lowered and no `exclude_prefix` added, and `extern-coverage: OK — every zanshin-ffi extern "C" fn
+  is covered`.
+- `cargo make verify-codegen` — no drift, confirmed on a clean tree after the feature commit; the
+  review commit touched no `.fbs`, `extern "C"` body or doc text, so no regeneration was due.
+- CLI oracle re-read at tag `v0.44.0` (`cli/src/commands/workspace/{list,root}.rs`,
+  `cli/src/commit_templater.rs::WorkspaceRef::root`) and jj-lib's `workspace_store.rs` signatures
+  confirmed in the vendored `jj-lib-0.44.0`, so the Block-If pin-drift condition is clear.
+- Matrix audit: every I/O-matrix row has at least one covering test that ran and passed in the final
+  gate output.
+- `git status --porcelain` — clean after each commit.
+
+### Residual risks
+
+- The symlinked-init defect (first `deferred` item) is the substantive one: a repo initialised
+  through a path containing a symlink records a store entry its own reads cannot resolve, so
+  `workspace list` reports that workspace's root as absent and `workspace root --name` refuses. The
+  fault is in the init path, not in these read verbs, but it is reached through them, and all three
+  test suites work around it with a documented canonicalize rather than pinning it.
+- `list_workspaces` is deliberately more forgiving than the CLI on a store-LOAD or store-READ
+  failure: the CLI's template property propagates it, here it degrades like every other path failure.
+  The consequence is that a corrupt store is indistinguishable from a legacy workspace in the LIST
+  payload; `resolve_workspace_root` is the diagnostic path, and both are documented as such.
+- `SimpleWorkspaceStore::load` writes to the repo directory (creating `workspace_store/` on a legacy
+  repo) from what the API calls a READ. That is jj-lib's own behavior and the CLI triggers it too; no
+  operation is written, which the tests assert — but a strictly read-only filesystem would surface it
+  as `jj.jj_lib_error`.
+- Path handling is `to_string_lossy` at the FFI boundary, so a non-UTF-8 path would cross mangled.
+  Unreachable on macOS (APFS/HFS+ enforce UTF-8 filenames) and consistent with `RepoDetect`'s
+  precedent, but it is a lossy conversion on the wire.
