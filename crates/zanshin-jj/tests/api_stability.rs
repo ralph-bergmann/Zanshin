@@ -15,7 +15,9 @@
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
 // --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
 // --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
-// --- CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)) -----------------
+// --- CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)). Story 9.8 adds NO
+// --- public type — both bookmark mutations reuse MutationResult/MutateError — so the count
+// --- stays 60 -------------------------------------------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -712,4 +714,39 @@ fn workspace_surface_resolves() {
     // The shipped infallible accessor keeps its name and its `&Path` return (Story 9.7 adds a
     // distinct verb rather than renaming it — `zanshin-ffi/src/repo.rs` arms the watcher with it).
     _ = zanshin_jj::Repo::workspace_root as fn(&zanshin_jj::Repo) -> &std::path::Path;
+}
+
+/// Bookmark mutations (Story 9.8): NO new public type — both verbs return the shipped
+/// [`zanshin_jj::MutationResult`] and refuse through the shipped [`zanshin_jj::MutateError`],
+/// which is why the header's type count stays 60.
+///
+/// The two method signatures pin the PARAMETER CURRENCY the story decided: `bookmark_create`
+/// takes EXACT decoded names plus an `Option<&ChangeId>` revision (the CLI's `-r`, whose
+/// default is the literal `@`), while `bookmark_delete` takes pass-through string PATTERNS —
+/// a `&[String]` in both cases, so only the doc distinguishes them, and a future refactor
+/// that swapped one for the other would be caught here.
+///
+/// Both new `MutateError` variants are constructed AND their `Display` asserted: an
+/// unexercised `thiserror` arm is an uncovered line in `mutate.rs`, which the coverage ratchet
+/// pins.
+#[test]
+fn bookmark_ops_surface_resolves() {
+    let exists = zanshin_jj::MutateError::BookmarkExists {
+        name: "feature".to_owned(),
+    };
+    assert_eq!(exists.to_string(), "bookmark already exists: feature");
+    let tracked = zanshin_jj::MutateError::BookmarkTrackedRemoteExists { name: "foo".to_owned() };
+    assert_eq!(
+        tracked.to_string(),
+        "tracked remote bookmarks exist for deleted bookmark: foo"
+    );
+
+    _ = zanshin_jj::Repo::bookmark_create
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            Option<&zanshin_jj::ChangeId>,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_delete
+        as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }

@@ -341,6 +341,42 @@ fn abandon_wc_itself_creates_new_empty_wc() {
     );
 }
 
+/// With MORE THAN ONE target, `abandon` switches to the CLI's plural description —
+/// `abandon commit <first> and <n-1> more` (`cli/src/commands/abandon.rs` @ v0.44.0) — where
+/// `<first>` is the FIRST ARGUMENT's commit hex, not the lowest or the newest. Every
+/// single-target test above exercises only the singular arm, so without this one the plural
+/// `format!` ships unwitnessed and an argument-order regression would stay green.
+#[test]
+fn abandon_several_changes_uses_the_plural_description_in_argument_order() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    // Commit 3 FIRST so the assertion cannot pass by accident on a sorted or reversed list.
+    let result = repo
+        .abandon(&[
+            ChangeId(layout.commit3_change_id.clone()),
+            ChangeId(layout.commit1_change_id.clone()),
+        ])
+        .unwrap();
+
+    assert_eq!(
+        result.abandoned_change_ids,
+        vec![
+            ChangeId(layout.commit3_change_id.clone()),
+            ChangeId(layout.commit1_change_id.clone())
+        ]
+    );
+    let ops = repo.op_log(Some(1)).unwrap();
+    assert_eq!(
+        ops[0].description,
+        format!("abandon commit {} and 1 more", layout.commit3_commit_hex)
+    );
+    assert!(repo.get_change(&ChangeId(layout.commit1_change_id)).is_err());
+    assert!(repo.get_change(&ChangeId(layout.commit3_change_id)).is_err());
+}
+
 #[test]
 fn abandon_deletes_bookmarks_pointing_only_at_the_abandoned_commit() {
     pin_env();

@@ -1798,6 +1798,183 @@ class WorkspaceRootRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Arguments of `zanshin_bookmark_create` (Story 9.8) — the CLI's `jj bookmark create`.
+///
+///  `names` are EXACT, DECODED bookmark names — not CLI argument text. The CLI validates each
+///  with `revset::parse_symbol`, i.e. a name containing a space or an `@` must be QUOTED on a
+///  terminal; that quoting is terminal input syntax the GUI replaces (ADR-0003), so the name
+///  crosses verbatim. An EMPTY vector is refused with `jj.invalid_input` (clap's
+///  `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
+///  that no spelling can get around.
+///  `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
+///  CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
+///  commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+///  revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
+///  exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
+///  absence, and refuses with `jj.change_not_found`.
+class BookmarkCreateRequest {
+  BookmarkCreateRequest._(this._bc, this._bcOffset);
+  factory BookmarkCreateRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkCreateRequest> reader = _BookmarkCreateRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'BookmarkCreateRequest{names: ${names}, revision: ${revision}}';
+  }
+}
+
+class _BookmarkCreateRequestReader extends fb.TableReader<BookmarkCreateRequest> {
+  const _BookmarkCreateRequestReader();
+
+  @override
+  BookmarkCreateRequest createObject(fb.BufferContext bc, int offset) => BookmarkCreateRequest._(bc, offset);
+}
+
+class BookmarkCreateRequestBuilder {
+  BookmarkCreateRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkCreateRequestObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _names;
+  final String? _revision;
+
+  BookmarkCreateRequestObjectBuilder({
+    List<String>? names,
+    String? revision,
+  }) : _names = names,
+       _revision = revision;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, namesOffset);
+    fbBuilder.addOffset(1, revisionOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_bookmark_delete` (Story 9.8) — the CLI's `jj bookmark delete`.
+///
+///  Unlike BookmarkCreateRequest's, these `names` are string PATTERNS, passed through verbatim
+///  (FR-JJ-17) because the pattern KIND is the parameter's meaning, not its spelling:
+///  `exact:`, `glob:`, `regex:`, `substring:` and the `~`/`&`/`|` operators all work, and the
+///  patterns are unioned. **A BARE pattern is a GLOB, not an exact name** — a bookmark whose
+///  name contains `*`, `?` or `[` needs `exact:"…"`. An EMPTY vector is refused with
+///  `jj.invalid_input` (clap's `required = true`); a pattern that matches NOTHING is a
+///  SUCCESS that writes no operation, so `MutationResult.new_op_id` is the PRE-CALL op-log
+///  head.
+class BookmarkDeleteRequest {
+  BookmarkDeleteRequest._(this._bc, this._bcOffset);
+  factory BookmarkDeleteRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkDeleteRequest> reader = _BookmarkDeleteRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'BookmarkDeleteRequest{names: ${names}}';
+  }
+}
+
+class _BookmarkDeleteRequestReader extends fb.TableReader<BookmarkDeleteRequest> {
+  const _BookmarkDeleteRequestReader();
+
+  @override
+  BookmarkDeleteRequest createObject(fb.BufferContext bc, int offset) => BookmarkDeleteRequest._(bc, offset);
+}
+
+class BookmarkDeleteRequestBuilder {
+  BookmarkDeleteRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkDeleteRequestObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _names;
+
+  BookmarkDeleteRequestObjectBuilder({
+    List<String>? names,
+  }) : _names = names;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Opaque handle to an open repo session.
 ///  `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 ///  Dart passes it back verbatim to zanshin_repo_close.

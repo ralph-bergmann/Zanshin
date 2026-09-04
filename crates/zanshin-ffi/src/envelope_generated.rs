@@ -3060,6 +3060,273 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum BookmarkCreateRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_bookmark_create` (Story 9.8) — the CLI's `jj bookmark create`.
+        ///
+        /// `names` are EXACT, DECODED bookmark names — not CLI argument text. The CLI validates each
+        /// with `revset::parse_symbol`, i.e. a name containing a space or an `@` must be QUOTED on a
+        /// terminal; that quoting is terminal input syntax the GUI replaces (ADR-0003), so the name
+        /// crosses verbatim. An EMPTY vector is refused with `jj.invalid_input` (clap's
+        /// `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
+        /// that no spelling can get around.
+        /// `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
+        /// CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
+        /// commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+        /// revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
+        /// exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
+        /// absence, and refuses with `jj.change_not_found`.
+        pub struct BookmarkCreateRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkCreateRequest<'a> {
+            type Inner = BookmarkCreateRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BookmarkCreateRequest<'a> {
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BookmarkCreateRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkCreateRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BookmarkCreateRequest<'bldr>> {
+                let mut builder = BookmarkCreateRequestBuilder::new(_fbb);
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkCreateRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(BookmarkCreateRequest::VT_REVISION, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BookmarkCreateRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkCreateRequestArgs<'a> {
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for BookmarkCreateRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkCreateRequestArgs {
+                    names: None,
+                    revision: None,
+                }
+            }
+        }
+
+        pub struct BookmarkCreateRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkCreateRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkCreateRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkCreateRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BookmarkCreateRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkCreateRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BookmarkCreateRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BookmarkCreateRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BookmarkCreateRequest");
+                ds.field("names", &self.names());
+                ds.field("revision", &self.revision());
+                ds.finish()
+            }
+        }
+        pub enum BookmarkDeleteRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_bookmark_delete` (Story 9.8) — the CLI's `jj bookmark delete`.
+        ///
+        /// Unlike BookmarkCreateRequest's, these `names` are string PATTERNS, passed through verbatim
+        /// (FR-JJ-17) because the pattern KIND is the parameter's meaning, not its spelling:
+        /// `exact:`, `glob:`, `regex:`, `substring:` and the `~`/`&`/`|` operators all work, and the
+        /// patterns are unioned. **A BARE pattern is a GLOB, not an exact name** — a bookmark whose
+        /// name contains `*`, `?` or `[` needs `exact:"…"`. An EMPTY vector is refused with
+        /// `jj.invalid_input` (clap's `required = true`); a pattern that matches NOTHING is a
+        /// SUCCESS that writes no operation, so `MutationResult.new_op_id` is the PRE-CALL op-log
+        /// head.
+        pub struct BookmarkDeleteRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkDeleteRequest<'a> {
+            type Inner = BookmarkDeleteRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BookmarkDeleteRequest<'a> {
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BookmarkDeleteRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkDeleteRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BookmarkDeleteRequest<'bldr>> {
+                let mut builder = BookmarkDeleteRequestBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkDeleteRequest::VT_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BookmarkDeleteRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkDeleteRequestArgs<'a> {
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for BookmarkDeleteRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkDeleteRequestArgs { names: None }
+            }
+        }
+
+        pub struct BookmarkDeleteRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkDeleteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkDeleteRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BookmarkDeleteRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkDeleteRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BookmarkDeleteRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BookmarkDeleteRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BookmarkDeleteRequest");
+                ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
         pub enum RepoHandleOffset {}
         #[derive(Copy, Clone, PartialEq)]
 

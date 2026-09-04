@@ -46,13 +46,11 @@ use std::sync::Arc;
 use jj_lib::git::{
     self, GitExportError, GitImportError, GitImportOptions, GitImportRefUpdate, GitRemoteManagementError,
 };
-use jj_lib::object_id::ObjectId as _; // for OperationId::hex()
 use jj_lib::op_store::RemoteRefState;
 use jj_lib::ref_name::RemoteNameBuf;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::UserRevsetExpression;
 use jj_lib::rewrite::RebaseOptions;
-use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
@@ -239,84 +237,6 @@ fn map_export_err(e: GitExportError) -> MutateError {
     }
 }
 
-// ── Shared transaction skeleton ──────────────────────────────────────────────────
-
-/// What [`finish_or_no_op`] hands back: the closure's own value, the shared mutation
-/// contract, and the repo the caller must project any post-call stats from.
-struct Finished<T> {
-    /// Whatever the verb's closure computed inside the transaction.
-    value: T,
-    /// Op id + working-copy change id, in the shape every mutation reports.
-    mutation: MutationResult,
-    /// The repo AFTER the call — the just-committed one, or (on the no-op path) the same
-    /// head-resolved one the dropped transaction started from. `git_import` reads the
-    /// tracking state of each changed ref out of this view, which is only meaningful when
-    /// [`Finished::committed`] is true.
-    repo: Arc<ReadonlyRepo>,
-    /// Whether an operation was actually written. `false` means [`Finished::repo`] is the
-    /// PRE-transaction repo, so it is NOT a post-verb view — see `git_import`'s use of it.
-    committed: bool,
-}
-
-/// Runs `work` inside a transaction and commits it as `description`, or — when `work`
-/// changed nothing — drops the transaction and writes NO operation.
-///
-/// The no-op arm is `WorkspaceCommandTransaction::finish`'s own guard
-/// (`cli/src/cli_util.rs:2792-2795`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
-/// which is why `jj git remote add` needs no guard of its own while `remove`/`rename` write
-/// one explicitly for the reserved remote `git`. Both shapes collapse to this one here.
-///
-/// On the no-op path `crate::mutate::no_op_result` returns the PRE-CALL op-log head, so a
-/// caller sees byte-identical op-log state — the same signal jj itself gives.
-fn finish_or_no_op<T, F>(workspace: &mut Workspace, description: &str, work: F) -> Result<Finished<T>, MutateError>
-where
-    F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
-{
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
-    let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = mutate::capture_old_wc(&readonly, &workspace_name)?;
-
-    let mut tx = readonly.start_transaction();
-    let value = work(&mut tx)?;
-    if !tx.repo().has_changes() {
-        drop(tx);
-        let mutation = mutate::no_op_result(
-            workspace,
-            &workspace_name,
-            old_wc_id.as_ref(),
-            old_tree.as_ref(),
-            &readonly,
-        )?;
-        return Ok(Finished {
-            value,
-            mutation,
-            repo: readonly,
-            committed: false,
-        });
-    }
-
-    let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(mutate::be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-    let new_wc_commit = mutate::sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    Ok(Finished {
-        value,
-        mutation: MutationResult {
-            new_op_id,
-            new_change_ids: Vec::new(),
-            abandoned_change_ids: Vec::new(),
-            working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        },
-        repo: new_repo,
-        committed: true,
-    })
-}
-
 // ── git import ───────────────────────────────────────────────────────────────────
 
 /// Projects jj-lib's `GitImportRefUpdate`s into the owned [`GitRefUpdate`] shape.
@@ -380,7 +300,7 @@ pub(crate) fn git_import(
     immutable: &Arc<UserRevsetExpression>,
     options: &GitImportOptions,
 ) -> Result<GitImportResult, MutateError> {
-    let finished = finish_or_no_op(workspace, "import git refs", |tx| {
+    let finished = mutate::finish_or_no_op(workspace, "import git refs", |tx| {
         pollster::block_on(git::import_head(tx.repo_mut())).map_err(map_import_err)?;
         let stats = pollster::block_on(git::import_refs(tx.repo_mut(), options)).map_err(map_import_err)?;
         // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
@@ -453,7 +373,7 @@ fn project_failures(
 ///
 /// `jj_lib::git::export_refs` is SYNCHRONOUS (unlike the import pair), and it rewrites no
 /// commit, so this verb needs neither a descendant pass nor the immutable expression —
-/// it takes the plain [`finish_or_no_op`] shape.
+/// it takes the plain [`crate::mutate::finish_or_no_op`] shape.
 ///
 /// Refs that could not be written are carried in [`GitExportResult::failed_bookmarks`] /
 /// `failed_tags`, never as an `Err`: the CLI warns and exits 0 (`git_util.rs:468-506`).
@@ -464,7 +384,7 @@ fn project_failures(
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_export(workspace: &mut Workspace) -> Result<GitExportResult, MutateError> {
-    let finished = finish_or_no_op(workspace, "export git refs", |tx| {
+    let finished = mutate::finish_or_no_op(workspace, "export git refs", |tx| {
         git::export_refs(tx.repo_mut()).map_err(map_export_err)
     })?;
     let stats = finished.value;
@@ -501,7 +421,7 @@ pub(crate) fn git_remote_add(
     push_url: Option<&str>,
 ) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
-    let finished = finish_or_no_op(workspace, &format!("add git remote {name}"), |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &format!("add git remote {name}"), |tx| {
         git::add_remote(tx.repo_mut(), &remote, url, push_url).map_err(map_remote_mgmt_err)
     })?;
     Ok(finished.mutation)
@@ -530,7 +450,7 @@ pub(crate) fn git_remote_add(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_remove(workspace: &mut Workspace, name: &str) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
-    let finished = finish_or_no_op(workspace, &format!("remove git remote {name}"), |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), |tx| {
         git::remove_remote(tx.repo_mut(), &remote).map_err(map_remote_mgmt_err)
     })?;
     Ok(finished.mutation)
@@ -565,7 +485,7 @@ pub(crate) fn git_remote_rename(
     let old: RemoteNameBuf = old_name.into();
     let new: RemoteNameBuf = new_name.into();
     let description = format!("rename git remote {old_name} to {new_name}");
-    let finished = finish_or_no_op(workspace, &description, |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &description, |tx| {
         git::rename_remote(tx.repo_mut(), &old, &new).map_err(map_remote_mgmt_err)
     })?;
     Ok(finished.mutation)

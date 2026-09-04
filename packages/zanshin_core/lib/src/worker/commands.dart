@@ -747,6 +747,55 @@ final class WorkspaceRootCommand extends WorkerCommand {
   final String? name;
 }
 
+/// Create local bookmarks pointing at one revision, in the repo identified by
+/// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkCreate(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkCreateCommand extends WorkerCommand {
+  const BookmarkCreateCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.revision,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// EXACT, DECODED bookmark names — never CLI argument text, so no revset
+  /// quoting. An empty list is refused (`jj.invalid_input`), and so is an
+  /// empty-string name. Preconditions are checked in THIS order, fail-fast.
+  final List<String> names;
+
+  /// jj reverse-hex change id of the target; `null` = `@`, the CLI's own `-r`
+  /// default.
+  final String? revision;
+}
+
+/// Delete the local bookmarks matching [names], in the repo identified by
+/// [handleId] (Story 9.8) — the CLI's `jj bookmark delete`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkDelete(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkDeleteCommand extends WorkerCommand {
+  const BookmarkDeleteCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// String PATTERNS, unioned — NOT exact names. A bare pattern is a GLOB; use
+  /// `exact:"…"` for a name containing `*`, `?` or `[`. An empty list is refused;
+  /// a pattern matching nothing succeeds and writes no operation.
+  final List<String> names;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

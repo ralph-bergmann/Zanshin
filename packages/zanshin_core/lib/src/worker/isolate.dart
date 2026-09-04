@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
+import '../ffi/bookmark_ops.dart' as repo_ffi_bookmark_ops;
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
@@ -1212,6 +1213,89 @@ class ZanshinWorker {
     );
     return repo_ffi_workspace.decodeWorkspaceRootEnvelopeInternal(bytes);
   }
+
+  /// Create local bookmarks pointing at one revision, in the repo identified by
+  /// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
+  ///
+  /// [names] are EXACT, DECODED bookmark names — the revset quoting the CLI
+  /// requires is terminal input syntax the GUI replaces. A `null` [revision] is
+  /// the CLI's own `-r` default `@` (the last-snapshotted working copy); it is a
+  /// jj reverse-hex CHANGE id, so a divergent one is refused, never guessed.
+  /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
+  /// whose second name already exists creates nothing and writes no operation.
+  /// Unlike the CLI, a created bookmark is never auto-tracked (Story 9.11).
+  ///
+  /// Sends a [BookmarkCreateCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if any name or [revision] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.bookmarkCreate].
+  Future<repo_ffi_mutate.MutationResult> bookmarkCreate(
+    int handleId,
+    List<String> names, {
+    String? revision,
+  }) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw is caught by the dispatch loop and comes back as
+    // `internal.dispatch_error` — not as the [ArgumentError] this method and
+    // [RepoHandle.bookmarkCreate] both document. Rejecting on the calling side
+    // keeps the documented type and spares the round trip. The adapter keeps its
+    // own guard as the backstop for a direct caller. (Same fix Stories 9.6 and
+    // 9.7 each had to make in review.)
+    _rejectInteriorNuls(names, 'names');
+    if (revision != null && revision.codeUnits.contains(0)) {
+      throw ArgumentError.value(revision, 'revision', 'must not contain an interior NUL (U+0000)');
+    }
+    final Uint8List bytes = await send(
+      BookmarkCreateCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        revision: revision,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Delete the local bookmarks matching [names], in the repo identified by
+  /// [handleId] (Story 9.8) — the CLI's `jj bookmark delete`.
+  ///
+  /// [names] are string PATTERNS, unioned and passed through verbatim: `exact:`,
+  /// `glob:`, `regex:`, `substring:` and the `~`/`&`/`|` operators all work, and
+  /// a BARE pattern is a GLOB, so a name containing `*`, `?` or `[` needs
+  /// `exact:"…"`. Matching NOTHING is a SUCCESS that writes no operation, so the
+  /// returned `newOpId` is the pre-call op-log head. A tracked `name@remote`
+  /// survives by design and keeps showing up in [bookmarks].
+  ///
+  /// Sends a [BookmarkDeleteCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if any name contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.bookmarkDelete].
+  Future<repo_ffi_mutate.MutationResult> bookmarkDelete(int handleId, List<String> names) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    _rejectInteriorNuls(names, 'names');
+    final Uint8List bytes = await send(
+      BookmarkDeleteCommand(commandId: _correlator.allocateId(), handleId: handleId, names: names),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Reject an interior NUL in any entry of a caller-supplied string list.
+  static void _rejectInteriorNuls(List<String> values, String name) {
+    for (final value in values) {
+      if (value.codeUnits.contains(0)) {
+        throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
+      }
+    }
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1904,6 +1988,40 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRoot(raw, name: name);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkCreateCommand(:final int handleId, :final List<String> names, :final String? revision):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkCreateCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkCreate(raw, names, revision: revision);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkDeleteCommand(:final int handleId, :final List<String> names):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkDeleteCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkDelete(raw, names);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

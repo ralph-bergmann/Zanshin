@@ -760,6 +760,69 @@ final class RepoHandle {
     return _worker.workspaceRoot(_handleId, name: name);
   }
 
+  /// Create local bookmarks pointing at one revision (Story 9.8) — the CLI's
+  /// `jj bookmark create`.
+  ///
+  /// [names] are EXACT, DECODED bookmark names: the revset quoting the CLI
+  /// requires (`'foo bar'`, `'foo@bar'`) is terminal input syntax the GUI
+  /// replaces, so pass what the user typed. An empty list, or an empty-string
+  /// name, is refused with `jj.invalid_input`.
+  ///
+  /// A `null` [revision] is the CLI's own `-r` default `@` — the LAST-SNAPSHOTTED
+  /// working-copy commit, since Zanshin never snapshots. It is a jj reverse-hex
+  /// CHANGE id, so a divergent one is refused rather than guessed, and a commit
+  /// hex, a revset expression and a hidden commit are unaddressable.
+  ///
+  /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
+  /// whose second name already exists creates NOTHING — not even the first — and
+  /// writes no operation. Unlike the CLI, a created bookmark is never
+  /// auto-tracked; `remotes.<r>.auto-track-bookmarks` needs `bookmark track`
+  /// (Story 9.11).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ArgumentError] if a name or [revision] contains an interior NUL (U+0000),
+  /// which a length-prefixed FlatBuffers string would carry all the way into a
+  /// bookmark name; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkCreate(List<String> names, {String? revision}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkCreate(_handleId, names, revision: revision);
+  }
+
+  /// Delete the local bookmarks matching [names] (Story 9.8) — the CLI's
+  /// `jj bookmark delete`.
+  ///
+  /// [names] are string PATTERNS, not exact names, and they are unioned:
+  /// `exact:`, `glob:`, `regex:`, `substring:` and the `~`/`&`/`|` operators all
+  /// work. **A BARE pattern is a GLOB** — `foo*` deletes both a bookmark
+  /// literally named `foo*` and one named `foo1`, so use `exact:"foo*"` to reach
+  /// only the literal. An empty list is refused with `jj.invalid_input`.
+  ///
+  /// Matching NOTHING is a SUCCESS, not a refusal: no operation is written and
+  /// the returned `newOpId` is the PRE-CALL op-log head — the machine-readable
+  /// form of the CLI's "No bookmarks to delete." A CONFLICTED local bookmark is
+  /// deleted like any other.
+  ///
+  /// A TRACKED `name@remote` SURVIVES by design and keeps appearing in
+  /// [bookmarks]: that is jj's "deleted bookmark, propagates on the next push"
+  /// state, not a leak. `jj bookmark forget` — the verb that drops the remote
+  /// rows too — is Story 9.11's.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ArgumentError] if a name contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkDelete(List<String> names) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkDelete(_handleId, names);
+  }
+
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the
   // worker. Best-effort: the callback fires on the event loop so the worker
   // might be gone; all errors are swallowed (a GC-time throw is unacceptable).

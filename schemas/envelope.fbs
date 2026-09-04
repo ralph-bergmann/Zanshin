@@ -224,6 +224,39 @@ table WorkspaceRootRequest {
   name: string;
 }
 
+/// Arguments of `zanshin_bookmark_create` (Story 9.8) — the CLI's `jj bookmark create`.
+///
+/// `names` are EXACT, DECODED bookmark names — not CLI argument text. The CLI validates each
+/// with `revset::parse_symbol`, i.e. a name containing a space or an `@` must be QUOTED on a
+/// terminal; that quoting is terminal input syntax the GUI replaces (ADR-0003), so the name
+/// crosses verbatim. An EMPTY vector is refused with `jj.invalid_input` (clap's
+/// `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
+/// that no spelling can get around.
+/// `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
+/// CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
+/// commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+/// revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
+/// exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
+/// absence, and refuses with `jj.change_not_found`.
+table BookmarkCreateRequest {
+  names: [string];
+  revision: string;
+}
+
+/// Arguments of `zanshin_bookmark_delete` (Story 9.8) — the CLI's `jj bookmark delete`.
+///
+/// Unlike BookmarkCreateRequest's, these `names` are string PATTERNS, passed through verbatim
+/// (FR-JJ-17) because the pattern KIND is the parameter's meaning, not its spelling:
+/// `exact:`, `glob:`, `regex:`, `substring:` and the `~`/`&`/`|` operators all work, and the
+/// patterns are unioned. **A BARE pattern is a GLOB, not an exact name** — a bookmark whose
+/// name contains `*`, `?` or `[` needs `exact:"…"`. An EMPTY vector is refused with
+/// `jj.invalid_input` (clap's `required = true`); a pattern that matches NOTHING is a
+/// SUCCESS that writes no operation, so `MutationResult.new_op_id` is the PRE-CALL op-log
+/// head.
+table BookmarkDeleteRequest {
+  names: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -243,6 +276,10 @@ table WorkspaceRootRequest {
 //                Change / FileChange tables — no second spelling of either shape)
 //   Story 9-7  : WorkspaceList ✓, WorkspaceRoot ✓ (the list row is the shipped
 //                View::wc_commit_ids half plus the WorkspaceStore path half)
+//   Story 9-8  : — (bookmark create/delete BOTH reuse the shipped MutationResult, so the
+//                union is unchanged: which bookmarks are gone is answered by re-reading
+//                zanshin_bookmarks, and "did anything happen at all" is already in the
+//                contract as the pre-call-head new_op_id)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;

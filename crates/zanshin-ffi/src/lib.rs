@@ -29,6 +29,7 @@ pub use envelope_generated::zanshin::ffi as fbs;
 pub mod envelope;
 pub use envelope::*;
 
+pub mod bookmark_ops;
 pub mod bookmarks;
 pub mod change;
 pub mod commit_views;

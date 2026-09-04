@@ -1103,6 +1103,77 @@ impl Repo {
         crate::workspace::resolve_root(self.workspace(), name)
     }
 
+    /// Creates local bookmarks pointing at one revision (Story 9.8) — the CLI's
+    /// `jj bookmark create`.
+    ///
+    /// `names` are DECODED bookmark names, not CLI argument text: the CLI validates each with
+    /// `revset::parse_symbol`, so a name containing a space or an `@` has to be QUOTED on a
+    /// terminal — and that quoting is exactly the terminal input syntax the GUI replaces
+    /// (ADR-0003). Pass the name the user typed into the field. The one refusal kept from
+    /// `parse_symbol` is the one no spelling can avoid: an EMPTY name.
+    ///
+    /// `revision` is the CLI's `-r/--revision`, whose clap `default_value` is the literal
+    /// `"@"` — so `None` targets the working-copy commit, here the LAST-SNAPSHOTTED one since
+    /// Zanshin never snapshots (D2). It is a change id, so it inherits `resolve_single_rev`'s
+    /// ambiguity REFUSAL (a divergent id is rejected, never guessed) but not its address
+    /// space: a commit hex, a revset expression and a hidden commit are unaddressable, the
+    /// same trade [`Repo::interdiff`] and [`Repo::file_list`] document.
+    ///
+    /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as the CLI's are:
+    /// a run whose second name already exists creates NOTHING — not even the first name — and
+    /// writes no operation.
+    ///
+    /// Unlike the CLI, a created bookmark is never AUTO-TRACKED: honouring
+    /// `remotes.<r>.auto-track-bookmarks` needs `track_remote_bookmark`, the verb Story 9.11
+    /// owns. Deliberately deferred.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty, or a name is the empty
+    ///   string.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent,
+    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::BookmarkExists`] — a name is already a local bookmark.
+    /// - [`crate::MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is
+    ///   absent but it still has a tracked remote bookmark. A colocated `name@git` does NOT
+    ///   count: the default-ignored remote is excluded, exactly as in the CLI.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_create(
+        &mut self,
+        names: &[String],
+        revision: Option<&crate::ChangeId>,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::bookmark_ops::create(self.workspace_mut(), names, revision)
+    }
+
+    /// Deletes the local bookmarks matching `patterns` (Story 9.8) — the CLI's
+    /// `jj bookmark delete`.
+    ///
+    /// Each entry is jj's own string-pattern syntax, passed through VERBATIM (FR-JJ-17) and
+    /// unioned across the list; `exact:`, `glob:`, `regex:`, `substring:` and the `~`/`&`/`|`
+    /// operators all work. **A BARE pattern is a GLOB, not an exact name** — deleting a
+    /// bookmark whose name contains `*`, `?` or `[` requires `exact:"…"`, and a bare `foo*`
+    /// deletes both a bookmark literally named `foo*` and one named `foo1`.
+    ///
+    /// Matching NOTHING is a SUCCESS, not a refusal: no operation is written and the returned
+    /// `new_op_id` is the PRE-CALL op-log head — the machine-readable form of the CLI's "No
+    /// bookmarks to delete." A CONFLICTED local bookmark is deleted like any other.
+    ///
+    /// A TRACKED `name@remote` SURVIVES, by design: [`Repo::list_bookmarks`] keeps reporting
+    /// it, which is jj's "deleted bookmark, propagates on the next push" state rather than a
+    /// leak. `jj bookmark forget` — the verb that drops the remote rows too — is Story 9.11's.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `patterns` is empty, or a pattern does not
+    ///   parse; jj-lib's reason is forwarded.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_delete(&mut self, patterns: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
+        crate::bookmark_ops::delete(self.workspace_mut(), patterns)
+    }
+
     /// Gives the paths matching `paths` in one commit the content they have in another
     /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
     ///

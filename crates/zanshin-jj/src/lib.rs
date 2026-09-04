@@ -27,6 +27,7 @@
 //! mechanically; `crates/zanshin-jj/tests/api_stability.rs` asserts the
 //! complete surface structurally.
 
+pub(crate) mod bookmark_ops;
 pub(crate) mod bookmarks;
 pub(crate) mod change;
 pub(crate) mod commit_meta;

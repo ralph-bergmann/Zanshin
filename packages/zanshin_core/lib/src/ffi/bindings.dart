@@ -99,6 +99,89 @@ external ffi.Pointer<ZanshinBuf> zanshin_absorb(
   int len,
 );
 
+/// Create local bookmarks pointing at one revision, in the repo referenced by `handle` — the
+/// CLI's `jj bookmark create`.
+///
+/// The arguments cross as a `BookmarkCreateRequest` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern): `revision` must be distinguishably ABSENT, which is what applies
+/// the CLI's `-r` default `@` (the LAST-SNAPSHOTTED working copy — Zanshin never snapshots,
+/// D2). `names` are EXACT, DECODED bookmark names, not CLI argument text: revset quoting is
+/// terminal input syntax the GUI replaces (ADR-0003).
+///
+/// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as in the CLI: a run
+/// whose second name already exists creates NOTHING and writes no operation.
+///
+/// Unlike the CLI a created bookmark is never AUTO-TRACKED — that needs `track_remote_bookmark`
+/// (Story 9.11). Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on
+/// success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
+/// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
+/// empty string.
+/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden, or divergent; the
+/// id in `context`.
+/// - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
+/// - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
+/// a tracked remote bookmark; the name in `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+/// closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero handle is
+/// undefined behaviour; the Dart worker's Model-A handle table (Story 3.9) makes a stale
+/// handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkCreateRequestObjectBuilder(...).toBytes()`); Rust only borrows it
+/// for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_create(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Delete the local bookmarks matching the requested patterns, in the repo referenced by
+/// `handle` — the CLI's `jj bookmark delete`.
+///
+/// The arguments cross as a `BookmarkDeleteRequest` `FlatBuffers` request buffer. Its `names`
+/// are string PATTERNS, passed through verbatim (FR-JJ-17) and unioned: `exact:`, `glob:`,
+/// `regex:`, `substring:` and the `~`/`&`/`|` operators all work. **A BARE pattern is a GLOB,
+/// not an exact name** — deleting a bookmark whose name contains `*`, `?` or `[` requires
+/// `exact:"…"`.
+///
+/// Matching NOTHING is a SUCCESS: no operation is written and `MutationResult.new_op_id`
+/// carries the PRE-CALL op-log head, which is the machine-readable form of the CLI's "No
+/// bookmarks to delete." A TRACKED `name@remote` SURVIVES the delete by design and keeps
+/// showing up in `zanshin_bookmarks` — jj's "deleted, propagates on the next push" state.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer.
+/// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
+/// parse; jj-lib's reason in `context`.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkDeleteRequestObjectBuilder(...).toBytes()`); Rust only borrows it
+/// for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// List local + tracked-remote bookmarks of the repo identified by `handle`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
@@ -1375,6 +1458,8 @@ const int AbsorbResult_VT_SOURCE_CHANGE_ID = 8;
 const int AnnotationLine_VT_ORIGINAL_LINE_NUMBER = 8;
 
 const int AnnotationLine_VT_ORIGIN_FOUND = 12;
+
+const int BookmarkCreateRequest_VT_NAMES = 4;
 
 const int Bookmark_VT_REMOTE_NAME = 10;
 

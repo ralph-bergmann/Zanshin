@@ -23,10 +23,11 @@ use zanshin_jj::{
 
 use crate::envelope::{
     catch, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, reject_null_request,
-    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
-    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG,
-    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
+    JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED,
+    JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
+    JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -83,9 +84,14 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// (`jj.remote_exists`) and `RemoteNonstandardConfig` (`jj.remote_nonstandard_config`) are
 /// new codes, while `NotAGitRepo` reuses [`JJ_NOT_A_GIT_REPO`] with its meaning widened from
 /// "this path" to "this workspace's backend" and therefore carries no `context`.
+/// Story 9.8 adds two more new codes — `BookmarkExists` (`jj.bookmark_exists`) and
+/// `BookmarkTrackedRemoteExists` (`jj.bookmark_tracked_remote_exists`) — kept apart for the
+/// `jj.remote_exists` reason: the CLI prints a different hint for each because the remedies
+/// differ, and collapsing them would throw that away.
 ///
 /// `pub(crate)` since Story 9.5: `git.rs`'s six wrappers return the same [`MutateError`]
 /// taxonomy, and a second mapper would be a second, desyncable spelling of one mapping.
+/// `bookmark_ops.rs`'s two (Story 9.8) reuse it for the same reason.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::ChangeNotFound { id } => FfiErrorObj {
@@ -137,6 +143,14 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::RevsetResolutionError { reason } => FfiErrorObj {
             code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
             context: Some(reason),
+        },
+        MutateError::BookmarkExists { name } => FfiErrorObj {
+            code: JJ_BOOKMARK_EXISTS.to_owned(),
+            context: Some(name),
+        },
+        MutateError::BookmarkTrackedRemoteExists { name } => FfiErrorObj {
+            code: JJ_BOOKMARK_TRACKED_REMOTE_EXISTS.to_owned(),
+            context: Some(name),
         },
         MutateError::Backend(reason) => FfiErrorObj {
             code: JJ_JJ_LIB_ERROR.to_owned(),
@@ -304,7 +318,8 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
 /// via [`arm_session`]; the read wrappers borrow `.repo` — `status.rs`,
 /// `change.rs`, `op_log.rs`, `bookmarks.rs`, `remotes.rs`, plus `file.rs`'s four
 /// (Story 9.4), `commit_views.rs`'s three (Story 9.6) and `workspace.rs`'s two
-/// (Story 9.7); `zanshin_repo_close`
+/// (Story 9.7); the mutation wrappers borrow it mutably — `git.rs`'s six (Story 9.5) and
+/// `bookmark_ops.rs`'s two (Story 9.8); `zanshin_repo_close`
 /// tears it down via [`RepoSession::close`]. Wire handles stay `u64` — no ABI
 /// change from this refactor.
 pub(crate) struct RepoSession {

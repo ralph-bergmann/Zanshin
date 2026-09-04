@@ -206,6 +206,34 @@ pub enum MutateError {
         /// Human-readable resolution failure from jj-lib.
         reason: String,
     },
+    /// [`crate::Repo::bookmark_create`] was called with a name that is already a LOCAL
+    /// bookmark (Story 9.8) — the CLI's `Bookmark already exists: {name}`
+    /// (`cli/src/commands/bookmark/create.rs:64-70` @ v0.44.0). Nothing is created, not
+    /// even the names that precede this one: the CLI's per-name loop is fail-fast.
+    ///
+    /// Its own variant rather than [`MutateError::InvalidInput`] for the same reason
+    /// [`MutateError::RemoteExists`] is: the remedy is specific — the bookmark is already
+    /// there, so MOVE it (`bookmark set`, Story 9.11) instead of creating it again.
+    #[error("bookmark already exists: {name}")]
+    BookmarkExists {
+        /// The bookmark name that is already taken.
+        name: String,
+    },
+    /// [`crate::Repo::bookmark_create`] was called with a name whose LOCAL bookmark is
+    /// absent but which still has at least one TRACKED remote bookmark (Story 9.8) — the
+    /// deleted-but-not-yet-pushed state, and the CLI's `Tracked remote bookmarks exist for
+    /// deleted bookmark: {name}` (`create.rs:71-83` @ v0.44.0).
+    ///
+    /// Kept DISTINCT from [`MutateError::BookmarkExists`] because the remedies differ, which
+    /// is precisely what the CLI's two separate hints say: recreate the local bookmark with
+    /// `bookmark set`, or disassociate the remote with `bookmark untrack` (both Story 9.11).
+    /// The default-ignored remote `git` is excluded, so a colocated `name@git` never
+    /// triggers it.
+    #[error("tracked remote bookmarks exist for deleted bookmark: {name}")]
+    BookmarkTrackedRemoteExists {
+        /// The bookmark name whose tracked remote bookmarks block the create.
+        name: String,
+    },
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes
     /// the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -295,7 +323,9 @@ pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
 
 /// Maps a shared [`ResolveError`] into this module's taxonomy, preserving the exact
 /// `ChangeNotFound { id }` / `Backend` split the mutation verbs have always reported.
-fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
+/// `pub(crate)` so [`crate::bookmark_ops`] classifies its own `resolve_or_wc` failure
+/// identically instead of growing a second, desyncable copy of the same split.
+pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
     match e {
         ResolveError::NotFound => MutateError::ChangeNotFound {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
@@ -711,6 +741,95 @@ pub(crate) fn no_op_result(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(wc.change_id().reverse_hex()),
+    })
+}
+
+// ── Shared transaction skeleton ──────────────────────────────────────────────────
+//
+// Moved here from `git.rs` by Story 9.8. It was never a git concern: it is the shape
+// EVERY verb that may legitimately write nothing takes — load at head, capture `@`, run
+// the work inside a transaction, drop it when `has_changes()` is false, otherwise commit
+// and sync the working copy. The two bookmark verbs are exactly that shape too, and a
+// second copy next to them would be a second, desyncable spelling of the no-op arm.
+
+/// What [`finish_or_no_op`] hands back: the closure's own value, the shared mutation
+/// contract, and the repo the caller must project any post-call stats from.
+pub(crate) struct Finished<T> {
+    /// Whatever the verb's closure computed inside the transaction.
+    pub(crate) value: T,
+    /// Op id + working-copy change id, in the shape every mutation reports.
+    pub(crate) mutation: MutationResult,
+    /// The repo AFTER the call — the just-committed one, or (on the no-op path) the same
+    /// head-resolved one the dropped transaction started from. `git_import` reads the
+    /// tracking state of each changed ref out of this view, which is only meaningful when
+    /// [`Finished::committed`] is true.
+    pub(crate) repo: Arc<ReadonlyRepo>,
+    /// Whether an operation was actually written. `false` means [`Finished::repo`] is the
+    /// PRE-transaction repo, so it is NOT a post-verb view — see `git_import`'s use of it.
+    pub(crate) committed: bool,
+}
+
+/// Runs `work` inside a transaction and commits it as `description`, or — when `work`
+/// changed nothing — drops the transaction and writes NO operation.
+///
+/// The no-op arm is `WorkspaceCommandTransaction::finish`'s own guard
+/// (`cli/src/cli_util.rs:2792-2795`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
+/// which is why `jj git remote add` needs no guard of its own while `remove`/`rename` write
+/// one explicitly for the reserved remote `git`, and why `jj bookmark delete` can match
+/// nothing and still succeed. All of those shapes collapse to this one here.
+///
+/// On the no-op path [`no_op_result`] returns the PRE-CALL op-log head, so a caller sees
+/// byte-identical op-log state — the same signal jj itself gives.
+pub(crate) fn finish_or_no_op<T, F>(
+    workspace: &mut Workspace,
+    description: &str,
+    work: F,
+) -> Result<Finished<T>, MutateError>
+where
+    F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
+{
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let workspace_name = workspace.workspace_name().to_owned();
+    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
+
+    let mut tx = readonly.start_transaction();
+    let value = work(&mut tx)?;
+    if !tx.repo().has_changes() {
+        drop(tx);
+        let mutation = no_op_result(
+            workspace,
+            &workspace_name,
+            old_wc_id.as_ref(),
+            old_tree.as_ref(),
+            &readonly,
+        )?;
+        return Ok(Finished {
+            value,
+            mutation,
+            repo: readonly,
+            committed: false,
+        });
+    }
+
+    let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
+    let new_op_id = crate::OperationId(new_repo.op_id().hex());
+    let new_wc_commit = sync_working_copy(
+        workspace,
+        &workspace_name,
+        old_wc_id.as_ref(),
+        old_tree.as_ref(),
+        &new_repo,
+    )?;
+    Ok(Finished {
+        value,
+        mutation: MutationResult {
+            new_op_id,
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        },
+        repo: new_repo,
+        committed: true,
     })
 }
 

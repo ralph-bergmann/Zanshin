@@ -72,6 +72,22 @@ pub const JJ_REMOTE_EXISTS: &str = "jj.remote_exists";
 /// hand, which no code in this workspace offers — hence its own code rather than the
 /// unclassified `jj.jj_lib_error`.
 pub const JJ_REMOTE_NONSTANDARD_CONFIG: &str = "jj.remote_nonstandard_config";
+/// AR-P-4: emitted by `bookmark_ops.rs::zanshin_bookmark_create` when a requested name is
+/// already a LOCAL bookmark; the offending name in `context` (Story 9.8). Nothing is created
+/// — not even the names before it — and no operation is written.
+///
+/// Its own code rather than `jj.invalid_input` because the remedy is specific: the bookmark
+/// is already there, so MOVE it (`bookmark set`, Story 9.11) instead of creating it again.
+pub const JJ_BOOKMARK_EXISTS: &str = "jj.bookmark_exists";
+/// AR-P-4: emitted by `bookmark_ops.rs::zanshin_bookmark_create` when a requested name has no
+/// local bookmark but still has at least one TRACKED remote bookmark — the deleted-but-not-
+/// yet-pushed state; the offending name in `context` (Story 9.8).
+///
+/// Kept DISTINCT from `jj.bookmark_exists` because the remedies differ, which is exactly what
+/// the CLI's two separate hints say: recreate the local bookmark with `bookmark set`, or
+/// disassociate the remote with `bookmark untrack`. The default-ignored remote `git` is
+/// excluded, so a colocated `name@git` never produces this code.
+pub const JJ_BOOKMARK_TRACKED_REMOTE_EXISTS: &str = "jj.bookmark_tracked_remote_exists";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when no workspace of the requested
 /// name exists in the head view; the name in `context` (Story 9.7).
 ///
