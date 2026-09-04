@@ -744,6 +744,26 @@ pub(crate) fn no_op_result(
     })
 }
 
+/// Renders an error and its `source()` chain as `"outer: inner: …"`.
+///
+/// The exact projection `cli/src/git_util.rs:475-478` prints for a failed export ref
+/// (`for err in iter::successors(Some(reason), |e| e.source()) { write!(": {err}") }`).
+/// Started in `git.rs` (Story 9.5) for the unclassified jj-lib failures it flattens into
+/// [`MutateError::Backend`]; moved here by Story 9.8, when `bookmark_ops` needed the same
+/// rendering for a malformed string pattern. The reason is always the same: jj-lib keeps
+/// the ACTIONABLE detail behind `#[source]`, so a top-level `Display` alone (`"Failed to
+/// set"`, `"Invalid string pattern"`) tells a user nothing they can act on.
+pub(crate) fn flatten_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        out.push_str(": ");
+        out.push_str(&e.to_string());
+        source = e.source();
+    }
+    out
+}
+
 // ── Shared transaction skeleton ──────────────────────────────────────────────────
 //
 // Moved here from `git.rs` by Story 9.8. It was never a git concern: it is the shape
@@ -760,26 +780,23 @@ pub(crate) struct Finished<T> {
     /// Op id + working-copy change id, in the shape every mutation reports.
     pub(crate) mutation: MutationResult,
     /// The repo AFTER the call — the just-committed one, or (on the no-op path) the same
-    /// head-resolved one the dropped transaction started from. `git_import` reads the
-    /// tracking state of each changed ref out of this view, which is only meaningful when
-    /// [`Finished::committed`] is true.
+    /// head-resolved one the dropped transaction started from. A verb that projects
+    /// post-call facts out of the new view reads them here; a verb whose whole answer is
+    /// [`Finished::mutation`] (the three `git remote` verbs, both bookmark verbs) ignores
+    /// it. It is only a POST-verb view when [`Finished::committed`] is true.
     pub(crate) repo: Arc<ReadonlyRepo>,
     /// Whether an operation was actually written. `false` means [`Finished::repo`] is the
-    /// PRE-transaction repo, so it is NOT a post-verb view — see `git_import`'s use of it.
+    /// PRE-transaction repo, so it is NOT a post-verb view. `git_import` is the caller that
+    /// has to branch on this, because it reports each changed ref's tracking state.
     pub(crate) committed: bool,
 }
 
-/// Runs `work` inside a transaction and commits it as `description`, or — when `work`
-/// changed nothing — drops the transaction and writes NO operation.
+/// Loads the head operation and hands it to [`finish_or_no_op_at`].
 ///
-/// The no-op arm is `WorkspaceCommandTransaction::finish`'s own guard
-/// (`cli/src/cli_util.rs:2792-2795`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
-/// which is why `jj git remote add` needs no guard of its own while `remove`/`rename` write
-/// one explicitly for the reserved remote `git`, and why `jj bookmark delete` can match
-/// nothing and still succeed. All of those shapes collapse to this one here.
-///
-/// On the no-op path [`no_op_result`] returns the PRE-CALL op-log head, so a caller sees
-/// byte-identical op-log state — the same signal jj itself gives.
+/// The right entry point for a verb whose `description` needs nothing out of the repo. A
+/// verb that must READ the head first — to resolve a target commit, or to name the rows it
+/// is about to touch — has to load once itself and call [`finish_or_no_op_at`] with that
+/// same repo, so that its description and its writes describe ONE view.
 pub(crate) fn finish_or_no_op<T, F>(
     workspace: &mut Workspace,
     description: &str,
@@ -789,6 +806,38 @@ where
     F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
 {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    finish_or_no_op_at(workspace, readonly, description, work)
+}
+
+/// Runs `work` in a transaction started from `readonly` and commits it as `description`,
+/// or — when `work` changed nothing — drops the transaction and writes NO operation.
+///
+/// The no-op arm is `WorkspaceCommandTransaction::finish`'s own guard
+/// (`cli/src/cli_util.rs:2792-2795`: `if !tx.repo().has_changes() { "Nothing changed."; return }`),
+/// which is why `jj git remote add` needs no guard of its own while `remove`/`rename` write
+/// one explicitly for the reserved remote `git`, and why `jj bookmark delete` can match
+/// nothing and still succeed. All of those shapes collapse to this one here.
+///
+/// On the no-op path [`no_op_result`] returns the PRE-CALL op-log head, so a caller sees
+/// byte-identical op-log state — the same signal jj itself gives.
+///
+/// WHY the head-resolved repo is a PARAMETER rather than something this function loads:
+/// the CLI does exactly one load per invocation, and a verb whose description quotes the
+/// repo (a target's commit hex, the names a pattern matched) has to read the head BEFORE
+/// the transaction opens. Loading a second time here would put the description and the
+/// writes on two different views — a window the CLI does not have, and one that matters
+/// because an external `jj` CLI or MCP process may be mutating the same repo (FR-MCP-9):
+/// the op-log description could then name commits or bookmarks the transaction never
+/// touched, which is precisely the byte-level parity NFR-R-2 asks for.
+pub(crate) fn finish_or_no_op_at<T, F>(
+    workspace: &mut Workspace,
+    readonly: Arc<ReadonlyRepo>,
+    description: &str,
+    work: F,
+) -> Result<Finished<T>, MutateError>
+where
+    F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
+{
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
@@ -1112,10 +1161,46 @@ pub(crate) fn absorb(
 mod tests {
     use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 
-    use super::{build_matcher, res, rev, MutateError};
+    use super::{build_matcher, flatten_chain, res, rev, MutateError};
     use crate::config::ConfigError;
     use crate::op_support::ResolveError;
     use crate::{ChangeId, RevsetError};
+
+    /// A `#[source]`-carrying error must render as the whole chain, joined by `": "` —
+    /// the projection `cli/src/git_util.rs:475-478` prints. The top-level Display of
+    /// jj-lib's `FailedRefExportReason::FailedToSet` is only "Failed to set", so dropping
+    /// the chain would throw away the entire reason a ref could not be exported.
+    #[test]
+    fn flatten_chain_joins_the_whole_source_chain() {
+        #[derive(Debug)]
+        struct Inner;
+        impl std::fmt::Display for Inner {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("reference already exists")
+            }
+        }
+        impl std::error::Error for Inner {}
+
+        #[derive(Debug)]
+        struct Outer(Inner);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("Failed to set")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        assert_eq!(flatten_chain(&Outer(Inner)), "Failed to set: reference already exists");
+        assert_eq!(
+            flatten_chain(&Inner),
+            "reference already exists",
+            "a leaf has no suffix"
+        );
+    }
 
     /// The two shared-resolver outcomes must keep landing in the two DIFFERENT mutation
     /// variants they always have: "that revision does not resolve" is the caller's problem

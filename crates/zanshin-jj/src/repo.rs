@@ -1131,8 +1131,9 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `names` is empty, or a name is the empty
     ///   string.
-    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent,
-    ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no
+    ///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT `revision` is not
+    ///   an error: it is what applies the CLI's `-r` default `@`.
     /// - [`crate::MutateError::BookmarkExists`] — a name is already a local bookmark.
     /// - [`crate::MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is
     ///   absent but it still has a tracked remote bookmark. A colocated `name@git` does NOT

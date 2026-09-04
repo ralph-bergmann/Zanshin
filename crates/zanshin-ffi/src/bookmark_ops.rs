@@ -124,8 +124,10 @@ unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, Ff
 /// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
 ///   empty string.
-/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden, or divergent; the
-///   id in `context`.
+/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
+///   or only-hidden), or divergent; the id in `context`. An ABSENT `revision` is not an
+///   error — it is what applies the CLI's `-r` default `@`. An explicitly present EMPTY
+///   string is a VALUE, not an absence, and lands here.
 /// - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
 /// - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
 ///   a tracked remote bookmark; the name in `context`.

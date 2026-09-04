@@ -5,8 +5,11 @@
 //!
 //! Split from [`crate::remotes`], which keeps the FR-JJ-9 remote *list* and the FR-JJ-13
 //! *fetch* that predate this story. The six verbs here are the family the CLI itself groups
-//! under `cli/src/commands/git/`, so they share one skeleton, one error mapper and one
-//! source-chain flattener rather than being scattered across two modules.
+//! under `cli/src/commands/git/`, so they share one error mapper rather than being
+//! scattered across two modules. The transaction skeleton
+//! ([`crate::mutate::finish_or_no_op`]) and the source-chain flattener
+//! ([`crate::mutate::flatten_chain`]) started here and moved to `mutate.rs` once a second
+//! verb family needed them.
 //!
 //! Every verb opens a jj-lib transaction, mutates via `tx.repo_mut()`, and commits with the
 //! CLI's own op-log description (NFR-R-2) — jj-lib only, never shells to `jj` (AR-AP-1).
@@ -53,7 +56,7 @@ use jj_lib::revset::UserRevsetExpression;
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{self, MutateError, MutationResult};
+use crate::mutate::{self, flatten_chain, MutateError, MutationResult};
 use crate::op_support::resolve_immutable;
 use crate::ChangeId;
 
@@ -158,23 +161,6 @@ pub struct GitExportResult {
 }
 
 // ── Error mapping ────────────────────────────────────────────────────────────────
-
-/// Renders an error and its `source()` chain as `"outer: inner: …"`.
-///
-/// The exact projection `cli/src/git_util.rs:475-478` prints for a failed export ref
-/// (`for err in iter::successors(Some(reason), |e| e.source()) { write!(": {err}") }`).
-/// Also used for the unclassified jj-lib failures this module flattens into
-/// [`MutateError::Backend`], whose interesting detail likewise hides behind `#[source]`.
-fn flatten_chain(err: &(dyn std::error::Error + 'static)) -> String {
-    let mut out = err.to_string();
-    let mut source = err.source();
-    while let Some(e) = source {
-        out.push_str(": ");
-        out.push_str(&e.to_string());
-        source = e.source();
-    }
-    out
-}
 
 /// Maps a [`GitRemoteManagementError`] onto this crate's taxonomy.
 ///
@@ -537,44 +523,8 @@ pub(crate) fn git_remote_set_url(
 
 #[cfg(test)]
 mod tests {
-    use super::{flatten_chain, map_export_err, map_import_err, map_remote_mgmt_err};
+    use super::{map_export_err, map_import_err, map_remote_mgmt_err};
     use crate::MutateError;
-
-    /// A `#[source]`-carrying error must render as the whole chain, joined by `": "` —
-    /// the projection `cli/src/git_util.rs:475-478` prints. The top-level Display of
-    /// jj-lib's `FailedRefExportReason::FailedToSet` is only "Failed to set", so dropping
-    /// the chain would throw away the entire reason a ref could not be exported.
-    #[test]
-    fn flatten_chain_joins_the_whole_source_chain() {
-        #[derive(Debug)]
-        struct Inner;
-        impl std::fmt::Display for Inner {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("reference already exists")
-            }
-        }
-        impl std::error::Error for Inner {}
-
-        #[derive(Debug)]
-        struct Outer(Inner);
-        impl std::fmt::Display for Outer {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("Failed to set")
-            }
-        }
-        impl std::error::Error for Outer {
-            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-                Some(&self.0)
-            }
-        }
-
-        assert_eq!(flatten_chain(&Outer(Inner)), "Failed to set: reference already exists");
-        assert_eq!(
-            flatten_chain(&Inner),
-            "reference already exists",
-            "a leaf has no suffix"
-        );
-    }
 
     /// Every `GitRemoteManagementError` arm must land in the variant whose remedy matches.
     /// Three of the seven cannot be provoked through a real repo deterministically

@@ -442,9 +442,10 @@ fn delete_treats_a_bare_pattern_as_a_glob_and_exact_as_a_literal() {
     repo.bookmark_delete(&["exact:\"foo*\"".to_owned()]).unwrap();
     assert_eq!(local_bookmark_names(&fx.path), vec!["foo1".to_owned()]);
 
-    // Re-seed and delete with the BARE pattern: both names go.
+    // Re-seed and delete with the genuinely BARE pattern — no quotes, which is the form a
+    // caller reaches for when they mean an exact name: both names go.
     set_local_bookmark(&fx.path, "foo*", &[&lay.wc_commit_hex]);
-    repo.bookmark_delete(&["\"foo*\"".to_owned()]).unwrap();
+    repo.bookmark_delete(&["foo*".to_owned()]).unwrap();
     assert!(
         local_bookmark_names(&fx.path).is_empty(),
         "a bare pattern is a GLOB, so it matches `foo1` too"
@@ -474,8 +475,17 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
     let (before, _) = head_op(&repo);
 
     let malformed = repo.bookmark_delete(&["nosuchkind:foo".to_owned()]).unwrap_err();
+    // jj-lib's OWN reason must survive to the caller, not just the wrapper prefix: every
+    // bad pattern shares the kind "Invalid string pattern", and the part that says WHICH
+    // construct is wrong lives behind `#[source]`. Asserting the whole string here is what
+    // makes dropping the chain a test failure rather than a silent loss of the remedy.
     assert!(
-        matches!(&malformed, MutateError::InvalidInput { reason } if reason.contains("name pattern")),
+        matches!(
+            &malformed,
+            MutateError::InvalidInput { reason }
+                if reason == "failed to parse name pattern: Invalid string pattern: \
+                              Invalid string pattern kind `nosuchkind:`"
+        ),
         "unexpected error: {malformed:?}"
     );
     let empty = repo.bookmark_delete(&[]).unwrap_err();

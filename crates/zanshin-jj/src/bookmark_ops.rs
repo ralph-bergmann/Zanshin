@@ -46,11 +46,11 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::{RefName, RefNameBuf};
 use jj_lib::repo::Repo as _;
-use jj_lib::revset::{parse_string_expression, RevsetDiagnostics};
+use jj_lib::revset::{parse_string_expression, RevsetDiagnostics, RevsetParseError};
 use jj_lib::str_util::{StringExpression, StringMatcher};
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{self, finish_or_no_op, MutateError, MutationResult};
+use crate::mutate::{self, finish_or_no_op_at, flatten_chain, MutateError, MutationResult};
 use crate::ChangeId;
 
 /// Turns caller-supplied names into jj-lib `RefNameBuf`s, refusing the two arities the CLI
@@ -84,13 +84,34 @@ fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefNam
     } else {
         StringMatcher::all()
     };
-    // Bound to a local so the returned iterator — which borrows `remote_matcher` — is dropped
-    // before the matcher is, rather than at the end of the block.
+    // Bound to a local rather than returned as the tail expression: in edition 2021 a tail
+    // expression's temporaries (here the iterator borrowing `remote_matcher`) are dropped
+    // AFTER the block's locals, so `remote_matcher` would go first and the borrow check
+    // would fail. The `let` ends those temporaries at the semicolon instead.
     let tracked = repo
         .view()
         .remote_bookmarks_matching(&StringMatcher::exact(bookmark.as_str()), &remote_matcher)
         .any(|(_, remote_ref)| remote_ref.is_tracked());
     tracked
+}
+
+/// Renders a pattern parse failure the way the CLI's two lines do — its message plus its
+/// `Caused by:` — as one string, and WITHOUT the terminal rendering in between.
+///
+/// `RevsetParseError`'s own `Display` is a multi-line pest caret diagram pointing into the
+/// pattern text, which is terminal presentation the GUI replaces (ADR-0003) — flattening the
+/// whole error would ship an ASCII drawing into `error.context`. But the kind ALONE is
+/// useless: every malformed glob, regex and unknown prefix renders as the same "Invalid
+/// string pattern". jj-lib keeps the part a user can act on — "error parsing glob '[':
+/// unclosed character class; missing ']'", "Invalid string pattern kind bogus:" — behind
+/// `#[source]`. So: the kind as the head, then the flattened `source()` chain.
+fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
+    let mut reason = format!("failed to parse name pattern: {}", e.kind());
+    if let Some(source) = std::error::Error::source(e) {
+        reason.push_str(": ");
+        reason.push_str(&flatten_chain(source));
+    }
+    reason
 }
 
 /// Parses each pattern and UNIONS them — the CLI's `revset_util.rs:317-337`
@@ -99,13 +120,16 @@ fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefNam
 /// A bare word is a GLOB, not an exact name (`jj_lib::revset`'s `expect_string_expression`
 /// lowers an identifier or quoted string to `StringPattern::glob`).
 fn union_matcher(patterns: &[String]) -> Result<StringMatcher, MutateError> {
+    // jj-lib reports non-fatal parse DIAGNOSTICS (deprecations, redundant syntax) through
+    // this sink; the CLI prints them (`revset_util.rs:317-337` hands them to `ui`). Dropped
+    // here for the same reason every other CLI status line in this module is: they are
+    // terminal chatter, not part of the machine contract, and the GUI has no stderr. They
+    // are advisory only — a pattern that parses at all is used exactly as parsed.
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());
     for pattern in patterns {
         let expression = parse_string_expression(&mut diagnostics, pattern).map_err(|e| MutateError::InvalidInput {
-            // The CLI's own wording (`Failed to parse name pattern: {kind}`), lower-cased to
-            // match this crate's message style.
-            reason: format!("failed to parse name pattern: {}", e.kind()),
+            reason: describe_pattern_parse_error(&e),
         })?;
         expressions.push(expression);
     }
@@ -143,8 +167,9 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `names` is empty, or a name is the empty string.
-/// - [`MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
+///   commit (unknown or only-hidden), or divergent. Not to be confused with an ABSENT
+///   `revision`, which is not an error at all: it applies the CLI's `-r` default `@`.
 /// - [`MutateError::BookmarkExists`] — a name is already a local bookmark.
 /// - [`MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is absent but it
 ///   still has a tracked remote bookmark.
@@ -157,27 +182,30 @@ pub(crate) fn create(
 ) -> Result<MutationResult, MutateError> {
     let ref_names = validate_names(names)?;
 
-    // CLI order (`create.rs:57-60`): the revision resolves FIRST, before any per-name
-    // precondition. It is resolved here — against its own head load, rather than inside the
-    // transaction below — because the op-log description embeds the target's full commit
-    // hex, and `finish_or_no_op` needs that description up front. `delete` reads its head
-    // view before the transaction for the same reason.
+    // ONE head load for the whole verb, as the CLI has. The revision has to resolve before
+    // the transaction opens (CLI order, `create.rs:57-60`) because the op-log description
+    // embeds the target's full commit hex — so this repo is resolved here and then handed
+    // to `finish_or_no_op_at`, which starts its transaction from THIS view rather than
+    // loading the head again. See that function's doc for why a second load would be wrong.
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let target_id = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
         .map_err(|e| mutate::res(e, revision))?
         .id()
         .clone();
-    drop(readonly);
 
     let description = format!(
         "create bookmark {names} pointing to commit {id}",
         names = join_symbols(&ref_names),
         id = target_id.hex(),
     );
-    let finished = finish_or_no_op(workspace, &description, |tx| {
-        // Both guards for every name before ANY write, which is what makes the refusal
-        // fail-fast: the CLI runs this loop entirely before it opens its transaction.
+    let finished = finish_or_no_op_at(workspace, readonly, &description, |tx| {
+        // Both guards for EVERY name run before ANY write, and returning `Err` from here
+        // drops the transaction unwritten — so a refusal creates nothing, not even the
+        // names that precede the offender. The CLI reaches the same observable outcome by
+        // running its loop before it opens a transaction at all (`create.rs:64-83`); the
+        // difference is invisible from outside, and checking inside the transaction is what
+        // lets both the guards and the writes see the single view loaded above.
         for name in &ref_names {
             let repo = tx.repo();
             if repo.view().get_local_bookmark(name).is_present() {
@@ -236,19 +264,20 @@ pub(crate) fn delete(workspace: &mut Workspace, patterns: &[String]) -> Result<M
     }
     let matcher = union_matcher(patterns)?;
 
-    // The description names the MATCHED bookmarks, so the view has to be read before the
-    // transaction opens — see `create`'s note. `local_bookmarks_matching` is sorted by name,
-    // which is the CLI's own ordering here.
+    // ONE head load, as in `create`: the description names the MATCHED bookmarks, so the
+    // view has to be read before the transaction opens, and the transaction then starts
+    // from THAT view — otherwise the description could name rows a second load no longer
+    // has. `local_bookmarks_matching` iterates a `BTreeMap`, so the names come out
+    // lexicographically, which is the CLI's own ordering here.
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let doomed: Vec<RefNameBuf> = readonly
         .view()
         .local_bookmarks_matching(&matcher)
         .map(|(name, _)| name.to_owned())
         .collect();
-    drop(readonly);
 
     let description = format!("delete bookmark {}", join_symbols(&doomed));
-    let finished = finish_or_no_op(workspace, &description, |tx| {
+    let finished = finish_or_no_op_at(workspace, readonly, &description, |tx| {
         for name in &doomed {
             tx.repo_mut().set_local_bookmark_target(name, RefTarget::absent());
         }
@@ -290,13 +319,50 @@ mod tests {
         assert_eq!(join_symbols(&[]), "");
     }
 
-    /// A malformed pattern is the caller's problem, and jj-lib's own reason is forwarded.
+    /// A malformed pattern is the caller's problem, and jj-lib's ACTIONABLE reason is
+    /// forwarded — not merely its kind, which is the same opaque "Invalid string pattern"
+    /// for every bad glob, bad regex and unknown prefix. The detail lives behind
+    /// `#[source]`, so these assertions name the offending construct: a `kind()`-only
+    /// rendering, or one that dropped the chain, would fail here.
     #[test]
-    fn union_matcher_refuses_a_malformed_pattern() {
-        let err = union_matcher(&["glob:\"[\"".to_owned()]).expect_err("an unterminated glob class");
+    fn union_matcher_forwards_jj_libs_own_reason_for_a_malformed_pattern() {
+        let bad_glob = union_matcher(&["glob:\"[\"".to_owned()]).expect_err("an unterminated glob class");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("failed to parse name pattern")),
-            "unexpected error: {err:?}"
+            matches!(
+                &bad_glob,
+                MutateError::InvalidInput { reason }
+                    if reason == "failed to parse name pattern: Invalid string pattern: \
+                                  error parsing glob '[': unclosed character class; missing ']'"
+            ),
+            "unexpected error: {bad_glob:?}"
+        );
+
+        let bad_kind = union_matcher(&["bogus:foo".to_owned()]).expect_err("no such pattern kind");
+        assert!(
+            matches!(
+                &bad_kind,
+                MutateError::InvalidInput { reason }
+                    if reason == "failed to parse name pattern: Invalid string pattern: \
+                                  Invalid string pattern kind `bogus:`"
+            ),
+            "unexpected error: {bad_kind:?}"
+        );
+
+        // A SYNTAX error carries no source, so the kind is the whole reason — and the
+        // renderer must not append a stray separator for an absent chain.
+        let bad_syntax = union_matcher(&["foo bar baz".to_owned()]).expect_err("trailing garbage");
+        assert!(
+            matches!(
+                &bad_syntax,
+                MutateError::InvalidInput { reason } if reason == "failed to parse name pattern: Syntax error"
+            ),
+            "unexpected error: {bad_syntax:?}"
+        );
+
+        // What must NOT survive: jj-lib's pest caret diagram, which is terminal rendering.
+        assert!(
+            !bad_glob.to_string().contains("-->"),
+            "the pest caret diagram is terminal UX and must not reach error.context"
         );
     }
 
@@ -317,5 +383,26 @@ mod tests {
         let union = union_matcher(&["exact:a".to_owned(), "exact:b".to_owned()]).expect("both parse");
         assert!(union.is_match("a") && union.is_match("b"));
         assert!(!union.is_match("c"));
+    }
+
+    /// The `~` / `&` / `|` operators are advertised on every doc surface this story
+    /// touches (the schema, the C header, `Repo::bookmark_delete`, and three Dart files),
+    /// so they need a witness: they work because a pattern is a jj string EXPRESSION, not
+    /// a bare `StringPattern`, and losing that would break the advertised syntax silently
+    /// while every bare-glob test stayed green.
+    #[test]
+    fn union_matcher_supports_the_advertised_pattern_operators() {
+        let negated = union_matcher(&["glob:\"foo-*\" ~ exact:\"foo-skip\"".to_owned()]).expect("a negation parses");
+        assert!(negated.is_match("foo-1"));
+        assert!(!negated.is_match("foo-skip"), "`~` must subtract the right operand");
+        assert!(!negated.is_match("bar"));
+
+        let intersected = union_matcher(&["glob:\"foo-*\" & substring:\"1\"".to_owned()]).expect("an `&` parses");
+        assert!(intersected.is_match("foo-1"));
+        assert!(!intersected.is_match("foo-2"), "`&` must require BOTH operands");
+
+        let alternation = union_matcher(&["exact:\"a\" | exact:\"b\"".to_owned()]).expect("a `|` parses");
+        assert!(alternation.is_match("a") && alternation.is_match("b"));
+        assert!(!alternation.is_match("c"));
     }
 }

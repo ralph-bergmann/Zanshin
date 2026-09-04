@@ -89,6 +89,28 @@ void main() {
       await handle.close();
     });
 
+    // Without this, `revision` never crosses the seam in a PASSING test: every other
+    // create here either omits it or carries an interior NUL, which the calling-side
+    // guard rejects before a buffer exists. Dropping `revision:` from the dispatch arm,
+    // the command, or the ObjectBuilder would leave the whole gate green while a GUI
+    // asking for `bookmark create v1 -r <commit>` silently got a bookmark on `@`.
+    test('create_carries_revision_across_the_seam_and_refuses_a_bogus_one', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      const bogus = 'not-reverse-hex!';
+
+      await expectLater(
+        handle.bookmarkCreate(['feature'], revision: bogus),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.change_not_found')
+              .having((e) => e.context, 'context', bogus),
+        ),
+      );
+      expect(await handle.bookmarks(), isEmpty, reason: 'the refused create wrote nothing');
+
+      await handle.close();
+    });
+
     test('create_with_an_empty_name_list_surfaces_jj_invalid_input', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 

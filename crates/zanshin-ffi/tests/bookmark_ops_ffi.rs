@@ -117,16 +117,19 @@ fn head_op_id(handle: u64) -> String {
 // ── Request-buffer builders ───────────────────────────────────────────────────
 
 /// A `BookmarkCreateRequest` buffer. A `None` revision is left ABSENT — the wire form of "the
-/// user did not supply `-r`", which selects the CLI's `@` default.
-fn create_request_bytes(names: &[&str], revision: Option<&str>) -> Vec<u8> {
+/// user did not supply `-r`", which selects the CLI's `@` default. A `None` `names` likewise
+/// leaves the VECTOR genuinely absent, which is the create reader's own absent-vector path.
+fn create_request_bytes(names: Option<&[&str]>, revision: Option<&str>) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
-    let name_offsets: Vec<_> = names.iter().map(|n| b.create_string(n)).collect();
-    let names_off = b.create_vector(&name_offsets);
+    let names_off = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
     let revision_off = revision.map(|s| b.create_string(s));
     let req = fbs::BookmarkCreateRequest::create(
         &mut b,
         &fbs::BookmarkCreateRequestArgs {
-            names: Some(names_off),
+            names: names_off,
             revision: revision_off,
         },
     );
@@ -216,7 +219,7 @@ fn create_then_delete_round_trips_through_mutation_result() {
     let (handle, _root) = open_fixture();
     let before = head_op_id(handle);
 
-    let req = create_request_bytes(&["feature"], None);
+    let req = create_request_bytes(Some(&["feature"]), None);
     // SAFETY: handle is live; req is a live, correctly-sized buffer for the call.
     let token = unsafe { zanshin_bookmark_create(handle, req.as_ptr(), req.len()) };
     // SAFETY: token is the fresh, non-null token the call just returned.
@@ -249,7 +252,7 @@ fn create_distinguishes_an_absent_revision_from_a_present_unresolvable_one() {
     pin_env();
     let (handle, _root) = open_fixture();
 
-    let absent = create_request_bytes(&["from-default"], None);
+    let absent = create_request_bytes(Some(&["from-default"]), None);
     // SAFETY: handle is live; the buffer outlives the call.
     let token = unsafe { zanshin_bookmark_create(handle, absent.as_ptr(), absent.len()) };
     // SAFETY: fresh, non-null token.
@@ -257,7 +260,7 @@ fn create_distinguishes_an_absent_revision_from_a_present_unresolvable_one() {
     assert!(parse_envelope(&bytes).ok(), "an absent revision means `@`");
 
     // Reverse-hex alphabet is k-z; this id belongs to no commit in the fixture.
-    let present = create_request_bytes(&["from-explicit"], Some("pqrstuvwxyzklmnopqrstuvwxyzklmno"));
+    let present = create_request_bytes(Some(&["from-explicit"]), Some("pqrstuvwxyzklmnopqrstuvwxyzklmno"));
     // SAFETY: handle is live; the buffer outlives the call.
     let token = unsafe { zanshin_bookmark_create(handle, present.as_ptr(), present.len()) };
     // SAFETY: fresh, non-null token.
@@ -265,6 +268,23 @@ fn create_distinguishes_an_absent_revision_from_a_present_unresolvable_one() {
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CHANGE_NOT_FOUND));
+
+    // The third state the schema, the header and the Dart docs all promise: an explicitly
+    // PRESENT but EMPTY string is a VALUE, not an absence. It must refuse rather than fall
+    // back to `@` — otherwise a GUI that binds an empty text field straight to the field
+    // would silently create the bookmark somewhere the user never asked for.
+    let empty = create_request_bytes(Some(&["from-empty"]), Some(""));
+    // SAFETY: handle is live; the buffer outlives the call.
+    let token = unsafe { zanshin_bookmark_create(handle, empty.as_ptr(), empty.len()) };
+    // SAFETY: fresh, non-null token.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok(), "an empty revision is a value, not the `@` default");
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CHANGE_NOT_FOUND));
+    assert!(
+        !listed_bookmark_names(handle).contains(&"from-empty".to_owned()),
+        "the refused create must not have written the bookmark"
+    );
 
     close_handle(handle);
 }
@@ -281,7 +301,7 @@ fn create_reports_bookmark_exists_and_writes_no_operation() {
     set_local_bookmark(&root, "feature", &[&target]);
     let before = head_op_id(handle);
 
-    let req = create_request_bytes(&["feature"], None);
+    let req = create_request_bytes(Some(&["feature"]), None);
     // SAFETY: handle is live; the buffer outlives the call.
     let token = unsafe { zanshin_bookmark_create(handle, req.as_ptr(), req.len()) };
     // SAFETY: fresh, non-null token.
@@ -304,8 +324,9 @@ fn create_reports_bookmark_tracked_remote_exists() {
     let (handle, root) = open_fixture();
     let target = wc_commit_hex(handle);
     set_remote_bookmark(&root, "foo", "origin", &target, true);
+    let before = head_op_id(handle);
 
-    let req = create_request_bytes(&["foo"], None);
+    let req = create_request_bytes(Some(&["foo"]), None);
     // SAFETY: handle is live; the buffer outlives the call.
     let token = unsafe { zanshin_bookmark_create(handle, req.as_ptr(), req.len()) };
     // SAFETY: fresh, non-null token.
@@ -316,6 +337,7 @@ fn create_reports_bookmark_tracked_remote_exists() {
     let error = env.error().expect("error detail");
     assert_eq!(error.code(), Some(JJ_BOOKMARK_TRACKED_REMOTE_EXISTS));
     assert_eq!(error.context(), Some("foo"));
+    assert_eq!(head_op_id(handle), before, "a refusal writes no operation");
 
     close_handle(handle);
 }
@@ -348,21 +370,29 @@ fn delete_matching_nothing_succeeds_with_the_pre_call_head() {
 }
 
 /// An ABSENT `names` vector is the wire form of an empty one, so it reaches the jj layer's ONE
-/// canonical refusal rather than a second reader-level spelling of it.
+/// canonical refusal rather than a second reader-level spelling of it — for BOTH readers, since
+/// each turns its own absent vector into an empty `Vec`. And like every refusal, it writes no
+/// operation.
 #[test]
 fn an_absent_names_vector_refuses_as_invalid_input() {
     pin_env();
     let (handle, _root) = open_fixture();
+    let before = head_op_id(handle);
 
-    let req = delete_request_bytes(None);
-    // SAFETY: handle is live; the buffer outlives the call.
-    let token = unsafe { zanshin_bookmark_delete(handle, req.as_ptr(), req.len()) };
-    // SAFETY: fresh, non-null token.
-    let bytes = unsafe { read_and_free(token) };
-    let env = parse_envelope(&bytes);
+    for (wrapper, req) in [
+        (zanshin_bookmark_delete as BufWrapper, delete_request_bytes(None)),
+        (zanshin_bookmark_create as BufWrapper, create_request_bytes(None, None)),
+    ] {
+        // SAFETY: handle is live; the buffer outlives the call.
+        let token = unsafe { wrapper(handle, req.as_ptr(), req.len()) };
+        // SAFETY: fresh, non-null token.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
 
-    assert!(!env.ok());
-    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+        assert!(!env.ok());
+        assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
+        assert_eq!(head_op_id(handle), before, "a refusal writes no operation");
+    }
 
     close_handle(handle);
 }
@@ -373,7 +403,7 @@ fn an_absent_names_vector_refuses_as_invalid_input() {
 #[test]
 fn a_zero_handle_is_refused_by_both_wrappers() {
     pin_env();
-    let req = create_request_bytes(&["feature"], None);
+    let req = create_request_bytes(Some(&["feature"]), None);
     for wrapper in [
         zanshin_bookmark_create as BufWrapper,
         zanshin_bookmark_delete as BufWrapper,
