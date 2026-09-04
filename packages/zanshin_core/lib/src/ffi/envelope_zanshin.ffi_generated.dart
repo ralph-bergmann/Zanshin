@@ -372,7 +372,9 @@ enum PayloadTypeId {
   GitExportResult(20),
   ShowView(21),
   EvologView(22),
-  InterdiffView(23);
+  InterdiffView(23),
+  WorkspaceList(24),
+  WorkspaceRoot(25);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -427,6 +429,10 @@ enum PayloadTypeId {
         return PayloadTypeId.EvologView;
       case 23:
         return PayloadTypeId.InterdiffView;
+      case 24:
+        return PayloadTypeId.WorkspaceList;
+      case 25:
+        return PayloadTypeId.WorkspaceRoot;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -435,7 +441,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 23;
+  static const int maxValue = 25;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1700,6 +1706,86 @@ class InterdiffRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, fromOffset);
     fbBuilder.addOffset(1, toOffset);
     fbBuilder.addOffset(2, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_workspace_root` (Story 9.7) — the CLI's `jj workspace root [--name]`.
+///
+///  ABSENT is the wire form of "the user did not supply --name", which applies the CLI's own
+///  documented default: the CURRENT workspace. That path reads the workspace loader alone — no
+///  repo load, no store read — and cannot fail. An explicitly present EMPTY string is a VALUE,
+///  not an absence: no workspace is named "", so it refuses with `jj.workspace_not_found`.
+///
+///  `zanshin_workspace_list` has NO request table: the CLI's `jj workspace list` takes no
+///  argument at all (its only flag, `-T/--template`, is rendering).
+class WorkspaceRootRequest {
+  WorkspaceRootRequest._(this._bc, this._bcOffset);
+  factory WorkspaceRootRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceRootRequest> reader = _WorkspaceRootRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'WorkspaceRootRequest{name: ${name}}';
+  }
+}
+
+class _WorkspaceRootRequestReader extends fb.TableReader<WorkspaceRootRequest> {
+  const _WorkspaceRootRequestReader();
+
+  @override
+  WorkspaceRootRequest createObject(fb.BufferContext bc, int offset) => WorkspaceRootRequest._(bc, offset);
+}
+
+class WorkspaceRootRequestBuilder {
+  WorkspaceRootRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceRootRequestObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+
+  WorkspaceRootRequestObjectBuilder({
+    String? name,
+  }) : _name = name;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, nameOffset);
     return fbBuilder.endTable();
   }
 
@@ -6213,6 +6299,263 @@ class InterdiffViewObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One row of `zanshin_workspace_list` (Story 9.7) — the CLI's `jj workspace list`.
+///
+///  `name` and `wc_commit_id` are the VIEW half (`View::wc_commit_ids()`), the same pair
+///  `zanshin_jj::WorkingCopy` carries; `root` is the half that lives in the WorkspaceStore.
+///  `root` is ABSENT (null-for-absence) whenever the path cannot be reported — the workspace
+///  predates jj 0.38.0 and has no recorded path, the store is unreadable, or the recorded
+///  directory moved or was deleted. That absence NEVER fails the listing: the CLI's own
+///  `WorkspaceRef::root` collapses every such failure to "no root" so list templates keep
+///  rendering (`cli/src/commit_templater.rs:1787` @ v0.44.0), and points at
+///  `jj workspace root --name` — here `zanshin_workspace_root` — for strict path diagnostics.
+///  When present it is an ABSOLUTE, canonicalized path; CWD-relative shortening is the GUI's job.
+class WorkspaceEntry {
+  WorkspaceEntry._(this._bc, this._bcOffset);
+  factory WorkspaceEntry(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceEntry> reader = _WorkspaceEntryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get wcCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get root => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'WorkspaceEntry{name: ${name}, wcCommitId: ${wcCommitId}, root: ${root}}';
+  }
+}
+
+class _WorkspaceEntryReader extends fb.TableReader<WorkspaceEntry> {
+  const _WorkspaceEntryReader();
+
+  @override
+  WorkspaceEntry createObject(fb.BufferContext bc, int offset) => WorkspaceEntry._(bc, offset);
+}
+
+class WorkspaceEntryBuilder {
+  WorkspaceEntryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWcCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRootOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceEntryObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _wcCommitId;
+  final String? _root;
+
+  WorkspaceEntryObjectBuilder({
+    String? name,
+    String? wcCommitId,
+    String? root,
+  }) : _name = name,
+       _wcCommitId = wcCommitId,
+       _root = root;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? wcCommitIdOffset = _wcCommitId == null ? null : fbBuilder.writeString(_wcCommitId!);
+    final int? rootOffset = _root == null ? null : fbBuilder.writeString(_root!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, wcCommitIdOffset);
+    fbBuilder.addOffset(2, rootOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_workspace_list`: one row per workspace, in jj-lib's own BTreeMap
+///  order (lexicographic by workspace name), which is preserved rather than re-sorted.
+class WorkspaceList {
+  WorkspaceList._(this._bc, this._bcOffset);
+  factory WorkspaceList(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceList> reader = _WorkspaceListReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<WorkspaceEntry>? get entries =>
+      const fb.ListReader<WorkspaceEntry>(WorkspaceEntry.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'WorkspaceList{entries: ${entries}}';
+  }
+}
+
+class _WorkspaceListReader extends fb.TableReader<WorkspaceList> {
+  const _WorkspaceListReader();
+
+  @override
+  WorkspaceList createObject(fb.BufferContext bc, int offset) => WorkspaceList._(bc, offset);
+}
+
+class WorkspaceListBuilder {
+  WorkspaceListBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceListObjectBuilder extends fb.ObjectBuilder {
+  final List<WorkspaceEntryObjectBuilder>? _entries;
+
+  WorkspaceListObjectBuilder({
+    List<WorkspaceEntryObjectBuilder>? entries,
+  }) : _entries = entries;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, entriesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The result of `zanshin_workspace_root` (Story 9.7): one absolute workspace root directory.
+///
+///  Always present on a successful call — unlike `WorkspaceEntry.root`, which is optional. That
+///  asymmetry is the CLI's own: `jj workspace list` degrades to no root while
+///  `jj workspace root --name` raises one of three distinct refusals, and it is reproduced here
+///  rather than unified.
+class WorkspaceRoot {
+  WorkspaceRoot._(this._bc, this._bcOffset);
+  factory WorkspaceRoot(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceRoot> reader = _WorkspaceRootReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get root => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'WorkspaceRoot{root: ${root}}';
+  }
+}
+
+class _WorkspaceRootReader extends fb.TableReader<WorkspaceRoot> {
+  const _WorkspaceRootReader();
+
+  @override
+  WorkspaceRoot createObject(fb.BufferContext bc, int offset) => WorkspaceRoot._(bc, offset);
+}
+
+class WorkspaceRootBuilder {
+  WorkspaceRootBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addRootOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceRootObjectBuilder extends fb.ObjectBuilder {
+  final String? _root;
+
+  WorkspaceRootObjectBuilder({
+    String? root,
+  }) : _root = root;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? rootOffset = _root == null ? null : fbBuilder.writeString(_root!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, rootOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -6288,6 +6631,10 @@ class Envelope {
         return EvologView.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 23:
         return InterdiffView.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 24:
+        return WorkspaceList.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 25:
+        return WorkspaceRoot.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

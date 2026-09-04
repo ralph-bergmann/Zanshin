@@ -1042,6 +1042,67 @@ impl Repo {
         crate::commit_views::interdiff(self.workspace(), from.as_ref(), to.as_ref(), paths)
     }
 
+    /// Lists every workspace with its working-copy commit and root directory (Story 9.7) — the
+    /// CLI's `jj workspace list`.
+    ///
+    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj workspace list` (AR-AP-1), and never writes an operation. Takes no argument: the CLI's
+    /// only flag is `-T/--template`, which is rendering.
+    ///
+    /// This is [`Repo::list_working_copies`] plus the path half. The name/commit columns are
+    /// literally that call's result — same values, same jj-lib `BTreeMap` order (lexicographic by
+    /// workspace name) — and `root` is one `WorkspaceStore` lookup per row, canonicalized to an
+    /// absolute path. The CLI's `root.relative()` rendering is not ported.
+    ///
+    /// A row whose path cannot be reported keeps its name and commit and reports
+    /// [`crate::WorkspaceEntry::root`] as `None`: workspaces created before jj 0.38.0 have no
+    /// recorded path, a store may be unreadable, and a recorded directory may have moved or been
+    /// deleted. NONE of those fails the listing — the CLI degrades the same way
+    /// (`cli/src/commit_templater.rs:1787` @ v0.44.0) and points at
+    /// [`Repo::resolve_workspace_root`] for strict path diagnostics. That asymmetry between the
+    /// two verbs is reproduced, not smoothed over.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::WorkspaceError::Backend`] — `load_at_head` failed, i.e. the VIEW half could not
+    ///   be read; the jj-lib reason is forwarded as a string. No path failure reaches this.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn list_workspaces(&self) -> Result<Vec<crate::WorkspaceEntry>, crate::WorkspaceError> {
+        crate::workspace::list_workspaces(self.workspace())
+    }
+
+    /// Returns a workspace's root directory (Story 9.7) — the CLI's `jj workspace root [--name]`.
+    ///
+    /// Read-only; never shells to `jj workspace root` (AR-AP-1), and never writes an operation —
+    /// not even on a refusal. `name` is the CLI's long-only `--name`, passed through rather than
+    /// defaulted here (FR-JJ-17); `None` is its documented default, the CURRENT workspace.
+    ///
+    /// `resolve_workspace_root(None)` returns exactly what the infallible
+    /// [`Repo::workspace_root`] accessor returns, and reads the loader alone — no repo load, no
+    /// store read (`cli/src/commands/workspace/root.rs:78` @ v0.44.0). That is the ONLY overlap
+    /// between the two: with a name — even the CURRENT workspace's own — the call goes through
+    /// the `WorkspaceStore` and can REFUSE, because the CLI's named path never shortcuts to the
+    /// loader. A named lookup runs the CLI's four stages in ITS order (store load, view
+    /// membership, recorded path, join + canonicalize), each with its own refusal, and returns an
+    /// ABSOLUTE path — the CLI's CWD-relative rendering is the GUI's job.
+    ///
+    /// An explicitly present EMPTY name is a VALUE, not an absence: no workspace is named `""`,
+    /// so it refuses as [`crate::WorkspaceError::NotFound`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::WorkspaceError::NotFound`] — no workspace of that name is in the head view.
+    /// - [`crate::WorkspaceError::NoRecordedPath`] — the workspace exists but the store holds no
+    ///   path for it (it predates jj 0.38.0, or its entry was wiped).
+    /// - [`crate::WorkspaceError::PathUnresolved`] — a path IS recorded but does not resolve; the
+    ///   I/O reason rides in `reason`.
+    /// - [`crate::WorkspaceError::Backend`] — the workspace store could not be loaded or read, or
+    ///   `load_at_head` failed.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn resolve_workspace_root(&self, name: Option<&str>) -> Result<PathBuf, crate::WorkspaceError> {
+        crate::workspace::resolve_root(self.workspace(), name)
+    }
+
     /// Gives the paths matching `paths` in one commit the content they have in another
     /// (Story 9.3) — the CLI's `jj restore`, whole-file only.
     ///

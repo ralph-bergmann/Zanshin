@@ -72,6 +72,26 @@ pub const JJ_REMOTE_EXISTS: &str = "jj.remote_exists";
 /// hand, which no code in this workspace offers — hence its own code rather than the
 /// unclassified `jj.jj_lib_error`.
 pub const JJ_REMOTE_NONSTANDARD_CONFIG: &str = "jj.remote_nonstandard_config";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when no workspace of the requested
+/// name exists in the head view; the name in `context` (Story 9.7).
+///
+/// Its own code rather than `jj.invalid_input` because the remedy is specific: pick a different
+/// workspace — `zanshin_workspace_list` names them all.
+pub const JJ_WORKSPACE_NOT_FOUND: &str = "jj.workspace_not_found";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when the workspace EXISTS but the
+/// workspace store holds no path for it; the name in `context` (Story 9.7).
+///
+/// Distinct from `jj.workspace_path_unresolved` because there is nothing to repair: workspaces
+/// created before jj 0.38.0 have no recorded path at all, so the answer is simply unavailable.
+pub const JJ_WORKSPACE_NO_RECORDED_PATH: &str = "jj.workspace_no_recorded_path";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when a path IS recorded but does
+/// not resolve — the directory moved, was deleted, or is unreachable; the workspace name and the
+/// I/O reason in `context` (Story 9.7).
+///
+/// Distinct from `jj.workspace_no_recorded_path` because the remedy differs: the workspace can
+/// be forgotten (Story 9.13) or its directory restored. `zanshin_workspace_list` never emits
+/// either — it degrades the row's `root` to absent instead (CLI parity).
+pub const JJ_WORKSPACE_PATH_UNRESOLVED: &str = "jj.workspace_path_unresolved";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
 /// fails (network, authentication, or transport error); detail in `context`.
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";

@@ -9,13 +9,13 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (58 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (60 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
 // --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
 // --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
-// --- CommitViewError (9.6)) -----------------------------------------------------
+// --- CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)) -----------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -110,6 +110,10 @@ type _Tag = zanshin_jj::Tag;
 type _TagKind = zanshin_jj::TagKind;
 type _WorkingCopy = zanshin_jj::WorkingCopy;
 type _ViewError = zanshin_jj::ViewError;
+
+// workspace (Story 9.7)
+type _WorkspaceEntry = zanshin_jj::WorkspaceEntry;
+type _WorkspaceError = zanshin_jj::WorkspaceError;
 
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
@@ -321,6 +325,17 @@ fn sample_working_copy() -> zanshin_jj::WorkingCopy {
     zanshin_jj::WorkingCopy {
         workspace_name: String::new(),
         commit_id: zanshin_jj::CommitId(String::new()),
+    }
+}
+
+/// Names every `WorkspaceEntry` field by its public path (Story 9.7). `root` is an
+/// `Option<PathBuf>` — the crate's path currency (`RepoRoot.root`'s precedent), and its
+/// optionality IS the contract: a path that cannot be reported never fails the listing.
+fn sample_workspace_entry() -> zanshin_jj::WorkspaceEntry {
+    zanshin_jj::WorkspaceEntry {
+        name: String::new(),
+        wc_commit_id: zanshin_jj::CommitId(String::new()),
+        root: Some(std::path::PathBuf::new()),
     }
 }
 
@@ -652,4 +667,49 @@ fn commit_views_surface_resolves() {
             Option<zanshin_jj::ChangeId>,
             &[String],
         ) -> Result<Vec<zanshin_jj::FileChange>, zanshin_jj::CommitViewError>;
+}
+
+/// Workspace reads (Story 9.7): 2 new types and 2 new `Repo` methods.
+///
+/// A separate test for the reason the blocks above are — `api_surface_resolves` sits at clippy's
+/// `too_many_lines` ceiling. The two method signatures pin the ARGUMENT ARITY the CLI fixes:
+/// `list_workspaces` takes nothing (`jj workspace list`'s only flag is rendering) while
+/// `resolve_workspace_root` takes one `Option<&str>` (`--name`, defaulting to the current
+/// workspace). It also pins that `resolve_workspace_root` is a SEPARATE method from the
+/// infallible `workspace_root()` accessor, which keeps its `&Path` return.
+///
+/// Each `WorkspaceError` variant is constructed AND its `Display` asserted: an unexercised
+/// `thiserror` arm is an uncovered line in `workspace.rs`, which the coverage ratchet pins.
+#[test]
+fn workspace_surface_resolves() {
+    let not_found = zanshin_jj::WorkspaceError::NotFound {
+        name: "nosuch".to_owned(),
+    };
+    assert_eq!(not_found.to_string(), "no such workspace: nosuch");
+    let no_path = zanshin_jj::WorkspaceError::NoRecordedPath {
+        name: "legacy".to_owned(),
+    };
+    assert_eq!(no_path.to_string(), "workspace has no recorded path: legacy");
+    let unresolved = zanshin_jj::WorkspaceError::PathUnresolved {
+        name: "moved".to_owned(),
+        reason: "No such file or directory (os error 2)".to_owned(),
+    };
+    assert_eq!(
+        unresolved.to_string(),
+        "cannot resolve absolute workspace path for moved: No such file or directory (os error 2)"
+    );
+    assert_eq!(
+        zanshin_jj::WorkspaceError::Backend("boom".to_owned()).to_string(),
+        "jj-lib error: boom"
+    );
+
+    _ = sample_workspace_entry();
+
+    _ = zanshin_jj::Repo::list_workspaces
+        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkspaceEntry>, zanshin_jj::WorkspaceError>;
+    _ = zanshin_jj::Repo::resolve_workspace_root
+        as fn(&zanshin_jj::Repo, Option<&str>) -> Result<std::path::PathBuf, zanshin_jj::WorkspaceError>;
+    // The shipped infallible accessor keeps its name and its `&Path` return (Story 9.7 adds a
+    // distinct verb rather than renaming it — `zanshin-ffi/src/repo.rs` arms the watcher with it).
+    _ = zanshin_jj::Repo::workspace_root as fn(&zanshin_jj::Repo) -> &std::path::Path;
 }

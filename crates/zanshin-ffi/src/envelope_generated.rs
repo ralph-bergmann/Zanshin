@@ -797,13 +797,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 23;
+        pub const ENUM_MAX_PAYLOAD: u8 = 25;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 24] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 26] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -828,6 +828,8 @@ pub mod zanshin {
             Payload::ShowView,
             Payload::EvologView,
             Payload::InterdiffView,
+            Payload::WorkspaceList,
+            Payload::WorkspaceRoot,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -859,9 +861,11 @@ pub mod zanshin {
             pub const ShowView: Self = Self(21);
             pub const EvologView: Self = Self(22);
             pub const InterdiffView: Self = Self(23);
+            pub const WorkspaceList: Self = Self(24);
+            pub const WorkspaceRoot: Self = Self(25);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 23;
+            pub const ENUM_MAX: u8 = 25;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -887,6 +891,8 @@ pub mod zanshin {
                 Self::ShowView,
                 Self::EvologView,
                 Self::InterdiffView,
+                Self::WorkspaceList,
+                Self::WorkspaceRoot,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -915,6 +921,8 @@ pub mod zanshin {
                     Self::ShowView => Some("ShowView"),
                     Self::EvologView => Some("EvologView"),
                     Self::InterdiffView => Some("InterdiffView"),
+                    Self::WorkspaceList => Some("WorkspaceList"),
+                    Self::WorkspaceRoot => Some("WorkspaceRoot"),
                     _ => None,
                 }
             }
@@ -2936,6 +2944,119 @@ pub mod zanshin {
                 ds.field("from", &self.from());
                 ds.field("to", &self.to());
                 ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceRootRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_workspace_root` (Story 9.7) — the CLI's `jj workspace root [--name]`.
+        ///
+        /// ABSENT is the wire form of "the user did not supply --name", which applies the CLI's own
+        /// documented default: the CURRENT workspace. That path reads the workspace loader alone — no
+        /// repo load, no store read — and cannot fail. An explicitly present EMPTY string is a VALUE,
+        /// not an absence: no workspace is named "", so it refuses with `jj.workspace_not_found`.
+        ///
+        /// `zanshin_workspace_list` has NO request table: the CLI's `jj workspace list` takes no
+        /// argument at all (its only flag, `-T/--template`, is rendering).
+        pub struct WorkspaceRootRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceRootRequest<'a> {
+            type Inner = WorkspaceRootRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceRootRequest<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceRootRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceRootRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceRootRequest<'bldr>> {
+                let mut builder = WorkspaceRootRequestBuilder::new(_fbb);
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceRootRequest::VT_NAME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceRootRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceRootRequestArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WorkspaceRootRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceRootRequestArgs { name: None }
+            }
+        }
+
+        pub struct WorkspaceRootRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceRootRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceRootRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WorkspaceRootRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceRootRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceRootRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceRootRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceRootRequest");
+                ds.field("name", &self.name());
                 ds.finish()
             }
         }
@@ -10306,6 +10427,391 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum WorkspaceEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One row of `zanshin_workspace_list` (Story 9.7) — the CLI's `jj workspace list`.
+        ///
+        /// `name` and `wc_commit_id` are the VIEW half (`View::wc_commit_ids()`), the same pair
+        /// `zanshin_jj::WorkingCopy` carries; `root` is the half that lives in the WorkspaceStore.
+        /// `root` is ABSENT (null-for-absence) whenever the path cannot be reported — the workspace
+        /// predates jj 0.38.0 and has no recorded path, the store is unreadable, or the recorded
+        /// directory moved or was deleted. That absence NEVER fails the listing: the CLI's own
+        /// `WorkspaceRef::root` collapses every such failure to "no root" so list templates keep
+        /// rendering (`cli/src/commit_templater.rs:1787` @ v0.44.0), and points at
+        /// `jj workspace root --name` — here `zanshin_workspace_root` — for strict path diagnostics.
+        /// When present it is an ABSOLUTE, canonicalized path; CWD-relative shortening is the GUI's job.
+        pub struct WorkspaceEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceEntry<'a> {
+            type Inner = WorkspaceEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceEntry<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WC_COMMIT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ROOT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceEntry<'bldr>> {
+                let mut builder = WorkspaceEntryBuilder::new(_fbb);
+                if let Some(x) = args.root {
+                    builder.add_root(x);
+                }
+                if let Some(x) = args.wc_commit_id {
+                    builder.add_wc_commit_id(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceEntry::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn wc_commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceEntry::VT_WC_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceEntry::VT_ROOT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("wc_commit_id", Self::VT_WC_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("root", Self::VT_ROOT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceEntryArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub wc_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub root: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WorkspaceEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceEntryArgs {
+                    name: None,
+                    wc_commit_id: None,
+                    root: None,
+                }
+            }
+        }
+
+        pub struct WorkspaceEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceEntry::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_wc_commit_id(&mut self, wc_commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceEntry::VT_WC_COMMIT_ID, wc_commit_id);
+            }
+            #[inline]
+            pub fn add_root(&mut self, root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceEntry::VT_ROOT, root);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkspaceEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceEntry");
+                ds.field("name", &self.name());
+                ds.field("wc_commit_id", &self.wc_commit_id());
+                ds.field("root", &self.root());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceListOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_workspace_list`: one row per workspace, in jj-lib's own BTreeMap
+        /// order (lexicographic by workspace name), which is preserved rather than re-sorted.
+        pub struct WorkspaceList<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceList<'a> {
+            type Inner = WorkspaceList<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceList<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceList { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceListArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceList<'bldr>> {
+                let mut builder = WorkspaceListBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WorkspaceEntry<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WorkspaceEntry>>,
+                    >>(WorkspaceList::VT_ENTRIES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceList<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<WorkspaceEntry>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceListArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WorkspaceEntry<'a>>>>,
+            >,
+        }
+        impl<'a> Default for WorkspaceListArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceListArgs { entries: None }
+            }
+        }
+
+        pub struct WorkspaceListBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<WorkspaceEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceList::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkspaceListBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceListBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceList<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceList<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceList");
+                ds.field("entries", &self.entries());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceRootOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The result of `zanshin_workspace_root` (Story 9.7): one absolute workspace root directory.
+        ///
+        /// Always present on a successful call — unlike `WorkspaceEntry.root`, which is optional. That
+        /// asymmetry is the CLI's own: `jj workspace list` degrades to no root while
+        /// `jj workspace root --name` raises one of three distinct refusals, and it is reproduced here
+        /// rather than unified.
+        pub struct WorkspaceRoot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceRoot<'a> {
+            type Inner = WorkspaceRoot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceRoot<'a> {
+            pub const VT_ROOT: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceRoot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceRootArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceRoot<'bldr>> {
+                let mut builder = WorkspaceRootBuilder::new(_fbb);
+                if let Some(x) = args.root {
+                    builder.add_root(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceRoot::VT_ROOT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceRoot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("root", Self::VT_ROOT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceRootArgs<'a> {
+            pub root: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WorkspaceRootArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceRootArgs { root: None }
+            }
+        }
+
+        pub struct WorkspaceRootBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceRootBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_root(&mut self, root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceRoot::VT_ROOT, root);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkspaceRootBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceRootBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceRoot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceRoot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceRoot");
+                ds.field("root", &self.root());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -10743,6 +11249,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_workspace_list(&self) -> Option<WorkspaceList<'a>> {
+                if self.data_type() == Payload::WorkspaceList {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { WorkspaceList::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_workspace_root(&self) -> Option<WorkspaceRoot<'a>> {
+                if self.data_type() == Payload::WorkspaceRoot {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { WorkspaceRoot::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -10863,6 +11399,16 @@ pub mod zanshin {
                             Payload::InterdiffView => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<InterdiffView>>(
                                     "Payload::InterdiffView",
+                                    pos,
+                                ),
+                            Payload::WorkspaceList => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceList>>(
+                                    "Payload::WorkspaceList",
+                                    pos,
+                                ),
+                            Payload::WorkspaceRoot => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRoot>>(
+                                    "Payload::WorkspaceRoot",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -11092,6 +11638,20 @@ pub mod zanshin {
                     }
                     Payload::InterdiffView => {
                         if let Some(x) = self.data_as_interdiff_view() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::WorkspaceList => {
+                        if let Some(x) = self.data_as_workspace_list() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::WorkspaceRoot => {
+                        if let Some(x) = self.data_as_workspace_root() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

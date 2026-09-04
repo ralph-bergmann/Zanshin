@@ -289,6 +289,8 @@ typedef struct {
 
 #define EvologEntry_VT_OPERATION_ID 8
 
+#define WorkspaceEntry_VT_WC_COMMIT_ID 6
+
 /**
  * Build-stamp version string.
  *
@@ -1487,5 +1489,74 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_status(uint64_t handle);
+
+/**
+ * List every workspace of the repo identified by `handle`, with its working-copy commit and
+ * root directory — the CLI's `jj workspace list`.
+ *
+ * Handle-only: the CLI verb takes no argument at all, and its `-T/--template` flag is rendering.
+ * Rows come in jj-lib's own `BTreeMap` order (lexicographic by workspace name). A row's `root`
+ * is ABSENT when the path cannot be reported — no recorded path (a workspace predating jj
+ * 0.38.0), an unreadable store, or a recorded directory that moved or was deleted. None of those
+ * fails the call: the CLI's own list template degrades the same way and points at
+ * `zanshin_workspace_root` for strict diagnostics. This read writes NO operation.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceList` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.jj_lib_error` — `load_at_head` failed, i.e. the VIEW half could not be read; detail in
+ *   `context`. No path failure reaches this.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_workspace_list(uint64_t handle);
+
+/**
+ * Return one workspace's root directory in the repo identified by `handle` — the CLI's
+ * `jj workspace root [--name]`.
+ *
+ * The argument crosses as a `WorkspaceRootRequest` `FlatBuffers` request buffer (ADR-0001
+ * composite-input pattern), because the CLI's `--name` must be distinguishably ABSENT. An absent
+ * `name` selects the CURRENT workspace and reads the workspace loader alone — no repo load, no
+ * store read — which is the one path that cannot fail; it returns exactly what
+ * `zanshin_jj::Repo::workspace_root` reports. A PRESENT name, even the current workspace's own,
+ * goes through the `WorkspaceStore` and can refuse: the CLI's named path never shortcuts to the
+ * loader, and that asymmetry is reproduced rather than smoothed over. An explicitly present
+ * EMPTY name is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
+ * The returned path is ABSOLUTE and canonicalized; CWD-relative shortening is the GUI's job.
+ * This read writes NO operation — not even on a refusal.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer.
+ * - `jj.workspace_not_found` — no workspace of that name is in the head view; the name in
+ *   `context`.
+ * - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
+ *   the name in `context`.
+ * - `jj.workspace_path_unresolved` — a path IS recorded but does not resolve; `context` names
+ *   the workspace and the I/O reason.
+ * - `jj.jj_lib_error` — the workspace store could not be loaded or read, or `load_at_head`
+ *   failed; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.WorkspaceRootRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_workspace_root(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 #endif  /* ZANSHIN_FFI_H */

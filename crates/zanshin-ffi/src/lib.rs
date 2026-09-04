@@ -47,6 +47,7 @@ pub mod repo;
 pub mod status;
 pub mod tracing_init;
 pub mod watcher;
+pub mod workspace;
 
 /// Build-stamp version string.
 ///

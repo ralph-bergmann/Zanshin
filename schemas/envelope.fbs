@@ -211,6 +211,19 @@ table InterdiffRequest {
   paths: [string];
 }
 
+/// Arguments of `zanshin_workspace_root` (Story 9.7) — the CLI's `jj workspace root [--name]`.
+///
+/// ABSENT is the wire form of "the user did not supply --name", which applies the CLI's own
+/// documented default: the CURRENT workspace. That path reads the workspace loader alone — no
+/// repo load, no store read — and cannot fail. An explicitly present EMPTY string is a VALUE,
+/// not an absence: no workspace is named "", so it refuses with `jj.workspace_not_found`.
+///
+/// `zanshin_workspace_list` has NO request table: the CLI's `jj workspace list` takes no
+/// argument at all (its only flag, `-T/--template`, is rendering).
+table WorkspaceRootRequest {
+  name: string;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -228,6 +241,8 @@ table InterdiffRequest {
 //                MutationResult)
 //   Story 9-6  : ShowView ✓, EvologView ✓, InterdiffView ✓ (all three reuse the shipped
 //                Change / FileChange tables — no second spelling of either shape)
+//   Story 9-7  : WorkspaceList ✓, WorkspaceRoot ✓ (the list row is the shipped
+//                View::wc_commit_ids half plus the WorkspaceStore path half)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -799,6 +814,39 @@ table InterdiffView {
   file_changes: [FileChange];
 }
 
+/// One row of `zanshin_workspace_list` (Story 9.7) — the CLI's `jj workspace list`.
+///
+/// `name` and `wc_commit_id` are the VIEW half (`View::wc_commit_ids()`), the same pair
+/// `zanshin_jj::WorkingCopy` carries; `root` is the half that lives in the WorkspaceStore.
+/// `root` is ABSENT (null-for-absence) whenever the path cannot be reported — the workspace
+/// predates jj 0.38.0 and has no recorded path, the store is unreadable, or the recorded
+/// directory moved or was deleted. That absence NEVER fails the listing: the CLI's own
+/// `WorkspaceRef::root` collapses every such failure to "no root" so list templates keep
+/// rendering (`cli/src/commit_templater.rs:1787` @ v0.44.0), and points at
+/// `jj workspace root --name` — here `zanshin_workspace_root` — for strict path diagnostics.
+/// When present it is an ABSOLUTE, canonicalized path; CWD-relative shortening is the GUI's job.
+table WorkspaceEntry {
+  name: string;             // workspace name, UTF-8; "default" in a single-workspace repo
+  wc_commit_id: string;     // CommitId hex of that workspace's working-copy commit
+  root: string;             // absolute workspace root; ABSENT when it cannot be resolved
+}
+
+/// The result of `zanshin_workspace_list`: one row per workspace, in jj-lib's own BTreeMap
+/// order (lexicographic by workspace name), which is preserved rather than re-sorted.
+table WorkspaceList {
+  entries: [WorkspaceEntry];
+}
+
+/// The result of `zanshin_workspace_root` (Story 9.7): one absolute workspace root directory.
+///
+/// Always present on a successful call — unlike `WorkspaceEntry.root`, which is optional. That
+/// asymmetry is the CLI's own: `jj workspace list` degrades to no root while
+/// `jj workspace root --name` raises one of three distinct refusals, and it is reproduced here
+/// rather than unified.
+table WorkspaceRoot {
+  root: string;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -824,6 +872,8 @@ union Payload {
   ShowView,
   EvologView,
   InterdiffView,
+  WorkspaceList,
+  WorkspaceRoot,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

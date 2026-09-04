@@ -303,7 +303,8 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
 /// All four handle-producing wrappers (open/init/clone/convert) construct one
 /// via [`arm_session`]; the read wrappers borrow `.repo` — `status.rs`,
 /// `change.rs`, `op_log.rs`, `bookmarks.rs`, `remotes.rs`, plus `file.rs`'s four
-/// (Story 9.4) and `commit_views.rs`'s three (Story 9.6); `zanshin_repo_close`
+/// (Story 9.4), `commit_views.rs`'s three (Story 9.6) and `workspace.rs`'s two
+/// (Story 9.7); `zanshin_repo_close`
 /// tears it down via [`RepoSession::close`]. Wire handles stay `u64` — no ABI
 /// change from this refactor.
 pub(crate) struct RepoSession {

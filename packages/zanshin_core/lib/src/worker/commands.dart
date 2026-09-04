@@ -711,6 +711,42 @@ final class InterdiffCommand extends WorkerCommand {
   final List<String> paths;
 }
 
+/// List every workspace with its working-copy commit and root directory, in the
+/// repo identified by [handleId] (Story 9.7) — the CLI's `jj workspace list`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceList(raw)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<WorkspaceList>` bytes. No argument field: the CLI
+/// verb takes none.
+final class WorkspaceListCommand extends WorkerCommand {
+  const WorkspaceListCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+}
+
+/// Return one workspace's root directory, in the repo identified by [handleId]
+/// (Story 9.7) — the CLI's `jj workspace root [--name]`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceRoot(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<WorkspaceRoot>` bytes.
+final class WorkspaceRootCommand extends WorkerCommand {
+  const WorkspaceRootCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.name,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Workspace name; `null` = the CURRENT workspace, the CLI's own default. A
+  /// present name — even the current workspace's own — goes through the workspace
+  /// store and can refuse.
+  final String? name;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

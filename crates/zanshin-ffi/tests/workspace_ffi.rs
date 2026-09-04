@@ -1,0 +1,421 @@
+// SPDX-License-Identifier: MIT
+
+//! Integration tests for Story 9.7's two workspace wrappers (`zanshin_workspace_list`,
+//! `zanshin_workspace_root`).
+//!
+//! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier —
+//! a wrong-shape payload is a compile error, not a runtime assert. Every token is freed via
+//! `zanshin_buffer_free_token` so the suite is leak-clean.
+//!
+//! Mirrors `tests/commit_views_ffi.rs`'s scaffolding, with one difference the two verbs force:
+//! `zanshin_workspace_list` is HANDLE-ONLY (the CLI verb takes no argument), so the shared
+//! guard table needs a second fn-pointer alias rather than one shape for both.
+
+use std::ffi::CString;
+use std::path::Path;
+use std::sync::LazyLock;
+use std::{env, fs};
+
+use flatbuffers::root as fb_root;
+use test_helpers::{add_workspace, extract_fixture};
+use zanshin_ffi::fbs;
+use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
+use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
+use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
+use zanshin_ffi::{
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
+    JJ_WORKSPACE_PATH_UNRESOLVED,
+};
+
+// ── Env pin ───────────────────────────────────────────────────────────────────
+
+static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
+    // WHY: mirrors tests/commit_views_ffi.rs — an empty string makes jj-lib find no config at
+    // that path; GIT_CONFIG_GLOBAL="" isolates gix.
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+    }
+});
+
+fn pin_env() {
+    LazyLock::force(&ENV_GUARD);
+}
+
+// ── Envelope helpers ──────────────────────────────────────────────────────────
+
+/// Copy bytes out of a `ZanshinBuf` token and free the token.
+///
+/// # Safety
+/// `token` must be a valid, non-null `ZanshinBuf` produced by one of the `zanshin_*` functions
+/// and not yet freed.
+unsafe fn read_and_free(token: *mut ZanshinBuf) -> Vec<u8> {
+    assert!(!token.is_null(), "token must not be null");
+    let bytes = unsafe {
+        let t = &*token;
+        std::slice::from_raw_parts(t.ptr.cast_const(), t.len).to_vec()
+    };
+    unsafe { zanshin_buffer_free_token(token) };
+    bytes
+}
+
+/// The request-buffer wrapper shape (`zanshin_workspace_root`).
+type BufWrapper = unsafe extern "C" fn(u64, *const u8, usize) -> *mut ZanshinBuf;
+
+/// The handle-only wrapper shape (`zanshin_workspace_list`) — its own alias, because the CLI's
+/// `jj workspace list` takes no argument and the two therefore cannot share one table.
+type HandleWrapper = unsafe extern "C" fn(u64) -> *mut ZanshinBuf;
+
+fn parse_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
+    fb_root::<fbs::Envelope>(bytes).expect("FlatBuffers Verifier must pass for a well-formed Envelope")
+}
+
+fn cstr(s: &str) -> CString {
+    CString::new(s).expect("test string must not contain NUL bytes")
+}
+
+/// Open `path` and return its raw handle.
+fn open_handle(path: &Path) -> u64 {
+    let p = cstr(path.to_str().expect("fixture path must be UTF-8"));
+    // SAFETY: p is a valid NUL-terminated C string alive for the call.
+    let token = unsafe { zanshin_repo_open(p.as_ptr()) };
+    // SAFETY: token is the fresh, non-null token zanshin_repo_open just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "expected ok, error: {:?}", env.error().and_then(|e| e.code()));
+    env.data_as_repo_handle()
+        .expect("RepoHandle payload must be present")
+        .handle()
+}
+
+fn close_handle(handle: u64) {
+    // SAFETY: handle originated from open_handle above and has not been closed.
+    let token = unsafe { zanshin_repo_close(handle) };
+    // SAFETY: token is the fresh, non-null token zanshin_repo_close just returned.
+    let bytes = unsafe { read_and_free(token) };
+    assert!(parse_envelope(&bytes).ok(), "repo close must succeed");
+}
+
+// ── Request-buffer builder ────────────────────────────────────────────────────
+
+/// A `WorkspaceRootRequest` buffer. A `None` name is left ABSENT — the wire form of "the user did
+/// not supply `--name`", which selects the CLI's current-workspace default. `Some("")` is a
+/// PRESENT empty string, a genuinely different request.
+fn root_request_bytes(name: Option<&str>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let name_off = name.map(|s| b.create_string(s));
+    let req = fbs::WorkspaceRootRequest::create(&mut b, &fbs::WorkspaceRootRequestArgs { name: name_off });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+// ── Scenarios ─────────────────────────────────────────────────────────────────
+
+/// A fixture with a SECOND workspace, so both a resolvable and an unresolvable root are on the
+/// wire in one call. Returns `(handle, fixture root, second workspace root)`.
+///
+/// Both `FixtureHandle`s are leaked so their `TempDir`s outlive the returned raw handle, exactly
+/// as `commit_views_ffi.rs::open_scenario` does.
+///
+/// # WHY the canonicalize: `SimpleWorkspaceStore::add` records the new root RELATIVE to the
+/// `repo_path` it was loaded with, while every read joins it onto the canonicalized
+/// `Workspace::repo_path()`. On macOS `/var/folders/…` is a symlink to `/private/var/folders/…`,
+/// so a raw fixture path records one `..` too few and nothing would ever resolve.
+fn open_two_workspace_scenario() -> (u64, std::path::PathBuf, std::path::PathBuf) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let root = fs::canonicalize(&fixture.path).expect("fixture root exists");
+    let (second, _wc) = add_workspace(&root, "second");
+    let second_root = second.path.clone();
+    let handle = open_handle(&root);
+    std::mem::forget(fixture);
+    std::mem::forget(second);
+    (handle, root, second_root)
+}
+
+/// The plain fixture, whose single recorded path is the GENERATOR's temp dir and no longer
+/// resolves. Returns `(handle, fixture root)`.
+fn open_stale_scenario() -> (u64, std::path::PathBuf) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let root = fixture.path.clone();
+    let handle = open_handle(&root);
+    std::mem::forget(fixture);
+    (handle, root)
+}
+
+// ── zanshin_workspace_list ────────────────────────────────────────────────────
+
+/// Both wire states of `WorkspaceEntry.root` in one payload: `default`'s is ABSENT (its recorded
+/// path is stale) and `second`'s is present and absolute. A path failure never fails the call.
+#[test]
+fn workspace_list_carries_present_and_absent_roots() {
+    pin_env();
+    let (handle, _root, second_root) = open_two_workspace_scenario();
+
+    // SAFETY: handle is live and was produced by zanshin_repo_open.
+    let token = unsafe { zanshin_workspace_list(handle) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "a stale path must not fail the listing");
+    assert_eq!(env.data_type(), fbs::Payload::WorkspaceList);
+    let entries = env
+        .data_as_workspace_list()
+        .expect("WorkspaceList payload")
+        .entries()
+        .expect("entries vector");
+
+    assert_eq!(entries.len(), 2, "default + second");
+    assert_eq!(entries.get(0).name(), Some("default"));
+    assert!(
+        !entries.get(0).wc_commit_id().unwrap_or_default().is_empty(),
+        "the view half must still be reported for a degraded row"
+    );
+    assert_eq!(
+        entries.get(0).root(),
+        None,
+        "null-for-absence: the fixture's recorded path no longer resolves"
+    );
+
+    assert_eq!(entries.get(1).name(), Some("second"));
+    let wire_root = entries.get(1).root().expect("second's path resolves");
+    assert_eq!(
+        fs::canonicalize(wire_root).expect("wire root exists"),
+        fs::canonicalize(&second_root).expect("second root exists"),
+        "the wire path must be the directory add_workspace created"
+    );
+
+    close_handle(handle);
+}
+
+// ── zanshin_workspace_root ────────────────────────────────────────────────────
+
+/// The absent-name default reads the loader alone and returns the OPEN workspace's root; naming
+/// the very same workspace goes through the store and refuses. That asymmetry is the CLI's own,
+/// and a reader that dropped the `name` field would make both calls succeed identically.
+#[test]
+fn workspace_root_absent_name_succeeds_where_the_named_current_workspace_refuses() {
+    pin_env();
+    let (handle, root) = open_stale_scenario();
+
+    let req = root_request_bytes(None);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "the loader-only path cannot fail");
+    assert_eq!(env.data_type(), fbs::Payload::WorkspaceRoot);
+    let wire_root = env
+        .data_as_workspace_root()
+        .expect("WorkspaceRoot payload")
+        .root()
+        .expect("root is always present on success");
+    assert_eq!(
+        fs::canonicalize(wire_root).expect("wire root exists"),
+        fs::canonicalize(&root).expect("fixture root exists")
+    );
+
+    let req = root_request_bytes(Some("default"));
+    // SAFETY: see above.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: see above.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok(), "the named path never shortcuts to the loader");
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_WORKSPACE_PATH_UNRESOLVED));
+    assert!(
+        env.error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.starts_with("default: ")),
+        "context must name the workspace and the I/O reason"
+    );
+
+    close_handle(handle);
+}
+
+/// A named SIBLING workspace is reachable from this one — the point of the verb.
+#[test]
+fn workspace_root_finds_a_named_sibling_workspace() {
+    pin_env();
+    let (handle, _root, second_root) = open_two_workspace_scenario();
+
+    let req = root_request_bytes(Some("second"));
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
+    let wire_root = env
+        .data_as_workspace_root()
+        .expect("WorkspaceRoot payload")
+        .root()
+        .expect("root present");
+    assert_eq!(
+        fs::canonicalize(wire_root).expect("wire root exists"),
+        fs::canonicalize(&second_root).expect("second root exists")
+    );
+
+    close_handle(handle);
+}
+
+/// The three named refusals, each with its own code. An explicitly EMPTY name is a VALUE, not an
+/// absence: it must NOT fall back to the current workspace.
+#[test]
+fn workspace_root_refuses_with_one_code_per_cause() {
+    pin_env();
+    let (handle, root) = open_stale_scenario();
+
+    for name in ["nosuch", ""] {
+        let req = root_request_bytes(Some(name));
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(JJ_WORKSPACE_NOT_FOUND),
+            "{name:?} must be jj.workspace_not_found"
+        );
+        assert_eq!(env.error().and_then(|e| e.context()), Some(name));
+    }
+    close_handle(handle);
+
+    // No recorded path at all is a DIFFERENT refusal from a stale one: nothing can be repaired.
+    fs::remove_dir_all(root.join(".jj").join("repo").join("workspace_store")).expect("store exists");
+    let handle = open_handle(&root);
+    let req = root_request_bytes(Some("default"));
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_WORKSPACE_NO_RECORDED_PATH));
+    assert_eq!(env.error().and_then(|e| e.context()), Some("default"));
+    close_handle(handle);
+}
+
+// ── Shared FFI contract: handles and request buffers ──────────────────────────
+
+/// Both wrappers' shared entry-point contract: a zero handle for each, plus the null-pointer and
+/// non-verifying-buffer guards for the one that takes a request buffer.
+#[test]
+fn both_wrappers_guard_the_handle_and_the_request_buffer() {
+    pin_env();
+    let (handle, _root) = open_stale_scenario();
+
+    // Handle-only verbs still have to reject a zero handle — a second alias exists for exactly
+    // this row, so a future handle-only verb cannot skip it.
+    let handle_only: [(&str, HandleWrapper); 1] = [("zanshin_workspace_list", zanshin_workspace_list)];
+    for (name, call) in handle_only {
+        // SAFETY: handle 0 is the null-handle case.
+        let token = unsafe { call(0) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_INVALID_HANDLE),
+            "{name} must reject a zero handle"
+        );
+    }
+
+    // Non-FlatBuffers bytes: the Verifier must reject them BEFORE any field is read. Long enough
+    // that the root-offset read itself does not trip on the buffer's length.
+    let garbage = [0xffu8; 64];
+    let with_buffer: [(&str, BufWrapper, Vec<u8>); 1] = [(
+        "zanshin_workspace_root",
+        zanshin_workspace_root,
+        root_request_bytes(None),
+    )];
+    for (name, call, req) in with_buffer {
+        // SAFETY: handle 0 is the null-handle case; req is a valid buffer alive for the call.
+        let token = unsafe { call(0, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_INVALID_HANDLE),
+            "{name} must reject a zero handle"
+        );
+
+        // SAFETY: a null `data` is exactly what `reject_null_request` guards.
+        let token = unsafe { call(handle, std::ptr::null(), 0) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_NULL_POINTER),
+            "{name} must reject a null request pointer"
+        );
+
+        // SAFETY: garbage is a live, readable buffer of the stated length.
+        let token = unsafe { call(handle, garbage.as_ptr(), garbage.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name} must reject a buffer that does not verify"
+        );
+    }
+
+    close_handle(handle);
+}
+
+// ── Op-log invariant across the whole wrapper layer ───────────────────────────
+
+/// Neither verb writes an operation, on success OR on a refusal — including the `workspace list`
+/// call that makes jj-lib RE-CREATE the workspace-store directory, which touches files but never
+/// the op log.
+#[test]
+fn no_workspace_wrapper_writes_an_operation() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    // The op-heads directory names the head operation, so its contents are a byte-level witness
+    // that no operation was written — no jj_lib import needed.
+    let op_heads = fixture.path.join(".jj").join("repo").join("op_heads").join("heads");
+    // Sorted: `read_dir` order is unspecified, so an unsorted comparison would be a latent flake
+    // the moment the store holds more than one head.
+    let mut before: Vec<String> = fs::read_dir(&op_heads)
+        .expect("op heads dir")
+        .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    before.sort();
+
+    // Also exercise the legacy-repo path: with no workspace_store dir, `SimpleWorkspaceStore::load`
+    // creates one and writes an empty store. That is file I/O, not an operation.
+    fs::remove_dir_all(fixture.path.join(".jj").join("repo").join("workspace_store")).expect("store exists");
+
+    let handle = open_handle(&fixture.path);
+
+    // SAFETY: handle is live.
+    let token = unsafe { zanshin_workspace_list(handle) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    assert!(parse_envelope(&bytes).ok(), "list succeeds with no recorded paths");
+
+    for (req, expect_ok) in [
+        (root_request_bytes(None), true),
+        (root_request_bytes(Some("default")), false),
+    ] {
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        assert_eq!(
+            parse_envelope(&bytes).ok(),
+            expect_ok,
+            "unexpected outcome: {:?}",
+            parse_envelope(&bytes).error().and_then(|e| e.code())
+        );
+    }
+    close_handle(handle);
+
+    let mut after: Vec<String> = fs::read_dir(&op_heads)
+        .expect("op heads dir")
+        .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    after.sort();
+    assert_eq!(before, after, "neither verb may write an operation, refusals included");
+}

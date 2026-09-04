@@ -12,6 +12,7 @@ import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show FileChange, WorkingCopyStatus;
+import '../ffi/workspace.dart' show WorkspaceEntry;
 import 'isolate.dart';
 import 'responses.dart';
 
@@ -703,6 +704,58 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.interdiff(_handleId, from: from, to: to, paths: paths);
+  }
+
+  /// List every workspace with its working-copy commit and root directory
+  /// (Story 9.7) — the CLI's `jj workspace list`.
+  ///
+  /// Takes no argument: the CLI verb takes none either (its `-T/--template` flag
+  /// is rendering). Rows come in jj-lib's own lexicographic-by-name order, which
+  /// is preserved rather than re-sorted, and each carries the same
+  /// name/working-copy-commit pair the repo's `View` holds plus an ABSOLUTE root
+  /// path.
+  ///
+  /// A row's `root` is `null` when the path cannot be reported: the workspace
+  /// predates jj 0.38.0 and has no recorded path, the store is unreadable, or the
+  /// recorded directory moved or was deleted. None of those fails the listing —
+  /// the CLI's own list template degrades the same way and points at
+  /// [workspaceRoot] for strict path diagnostics. That asymmetry between the two
+  /// verbs is reproduced, not smoothed over.
+  ///
+  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.jj_lib_error`).
+  Future<List<WorkspaceEntry>> workspaces() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaces(_handleId);
+  }
+
+  /// Return one workspace's absolute root directory (Story 9.7) — the CLI's
+  /// `jj workspace root [--name]`.
+  ///
+  /// A `null` [name] is the CLI's own documented default, the CURRENT workspace;
+  /// that path reads the workspace loader alone — no repo load, no store read —
+  /// and cannot fail. A PRESENT [name], even the current workspace's own, goes
+  /// through the workspace store and can REFUSE, because the CLI's named path
+  /// never shortcuts to the loader. An explicitly empty [name] is a VALUE, not an
+  /// absence: no workspace is named `''`, so it refuses with
+  /// `jj.workspace_not_found`.
+  ///
+  /// The returned path is absolute and canonicalized; CWD-relative shortening is
+  /// the UI's job.
+  ///
+  /// This read writes no operation — not even on a refusal. Throws [StateError]
+  /// synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
+  /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`).
+  Future<String> workspaceRoot({String? name}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceRoot(_handleId, name: name);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

@@ -34,6 +34,7 @@ import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/status.dart' as repo_ffi_status;
+import '../ffi/workspace.dart' as repo_ffi_workspace;
 
 import 'commands.dart';
 import 'correlation.dart';
@@ -1151,6 +1152,55 @@ class ZanshinWorker {
     );
     return repo_ffi_commit_views.decodeInterdiffViewEnvelopeInternal(bytes);
   }
+
+  /// List every workspace with its working-copy commit and root directory, in the
+  /// repo identified by [handleId] (Story 9.7) — the CLI's `jj workspace list`.
+  ///
+  /// The name/commit columns are `View::wc_commit_ids()`'s own pair, in jj-lib's
+  /// lexicographic order; the path half comes from the workspace store. A row's
+  /// `root` is `null` when the path cannot be reported (no recorded path, an
+  /// unreadable store, or a directory that moved or was deleted) — that never
+  /// fails the listing, which is the CLI's own degradation. This read writes no
+  /// operation.
+  ///
+  /// Sends a [WorkspaceListCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<WorkspaceList>` bytes into a `List<WorkspaceEntry>`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.workspaces].
+  Future<List<repo_ffi_workspace.WorkspaceEntry>> workspaces(int handleId) async {
+    final Uint8List bytes = await send(
+      WorkspaceListCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_workspace.decodeWorkspaceListEnvelopeInternal(bytes);
+  }
+
+  /// Return one workspace's absolute root directory, in the repo identified by
+  /// [handleId] (Story 9.7) — the CLI's `jj workspace root [--name]`.
+  ///
+  /// A `null` [name] is the CLI's own default, the CURRENT workspace, and reads
+  /// the workspace loader alone — the one path that cannot fail. A PRESENT
+  /// [name], even the current workspace's own, goes through the workspace store
+  /// and can REFUSE, because the CLI's named path never shortcuts to the loader.
+  /// An explicitly empty [name] is a VALUE, not an absence. This read writes no
+  /// operation — not even on a refusal.
+  ///
+  /// Sends a [WorkspaceRootCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
+  /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.workspaceRoot].
+  Future<String> workspaceRoot(int handleId, {String? name}) async {
+    final Uint8List bytes = await send(
+      WorkspaceRootCommand(commandId: _correlator.allocateId(), handleId: handleId, name: name),
+    );
+    return repo_ffi_workspace.decodeWorkspaceRootEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1809,6 +1859,40 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_commit_views.zanshinInterdiff(raw, from: from, to: to, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case WorkspaceListCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceListCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceList(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case WorkspaceRootCommand(:final int handleId, :final String? name):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceRootCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
+              ok: false,
+              error: fbs.FfiErrorObjectBuilder(
+                code: 'ffi.invalid_handle',
+                context: 'unknown or closed handleId: $handleId',
+              ),
+            ).toBytes();
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRoot(raw, name: name);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
