@@ -747,7 +747,9 @@ final class RepoHandle {
   /// the UI's job.
   ///
   /// This read writes no operation — not even on a refusal. Throws [StateError]
-  /// synchronously if the handle is already [_closed]; throws
+  /// synchronously if the handle is already [_closed]; throws [ArgumentError] if
+  /// [name] contains an interior NUL (U+0000), which a length-prefixed
+  /// FlatBuffers string would carry all the way into a workspace name; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
   /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`).

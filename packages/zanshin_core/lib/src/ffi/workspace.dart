@@ -100,8 +100,10 @@ final class WorkspaceEntry {
   /// The jj workspace name (`"default"` in a single-workspace repo).
   final String name;
 
-  /// Hex commit id of that workspace's working-copy commit — the same value
-  /// `WorkingCopy.commitId` carries for this workspace.
+  /// Hex commit id of that workspace's working-copy commit — the entry jj's
+  /// `View::wc_commit_ids()` holds for this workspace name. For the CURRENT
+  /// workspace it is the commit whose change id `status.dart`'s
+  /// `WorkingCopyStatus.workingCopyChangeId` reports.
   final String wcCommitId;
 
   /// Absolute path of the workspace's root directory, or `null` when it cannot

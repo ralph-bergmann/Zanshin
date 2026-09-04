@@ -1190,12 +1190,23 @@ class ZanshinWorker {
   /// Sends a [WorkspaceRootCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path.
   ///
-  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// Throws [ArgumentError] if [name] contains an interior NUL (U+0000). Throws
+  /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
   /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`). Completes with a
   /// [StateError] after [close]; the close-guard [StateError] is delivered
   /// synchronously by [RepoHandle.workspaceRoot].
   Future<String> workspaceRoot(int handleId, {String? name}) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw is caught by the dispatch loop and comes back as
+    // `internal.dispatch_error` — not as the [ArgumentError] this method and
+    // [RepoHandle.workspaceRoot] both document. Rejecting on the calling side
+    // keeps the documented type and spares the round trip. The adapter keeps its
+    // own guard as the backstop for a direct caller. (Same fix Story 9.6's
+    // review made for `evolog`'s negative limit.)
+    if (name != null && name.codeUnits.contains(0)) {
+      throw ArgumentError.value(name, 'name', 'must not contain an interior NUL (U+0000)');
+    }
     final Uint8List bytes = await send(
       WorkspaceRootCommand(commandId: _correlator.allocateId(), handleId: handleId, name: name),
     );

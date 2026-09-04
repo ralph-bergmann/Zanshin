@@ -23,8 +23,8 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
-    JJ_WORKSPACE_PATH_UNRESOLVED,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
+    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -293,6 +293,56 @@ fn workspace_root_refuses_with_one_code_per_cause() {
     let env = parse_envelope(&bytes);
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_WORKSPACE_NO_RECORDED_PATH));
     assert_eq!(env.error().and_then(|e| e.context()), Some("default"));
+    close_handle(handle);
+}
+
+/// `jj.jj_lib_error` is documented on BOTH wrappers, so both need a witness that composes the
+/// wrapper's own path — the jj-level `WorkspaceError::Backend` test and the inline mapper unit
+/// test each cover only one half.
+///
+/// The handle is opened FIRST and `op_heads` destroyed afterwards, because ADR-0002 re-resolves
+/// the head per call: an already-open session is exactly how a GUI meets a repo that broke under
+/// it.
+#[test]
+fn both_wrappers_report_jj_lib_error_when_the_head_cannot_be_resolved() {
+    pin_env();
+    let (handle, root) = open_stale_scenario();
+    fs::remove_dir_all(root.join(".jj").join("repo").join("op_heads")).expect("op heads dir exists");
+
+    // SAFETY: handle is live.
+    let token = unsafe { zanshin_workspace_list(handle) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    assert_eq!(
+        parse_envelope(&bytes).error().and_then(|e| e.code()),
+        Some(JJ_JJ_LIB_ERROR),
+        "zanshin_workspace_list must report the VIEW half's failure"
+    );
+
+    // The NAMED path needs the head view for its membership check, so it fails the same way.
+    let req = root_request_bytes(Some("default"));
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_JJ_LIB_ERROR));
+    assert!(
+        env.error().and_then(|e| e.context()).is_some_and(|c| !c.is_empty()),
+        "jj-lib's reason must be forwarded in context"
+    );
+
+    // The no-name path reads the loader alone, so it still answers.
+    let req = root_request_bytes(None);
+    // SAFETY: see above.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: see above.
+    let bytes = unsafe { read_and_free(token) };
+    assert!(
+        parse_envelope(&bytes).ok(),
+        "the loader-only path never touches the op log"
+    );
+
     close_handle(handle);
 }
 

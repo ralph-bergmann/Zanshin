@@ -13,15 +13,16 @@
 //
 // SCOPE NOTE - why only one workspace here. No shipped verb creates a SECOND
 // workspace (`jj workspace add` is Story 9.13), so a repo reachable from Dart
-// alone always has exactly the `default` one, and a freshly-initialised repo
-// records a path that DOES resolve. The multi-workspace and degraded-path rows of
-// the I/O matrix therefore live in the Rust suites, which can build a sibling
-// workspace and corrupt a store directly:
-// crates/zanshin-jj/tests/workspace.rs (behaviour) and
+// alone always has exactly the `default` one. The MULTI-workspace rows of the
+// I/O matrix therefore live in the Rust suites, which can build a sibling
+// workspace directly: crates/zanshin-jj/tests/workspace.rs (behaviour) and
 // crates/zanshin-ffi/tests/workspace_ffi.rs (payload bytes across the FFI).
+// The DEGRADED-path rows are reachable from here, though - deleting
+// `.jj/repo/workspace_store` needs nothing but dart:io - so the null-root decode
+// and the no-recorded-path refusal are witnessed end-to-end below.
 // What these tests own is the DART half of the chain - that the request field is
-// built and crosses the buffer, that both envelopes decode, and that each error
-// code surfaces as a ZanshinFfiException.
+// built and crosses the buffer, that both envelopes decode (root present AND
+// absent), and that each error code surfaces as a ZanshinFfiException.
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-core]
 // in Makefile.toml (project-context "Property of every test suite").
@@ -125,6 +126,54 @@ void main() {
         await handle.workspaceRoot(),
         reason: 'the named and default paths agree when the recorded path resolves',
       );
+
+      await handle.close();
+    });
+
+    test('workspace_root_rejects_an_interior_nul_on_the_calling_side', () async {
+      final RepoHandle handle = await worker.initRepo(repoPath, backend: 0);
+
+      // The guard has to fire BEFORE the command reaches the worker isolate:
+      // thrown inside it, the adapter's own guard would come back as
+      // `internal.dispatch_error`, not as the documented ArgumentError.
+      await expectLater(
+        handle.workspaceRoot(name: 'de${String.fromCharCode(0)}fault'),
+        throwsArgumentError,
+      );
+
+      await handle.close();
+    });
+
+    // -- The degraded-path rows, end to end through the real cdylib ------------
+
+    test('a_wiped_store_yields_a_null_root_and_the_no_recorded_path_refusal', () async {
+      final RepoHandle handle = await worker.initRepo(repoPath, backend: 0);
+      // With no store directory, jj-lib recreates it EMPTY on the next load, so
+      // no workspace has a recorded path any more. This is the pre-jj-0.38.0
+      // state a GUI can actually meet.
+      Directory('$repoPath/.jj/repo/workspace_store').deleteSync(recursive: true);
+
+      // (a) the listing still succeeds - a path failure never fails it - and the
+      // absent root decodes as null rather than an empty string.
+      final List<WorkspaceEntry> entries = await handle.workspaces();
+      expect(entries, hasLength(1));
+      expect(entries.single.name, 'default');
+      expect(entries.single.wcCommitId, isNotEmpty, reason: 'the view half is still reported');
+      expect(entries.single.root, isNull, reason: 'null-for-absence, never an empty string');
+
+      // (b) the named path refuses instead - the CLI's own asymmetry - with the
+      // code that says "nothing to repair", not the stale-path one.
+      await expectLater(
+        handle.workspaceRoot(name: 'default'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.workspace_no_recorded_path')
+              .having((e) => e.context, 'context', 'default'),
+        ),
+      );
+
+      // (c) the no-name path reads the loader alone, so it still answers.
+      expect(await handle.workspaceRoot(), isNotEmpty);
 
       await handle.close();
     });

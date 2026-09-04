@@ -107,6 +107,19 @@ fn corrupt_workspace_store(workspace_root: &Path) {
     fs::write(store_dir(workspace_root).join("index"), b"not a protobuf at all").expect("index must be writable");
 }
 
+/// Makes `SimpleWorkspaceStore::load` ITSELF fail, rather than a later read.
+///
+/// `load` never reads the index — it only creates the directory when absent — so a corrupt index
+/// exercises `get_workspace_path`, not `load`. A DANGLING SYMLINK in the store's place is the one
+/// deterministic way to fail `load` without touching permissions: `Path::exists()` follows the
+/// link and reports `false`, so jj-lib takes its create-the-dir branch, and `fs::create_dir` then
+/// returns `EEXIST` because the symlink occupies the name.
+fn dangle_workspace_store(workspace_root: &Path) {
+    let dir = store_dir(workspace_root);
+    fs::remove_dir_all(&dir).expect("the fixture has a workspace store");
+    std::os::unix::fs::symlink("nowhere-at-all", &dir).expect("symlink must be creatable");
+}
+
 /// Removes `op_heads` so the next head resolution fails — the `Backend` driver for the VIEW half.
 fn corrupt_op_heads(workspace_root: &Path) {
     fs::remove_dir_all(workspace_root.join(".jj").join("repo").join("op_heads")).unwrap();
@@ -166,31 +179,40 @@ fn list_on_the_fixture_reports_one_row_with_no_root() {
     assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
 }
 
-/// A second workspace records a path that DOES resolve, so both halves of the row are exercised
-/// at once: `default` still degrades while `second` reports its real directory.
+/// Added workspaces record paths that DO resolve, so both halves of a row are exercised at once:
+/// `default` still degrades while the added ones report their real directories.
+///
+/// The added names are chosen so the ordering assertion has teeth: `aaa` is created LAST but must
+/// come FIRST, which only jj-lib's lexicographic `BTreeMap` order satisfies — creation order and
+/// insertion order would both put it at the end.
 #[test]
-fn list_with_a_second_workspace_reports_its_resolvable_root() {
+fn list_with_more_workspaces_reports_resolvable_roots_in_lexicographic_order() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    // `second` keeps the added workspace's directory alive for the duration of the test.
+    // The handles keep the added workspaces' directories alive for the duration of the test.
     let (second, second_wc) = add_resolvable_workspace(&fx.path, "second");
+    let (aaa, _aaa_wc) = add_resolvable_workspace(&fx.path, "aaa");
 
     let repo = Repo::open(&fx.path).unwrap();
     let entries = repo.list_workspaces().unwrap();
 
-    assert_eq!(entries.len(), 2, "default + second; got {entries:?}");
+    assert_eq!(entries.len(), 3, "default + second + aaa; got {entries:?}");
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
-    assert_eq!(names, ["default", "second"], "rows keep jj-lib's BTreeMap order");
+    assert_eq!(
+        names,
+        ["aaa", "default", "second"],
+        "rows keep jj-lib's lexicographic BTreeMap order — `aaa` was added LAST"
+    );
     assert_eq!(
         entry_pairs(&entries),
         wc_pairs(&fx.path),
         "the name/commit half must equal View::wc_commit_ids() entry for entry"
     );
-    assert_eq!(entries[1].wc_commit_id.0, second_wc);
+    assert_eq!(entries[2].wc_commit_id.0, second_wc);
 
-    assert_eq!(entries[0].root, None, "default's recorded path is still stale");
-    let root = entries[1].root.as_ref().expect("second's path resolves");
-    assert_same_dir(root, &second.path);
+    assert_eq!(entries[1].root, None, "default's recorded path is still stale");
+    assert_same_dir(entries[0].root.as_ref().expect("aaa's path resolves"), &aaa.path);
+    assert_same_dir(entries[2].root.as_ref().expect("second's path resolves"), &second.path);
 }
 
 /// No recorded path at all: the store directory is gone, jj-lib recreates it empty, and every row
@@ -237,6 +259,26 @@ fn list_with_an_unreadable_store_still_returns_the_rows() {
     assert_eq!(entry_pairs(&entries), wc_pairs(&fx.path));
 }
 
+/// A store that cannot even be LOADED is still just a path failure for `list`.
+///
+/// A separate case from the corrupt-index one above: `SimpleWorkspaceStore::load` never reads the
+/// index, so only a dangling symlink reaches `list_workspaces`'s
+/// `SimpleWorkspaceStore::load(..).ok()` degradation at all. Line coverage cannot see the
+/// difference — the `.ok()` executes either way — so without this the branch ships unpinned.
+#[test]
+fn list_with_an_unloadable_store_still_returns_the_rows() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    dangle_workspace_store(&fx.path);
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let entries = repo.list_workspaces().unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].root, None, "a failed store LOAD never fails the listing");
+    assert_eq!(entry_pairs(&entries), wc_pairs(&fx.path));
+}
+
 /// The only failure `list` can report is the VIEW half's.
 #[test]
 fn list_on_a_corrupt_repo_returns_a_backend_error() {
@@ -269,7 +311,70 @@ fn root_without_a_name_is_the_open_workspace() {
 
     assert_same_dir(&root, repo.workspace_root());
     assert_same_dir(&root, &fx.path);
+    // The `.fbs`, the FFI wrapper and `handle.dart` all promise an ABSOLUTE, canonicalized path.
+    // Every other assertion here canonicalizes both sides, so it would pass on a non-canonical
+    // one; this is the only place the guarantee itself is checked. WHY it holds: the no-name path
+    // returns `Workspace::workspace_root()` verbatim, and jj-lib canonicalized it in
+    // `Workspace::new` (`jj-lib-0.44.0/src/workspace.rs:170`, `dunce::canonicalize`) — NOT this
+    // function, which does no path work at all on this branch.
+    assert_eq!(
+        root,
+        fs::canonicalize(&root).unwrap(),
+        "the returned root must already be canonical"
+    );
     assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+}
+
+/// The whole point of the verb, from the OTHER side: a secondary workspace resolves its siblings.
+///
+/// In a secondary workspace `.jj/repo` is a FILE pointing at the shared repo, and every store
+/// lookup here works only because `Workspace::repo_path()` follows that indirection. Deriving the
+/// join base locally (`workspace_root().join(".jj").join("repo")`) would leave every other test in
+/// this file green while every root went absent from this side.
+#[test]
+fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (second, second_wc) = add_resolvable_workspace(&fx.path, "second");
+    assert!(
+        second.path.join(".jj").join("repo").is_file(),
+        "a secondary workspace's .jj/repo is a FILE pointing at the shared repo"
+    );
+
+    // Opened at the SECONDARY workspace, not the fixture root.
+    let repo = Repo::open(&second.path).unwrap();
+
+    // (a) the listing reaches the shared store and both rows come back.
+    let entries = repo.list_workspaces().unwrap();
+    assert_eq!(
+        entries.len(),
+        2,
+        "the shared view holds both workspaces; got {entries:?}"
+    );
+    assert_eq!(entry_pairs(&entries), wc_pairs(&second.path));
+    assert_eq!(entries[1].name, "second");
+    assert_eq!(entries[1].wc_commit_id.0, second_wc);
+    assert_same_dir(
+        entries[1].root.as_ref().expect("second's own path resolves"),
+        &second.path,
+    );
+
+    // (b) the no-name default is THIS workspace's root, not the primary's.
+    let own = repo.resolve_workspace_root(None).unwrap();
+    assert_same_dir(&own, &second.path);
+    assert_ne!(
+        fs::canonicalize(&own).unwrap(),
+        fs::canonicalize(&fx.path).unwrap(),
+        "the current workspace is the secondary one"
+    );
+
+    // (c) naming the PRIMARY reaches the shared store — and hits the fixture's stale entry, the
+    // same refusal the primary side reports for itself.
+    let result = repo.resolve_workspace_root(Some("default"));
+    match result {
+        Err(WorkspaceError::PathUnresolved { name, .. }) => assert_eq!(name, "default"),
+        other => panic!("the shared store's stale `default` entry must be PathUnresolved, got: {other:?}"),
+    }
 }
 
 /// A SIBLING workspace's path is visible from this one — the whole point of the verb.
@@ -367,6 +472,25 @@ fn root_with_an_unreadable_store_is_a_backend_error() {
         matches!(result, Err(WorkspaceError::Backend(_))),
         "a corrupt store index must be Backend, not NoRecordedPath, got: {result:?}"
     );
+}
+
+/// A store that cannot be LOADED is the FIRST stage of the named path, and it maps to `Backend`
+/// — the same code as an unreadable index, but reached through a different jj-lib call. Only a
+/// dangling symlink exercises `resolve_root`'s own `SimpleWorkspaceStore::load(..).map_err(be)`.
+#[test]
+fn root_with_an_unloadable_store_is_a_backend_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    dangle_workspace_store(&fx.path);
+    let repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.resolve_workspace_root(Some("default"));
+    assert!(
+        matches!(result, Err(WorkspaceError::Backend(_))),
+        "a store that cannot be loaded must be Backend, got: {result:?}"
+    );
+    // The loader-only path never touches the store, so it is unaffected.
+    assert!(repo.resolve_workspace_root(None).is_ok());
 }
 
 /// The membership check runs against the head view, so a repo whose head cannot be resolved
