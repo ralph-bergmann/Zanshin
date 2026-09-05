@@ -8,48 +8,7 @@ review_loop_iteration: 0
 followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred:
-  - summary: >-
-      No Rust invalid-handle test asserts `context == null`, only `error.code`, so the
-      "byte-identical to baseline" half of matrix row 1 is unwitnessed.
-    evidence: |-
-      The I/O matrix's first row expects `Envelope{ok:false, error.code="ffi.invalid_handle",
-      context=null}`. All nineteen re-pointed wrappers do have a zero-handle test
-      (`repo_write_ffi.rs:1302` covers all eight `repo.rs` sites; `file_ffi.rs:304/459/557/701`;
-      one each in `status/change/graph/op_log/bookmarks/remotes/log_defaults_ffi.rs`), but every
-      one asserts the code alone. `context: None` is structurally guaranteed by the single helper
-      today, so this is a strengthening, not a live defect. Pre-existing: those tests predate this
-      run and never asserted `context`.
-    location: >-
-      crates/zanshin-ffi/tests/
-    severity: medium
-  - summary: >-
-      The eleven re-pointed interior-NUL call sites assert only `throwsArgumentError`, so the
-      per-site `name` literal is pinned nowhere.
-    evidence: |-
-      The new `request_bytes_test.dart` cases pin message, `name` and `invalidValue` for
-      `rejectInteriorNul`/`rejectInteriorNuls` in isolation. At the call sites that actually
-      changed — `bookmark_ops_test.dart:86-96`, `workspace_test.dart:140`,
-      `graph_test.dart:271-306`, and the NUL groups in `mutate_test.dart`, `commit_views_test.dart`
-      and `git_test.dart` — the assertion is bare `throwsArgumentError`. A re-pointing that swapped
-      `'names'` for `'name'` would pass the whole suite. This is the one genuinely per-site value
-      and the intent's `not a pure refactor` Block-If names it. Pre-existing weakness: the inline
-      throws were equally unpinned before the change.
-    location: >-
-      packages/zanshin_core/test/worker/graph_test.dart:271
-    severity: medium
-  - summary: >-
-      `readToken` has no direct unit test although it is now the single chokepoint for token
-      ownership across roughly twenty-nine call sites.
-    evidence: |-
-      `test/ffi/request_bytes_test.dart` covers only the two NUL guards. `readToken`'s own
-      behaviour — copy-then-dispose ordering and the documented null-token throw — is exercised
-      only indirectly, through every adapter test. Concentrating twenty-nine call sites onto it is
-      exactly what makes a direct test worth having; the concentration is new, the absent test is
-      pre-existing.
-    location: >-
-      packages/zanshin_core/lib/src/ffi/request_bytes.dart
-    severity: low
+deferred: []
 ---
 
 <intent-contract>
@@ -376,6 +335,25 @@ re-grep rather than trusting a number after the first edit in a file.
   reader does not meet the build-breaking version first), and the stated `deferred-work.md`
   convention, which did not match the shape the file actually uses.
 
+- **2026-09-05, matrix test audit (3 deferrals converted to patches — the `deferred:` list is now
+  empty).** The review pass had recorded three test-strengthening items as deferrals. None needed a
+  product decision or another subsystem, and two of them left an I/O-matrix row only half-witnessed,
+  so under this run's closing mandate all three were fixed instead:
+  - Matrix row 1 promises `context=null`, but every zero-handle test asserted `error.code` alone
+    (only `log_defaults_ffi.rs` also pinned the absent context). Added the assertion at all 19
+    re-pointed wrappers: `repo_write_ffi.rs` gained an `assert_invalid_handle` helper that replaces
+    its eight duplicated code-only blocks, and `file_ffi.rs` (×4), `status/change/op_log/bookmarks/
+    remotes/graph_ffi.rs` gained one line each. Deliberately NOT folded into `graph_ffi.rs`'s shared
+    `assert_error`, which also serves codes that DO carry a context.
+  - Matrix rows 5–6 promise "same `name`", the one genuinely per-site value and the thing the
+    `not a pure refactor` Block-If exists for; every call-site test matched `throwsArgumentError` by
+    type alone. All eleven re-pointed guard sites now pin `e.name`: `bookmark_ops` (×2 adapter,
+    ×3 worker), `mutate` (×2), `commit_views`, `file`, `graph` (×3 worker), `workspace` (×1).
+  - `readToken` had no direct test although every adapter now funnels through it. Added
+    `readToken (real cdylib)` to `request_bytes_test.dart`, driving a real `zanshin_diagnostics`
+    token, reading it back through the generated `fbs.Envelope` accessor, and pinning that the
+    returned list is an independent heap copy that outlives the freed token.
+
 ## Review Triage Log
 
 ### 2026-09-05 — Review pass
@@ -513,13 +491,21 @@ Commit `aa3b232` — review patches: the nine statements the refactor falsified,
 `envelope.rs`, `diagnostics.dart`, `request_bytes.dart`, `request_bytes_test.dart`,
 `deferred-work.md` and this spec.
 
+Commit `12ae4fa` — matrix test audit: the three deferrals converted to patches. Test-only, no
+production file touched. Eight `crates/zanshin-ffi/tests/*_ffi.rs` suites gained the
+`context == null` assertion at all 19 re-pointed wrappers (`repo_write_ffi.rs` via a new
+`assert_invalid_handle` helper that also collapses its eight duplicated code-only blocks); eight
+`packages/zanshin_core/test/` files gained the `e.name` pin at all eleven re-pointed guard sites;
+`request_bytes_test.dart` gained the `readToken (real cdylib)` group.
+
 ### Review findings breakdown
 
 Patches applied: 9 (medium 3, low 6) — all doc, comment or bookkeeping text that the refactor made
-untrue; zero behaviour change. Items deferred: 3 (medium 2, low 1), all verification-strength
-observations recorded in frontmatter `deferred`. Items rejected: 13, listed with reasons in the
-Review Triage Log. No `intent_gap` and no `bad_spec`: no reviewer found the code wrong, so no
-revert or re-derivation was triggered.
+untrue; zero behaviour change. Items rejected: 13, listed with reasons in the Review Triage Log. No
+`intent_gap` and no `bad_spec`: no reviewer found the code wrong, so no revert or re-derivation was
+triggered. The 3 items the review pass had deferred (medium 2, low 1) were all converted to patches
+by the matrix test audit, so `deferred` is empty and this closing run opened no new ledger debt of
+its own — see the third Spec Change Log entry.
 
 ### Follow-up review recommendation
 
@@ -529,10 +515,13 @@ entirely by the volume of falsified-documentation fixes, not by any defect in th
 
 ### Verification performed
 
-- `cargo make test`, run unpiped and synchronously, twice by this workflow: exit 0 after the
-  refactor (377.73 s) and again after the review patches (467.63 s). Coverage held at 99.20 %
-  (8315/8382 lines over 46 files); `coverage-baseline.txt` is byte-unchanged, so the ratchet neither
-  regressed nor auto-raised, and no `exclude_prefix` was added. `extern-coverage: OK`.
+- `cargo make test`, run unpiped and synchronously, four times by this workflow: exit 0 after the
+  refactor (377.73 s), after the review patches (467.63 s), independently re-confirmed on the
+  as-committed tree before the audit, and finally on the audited tree (388.24 s). One intermediate
+  run exited 105 on `dart format --set-exit-if-changed` alone (three audit files); formatted and
+  re-run green. Coverage held at 99.20 % (8315/8382 lines over 46 files) throughout;
+  `coverage-baseline.txt` is byte-unchanged, so the ratchet neither regressed nor auto-raised, and
+  no `exclude_prefix` was added. `extern-coverage: OK`.
 - `grep -rn "handle_from_raw::<RepoSession>" crates/zanshin-ffi/src/` -- two hits as expected:
   `envelope.rs:238` (the helper's own body) and `repo.rs:593` (the deliberate close-path
   non-user). One caller outside the helper.
@@ -541,8 +530,9 @@ entirely by the volume of falsified-documentation fixes, not by any defect in th
   single call in `readToken`, and two doc comments.
 - `grep -rn "codeUnits.contains(0)"` and the literal NUL message in `packages/zanshin_core/lib/` --
   one hit each, both inside `rejectInteriorNul`.
-- Matrix audit: all seven I/O-matrix rows have a covering test that ran and passed. The ten new
-  closed-handle tests and the four new list-guard cases were re-run by name under the expanded
+- Matrix audit: all seven I/O-matrix rows have a covering test that ran and passed — rows 1, 5 and 6
+  only after commit `12ae4fa` added the assertions their "byte-identical" / "same `name`" halves
+  needed. The ten new closed-handle tests and the four new list-guard cases were re-run by name under the expanded
   reporter (47/47 passing) to confirm they are registered and not skipped, rather than inferred
   from the aggregate count.
 - `git diff --stat ea6005e..HEAD` restricted to `zanshin_ffi.h`, `bindings.dart`, `*_generated.rs`,
@@ -551,10 +541,12 @@ entirely by the volume of falsified-documentation fixes, not by any defect in th
 
 ### Residual risks
 
-- Behaviour preservation for items 1-3 rests on the pre-existing suite rather than on new
-  differential tests; the two `deferred` verification items above name exactly where that evidence
-  is thinnest (no `context == null` assertion on the Rust side, no per-site `name` assertion on the
-  Dart side). Commit `53fc8f6` is cleanly revertible.
+- Behaviour preservation for items 1-3 rested on the pre-existing suite rather than on new
+  differential tests. The matrix-audit pass closed the two places that evidence was thinnest: all 19
+  re-pointed Rust wrappers now pin `context == null`, and all eleven re-pointed Dart guard sites now
+  pin `e.name`. What remains unwitnessed is only the payload half of a SUCCESS envelope being
+  byte-identical across the refactor, which no test in the repo asserted before either. Commit
+  `53fc8f6` is cleanly revertible.
 - The one intended behavioural delta is in `diagnostics.dart` and `events.dart`: decoding now runs
   on the `Uint8List.fromList` copy after `dispose()` instead of before. `fromList` already copies,
   so the decoded value is identical and the native buffer's lifetime only shortens. Both paths are
