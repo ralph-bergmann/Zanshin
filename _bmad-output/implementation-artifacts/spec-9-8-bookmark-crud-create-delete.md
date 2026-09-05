@@ -32,6 +32,17 @@ deferred:
     location: >-
       crates/zanshin-ffi/src/bookmark_ops.rs
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-a-dedupe-ffi-helpers, commit a64d1c5). The four
+      byte-identical copies are gone; one `pub(crate) unsafe fn session_from_handle` now lives in
+      envelope.rs under its own "Shared handle borrow" banner, next to reject_null_request. It
+      returns a BORROW rather than a finished buffer, so the module doc's "every pub function
+      returns a finished, owned Vec<u8>" was scoped to the envelope builders, and envelope.rs
+      gained a deliberate dependency on repo::RepoSession + handle::handle_from_raw (a module-level
+      cycle the crate already has via git.rs <-> repo.rs). All 13 call sites and their
+      "// SAFETY: see session_from_handle." comments are unchanged. The ~20 INLINE
+      handle_from_raw(...).ok_or_else(...) expressions in the nine other modules were deliberately
+      left alone — a wider change than this item.
   - summary: >-
       Six copies of the Dart request-buffer helpers across the ffi adapters.
     evidence: |-
@@ -41,6 +52,17 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/ffi/bookmark_ops.dart
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-a-dedupe-ffi-helpers, commit a64d1c5). New
+      packages/zanshin_core/lib/src/ffi/request_bytes.dart holds withRequestBytes,
+      rejectInteriorNul, readToken and callWithRequest with noun-agnostic docs; the six adapters
+      import it and call the unprefixed names with identical arguments, so every ArgumentError
+      message and `name` is unchanged. callWithRequest joined the shared file because it was itself
+      defined three times (git.dart in composed form, file.dart and commit_views.dart with the
+      token-read inlined). _withChangeIdListBytes (mutate-specific) and _rejectPathNuls
+      (file-specific) stay private and delegate to the shared helpers; mutate.dart's three
+      pre-existing INLINE interior-NUL throws in its C-string adapters were left alone.
+      bookmark_ops.dart keeps its DIRECT-CALLER-backstop rationale as a file comment.
   - summary: >-
       The non-git arm of has_tracked_remote_bookmarks is executed but never asserted.
     evidence: |-

@@ -82,6 +82,15 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/worker/isolate.dart
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-a-dedupe-ffi-helpers, commit a64d1c5). The count
+      had grown to 33 by Story 9.8, not a dozen. One top-level private `_invalidHandleEnvelope(
+      handleId)` before `_replyRepoOp` now returns the identical envelope (`ok: false`,
+      `code: 'ffi.invalid_handle'`, `context: 'unknown or closed handleId: $handleId'`) and every
+      arm calls it, removing ~230 lines. Each arm keeps its own per-arm `log.warning`, whose text
+      differs and was never part of the duplication, and the `internal.dispatch_error` envelope is
+      untouched. Behaviour-preserving: the 14 `*_on_closed_handle_surfaces_ffi_invalid_handle`
+      worker tests are the witnesses.
   - summary: >-
       `file_annotate` does not reproduce the CLI's root-commit fallback for an origin commit
       that is absent from the store.
