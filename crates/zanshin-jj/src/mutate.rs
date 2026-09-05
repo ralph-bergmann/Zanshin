@@ -53,17 +53,25 @@ pub struct MutationResult {
     /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
     /// (it restores state, it doesn't mint anything) and for
-    /// [`crate::Repo::git_fetch`] (it imports remote refs; it doesn't mint or
-    /// abandon a change in the sense these fields track).
+    /// [`crate::Repo::git_fetch`] and [`crate::Repo::git_import`] — jj-lib's
+    /// `GitImportStats` has no minted-change concept, and a replacement `@` for an
+    /// abandoned one is already reported through `working_copy_change_id`.
     pub new_change_ids: Vec<ChangeId>,
     /// The change ids [`abandon`]'s caller passed in, echoed verbatim. Always empty for
     /// `describe`/`new_change`/`edit` — jj-lib's own side effects (e.g. `edit()`'s
     /// implicit abandon of a discardable previous `@`) are never reflected here. Always
     /// empty for [`crate::op_log::undo`] too (it restores state, it doesn't abandon
-    /// anything), and for [`crate::Repo::git_fetch`] (same reason as
-    /// `new_change_ids` above). Also always empty for [`restore`] and [`absorb`]: neither
-    /// takes an id list to echo, and absorb's own outcome — which ancestors absorbed
-    /// hunks and whether the source survived — lives in [`AbsorbResult`]'s fields.
+    /// anything), and for [`crate::Repo::git_import`], whose own abandonments live in
+    /// [`crate::GitImportResult::abandoned_change_ids`] instead. Also always empty for
+    /// [`restore`] and [`absorb`]: neither takes an id list to echo, and absorb's own
+    /// outcome — which ancestors absorbed hunks and whether the source survived — lives
+    /// in [`AbsorbResult`]'s fields.
+    ///
+    /// [`crate::Repo::git_fetch`] is the ONE verb where this is not a caller echo: it has
+    /// no second result struct, so it reports jj-lib's own abandonments here — the commits
+    /// the import dropped because they became unreachable in git
+    /// (`git.abandon-unreachable-commits`). Empty when that key is `false`, or when the
+    /// fetch made nothing unreachable.
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
@@ -287,10 +295,15 @@ pub struct AbsorbResult {
 
 /// One path an operation could not process, and the reason (Story 9.3, reused by Story 9.4).
 ///
-/// Two verbs report it today: [`crate::Repo::absorb`], for a path jj-lib refuses to split,
-/// and [`crate::Repo::file_show`], for a path that exists but is not renderable as file
-/// content. In both cases the operation SUCCEEDS for the remaining paths — dropping these
-/// entries would leave a file silently missing with no way for a GUI to say why.
+/// Three verbs report it today: [`crate::Repo::absorb`], for a path jj-lib refuses to
+/// split; [`crate::Repo::file_show`], for a path that exists but is not renderable as file
+/// content; and [`crate::Repo::file_search`], for a path whose blob could not be read. In
+/// every case the operation SUCCEEDS for the remaining paths — dropping these entries would
+/// leave a file silently missing with no way for a GUI to say why.
+///
+/// The two file verbs skip DIFFERENT sets with DIFFERENT wording, because their CLI
+/// counterparts do: `jj file show` warns about symlinks/submodules, `jj file search` skips
+/// those silently and warns only about an unreadable blob.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedPath {
     /// Repo-relative path in jj's internal (`/`-separated) form.
@@ -298,7 +311,8 @@ pub struct SkippedPath {
     /// The verbatim reason, forwarded so the GUI shows what the `jj` CLI would print —
     /// jj-lib's own message for `absorb` (`Is a symlink`, `Is a conflict`, `Is a Git
     /// submodule`, `Access is denied: …`), the CLI's own sentence for `file show`
-    /// (`Path '…' exists but is not a file.`).
+    /// (`Path '…' exists but is not a file.`) and for `file search`
+    /// (`Skipping '…' due to permission error: …`).
     pub reason: String,
 }
 

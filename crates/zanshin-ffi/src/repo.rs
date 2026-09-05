@@ -896,6 +896,10 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
 /// `WatcherEvent`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Its `abandoned_change_ids` carries the commits the import abandoned because they
+/// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
+/// OWN abandonments, not a caller echo, and empty when that key is off or nothing became
+/// unreachable. `new_change_ids` is always empty: a fetch mints nothing.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

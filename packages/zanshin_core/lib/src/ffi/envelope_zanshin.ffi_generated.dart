@@ -3051,8 +3051,13 @@ class BookmarksObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One configured git remote (FR-JJ-9). `url` is the fetch URL, verbatim —
-///  credentials are NOT scrubbed and SSH is NOT rewritten to HTTPS.
+///  One configured git remote (FR-JJ-9). BOTH URLs are verbatim — credentials are
+///  NOT scrubbed and SSH is NOT rewritten to HTTPS.
+///
+///  `push_url` reports a DIFFERENCE, not a raw `remote.<name>.pushurl` read: it is
+///  present only when the remote's push URL differs from `url`, exactly as
+///  `jj git remote list` prints its `(push: …)` suffix only then. ABSENT therefore
+///  means "this remote pushes to its fetch URL" — never an empty string.
 class Remote {
   Remote._(this._bc, this._bcOffset);
   factory Remote(List<int> bytes) {
@@ -3067,10 +3072,11 @@ class Remote {
 
   String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'Remote{name: ${name}, url: ${url}}';
+    return 'Remote{name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
   }
 }
 
@@ -3087,7 +3093,7 @@ class RemoteBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addNameOffset(int? offset) {
@@ -3100,6 +3106,11 @@ class RemoteBuilder {
     return fbBuilder.offset;
   }
 
+  int addPushUrlOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3108,21 +3119,26 @@ class RemoteBuilder {
 class RemoteObjectBuilder extends fb.ObjectBuilder {
   final String? _name;
   final String? _url;
+  final String? _pushUrl;
 
   RemoteObjectBuilder({
     String? name,
     String? url,
+    String? pushUrl,
   }) : _name = name,
-       _url = url;
+       _url = url,
+       _pushUrl = pushUrl;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
-    fbBuilder.startTable(2);
+    final int? pushUrlOffset = _pushUrl == null ? null : fbBuilder.writeString(_pushUrl!);
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, nameOffset);
     fbBuilder.addOffset(1, urlOffset);
+    fbBuilder.addOffset(2, pushUrlOffset);
     return fbBuilder.endTable();
   }
 
@@ -4569,13 +4585,16 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
 
 ///  One path an operation could not process, with the verbatim reason.
 ///
-///  Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
-///  ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
+///  Three payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
+///  ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …");
 ///  `FileContents.skipped` — a path that is not renderable as file content
 ///  ("Path '…' exists but is not a file.", "Path '…' exists but access is denied: …",
 ///  "Path '…' is absent.", "Path '…' is a directory." — the last two are the cases the CLI
-///  `panic!`s on, which a library reports instead of aborting the process). In both cases
-///  the call SUCCEEDS for the remaining paths; the CLI prints one warning per entry.
+///  `panic!`s on, which a library reports instead of aborting the process); and
+///  `FileSearch.skipped` — a path whose blob could not be READ, with `jj file search`'s own
+///  sentence ("Skipping '…' due to permission error: …"). Note the two file verbs skip
+///  DIFFERENT sets with DIFFERENT wording: that is CLI parity, not an inconsistency. In every
+///  case the call SUCCEEDS for the remaining paths; the CLI prints one warning per entry.
 class SkippedPath {
   SkippedPath._(this._bc, this._bcOffset);
   factory SkippedPath(List<int> bytes) {
@@ -5480,7 +5499,15 @@ class SearchMatchObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order.
+///  The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order,
+///  plus the paths that could not be searched.
+///
+///  `skipped` carries ONLY unreadable blobs (`AccessDenied`) — the single case
+///  `jj file search` warns about. Symlinks, Git submodules and non-file conflicts are skipped
+///  SILENTLY there and never appear here, which is the exact OPPOSITE of `jj file show`
+///  (whose `FileContents.skipped` reports the symlink/submodule cases and uses different
+///  wording). An empty `skipped` with an empty `matches` therefore means "nothing matched",
+///  which is now distinguishable from "a blob was unreadable".
 class FileSearch {
   FileSearch._(this._bc, this._bcOffset);
   factory FileSearch(List<int> bytes) {
@@ -5495,10 +5522,12 @@ class FileSearch {
 
   List<SearchMatch>? get matches =>
       const fb.ListReader<SearchMatch>(SearchMatch.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  List<SkippedPath>? get skipped =>
+      const fb.ListReader<SkippedPath>(SkippedPath.reader).vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'FileSearch{matches: ${matches}}';
+    return 'FileSearch{matches: ${matches}, skipped: ${skipped}}';
   }
 }
 
@@ -5515,11 +5544,16 @@ class FileSearchBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
   }
 
   int addMatchesOffset(int? offset) {
     fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSkippedOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -5530,10 +5564,13 @@ class FileSearchBuilder {
 
 class FileSearchObjectBuilder extends fb.ObjectBuilder {
   final List<SearchMatchObjectBuilder>? _matches;
+  final List<SkippedPathObjectBuilder>? _skipped;
 
   FileSearchObjectBuilder({
     List<SearchMatchObjectBuilder>? matches,
-  }) : _matches = matches;
+    List<SkippedPathObjectBuilder>? skipped,
+  }) : _matches = matches,
+       _skipped = skipped;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -5541,8 +5578,12 @@ class FileSearchObjectBuilder extends fb.ObjectBuilder {
     final int? matchesOffset = _matches == null
         ? null
         : fbBuilder.writeList(_matches!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(1);
+    final int? skippedOffset = _skipped == null
+        ? null
+        : fbBuilder.writeList(_skipped!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
     fbBuilder.addOffset(0, matchesOffset);
+    fbBuilder.addOffset(1, skippedOffset);
     return fbBuilder.endTable();
   }
 

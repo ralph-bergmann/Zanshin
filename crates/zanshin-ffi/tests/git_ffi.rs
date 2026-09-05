@@ -306,7 +306,8 @@ fn git_export_happy_path_carries_the_failure_list_across_the_boundary() {
 // ── zanshin_git_remote_add ────────────────────────────────────────────────────
 
 /// Carries BOTH a non-default url and a push url through the request buffer: a reader that
-/// hardcoded either would fail here, since the oracle is the raw git config.
+/// hardcoded either would fail here. Both are witnessed through the shipped read — the
+/// `Remotes` payload now carries `push_url` — rather than a raw `git config` shell-out.
 #[test]
 fn git_remote_add_happy_path_carries_url_and_push_url_through_the_request_buffer() {
     pin_env();
@@ -337,15 +338,18 @@ fn git_remote_add_happy_path_carries_url_and_push_url_through_the_request_buffer
         "the request buffer's url must reach jj-lib verbatim"
     );
 
-    let out = std::process::Command::new("git")
-        .args(["config", "--get", "remote.upstream.pushurl"])
-        .current_dir(git_store(tmp.path()))
-        .output()
-        .expect("git config");
+    // SAFETY: handle is live for the duration of the call.
+    let payload_bytes = unsafe { read_and_free(zanshin_remotes(handle)) };
+    let env = parse_envelope(&payload_bytes);
+    let remotes = env
+        .data_as_remotes()
+        .expect("Remotes payload")
+        .remotes()
+        .expect("remotes");
     assert_eq!(
-        String::from_utf8_lossy(&out.stdout).trim(),
-        push,
-        "the request buffer's push_url must reach jj-lib too"
+        remotes.get(0).push_url(),
+        Some(push.as_str()),
+        "the request buffer's push_url must reach jj-lib too, and come back on the wire"
     );
 
     close_handle(handle);
@@ -562,8 +566,8 @@ fn git_remote_set_url_happy_path_carries_the_new_url_through_the_request_buffer(
 }
 
 /// The `GitRemoteSetUrlRequest.push_url` field, which no other row carries: every other
-/// buffer leaves it ABSENT, so a reader that hardcoded `None` would go unnoticed. The
-/// oracle is the raw git config — `zanshin_remotes` only reports the FETCH url.
+/// buffer leaves it ABSENT, so a reader that hardcoded `None` would go unnoticed. Witnessed
+/// through `zanshin_remotes`' own `Remotes` payload, which now carries `push_url` too.
 #[test]
 fn git_remote_set_url_carries_a_push_only_request_through_the_buffer() {
     pin_env();
@@ -579,17 +583,6 @@ fn git_remote_set_url_carries_a_push_only_request_through_the_buffer() {
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "set-url failed: {:?}", env.error().and_then(|e| e.code()));
 
-    let out = std::process::Command::new("git")
-        .args(["config", "--get", "remote.origin.pushurl"])
-        .current_dir(git_store(tmp.path()))
-        .output()
-        .expect("git config");
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout).trim(),
-        "/tmp/pushed",
-        "the request buffer's push_url must reach jj-lib"
-    );
-
     // SAFETY: handle is live for the duration of the call.
     let listed = unsafe { read_and_free(zanshin_remotes(handle)) };
     let env = parse_envelope(&listed);
@@ -602,6 +595,11 @@ fn git_remote_set_url_carries_a_push_only_request_through_the_buffer() {
         remotes.get(0).url(),
         Some("/tmp/nowhere"),
         "an absent fetch url means LEAVE IT ALONE"
+    );
+    assert_eq!(
+        remotes.get(0).push_url(),
+        Some("/tmp/pushed"),
+        "the request buffer's push_url must reach jj-lib and come back on the wire"
     );
 
     close_handle(handle);

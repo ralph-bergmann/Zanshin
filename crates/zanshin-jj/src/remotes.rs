@@ -3,7 +3,7 @@
 //! `remotes.rs` — configured git-remote list read (FR-JJ-9) and `git fetch` (FR-JJ-13).
 //!
 //! Exposes a `jj_lib`/`gix`-type-free view of the repo's configured git remotes
-//! and their fetch URLs, and lets [`crate::Repo::git_fetch`] actually sync with one.
+//! and their fetch/push URLs, and lets [`crate::Repo::git_fetch`] actually sync with one.
 //! Re-resolves to the head operation per call (ADR-0002), never shells to the `jj`
 //! CLI (AR-AP-1). A non-git (native) backend has no remotes and yields an empty list
 //! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
@@ -30,7 +30,7 @@ use crate::mutate::{self, MutateError, MutationResult};
 use crate::op_support::resolve_immutable;
 use crate::ChangeId;
 
-/// One configured git remote and its fetch URL (FR-JJ-9).
+/// One configured git remote and its fetch/push URLs (FR-JJ-9).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remote {
     /// Remote name, e.g. `"origin"` (UTF-8).
@@ -39,6 +39,22 @@ pub struct Remote {
     /// and an SSH/`git@…` URL is NOT rewritten to HTTPS. The UI/MCP layer
     /// decides what is safe to display.
     pub url: String,
+    /// Push URL when it DIFFERS from [`Remote::url`], `None` otherwise —
+    /// null-for-absence, never `Some("")`. Absent means "this remote pushes to
+    /// its fetch URL".
+    ///
+    /// This is a DIFFERENCE test, not a raw `remote.<name>.pushurl` read, for two
+    /// reasons. gix resolves `url(Direction::Push)` as
+    /// `push_url_alias.or(push_url).or(url(Fetch))` and exposes no public raw
+    /// accessor, so "was a `pushurl` configured?" is not answerable through the
+    /// API at all. And `jj git remote list` asks the same question this field
+    /// does — it prints its `(push: …)` suffix only when the two rendered URLs
+    /// differ (`cli/src/commands/git/remote/list.rs:49-55` @ v0.44.0) — so a
+    /// `pushurl` that happens to equal `url` yields `None` here, which is CLI
+    /// parity rather than information loss.
+    ///
+    /// Verbatim on the same terms as [`Remote::url`]: credentials survive.
+    pub push_url: Option<String>,
 }
 
 /// Errors returned by [`crate::Repo::list_remotes`].
@@ -55,17 +71,29 @@ fn re<E: std::fmt::Display>(e: E) -> RemoteError {
     RemoteError::Backend(e.to_string())
 }
 
-/// The fetch URL of `name`, **verbatim** (no credential scrubbing, no SSH→HTTPS
-/// rewrite). `None` if the remote is missing, malformed, or has no fetch URL.
-fn fetch_url(git_repo: &gix::Repository, name: &str) -> Option<String> {
+/// The fetch URL of `name` and its push URL WHEN THAT DIFFERS, both **verbatim**
+/// (no credential scrubbing, no SSH→HTTPS rewrite). `None` if the remote is
+/// missing, malformed, or has no fetch URL — the same skip condition the
+/// fetch-only predecessor had.
+///
+/// Both directions are read here, through ONE renderer called twice, exactly as
+/// the CLI's own `get_url` closure is (`cli/src/commands/git/remote/list.rs:49-55`
+/// @ v0.44.0), so they can never diverge in how they render — and the CLI's
+/// `(push: …)` rule is applied here too: gix's `url(Push)` FALLS BACK to the fetch
+/// URL, so comparing the two is the only way to tell "no pushurl" from
+/// "pushurl == url". See [`Remote::push_url`].
+fn remote_urls(git_repo: &gix::Repository, name: &str) -> Option<(String, Option<String>)> {
     let remote = git_repo.try_find_remote(name)?.ok()?;
     // to_bstring(), NOT to_string()/Display: gix_url's Display REDACTS the
     // password ("redacted"); to_bstring() preserves the URL verbatim. The
     // BString -> String conversion is lossy UTF-8, which is fine for URLs.
-    remote.url(Direction::Fetch).map(|url| url.to_bstring().to_string())
+    let render = |d| remote.url(d).map(|url| url.to_bstring().to_string());
+    let fetch = render(Direction::Fetch)?;
+    let push = render(Direction::Push).filter(|p| *p != fetch);
+    Some((fetch, push))
 }
 
-/// Lists configured git remotes with fetch URLs, sorted by name (FR-JJ-9).
+/// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
 ///
 /// Re-resolves to the head operation every call (ADR-0002). Read-only; never
 /// shells to `jj git remote list` (AR-AP-1). A non-git (native) backend, or a
@@ -93,10 +121,11 @@ pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteE
 
     let mut out: Vec<Remote> = Vec::with_capacity(names.len());
     for name in &names {
-        if let Some(url) = fetch_url(&git_repo, name.as_str()) {
+        if let Some((url, push_url)) = remote_urls(&git_repo, name.as_str()) {
             out.push(Remote {
                 name: name.as_str().to_owned(),
                 url,
+                push_url,
             });
         }
     }
@@ -190,6 +219,14 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
 /// `git.record-synthetic-predecessors` off config. Nothing here hardcodes either key.
 ///
+/// The returned `abandoned_change_ids` are jj-lib's OWN abandonments — the commits
+/// `import_refs` dropped because they became unreachable in git, which is exactly what
+/// `git.abandon-unreachable-commits` governs. They are read from the `GitImportStats`
+/// `import_refs` returns, through the same [`crate::git::project_abandoned`] helper
+/// [`crate::Repo::git_import`] uses, so the two verbs cannot drift; with the key set to
+/// `false` the list is empty because the stats are empty, not because anything is
+/// hardcoded. `new_change_ids` is always empty — see [`MutationResult::new_change_ids`].
+///
 /// # Errors
 ///
 /// - [`MutateError::RemoteNotFound`] — `remote_name` has no configured git remote.
@@ -258,7 +295,8 @@ pub(crate) fn git_fetch(
             other => mutate::be(other),
         })?;
 
-    pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
+    let stats = pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
+    let abandoned_change_ids = crate::git::project_abandoned(&stats);
 
     // A descendant pass BEFORE the commit, because `import_refs` calls
     // `record_abandoned_commit` (jj-lib `git.rs:796`), which populates `parent_mapping`, and
@@ -287,8 +325,12 @@ pub(crate) fn git_fetch(
 
     Ok(MutationResult {
         new_op_id: crate::OperationId(new_repo.op_id().hex()),
+        // WHY empty: `GitImportStats` has no minted-change concept at all — it reports
+        // abandonments, changed remote refs, rewritten commit ids and failed ref names.
+        // `git_import` leaves this field empty for the same reason. When `@` itself was
+        // abandoned, jj-lib's replacement is already reported via `working_copy_change_id`.
         new_change_ids: Vec::new(),
-        abandoned_change_ids: Vec::new(),
+        abandoned_change_ids,
         working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
     })
 }

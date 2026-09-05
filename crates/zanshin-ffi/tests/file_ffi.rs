@@ -624,11 +624,14 @@ fn file_search_round_trip_carries_name_only_and_the_path_filter() {
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
     assert_eq!(env.data_type(), fbs::Payload::FileSearch);
-    let matches = env
-        .data_as_file_search()
-        .expect("FileSearch payload")
-        .matches()
-        .expect("matches present");
+    let payload = env.data_as_file_search().expect("FileSearch payload");
+    assert_eq!(
+        payload.skipped().map_or(0, |s| s.len()),
+        0,
+        "nothing was unreadable, so `skipped` is present and EMPTY — that is what makes \
+         \"no match\" distinguishable from \"blob unreadable\""
+    );
+    let matches = payload.matches().expect("matches present");
     assert_eq!(matches.len(), 2);
     assert_eq!(matches.get(0).path(), Some("a.txt"));
     assert_eq!(matches.get(0).line_number(), 2, "line numbers are 1-based");

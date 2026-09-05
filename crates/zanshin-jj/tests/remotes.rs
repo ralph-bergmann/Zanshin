@@ -135,6 +135,126 @@ fn remotes_lists_configured_remotes_sorted_by_name() {
     // AC-9 #18: origin's url matches the configured https URL verbatim.
     // Sorted order is [creds, origin, upstream] → origin is index 1.
     assert_eq!(remotes[1].url, "https://github.com/origin/repo.git");
+    assert!(
+        remotes.iter().all(|r| r.push_url.is_none()),
+        "none of these remotes was given a push URL; got {remotes:?}"
+    );
+}
+
+// ── push_url is reported when it differs, absent when it does not ─────────────
+
+/// `git_remote_add(.., Some(push))` is the SHIPPED way to configure a push URL, so it is
+/// what seeds this row — no raw `git config` writer, and no raw `git config --get
+/// remote.<n>.pushurl` reader either: `list_remotes` now answers that question itself.
+#[test]
+fn remotes_report_a_distinct_push_url() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add(
+        "origin",
+        "https://github.com/origin/repo.git",
+        Some("ssh://git@github.com/origin/repo.git"),
+    )
+    .unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    assert_eq!(remotes[0].url, "https://github.com/origin/repo.git");
+    assert_eq!(
+        remotes[0].push_url.as_deref(),
+        Some("ssh://git@github.com/origin/repo.git")
+    );
+}
+
+#[test]
+fn remotes_without_a_push_url_report_none() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add("origin", "https://github.com/origin/repo.git", None)
+        .unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    assert_eq!(
+        remotes[0].push_url, None,
+        "null-for-absence: a remote that pushes to its fetch URL reports None, never Some(\"\")"
+    );
+}
+
+#[test]
+fn remotes_report_a_push_url_added_later() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add("origin", "https://github.com/origin/repo.git", None)
+        .unwrap();
+    repo.git_remote_set_url("origin", None, Some("ssh://git@github.com/origin/repo.git"))
+        .unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    assert_eq!(
+        remotes[0].url, "https://github.com/origin/repo.git",
+        "setting only the push URL must leave the fetch URL alone"
+    );
+    assert_eq!(
+        remotes[0].push_url.as_deref(),
+        Some("ssh://git@github.com/origin/repo.git")
+    );
+}
+
+/// CLI parity: `jj git remote list` prints its `(push: …)` suffix only when the two URLs
+/// DIFFER, so a `pushurl` byte-identical to `url` is reported as absent. This is also the
+/// only reading gix supports — its `url(Direction::Push)` falls back to the fetch URL, so
+/// "no pushurl" and "pushurl == url" are indistinguishable through the API.
+#[test]
+fn remotes_report_none_when_the_push_url_equals_the_fetch_url() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let url = "https://github.com/origin/repo.git";
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add("origin", url, Some(url)).unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
+    assert_eq!(remotes[0].url, url);
+    assert_eq!(
+        remotes[0].push_url, None,
+        "a push URL equal to the fetch URL is not a DIFFERENCE, so it is absent"
+    );
+}
+
+#[test]
+fn remotes_preserve_embedded_credentials_in_the_push_url() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add(
+        "origin",
+        "https://github.com/origin/repo.git",
+        Some("https://user:s3cr3t@github.com/priv/repo.git"),
+    )
+    .unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    let push = remotes[0].push_url.as_deref().expect("push URL must be reported");
+    assert!(
+        push.contains("user:s3cr3t"),
+        "the push URL is read with to_bstring(), so credentials survive verbatim \
+         (Display would render 'redacted'); got: {push}"
+    );
 }
 
 // ── Embedded credentials are preserved verbatim ───────────────────────────────

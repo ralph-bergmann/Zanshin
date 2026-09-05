@@ -13,7 +13,7 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileType, SearchMatch};
+use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileSearch, FileType};
 
 use crate::envelope::{
     catch, finish_envelope, invalid_request, missing_field, reject_null_request, session_from_handle, FfiErrorObj,
@@ -258,13 +258,17 @@ fn file_annotation_to_envelope(lines: &[AnnotationLine]) -> Vec<u8> {
     finish_envelope(b, fbs::Payload::FileAnnotation, table.as_union_value())
 }
 
-/// Serialise `&[SearchMatch]` into a finished `Envelope<FileSearch>` buffer.
+/// Serialise a [`FileSearch`] into a finished `Envelope<FileSearch>` buffer.
 ///
 /// `conflict_side` uses the established presence-flag pair (`has_conflict_side`): flatc
 /// 25.12.19 rejects optional scalars for Dart, so absence is a separate bool.
-fn file_search_to_envelope(matches: &[SearchMatch]) -> Vec<u8> {
+///
+/// The `skipped` loop is the same shape as `file_contents_to_envelope`'s, though the two
+/// carry different reason sets (search reports only unreadable blobs).
+fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
-    let offsets: Vec<_> = matches
+    let offsets: Vec<_> = search
+        .matches
         .iter()
         .map(|m| {
             let path = b.create_string(&m.path);
@@ -282,7 +286,29 @@ fn file_search_to_envelope(matches: &[SearchMatch]) -> Vec<u8> {
         })
         .collect();
     let vec = b.create_vector(&offsets);
-    let table = fbs::FileSearch::create(&mut b, &fbs::FileSearchArgs { matches: Some(vec) });
+    let skipped_offs: Vec<_> = search
+        .skipped
+        .iter()
+        .map(|s| {
+            let path = b.create_string(&s.path);
+            let reason = b.create_string(&s.reason);
+            fbs::SkippedPath::create(
+                &mut b,
+                &fbs::SkippedPathArgs {
+                    path: Some(path),
+                    reason: Some(reason),
+                },
+            )
+        })
+        .collect();
+    let skipped = b.create_vector(&skipped_offs);
+    let table = fbs::FileSearch::create(
+        &mut b,
+        &fbs::FileSearchArgs {
+            matches: Some(vec),
+            skipped: Some(skipped),
+        },
+    );
     finish_envelope(b, fbs::Payload::FileSearch, table.as_union_value())
 }
 
@@ -428,8 +454,10 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// defaults to kind `regex`. `name_only` stops a file's scan at its FIRST match — it changes
 /// the work done, not the result shape, so each matching file still contributes its first
 /// matching line. A conflicted path is searched side by side, with `conflict_side` set and
-/// line numbers restarting per side. Symlinks, submodules, non-file conflicts and unreadable
-/// blobs are silently not searched (CLI parity). This read writes NO operation.
+/// line numbers restarting per side. Symlinks, submodules and non-file conflicts are
+/// SILENTLY not searched (CLI parity); a path whose blob could not be READ lands in the
+/// payload's `skipped` vector — the only case `jj file search` warns about — and does NOT
+/// fail the call. This read writes NO operation.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileSearch` payload on success.
 ///
@@ -453,11 +481,11 @@ pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: 
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         let req = read_file_search_request(data, len)?;
-        let matches = session
+        let search = session
             .repo
             .file_search(req.revision, &req.pattern, &req.paths, req.name_only)
             .map_err(map_file_err)?;
-        Ok(file_search_to_envelope(&matches))
+        Ok(file_search_to_envelope(&search))
     });
     vec_into_token(buf)
 }
@@ -466,8 +494,8 @@ pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: 
 mod tests {
     use flatbuffers::root as fb_root;
     use zanshin_jj::{
-        AnnotationLine, ChangeId, CommitId, FileContents, FileEntry, FileError, FileType, SearchMatch, ShownFile,
-        SkippedPath,
+        AnnotationLine, ChangeId, CommitId, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch,
+        ShownFile, SkippedPath,
     };
 
     use super::{
@@ -654,22 +682,25 @@ mod tests {
 
     #[test]
     fn file_search_to_envelope_uses_the_presence_flag_for_conflict_side() {
-        let matches = vec![
-            SearchMatch {
-                path: "a.txt".to_owned(),
-                line_number: 2,
-                content: b"needle\n".to_vec(),
-                conflict_side: None,
-            },
-            SearchMatch {
-                path: "c.txt".to_owned(),
-                line_number: 1,
-                content: b"needle two\n".to_vec(),
-                conflict_side: Some(1),
-            },
-        ];
+        let search = FileSearch {
+            matches: vec![
+                SearchMatch {
+                    path: "a.txt".to_owned(),
+                    line_number: 2,
+                    content: b"needle\n".to_vec(),
+                    conflict_side: None,
+                },
+                SearchMatch {
+                    path: "c.txt".to_owned(),
+                    line_number: 1,
+                    content: b"needle two\n".to_vec(),
+                    conflict_side: Some(1),
+                },
+            ],
+            skipped: vec![],
+        };
 
-        let buf = file_search_to_envelope(&matches);
+        let buf = file_search_to_envelope(&search);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileSearch);
         let payload = env.data_as_file_search().expect("FileSearch payload");
@@ -687,6 +718,42 @@ mod tests {
         );
         assert!(fbs_matches.get(1).has_conflict_side());
         assert_eq!(fbs_matches.get(1).conflict_side(), 1);
+        assert_eq!(
+            payload.skipped().map_or(0, |s| s.len()),
+            0,
+            "an empty skipped vector is still WRITTEN, as an empty vector"
+        );
+    }
+
+    /// The search payload's `skipped` channel — the mirror of
+    /// `file_contents_to_envelope_carries_bytes_and_skipped_paths`, but with search's OWN
+    /// wording: only an unreadable blob is reported here.
+    #[test]
+    fn file_search_to_envelope_carries_skipped_paths() {
+        let search = FileSearch {
+            matches: vec![SearchMatch {
+                path: "a.txt".to_owned(),
+                line_number: 1,
+                content: b"needle\n".to_vec(),
+                conflict_side: None,
+            }],
+            skipped: vec![SkippedPath {
+                path: "secret.txt".to_owned(),
+                reason: "Skipping 'secret.txt' due to permission error: Access denied".to_owned(),
+            }],
+        };
+
+        let buf = file_search_to_envelope(&search);
+        let env = verified(&buf);
+        let payload = env.data_as_file_search().expect("FileSearch payload");
+        assert_eq!(payload.matches().expect("matches present").len(), 1);
+        let skipped = payload.skipped().expect("skipped present");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped.get(0).path(), Some("secret.txt"));
+        assert_eq!(
+            skipped.get(0).reason(),
+            Some("Skipping 'secret.txt' due to permission error: Access denied")
+        );
     }
 
     #[test]
@@ -701,7 +768,13 @@ mod tests {
                 fbs::Payload::FileContents,
             ),
             (file_annotation_to_envelope(&[]), fbs::Payload::FileAnnotation),
-            (file_search_to_envelope(&[]), fbs::Payload::FileSearch),
+            (
+                file_search_to_envelope(&FileSearch {
+                    matches: vec![],
+                    skipped: vec![],
+                }),
+                fbs::Payload::FileSearch,
+            ),
         ] {
             let env = verified(&buf);
             assert!(env.ok(), "an empty result is a success, not an error");

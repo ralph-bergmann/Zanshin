@@ -233,7 +233,8 @@ void main() {
         ),
       ).toBytes();
 
-      final List<SearchMatch> matches = decodeFileSearchEnvelope(bytes);
+      final FileSearch search = decodeFileSearchEnvelope(bytes);
+      final List<SearchMatch> matches = search.matches;
 
       expect(matches, hasLength(2));
       expect(matches[0].conflictSide, isNull, reason: 'null-for-absence, not the 0 sentinel');
@@ -241,16 +242,53 @@ void main() {
       expect(utf8.decode(matches[0].content), 'needle\n');
       expect(matches[1].conflictSide, 1);
       expect(matches[1].lineNumber, 1, reason: 'line numbers restart at each conflict side');
+      expect(search.skipped, isEmpty, reason: 'no blob was unreadable');
     });
 
-    test('decodes an absent matches vector as an empty list', () {
+    test('decodes skipped paths beside the matches', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.FileSearch,
+        data: fbs.FileSearchObjectBuilder(
+          matches: [
+            fbs.SearchMatchObjectBuilder(
+              path: 'plain.txt',
+              lineNumber: 1,
+              content: utf8.encode('needle\n'),
+            ),
+          ],
+          skipped: [
+            fbs.SkippedPathObjectBuilder(
+              path: 'secret.txt',
+              reason: "Skipping 'secret.txt' due to permission error: No access",
+            ),
+          ],
+        ),
+      ).toBytes();
+
+      final FileSearch search = decodeFileSearchEnvelope(bytes);
+
+      expect(search.matches, hasLength(1));
+      expect(search.skipped, hasLength(1));
+      expect(search.skipped.single.path, 'secret.txt');
+      expect(
+        search.skipped.single.reason,
+        "Skipping 'secret.txt' due to permission error: No access",
+        reason: "search's own wording, not `file show`'s",
+      );
+    });
+
+    test('decodes absent matches and skipped vectors as empty lists', () {
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.FileSearch,
         data: fbs.FileSearchObjectBuilder(),
       ).toBytes();
 
-      expect(decodeFileSearchEnvelope(bytes), isEmpty);
+      final FileSearch search = decodeFileSearchEnvelope(bytes);
+
+      expect(search.matches, isEmpty);
+      expect(search.skipped, isEmpty);
     });
   });
 

@@ -257,6 +257,20 @@ fn project_updates(repo: &Arc<ReadonlyRepo>, updates: &[GitImportRefUpdate], tag
         .collect()
 }
 
+/// Projects jj-lib's `GitImportStats.abandoned_commits` into owned [`ChangeId`]s.
+///
+/// `pub(crate)` and shared: `git_import` and [`crate::Repo::git_fetch`] both run
+/// `GitFetch`/`import_refs` and both report the SAME fact — the commits jj-lib itself
+/// abandoned because they became unreachable in git (`git.abandon-unreachable-commits`).
+/// One helper so the two verbs cannot drift in how they read those stats.
+pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<ChangeId> {
+    stats
+        .abandoned_commits
+        .iter()
+        .map(|c| ChangeId(c.change_id().reverse_hex()))
+        .collect()
+}
+
 /// Imports the backing git repo's refs into jj's view (Story 9.5) — the CLI's
 /// `jj git import`.
 ///
@@ -322,11 +336,7 @@ pub(crate) fn git_import(
     Ok(GitImportResult {
         changed_bookmarks,
         changed_tags,
-        abandoned_change_ids: stats
-            .abandoned_commits
-            .iter()
-            .map(|c| ChangeId(c.change_id().reverse_hex()))
-            .collect(),
+        abandoned_change_ids: project_abandoned(&stats),
         // Saturating, not wrapping or fallible — see `GitImportResult::num_rewritten`.
         num_rewritten: u32::try_from(stats.rewritten_commit_ids.len()).unwrap_or(u32::MAX),
         failed_ref_names: stats

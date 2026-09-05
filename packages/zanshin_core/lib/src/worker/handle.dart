@@ -3,7 +3,7 @@
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_views.dart' show EvologEntry, ShowEntry;
-import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, SearchMatch;
+import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
@@ -275,6 +275,11 @@ final class RepoHandle {
   /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are
   /// read from the repo's effective config per call, never hardcoded.
   ///
+  /// The result's `abandonedChangeIds` carries the commits the import abandoned
+  /// because they became unreachable in git — jj-lib's OWN abandonments, not a
+  /// caller echo, and empty when `git.abandon-unreachable-commits` is off.
+  /// `newChangeIds` is always empty: a fetch mints nothing.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
@@ -451,13 +456,15 @@ final class RepoHandle {
   /// has no counterpart: `SearchMatch.lineNumber` is always carried.
   ///
   /// A conflicted path is searched side by side, with `conflictSide` set and line
-  /// numbers restarting at each side. Symlinks, submodules, non-file conflicts and
-  /// unreadable blobs are silently not searched, as the CLI skips them.
+  /// numbers restarting at each side. Symlinks, submodules and non-file conflicts
+  /// are SILENTLY not searched, as the CLI skips them; a path whose blob could not
+  /// be READ lands in `FileSearch.skipped` — the only case `jj file search` warns
+  /// about — and does not fail the call.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
-  Future<List<SearchMatch>> fileSearch({
+  Future<FileSearch> fileSearch({
     required String pattern,
     String? revision,
     List<String> paths = const <String>[],

@@ -153,6 +153,24 @@ pub struct SearchMatch {
     pub conflict_side: Option<u32>,
 }
 
+/// The result of `jj file search`: the matching lines, plus the paths that could not be
+/// searched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileSearch {
+    /// One entry per matching line, in `entries_matching` (tree) order then line order.
+    pub matches: Vec<SearchMatch>,
+    /// Paths whose blob could NOT be read. This carries `AccessDenied` and nothing else,
+    /// because that is the only case `jj file search` warns about
+    /// (`cli/src/commands/file/search.rs:109-115` @ v0.44.0); symlinks, Git submodules and
+    /// non-file conflicts are skipped SILENTLY there and never appear here — the exact
+    /// OPPOSITE of `jj file show`, whose [`FileContents::skipped`] reports them.
+    ///
+    /// An unreadable blob is not an error: the call succeeds for the remaining paths.
+    /// Without this channel a GUI could not tell "nothing matched" from "a blob was
+    /// unreadable", which is why it exists.
+    pub skipped: Vec<SkippedPath>,
+}
+
 /// Errors returned by [`crate::Repo::file_list`], [`crate::Repo::file_show`],
 /// [`crate::Repo::file_annotate`] and [`crate::Repo::file_search`].
 #[derive(Debug, thiserror::Error)]
@@ -581,8 +599,10 @@ fn collect_matches(
 ///
 /// Ports `cli/src/commands/file/search.rs::cmd_file_search` @ v0.44.0. `pattern` is jj's
 /// `kind:pattern` string-pattern syntax, defaulting to `regex`. Symlinks, Git submodules and
-/// non-file conflicts are silently not searched, exactly as the CLI skips them; a path whose
-/// blob cannot be read is skipped too (the CLI warns, and this API has no warning channel).
+/// non-file conflicts are silently not searched, exactly as the CLI skips them
+/// (`search.rs:134, :159-161`); a path whose blob cannot be READ is reported in
+/// [`FileSearch::skipped`] with the CLI's own warning sentence (`search.rs:109-115`), which
+/// is the only case it warns about.
 ///
 /// `name_only` stops a file's scan at its FIRST match — it changes the work done, not the
 /// result shape, so each file still contributes its first matching line. That is a superset
@@ -601,7 +621,7 @@ pub(crate) fn file_search(
     pattern: &str,
     paths: &[String],
     name_only: bool,
-) -> Result<Vec<SearchMatch>, FileError> {
+) -> Result<FileSearch, FileError> {
     let matcher = parse_pattern(pattern)?.to_matcher();
     let path_matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
     let (readonly, commit) = head_commit(workspace, revision)?;
@@ -609,6 +629,7 @@ pub(crate) fn file_search(
     let tree = commit.tree();
 
     let mut out = Vec::new();
+    let mut skipped = Vec::new();
     for (path, value) in tree.entries_matching(path_matcher.as_ref()) {
         let value = value.map_err(be)?;
         let display = path.as_internal_file_string().to_owned();
@@ -631,17 +652,24 @@ pub(crate) fn file_search(
                     }
                 }
             }
-            // Silently not searched — CLI parity. `AccessDenied` warns there; `Absent` and
+            // An unreadable blob is the ONE case `jj file search` warns about
+            // (`search.rs:109-115`), so it gets a SkippedPath rather than silence. The
+            // sentence is search's own — `file show`'s wording is a different verb's
+            // contract and must not be reused here (NFR-R-2).
+            MaterializedTreeValue::AccessDenied(e) => skipped.push(SkippedPath {
+                reason: format!("Skipping '{display}' due to permission error: {e}"),
+                path: display,
+            }),
+            // Silently not searched — CLI parity (`search.rs:134, :159-160`). `Absent` and
             // `Tree` are `panic!`s the walk cannot actually produce.
             MaterializedTreeValue::Symlink { .. }
             | MaterializedTreeValue::GitSubmodule(_)
             | MaterializedTreeValue::OtherConflict { .. }
-            | MaterializedTreeValue::AccessDenied(_)
             | MaterializedTreeValue::Absent
             | MaterializedTreeValue::Tree(_) => {}
         }
     }
-    Ok(out)
+    Ok(FileSearch { matches: out, skipped })
 }
 
 #[cfg(test)]
@@ -653,6 +681,102 @@ mod tests {
         collect_matches, file_type_of, is_executable, parse_path, parse_pattern, res, ChangeId, FileError, FileType,
         ResolveError,
     };
+
+    /// `file_search` reports an UNREADABLE blob in `skipped`, with `jj file search`'s own
+    /// warning sentence, while every other matching file still reports normally.
+    ///
+    /// **Why this test is INLINE rather than in `tests/`.** `MaterializedTreeValue::AccessDenied`
+    /// comes from exactly one jj-lib error (`BackendError::ReadAccessDenied`), which exactly one
+    /// backend raises: the `testing`-gated `SecretBackend`, which refuses any path containing
+    /// `secret`. That backend cannot be reached through [`crate::Repo`] — `Repo::open` hardcodes
+    /// `default_backend_factories()` and this change deliberately does NOT widen it — so the
+    /// witness builds the `Workspace` itself and calls the `pub(crate)` [`super::file_search`]
+    /// directly. Corrupting or chmod-ing a git object produces a DIFFERENT `BackendError`, which
+    /// surfaces as [`FileError::Backend`], so there is no public-API construction to use instead.
+    #[test]
+    fn file_search_reports_an_unreadable_blob_as_skipped() {
+        use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+        use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+        use jj_lib::repo::Repo as _;
+        use jj_lib::secret_backend::SecretBackend;
+        use jj_lib::settings::UserSettings;
+        use jj_lib::workspace::Workspace;
+        use test_helpers::{add_commit_with_entries, extract_fixture, Entry};
+
+        let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+        // `secret.txt` is refused by SecretBackend purely because of its PATH; `plain.txt`
+        // carries the same needle and must still match, which is what makes this a skip
+        // rather than a failed call.
+        let commit_hex = add_commit_with_entries(
+            &fx.path,
+            &[],
+            &[
+                ("plain.txt", Entry::File("needle here\n")),
+                ("secret.txt", Entry::File("needle there\n")),
+            ],
+            "one readable and one unreadable blob",
+        );
+
+        // Flip the store type AFTER the commit is written: the tree must be built through the
+        // plain git backend, which SecretBackend wraps unchanged for writes.
+        SecretBackend::adopt_git_repo(&fx.path);
+
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(
+            ConfigLayer::parse(
+                ConfigSource::User,
+                r#"
+                    [user]
+                    name = "Zanshin"
+                    email = "zanshin@localhost"
+                    [operation]
+                    username = "zanshin"
+                    hostname = "localhost"
+                "#,
+            )
+            .expect("valid config literal"),
+        );
+        let settings = UserSettings::from_config(config).expect("valid settings");
+
+        let mut factories = default_backend_factories();
+        factories.add_backend(
+            SecretBackend::name(),
+            Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
+        );
+        let workspace = Workspace::load(&settings, &fx.path, &factories, &default_working_copy_factories())
+            .expect("the secret-backend workspace loads");
+
+        let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+        let commit_id = jj_lib::backend::CommitId::try_from_hex(&commit_hex).expect("hex commit id");
+        let change = ChangeId(
+            readonly
+                .store()
+                .get_commit(&commit_id)
+                .expect("commit")
+                .change_id()
+                .reverse_hex(),
+        );
+
+        let search = super::file_search(&workspace, Some(&change), "needle", &[], false)
+            .expect("an unreadable blob is not an error — the call SUCCEEDS");
+
+        let paths: Vec<&str> = search.matches.iter().map(|m| m.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["plain.txt"],
+            "the readable file still matches; the refused one contributes no match"
+        );
+        assert_eq!(search.skipped.len(), 1, "exactly one path was skipped");
+        assert_eq!(search.skipped[0].path, "secret.txt");
+        assert!(
+            search.skipped[0]
+                .reason
+                .starts_with("Skipping 'secret.txt' due to permission error: "),
+            "the reason is `jj file search`'s OWN sentence, not `jj file show`'s \
+             (\"Path '…' exists but access is denied: …\"); got: {}",
+            search.skipped[0].reason
+        );
+    }
 
     /// The shared resolver's two outcomes must keep landing in the two DIFFERENT read
     /// variants: "that revision does not resolve" is the caller's problem (`ChangeNotFound`,

@@ -19,6 +19,15 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+# WHY the `testing` feature, DEV-only: `jj_lib::secret_backend::SecretBackend` is gated
+# behind it, and it is the ONLY thing in jj-lib that raises
+# `BackendError::ReadAccessDenied` — the single error `materialize_tree_value` turns into
+# `MaterializedTreeValue::AccessDenied`, which `file_search`'s skip arm reports. Corrupting
+# or chmod-ing a git object yields a DIFFERENT BackendError, so there is no other
+# construction. Dev-only means `cargo build` and the shipped cdylib never enable it;
+# putting it in `[dependencies]`, or in the `test-helpers` workspace member, would enable
+# it for `cargo build --workspace` too.
+jj-lib = { workspace = true, features = ["testing"] }
 tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers", version = "0.1.0" }
 

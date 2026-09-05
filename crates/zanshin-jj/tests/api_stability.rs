@@ -93,6 +93,7 @@ type _ShownFile = zanshin_jj::ShownFile;
 type _FileContents = zanshin_jj::FileContents;
 type _AnnotationLine = zanshin_jj::AnnotationLine;
 type _SearchMatch = zanshin_jj::SearchMatch;
+type _FileSearch = zanshin_jj::FileSearch;
 type _FileError = zanshin_jj::FileError;
 
 // git sync + remote config (Story 9.5)
@@ -228,6 +229,29 @@ fn sample_search_match() -> zanshin_jj::SearchMatch {
     }
 }
 
+/// Names every `Remote` field by its public path (FR-JJ-9). `push_url` is null-for-absence:
+/// `Some` only when the remote's push URL DIFFERS from its fetch URL.
+fn sample_remote() -> zanshin_jj::Remote {
+    zanshin_jj::Remote {
+        name: String::new(),
+        url: String::new(),
+        push_url: Some(String::new()),
+    }
+}
+
+/// Names every `FileSearch` field by its public path (Story 9.4). Like `FileContents`,
+/// `skipped` deliberately reuses [`zanshin_jj::SkippedPath`] rather than minting a second
+/// type — even though the two verbs report DIFFERENT reasons in it.
+fn sample_file_search() -> zanshin_jj::FileSearch {
+    zanshin_jj::FileSearch {
+        matches: vec![sample_search_match()],
+        skipped: vec![zanshin_jj::SkippedPath {
+            path: String::new(),
+            reason: String::new(),
+        }],
+    }
+}
+
 /// Names every `GitImportResult` / `GitRefUpdate` field by its public path (Story 9.5). The
 /// nested `MutationResult` is deliberately reused rather than repeated — that nesting IS the
 /// contract, as it is for `AbsorbResult`.
@@ -360,6 +384,7 @@ fn api_surface_resolves() {
     _ = zanshin_jj::OpLogError::Backend(String::new());
     _ = zanshin_jj::BookmarkError::Backend(String::new());
     _ = zanshin_jj::RemoteError::Backend(String::new());
+    _ = sample_remote();
     _ = zanshin_jj::RevsetError::JjLibError(String::new());
     // remotes: git_fetch progress callback (Story 6.4a) — pin the callback type and
     // the exact `Repo::git_fetch` signature.
@@ -523,6 +548,7 @@ fn file_reads_surface_resolves() {
     _ = sample_file_contents();
     _ = sample_annotation_line();
     _ = sample_search_match();
+    _ = sample_file_search();
 
     _ = zanshin_jj::Repo::file_list
         as fn(
@@ -549,7 +575,7 @@ fn file_reads_surface_resolves() {
             &str,
             &[String],
             bool,
-        ) -> Result<Vec<zanshin_jj::SearchMatch>, zanshin_jj::FileError>;
+        ) -> Result<zanshin_jj::FileSearch, zanshin_jj::FileError>;
 }
 
 /// Git sync + remote config (Story 9.5): 5 new types, 3 new `MutateError` variants, 6 new

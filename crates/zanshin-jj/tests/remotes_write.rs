@@ -437,7 +437,7 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     write_repo_config(fx.dst.path(), "[git]\nabandon-unreachable-commits = false\n");
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
-    repo.git_fetch("origin", &no_op).expect("second, pruning fetch");
+    let result = repo.git_fetch("origin", &no_op).expect("second, pruning fetch");
 
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "feature", "origin"),
@@ -448,6 +448,14 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     assert!(
         visible.contains(&fx.b_change),
         "the user disabled abandoning, so the now-unreachable commit must stay visible; got {visible:?}"
+    );
+    // The negative control for the sibling's `abandoned_change_ids` assertion: the projection
+    // reads jj-lib's OWN import stats, so turning the key off empties the list. A hardcoded
+    // `Vec::new()` would pass here and fail there; a hardcoded echo would fail here.
+    assert!(
+        result.abandoned_change_ids.is_empty(),
+        "nothing was abandoned, so the reported list must be empty; got {:?}",
+        result.abandoned_change_ids
     );
 }
 
@@ -467,7 +475,8 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
 
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
-    repo.git_fetch("origin", &no_op)
+    let result = repo
+        .git_fetch("origin", &no_op)
         .expect("the pruning fetch must return, not panic");
 
     assert_eq!(
@@ -479,6 +488,18 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
     assert!(
         !visible.contains(&fx.b_change),
         "the default is jj-lib's own `true`, so the now-unreachable commit must be abandoned; got {visible:?}"
+    );
+    // The abandoning is REPORTED, not only observable through a second revset query: fetch
+    // projects `import_refs`' own `GitImportStats` into `abandoned_change_ids`.
+    assert!(
+        result.abandoned_change_ids.contains(&fx.b_change),
+        "the abandoned change must be reported in the MutationResult; got {:?}",
+        result.abandoned_change_ids
+    );
+    assert!(
+        result.new_change_ids.is_empty(),
+        "a fetch mints nothing — GitImportStats has no minted-change concept; got {:?}",
+        result.new_change_ids
     );
 }
 

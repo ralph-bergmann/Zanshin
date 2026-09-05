@@ -5099,8 +5099,13 @@ pub mod zanshin {
         pub enum RemoteOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One configured git remote (FR-JJ-9). `url` is the fetch URL, verbatim —
-        /// credentials are NOT scrubbed and SSH is NOT rewritten to HTTPS.
+        /// One configured git remote (FR-JJ-9). BOTH URLs are verbatim — credentials are
+        /// NOT scrubbed and SSH is NOT rewritten to HTTPS.
+        ///
+        /// `push_url` reports a DIFFERENCE, not a raw `remote.<name>.pushurl` read: it is
+        /// present only when the remote's push URL differs from `url`, exactly as
+        /// `jj git remote list` prints its `(push: …)` suffix only then. ABSENT therefore
+        /// means "this remote pushes to its fetch URL" — never an empty string.
         pub struct Remote<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -5118,6 +5123,7 @@ pub mod zanshin {
         impl<'a> Remote<'a> {
             pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
             pub const VT_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -5129,6 +5135,9 @@ pub mod zanshin {
                 args: &'args RemoteArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Remote<'bldr>> {
                 let mut builder = RemoteBuilder::new(_fbb);
+                if let Some(x) = args.push_url {
+                    builder.add_push_url(x);
+                }
                 if let Some(x) = args.url {
                     builder.add_url(x);
                 }
@@ -5158,6 +5167,16 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(Remote::VT_URL, None)
                 }
             }
+            #[inline]
+            pub fn push_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Remote::VT_PUSH_URL, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Remote<'_> {
@@ -5169,6 +5188,7 @@ pub mod zanshin {
                 v.visit_table(pos)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("push_url", Self::VT_PUSH_URL, false)?
                     .finish();
                 Ok(())
             }
@@ -5176,11 +5196,16 @@ pub mod zanshin {
         pub struct RemoteArgs<'a> {
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub push_url: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for RemoteArgs<'a> {
             #[inline]
             fn default() -> Self {
-                RemoteArgs { name: None, url: None }
+                RemoteArgs {
+                    name: None,
+                    url: None,
+                    push_url: None,
+                }
             }
         }
 
@@ -5198,6 +5223,11 @@ pub mod zanshin {
             pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Remote::VT_URL, url);
+            }
+            #[inline]
+            pub fn add_push_url(&mut self, push_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Remote::VT_PUSH_URL, push_url);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemoteBuilder<'a, 'b, A> {
@@ -5219,6 +5249,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("Remote");
                 ds.field("name", &self.name());
                 ds.field("url", &self.url());
+                ds.field("push_url", &self.push_url());
                 ds.finish()
             }
         }
@@ -7608,13 +7639,16 @@ pub mod zanshin {
 
         /// One path an operation could not process, with the verbatim reason.
         ///
-        /// Two payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
-        /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …") — and
+        /// Three payloads carry it: `AbsorbResult.skipped_paths` — a path jj-lib refused to split
+        /// ("Is a symlink", "Is a conflict", "Is a Git submodule", "Access is denied: …");
         /// `FileContents.skipped` — a path that is not renderable as file content
         /// ("Path '…' exists but is not a file.", "Path '…' exists but access is denied: …",
         /// "Path '…' is absent.", "Path '…' is a directory." — the last two are the cases the CLI
-        /// `panic!`s on, which a library reports instead of aborting the process). In both cases
-        /// the call SUCCEEDS for the remaining paths; the CLI prints one warning per entry.
+        /// `panic!`s on, which a library reports instead of aborting the process); and
+        /// `FileSearch.skipped` — a path whose blob could not be READ, with `jj file search`'s own
+        /// sentence ("Skipping '…' due to permission error: …"). Note the two file verbs skip
+        /// DIFFERENT sets with DIFFERENT wording: that is CLI parity, not an inconsistency. In every
+        /// case the call SUCCEEDS for the remaining paths; the CLI prints one warning per entry.
         pub struct SkippedPath<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -9088,7 +9122,15 @@ pub mod zanshin {
         pub enum FileSearchOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order.
+        /// The matches of `zanshin_file_search`, in `entries_matching` (tree) order then line order,
+        /// plus the paths that could not be searched.
+        ///
+        /// `skipped` carries ONLY unreadable blobs (`AccessDenied`) — the single case
+        /// `jj file search` warns about. Symlinks, Git submodules and non-file conflicts are skipped
+        /// SILENTLY there and never appear here, which is the exact OPPOSITE of `jj file show`
+        /// (whose `FileContents.skipped` reports the symlink/submodule cases and uses different
+        /// wording). An empty `skipped` with an empty `matches` therefore means "nothing matched",
+        /// which is now distinguishable from "a blob was unreadable".
         pub struct FileSearch<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -9105,6 +9147,7 @@ pub mod zanshin {
 
         impl<'a> FileSearch<'a> {
             pub const VT_MATCHES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SKIPPED: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -9116,6 +9159,9 @@ pub mod zanshin {
                 args: &'args FileSearchArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FileSearch<'bldr>> {
                 let mut builder = FileSearchBuilder::new(_fbb);
+                if let Some(x) = args.skipped {
+                    builder.add_skipped(x);
+                }
                 if let Some(x) = args.matches {
                     builder.add_matches(x);
                 }
@@ -9135,6 +9181,19 @@ pub mod zanshin {
                     >>(FileSearch::VT_MATCHES, None)
                 }
             }
+            #[inline]
+            pub fn skipped(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath>>,
+                    >>(FileSearch::VT_SKIPPED, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileSearch<'_> {
@@ -9147,6 +9206,9 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SearchMatch>>,
                     >>("matches", Self::VT_MATCHES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SkippedPath>>,
+                    >>("skipped", Self::VT_SKIPPED, false)?
                     .finish();
                 Ok(())
             }
@@ -9155,11 +9217,17 @@ pub mod zanshin {
             pub matches: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SearchMatch<'a>>>>,
             >,
+            pub skipped: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SkippedPath<'a>>>>,
+            >,
         }
         impl<'a> Default for FileSearchArgs<'a> {
             #[inline]
             fn default() -> Self {
-                FileSearchArgs { matches: None }
+                FileSearchArgs {
+                    matches: None,
+                    skipped: None,
+                }
             }
         }
 
@@ -9177,6 +9245,16 @@ pub mod zanshin {
             ) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearch::VT_MATCHES, matches);
+            }
+            #[inline]
+            pub fn add_skipped(
+                &mut self,
+                skipped: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<SkippedPath<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSearch::VT_SKIPPED, skipped);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSearchBuilder<'a, 'b, A> {
@@ -9197,6 +9275,7 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FileSearch");
                 ds.field("matches", &self.matches());
+                ds.field("skipped", &self.skipped());
                 ds.finish()
             }
         }

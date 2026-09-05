@@ -24,6 +24,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/git.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
+import 'package:zanshin_core/src/ffi/remotes.dart' show Remote;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -109,12 +110,16 @@ void main() {
     });
 
     // `gitRemoteSetUrl`'s optional pushUrl, which the sequence above deliberately cannot
-    // carry. `remotes()` reports only the FETCH url, so what is asserted here is that the
-    // fetch side is LEFT ALONE — the push url's own oracle is the raw git config, read
-    // Rust-side in git_remotes.rs and git_ffi.rs.
+    // carry. `remotes()` now reports the PUSH url too, so this is the end-to-end witness
+    // through the real cdylib: the push url arrives and the fetch side is LEFT ALONE.
     test('gitRemoteSetUrl_with_only_a_push_url_leaves_the_fetch_url_alone', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
       await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path);
+      expect(
+        (await handle.remotes()).single.pushUrl,
+        isNull,
+        reason: 'a remote added without a push url pushes to its fetch url',
+      );
 
       final MutationResult result = await handle.gitRemoteSetUrl(
         name: 'origin',
@@ -122,7 +127,9 @@ void main() {
       );
 
       expect(result.newOpId, isNotEmpty, reason: 'set-url never opens a transaction');
-      expect((await handle.remotes()).single.url, equals(remoteDir.path));
+      final Remote listed = (await handle.remotes()).single;
+      expect(listed.url, equals(remoteDir.path));
+      expect(listed.pushUrl, equals('${remoteDir.path}-push'));
 
       await handle.close();
     });

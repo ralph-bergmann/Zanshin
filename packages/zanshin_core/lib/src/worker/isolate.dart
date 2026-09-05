@@ -909,13 +909,13 @@ class ZanshinWorker {
   /// [handleId] (Story 9.4) — the CLI's `jj file search`.
   ///
   /// Sends a [FileSearchCommand] via [send] and decodes the returned FlatBuffers
-  /// `Envelope<FileSearch>` bytes into a `List<SearchMatch>`.
+  /// `Envelope<FileSearch>` bytes into a [repo_ffi_file.FileSearch].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
   /// after [close]; the close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.fileSearch].
-  Future<List<repo_ffi_file.SearchMatch>> fileSearch(
+  Future<repo_ffi_file.FileSearch> fileSearch(
     int handleId, {
     required String pattern,
     String? revision,

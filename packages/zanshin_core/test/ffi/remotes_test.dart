@@ -78,6 +78,7 @@ void main() {
         dataType: fbs.PayloadTypeId.Remotes,
         data: fbs.RemotesObjectBuilder(
           remotes: [
+            // No pushUrl: the absent arm of the null-for-absence field.
             fbs.RemoteObjectBuilder(
               name: 'origin',
               url: 'https://github.com/user/repo.git',
@@ -85,6 +86,7 @@ void main() {
             fbs.RemoteObjectBuilder(
               name: 'creds',
               url: 'https://user:token@example.com/r.git',
+              pushUrl: 'ssh://user:s3cr3t@example.com/r.git',
             ),
           ],
         ),
@@ -96,6 +98,13 @@ void main() {
 
       expect(rems[0].name, equals('origin'), reason: 'name must round-trip');
       expect(rems[0].url, equals('https://github.com/user/repo.git'), reason: 'url must round-trip');
+      expect(
+        rems[0].pushUrl,
+        isNull,
+        reason:
+            'an absent push url stays null — no `?? \'\'` coalesce, or the '
+            'absent/present distinction would be destroyed',
+      );
 
       expect(rems[1].name, equals('creds'), reason: 'name must round-trip');
       // credentials must NOT be scrubbed at the Dart decode layer
@@ -103,6 +112,11 @@ void main() {
         rems[1].url,
         equals('https://user:token@example.com/r.git'),
         reason: 'url with embedded credentials must round-trip verbatim',
+      );
+      expect(
+        rems[1].pushUrl,
+        equals('ssh://user:s3cr3t@example.com/r.git'),
+        reason: 'a present push url round-trips verbatim, credentials included',
       );
     });
   });

@@ -23,16 +23,24 @@ Uint8List zanshinRemotes(int rawHandle) => readToken(zanshin_remotes(rawHandle))
 
 /// One configured git remote (FR-JJ-9).
 ///
-/// `url` is the fetch URL verbatim — credentials are NOT scrubbed and SSH is
-/// NOT rewritten to HTTPS. The caller is responsible for any display scrubbing.
+/// Both URLs are verbatim — credentials are NOT scrubbed and SSH is NOT
+/// rewritten to HTTPS. The caller is responsible for any display scrubbing.
 final class Remote {
-  const Remote({required this.name, required this.url});
+  const Remote({required this.name, required this.url, required this.pushUrl});
 
   /// Remote name (UTF-8), e.g. `"origin"`.
   final String name;
 
   /// Fetch URL verbatim (no credential scrubbing).
   final String url;
+
+  /// Push URL when it DIFFERS from [url], `null` otherwise — null-for-absence,
+  /// never `''`. Absent means "this remote pushes to its fetch URL".
+  ///
+  /// This is a DIFFERENCE, not a raw `remote.<name>.pushurl` read: it is exactly
+  /// the question `jj git remote list` answers when it prints its `(push: …)`
+  /// suffix only for remotes whose two URLs differ.
+  final String? pushUrl;
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -66,4 +74,7 @@ List<Remote> _decodeRemotesEnvelope(Uint8List bytes) {
 Remote _mapRemote(fbs.Remote r) => Remote(
   name: r.name ?? '',
   url: r.url ?? '',
+  // NO `?? ''` here, unlike the two siblings: coalescing would destroy the
+  // absent/present distinction this field exists to carry.
+  pushUrl: r.pushUrl,
 );

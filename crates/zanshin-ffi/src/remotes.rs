@@ -4,7 +4,8 @@
 //!
 //! Calls `zanshin_jj::Repo::list_remotes()` and serialises the result into a
 //! `FlatBuffers` `Envelope` carrying a `Remotes` payload. The handle is borrowed
-//! (not consumed). `url` crosses the wire verbatim (no credential scrubbing).
+//! (not consumed). Both `url` and `push_url` cross the wire verbatim (no credential
+//! scrubbing); `push_url` is ABSENT when the remote pushes to its fetch URL.
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
@@ -27,18 +28,21 @@ fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
 ///
 /// Children before parents (`FlatBuffers` requirement): for each `Remote`, its
 /// strings are built before its table; the `remotes` vector and `Remotes` table
-/// come after the loop. No kind match — a `Remote` is just two plain strings.
+/// come after the loop. No kind match — a `Remote` is just plain strings, one of
+/// which (`push_url`) is null-for-absence and stays ABSENT rather than `""`.
 fn remotes_to_envelope(remotes: &[Remote]) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(remotes.len());
     for r in remotes {
         let name_off = b.create_string(&r.name);
         let url_off = b.create_string(&r.url);
+        let push_off = r.push_url.as_deref().map(|s| b.create_string(s));
         let r_off = fbs::Remote::create(
             &mut b,
             &fbs::RemoteArgs {
                 name: Some(name_off),
                 url: Some(url_off),
+                push_url: push_off,
             },
         );
         offsets.push(r_off);
@@ -97,14 +101,17 @@ mod tests {
     #[test]
     fn remotes_to_envelope_roundtrips_multiple_entries() {
         // ≥2 distinct entries; one with embedded credentials to assert no scrubbing.
+        // Both `push_url` arms are exercised: absent on index 0, present on index 1.
         let remotes = vec![
             Remote {
                 name: "origin".to_owned(),
                 url: "https://github.com/user/repo.git".to_owned(),
+                push_url: None,
             },
             Remote {
                 name: "creds".to_owned(),
                 url: "https://user:token@example.com/r.git".to_owned(),
+                push_url: Some("ssh://user:s3cr3t@example.com/r.git".to_owned()),
             },
         ];
         let buf = remotes_to_envelope(&remotes);
@@ -118,12 +125,23 @@ mod tests {
         // sorting lives upstream in zanshin-jj::list_remotes).
         assert_eq!(items.get(0).name(), Some("origin"));
         assert_eq!(items.get(0).url(), Some("https://github.com/user/repo.git"));
+        assert_eq!(
+            items.get(0).push_url(),
+            None,
+            "absence must stay ABSENT on the wire, never an empty string"
+        );
         // index 1: creds with embedded credentials — must NOT be scrubbed
         assert_eq!(items.get(1).name(), Some("creds"));
         let creds_url = items.get(1).url().expect("url must be present");
         assert!(
             creds_url.contains("user:token"),
             "embedded credentials must survive verbatim, got: {creds_url}"
+        );
+        let push_url = items.get(1).push_url().expect("push_url must be present");
+        assert_eq!(push_url, "ssh://user:s3cr3t@example.com/r.git");
+        assert!(
+            push_url.contains("user:s3cr3t"),
+            "push-URL credentials must survive verbatim too, got: {push_url}"
         );
     }
 

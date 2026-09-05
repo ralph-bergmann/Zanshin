@@ -219,11 +219,14 @@ impl Repo {
         crate::view::list_working_copies(self.workspace())
     }
 
-    /// Lists configured git remotes with fetch URLs, sorted by name (FR-JJ-9).
+    /// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
     ///
     /// Re-resolves to the head operation per call (ADR-0002). Read-only; never
     /// shells to `jj git remote list` (AR-AP-1). A non-git (native) backend, or a
     /// git-backed repo with no remotes, yields `Ok(vec![])`.
+    ///
+    /// [`crate::Remote::push_url`] is present only when it DIFFERS from the fetch URL —
+    /// the same question `jj git remote list` answers with its `(push: …)` suffix.
     ///
     /// # Errors
     ///
@@ -403,8 +406,11 @@ impl Repo {
     ///
     /// A conflicted path is searched side by side, with `conflict_side` set and line numbers
     /// restarting at each side (the CLI's own choice — there is no meaningful unified
-    /// numbering across sides). Symlinks, Git submodules, non-file conflicts, and paths whose
-    /// blob cannot be read are silently not searched, as the CLI skips them.
+    /// numbering across sides). Symlinks, Git submodules and non-file conflicts are SILENTLY
+    /// not searched, as the CLI skips them; a path whose blob cannot be READ is reported in
+    /// [`crate::FileSearch::skipped`] with the CLI's own warning sentence — the only case
+    /// `jj file search` warns about, and a different set (and wording) from what
+    /// [`Repo::file_show`] skips.
     ///
     /// # Errors
     ///
@@ -421,7 +427,7 @@ impl Repo {
         pattern: &str,
         paths: &[String],
         name_only: bool,
-    ) -> Result<Vec<crate::SearchMatch>, crate::FileError> {
+    ) -> Result<crate::FileSearch, crate::FileError> {
         crate::file::file_search(self.workspace(), revision.as_ref(), pattern, paths, name_only)
     }
 
@@ -656,6 +662,12 @@ impl Repo {
     /// here, while jj-lib's own default (`config/misc.toml`) is `true` — so a fetch now
     /// records synthetic predecessors unless the user turns them off. Per-remote
     /// `auto-track-bookmarks` is still NOT honoured — see [`Repo::git_import`].
+    ///
+    /// The result's `abandoned_change_ids` carries the commits jj-lib itself abandoned
+    /// during the import because they became unreachable in git — the effect
+    /// `git.abandon-unreachable-commits` governs — read from the import's own stats. This
+    /// is the one verb where that field is not a caller echo; see
+    /// [`crate::MutationResult::abandoned_change_ids`]. `new_change_ids` is always empty.
     ///
     /// # Errors
     ///

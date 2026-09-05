@@ -510,8 +510,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_list(
 /// defaults to kind `regex`. `name_only` stops a file's scan at its FIRST match — it changes
 /// the work done, not the result shape, so each matching file still contributes its first
 /// matching line. A conflicted path is searched side by side, with `conflict_side` set and
-/// line numbers restarting per side. Symlinks, submodules, non-file conflicts and unreadable
-/// blobs are silently not searched (CLI parity). This read writes NO operation.
+/// line numbers restarting per side. Symlinks, submodules and non-file conflicts are
+/// SILENTLY not searched (CLI parity); a path whose blob could not be READ lands in the
+/// payload's `skipped` vector — the only case `jj file search` warns about — and does NOT
+/// fail the call. This read writes NO operation.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileSearch` payload on success.
 ///
@@ -610,6 +612,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// `WatcherEvent`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Its `abandoned_change_ids` carries the commits the import abandoned because they
+/// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
+/// OWN abandonments, not a caller echo, and empty when that key is off or nothing became
+/// unreachable. `new_change_ids` is always empty: a fetch mints nothing.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

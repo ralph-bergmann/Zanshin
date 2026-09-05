@@ -229,6 +229,22 @@ final class SearchMatch {
   final int? conflictSide;
 }
 
+/// The result of `fileSearch` (mirrors `zanshin_jj::FileSearch`).
+final class FileSearch {
+  const FileSearch({required this.matches, required this.skipped});
+
+  /// One entry per matching line, in jj's own tree order then line order.
+  final List<SearchMatch> matches;
+
+  /// Paths whose blob could NOT be read. Carries `AccessDenied` and nothing
+  /// else — the only case `jj file search` warns about. Symlinks, Git
+  /// submodules and non-file conflicts are skipped SILENTLY and never appear
+  /// here, the exact opposite of [FileContents.skipped]. An unreadable blob
+  /// does not fail the call; without this list "nothing matched" and "a blob
+  /// was unreadable" would be indistinguishable.
+  final List<SkippedPath> skipped;
+}
+
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
 /// Decode a `FileList` `Envelope` buffer into a `List<FileEntry>`.
@@ -318,35 +334,39 @@ List<AnnotationLine> _decodeFileAnnotationEnvelope(Uint8List bytes) {
       const [];
 }
 
-/// Decode a `FileSearch` `Envelope` buffer into a `List<SearchMatch>`.
+/// Decode a `FileSearch` `Envelope` buffer into a [FileSearch].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.fileSearch`.
 @visibleForTesting
-List<SearchMatch> decodeFileSearchEnvelope(Uint8List bytes) => _decodeFileSearchEnvelope(bytes);
+FileSearch decodeFileSearchEnvelope(Uint8List bytes) => _decodeFileSearchEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<SearchMatch> decodeFileSearchEnvelopeInternal(Uint8List bytes) => _decodeFileSearchEnvelope(bytes);
+FileSearch decodeFileSearchEnvelopeInternal(Uint8List bytes) => _decodeFileSearchEnvelope(bytes);
 
-List<SearchMatch> _decodeFileSearchEnvelope(Uint8List bytes) {
+FileSearch _decodeFileSearchEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.FileSearch) {
     throw ZanshinFfiException('ffi.unknown', 'expected FileSearch payload, got ${env.dataType}');
   }
-  return payload.matches
-          ?.map(
-            (m) => SearchMatch(
-              path: m.path ?? '',
-              lineNumber: m.lineNumber,
-              content: _bytes(m.content),
-              // Presence pair, not a sentinel: `conflictSide` is meaningful only
-              // when `hasConflictSide` is set, so absence stays null.
-              conflictSide: m.hasConflictSide ? m.conflictSide : null,
-            ),
-          )
-          .toList() ??
-      const [];
+  return FileSearch(
+    matches:
+        payload.matches
+            ?.map(
+              (m) => SearchMatch(
+                path: m.path ?? '',
+                lineNumber: m.lineNumber,
+                content: _bytes(m.content),
+                // Presence pair, not a sentinel: `conflictSide` is meaningful only
+                // when `hasConflictSide` is set, so absence stays null.
+                conflictSide: m.hasConflictSide ? m.conflictSide : null,
+              ),
+            )
+            .toList() ??
+        const [],
+    skipped: payload.skipped?.map((s) => SkippedPath(path: s.path ?? '', reason: s.reason ?? '')).toList() ?? const [],
+  );
 }
 
 /// Parse [bytes] as an `Envelope` and throw [ZanshinFfiException] when it is not ok.

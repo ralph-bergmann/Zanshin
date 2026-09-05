@@ -116,9 +116,14 @@ void main() {
     test('fileSearch_on_a_fresh_repo_decodes_an_empty_ok_payload', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 
-      final List<SearchMatch> matches = await handle.fileSearch(pattern: 'needle', nameOnly: true);
+      final FileSearch search = await handle.fileSearch(pattern: 'needle', nameOnly: true);
 
-      expect(matches, isEmpty, reason: 'no tracked files, so nothing matches');
+      expect(search.matches, isEmpty, reason: 'no tracked files, so nothing matches');
+      expect(
+        search.skipped,
+        isEmpty,
+        reason: 'nothing was unreadable either — the two are now distinguishable',
+      );
       await handle.close();
     });
 

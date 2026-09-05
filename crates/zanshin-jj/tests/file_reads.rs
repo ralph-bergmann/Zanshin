@@ -611,11 +611,12 @@ fn file_search_reports_one_match_per_matching_line() {
     let repo = open(&t.fx);
     let before = head_op_id(&repo);
 
-    let matches = repo
+    let search = repo
         .file_search(Some(t.change), "needle", &[], false)
         .expect("search succeeds");
 
-    let found: Vec<(String, u32, Vec<u8>)> = matches
+    let found: Vec<(String, u32, Vec<u8>)> = search
+        .matches
         .iter()
         .map(|m| (m.path.clone(), m.line_number, m.content.clone()))
         .collect();
@@ -627,7 +628,13 @@ fn file_search_reports_one_match_per_matching_line() {
         ],
         "a symlink whose TARGET contains the needle is never searched (CLI parity)"
     );
-    assert!(matches.iter().all(|m| m.conflict_side.is_none()));
+    assert!(search.matches.iter().all(|m| m.conflict_side.is_none()));
+    assert!(
+        search.skipped.is_empty(),
+        "a symlink is skipped SILENTLY by `jj file search` — unlike `jj file show`, it never \
+         reaches `skipped`, which carries unreadable blobs only; got {:?}",
+        search.skipped
+    );
     assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
 }
 
@@ -640,13 +647,13 @@ fn file_search_splits_the_pattern_kind_and_defaults_to_regex() {
     let substring = repo
         .file_search(Some(t.change.clone()), "substring:ndl", &[], false)
         .expect("an explicit kind is honoured");
-    assert!(substring.is_empty(), "'ndl' is not a substring of 'needle'");
+    assert!(substring.matches.is_empty(), "'ndl' is not a substring of 'needle'");
 
     // The bare form is a REGEX, so a character class matches where a substring would not.
     let regex = repo
         .file_search(Some(t.change), "n[e]+dle", &[], false)
         .expect("a bare pattern is a regex");
-    assert_eq!(regex.len(), 2, "the regex matches both files");
+    assert_eq!(regex.matches.len(), 2, "the regex matches both files");
 }
 
 #[test]
@@ -683,17 +690,21 @@ fn file_search_name_only_stops_a_file_at_its_first_match() {
     let all = repo
         .file_search(Some(change.clone()), "needle", &[], false)
         .expect("search succeeds");
-    assert_eq!(all.len(), 3, "without name_only every matching line is reported");
+    assert_eq!(
+        all.matches.len(),
+        3,
+        "without name_only every matching line is reported"
+    );
 
     let first_only = repo
         .file_search(Some(change), "needle", &[], true)
         .expect("search succeeds");
     assert_eq!(
-        first_only.len(),
+        first_only.matches.len(),
         1,
         "name_only stops the file's scan at the first match"
     );
-    assert_eq!(first_only[0].line_number, 1);
+    assert_eq!(first_only.matches[0].line_number, 1);
 }
 
 #[test]
@@ -706,11 +717,11 @@ fn file_search_numbers_conflict_sides_independently() {
     let change = change_id_of(&fx.path, &merge_hex);
     let repo = open(&fx);
 
-    let matches = repo
+    let search = repo
         .file_search(Some(change), "substring:left", &[], false)
         .expect("search succeeds");
 
-    let conflicted: Vec<_> = matches.iter().filter(|m| m.path == "conflicted.txt").collect();
+    let conflicted: Vec<_> = search.matches.iter().filter(|m| m.path == "conflicted.txt").collect();
     assert_eq!(conflicted.len(), 1, "only one side of the conflict says 'left'");
     assert!(
         conflicted[0].conflict_side.is_some(),
@@ -721,7 +732,7 @@ fn file_search_numbers_conflict_sides_independently() {
         "line numbers restart at each conflict side"
     );
 
-    let resolved: Vec<_> = matches.iter().filter(|m| m.path == "extra.txt").collect();
+    let resolved: Vec<_> = search.matches.iter().filter(|m| m.path == "extra.txt").collect();
     assert_eq!(resolved.len(), 1);
     assert_eq!(resolved[0].conflict_side, None, "a resolved file has no side");
 }
@@ -732,11 +743,17 @@ fn file_search_with_no_match_is_an_empty_success() {
     let t = mixed_tree();
     let repo = open(&t.fx);
 
-    let matches = repo
+    let search = repo
         .file_search(Some(t.change), "substring:definitely-not-present", &[], false)
         .expect("search succeeds");
 
-    assert!(matches.is_empty(), "no match is an empty result, not an error");
+    assert!(search.matches.is_empty(), "no match is an empty result, not an error");
+    assert!(
+        search.skipped.is_empty(),
+        "an empty `skipped` beside an empty `matches` is what makes \"nothing matched\" \
+         distinguishable from \"a blob was unreadable\"; got {:?}",
+        search.skipped
+    );
 }
 
 #[test]
@@ -752,6 +769,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
     let both: Vec<_> = repo
         .file_search(Some(change.clone()), "substring:t", &[], false)
         .expect("search succeeds")
+        .matches
         .into_iter()
         .filter(|m| m.path == "conflicted.txt")
         .collect();
@@ -764,6 +782,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
     let first: Vec<_> = repo
         .file_search(Some(change), "substring:t", &[], true)
         .expect("search succeeds")
+        .matches
         .into_iter()
         .filter(|m| m.path == "conflicted.txt")
         .collect();

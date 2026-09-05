@@ -89,6 +89,17 @@ fn remote_url(repo: &Repo, name: &str) -> Option<String> {
         .map(|r| r.url)
 }
 
+/// The push URL `Repo::list_remotes` reports for `name` — `None` both when the remote is
+/// missing and when it pushes to its own fetch URL (the field is a DIFFERENCE, matching
+/// `jj git remote list`'s `(push: …)` suffix).
+fn remote_push_url(repo: &Repo, name: &str) -> Option<String> {
+    repo.list_remotes()
+        .expect("list_remotes")
+        .into_iter()
+        .find(|r| r.name == name)
+        .and_then(|r| r.push_url)
+}
+
 /// A git-backed workspace plus a directory to use as a plausible remote URL.
 ///
 /// The URL is never fetched from — these four verbs only rewrite config — so a plain
@@ -125,9 +136,11 @@ fn git_remote_add_is_visible_through_the_same_handle_and_writes_the_cli_operatio
     assert_eq!(remote_url(&repo, "origin").as_deref(), Some(url.as_str()));
 }
 
-/// `push_url` must actually reach jj-lib. The oracle is the raw git config, not a second
-/// call into the code under test — `list_remotes` only reports the FETCH url, so a wrapper
-/// that silently dropped the push url would otherwise pass.
+/// `push_url` must actually reach jj-lib. `list_remotes` now reports the push URL as well
+/// as the fetch URL, so the write is witnessed through the shipped read rather than through
+/// a raw `git config --get remote.origin.pushurl` shell-out: a wrapper that silently dropped
+/// the push url still fails here, and the assertion no longer depends on git's on-disk key
+/// names.
 #[test]
 fn git_remote_add_carries_a_push_url_into_the_git_config() {
     pin_env();
@@ -138,9 +151,12 @@ fn git_remote_add_carries_a_push_url_into_the_git_config() {
     repo.git_remote_add("origin", &url, Some(&push))
         .expect("add with a push url must succeed");
 
-    let (ok, out) = git_try(&["config", "--get", "remote.origin.pushurl"], &git_store(tmp.path()));
-    assert!(ok, "git config must hold a pushurl for the remote");
-    assert_eq!(out, push);
+    assert_eq!(remote_push_url(&repo, "origin").as_deref(), Some(push.as_str()));
+    assert_eq!(
+        remote_url(&repo, "origin").as_deref(),
+        Some(url.as_str()),
+        "the fetch url is untouched by the push url"
+    );
 }
 
 #[test]
@@ -410,13 +426,16 @@ fn git_remote_set_url_changes_the_fetch_url_without_writing_an_operation() {
         Some(repointed.as_str()),
         "no reopen required"
     );
-    let (has_push, _) = git_try(&["config", "--get", "remote.origin.pushurl"], &git_store(tmp.path()));
-    assert!(!has_push, "a fetch-only set-url must not invent a push url");
+    assert_eq!(
+        remote_push_url(&repo, "origin"),
+        None,
+        "a fetch-only set-url must not invent a push url"
+    );
 }
 
 /// set-url's `push_url` argument, which no other row exercises: every other call passes
-/// `None`, so replacing the parameter with a literal `None` would leave them all green. The
-/// oracle is the raw git config, because `list_remotes` only reports the FETCH url.
+/// `None`, so replacing the parameter with a literal `None` would leave them all green.
+/// Witnessed through `list_remotes`' own `push_url`, not a raw `git config` shell-out.
 #[test]
 fn git_remote_set_url_changes_only_the_push_url_when_only_that_is_given() {
     pin_env();
@@ -432,9 +451,11 @@ fn git_remote_set_url_changes_only_the_push_url_when_only_that_is_given() {
         .expect("a push-only set-url must succeed");
 
     assert_eq!(result.new_op_id.0, before, "set-url never opens a transaction");
-    let (ok, out) = git_try(&["config", "--get", "remote.origin.pushurl"], &git_store(tmp.path()));
-    assert!(ok, "git config must now hold a pushurl");
-    assert_eq!(out, push, "the push url must reach jj-lib verbatim");
+    assert_eq!(
+        remote_push_url(&repo, "origin").as_deref(),
+        Some(push.as_str()),
+        "the push url must reach jj-lib verbatim"
+    );
     assert_eq!(
         remote_url(&repo, "origin").as_deref(),
         Some(url.as_str()),
