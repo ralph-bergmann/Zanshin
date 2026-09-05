@@ -23,9 +23,7 @@ import 'request_bytes.dart';
 /// Guard [revision] and every entry of [paths] against an interior NUL.
 void _rejectPathNuls(String? revision, List<String> paths) {
   rejectInteriorNul(revision, 'revision');
-  for (final path in paths) {
-    rejectInteriorNul(path, 'paths');
-  }
+  rejectInteriorNuls(paths, 'paths');
 }
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────

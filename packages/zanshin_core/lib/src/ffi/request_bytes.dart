@@ -60,6 +60,18 @@ void rejectInteriorNul(String? value, String name) {
   }
 }
 
+/// The list form of [rejectInteriorNul]: apply the same guard to every entry of
+/// [values], reporting the OFFENDING ENTRY as the [ArgumentError]'s
+/// `invalidValue` and the list's own parameter [name] as its `name`.
+///
+/// Exists because every list-valued parameter otherwise hand-writes the same
+/// `for` loop over the scalar form — the loop is what desyncs, not the guard.
+void rejectInteriorNuls(Iterable<String> values, String name) {
+  for (final value in values) {
+    rejectInteriorNul(value, name);
+  }
+}
+
 /// Copy the envelope out of a returned token and free the token.
 ///
 /// [token] must be non-null. `FfiBuffer.fromToken` throws an [ArgumentError] on

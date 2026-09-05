@@ -9,7 +9,6 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
 import 'request_bytes.dart';
 
 // This file owns the Dart half of the whole mutation surface: the Story 6.5
@@ -36,13 +35,7 @@ Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
   try {
     final ffi.Pointer<Utf8> descriptionPtr = description.toNativeUtf8();
     try {
-      final ffi.Pointer<ZanshinBuf> token = zanshin_describe(rawHandle, changeIdPtr.cast(), descriptionPtr.cast());
-      final buf = FfiBuffer.fromToken(token);
-      try {
-        return Uint8List.fromList(buf.bytes);
-      } finally {
-        buf.dispose(); // inner: free the returned buffer
-      }
+      return readToken(zanshin_describe(rawHandle, changeIdPtr.cast(), descriptionPtr.cast()));
     } finally {
       calloc.free(descriptionPtr);
     }
@@ -53,15 +46,8 @@ Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
 
 /// Call `zanshin_new_change` with the raw `u64` handle and [parents] (crossed as
 /// a `ChangeIdList` request buffer), and return the FlatBuffers `Envelope` bytes.
-Uint8List zanshinNewChange(int rawHandle, List<String> parents) => _withChangeIdListBytes(parents, (ptr, len) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_new_change(rawHandle, ptr, len);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-});
+Uint8List zanshinNewChange(int rawHandle, List<String> parents) =>
+    _withChangeIdListBytes(parents, (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)));
 
 /// Call `zanshin_edit` with the raw `u64` handle and [changeId], and return the
 /// FlatBuffers `Envelope` bytes.
@@ -69,13 +55,7 @@ Uint8List zanshinEdit(int rawHandle, String changeId) {
   rejectInteriorNul(changeId, 'changeId');
   final ffi.Pointer<Utf8> p = changeId.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_edit(rawHandle, p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose(); // inner: free the returned buffer
-    }
+    return readToken(zanshin_edit(rawHandle, p.cast()));
   } finally {
     calloc.free(p); // outer: free the C string we allocated
   }
@@ -83,27 +63,12 @@ Uint8List zanshinEdit(int rawHandle, String changeId) {
 
 /// Call `zanshin_abandon` with the raw `u64` handle and [changeIds] (crossed as
 /// a `ChangeIdList` request buffer), and return the FlatBuffers `Envelope` bytes.
-Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeIdListBytes(changeIds, (ptr, len) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_abandon(rawHandle, ptr, len);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-});
+Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) =>
+    _withChangeIdListBytes(changeIds, (ptr, len) => readToken(zanshin_abandon(rawHandle, ptr, len)));
 
 /// Call `zanshin_undo` with the raw `u64` handle, and return the FlatBuffers
 /// `Envelope` bytes.
-Uint8List zanshinUndo(int rawHandle) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_undo(rawHandle);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
+Uint8List zanshinUndo(int rawHandle) => readToken(zanshin_undo(rawHandle));
 
 /// Call `zanshin_git_fetch` with the raw `u64` handle and [remoteName], and
 /// return the FlatBuffers `Envelope` bytes.
@@ -115,13 +80,7 @@ Uint8List zanshinGitFetch(int rawHandle, String remoteName) {
   rejectInteriorNul(remoteName, 'remoteName');
   final ffi.Pointer<Utf8> p = remoteName.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_git_fetch(rawHandle, p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose(); // inner: free the returned buffer
-    }
+    return readToken(zanshin_git_fetch(rawHandle, p.cast()));
   } finally {
     calloc.free(p); // outer: free the C string we allocated
   }
@@ -148,9 +107,7 @@ Uint8List zanshinRestore(
   rejectInteriorNul(from, 'from');
   rejectInteriorNul(into, 'into');
   rejectInteriorNul(changesIn, 'changesIn');
-  for (final path in paths) {
-    rejectInteriorNul(path, 'paths');
-  }
+  rejectInteriorNuls(paths, 'paths');
   final Uint8List request = fbs.RestoreRequestObjectBuilder(
     from: from,
     into: into,
@@ -158,15 +115,7 @@ Uint8List zanshinRestore(
     paths: paths,
     restoreDescendants: restoreDescendants,
   ).toBytes();
-  return withRequestBytes(request, (ptr, len) {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_restore(rawHandle, ptr, len);
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
-  });
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_restore(rawHandle, ptr, len)));
 }
 
 /// Call `zanshin_absorb` with the raw `u64` handle and an `AbsorbRequest`
@@ -185,19 +134,9 @@ Uint8List zanshinAbsorb(
 }) {
   rejectInteriorNul(from, 'from');
   rejectInteriorNul(into, 'into');
-  for (final path in paths) {
-    rejectInteriorNul(path, 'paths');
-  }
+  rejectInteriorNuls(paths, 'paths');
   final Uint8List request = fbs.AbsorbRequestObjectBuilder(from: from, into: into, paths: paths).toBytes();
-  return withRequestBytes(request, (ptr, len) {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_absorb(rawHandle, ptr, len);
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
-  });
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_absorb(rawHandle, ptr, len)));
 }
 
 // ── Dart model ────────────────────────────────────────────────────────────────

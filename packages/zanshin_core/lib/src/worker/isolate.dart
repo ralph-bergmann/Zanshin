@@ -34,6 +34,7 @@ import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
+import '../ffi/request_bytes.dart';
 import '../ffi/status.dart' as repo_ffi_status;
 import '../ffi/workspace.dart' as repo_ffi_workspace;
 
@@ -1205,9 +1206,7 @@ class ZanshinWorker {
     // keeps the documented type and spares the round trip. The adapter keeps its
     // own guard as the backstop for a direct caller. (Same fix Story 9.6's
     // review made for `evolog`'s negative limit.)
-    if (name != null && name.codeUnits.contains(0)) {
-      throw ArgumentError.value(name, 'name', 'must not contain an interior NUL (U+0000)');
-    }
+    rejectInteriorNul(name, 'name');
     final Uint8List bytes = await send(
       WorkspaceRootCommand(commandId: _correlator.allocateId(), handleId: handleId, name: name),
     );
@@ -1246,10 +1245,8 @@ class ZanshinWorker {
     // keeps the documented type and spares the round trip. The adapter keeps its
     // own guard as the backstop for a direct caller. (Same fix Stories 9.6 and
     // 9.7 each had to make in review.)
-    _rejectInteriorNuls(names, 'names');
-    if (revision != null && revision.codeUnits.contains(0)) {
-      throw ArgumentError.value(revision, 'revision', 'must not contain an interior NUL (U+0000)');
-    }
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNul(revision, 'revision');
     final Uint8List bytes = await send(
       BookmarkCreateCommand(
         commandId: _correlator.allocateId(),
@@ -1281,20 +1278,11 @@ class ZanshinWorker {
   /// [RepoHandle.bookmarkDelete].
   Future<repo_ffi_mutate.MutationResult> bookmarkDelete(int handleId, List<String> names) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
-    _rejectInteriorNuls(names, 'names');
+    rejectInteriorNuls(names, 'names');
     final Uint8List bytes = await send(
       BookmarkDeleteCommand(commandId: _correlator.allocateId(), handleId: handleId, names: names),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
-  }
-
-  /// Reject an interior NUL in any entry of a caller-supplied string list.
-  static void _rejectInteriorNuls(List<String> values, String name) {
-    for (final value in values) {
-      if (value.codeUnits.contains(0)) {
-        throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-      }
-    }
   }
 }
 

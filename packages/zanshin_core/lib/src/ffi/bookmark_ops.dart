@@ -39,9 +39,7 @@ import 'request_bytes.dart';
 /// A `null` [revision] is the wire form of "the user did not supply `-r`", which
 /// applies the CLI's own clap default `@`.
 Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revision}) {
-  for (final name in names) {
-    rejectInteriorNul(name, 'names');
-  }
+  rejectInteriorNuls(names, 'names');
   rejectInteriorNul(revision, 'revision');
   final Uint8List request = fbs.BookmarkCreateRequestObjectBuilder(names: names, revision: revision).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_create(rawHandle, ptr, len)));
@@ -56,9 +54,7 @@ Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revi
 /// An empty list is refused by the jj layer as `jj.invalid_input`; a pattern
 /// matching nothing SUCCEEDS and writes no operation.
 Uint8List zanshinBookmarkDelete(int rawHandle, List<String> names) {
-  for (final name in names) {
-    rejectInteriorNul(name, 'names');
-  }
+  rejectInteriorNuls(names, 'names');
   final Uint8List request = fbs.BookmarkDeleteRequestObjectBuilder(names: names).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_delete(rawHandle, ptr, len)));
 }

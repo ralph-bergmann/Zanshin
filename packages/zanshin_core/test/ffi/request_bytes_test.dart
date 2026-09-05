@@ -62,4 +62,37 @@ void main() {
       expect(() => rejectInteriorNul(null, 'revision'), returnsNormally);
     });
   });
+
+  group('rejectInteriorNuls', () {
+    const expectedMessage = 'must not contain an interior NUL (U+0000)';
+
+    // The list form reports the OFFENDING ENTRY as `invalidValue` while keeping
+    // the LIST's parameter name — the only place that pairing is asserted.
+    test('reports the offending entry with the list parameter name', () {
+      expect(
+        () => rejectInteriorNuls(<String>['ok', 'a\u0000b', 'also-ok'], 'names'),
+        throwsA(
+          isA<ArgumentError>()
+              .having((e) => e.message, 'message', expectedMessage)
+              .having((e) => e.name, 'name', 'names')
+              .having((e) => e.invalidValue, 'invalidValue', 'a\u0000b'),
+        ),
+      );
+    });
+
+    test('throws on the FIRST offending entry', () {
+      expect(
+        () => rejectInteriorNuls(<String>['first\u0000', 'second\u0000'], 'paths'),
+        throwsA(isA<ArgumentError>().having((e) => e.invalidValue, 'invalidValue', 'first\u0000')),
+      );
+    });
+
+    test('accepts an empty list', () {
+      expect(() => rejectInteriorNuls(const <String>[], 'names'), returnsNormally);
+    });
+
+    test('accepts a NUL-free list, empty strings included', () {
+      expect(() => rejectInteriorNuls(<String>['main', '', 'feature/x'], 'names'), returnsNormally);
+    });
+  });
 }

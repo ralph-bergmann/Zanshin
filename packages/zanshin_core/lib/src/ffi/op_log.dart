@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
@@ -8,7 +7,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -17,15 +16,7 @@ import 'ffi_buffer.dart';
 ///
 /// Only the worker isolate calls this — raw handles never leave the worker
 /// (Model A, Story 3.9). `limit < 0` means all operations.
-Uint8List zanshinOpLog(int rawHandle, int limit) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_op_log(rawHandle, limit);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
+Uint8List zanshinOpLog(int rawHandle, int limit) => readToken(zanshin_op_log(rawHandle, limit));
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 

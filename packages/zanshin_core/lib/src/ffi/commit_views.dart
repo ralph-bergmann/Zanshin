@@ -96,9 +96,7 @@ Uint8List zanshinInterdiff(
 }) {
   rejectInteriorNul(from, 'from');
   rejectInteriorNul(to, 'to');
-  for (final path in paths) {
-    rejectInteriorNul(path, 'paths');
-  }
+  rejectInteriorNuls(paths, 'paths');
   final Uint8List request = fbs.InterdiffRequestObjectBuilder(from: from, to: to, paths: paths).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_interdiff(rawHandle, ptr, len));
 }

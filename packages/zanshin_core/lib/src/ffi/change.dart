@@ -9,7 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -26,13 +26,7 @@ import 'ffi_buffer.dart';
 Uint8List zanshinChange(int rawHandle, String changeId) {
   final ffi.Pointer<Utf8> p = changeId.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_change(rawHandle, p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose(); // inner: free the returned buffer
-    }
+    return readToken(zanshin_change(rawHandle, p.cast()));
   } finally {
     calloc.free(p); // outer: free the C string we allocated
   }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data'; // explicit for Uint8List clarity
 
 import 'package:meta/meta.dart';
@@ -8,7 +7,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -18,15 +17,7 @@ import 'ffi_buffer.dart';
 /// Only the worker isolate calls this — raw handles never leave the worker
 /// (Model A, Story 3.9). The [int] is passed directly to Rust; no Dart-side
 /// `Pointer` is materialised. Mirrors `zanshinRepoClose` in `repo.dart`.
-Uint8List zanshinStatus(int rawHandle) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_status(rawHandle);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
+Uint8List zanshinStatus(int rawHandle) => readToken(zanshin_status(rawHandle));
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 

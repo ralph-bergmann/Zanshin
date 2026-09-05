@@ -10,11 +10,9 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{ChangeKind, FileChange, Status, StatusError};
 
-use crate::envelope::{catch, FfiErrorObj, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY};
+use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::RepoSession;
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
@@ -124,14 +122,8 @@ fn status_to_envelope(status: &Status) -> Vec<u8> {
 pub unsafe extern "C" fn zanshin_status(handle: u64) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_status", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let status = session.repo.status().map_err(map_status_err)?;
         Ok(status_to_envelope(&status))
     });

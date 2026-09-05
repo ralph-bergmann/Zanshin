@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'bindings.dart';
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 /// Opens an existing jj repository at [path].
 ///
@@ -21,13 +21,7 @@ import 'ffi_buffer.dart';
 Uint8List zanshinRepoOpen(String path) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_open(p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    return readToken(zanshin_repo_open(p.cast()));
   } finally {
     calloc.free(p);
   }
@@ -41,13 +35,7 @@ Uint8List zanshinRepoOpen(String path) {
 Uint8List zanshinRepoInit(String path, int backend) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_init(p.cast(), backend);
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    return readToken(zanshin_repo_init(p.cast(), backend));
   } finally {
     calloc.free(p);
   }
@@ -60,13 +48,7 @@ Uint8List zanshinRepoClone(String url, String targetPath) {
   final ffi.Pointer<Utf8> urlP = url.toNativeUtf8();
   final ffi.Pointer<Utf8> targetP = targetPath.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_clone(urlP.cast(), targetP.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    return readToken(zanshin_repo_clone(urlP.cast(), targetP.cast()));
   } finally {
     calloc
       ..free(urlP)
@@ -82,15 +64,7 @@ Uint8List zanshinRepoClone(String url, String targetPath) {
 /// reconstructs the pointer; no Dart-side `Pointer` is materialised.
 ///
 /// Errors: `ffi.invalid_handle` (handle is `0` / already closed).
-Uint8List zanshinRepoClose(int rawHandle) {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_repo_close(rawHandle);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
+Uint8List zanshinRepoClose(int rawHandle) => readToken(zanshin_repo_close(rawHandle));
 
 /// Detects the repository kind at [path].
 ///
@@ -102,13 +76,7 @@ Uint8List zanshinRepoClose(int rawHandle) {
 Uint8List zanshinRepoDetect(String path) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_detect(p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    return readToken(zanshin_repo_detect(p.cast()));
   } finally {
     calloc.free(p);
   }
@@ -122,13 +90,7 @@ Uint8List zanshinRepoDetect(String path) {
 Uint8List zanshinRepoConvert(String path) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {
-    final ffi.Pointer<ZanshinBuf> token = zanshin_repo_convert(p.cast());
-    final buf = FfiBuffer.fromToken(token);
-    try {
-      return Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    return readToken(zanshin_repo_convert(p.cast()));
   } finally {
     calloc.free(p);
   }

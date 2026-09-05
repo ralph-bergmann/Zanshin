@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:inject_annotation/inject_annotation.dart';
@@ -10,6 +9,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 /// Build-stamp and log-location diagnostics returned by [zanshin_diagnostics].
 final class Diagnostics {
@@ -49,15 +49,7 @@ class ZanshinDiagnosticsModule {
   GetDiagnostics zanshinDiagnostics() => _callDiagnostics;
 }
 
-Diagnostics _callDiagnostics() {
-  final ffi.Pointer<ZanshinBuf> token = zanshin_diagnostics();
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return decodeDiagnosticsEnvelope(Uint8List.fromList(buf.bytes));
-  } finally {
-    buf.dispose();
-  }
-}
+Diagnostics _callDiagnostics() => decodeDiagnosticsEnvelope(readToken(zanshin_diagnostics()));
 
 /// Decodes a diagnostics `Envelope` buffer into a [Diagnostics] model.
 ///

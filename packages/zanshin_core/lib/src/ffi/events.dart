@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 final _log = Logger('zanshin.ffi.events');
 
@@ -103,13 +103,7 @@ ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ZanshinBuf>)>? _callable;
 
 void _handleNativeEvent(void Function(ZanshinRawEvent event) onEvent, ffi.Pointer<ZanshinBuf> token) {
   try {
-    final buf = FfiBuffer.fromToken(token);
-    final Uint8List bytes;
-    try {
-      bytes = Uint8List.fromList(buf.bytes);
-    } finally {
-      buf.dispose();
-    }
+    final Uint8List bytes = readToken(token);
     onEvent(decodeEventEnvelope(bytes));
   } catch (e, st) {
     // A malformed buffer or decode failure must NOT become an uncaught async

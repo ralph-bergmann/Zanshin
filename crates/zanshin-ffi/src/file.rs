@@ -16,13 +16,11 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileType, SearchMatch};
 
 use crate::envelope::{
-    catch, finish_envelope, invalid_request, missing_field, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE,
+    catch, finish_envelope, invalid_request, missing_field, reject_null_request, session_from_handle, FfiErrorObj,
     JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::RepoSession;
 
 /// Maps a [`FileError`] onto its AR-P-4 code; user data always rides in `context`.
 fn map_file_err(e: FileError) -> FfiErrorObj {
@@ -323,14 +321,8 @@ fn file_search_to_envelope(matches: &[SearchMatch]) -> Vec<u8> {
 pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_list", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_file_list_request(data, len)?;
         let entries = session.repo.file_list(req.revision, &req.paths).map_err(map_file_err)?;
         Ok(file_list_to_envelope(&entries))
@@ -374,12 +366,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_show", handle);
     let buf = catch(|| {
-        // SAFETY: see `zanshin_file_list`.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_file_show_request(data, len)?;
         let contents = session.repo.file_show(req.revision, &req.paths).map_err(map_file_err)?;
         Ok(file_contents_to_envelope(&contents))
@@ -418,12 +406,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_annotate", handle);
     let buf = catch(|| {
-        // SAFETY: see `zanshin_file_list`.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_file_annotate_request(data, len)?;
         let lines = session
             .repo
@@ -464,12 +448,8 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_search", handle);
     let buf = catch(|| {
-        // SAFETY: see `zanshin_file_list`.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_file_search_request(data, len)?;
         let matches = session
             .repo

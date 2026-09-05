@@ -21,13 +21,11 @@ use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
 use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError};
 
 use crate::envelope::{
-    catch, FfiErrorObj, FFI_INVALID_HANDLE, GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR,
+    catch, session_from_handle, FfiErrorObj, GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR,
     JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::RepoSession;
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
@@ -271,14 +269,8 @@ pub unsafe extern "C" fn zanshin_graph_slice(
 ) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_graph_slice", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: all three are caller-owned NUL-terminated C strings (Dart allocates + frees).
         let revset = unsafe { cstr_to_string(revset) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
         let prioritize = unsafe { cstr_to_string(prioritize) }?;

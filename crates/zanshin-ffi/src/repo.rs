@@ -23,7 +23,7 @@ use zanshin_jj::{
 
 use crate::envelope::{
     catch, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, reject_null_request,
-    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
+    session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
     JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED,
     JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
     JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
@@ -710,14 +710,8 @@ pub unsafe extern "C" fn zanshin_describe(
 ) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_describe", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: both are caller-owned NUL-terminated C strings (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?;
         let desc = unsafe { cstr_to_string(description) }?;
@@ -758,14 +752,8 @@ pub unsafe extern "C" fn zanshin_describe(
 pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_new_change", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let parents = read_change_id_list(data, len)?;
         let result = session.repo.new_change(&parents).map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
@@ -806,14 +794,8 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
 pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_edit", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: change_id is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?;
         let result = session.repo.edit(ChangeId(id)).map_err(map_mutate_err)?;
@@ -860,14 +842,8 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_abandon", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let change_ids = read_change_id_list(data, len)?;
         let result = session.repo.abandon(&change_ids).map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
@@ -899,14 +875,8 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_undo", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let result = session.repo.undo().map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
     });
@@ -946,14 +916,8 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
 pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_char) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_git_fetch", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: remote_name is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let remote_name = unsafe { cstr_to_string(remote_name) }?;
         // Copy the Copy `u64` out BEFORE building the closure — avoids a borrow
@@ -1026,14 +990,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_restore", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_restore_request(data, len)?;
         let result = session
             .repo
@@ -1092,14 +1050,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 pub unsafe extern "C" fn zanshin_absorb(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_absorb", handle);
     let buf = catch(|| {
-        // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-        // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate
-        // model (AD-2) guarantees no concurrent access.
-        let session =
-            unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-                code: FFI_INVALID_HANDLE.to_owned(),
-                context: None,
-            })?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
         let req = read_absorb_request(data, len)?;
         let result = session
             .repo

@@ -199,6 +199,62 @@ void main() {
       );
     });
 
+    // The other five git arms' unknown-handle reply, same synthesized envelope.
+    test('gitImport_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitImport(handleId),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('gitRemoteAdd_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitRemoteAdd(handleId, name: 'origin', url: remoteDir.path),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('gitRemoteRemove_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitRemoteRemove(handleId, 'origin'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('gitRemoteRename_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitRemoteRename(handleId, 'origin', 'upstream'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('gitRemoteSetUrl_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitRemoteSetUrl(handleId, name: 'origin', url: remoteDir.path),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
     // The RepoHandle close-guard is SYNCHRONOUS for every verb — a closed handle
     // must not even reach the worker.
     test('every_git_verb_throws_StateError_synchronously_after_close', () async {

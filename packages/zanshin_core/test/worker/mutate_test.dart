@@ -235,6 +235,65 @@ void main() {
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });
+
+    // The remaining mutation arms' unknown-handle reply. A closed handle is
+    // rejected by the worker's own handle-table lookup BEFORE any FFI call — so
+    // `gitFetch` here spawns no `git` subprocess and the caveat above
+    // `gitFetch_unknown_remote_surfaces_jj_remote_not_found` does not apply.
+    test('describe_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.describe(handleId, changeId: '@', description: 'x'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('newChange_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.newChange(handleId, const <String>[]),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('edit_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.edit(handleId, '@'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('abandon_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.abandon(handleId, const <String>['@']),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+
+    test('gitFetch_on_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      await expectLater(
+        worker.gitFetch(handleId, 'origin'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
   });
 
   // ── RepoHandle closed-handle guards ───────────────────────────────────────

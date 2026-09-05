@@ -9,7 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // This file owns the Dart half of the GraphSlice wire contract: the
 // `zanshin_graph_slice` FFI adapter (Story 4.6), the models, and the decoder.
@@ -93,15 +93,9 @@ Uint8List zanshinGraphSlice(
   required bool syntheticElided,
   required String shortPrefixes,
 }) {
-  if (revset.codeUnits.contains(0)) {
-    throw ArgumentError.value(revset, 'revset', 'must not contain an interior NUL (U+0000)');
-  }
-  if (prioritize.codeUnits.contains(0)) {
-    throw ArgumentError.value(prioritize, 'prioritize', 'must not contain an interior NUL (U+0000)');
-  }
-  if (shortPrefixes.codeUnits.contains(0)) {
-    throw ArgumentError.value(shortPrefixes, 'shortPrefixes', 'must not contain an interior NUL (U+0000)');
-  }
+  rejectInteriorNul(revset, 'revset');
+  rejectInteriorNul(prioritize, 'prioritize');
+  rejectInteriorNul(shortPrefixes, 'shortPrefixes');
   final ffi.Pointer<Utf8> revsetPtr = revset.toNativeUtf8();
   try {
     final ffi.Pointer<Utf8> prioritizePtr = prioritize.toNativeUtf8();
@@ -115,12 +109,7 @@ Uint8List zanshinGraphSlice(
           syntheticElided,
           shortPrefixesPtr.cast(),
         );
-        final buf = FfiBuffer.fromToken(token);
-        try {
-          return Uint8List.fromList(buf.bytes);
-        } finally {
-          buf.dispose(); // inner: free the returned buffer
-        }
+        return readToken(token);
       } finally {
         calloc.free(shortPrefixesPtr);
       }

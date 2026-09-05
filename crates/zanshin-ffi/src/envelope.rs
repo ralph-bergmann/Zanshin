@@ -216,12 +216,12 @@ pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
 // Unlike the builders in this module it returns a BORROW, not a finished buffer — hence
 // its own banner.
 //
-// NOT yet the only spelling in the crate: nine other modules (`repo.rs` with 8 sites,
-// `file.rs` with 4, plus `status.rs`, `change.rs`, `graph.rs`, `op_log.rs`,
-// `bookmarks.rs`, `remotes.rs`, `log_defaults.rs`) still spell the same borrow INLINE
-// inside their `catch(|| …)` closures — about 20 sites, semantically identical. Folding
-// them in is mechanical but was deliberately out of scope for the extraction that created
-// this helper; it is recorded in `deferred-work.md`.
+// This is now the ONLY `.ok_or_else(…)` spelling of that borrow in the crate: the nine
+// modules that used to inline it (`repo.rs`, `file.rs`, `status.rs`, `change.rs`,
+// `graph.rs`, `op_log.rs`, `bookmarks.rs`, `remotes.rs`, `log_defaults.rs`) all call this
+// helper. The one deliberate non-user is `zanshin_repo_close` in `repo.rs`, whose close
+// path is a different shape — `if let Some(session) = …` followed by `handle_drop`, with
+// its own SAFETY comment about close ordering — not a fallible borrow.
 
 /// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
 ///
