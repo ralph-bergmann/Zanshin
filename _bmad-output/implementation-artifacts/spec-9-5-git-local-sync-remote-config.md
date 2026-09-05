@@ -56,6 +56,23 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs (git_fetch) vs crates/zanshin-jj/src/git.rs
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-c-git-sync-must-haves, commit 824615a).
+      git_fetch's GitFetch::new arm now maps to MutateError::NotAGitRepo -> jj.not_a_git_repo,
+      so all seven git verbs report "this workspace has no git backend" under ONE code. The
+      remap is exact rather than a widening: GitFetch::new's error type IS
+      UnexpectedGitBackendError (jj-lib-0.44.0 git.rs:3032-3047, re-read before editing), whose
+      only fallible step is get_git_backend, so the blanket map_err swallows nothing else. An
+      unknown remote NAME is raised later by fetch() as GitFetchError::NoSuchRemote and still
+      maps to jj.remote_not_found, as do the three 9.5 remote-config verbs; none of their
+      existing assertions were touched. Recorded as a deliberate observable change on BOTH
+      registry rows in docs/rust-error-codes.md, and followed through MutateError's
+      RemoteNotFound/NotAGitRepo variant docs, envelope.rs's JJ_REMOTE_NOT_FOUND/JJ_NOT_A_GIT_REPO
+      consts, zanshin_git_fetch's extern "C" doc and both Dart gitFetch doc lists. Witnessed by
+      remotes_write.rs::git_fetch_on_native_backend_returns_not_a_git_repo (renamed from
+      ..._returns_remote_not_found) and the new
+      repo_write_ffi.rs::git_fetch_on_native_backend_returns_jj_not_a_git_repo, which also pins
+      that the envelope carries NO context.
   - summary: >-
       `git_fetch` and `clone_into` still hardcode the two `GitImportOptions` booleans that
       `git_import` now reads from the effective config.
@@ -70,6 +87,28 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs (git_fetch) + crates/zanshin-jj/src/repo.rs (clone_into)
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-c-git-sync-must-haves, commit 824615a). Both call
+      sites now route through config::git_import_options, so all three jj-lib ref-import sites read
+      the same user setting (FR-JJ-17); the suggested 9.20 fold-in is no longer needed. The CLI's
+      own per-verb asymmetry is reproduced rather than unified: git fetch takes BOTH keys from
+      config (cli/src/commands/git/fetch.rs:235 @ v0.44.0), while git clone spreads the loaded
+      options but pins record_synthetic_predecessors false regardless ("There may be a large
+      number of new commits", cli/src/commands/git/clone.rs:384-389). This FLIPPED fetch's default
+      for record-synthetic-predecessors from the old hardcoded false to jj-lib's own true, so it is
+      not a change that only matters when a key was set. remotes::git_fetch takes import_options as
+      a pub(crate) parameter (no public signature changed); Repo::git_fetch loads it and gains a
+      reachable MutateError::Config -> jj.config_error, registered on that row. A config fault
+      inside clone_into stays RepoError::CloneFailed, the channel every clone step already uses, so
+      no new error code or RepoError variant was added. config::load_for_workspace was split out of
+      config::load because clone_into has no Repo yet; the six existing load(repo) callers are
+      untouched, and remote_auto_track_bookmarks deliberately stays EMPTY at all three sites (the
+      separate, still-open item). Witnessed by
+      remotes_write.rs::git_fetch_honours_abandon_unreachable_commits_false and
+      ..._with_a_non_boolean_config_value_refuses_as_config, plus the new single-test binary
+      tests/clone_config.rs, which repoints (never unsets) JJ_CONFIG the way config_user_layer.rs
+      does and walks both clone rows. Both new behaviours were mutation-probed; only the intended
+      test failed each time.
   - summary: >-
       The jj-repo-config-rewrite reading of the intent ("Remote remove/rename also rewrite the
       repo config") was resolved against porting the CLI's `.jj/repo/config.toml` edit.
