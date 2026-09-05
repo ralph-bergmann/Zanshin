@@ -81,6 +81,9 @@ void main() {
         created.newOpId,
         reason: 'matching nothing returns the PRE-CALL head, the wire form of "No bookmarks to delete."',
       );
+      // The no-op exit is supposed to report the same three fields as the committed one, so it
+      // is asserted through the decoder here as well.
+      expectNoChangeChurn(noop, (await handle.status()).workingCopyChangeId);
       expect(await handle.bookmarks(), hasLength(1), reason: 'nothing was deleted');
 
       await handle.close();

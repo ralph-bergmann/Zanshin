@@ -1140,8 +1140,10 @@ impl Repo {
     ///   an error: it is what applies the CLI's `-r` default `@`.
     /// - [`crate::MutateError::BookmarkExists`] — a name is already a local bookmark.
     /// - [`crate::MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is
-    ///   absent but it still has a tracked remote bookmark. A colocated `name@git` does NOT
-    ///   count: the default-ignored remote is excluded, exactly as in the CLI.
+    ///   absent but it still has a tracked remote bookmark. On a GIT-backed repo a colocated
+    ///   `name@git` does NOT count: the default-ignored remote is excluded, exactly as in the
+    ///   CLI. That exclusion is git-specific — on any other backend no remote is ignored, so a
+    ///   tracked `name@git` refuses there.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn bookmark_create(

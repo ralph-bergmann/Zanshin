@@ -385,12 +385,12 @@ fn delete_matching_nothing_succeeds_with_the_pre_call_head() {
     let env = parse_envelope(&bytes);
 
     assert!(env.ok(), "matching nothing is never a refusal");
-    assert_eq!(
-        env.data_as_mutation_result()
-            .expect("MutationResult payload")
-            .new_op_id(),
-        Some(before.as_str())
-    );
+    let noop = env.data_as_mutation_result().expect("MutationResult payload");
+    assert_eq!(noop.new_op_id(), Some(before.as_str()));
+    // The no-op exit builds its payload through the SAME envelope builder as the committed one,
+    // so the present-but-empty vectors are asserted on this path too — that property is only
+    // representable here, at the FlatBuffers surface.
+    assert_no_change_churn(&noop, &wc_change_id(handle));
     assert_eq!(head_op_id(handle), before);
 
     close_handle(handle);

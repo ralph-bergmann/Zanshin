@@ -280,9 +280,10 @@ fn create_is_not_blocked_by_a_tracked_remote_on_the_reserved_git_remote() {
 /// `has_tracked_remote_bookmarks` only excludes the reserved `git` remote when
 /// `get_git_backend` succeeds; on any other backend the remote matcher is `StringMatcher::all()`,
 /// which excludes nothing. So a tracked `colocated@git` — meaningless on a native repo, but
-/// perfectly representable in the view — DOES block `create colocated` there. That `else` arm is
-/// executed by the git-backed tests but asserted by none of them: deleting it would leave the
-/// whole suite green. This test is what pins it.
+/// perfectly representable in the view — DOES block `create colocated` there. Every other test in
+/// this file runs on the git-backed `tiny-3-commits` and so takes the `if` arm; the `else` arm was
+/// reached only by the native-backend Dart worker tests, none of which assert the difference. This
+/// test is what pins it.
 #[test]
 fn create_is_blocked_by_a_tracked_git_remote_on_a_native_backend() {
     pin_env();
