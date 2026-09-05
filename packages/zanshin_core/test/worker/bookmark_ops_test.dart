@@ -29,6 +29,9 @@ import 'package:zanshin_core/src/worker/responses.dart';
 void expectNoChangeChurn(MutationResult result, String expectedWc) {
   expect(result.newChangeIds, isEmpty, reason: 'a bookmark verb mints no change');
   expect(result.abandonedChangeIds, isEmpty, reason: 'a bookmark verb abandons no change');
+  // The decoder null-coalesces an absent id to '' on BOTH sides of the next comparison, so
+  // without this guard a dropped field would satisfy it vacuously.
+  expect(expectedWc, isNotEmpty, reason: 'the oracle itself must be a real change id');
   expect(result.workingCopyChangeId, expectedWc, reason: '`@` does not move');
 }
 
@@ -73,6 +76,9 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       // A create first, so there IS a recent operation whose id can be compared.
       final MutationResult created = await handle.bookmarkCreate(['feature']);
+      // Read PRE-CALL: an oracle read after the mutation would move with a regression that moved
+      // `@`, so both sides of the comparison would shift together and the assertion would hold.
+      final String expectedWc = (await handle.status()).workingCopyChangeId;
 
       final MutationResult noop = await handle.bookmarkDelete(['nosuch']);
 
@@ -83,7 +89,7 @@ void main() {
       );
       // The no-op exit is supposed to report the same three fields as the committed one, so it
       // is asserted through the decoder here as well.
-      expectNoChangeChurn(noop, (await handle.status()).workingCopyChangeId);
+      expectNoChangeChurn(noop, expectedWc);
       expect(await handle.bookmarks(), hasLength(1), reason: 'nothing was deleted');
 
       await handle.close();

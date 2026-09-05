@@ -83,7 +83,12 @@ deferred:
       BookmarkTrackedRemoteExists AND to leave the head operation unchanged. The ledger's stated
       semantics were confirmed rather than corrected. Mutation-probed: replacing StringMatcher::all()
       with the git arm's negated matcher fails that test and only that test. No fixture was
-      regenerated; no production file was touched.
+      regenerated. NOT test-only, though: the new test falsified five doc statements that claimed
+      UNCONDITIONALLY that a colocated name@git never blocks the create, and all five were qualified
+      as git-backend-specific in the same run — Repo::bookmark_create's facade doc,
+      has_tracked_remote_bookmarks' own doc, MutateError::BookmarkTrackedRemoteExists,
+      envelope.rs::JJ_BOOKMARK_TRACKED_REMOTE_EXISTS and the docs/rust-error-codes.md registry row.
+      Four production files, all comment-only.
   - summary: >-
       MutationResult's other three fields are asserted nowhere for either bookmark verb.
     evidence: |-

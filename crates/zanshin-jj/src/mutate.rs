@@ -227,8 +227,9 @@ pub enum MutateError {
     /// Kept DISTINCT from [`MutateError::BookmarkExists`] because the remedies differ, which
     /// is precisely what the CLI's two separate hints say: recreate the local bookmark with
     /// `bookmark set`, or disassociate the remote with `bookmark untrack` (both Story 9.11).
-    /// The default-ignored remote `git` is excluded, so a colocated `name@git` never
-    /// triggers it.
+    /// On a GIT-backed repo the default-ignored remote `git` is excluded, so a colocated
+    /// `name@git` never triggers it there. That exclusion is git-specific — on any other
+    /// backend no remote is ignored, so a tracked `name@git` does trigger it.
     #[error("tracked remote bookmarks exist for deleted bookmark: {name}")]
     BookmarkTrackedRemoteExists {
         /// The bookmark name whose tracked remote bookmarks block the create.

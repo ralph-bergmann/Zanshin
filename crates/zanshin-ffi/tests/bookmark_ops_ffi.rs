@@ -170,11 +170,15 @@ fn wc_change_id(handle: u64) -> String {
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "status must succeed");
-    env.data_as_status()
+    let id = env
+        .data_as_status()
         .expect("Status payload")
         .working_copy_change_id()
-        .expect("working-copy change id")
-        .to_owned()
+        .expect("working-copy change id");
+    // Guarding only `None` would let an empty string through, and every assertion built on this
+    // oracle compares it against another decoded id — two empty strings compare equal.
+    assert!(!id.is_empty(), "the working-copy change id is never empty");
+    id.to_owned()
 }
 
 /// The fixture's working-copy commit hex — the seed target for in-test bookmark state.
@@ -376,6 +380,9 @@ fn delete_matching_nothing_succeeds_with_the_pre_call_head() {
     pin_env();
     let (handle, _root) = open_fixture();
     let before = head_op_id(handle);
+    // Read PRE-CALL: an oracle read after the mutation would move with a regression that moved
+    // `@`, so both sides of the comparison would shift together and the assertion would hold.
+    let expected_wc = wc_change_id(handle);
 
     let req = delete_request_bytes(Some(&["nosuch"]));
     // SAFETY: handle is live; the buffer outlives the call.
@@ -390,7 +397,7 @@ fn delete_matching_nothing_succeeds_with_the_pre_call_head() {
     // The no-op exit builds its payload through the SAME envelope builder as the committed one,
     // so the present-but-empty vectors are asserted on this path too — that property is only
     // representable here, at the FlatBuffers surface.
-    assert_no_change_churn(&noop, &wc_change_id(handle));
+    assert_no_change_churn(&noop, &expected_wc);
     assert_eq!(head_op_id(handle), before);
 
     close_handle(handle);

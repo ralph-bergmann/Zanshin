@@ -1029,9 +1029,9 @@ impl Repo {
     /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, or a
     ///   `paths` entry is not a valid repo path.
     /// - [`crate::CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, carried by
-    ///   no VISIBLE commit (unknown or only-hidden), or divergent. Not to be confused with
-    ///   the ABSENT of the bullet above: ONE absent side is not an error, it is what applies
-    ///   the CLI's `--from`/`--to` default `@`.
+    ///   no VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT side is not an
+    ///   error: ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting
+    ///   BOTH is the `InvalidInput` bullet above.
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: owned `ChangeId`s match the house currency for single-revision parameters

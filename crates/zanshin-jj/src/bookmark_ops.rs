@@ -73,9 +73,10 @@ fn validate_names(names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
 /// Whether `bookmark` has any TRACKED remote bookmark — the CLI's
 /// `cli_util.rs:3385-3393` `has_tracked_remote_bookmarks`.
 ///
-/// The default-ignored remote is excluded, which for a git-backed repo is jj-lib's reserved
-/// `git` (`cli_util.rs:3372-3381` `default_ignored_remote_name`). That is why a colocated
-/// `foo@git` does NOT block `create foo`.
+/// On a GIT-backed repo the default-ignored remote is excluded — jj-lib's reserved `git`
+/// (`cli_util.rs:3372-3381` `default_ignored_remote_name`) — which is why a colocated `foo@git`
+/// does NOT block `create foo` there. The exclusion is git-specific: on any other backend the
+/// matcher is `StringMatcher::all()`, so nothing is ignored and a tracked `foo@git` DOES block.
 fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefName) -> bool {
     let remote_matcher = if jj_lib::git::get_git_backend(repo.store()).is_ok() {
         StringExpression::exact(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO.as_str())

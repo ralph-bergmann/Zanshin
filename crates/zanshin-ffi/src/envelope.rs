@@ -89,8 +89,9 @@ pub const JJ_BOOKMARK_EXISTS: &str = "jj.bookmark_exists";
 ///
 /// Kept DISTINCT from `jj.bookmark_exists` because the remedies differ, which is exactly what
 /// the CLI's two separate hints say: recreate the local bookmark with `bookmark set`, or
-/// disassociate the remote with `bookmark untrack`. The default-ignored remote `git` is
-/// excluded, so a colocated `name@git` never produces this code.
+/// disassociate the remote with `bookmark untrack`. On a GIT-backed repo the default-ignored
+/// remote `git` is excluded, so a colocated `name@git` never produces this code there; that
+/// exclusion is git-specific, so on any other backend a tracked `name@git` does produce it.
 pub const JJ_BOOKMARK_TRACKED_REMOTE_EXISTS: &str = "jj.bookmark_tracked_remote_exists";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when no workspace of the requested
 /// name exists in the head view; the name in `context` (Story 9.7).

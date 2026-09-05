@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up B: the three doc/test low-hanging fruits from Story 9.8'
 type: 'chore'
 created: '2026-09-05'
-status: 'done'
+status: 'in-review'
 baseline_revision: 'fd79e9de69e262a7ef49ef55147343e6e5651afb'
 review_loop_iteration: 0
 followup_review_recommended: true
@@ -153,8 +153,11 @@ re-grep rather than trusting a number after the first edit in a file.
 - `crates/zanshin-ffi/src/repo.rs:1030` — `zanshin_absorb`.
 
 Generated outputs that must be regenerated and committed (never hand-edited):
-`crates/zanshin-ffi/include/zanshin_ffi.h` (lines 536, 652, 1532 carry the four FFI bullets) and
-`packages/zanshin_core/lib/src/ffi/bindings.dart` (lines 76, 480, 930). `cargo make codegen`
+`crates/zanshin-ffi/include/zanshin_ffi.h` and
+`packages/zanshin_core/lib/src/ffi/bindings.dart` — FOUR bullets move in each, one per wrapper
+(`zanshin_interdiff`, `zanshin_file_list`, `zanshin_restore`, `zanshin_absorb`). Locate them by
+verb, not by line: the single-line grep that first produced this list returned only three anchors
+per file because `zanshin_restore`'s bullet is line-wrapped. `cargo make codegen`
 also re-runs `flatc`; with no `.fbs` edit those outputs must come back byte-identical.
 
 **Item 2 — `MutationResult`'s other three fields, in three layers**
@@ -268,8 +271,11 @@ also re-runs `flatc`; with no `.fbs` edit those outputs must come back byte-iden
   -- the originating spec's frontmatter is the per-story evidence trail.
 
 **Acceptance Criteria:**
-- Given the repo, when `crates/` is grepped for `malformed, absent, only-hidden, or divergent`
-  and for `absent,\n///   only-hidden`, then the only remaining hits are the twelve
+- Given the repo, when `crates/` is grepped for the one-line form
+  (`grep -rn "malformed, absent, only-hidden, or divergent" crates/`) and for the line-wrapped one
+  (`grep -rn -A 1 "is malformed, absent,$" crates/zanshin-jj/src crates/zanshin-ffi/src`, since a
+  plain `grep` is line-oriented and cannot match across the wrap), then the only remaining hits
+  are the twelve
   `describe`/`new_change`/`edit`/`abandon` bullets (four in `zanshin-jj/src/mutate.rs`, four in
   `zanshin-jj/src/repo.rs`, four in `zanshin-ffi/src/repo.rs`) plus
   `zanshin-jj/src/change.rs:158` — and none in `file.rs`, `commit_views.rs`, or the
@@ -296,6 +302,30 @@ also re-runs `flatc`; with no `.fbs` edit those outputs must come back byte-iden
 
 ## Spec Change Log
 
+### 2026-09-05 — Doc scope extended beyond the 14 enumerated sites
+
+**Trigger.** Item 3's new native-backend test (`create_is_blocked_by_a_tracked_git_remote_on_a_native_backend`)
+falsified five doc statements that were not on the Code Map's 14-site list, because all five assert
+UNCONDITIONALLY that a colocated `name@git` never blocks `create` / never produces
+`jj.bookmark_tracked_remote_exists`: `Repo::bookmark_create`'s facade doc
+(`crates/zanshin-jj/src/repo.rs`), `has_tracked_remote_bookmarks`' own doc
+(`crates/zanshin-jj/src/bookmark_ops.rs`), `MutateError::BookmarkTrackedRemoteExists`
+(`crates/zanshin-jj/src/mutate.rs`), `JJ_BOOKMARK_TRACKED_REMOTE_EXISTS`
+(`crates/zanshin-ffi/src/envelope.rs`) and the canonical registry row in `docs/rust-error-codes.md`.
+
+**Amendment.** All five qualified as GIT-backend-specific, in the same shape. No behaviour, no
+signature, no error code, no `.fbs` — comment-only, like item 1.
+
+**Authority and bound.** The intent's closing-run rule ("a few-line same-shape leftover is fixed
+here or rejected, never deferred") plus the ban on new ledger entries. The extension is bounded to
+statements THIS RUN'S OWN NEW TEST falsifies — nothing was rewritten merely for being terse,
+inconsistent or stale, which is what kept `MutateError`'s enum-level header, `resolve_commit`'s
+doc and the `file_show`/`file_annotate`/`file_search` siblings out.
+
+**Known-bad state avoided.** Marking item 3 resolved while the registry `docs/rust-error-codes.md`
+— which `project-context.md` makes authoritative for error codes — still told a reader the
+refusal cannot happen, in the same commit range that added the test proving it can.
+
 ## Review Triage Log
 
 ### 2026-09-05 — Review pass
@@ -321,11 +351,57 @@ also re-runs `flatc`; with no `.fbs` edit those outputs must come back byte-iden
     self-undermining in a run whose subject is comment accuracy.
   - `[medium]` `[patch]` `Repo::bookmark_create`'s rustdoc claimed unconditionally that a
     colocated `name@git` does NOT count. The run's own new test proves that false on a native
-    backend. Qualified to "on a GIT-backed repo", naming the git-specific exclusion. The private
-    helper's doc was already correctly qualified; the public facade — the rustdoc a consumer
-    reads, which is this spec's own argument for touching the facade layer at all — was not.
+    backend. Qualified to "on a GIT-backed repo", naming the git-specific exclusion. A second
+    review pass established that the same now-falsified claim survived at FOUR further sites —
+    `has_tracked_remote_bookmarks`' own doc (whose opening and closing sentences are
+    unconditional; only its middle clause was qualified), `MutateError::BookmarkTrackedRemoteExists`,
+    `envelope.rs::JJ_BOOKMARK_TRACKED_REMOTE_EXISTS` and the canonical `docs/rust-error-codes.md`
+    registry row. All four are now qualified in the same shape; see the Spec Change Log for the
+    scope authority and its bound.
 
-Rejection note (scope authority is the intent itself): the largest rejected cluster is doc sites
+### 2026-09-05 — Review pass (second, parent-run, over the same diff)
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 3, low 4)
+- defer: 0
+- reject: 0
+- addressed_findings:
+  - `[medium]` `[patch]` Both NO-OP tests read the `@` oracle AFTER the mutation, so a regression
+    that moved `@` would shift both sides of the comparison equally and still pass — and that is
+    the one of the three fields not empty-by-construction. Both now bind the oracle before the
+    delete (`crates/zanshin-ffi/tests/bookmark_ops_ffi.rs`,
+    `packages/zanshin_core/test/worker/bookmark_ops_test.dart`).
+  - `[medium]` `[patch]` FOUR further copies of the colocated-`name@git` claim the first pass
+    corrected on the facade survived, all unconditional and all falsified by this run's own new
+    test: `has_tracked_remote_bookmarks`' doc, `MutateError::BookmarkTrackedRemoteExists`,
+    `envelope.rs::JJ_BOOKMARK_TRACKED_REMOTE_EXISTS` and the canonical `docs/rust-error-codes.md`
+    row — the last the worst, since `project-context.md` makes that registry authoritative. All
+    qualified as git-backend-specific; the first pass's own triage claim that "the private
+    helper's doc was already correctly qualified" was false and is corrected above.
+  - `[medium]` `[patch]` Bookkeeping written by this run was inaccurate about this run: item 3's
+    `resolved:` block claimed "no production file was touched" (four were, all comment-only), the
+    ledger's item-3 resolution omitted the doc corrections, and `## Spec Change Log` was empty
+    although a real scope extension had happened. All three corrected; the change-log entry
+    records the trigger, the amendment and the bound.
+  - `[low]` `[patch]` Both `working_copy_change_id` assertions could pass vacuously on an empty
+    oracle (the Dart decoder null-coalesces to `''`; `wc_change_id` guarded only `None`).
+    Non-emptiness guards added inside `expectNoChangeChurn` and `wc_change_id`.
+  - `[low]` `[patch]` Acceptance Criterion 1 told a re-verifier to grep `absent,\n///   only-hidden`,
+    which line-oriented `grep` cannot match. Reworded to the runnable `grep -A 1` form, same
+    expected outcome.
+  - `[low]` `[patch]` The Code Map listed three anchors per generated file where FOUR bullets move
+    — the single-line grep that produced the list missed `zanshin_restore`'s wrapped bullet.
+    Replaced the line numbers with the four verb names.
+  - `[low]` `[patch]` "Not to be confused with the ABSENT of the bullet above" is not English, and
+    it sat on `interdiff` in both `crates/zanshin-jj/src/commit_views.rs` and
+    `crates/zanshin-jj/src/repo.rs` — the sharpest site in the whole item. Reworded to the
+    parallel FFI site's grammatical form.
+  - `[low]` `[patch]` The ledger's item-2 resolution said the no-op exit "was not covered"; it was
+    covered for `new_op_id` by the pre-existing tests — what was missing were the other three
+    fields on that exit. Qualifier restored (the Design Notes already had it right).
+
+Rejection note (scope authority is the intent itself; applies to the FIRST pass): the largest rejected cluster is doc sites
 the intent enumerates and excludes by name — `MutateError::ChangeNotFound`'s variant doc, the
 twelve `describe`/`new_change`/`edit`/`abandon` bullets, and the "does not resolve" siblings on
 `file_show`/`file_annotate`/`file_search`. A reviewer disputed the exclusion's *reasoning* for the
@@ -413,9 +489,12 @@ git-backed twin does not get.
 **Files changed**
 
 - `crates/zanshin-jj/src/{file,commit_views,mutate,repo}.rs` — the ten stale jj-layer doc bullets
-  rewritten; `Repo::bookmark_create`'s tracked-remote bullet qualified as git-specific (review).
+  rewritten.
 - `crates/zanshin-ffi/src/{file,commit_views,repo}.rs` — the four `extern "C"` wrapper bullets, in
   the FFI spelling.
+- `crates/zanshin-jj/src/{repo,bookmark_ops,mutate}.rs`, `crates/zanshin-ffi/src/envelope.rs`,
+  `docs/rust-error-codes.md` — the five unconditional colocated-`name@git` claims this run's own
+  new test falsified, qualified as git-backend-specific (review; see the Spec Change Log).
 - `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` —
   regenerated doc text; no other generated output moved.
 - `crates/zanshin-jj/tests/bookmark_ops.rs` — the `assert_no_change_churn` helper on three paths,
@@ -427,11 +506,14 @@ git-backed twin does not get.
 - `_bmad-output/implementation-artifacts/deferred-work.md`,
   `_bmad-output/implementation-artifacts/spec-9-8-bookmark-crud-create-delete.md` — bookkeeping.
 
-**Review findings breakdown.** 3 patches applied (all medium, listed in the triage log); 0 deferred;
-21 rejected. No intent gap and no spec repair loopback; `review_loop_iteration` stayed at 0.
+**Review findings breakdown.** Two review passes over the same diff. First pass: 3 patches applied
+(all medium), 0 deferred, 21 rejected. Second (parent-run) pass: 7 patches applied (3 medium,
+4 low), 0 deferred, 0 rejected. Neither pass found an intent gap or triggered a spec repair
+loopback, so `review_loop_iteration` stayed at 0. Both passes are itemised in the triage log; the
+one scope extension either produced is recorded in the Spec Change Log.
 
-**Follow-up review recommendation:** `true`. Patched counts by severity: high 0, medium 3, low 0.
-Score = 3 x 3 + 1 x 0 = 9, which is >= 5.
+**Follow-up review recommendation:** `true`. Patched counts by severity across both passes: high 0,
+medium 6, low 4. Score = 3 x 6 + 1 x 4 = 22, which is >= 5.
 
 **Verification performed**
 
@@ -465,9 +547,12 @@ Score = 3 x 3 + 1 x 0 = 9, which is >= 5.
   from an absent one. That distinction is pinned one layer down, in
   `crates/zanshin-ffi/tests/bookmark_ops_ffi.rs`, where the vectors are read through `.expect(...)`.
   Nothing ships unguarded, but the Dart assertion is the weaker of the two by construction.
-- No test moves `@` between opening the repo and the mutation, so a regression that returned a
-  working-copy change id cached at open time would still satisfy all three layers. Out of scope
-  here: every matrix row fixes the expectation to the PRE-CALL `@`.
+- Every `working_copy_change_id` oracle is now read PRE-CALL, at all three layers and on both the
+  committed and the no-op path, so a regression that MOVED `@` cannot shift both sides of the
+  comparison together. What remains uncovered is the narrower case where nothing moves `@` at all:
+  no test advances `@` between opening the repo and the mutation, so a regression that returned a
+  value cached at open time would still satisfy all three layers. Out of scope here — every matrix
+  row fixes the expectation to the PRE-CALL `@`.
 - `cargo make verify-codegen` remains a manual discipline tool rather than a gate step (a
   deliberate WIP deferral recorded in `project-context.md`), so a future rustdoc edit to one of the
   four `extern "C"` wrappers without `cargo make codegen` would leave the shipped header and Dart

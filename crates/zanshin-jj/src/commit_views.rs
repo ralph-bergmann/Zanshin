@@ -382,9 +382,9 @@ pub(crate) fn evolog(
 /// - [`CommitViewError::InvalidInput`] — BOTH `from` and `to` are absent, or a `paths` entry is
 ///   not a valid repo path.
 /// - [`CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, carried by no VISIBLE
-///   commit (unknown or only-hidden), or divergent. Not to be confused with the ABSENT of the
-///   bullet above: ONE absent side is not an error at all, it applies the CLI's `--from`/`--to`
-///   default `@`.
+///   commit (unknown or only-hidden), or divergent. An ABSENT side is not an error: ONE absent
+///   side applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the
+///   `InvalidInput` bullet above.
 /// - [`CommitViewError::Backend`] — `load_at_head`, the in-memory rebase, or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn interdiff(
