@@ -24,6 +24,13 @@ deferred:
     location: >-
       crates/zanshin-ffi/src/{repo,file,status,change,graph,op_log,bookmarks,remotes,log_defaults}.rs
     severity: low
+    resolved: >-
+      2026-09-05, spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit 53fc8f6. The count
+      was exactly 19; every site now calls envelope::session_from_handle behind git.rs's
+      one-line `// SAFETY: see \`session_from_handle\`.` pointer, with the three-line per-site
+      duplicates and the orphaned handle_from_raw / RepoSession / FFI_INVALID_HANDLE imports
+      deleted. zanshin_repo_close's `if let Some` + handle_drop close path is the one
+      deliberate non-user; the envelope.rs banner was rewritten to say so.
   - summary: >-
       readToken's body is still inlined ~23 times in the Dart adapters that do NOT pass a
       request buffer.
@@ -36,6 +43,12 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/ffi/
     severity: low
+    resolved: >-
+      2026-09-05, spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit 53fc8f6. All 23
+      re-pointed at request_bytes.dart's readToken; FfiBuffer.fromToken now has exactly one
+      caller. mutate.dart held 8 blocks, not four (the ~23 total was right).
+      diagnostics.dart and events.dart decoded inside the try and now decode the
+      Uint8List.fromList copy after disposal — same value, shorter native lifetime.
   - summary: >-
       ZanshinWorker._rejectInteriorNuls hand-rolls the guard this run just centralised.
     evidence: |-
@@ -48,6 +61,13 @@ deferred:
     location: >-
       packages/zanshin_core/lib/src/worker/isolate.dart
     severity: low
+    resolved: >-
+      2026-09-05, spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit 53fc8f6.
+      _rejectInteriorNuls deleted; a new rejectInteriorNuls list helper next to the scalar
+      form replaced all six hand-written `for` loops. The five remaining hand-rolled throws
+      delegate too — two in isolate.dart (workspaceRoot's name, bookmarkCreate's revision)
+      and three in graph.dart the a2 spec's own map had missed. `codeUnits.contains(0)` and
+      the literal message each have one hit in lib/, both inside rejectInteriorNul.
   - summary: >-
       Ten worker command arms have no closed-handle test.
     evidence: |-
@@ -59,6 +79,11 @@ deferred:
     location: >-
       packages/zanshin_core/test/worker/
     severity: medium
+    resolved: >-
+      2026-09-05, spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit 53fc8f6. Ten tests
+      added on the file_test.dart model — the five mutation arms in mutate_test.dart, the
+      five git arms in git_test.dart beside the existing gitExport one. All 33 arms now have
+      a closed-handle witness.
 ---
 
 <intent-contract>

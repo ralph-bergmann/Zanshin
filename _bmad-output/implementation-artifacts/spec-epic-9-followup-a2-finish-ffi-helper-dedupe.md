@@ -1,0 +1,344 @@
+---
+title: 'Epic 9 follow-up A2: finish the FFI-helper dedupe'
+type: 'refactor'
+created: '2026-09-05'
+status: 'done'
+baseline_revision: 'ea6005ef66ce1216a797c627a254063d952fad57'
+review_loop_iteration: 0
+followup_review_recommended: false
+context: []
+warnings: ['multiple-goals', 'oversized']
+deferred: []
+---
+
+<intent-contract>
+
+## Intent
+
+**Problem:** The 2026-09-05 dedupe run (`spec-epic-9-followup-a-dedupe-ffi-helpers`) deliberately
+scoped itself to the NAMED copies of three helpers and recorded four wider items in
+`deferred-work.md` § "Deferred from: spec-epic-9-followup-a-dedupe-ffi-helpers (2026-09-05)": 19
+inline `session_from_handle` borrows still spelled by hand in nine `zanshin-ffi` modules, 23 inlined
+`readToken` bodies in eleven `zanshin_core` FFI adapters, `ZanshinWorker._rejectInteriorNuls`
+re-spelling the guard that run just single-sourced, and ten worker command arms with no
+closed-handle test. Every one is a place a future edit can desync, and the ledger entry is the
+proof the debt is known but unpaid.
+
+**Approach:** A CLOSING run that resolves all four ledger entries and nothing else. Items 1–3 are
+pure re-pointings at helpers that already exist — no new abstraction is invented, only the one
+already-shipped spelling is called — with no observable behaviour change on any surface (same
+bytes, same codes, same messages, same `ArgumentError` `name`s). Item 4 is test-only: ten
+closed-handle worker tests modelled verbatim on `test/worker/file_test.dart`'s four. Item 3 needs
+one genuinely new symbol, a list variant `rejectInteriorNuls`, because six adapter call sites
+currently hand-write the `for` loop over the scalar form.
+
+## Boundaries & Constraints
+
+**Always:**
+- Behaviour-preserving for items 1–3. Every replaced expression must produce the identical error
+  code, `context`, message and `name` argument. The FFI wire is untouched: no `.fbs` edit, no
+  `extern "C"` signature change, therefore **no `cargo make codegen` run and no diff in any
+  generated file** (`zanshin_ffi.h`, `bindings.dart`, `*_generated.rs`, `*.ffi_generated.dart`).
+- Every `unsafe` block keeps a `// SAFETY:` comment. The established replacement is the one-line
+  `// SAFETY: see \`session_from_handle\`.` that `git.rs` already uses at all six of its call sites
+  — that IS the "delete the per-site duplicated SAFETY comments" the ledger asks for: the
+  three-line duplicate goes, the pointer stays. Project-context forbids an `unsafe` block with no
+  SAFETY comment.
+- Clean up only the orphans this change creates: imports the re-pointing leaves unused must go
+  (`-D warnings` / `--fatal-infos --fatal-warnings` catch them). Do not touch anything else in the
+  files.
+- Coverage may rise but never drop. Items 1's deletions remove COVERED Rust lines from nine files;
+  eight are at `100.00` in `coverage-baseline.txt` and stay there, `graph.rs` is at `99.81` with
+  `epsilon_pct = 0.10` of slack. Items 2–4 are Dart-only and cannot move a Rust-only ratchet.
+- The ten new tests assert exactly what the four existing `file_test.dart` ones assert: a
+  `ZanshinFfiException` whose `code` is `ffi.invalid_handle`, on the WORKER method (not the
+  `RepoHandle` wrapper, whose guard is a synchronous `StateError`).
+- Bookkeeping is part of the run: all four ledger bullets struck through, and the four matching
+  `deferred:` items in `spec-epic-9-followup-a-dedupe-ffi-helpers.md` given a `resolved:` field.
+- `cargo make test` is the single gate, run unpiped and synchronously, and must exit 0.
+- Commits use `--no-gpg-sign` and stay on `main`.
+
+**Block If:**
+- The gate can only be made green by lowering a `coverage-baseline.txt` entry or adding an
+  `exclude_prefix`: HALT with `blocked`, blocking condition `coverage ratchet regression`.
+- A re-pointing turns out NOT to be behaviour-preserving (a supposedly identical inline site
+  differs in code, `context` or message): HALT with `blocked`, blocking condition
+  `not a pure refactor`.
+- A closed-handle test cannot be written without inventing new production behaviour: HALT with
+  `blocked`, blocking condition `worker arm not testable as specified`.
+
+**Never:**
+- Do NOT convert `repo.rs:593` (`zanshin_repo_close`). It is a different shape — `if let Some(…)`
+  followed by `handle_drop`, not `.ok_or_else(…)?` — and carries its own eight-line SAFETY comment
+  about close ordering. It is not one of the 19 sites the ledger counted.
+- Do NOT widen: no `docs/ffi-abi.md` pass, no `.fbs` change, no new error code, no new public API
+  on `zanshin-jj` or `zanshin_core` beyond the one `rejectInteriorNuls` list helper, no behaviour
+  change to any verb, no reformatting or "improvement" of adjacent code.
+- Do NOT open a new ledger entry for further duplication of the same shape. This run exists to
+  leave the ledger SMALLER — a same-shape leftover is either fixed here (if it is a few lines) or
+  rejected, never deferred.
+- Do NOT write a literal NUL byte into any source or spec file. Write `U+0000` or a `\u0000`-style
+  escape in prose; in Dart test strings use an escape sequence. The previous run tripped over this
+  twice (a committed blob was classified binary).
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Zero handle at any of the 19 re-pointed Rust wrappers | `handle = 0` | `Envelope{ok:false, error.code="ffi.invalid_handle", context=null}` — byte-identical to baseline | Unchanged |
+| Live handle at those wrappers | valid handle from `zanshin_repo_open`/`_init` | success envelope, unchanged payload | Unchanged |
+| Any of the 23 re-pointed Dart adapters returns a token | any `zanshin_*` call | envelope bytes copied out, token freed exactly once via `buf.dispose()` in a `finally` | Unchanged |
+| `diagnostics.dart` / `events.dart` decode-inside-try sites | any token | decode now runs on the copy AFTER `dispose()` instead of before; `Uint8List.fromList` already copies, so the decoded value is identical | Unchanged |
+| Worker method given a list whose entry has an interior NUL | e.g. `bookmarkCreate(id, ['a<NUL>b'])` | `ArgumentError.value(value, 'names', 'must not contain an interior NUL (U+0000)')` — same message, same `name`, same `invalidValue` | Unchanged |
+| Worker method given a scalar with an interior NUL | e.g. `workspaceRoot(id, name: 'a<NUL>b')` | `ArgumentError.value(name, 'name', …)` / `(revision, 'revision', …)` — unchanged | Unchanged |
+| Each of the ten previously-untested worker arms, handle closed | `handles[handleId] == null` | `ZanshinFfiException` with `code == 'ffi.invalid_handle'` | This IS the assertion |
+
+</intent-contract>
+
+## Code Map
+
+Anchors read against the working tree at baseline `ea6005e`. Line numbers shift as edits land —
+re-grep rather than trusting a number after the first edit in a file.
+
+**Item 1 — 19 inline `session_from_handle` borrows → the shared helper**
+
+- `crates/zanshin-ffi/src/envelope.rs:235-243` — `pub(crate) unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj>`, already crate-visible. `:212-224` is its banner, whose second paragraph ("NOT yet the only spelling in the crate: nine other modules …") becomes FALSE with this change and must be rewritten to say it now IS the only `.ok_or_else` spelling, with `repo.rs`'s close-path `if let Some` named as the deliberate exception.
+- `crates/zanshin-ffi/src/git.rs:230-232` — the reference call-site shape to copy: `// SAFETY: see \`session_from_handle\`.` then `let session = unsafe { session_from_handle(handle) }?;`. Six such sites (`:232, 266, 314, 367, 422, 480`).
+- The 19 sites to convert, each the identical five-line
+  `let session =\n unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {\n code: FFI_INVALID_HANDLE.to_owned(),\n context: None,\n })?;` preceded by a three-line SAFETY comment (or, after the first site in a file, by `// SAFETY: see \`zanshin_<first>\`.`):
+  - `repo.rs` — `:717, 765, 813, 867, 906, 953, 1033, 1099` (8)
+  - `file.rs` — `:330, 379, 423, 469` (4)
+  - `status.rs:131`, `change.rs:168`, `graph.rs:278`, `op_log.rs:100`, `bookmarks.rs:92`,
+    `remotes.rs:86`, `log_defaults.rs:92` (1 each)
+- `crates/zanshin-ffi/src/repo.rs:585-596` — **NOT converted.** `zanshin_repo_close`'s
+  `if let Some(session) = unsafe { handle_from_raw::<RepoSession>(…) } { session.close(); }` plus
+  `handle_drop`, with its own close-ordering SAFETY comment. Leave verbatim.
+- Import surgery per file (add `session_from_handle` to the existing `use crate::envelope::{…}`
+  list in all nine):
+  - delete `use crate::handle::handle_from_raw;` — `status.rs:16`, `change.rs:19`, `graph.rs:29`,
+    `op_log.rs:16`, `bookmarks.rs:16`, `remotes.rs:16`, `log_defaults.rs:20`, `file.rs:24`.
+    `repo.rs:35` (`use crate::handle::{handle_drop, handle_from_raw, handle_into_raw};`) KEEPS
+    `handle_from_raw` — the close path at `:593` still uses it.
+  - delete `use crate::repo::RepoSession;` — same eight files (`status.rs:17`, `change.rs:20`,
+    `graph.rs:30`, `op_log.rs:17`, `bookmarks.rs:17`, `remotes.rs:17`, `log_defaults.rs:21`,
+    `file.rs:25`). `graph.rs:11`'s doc mention of `RepoSession` is a plain code span, not an
+    intra-doc link, so it does not keep the import alive. `repo.rs` DEFINES `RepoSession` (`:325`).
+  - drop `FFI_INVALID_HANDLE` from the `crate::envelope::{…}` list in those same eight
+    (`status.rs:13`, `op_log.rs:13`, `change.rs:16`, `graph.rs:24`, `bookmarks.rs:13`,
+    `file.rs:19`, `log_defaults.rs:17`, `remotes.rs:13`). `repo.rs` KEEPS it (`:581`).
+  - drop `FfiErrorObj` ONLY from `status.rs:13` and `log_defaults.rs:17` — those two have no other
+    use. Every other file keeps it (`change.rs:30`, `op_log.rs:19`, `graph.rs:34+`, `remotes.rs:19`,
+    `bookmarks.rs:19`, `file.rs:37+`, `repo.rs:40+`).
+- `coverage-baseline.txt:15,16,19,22,24,27,29,30,31,32` — `bookmarks/change/envelope/file/graph/
+  log_defaults/op_log/remotes/repo/status.rs`; all `100.00` except `graph.rs = 99.81`.
+
+**Item 2 — 23 inlined `readToken` bodies → `ffi/request_bytes.dart`'s `readToken`**
+
+- `packages/zanshin_core/lib/src/ffi/request_bytes.dart:70-77` — the destination, already
+  package-visible and documented (null-token note included). No change needed for item 2.
+- The 23 sites, each the identical
+  `final buf = FfiBuffer.fromToken(token);\n try { return Uint8List.fromList(buf.bytes); } finally { buf.dispose(); }`:
+  - `mutate.dart` — `:40, 58, 73, 88, 100, 119, 163, 194` (8). **The ledger says "four blocks
+    inside mutate.dart"; the real count is 8.** Its "~23" total is right (15 + 8), so the undercount
+    is inside mutate.dart only — do all eight.
+  - `repo.dart` — `:25, 45, 64, 87, 106, 126` (6)
+  - `status.dart:23`, `bookmarks.dart:23`, `op_log.dart:22`, `remotes.dart:23`,
+    `log_defaults.dart:23`, `change.dart:30`, `graph.dart:118` (1 each)
+  - `diagnostics.dart:52-60` — variant: decodes INSIDE the `try`, then disposes. Becomes
+    `decodeDiagnosticsEnvelope(readToken(zanshin_diagnostics()))`; identical because
+    `Uint8List.fromList` already copies.
+  - `events.dart:106-113` — variant: `final Uint8List bytes; try { bytes = … } finally { … }` then
+    `onEvent(decodeEventEnvelope(bytes));`, all inside an outer `try/catch (e, st)`. Becomes
+    `onEvent(decodeEventEnvelope(readToken(token)));` inside that same outer try.
+- `prefer_expression_function_bodies` is ON: a body that collapses to a single `return` MUST become
+  `=>` (e.g. `Uint8List zanshinStatus(int rawHandle) => readToken(zanshin_status(rawHandle));`).
+- Import pruning: `dart:ffi as ffi`, `ffi_buffer.dart` and `bindings.dart` go unused in whichever
+  files lose their last reference. `bindings.dart` survives wherever a `zanshin_*` symbol is still
+  called. Let `dart analyze` decide — do not guess.
+- Files that must gain `import 'request_bytes.dart';` (relative, `directives_ordering` applies):
+  the eleven above minus the six that already import it (`mutate.dart:13` already does).
+
+**Item 3 — one spelling of the interior-NUL guard**
+
+- `packages/zanshin_core/lib/src/ffi/request_bytes.dart:57-61` — `rejectInteriorNul(String? value, String name)`, the single source of the message and `name`. ADD a list variant next to it:
+  `void rejectInteriorNuls(Iterable<String> values, String name)` looping `rejectInteriorNul`.
+- `packages/zanshin_core/lib/src/worker/isolate.dart`:
+  - `:1291-1298` `static void _rejectInteriorNuls(List<String> values, String name)` — DELETE.
+  - `:1249` and `:1284` — `_rejectInteriorNuls(names, 'names');` → `rejectInteriorNuls(names, 'names');`
+  - `:1208-1210` (`workspaceRoot`) and `:1250-1252` (`bookmarkCreate`) — scalar hand-rolls
+    `if (x != null && x.codeUnits.contains(0)) { throw ArgumentError.value(x, '<name>', 'must not contain an interior NUL (U+0000)'); }` → `rejectInteriorNul(name, 'name');` /
+    `rejectInteriorNul(revision, 'revision');`. The scalar helper already null-guards, so this is
+    literally the same predicate and the same throw. Including these is what removes the SECOND
+    SPELLING the ledger names; leaving them would fail the item's own purpose.
+  - Add `import '../ffi/request_bytes.dart';` unprefixed (the file's `../ffi/log_forwarder.dart`
+    import is the precedent), in `directives_ordering` position after `../ffi/repo_detect.dart`.
+  - The `// WHY here and not only in the adapter:` comments at `:1201-1207` and `:1242-1248` STAY —
+    they explain the two-layer design, not the spelling.
+- The six adapter `for` loops → `rejectInteriorNuls(…)` with the SAME `name` argument:
+  `mutate.dart:151-153` and `:188-190` (`'paths'`), `bookmark_ops.dart:42-44` and `:59-61`
+  (`'names'`), `file.dart:26-28` (`'paths'`), `commit_views.dart:99-101` (`'paths'`).
+- `packages/zanshin_core/test/ffi/request_bytes_test.dart` — existing witness pinning the literal
+  message, `name` and `invalidValue` for the scalar form. Extend it with the list form.
+
+**Item 4 — ten closed-handle worker tests**
+
+- `packages/zanshin_core/test/worker/file_test.dart:174-212` — the four-test model. Shape:
+  `initRepo` → `handle.close()` → `expectLater(worker.<method>(handle.handleId, …), throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')))`. No
+  `handle.close()` afterwards (already closed).
+- Worker methods and their arities (`packages/zanshin_core/lib/src/worker/isolate.dart`):
+  `describe(id, {required changeId, required description})` `:665`; `newChange(id, List<String> parents)` `:691`; `edit(id, String changeId)` `:708`; `abandon(id, List<String> changeIds)` `:725`;
+  `gitFetch(id, String remoteName)` `:761`; `gitImport(id)` `:950`;
+  `gitRemoteAdd(id, {required name, required url, String? pushUrl})` `:978`;
+  `gitRemoteRemove(id, String name)` `:1006`; `gitRemoteRename(id, String oldName, String newName)`
+  `:1023`; `gitRemoteSetUrl(id, {required name, String? url, String? pushUrl})` `:1045`.
+- Placement: `describe`/`newChange`/`edit`/`abandon`/`gitFetch` into
+  `test/worker/mutate_test.dart` beside its `undo`/`restore`/`absorb` closed-handle tests
+  (`:123, 219, 229`), using `backend: 0` like its siblings — except `gitFetch`, whose file-mates use
+  `backend: 1` (`:150`). `gitImport` + the four `gitRemote*` into `test/worker/git_test.dart` beside
+  `gitExport_on_a_closed_handle_surfaces_ffi_invalid_handle` (`:191-200`), `backend: 1`, following
+  its `final int handleId = handle.handleId;`-before-close local.
+- A closed handle is rejected by the worker's own map lookup BEFORE any FFI call, so `gitFetch`
+  spawns no `git` subprocess here — the reason `mutate_test.dart:133-148` avoids a happy-path fetch
+  does not apply.
+- No `extern "C"` function is added or removed, so the coverage guard's extern-fn check is
+  unaffected; coverage is Rust-only so these ten tests do not move the ratchet.
+
+**Bookkeeping targets**
+- `_bmad-output/implementation-artifacts/deferred-work.md:234, 236, 238, 240` — the four bullets.
+  Convention in the same file (`:178`, `:182`, `:216`): `~~**title**~~ [locations] — … **RESOLVED
+  <date> (<spec slug>, commit <short hash>): <one line>**`.
+- `_bmad-output/implementation-artifacts/spec-epic-9-followup-a-dedupe-ffi-helpers.md:12-61` — the
+  four `deferred:` items, in the same order as the ledger bullets; each gains a `resolved: >-`
+  block scalar. Keep the YAML valid.
+
+## Tasks & Acceptance
+
+**Execution:**
+- `crates/zanshin-ffi/src/{repo,file,status,change,graph,op_log,bookmarks,remotes,log_defaults}.rs` --
+  replace each of the 19 inline `.ok_or_else(…)` borrows with `// SAFETY: see \`session_from_handle\`.` + `let session = unsafe { session_from_handle(handle) }?;`, delete the
+  per-site three-line SAFETY duplicates, add `session_from_handle` to each file's
+  `use crate::envelope::{…}` list, and delete the imports the change orphans (per the Code Map's
+  per-file list). Leave `repo.rs:585-596` untouched. -- one spelling of the unbounded-lifetime
+  contract instead of twenty.
+- `crates/zanshin-ffi/src/envelope.rs` -- rewrite the second paragraph of the
+  `── Shared handle borrow ──` banner (`:219-224`): it currently records the nine modules as still
+  inline, which this change makes false. State that it is now the only `.ok_or_else` spelling and
+  name `zanshin_repo_close`'s `if let Some` close path as the one deliberate non-user. -- a banner
+  that lies is worse than no banner.
+- `packages/zanshin_core/lib/src/ffi/{status,bookmarks,op_log,remotes,log_defaults,change,diagnostics,events,graph,repo,mutate}.dart` --
+  replace all 23 inlined token reads with `readToken(<call>)`, import `request_bytes.dart` where
+  missing, collapse now-single-return bodies to `=>` (`prefer_expression_function_bodies`), and
+  drop the imports `dart analyze` then reports unused. -- one definition of the token-ownership
+  discipline; a change to it stops needing a dozen edits.
+- `packages/zanshin_core/lib/src/ffi/request_bytes.dart` -- add
+  `void rejectInteriorNuls(Iterable<String> values, String name)` delegating to `rejectInteriorNul`,
+  documented as the list form of the same guard. -- six call sites hand-write this loop; the list
+  form is what lets them stop.
+- `packages/zanshin_core/lib/src/ffi/{mutate,bookmark_ops,file,commit_views}.dart` -- replace the
+  six `for (final x in xs) rejectInteriorNul(x, '<name>');` loops with
+  `rejectInteriorNuls(xs, '<name>');`, same `name` argument. -- identical throw, six fewer loops.
+- `packages/zanshin_core/lib/src/worker/isolate.dart` -- delete `_rejectInteriorNuls`, import
+  `../ffi/request_bytes.dart`, and re-point its two list call sites plus the two scalar hand-rolls
+  (`workspaceRoot`'s `name`, `bookmarkCreate`'s `revision`) at the shared guards. Keep both
+  `// WHY here and not only in the adapter:` comments. -- the message and its `name` argument are
+  then produced in exactly one place in the whole package.
+- `packages/zanshin_core/test/ffi/request_bytes_test.dart` -- add cases for `rejectInteriorNuls`:
+  an entry with an interior NUL throws with the literal message, the list's `name` and that ENTRY as
+  `invalidValue`; an empty list and a NUL-free list are accepted. Use a `\u0000` escape, never a
+  literal NUL byte. -- the list variant is new code and the only assertion of which value the list
+  form reports.
+- `packages/zanshin_core/test/worker/mutate_test.dart` -- add five closed-handle tests
+  (`describe`, `newChange`, `edit`, `abandon`, `gitFetch`) modelled on `file_test.dart:174-212`. --
+  five of the ten arms whose unknown-handle reply is currently witnessed by nothing.
+- `packages/zanshin_core/test/worker/git_test.dart` -- add five closed-handle tests (`gitImport`,
+  `gitRemoteAdd`, `gitRemoteRemove`, `gitRemoteRename`, `gitRemoteSetUrl`) beside the existing
+  `gitExport` one. -- the other five arms.
+- `_bmad-output/implementation-artifacts/deferred-work.md` -- strike through all four bullets of the
+  `spec-epic-9-followup-a-dedupe-ffi-helpers` section in the file's existing convention, each with
+  ` — RESOLVED 2026-09-05 (spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit <short hash>): <one line>`. -- a closing run that leaves its own ledger section open has not closed anything.
+- `_bmad-output/implementation-artifacts/spec-epic-9-followup-a-dedupe-ffi-helpers.md` -- add a
+  `resolved: >-` block scalar to each of its four `deferred:` items, keeping the YAML valid. -- the
+  spec frontmatter is the per-run evidence trail.
+
+**Acceptance Criteria:**
+- Given `crates/zanshin-ffi/src/`, when it is grepped for
+  `handle_from_raw::<RepoSession>`, then exactly ONE hit remains — `repo.rs`'s
+  `zanshin_repo_close` — and `grep -c "session_from_handle(handle)"` over the crate returns 32
+  (13 pre-existing + 19 converted).
+- Given `packages/zanshin_core/lib/`, when it is grepped for `FfiBuffer.fromToken`, then exactly two
+  hits remain: the definition in `ffi_buffer.dart` and the single call in `request_bytes.dart`'s
+  `readToken`.
+- Given `packages/zanshin_core/lib/`, when it is grepped for `codeUnits.contains(0)` and for
+  `must not contain an interior NUL`, then each returns exactly one hit and both are inside
+  `request_bytes.dart`'s `rejectInteriorNul`.
+- Given `packages/zanshin_core/test/worker/`, when it is grepped for the ten worker methods called
+  as `worker.<method>(`, then each of `describe`, `newChange`, `edit`, `abandon`, `gitFetch`,
+  `gitImport`, `gitRemoteAdd`, `gitRemoteRemove`, `gitRemoteRename`, `gitRemoteSetUrl` has at least
+  one hit, inside a test asserting `ffi.invalid_handle`.
+- Given a clean tree, when `cargo make test` runs unpiped, then it exits 0 and no
+  `coverage-baseline.txt` entry is lower than at baseline `ea6005e`.
+- Given the change is staged, when `git status --porcelain` is read, then no generated file
+  (`zanshin_ffi.h`, `bindings.dart`, `*_generated.rs`, `*.ffi_generated.dart`) and no `schemas/*.fbs`
+  appears in the diff.
+- Given the run is finished, when `deferred-work.md` is read, then all four bullets of the
+  `spec-epic-9-followup-a-dedupe-ffi-helpers` section are struck through with a resolution line
+  naming this spec's slug and a commit, and no new bullet has been added under a section for this
+  run.
+
+## Spec Change Log
+
+- **2026-09-05, during execution.** Two Code Map facts were wrong and were corrected against the
+  compiler and the acceptance greps rather than followed:
+  - `FfiErrorObj` is NOT droppable from `status.rs:13` or `log_defaults.rs:17` — both files still
+    use it in their `map_status_err` / `map_log_defaults_err` mappers (`E0422`/`E0425` on removal).
+    All nine files keep `FfiErrorObj`; only `handle_from_raw`, `RepoSession` and
+    `FFI_INVALID_HANDLE` were orphaned, exactly as mapped.
+  - Item 3's site list missed three hand-rolled scalar guards in `graph.dart:96-104` (`revset`,
+    `prioritize`, `shortPrefixes`). The Acceptance Criteria demand exactly one
+    `codeUnits.contains(0)` hit in `lib/`, and the closing-run rule says a few-line same-shape
+    leftover is fixed here rather than deferred, so they were re-pointed at `rejectInteriorNul`.
+    All three are non-nullable `String`, so the helper's null-guard is a no-op and the throw is
+    unchanged.
+  - Counts confirmed as mapped: 19 Rust sites (not "~20"), 8 `readToken` blocks in `mutate.dart`
+    (not four), 23 total.
+
+## Review Triage Log
+
+## Design Notes
+
+**Why the SAFETY comment survives.** The ledger phrases item 1 as "deleting the per-site duplicated
+SAFETY comments", but project-context is explicit that every `unsafe` block needs a `// SAFETY:`
+comment. The two are reconciled by the shape `git.rs` already ships: the three-line duplicate (which
+is what can desync) is deleted, and a one-line pointer to the single documented contract replaces
+it. Copying an existing in-tree convention is also cheaper to review than inventing a second one.
+
+**Why the two scalar hand-rolls in `isolate.dart` are in scope.** Item 3's ledger text names
+`_rejectInteriorNuls`, but its stated grievance is that "the message this run just single-sourced
+still has a second spelling one layer up". `workspaceRoot` and `bookmarkCreate` each hand-write that
+same literal for a scalar. Fixing only the list form would leave the grievance standing while
+marking it resolved. It is four lines, and the closing-run rule says fix a few-line same-shape
+leftover here rather than open a new entry.
+
+**Why `diagnostics.dart` and `events.dart` are safe.** Both decode inside the `try` and dispose in
+the `finally`, so the decode currently runs while the native buffer is still alive. After the change
+the decode runs on the `Uint8List.fromList` copy, after disposal. That copy is already independent
+of the native memory today — the existing code returns it across an isolate port precisely because
+it is a heap copy — so the observable result is identical and the native buffer's lifetime only gets
+shorter.
+
+## Verification
+
+**Commands:**
+- `cargo make test` -- expected: exit 0. Run unpiped and synchronously, allow ~8-10 minutes
+  (cargo test + clippy pedantic `-D warnings` + rustfmt + `flutter test` + dart analyze/format +
+  `cargo deny` + the coverage ratchet). The single gate.
+- `grep -rn "handle_from_raw::<RepoSession>" crates/zanshin-ffi/src/` -- expected: exactly one hit,
+  in `repo.rs`'s `zanshin_repo_close`.
+- `grep -rc "session_from_handle(handle)" crates/zanshin-ffi/src/` summed -- expected: 32.
+- `grep -rn "FfiBuffer.fromToken" packages/zanshin_core/lib/` -- expected: two hits
+  (`ffi_buffer.dart` definition, `request_bytes.dart` call).
+- `grep -rn "codeUnits.contains(0)" packages/zanshin_core/lib/` -- expected: one hit, in
+  `request_bytes.dart`.
+- `git status --porcelain` -- expected: clean after each commit; no generated file and no
+  `schemas/*.fbs` in any diff.
+- `git diff --stat` before committing -- expected: only the files named in Tasks & Acceptance.
