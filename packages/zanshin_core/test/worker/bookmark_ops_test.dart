@@ -24,6 +24,14 @@ import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
+/// The three [MutationResult] fields neither bookmark verb ever fills, checked all the way
+/// through the decoder — `newOpId` is otherwise the only one any test in this suite reads.
+void expectNoChangeChurn(MutationResult result, String expectedWc) {
+  expect(result.newChangeIds, isEmpty, reason: 'a bookmark verb mints no change');
+  expect(result.abandonedChangeIds, isEmpty, reason: 'a bookmark verb abandons no change');
+  expect(result.workingCopyChangeId, expectedWc, reason: '`@` does not move');
+}
+
 void main() {
   group('ZanshinWorker bookmark mutations (real cdylib)', () {
     late ZanshinWorker worker;
@@ -43,14 +51,19 @@ void main() {
 
     test('create_then_delete_round_trips_through_the_real_cdylib', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      // The oracle for `workingCopyChangeId`: neither verb ever moves `@`, so both results
+      // must report exactly what `status()` does.
+      final String expectedWc = (await handle.status()).workingCopyChangeId;
 
       final MutationResult created = await handle.bookmarkCreate(['feature']);
       expect(created.newOpId, isNotEmpty);
+      expectNoChangeChurn(created, expectedWc);
       final List<Bookmark> afterCreate = await handle.bookmarks();
       expect(afterCreate.map((b) => b.name), ['feature']);
 
       final MutationResult deleted = await handle.bookmarkDelete(['exact:feature']);
       expect(deleted.newOpId, isNot(created.newOpId), reason: 'the delete writes its own operation');
+      expectNoChangeChurn(deleted, expectedWc);
       expect(await handle.bookmarks(), isEmpty);
 
       await handle.close();

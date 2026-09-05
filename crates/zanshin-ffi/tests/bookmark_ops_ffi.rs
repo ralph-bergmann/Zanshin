@@ -161,21 +161,26 @@ fn open_fixture() -> (u64, std::path::PathBuf) {
     (handle, root)
 }
 
-/// The fixture's working-copy commit hex — the seed target for in-test bookmark state.
-fn wc_commit_hex(handle: u64) -> String {
+/// The working-copy change id `zanshin_status` reports — the oracle a `MutationResult`'s own
+/// `working_copy_change_id` is checked against, and the first half of [`wc_commit_hex`].
+fn wc_change_id(handle: u64) -> String {
     // SAFETY: handle is live and was produced by zanshin_repo_open.
     let token = unsafe { zanshin_ffi::status::zanshin_status(handle) };
     // SAFETY: token is the fresh, non-null token the call just returned.
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "status must succeed");
-    // `Status` carries change ids, not commit hexes; the change wrapper resolves the pair.
-    let change_id = env
-        .data_as_status()
+    env.data_as_status()
         .expect("Status payload")
         .working_copy_change_id()
         .expect("working-copy change id")
-        .to_owned();
+        .to_owned()
+}
+
+/// The fixture's working-copy commit hex — the seed target for in-test bookmark state.
+fn wc_commit_hex(handle: u64) -> String {
+    // `Status` carries change ids, not commit hexes; the change wrapper resolves the pair.
+    let change_id = wc_change_id(handle);
     let id = cstr(&change_id);
     // SAFETY: handle is live; id is a valid NUL-terminated C string alive for the call.
     let token = unsafe { zanshin_ffi::change::zanshin_change(handle, id.as_ptr()) };
@@ -209,6 +214,24 @@ fn listed_bookmark_names(handle: u64) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The three `MutationResult` columns neither bookmark verb ever fills, asserted on the WIRE.
+///
+/// Both vectors are PRESENT-but-empty rather than absent: the builder always writes `Some(vec)`,
+/// so `None` here would be a real change to the wire shape and not merely a missing value.
+fn assert_no_change_churn(result: &fbs::MutationResult<'_>, expected_wc: &str) {
+    let new_ids = result.new_change_ids().expect("new_change_ids is always present");
+    assert_eq!(new_ids.len(), 0, "a bookmark verb mints no change");
+    let abandoned = result
+        .abandoned_change_ids()
+        .expect("abandoned_change_ids is always present");
+    assert_eq!(abandoned.len(), 0, "a bookmark verb abandons no change");
+    assert_eq!(
+        result.working_copy_change_id(),
+        Some(expected_wc),
+        "`@` is what `zanshin_status` reports"
+    );
+}
+
 // ── Round trip ────────────────────────────────────────────────────────────────
 
 /// Create then delete over the wire: both return the shipped `MutationResult` payload (no new
@@ -218,6 +241,7 @@ fn create_then_delete_round_trips_through_mutation_result() {
     pin_env();
     let (handle, _root) = open_fixture();
     let before = head_op_id(handle);
+    let expected_wc = wc_change_id(handle);
 
     let req = create_request_bytes(Some(&["feature"]), None);
     // SAFETY: handle is live; req is a live, correctly-sized buffer for the call.
@@ -230,6 +254,7 @@ fn create_then_delete_round_trips_through_mutation_result() {
     let created = env.data_as_mutation_result().expect("MutationResult payload");
     assert_ne!(created.new_op_id(), Some(before.as_str()), "create writes an operation");
     assert_eq!(created.new_op_id(), Some(head_op_id(handle).as_str()));
+    assert_no_change_churn(&created, &expected_wc);
     assert_eq!(listed_bookmark_names(handle), vec!["feature".to_owned()]);
 
     let req = delete_request_bytes(Some(&["exact:feature"]));
@@ -240,6 +265,8 @@ fn create_then_delete_round_trips_through_mutation_result() {
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "delete failed: {:?}", env.error().and_then(|e| e.code()));
     assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    let deleted = env.data_as_mutation_result().expect("MutationResult payload");
+    assert_no_change_churn(&deleted, &expected_wc);
     assert!(listed_bookmark_names(handle).is_empty());
 
     close_handle(handle);

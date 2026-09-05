@@ -23,8 +23,9 @@ use jj_lib::op_store::RemoteRefState;
 use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
+use tempfile::TempDir;
 use test_helpers::{add_commit_off_root, add_divergent_twin, extract_fixture, set_local_bookmark, set_remote_bookmark};
-use zanshin_jj::{BookmarkKind, ChangeId, MutateError, Repo};
+use zanshin_jj::{BookmarkKind, ChangeId, MutateError, MutationResult, Repo};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
@@ -134,6 +135,23 @@ fn head_op(repo: &Repo) -> (String, String) {
     (head.id.0.clone(), head.description.clone())
 }
 
+/// Both bookmark verbs mint and abandon nothing, and never move `@` — asserted on every path
+/// because `new_op_id` is the only [`MutationResult`] field the rest of this suite reads, so a
+/// regression in the other three would ship green.
+///
+/// The expectation is structural rather than incidental: both verbs go through
+/// `finish_or_no_op_at`, whose two exits (the committed one and `no_op_result`) each build this
+/// same shape — which is exactly the kind of claim that is true by construction today and
+/// silently false after a refactor.
+fn assert_no_change_churn(result: &MutationResult, expected_wc: &ChangeId) {
+    assert!(result.new_change_ids.is_empty(), "a bookmark verb mints no change");
+    assert!(
+        result.abandoned_change_ids.is_empty(),
+        "a bookmark verb abandons no change"
+    );
+    assert_eq!(&result.working_copy_change_id, expected_wc, "`@` does not move");
+}
+
 // ── create: the happy paths ───────────────────────────────────────────────────
 
 /// The default revision is the CLI's clap `default_value = "@"`, and the op-log description
@@ -144,12 +162,14 @@ fn create_with_the_default_revision_targets_at_and_writes_the_cli_description() 
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let lay = layout(&fx.path);
+    let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
     let (before, _) = head_op(&repo);
 
     let result = repo.bookmark_create(&["feature".to_owned()], None).unwrap();
 
     assert_ne!(result.new_op_id.0, before, "a create always writes an operation");
+    assert_no_change_churn(&result, &wc_change_id);
     let (after, description) = head_op(&repo);
     assert_eq!(result.new_op_id.0, after);
     assert_eq!(
@@ -253,6 +273,32 @@ fn create_is_not_blocked_by_a_tracked_remote_on_the_reserved_git_remote() {
     repo.bookmark_create(&["colocated".to_owned()], None).unwrap();
 
     assert_eq!(local_bookmark_names(&fx.path), vec!["colocated".to_owned()]);
+}
+
+/// The mirror of the test above, on a NATIVE backend — where the same seeded state REFUSES.
+///
+/// `has_tracked_remote_bookmarks` only excludes the reserved `git` remote when
+/// `get_git_backend` succeeds; on any other backend the remote matcher is `StringMatcher::all()`,
+/// which excludes nothing. So a tracked `colocated@git` — meaningless on a native repo, but
+/// perfectly representable in the view — DOES block `create colocated` there. That `else` arm is
+/// executed by the git-backed tests but asserted by none of them: deleting it would leave the
+/// whole suite green. This test is what pins it.
+#[test]
+fn create_is_blocked_by_a_tracked_git_remote_on_a_native_backend() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    let mut repo = Repo::init(tmp.path(), None).unwrap();
+    let lay = layout(tmp.path());
+    set_remote_bookmark(tmp.path(), "colocated", "git", &lay.wc_commit_hex, true);
+    let (before, _) = head_op(&repo);
+
+    let err = repo.bookmark_create(&["colocated".to_owned()], None).unwrap_err();
+
+    assert!(
+        matches!(&err, MutateError::BookmarkTrackedRemoteExists { name } if name == "colocated"),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(head_op(&repo).0, before, "a refusal writes no operation");
 }
 
 // ── create: the refusals ──────────────────────────────────────────────────────
@@ -391,12 +437,14 @@ fn delete_removes_an_exactly_named_bookmark_with_the_cli_description() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let lay = layout(&fx.path);
     set_local_bookmark(&fx.path, "feature", &[&lay.wc_commit_hex]);
+    let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
     let (before, _) = head_op(&repo);
 
     let result = repo.bookmark_delete(&["exact:feature".to_owned()]).unwrap();
 
     assert_ne!(result.new_op_id.0, before);
+    assert_no_change_churn(&result, &wc_change_id);
     let (after, description) = head_op(&repo);
     assert_eq!(result.new_op_id.0, after);
     assert_eq!(description, "delete bookmark feature");
@@ -458,6 +506,8 @@ fn delete_treats_a_bare_pattern_as_a_glob_and_exact_as_a_literal() {
 fn delete_matching_nothing_writes_no_operation_and_returns_the_pre_call_head() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
+    let lay = layout(&fx.path);
+    let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
     let (before, before_description) = head_op(&repo);
 
@@ -465,6 +515,9 @@ fn delete_matching_nothing_writes_no_operation_and_returns_the_pre_call_head() {
 
     assert_eq!(result.new_op_id.0, before, "no operation is written");
     assert_eq!(head_op(&repo), (before, before_description));
+    // The no-op exit (`no_op_result`) is supposed to build the SAME shape as the committed
+    // one, so the other three fields are asserted on this path too.
+    assert_no_change_churn(&result, &wc_change_id);
 }
 
 #[test]
