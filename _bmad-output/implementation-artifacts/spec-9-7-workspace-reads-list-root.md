@@ -28,6 +28,29 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs::init
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-d-symlinked-workspace-path, commit 2d6de57).
+      The caller-supplied workspace path is now canonicalized at ALL FIVE seams that hand a path
+      to jj-lib's Workspace constructors - Repo::open, Repo::init, Repo::clone, convert_colocated
+      and import_into - because they funnel into the same init_with_factories ->
+      workspace_store.add write; fixing only the init path would have REGRESSED repos created by
+      convert/clone, which resolve today because a raw-path creation is consistent with a
+      raw-path open. std::fs::canonicalize, never dunce:: (this crate's workspace.rs house rule).
+      Nothing observable moved: Repo::open's !path.exists() guard is replaced by the canonicalize
+      (exists() is an fs::metadata probe that follows symlinks, so it returned false exactly
+      where canonicalize returns Err), every error payload keeps the CALLER's spelling, and a
+      missing init/clone target is still InitFailed/CloneFailed - only detected one step earlier,
+      with the unresolvable path named in `reason`. No new variant, no error-code or registry
+      change, no .fbs edit and no codegen. All three of this story's workarounds are DELETED so
+      its own suites are the witness (workspace.rs::add_resolvable_workspace,
+      workspace_ffi.rs::open_two_workspace_scenario's fs::canonicalize, and workspace_test.dart's
+      resolveSymbolicLinksSync on the INPUT path - its assertions still resolve both sides), and
+      a new raw-path witness in tests/workspace.rs walks both the handle init RETURNS and a
+      re-open. test-helpers::add_workspace was fixed at its cause (it re-derived <raw arg>/.jj/repo
+      after loading a workspace it then ignored; it now takes the repo path from that workspace's
+      own canonical root), which is what Story 9.23's `workspace add` gets for free from a Repo
+      that is canonical end to end - so 9.23 no longer inherits the trap. The committed fixture
+      is untouched, so this story's stale-entry rows still hold.
   - summary: >-
       Request tables are structurally interchangeable, so a hand-crafted `ShowRequest` verifies
       as a `WorkspaceRootRequest` and its revset is read as a workspace name.
