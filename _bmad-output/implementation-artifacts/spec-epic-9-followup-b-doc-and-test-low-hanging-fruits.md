@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up B: the three doc/test low-hanging fruits from Story 9.8'
 type: 'chore'
 created: '2026-09-05'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'fd79e9de69e262a7ef49ef55147343e6e5651afb'
 review_loop_iteration: 0
 followup_review_recommended: true
@@ -365,7 +365,7 @@ refusal cannot happen, in the same commit range that added the test proving it c
 - bad_spec: 0
 - patch: 7: (high 0, medium 3, low 4)
 - defer: 0
-- reject: 0
+- reject: 19: (high 0, medium 0, low 19)
 - addressed_findings:
   - `[medium]` `[patch]` Both NO-OP tests read the `@` oracle AFTER the mutation, so a regression
     that moved `@` would shift both sides of the comparison equally and still pass — and that is
@@ -400,6 +400,29 @@ refusal cannot happen, in the same commit range that added the test proving it c
   - `[low]` `[patch]` The ledger's item-2 resolution said the no-op exit "was not covered"; it was
     covered for `new_op_id` by the pre-existing tests — what was missing were the other three
     fields on that exit. Qualifier restored (the Design Notes already had it right).
+
+Rejection note for the SECOND pass (19, all low; scope authority is the intent itself). Rejected as
+already-witnessed or by-design: the claim that item 1's new doc text has no executable witness (the
+absent-revision defaults are exercised by the pre-existing `file_reads.rs::file_list(None, &[])` and
+`content_ops.rs`'s four `restore(None, …)` cases); the `--changes-in`-has-no-default objection (an
+absent `changes_in` does default the destination to `@`, and the sentence explicitly defers to the
+resolution paragraph above it); `change.rs:158` keeping the phrase (a REQUIRED id, the same
+exclusion the first pass drew); `cargo make verify-codegen` not being a gate step (a deliberate WIP
+deferral recorded in `project-context.md`). Rejected as beyond the intent's own naming: asserting
+the churn helper on every remaining create/delete test (the intent says "for both `bookmark create`
+and `bookmark delete`", and all three fields are empty by construction at a single site); an
+FFI/Dart counterpart for item 3 (the intent says "one native-backend Rust test"); a
+present-but-EMPTY-revision-string clause on the four rewritten FFI bullets (the intent quotes the
+specific clause to copy); a `docs/ffi-abi.md` pass (a separate, still-open ledger bullet the intent
+excludes); homing this run's residual risks in `deferred-work.md` (the intent forbids opening a new
+entry). Rejected as noise: the new test seeding after `Repo::init` (forced — the repo must exist
+before it can be seeded, and a moved load point would FAIL the test, not silently pass); its lack of
+a positive control (the unchanged head operation is the state witness, and the independently re-run
+mutation probe is the control); the two `assert_no_change_churn` helpers differing in assertion
+style; the connectors differing between layers (each layer copies its own Story 9.8 source spelling,
+which the spec mandates); the wrapped em dash reading as a list marker in the generated header
+(cosmetic, and rewording would churn generated output for no semantic gain); and the four purely
+descriptive intent-alignment observations, which the auditor's own mandate marks as non-prescriptive.
 
 Rejection note (scope authority is the intent itself; applies to the FIRST pass): the largest rejected cluster is doc sites
 the intent enumerates and excludes by name — `MutateError::ChangeNotFound`'s variant doc, the
@@ -508,12 +531,18 @@ git-backed twin does not get.
 
 **Review findings breakdown.** Two review passes over the same diff. First pass: 3 patches applied
 (all medium), 0 deferred, 21 rejected. Second (parent-run) pass: 7 patches applied (3 medium,
-4 low), 0 deferred, 0 rejected. Neither pass found an intent gap or triggered a spec repair
+4 low), 0 deferred, 19 rejected. Neither pass found an intent gap or triggered a spec repair
 loopback, so `review_loop_iteration` stayed at 0. Both passes are itemised in the triage log; the
-one scope extension either produced is recorded in the Spec Change Log.
+one scope extension either produced is recorded in the Spec Change Log. **0 items deferred across
+both passes** — the closing mandate held, and this run's own section of `deferred-work.md` does not
+exist because it opened none.
 
-**Follow-up review recommendation:** `true`. Patched counts by severity across both passes: high 0,
-medium 6, low 4. Score = 3 x 6 + 1 x 4 = 22, which is >= 5.
+**Follow-up review recommendation:** `true`. Counting only THIS (second) pass's patched findings, as
+the rule requires: high 0, medium 3, low 4. Score = 3 x 3 + 1 x 4 = 13, which is >= 5. (The first
+pass computed 9 on its own three medium patches; the recommendation was `true` after either pass.)
+Both passes were doc, comment, bookkeeping and test-assertion corrections — no `high` finding, and
+no reviewer in either pass found the shipped behaviour wrong, which is unchanged by construction:
+the whole change is comments plus tests.
 
 **Verification performed**
 
@@ -531,13 +560,29 @@ medium 6, low 4. Score = 3 x 6 + 1 x 4 = 22, which is >= 5.
   exactly one test, the new native-backend one; probe reverted and `git diff` confirmed empty. The
   ledger's stated semantics were confirmed, so Block-If `non-git arm behaves like the git arm` did
   not trigger.
-- `cargo make test` — run unpiped and synchronously twice (before and after the review patches),
-  exit 0 both times. `coverage-check: OK — coverage held at 99.20% (8315/8382 lines)`;
-  `coverage-baseline.txt` was never modified, so no entry is lower than at baseline `fd79e9d` and
-  Block-If `coverage ratchet regression` did not trigger.
-- Matrix test audit — all seven rows have a covering test that ran and passed: rows 1/2/3/6/7 in
-  `crates/zanshin-jj/tests/bookmark_ops.rs`, row 4 in `crates/zanshin-ffi/tests/bookmark_ops_ffi.rs`,
-  row 5 in `packages/zanshin_core/test/worker/bookmark_ops_test.dart`.
+- `cargo make test` — run unpiped and synchronously FOUR times in total, exit 0 every time:
+  after the doc edit, after the first pass's patches, then twice more re-run independently by the
+  parent run (once on the as-committed tree before the second review pass, once after the second
+  pass's seven patches — `Build Done in 566.94 seconds`, zero `FAILED` lines, all Dart suites
+  `All tests passed!` at 312 tests). `coverage-check: OK — coverage held at 99.20% (8315/8382 lines
+  over 46 files)` and `extern-coverage: OK` on every run; `coverage-baseline.txt` is byte-unchanged
+  from baseline `fd79e9d`, so the ratchet neither regressed nor auto-raised, no `exclude_prefix` was
+  added, and Block-If `coverage ratchet regression` did not trigger.
+- Independent re-verification by the parent run (not inherited from the implementation): the
+  codegen drift check was re-run on the clean committed tree and produced NO diff at all, proving
+  the committed `zanshin_ffi.h` / `bindings.dart` are exactly what `cargo make codegen` generates;
+  the stale-phrase greps were re-executed; and the mutation probe was performed a second time from
+  scratch — flipping `has_tracked_remote_bookmarks`' `else` arm to the git matcher failed exactly
+  one test (`create_is_blocked_by_a_tracked_git_remote_on_a_native_backend`, `unwrap_err()` on an
+  `Ok`), with the other 20 green, and `git status` was empty after reverting the probe.
+- Matrix test audit — all seven rows have a covering test that ran and passed, confirmed by name in
+  the gate's own output rather than inferred from the aggregate: rows 1/2/3/6/7 in
+  `crates/zanshin-jj/tests/bookmark_ops.rs`, row 4 in `crates/zanshin-ffi/tests/bookmark_ops_ffi.rs`
+  (`create_then_delete_round_trips_through_mutation_result`,
+  `delete_matching_nothing_succeeds_with_the_pre_call_head`), row 5 in
+  `packages/zanshin_core/test/worker/bookmark_ops_test.dart`
+  (`create_then_delete_round_trips_through_the_real_cdylib`,
+  `delete_matching_nothing_succeeds_and_writes_no_operation`).
 - `git status --porcelain` — clean after each commit.
 
 **Residual risks**
@@ -558,3 +603,11 @@ medium 6, low 4. Score = 3 x 6 + 1 x 4 = 22, which is >= 5.
   four `extern "C"` wrappers without `cargo make codegen` would leave the shipped header and Dart
   bindings carrying the old wording with the gate green — the same drift class this run's item 1
   was about.
+- The frontmatter `warnings` are dispositioned as follows. `multiple-goals`: accepted deliberately —
+  the three items are one closing transaction over a single subsection of one ledger section, and
+  splitting them would have left that subsection half-open. `oversized`: accepted — the spec's size
+  is the 14-site doc map plus a seven-row matrix, i.e. breadth of enumeration rather than depth, and
+  both the gate and the acceptance greps bound it. `followup_review_recommended: true` opens no
+  ledger debt: the intent forbids a new entry, `deferred` is empty, and the flag is driven purely by
+  the VOLUME of falsified-documentation fixes across two passes, not by any defect in shipped
+  behaviour — which this change does not touch at all.
