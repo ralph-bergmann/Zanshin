@@ -72,8 +72,12 @@ fn repo_open_with_nonexistent_path_returns_path_not_found() {
 
 /// `init` resolves its target before handing it to jj-lib (so the workspace store records a path
 /// that resolves), which means a missing target is refused BEFORE the init instead of inside it.
-/// The variant is unchanged — every init-step failure still travels as `InitFailed` — and the
-/// `reason` names the path that could not be resolved.
+/// The variant is unchanged — every init-step failure still travels as `InitFailed`.
+///
+/// The assertion matches the `"<path>: "` PREFIX our own `map_err` emits, not merely the path
+/// somewhere in the string: jj-lib's `create_jj_dir` failure also names the path (`"Cannot access
+/// <path>/.jj"`, `file_util.rs:40-45`), so a `contains` check would pass either way and would not
+/// observe that the refusal moved ahead of the init.
 #[test]
 fn repo_init_with_nonexistent_path_returns_init_failed() {
     pin_env();
@@ -81,8 +85,8 @@ fn repo_init_with_nonexistent_path_returns_init_failed() {
     let result = Repo::init(missing, None);
     match result {
         Err(RepoError::InitFailed { reason }) => assert!(
-            reason.contains("/nonexistent/zanshin-test-abc123"),
-            "the reason must name the unresolvable path, got: {reason}"
+            reason.starts_with("/nonexistent/zanshin-test-abc123: "),
+            "the reason must LEAD with the unresolvable path, got: {reason}"
         ),
         other => panic!("expected InitFailed, got: {other:?}"),
     }
@@ -90,6 +94,7 @@ fn repo_init_with_nonexistent_path_returns_init_failed() {
 
 /// Same for `clone`: the target directory must already exist (clone never created it — jj-lib's
 /// `create_jj_dir` needs the parent), so an absent one is refused up front, still as `CloneFailed`.
+/// The prefix match pins the new detection point for the same reason as its `init` sibling.
 #[test]
 fn repo_clone_with_nonexistent_target_returns_clone_failed() {
     pin_env();
@@ -97,8 +102,8 @@ fn repo_clone_with_nonexistent_target_returns_clone_failed() {
     let result = Repo::clone("file:///nowhere", missing);
     match result {
         Err(RepoError::CloneFailed { reason }) => assert!(
-            reason.contains("/nonexistent/zanshin-test-abc123"),
-            "the reason must name the unresolvable target, got: {reason}"
+            reason.starts_with("/nonexistent/zanshin-test-abc123: "),
+            "the reason must LEAD with the unresolvable target, got: {reason}"
         ),
         other => panic!("expected CloneFailed, got: {other:?}"),
     }
@@ -234,8 +239,10 @@ fn repo_clone_from_local_git_source_returns_ok() {
 
 /// Canonicalizes both sides before comparing — the macOS `/var` → `/private/var` trap.
 ///
-/// A local copy of the identically-named helper in `tests/workspace.rs`: integration tests are
-/// separate binaries, so the two cannot share one without a new shared crate.
+/// A local copy of the identically-named helper in `tests/workspace.rs`. It cannot move to
+/// `crates/test-helpers` with the rest of the shared fixture vocabulary: its sibling
+/// `assert_own_root_resolves` takes a `zanshin_jj::Repo`, and `test-helpers` is a dev-dependency
+/// OF `zanshin-jj`, so hosting them there would invert that edge.
 fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
     assert_eq!(
         fs::canonicalize(actual).expect("actual path must exist"),
@@ -295,7 +302,9 @@ fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
     assert_ne!(
         fs::canonicalize(target_tmp.path()).expect("temp dir exists").as_path(),
         target_tmp.path(),
-        "this witness needs a temp path that really does go through a symlink"
+        "this witness needs a temp path that really does go through a symlink; on macOS both \
+         /tmp and /var/folders are symlinks, so a TMPDIR pointing at a real directory \
+         disables it"
     );
 
     let src_url = format!("file://{}", src_tmp.path().display());

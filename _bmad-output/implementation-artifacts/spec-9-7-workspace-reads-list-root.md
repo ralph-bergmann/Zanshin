@@ -29,7 +29,7 @@ deferred:
       crates/zanshin-jj/src/repo.rs::init
     severity: medium
     resolved: >-
-      RESOLVED 2026-09-05 (spec-epic-9-followup-d-symlinked-workspace-path, commit 2d6de57).
+      RESOLVED 2026-09-05 (spec-epic-9-followup-d-symlinked-workspace-path, commits 2d6de57..3bb2e7e).
       The caller-supplied workspace path is now canonicalized at ALL FIVE seams that hand a path
       to jj-lib's Workspace constructors - Repo::open, Repo::init, Repo::clone, convert_colocated
       and import_into - because they funnel into the same init_with_factories ->
@@ -52,8 +52,13 @@ deferred:
       its own suites are the witness (workspace.rs::add_resolvable_workspace,
       workspace_ffi.rs::open_two_workspace_scenario's fs::canonicalize, and workspace_test.dart's
       resolveSymbolicLinksSync on the INPUT path - its assertions still resolve both sides), and
-      a new raw-path witness in tests/workspace.rs walks both the handle init RETURNS and a
-      re-open. test-helpers::add_workspace was fixed at its cause (it re-derived <raw arg>/.jj/repo
+      four new store-round-trip witnesses pin the write seams one at a time: tests/workspace.rs
+      (init, walking both the handle init RETURNS and a re-open), tests/repo.rs (clone) and
+      tests/convert.rs (convert_colocated, convert_import). Repo::open's canonicalize is
+      FORWARD-DEFENCE rather than part of the read fix - the read join finishes with realpath(3),
+      which resolves the symlinked prefix before the record's .. segments, so a raw and a
+      canonical base answer identically; what it buys is a canonical Workspace::repo_path() for
+      any future writer that records an entry from an OPENED repo. test-helpers::add_workspace was fixed at its cause (it re-derived <raw arg>/.jj/repo
       after loading a workspace it then ignored; it now takes the repo path from that workspace's
       own canonical root), which is what Story 9.23's `workspace add` gets for free from a Repo
       that is canonical end to end - so 9.23 no longer inherits the trap. The committed fixture

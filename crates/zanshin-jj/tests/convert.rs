@@ -795,8 +795,10 @@ fn convert_import_into_same_dir_is_colocated() {
 
 /// Canonicalizes both sides before comparing — the macOS `/var` → `/private/var` trap.
 ///
-/// A local copy of the identically-named helper in `tests/workspace.rs`: integration tests are
-/// separate binaries, so the two cannot share one without a new shared crate.
+/// A local copy of the identically-named helper in `tests/workspace.rs`. It cannot move to
+/// `crates/test-helpers` with the rest of the shared fixture vocabulary: its sibling
+/// `assert_own_root_resolves` takes a `zanshin_jj::Repo`, and `test-helpers` is a dev-dependency
+/// OF `zanshin-jj`, so hosting them there would invert that edge.
 fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
     assert_eq!(
         fs::canonicalize(actual).expect("actual path must exist"),
@@ -848,7 +850,9 @@ fn convert_colocated_through_a_symlinked_path_resolves_its_own_root() {
     assert_ne!(
         fs::canonicalize(tmp.path()).expect("temp dir exists").as_path(),
         tmp.path(),
-        "this witness needs a temp path that really does go through a symlink"
+        "this witness needs a temp path that really does go through a symlink; on macOS both \
+         /tmp and /var/folders are symlinks, so a TMPDIR pointing at a real directory \
+         disables it"
     );
     init_git_repo_with_commit(tmp.path());
 
@@ -872,7 +876,9 @@ fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
     assert_ne!(
         fs::canonicalize(dest_parent.path()).expect("temp dir exists").as_path(),
         dest_parent.path(),
-        "this witness needs a temp path that really does go through a symlink"
+        "this witness needs a temp path that really does go through a symlink; on macOS both \
+         /tmp and /var/folders are symlinks, so a TMPDIR pointing at a real directory \
+         disables it"
     );
     let dest = dest_parent.path().join("workspace");
     assert!(!dest.exists(), "the dest must be created by import_into itself");

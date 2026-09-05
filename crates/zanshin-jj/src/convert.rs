@@ -54,7 +54,8 @@ use crate::{detect_repo, Repo, RepoError, RepoKind};
 /// # Errors
 ///
 /// - [`RepoError::AlreadyJjRepo`] — `path` is already a jj workspace.
-/// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists.
+/// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists, or it cannot be
+///   resolved to an absolute path (the same answer the not-found case gives).
 /// - [`RepoError::ConvertFailed`] — a jj-lib failure (or a `detect_repo` I/O
 ///   error) during conversion; the partially-created `.jj/` is rolled back.
 pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
@@ -67,11 +68,13 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 
     let settings = make_settings()?;
     // WHY canonicalize: `convert_into` reaches jj-lib's `init_with_factories`, which records the
-    // new workspace's root in the store RELATIVE to the RAW path it was handed while every read
-    // joins onto the canonical `Workspace::repo_path()`. A symlinked caller path (macOS
-    // `/var/folders/…`) would produce a workspace that cannot resolve its own root — and since
-    // `Repo::open` below canonicalizes too, leaving this raw would break a case that works
-    // today. The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
+    // new workspace's root in the store RELATIVE to the RAW path it was handed. `relative_path`
+    // counts those `..` segments lexically, while every read finishes its join with
+    // `std::fs::canonicalize` — `realpath(3)`, which resolves the symlinked prefix BEFORE the
+    // `..` — so a record written against a symlinked caller path (macOS `/var/folders/…`)
+    // resolves from NO base at all and the converted workspace cannot report its own root. This
+    // was already broken before the canonicalize; it is a fix, not the preservation of a working
+    // case. The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
     // spelling in the payload.
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
     match convert_into(&settings, &root) {
@@ -108,7 +111,8 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
 ///   bare) or does not exist.
 /// - [`RepoError::ConvertFailed`] — a jj-lib failure (or a `detect_repo` I/O
-///   error); the partially-created destination is rolled back.
+///   error), or `workspace_path` cannot be created or resolved; the partially-created
+///   destination is rolled back.
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`

@@ -1355,16 +1355,26 @@ impl Repo {
     /// failure.
     pub fn open(path: &Path) -> Result<Self, RepoError> {
         // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
-        // every workspace's root RELATIVE to the `repo_path` the store was loaded with, while
-        // every read joins that record back onto `Workspace::repo_path()`. A caller path that
-        // still contains a symlink (on macOS every `/var/folders/…` temp dir points at
-        // `/private/var/folders/…`) makes the two spellings disagree, and the workspace's own
-        // root stops resolving. The real CLI never hits it because its loader canonicalizes
-        // first. `std::fs::canonicalize`, never `dunce::` — see `workspace.rs`'s house rule.
+        // every workspace's root RELATIVE to the `repo_path` the store was loaded with. Resolving
+        // here makes `Workspace::repo_path()` canonical, so this handle spells that base the same
+        // way the WRITE seams (`Repo::init`/`clone`, `convert.rs`) now do — which is what keeps a
+        // future writer that records an entry from an OPENED repo (Story 9.23's `workspace add`,
+        // via `init_workspace_with_existing_repo`) from storing a record nothing can resolve.
+        // The real CLI canonicalizes in its loader for the same reason.
         //
-        // The REFUSAL set is unchanged: `Path::exists()` is `fs::metadata(..).is_ok()`, which
-        // follows symlinks, so it returned `false` exactly where `canonicalize` returns `Err`.
-        // Both error payloads keep the CALLER's spelling.
+        // It is NOT what fixes today's READ path: `resolve_recorded_root` finishes the join with
+        // `std::fs::canonicalize` — `realpath(3)` — which resolves the symlinked prefix BEFORE
+        // applying the record's `..` segments, so a raw and a canonical base give the identical
+        // result. The reads were already insensitive to this argument's spelling.
+        //
+        // `std::fs::canonicalize`, never `dunce::` — see `workspace.rs`'s house rule.
+        //
+        // The REFUSAL set is unchanged for every case a caller can hit: `Path::exists()` is
+        // `fs::metadata(..).is_ok()`, which follows symlinks, so it returned `false` for the same
+        // ENOENT / ENOTDIR / EACCES / symlink-loop conditions that make `canonicalize` fail. The
+        // two are not identical in the limit — `realpath(3)` can also fail with ENAMETOOLONG when
+        // the RESOLVED path is the long one — and, like `exists()` before it, this collapses every
+        // cause into one variant. Both error payloads keep the CALLER's spelling.
         let root = std::fs::canonicalize(path).map_err(|_| RepoError::PathNotFound { path: path.to_owned() })?;
         if !root.join(".jj").is_dir() {
             return Err(RepoError::NotARepo { path: path.to_owned() });
@@ -1389,6 +1399,10 @@ impl Repo {
     ///
     /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
     /// `path` cannot be resolved (it must already exist); `reason` then names it.
+    ///
+    /// `path` must already exist — this verb has never created it (jj-lib's `create_jj_dir` uses
+    /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
+    /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
         let settings = make_settings()?;
         // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
@@ -1425,6 +1439,8 @@ impl Repo {
     /// On failure, the partial `.jj/` created under `target_path` is rolled back so a
     /// retry into the same path starts clean. `target_path` must already exist — clone never
     /// created it (`create_jj_dir` needs the parent), and a missing target is refused up front.
+    /// The CLI's `jj git clone` instead creates its destination and refuses a non-empty one
+    /// (`cli/src/commands/git/clone.rs` @ v0.44.0); that parity is Story 9.20's.
     ///
     /// # Errors
     ///

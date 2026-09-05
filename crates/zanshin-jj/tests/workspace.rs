@@ -537,14 +537,17 @@ fn assert_own_root_resolves(repo: &Repo, expected: &Path) {
 ///
 /// On macOS every `TempDir` is `/var/folders/…`, a symlink to `/private/var/folders/…`, which is
 /// exactly the shape a caller-supplied path can have. `SimpleWorkspaceStore::add` records a
-/// workspace's root RELATIVE to the `repo_path` the store was loaded with, while every read joins
-/// that record back onto the canonicalized `Workspace::repo_path()` — so unless `Repo::init` and
-/// `Repo::open` canonicalize their argument first, the two spellings differ by one `..` and the
-/// workspace's OWN row goes absent while `root --name default` refuses. The real CLI never hits
-/// it: its workspace loader canonicalizes before either side runs.
+/// workspace's root RELATIVE to the `repo_path` the store was loaded with, counting the `..`
+/// segments LEXICALLY, while every read finishes the join with `realpath(3)`, which resolves the
+/// symlinked prefix BEFORE those `..`. A record written against a raw path therefore resolves from
+/// no base at all, and the workspace's OWN row goes absent while `root --name default` refuses.
+/// The real CLI never hits it: its workspace loader canonicalizes before either side runs.
 ///
-/// Both handles are checked: the one `init` RETURNS (whose `repo_path` jj-lib had already
-/// canonicalized, which is where the defect showed) and a fresh `open` through the same raw path.
+/// What this pins is the WRITE seam — `Repo::init`. The second half re-opens the same repo, which
+/// asserts that `Repo::open` did not break what `init` recorded; it cannot fail on `Repo::open`'s
+/// own canonicalize, because the read join realpaths a raw and a canonical base to the same
+/// directory (that canonicalize is forward-defence for a future writer working off an opened
+/// repo — Story 9.23's `workspace add`; see `Repo::open`'s WHY block).
 #[test]
 fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
     pin_env();
@@ -553,7 +556,9 @@ fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
     assert_ne!(
         canonical.as_path(),
         tmp.path(),
-        "this witness needs a temp path that really does go through a symlink"
+        "this witness needs a temp path that really does go through a symlink; on macOS both \
+         /tmp and /var/folders are symlinks, so a TMPDIR pointing at a real directory \
+         disables it"
     );
 
     let created = Repo::init(tmp.path(), None).unwrap();

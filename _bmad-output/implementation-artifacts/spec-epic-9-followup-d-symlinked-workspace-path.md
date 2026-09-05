@@ -25,33 +25,13 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs::init, crates/zanshin-jj/src/repo.rs::clone
     severity: medium
-  - summary: >-
-      `std::fs::canonicalize` has failure modes `Path::exists()` does not, so `Repo::open` can in
-      principle answer `PathNotFound` for a repo that would have opened.
-    evidence: |-
-      The spec's Design Notes assert the two guards fail on exactly the same set ("`exists()` is
-      `fs::metadata(path).is_ok()` … which is exactly the set where `canonicalize` returns `Err`"). That
-      is near-total but not exact: `realpath(3)` can fail with ENAMETOOLONG when the RESOLVED path
-      exceeds PATH_MAX even though the input did not, a case where `stat()` succeeds. The `map_err(|_|
-      …)` also discards the `io::ErrorKind`, so EACCES on a parent and a symlink loop are both reported
-      as "path not found" — a collapse `exists()` made too, so nothing regressed, but this crate treats
-      that distinction as meaningful elsewhere (`detect_repo` returns `Err` for EACCES/ENOTDIR, and
-      `WorkspaceError::PathUnresolved` carries the I/O reason).
-    location: >-
-      crates/zanshin-jj/src/repo.rs::open
-    severity: low
-  - summary: >-
-      The four raw-path witnesses hard-fail rather than skip when the system temp dir is already
-      canonical.
-    evidence: |-
-      Each opens with `assert_ne!(canonical, tmp.path(), "this witness needs a temp path that really
-      does go through a symlink")`. On macOS both `/var/folders/…` and `/tmp` are symlinks, so this
-      always holds for the project's only supported platform, and failing loudly is the honest answer
-      for a witness that cannot witness. But a developer who exports `TMPDIR` to a real directory gets a
-      red gate for an environment reason rather than a code reason, with four tests failing at once.
-    location: >-
-      crates/zanshin-jj/tests/workspace.rs, crates/zanshin-jj/tests/repo.rs, crates/zanshin-jj/tests/convert.rs
-    severity: low
+    tracked_by: >-
+      Story 9.20 (`git push`, `git clone`, `git init`), which ports those two CLI verbs with full
+      parity. Kept SPEC-ONLY rather than lifted to `deferred-work.md`, following that ledger
+      section's own convention for story-owned items ("stays spec-only: by-design,
+      Epic-7/9.15/9.17/9.22-owned"). The follow-up-D review pass added a pointer to 9.20 in
+      `Repo::init`'s and `Repo::clone`'s doc blocks so the divergence is discoverable at the code
+      a 9.20 implementer will edit, rather than only on a central list.
 ---
 
 <intent-contract>
@@ -401,6 +381,80 @@ completeness (not anti-regression) reason for the bundle.
     `init`'s and `clone`'s were updated in the same change; it now also covers a path that exists but
     cannot be resolved.
 
+### 2026-09-05 — Review pass (follow-up, `followup_review_recommended: true`)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 3, low 5)
+- defer: 0
+- reject: 11: (high 0, medium 0, low 11)
+- addressed_findings:
+  - `[medium]` `[patch]` **`Repo::open`'s canonicalize is not what fixes the read path, and three
+    durable artifacts claimed it was — one of them claiming a witness that cannot exist.**
+    `resolve_recorded_root` finishes its join with `std::fs::canonicalize` = `realpath(3)`, which
+    resolves the symlinked prefix BEFORE the record's `..` segments, so a raw and a canonical
+    `Workspace::repo_path()` resolve to the same directory: reverting `Repo::open`'s canonicalize
+    alone leaves every suite green, and no assertion through the read verbs can pin it. Verified by
+    walking `realpath` semantics against `crates/zanshin-jj/src/workspace.rs:130-131` and the
+    consumers of `Workspace::repo_path()` (only `workspace.rs` and `config.rs:399`). The seam is
+    mandated by the intent and is genuinely load-bearing — as FORWARD-DEFENCE for a writer that
+    records a store entry from an OPENED repo (Story 9.23's `workspace add`) — so it stays, with the
+    rationale corrected at four sites: `Repo::open`'s WHY block, the witness doc in
+    `tests/workspace.rs`, the ledger bullet and 9.7's `resolved:` block.
+  - `[medium]` `[patch]` Both durable artifacts named commit `2d6de57` alone, which predates the
+    three seam witnesses (`a826d32`), the `NotARepo`-payload assertion (`3bb2e7e`) and the doc
+    corrections — a reader following the ledger landed on a fix with three unwitnessed seams. Both
+    now name the range `2d6de57..3bb2e7e` and describe the final four-witness set, one per WRITE
+    seam, saying which three the review pass added and why.
+  - `[medium]` `[patch]` The two new refusal tests asserted only `reason.contains("<path>")`, which
+    jj-lib's own pre-change `create_jj_dir` message (`"Cannot access <path>/.jj"`) also satisfies —
+    so they did not observe the "refused BEFORE the init" ordering their doc comments claimed. Both
+    now match the `"<path>: "` PREFIX this change's own `map_err` emits, with the reason recorded.
+  - `[low]` `[patch]` `convert_colocated`'s production WHY comment carried a third copy of the
+    premise the first pass's Spec Change Log had already disproven ("leaving this raw would break a
+    case that works today"); replaced with the lexical-`relative_path` + `realpath`-ordering
+    mechanism and the "this was already broken, it is a fix" conclusion.
+  - `[low]` `[patch]` `Repo::open`'s WHY block claimed `exists()` returned `false` "exactly where
+    `canonicalize` returns `Err`". Near-total but not exact (`realpath(3)` can additionally fail
+    with ENAMETOOLONG on the RESOLVED path), and the `map_err(|_| …)` discards the `io::ErrorKind`.
+    Reworded to name the shared conditions, the limit case and the collapse. This retires what the
+    first pass had recorded as deferred item 2 — nothing regressed (`exists()` collapsed too), so
+    the only real defect was the overclaim itself.
+  - `[low]` `[patch]` `convert_colocated`'s and `convert_import`'s `# Errors` docs were the only
+    ones not reconciled with the new unresolvable-path cause (`open`/`init`/`clone` all were); both
+    now name it.
+  - `[low]` `[patch]` The four `assert_ne!` symlink preconditions failed with a message that did not
+    say WHY the environment mattered. They now name `TMPDIR` and the two macOS symlinks, so a
+    developer who repointed it reads a cause instead of four red tests. This retires what the first
+    pass had recorded as deferred item 3: a `skip:` is banned by project-context ("No `#[ignore]` /
+    `skip:` on tests"), so failing loudly is the correct design and only the message was at fault.
+  - `[low]` `[patch]` The triplicated `assert_same_dir` / `assert_own_root_resolves` helpers were
+    justified with a false reason ("cannot share one without a new shared crate" — `crates/test-helpers`
+    is exactly that crate and is coverage-excluded). The true blocker is the dependency direction:
+    `assert_own_root_resolves` takes a `zanshin_jj::Repo` and `test-helpers` is a dev-dependency OF
+    `zanshin-jj`. Both copies now say so.
+  - `[low]` `[reject]` × 11 — `docs/rust-error-codes.md`'s `jj.path_not_found` row (the EACCES /
+    ELOOP / ENOTDIR collapse is unchanged — `exists()` made it too, so the registry condition did not
+    move); the canonicalize sitting at the entry for `convert_colocated` but inside `import_into`
+    (forced — the dest may not exist yet, and the code says so); `Repo::clone` dropping
+    `created_dir` while `convert_import` keeps it (import genuinely creates its dest, clone never
+    did); `open` dropping the `io::ErrorKind` while `init`/`clone` keep it (pre-existing collapse;
+    preserving it needs a variant this intent forbids); no "the path IS a symlink" fixture (same
+    `realpath` mechanism, one component instead of two); no Dart/FFI raw-path witness for
+    clone/convert (the wrappers pass the path straight through; the Rust witnesses hold the seams);
+    `crates/xtask/.../gen_fixture.rs` being an unmentioned sixth seam (canonicalizing there would not
+    change the committed fixture's degraded rows — its recorded temp dir is gone either way, and
+    regeneration is forbidden); `test-helpers::load` still handing a raw path to `Workspace::load`
+    (harmless — `add_workspace` no longer reads its `repo_path()`, and the rule is documented there);
+    the Code Map not recording that `Repo::reload_workspace` and `clone_into`'s two reloads were
+    audited (all take an already-canonical `workspace_root()`); `review_loop_iteration: 0` next to a
+    triage entry (it counts bad_spec loopbacks, of which there were none); and the previous pass not
+    itemizing its 13 rejects (format-conformant, and its prose aside carried the load-bearing two).
+  - Deferrals: the first pass's three were resolved down to ONE. Items 2 and 3 were retired by the
+    patches above. Item 1 (`Repo::init`/`Repo::clone` refuse a destination the CLI would create)
+    stays, marked `tracked_by` Story 9.20 and kept SPEC-ONLY per the `deferred-work.md` convention
+    for story-owned items — with a pointer added to both verbs' doc blocks. The central ledger
+    therefore ends this run strictly smaller: one must-have closed, nothing added.
+
 ## Design Notes
 
 > **SUPERSEDED — the paragraph below is factually wrong.** `canonicalize` is `realpath(3)`, which
@@ -419,10 +473,24 @@ which does not exist. `init` returns a workspace whose `repo_path` jj-lib alread
 `Repo::open` — and why aligning one side without the other flips which callers are broken.
 
 **Why `Path::exists()` can be replaced outright.** `exists()` is `fs::metadata(path).is_ok()` — it
-follows symlinks and returns `false` for ENOENT, ENOTDIR and a parent EACCES, which is exactly the set
-where `canonicalize` returns `Err`. Mapping that `Err` to `PathNotFound` preserves the variant, the
-`jj.path_not_found` code and the raw path in `context`, and keeps both existing refusal tests as the
-coverage for the arm — no new branch, no new test needed for `open`.
+follows symlinks and returns `false` for ENOENT, ENOTDIR, a symlink loop and a parent EACCES, the same
+conditions that make `canonicalize` return `Err`. Mapping that `Err` to `PathNotFound` preserves the
+variant, the `jj.path_not_found` code and the raw path in `context`, and keeps both existing refusal
+tests as the coverage for the arm — no new branch, no new test needed for `open`. *(Amended by the
+2026-09-05 review pass: the two sets are not identical in the limit — `realpath(3)` can additionally
+fail with ENAMETOOLONG when the RESOLVED path is the long one — and, like `exists()` before it, the
+`map_err(|_| …)` collapses every cause into one variant. Nothing regressed, and the code comment now
+says this rather than claiming exact equality.)*
+
+**What `Repo::open`'s canonicalize actually buys.** *(Added by the 2026-09-05 review pass.)* Not the
+read fix: `resolve_recorded_root` finishes its join with `std::fs::canonicalize` = `realpath(3)`, which
+resolves the symlinked prefix BEFORE applying the record's `..` segments, so a raw and a canonical
+`Workspace::repo_path()` produce the identical directory. The reads were always insensitive to `open`'s
+argument spelling, and no test can pin that seam through them. What it buys is a canonical
+`repo_path()` on an opened handle, so a future WRITER that records a store entry from an opened repo —
+Story 9.23's `workspace add` via `init_workspace_with_existing_repo`, which passes that path to
+`SimpleWorkspaceStore::load` — records a resolvable one. The intent mandates the seam; the code comment
+and the test doc now state this rationale instead of claiming a read-path effect.
 
 **Shape of each seam (keep the mapping on one expression):**
 
@@ -552,11 +620,56 @@ Follow-up review recommended: **true** — patched findings were high 0, medium 
   empty. No codegen was run and none is needed.
 - Matrix audit: all ten I/O rows are covered by tests that ran and passed.
 
+### Second review pass (2026-09-05, follow-up)
+
+The `followup_review_recommended: true` above was acted on: a second four-lens pass ran against the
+full `1dc6b6a..HEAD` diff. It produced **8 patches (medium 3, low 5), 0 defers, 11 rejects**, and
+**cut the deferred list from three items to one**. What it changed:
+
+- **`Repo::open`'s canonicalize does not fix the read path** — `resolve_recorded_root` finishes its
+  join with `realpath(3)`, which resolves the symlinked prefix BEFORE the record's `..`, so a raw and
+  a canonical `Workspace::repo_path()` answer identically and no read-verb assertion can pin that
+  seam. It stays (the intent mandates it, and it is real forward-defence for Story 9.23's
+  `workspace add`, which records a store entry from an OPENED repo), but the claim that it fixes
+  today's reads — and the witness doc that said the test protects it — were corrected at four sites:
+  `Repo::open`'s WHY block, `tests/workspace.rs`'s witness doc, the ledger bullet, and 9.7's
+  `resolved:` block.
+- Both durable artifacts named commit `2d6de57` alone, which predates the three seam witnesses and
+  the doc corrections; they now name `2d6de57..3bb2e7e` and describe the final four-witness set.
+- The two new refusal tests matched `reason.contains("<path>")`, which jj-lib's own pre-change
+  message also satisfies; they now match the `"<path>: "` PREFIX this change emits, so they actually
+  observe that the refusal moved ahead of the init. Both still pass.
+- Comment-only: `convert_colocated`'s WHY block carried a third copy of the disproven "works today"
+  premise; `convert_colocated`/`convert_import`'s `# Errors` gained the unresolvable-path cause;
+  `Repo::open`'s "exactly the same refusal set" was softened to name the ENAMETOOLONG limit and the
+  `io::ErrorKind` collapse; the four `assert_ne!` symlink preconditions now name `TMPDIR`; and the
+  triplicated test helpers' justification was replaced with the true one (the `test-helpers` crate is
+  a dev-dependency OF `zanshin-jj`, so it cannot host a helper taking a `zanshin_jj::Repo`).
+- Deferred items 2 and 3 were **retired** by those patches rather than carried. Item 1 stays, marked
+  `tracked_by` Story 9.20 and kept spec-only per the ledger's convention for story-owned items, with
+  a pointer added to `Repo::init`'s and `Repo::clone`'s doc blocks.
+
+Re-verified after the patches: `cargo fmt --all` produced no further change, and `cargo make test`
+exited 0 (`Build Done in 705.05 seconds`) with `coverage-check: OK — coverage held at 99.21%
+(8329/8395 lines)` and `extern-coverage: OK`. No baseline entry moved. Zero `test result: FAILED` in
+the run; all four raw-path witnesses, both tightened refusal tests and the Dart worker suite green.
+Matrix audit re-run: all ten rows covered by tests that ran and passed.
+
+Follow-up review recommended after this pass: **true** — patched findings were high 0, medium 3,
+low 5, scoring 3 × 3 + 5 = 14 (threshold 5). The flag is score-driven; nothing is left outstanding
+that this run identified, and a third pass would start from a clean triage.
+
 ### Residual risks
 
-- The three deferred items above, of which the `init`/`clone` destination-handling divergence from the
-  jj CLI is the one with user-visible weight — it is pre-existing and parked as Story 9.20's, but this
-  change now pins the refusal with tests, which entrenches it until 9.20 revisits it.
+- The one remaining deferred item — `Repo::init`/`Repo::clone` refuse a destination the jj CLI would
+  create, and clone accepts a non-empty one the CLI would refuse. Pre-existing, owned by Story 9.20,
+  but this change pins the refusal with tests, which entrenches it until 9.20 revisits it. Mitigated
+  by the in-code pointers now on both verbs.
 - The intent-contract's first **Always** bullet remains factually wrong and is read-only. It is
-  corrected in the Spec Change Log and both passages outside the contract that repeated it are marked
-  superseded, but anyone reading the contract alone still gets the wrong mechanism.
+  corrected in the Spec Change Log and every passage outside the contract that repeated it — Design
+  Notes, the fourth Execution bullet, and (from the second pass) the `convert_colocated` source
+  comment — is corrected or marked superseded; but anyone reading the contract alone still gets the
+  wrong mechanism.
+- `Repo::open`'s canonicalize is, by the mechanism above, **unobservable through the public API**. It
+  is documented as forward-defence at three sites, but no test can guard it until Story 9.23 lands a
+  writer that depends on it.
