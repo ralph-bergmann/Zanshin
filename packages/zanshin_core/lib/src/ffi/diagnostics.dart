@@ -8,7 +8,6 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
 import 'request_bytes.dart';
 
 /// Build-stamp and log-location diagnostics returned by [zanshin_diagnostics].
@@ -38,7 +37,8 @@ typedef GetDiagnostics = Diagnostics Function();
 /// decodes the returned `Envelope`, and returns a [Diagnostics] value.
 /// Modelled on `ZanshinFfiModule` (see `zanshin_version.dart`) but decodes a
 /// FlatBuffers `Envelope` instead of a lone C string (ADR-0001). See also
-/// `repo.dart` for the [FfiBuffer] decode pattern.
+/// `request_bytes.dart`'s `readToken` for the token-ownership pattern every
+/// adapter shares.
 @module
 class ZanshinDiagnosticsModule {
   /// Returns a factory that calls the Rust diagnostics FFI and decodes the

@@ -211,10 +211,9 @@ pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
 
 // ── Shared handle borrow ─────────────────────────────────────────────────────
 //
-// One spelling of the unbounded-lifetime contract for the four modules that carried a
-// NAMED copy of it (`git.rs`, `commit_views.rs`, `workspace.rs`, `bookmark_ops.rs`).
-// Unlike the builders in this module it returns a BORROW, not a finished buffer — hence
-// its own banner.
+// The crate's one spelling of the unbounded-lifetime contract: 32 call sites across 13
+// modules, every wrapper that borrows a session behind a raw handle. Unlike the builders
+// in this module it returns a BORROW, not a finished buffer — hence its own banner.
 //
 // This is now the ONLY `.ok_or_else(…)` spelling of that borrow in the crate: the nine
 // modules that used to inline it (`repo.rs`, `file.rs`, `status.rs`, `change.rs`,

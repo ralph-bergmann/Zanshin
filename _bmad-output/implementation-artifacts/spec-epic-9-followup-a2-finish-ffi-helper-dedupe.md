@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up A2: finish the FFI-helper dedupe'
 type: 'refactor'
 created: '2026-09-05'
-status: 'done'
+status: 'in-review'
 baseline_revision: 'ea6005ef66ce1216a797c627a254063d952fad57'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -126,9 +126,13 @@ re-grep rather than trusting a number after the first edit in a file.
   - drop `FFI_INVALID_HANDLE` from the `crate::envelope::{…}` list in those same eight
     (`status.rs:13`, `op_log.rs:13`, `change.rs:16`, `graph.rs:24`, `bookmarks.rs:13`,
     `file.rs:19`, `log_defaults.rs:17`, `remotes.rs:13`). `repo.rs` KEEPS it (`:581`).
-  - drop `FfiErrorObj` ONLY from `status.rs:13` and `log_defaults.rs:17` — those two have no other
-    use. Every other file keeps it (`change.rs:30`, `op_log.rs:19`, `graph.rs:34+`, `remotes.rs:19`,
-    `bookmarks.rs:19`, `file.rs:37+`, `repo.rs:40+`).
+  - **CORRECTED during execution — do NOT drop `FfiErrorObj` anywhere.** This bullet originally
+    said to drop it from `status.rs:13` and `log_defaults.rs:17` "because those two have no other
+    use". That is false: both use it in their own error mappers (`status.rs`'s `map_status_err`,
+    `log_defaults.rs`'s config-error arm), so removing it fails the build with `E0422`/`E0425`.
+    All nine files KEEP `FfiErrorObj` (`change.rs:30`, `op_log.rs:19`, `graph.rs:34+`,
+    `remotes.rs:19`, `bookmarks.rs:19`, `file.rs:37+`, `repo.rs:40+`, plus these two). Only
+    `handle_from_raw`, `RepoSession` and `FFI_INVALID_HANDLE` are orphaned by the re-pointing.
 - `coverage-baseline.txt:15,16,19,22,24,27,29,30,31,32` — `bookmarks/change/envelope/file/graph/
   log_defaults/op_log/remotes/repo/status.rs`; all `100.00` except `graph.rs = 99.81`.
 
@@ -205,8 +209,12 @@ re-grep rather than trusting a number after the first edit in a file.
 
 **Bookkeeping targets**
 - `_bmad-output/implementation-artifacts/deferred-work.md:234, 236, 238, 240` — the four bullets.
-  Convention in the same file (`:178`, `:182`, `:216`): `~~**title**~~ [locations] — … **RESOLVED
-  <date> (<spec slug>, commit <short hash>): <one line>**`.
+  Convention in the same file (`:178`, `:216`, `:218`, `:220`): the **RESOLVED** stamp goes
+  IMMEDIATELY after the strikethrough, the original body is kept verbatim as the audit trail, and
+  what actually happened goes in a trailing **Resolution:** sentence —
+  `~~**title**~~ **RESOLVED <date> (<spec slug>, commit <short hash>)** [locations] — <original
+  body, unchanged> **Resolution:** <what was done>`. (`:182` is a different, older shape with the
+  stamp at the END; follow the four `:216`-`:220` entries, which are the same run's own.)
 - `_bmad-output/implementation-artifacts/spec-epic-9-followup-a-dedupe-ffi-helpers.md:12-61` — the
   four `deferred:` items, in the same order as the ledger bullets; each gains a `resolved: >-`
   block scalar. Keep the YAML valid.
@@ -254,20 +262,28 @@ re-grep rather than trusting a number after the first edit in a file.
   `gitRemoteAdd`, `gitRemoteRemove`, `gitRemoteRename`, `gitRemoteSetUrl`) beside the existing
   `gitExport` one. -- the other five arms.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- strike through all four bullets of the
-  `spec-epic-9-followup-a-dedupe-ffi-helpers` section in the file's existing convention, each with
-  ` — RESOLVED 2026-09-05 (spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit <short hash>): <one line>`. -- a closing run that leaves its own ledger section open has not closed anything.
+  `spec-epic-9-followup-a-dedupe-ffi-helpers` section in the file's existing convention: the
+  `**RESOLVED 2026-09-05 (spec-epic-9-followup-a2-finish-ffi-helper-dedupe, commit <short hash>)**`
+  stamp immediately after the strikethrough, the original body kept verbatim, and a trailing
+  `**Resolution:** <what was done>`. Update the section preamble too — it says the entries are
+  "recorded here so the next pass has the counts already done", which a closing run makes false.
+  -- a closing run that leaves its own ledger section open has not closed anything.
 - `_bmad-output/implementation-artifacts/spec-epic-9-followup-a-dedupe-ffi-helpers.md` -- add a
   `resolved: >-` block scalar to each of its four `deferred:` items, keeping the YAML valid. -- the
   spec frontmatter is the per-run evidence trail.
 
 **Acceptance Criteria:**
 - Given `crates/zanshin-ffi/src/`, when it is grepped for
-  `handle_from_raw::<RepoSession>`, then exactly ONE hit remains — `repo.rs`'s
-  `zanshin_repo_close` — and `grep -c "session_from_handle(handle)"` over the crate returns 32
-  (13 pre-existing + 19 converted).
-- Given `packages/zanshin_core/lib/`, when it is grepped for `FfiBuffer.fromToken`, then exactly two
-  hits remain: the definition in `ffi_buffer.dart` and the single call in `request_bytes.dart`'s
-  `readToken`.
+  `handle_from_raw::<RepoSession>`, then exactly TWO hits remain — `envelope.rs`'s own
+  `session_from_handle` body (the helper IS that expression) and `repo.rs`'s
+  `zanshin_repo_close` close path — i.e. exactly one CALLER outside the helper, and
+  `grep -c "session_from_handle(handle)"` over the crate returns 32 (13 pre-existing + 19
+  converted).
+- Given `packages/zanshin_core/lib/`, when it is grepped for `FfiBuffer.fromToken`, then exactly
+  FOUR lines match, of which exactly two are code: the definition in `ffi_buffer.dart` and the
+  single call in `request_bytes.dart`'s `readToken`. The other two are doc comments (a `[…]`
+  reference in `ffi_buffer.dart`'s class doc and a prose mention in `readToken`'s own doc), so
+  the check is "one caller", not "two lines".
 - Given `packages/zanshin_core/lib/`, when it is grepped for `codeUnits.contains(0)` and for
   `must not contain an interior NUL`, then each returns exactly one hit and both are inside
   `request_bytes.dart`'s `rejectInteriorNul`.
@@ -302,6 +318,23 @@ re-grep rather than trusting a number after the first edit in a file.
   - Counts confirmed as mapped: 19 Rust sites (not "~20"), 8 `readToken` blocks in `mutate.dart`
     (not four), 23 total.
 
+- **2026-09-05, review pass (9 PATCH findings, doc/bookkeeping only — no code defects).** The
+  refactor falsified nine statements that describe it. All corrected: the `request_bytes.dart`
+  file banner (it scoped the file to six request-buffer adapters; 17 files import it now, and the
+  three helper groups have three different reaches) and `readToken`'s null-token rationale (its
+  newest caller, `events.dart`, gets its token from a `NativeCallable` callback, not an
+  `extern "C"` return); the `request_bytes_test.dart` header; `envelope.rs`'s banner FIRST
+  paragraph (the second was already rewritten, the first still named only the four originally-
+  extracted modules); `diagnostics.dart`'s pointer at a `repo.dart` pattern this run deleted;
+  two `deferred-work.md` leftovers (a preamble promising a "next pass" for a now-closed section,
+  and a struck bullet whose preserved body contradicted its own Resolution in the present tense);
+  and three statements in THIS spec — the two grep expectations in Acceptance Criteria and
+  Verification that undercounted their own hits (`handle_from_raw::<RepoSession>` leaves two, not
+  one, because the helper's body IS that expression; `FfiBuffer.fromToken` matches four lines, two
+  of them doc comments), the Code Map's `FfiErrorObj` instruction (now corrected in place so a
+  reader does not meet the build-breaking version first), and the stated `deferred-work.md`
+  convention, which did not match the shape the file actually uses.
+
 ## Review Triage Log
 
 ## Design Notes
@@ -332,11 +365,13 @@ shorter.
 - `cargo make test` -- expected: exit 0. Run unpiped and synchronously, allow ~8-10 minutes
   (cargo test + clippy pedantic `-D warnings` + rustfmt + `flutter test` + dart analyze/format +
   `cargo deny` + the coverage ratchet). The single gate.
-- `grep -rn "handle_from_raw::<RepoSession>" crates/zanshin-ffi/src/` -- expected: exactly one hit,
-  in `repo.rs`'s `zanshin_repo_close`.
+- `grep -rn "handle_from_raw::<RepoSession>" crates/zanshin-ffi/src/` -- expected: exactly two hits
+  — `envelope.rs`'s `session_from_handle` body (the helper is that expression) and `repo.rs`'s
+  `zanshin_repo_close`. One caller outside the helper.
 - `grep -rc "session_from_handle(handle)" crates/zanshin-ffi/src/` summed -- expected: 32.
-- `grep -rn "FfiBuffer.fromToken" packages/zanshin_core/lib/` -- expected: two hits
-  (`ffi_buffer.dart` definition, `request_bytes.dart` call).
+- `grep -rn "FfiBuffer.fromToken" packages/zanshin_core/lib/` -- expected: four matching lines, two
+  of them code (`ffi_buffer.dart` definition, `request_bytes.dart` call) and two doc comments.
+  The assertion is one caller.
 - `grep -rn "codeUnits.contains(0)" packages/zanshin_core/lib/` -- expected: one hit, in
   `request_bytes.dart`.
 - `git status --porcelain` -- expected: clean after each commit; no generated file and no

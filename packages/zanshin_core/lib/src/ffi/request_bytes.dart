@@ -8,16 +8,28 @@ import 'package:ffi/ffi.dart';
 import 'bindings.dart';
 import 'ffi_buffer.dart';
 
-// The one spelling of the request-buffer ownership discipline (AR-P-5 inbound
-// rule), shared by every FFI adapter file that passes a FlatBuffers request
-// buffer across the boundary: `mutate.dart`, `git.dart`, `file.dart`,
-// `commit_views.dart`, `workspace.dart` and `bookmark_ops.dart`.
+// The one spelling of the FFI buffer-ownership discipline, in both directions:
+// [withRequestBytes] / [callWithRequest] for the AR-P-5 inbound rule (Dart owns
+// the request buffer Rust only borrows), [readToken] for the outbound one (Dart
+// copies the envelope out of a returned token and frees the token), and
+// [rejectInteriorNul] / [rejectInteriorNuls] for the argument guard that must
+// produce ONE message.
 //
-// These helpers are package-visible rather than private because each of those
-// files previously carried its own byte-identical copy — six places one edit
-// could desync. The docs below are deliberately noun-agnostic; the per-noun
-// wording ("a jj change id, revset or path", "a git remote name or URL") lived
-// only in the copies.
+// These helpers are package-visible rather than private because every one of
+// them was previously copied per-file. Their reach differs, so the file is not
+// "the request-buffer file":
+//
+//   - the two request-buffer helpers are used by the six adapters that cross a
+//     FlatBuffers request buffer (`mutate`, `git`, `file`, `commit_views`,
+//     `workspace`, `bookmark_ops`);
+//   - `readToken` is used by every adapter that returns an envelope, request
+//     buffer or not — fourteen files as of the 2026-09-05 closing dedupe;
+//   - the NUL guards reach one layer further up, into
+//     `worker/isolate.dart`'s calling-side checks.
+//
+// The docs below are deliberately noun-agnostic; the per-noun wording ("a jj
+// change id, revset or path", "a git remote name or URL") lived only in the
+// copies.
 
 /// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
 /// pointer and byte length, and free the pointer afterward.
@@ -79,6 +91,11 @@ void rejectInteriorNuls(Iterable<String> values, String name) {
 /// `internal.dispatch_error` rather than as an FFI error envelope — so a null
 /// token is a cdylib bug, not a refusal path a caller can handle. Every
 /// `extern "C"` wrapper returns a real token, including on its error arms.
+/// The one caller whose token is not an `extern "C"` return value is
+/// `events.dart`'s native-event handler, which receives it as the argument of a
+/// `NativeCallable` invoked from Rust; the same guarantee holds there — Rust
+/// only posts a real token — and that handler's own `try`/`catch` is what keeps
+/// a violation from unwinding into the callback.
 Uint8List readToken(ffi.Pointer<ZanshinBuf> token) {
   final buf = FfiBuffer.fromToken(token);
   try {
