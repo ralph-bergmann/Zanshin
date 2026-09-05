@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up D: canonicalise the workspace path at every creation seam so a repo resolves its own root'
 type: 'bugfix'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: '1dc6b6a14b941ac2bbb4f67a49ae95fb3b4e6824'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -281,6 +281,44 @@ Zanshin anchors read against the working tree at baseline `1dc6b6a`; jj CLI anch
   edit to `coverage-baseline.txt` other than ratchet-raised values.
 
 ## Spec Change Log
+
+**2026-09-05 — the intent-contract's first Always bullet is factually wrong; the action it prescribes
+is nevertheless correct and was carried out.**
+
+The bullet ("All five seams move together or the fix is a regression") justifies bundling the five
+canonicalise sites with the claim that today a raw-path `init`/`convert`/`clone` is *consistent with*
+a raw-path `Repo::open` — "the recorded `..` count matches the raw join base, and `..` at `/` clamps"
+— and therefore that repos created by `convert_colocated` / `convert_import` / `Repo::clone` "today
+resolve". They do not, and never did. The same error is repeated in this spec's **Design Notes**
+("Why the arithmetic makes 'only fix `open`' a regression") and in the fourth Execution bullet
+("leaving this one raw would REGRESS a case that works today"). The `<intent-contract>` block is
+read-only, so it is corrected here rather than edited.
+
+*The true mechanism, verified two ways:*
+
+1. `jj_lib::file_util::relative_path` (`jj-lib-0.44.0/src/file_util.rs:136-152`) computes the `..`
+   count purely LEXICALLY — `strip_common_path_prefix` walks `Components`, and `depth` is the
+   component count of the from-suffix. The common prefix of a RAW repo path and a CANONICAL workspace
+   root is `/` alone, so the record is N × `..` followed by `private/var/…`, where N is the raw repo
+   path's own component count. There is no "matching `..` count".
+2. `resolve_recorded_root` (`crates/zanshin-jj/src/workspace.rs:130-131`) joins that record onto the
+   base and then calls `std::fs::canonicalize` — `realpath(3)` — which resolves the symlink BEFORE
+   applying the `..` segments. `realpath("/var/..")` is `/private`, not `/`; the assumed clamp at `/`
+   never happens. The N `..` are therefore applied to an N+1-component resolved prefix and land on
+   `/private`, yielding `/private/private/var/…` → ENOENT.
+
+*Consequence:* a raw-recorded entry resolved from NEITHER a raw base nor a canonical one. Repos
+created through a symlinked path by `Repo::clone`, `convert_colocated` or `convert_import` were
+already broken before this change; the change FIXES them rather than preserving them. Moving all five
+seams in one commit was still the right call — for COMPLETENESS of the fix, not to avoid a
+regression. The corollary is worth recording: because those entries never resolved, canonicalising
+`Repo::open` cannot strand any repo written by an older build, so there is no back-compat hazard.
+
+*Action taken:* the five seams were canonicalised in one commit as prescribed (commit `2d6de57`). The
+false rationale was also copied into two durable artifacts, which are corrected in place —
+`deferred-work.md`'s struck-through ledger bullet and `spec-9-7-workspace-reads-list-root.md`'s
+`resolved:` block now state the lexical-`relative_path` + `realpath`-ordering mechanism and the
+completeness (not anti-regression) reason for the bundle.
 
 ## Review Triage Log
 

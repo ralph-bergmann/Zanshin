@@ -1349,8 +1349,10 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// Returns [`RepoError::PathNotFound`] if `path` does not exist,
-    /// [`RepoError::NotARepo`] if `.jj` is absent, or [`RepoError::Backend`] on jj-lib failure.
+    /// Returns [`RepoError::PathNotFound`] if `path` cannot be resolved — it does not exist, or it
+    /// exists but is unreachable (a parent component denies search, a symlink loop, a non-directory
+    /// component) — [`RepoError::NotARepo`] if `.jj` is absent, or [`RepoError::Backend`] on jj-lib
+    /// failure.
     pub fn open(path: &Path) -> Result<Self, RepoError> {
         // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
         // every workspace's root RELATIVE to the `repo_path` the store was loaded with, while

@@ -790,3 +790,94 @@ fn convert_import_into_same_dir_is_colocated() {
         "colocated skip: imported HEAD must have no fresh jj-native child commit"
     );
 }
+
+// ── a converted workspace must resolve its OWN root, symlinked caller path or not ─
+
+/// Canonicalizes both sides before comparing — the macOS `/var` → `/private/var` trap.
+///
+/// A local copy of the identically-named helper in `tests/workspace.rs`: integration tests are
+/// separate binaries, so the two cannot share one without a new shared crate.
+fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
+    assert_eq!(
+        fs::canonicalize(actual).expect("actual path must exist"),
+        fs::canonicalize(expected).expect("expected path must exist"),
+        "paths must match once both sides are canonicalized"
+    );
+}
+
+/// Both workspace READ verbs report `expected` for the single `default` workspace of `repo`.
+fn assert_own_root_resolves(repo: &zanshin_jj::Repo, expected: &std::path::Path) {
+    let entries = repo.list_workspaces().expect("list_workspaces");
+    assert_eq!(
+        entries.len(),
+        1,
+        "a converted repo has exactly the default workspace; got {entries:?}"
+    );
+    assert_eq!(entries[0].name, "default");
+    let root = entries[0]
+        .root
+        .as_ref()
+        .expect("a just-created workspace records a path that resolves");
+    assert_same_dir(root, expected);
+
+    let named = repo
+        .resolve_workspace_root(Some("default"))
+        .expect("the workspace's own recorded path must resolve");
+    assert_same_dir(&named, expected);
+    assert_eq!(
+        named,
+        repo.resolve_workspace_root(None)
+            .expect("the no-name default cannot fail"),
+        "naming the current workspace must agree with the no-name default"
+    );
+}
+
+/// The workspace-store round trip for the COLOCATED-CONVERT seam.
+///
+/// `convert_into` reaches the same jj-lib `init_with_factories` that `Repo::init` does, so a caller
+/// path still containing a symlink (on macOS every `/var/folders/…` temp dir points at
+/// `/private/var/folders/…`) records a workspace root RELATIVE to a spelling no read ever joins
+/// onto — and the converted workspace's own row goes absent while `root --name default` refuses.
+/// Every other assertion in this file (file layout, imported bookmarks, op log, rollback) is blind
+/// to the store, so without this test reverting `convert_colocated`'s canonicalize leaves the suite
+/// green.
+#[test]
+fn convert_colocated_through_a_symlinked_path_resolves_its_own_root() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    assert_ne!(
+        fs::canonicalize(tmp.path()).expect("temp dir exists").as_path(),
+        tmp.path(),
+        "this witness needs a temp path that really does go through a symlink"
+    );
+    init_git_repo_with_commit(tmp.path());
+
+    let converted = convert_colocated(tmp.path()).expect("convert_colocated");
+
+    assert_own_root_resolves(&converted, tmp.path());
+}
+
+/// The same round trip for the IMPORT seam — where the canonicalize has to follow the
+/// `create_dir_all`, because the destination may legitimately not exist yet.
+///
+/// The dest here is a not-yet-existing child of a symlinked temp dir, so it exercises that
+/// ordering: `import_into` creates the directory and only then can resolve it.
+#[test]
+fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let dest_parent = TempDir::new().expect("tempdir dest");
+    assert_ne!(
+        fs::canonicalize(dest_parent.path()).expect("temp dir exists").as_path(),
+        dest_parent.path(),
+        "this witness needs a temp path that really does go through a symlink"
+    );
+    let dest = dest_parent.path().join("workspace");
+    assert!(!dest.exists(), "the dest must be created by import_into itself");
+
+    let imported = convert_import(src.path(), &dest).expect("convert_import");
+
+    assert_own_root_resolves(&imported, &dest);
+}

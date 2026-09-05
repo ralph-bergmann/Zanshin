@@ -230,6 +230,80 @@ fn repo_clone_from_local_git_source_returns_ok() {
     assert_eq!(fs::read_to_string(&cloned_readme).expect("read cloned README"), "hello");
 }
 
+// ── a cloned workspace must resolve its OWN root, symlinked caller path or not ─
+
+/// Canonicalizes both sides before comparing — the macOS `/var` → `/private/var` trap.
+///
+/// A local copy of the identically-named helper in `tests/workspace.rs`: integration tests are
+/// separate binaries, so the two cannot share one without a new shared crate.
+fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
+    assert_eq!(
+        fs::canonicalize(actual).expect("actual path must exist"),
+        fs::canonicalize(expected).expect("expected path must exist"),
+        "paths must match once both sides are canonicalized"
+    );
+}
+
+/// Both workspace READ verbs report `expected` for the single `default` workspace of `repo`.
+fn assert_own_root_resolves(repo: &Repo, expected: &std::path::Path) {
+    let entries = repo.list_workspaces().expect("list_workspaces");
+    assert_eq!(
+        entries.len(),
+        1,
+        "a freshly cloned repo has exactly the default workspace; got {entries:?}"
+    );
+    assert_eq!(entries[0].name, "default");
+    let root = entries[0]
+        .root
+        .as_ref()
+        .expect("a just-created workspace records a path that resolves");
+    assert_same_dir(root, expected);
+
+    let named = repo
+        .resolve_workspace_root(Some("default"))
+        .expect("the workspace's own recorded path must resolve");
+    assert_same_dir(&named, expected);
+    assert_eq!(
+        named,
+        repo.resolve_workspace_root(None)
+            .expect("the no-name default cannot fail"),
+        "naming the current workspace must agree with the no-name default"
+    );
+}
+
+/// The workspace-store round trip for the CLONE seam.
+///
+/// `clone_into` reaches the same jj-lib `init_with_factories` that `Repo::init` does, so a target
+/// path still containing a symlink (on macOS every `/var/folders/…` temp dir points at
+/// `/private/var/folders/…`) records a workspace root RELATIVE to a spelling no read ever joins
+/// onto — and the clone's own row goes absent while `root --name default` refuses. Nothing else in
+/// this file observes the store: file layout, git refs and `Repo::open` all succeed either way, so
+/// without this test reverting `Repo::clone`'s canonicalize leaves the suite green.
+#[test]
+fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
+    pin_env();
+
+    let src_tmp = TempDir::new().expect("src tempdir");
+    git(&["init", "--initial-branch=main"], src_tmp.path());
+    git(&["config", "user.email", "test@zanshin.test"], src_tmp.path());
+    git(&["config", "user.name", "Fixture"], src_tmp.path());
+    fs::write(src_tmp.path().join("README.md"), "hello").expect("write README");
+    git(&["add", "."], src_tmp.path());
+    git(&["commit", "-m", "initial"], src_tmp.path());
+
+    let target_tmp = TempDir::new().expect("target tempdir");
+    assert_ne!(
+        fs::canonicalize(target_tmp.path()).expect("temp dir exists").as_path(),
+        target_tmp.path(),
+        "this witness needs a temp path that really does go through a symlink"
+    );
+
+    let src_url = format!("file://{}", src_tmp.path().display());
+    let cloned = Repo::clone(&src_url, target_tmp.path()).expect("clone from local file://");
+
+    assert_own_root_resolves(&cloned, target_tmp.path());
+}
+
 // ── AC-20: 100× open/drop loop — no fd leak ──────────────────────────────────
 
 #[test]

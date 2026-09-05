@@ -33,9 +33,16 @@ deferred:
       The caller-supplied workspace path is now canonicalized at ALL FIVE seams that hand a path
       to jj-lib's Workspace constructors - Repo::open, Repo::init, Repo::clone, convert_colocated
       and import_into - because they funnel into the same init_with_factories ->
-      workspace_store.add write; fixing only the init path would have REGRESSED repos created by
-      convert/clone, which resolve today because a raw-path creation is consistent with a
-      raw-path open. std::fs::canonicalize, never dunce:: (this crate's workspace.rs house rule).
+      workspace_store.add write. All five had to move for COMPLETENESS, not to avoid a regression:
+      a raw-recorded entry never resolved from EITHER base, because relative_path counts the ..
+      segments LEXICALLY (jj-lib-0.44.0/src/file_util.rs:136-152 - the common prefix of a raw and a
+      canonical path is / alone, so the record is N x .. plus private/var/...), while
+      resolve_recorded_root joins and then calls std::fs::canonicalize, i.e. realpath(3), which
+      resolves the symlink BEFORE applying the .. segments - realpath("/var/..") is /private, not /.
+      So repos created through a symlinked path by clone / convert_colocated / convert_import were
+      ALREADY broken and this change fixes them; and, by the same token, canonicalizing Repo::open
+      cannot strand any repo written by an older build, because none of those entries resolved.
+      std::fs::canonicalize, never dunce:: (this crate's workspace.rs house rule).
       Nothing observable moved: Repo::open's !path.exists() guard is replaced by the canonicalize
       (exists() is an fs::metadata probe that follows symlinks, so it returned false exactly
       where canonicalize returns Err), every error payload keeps the CALLER's spelling, and a
