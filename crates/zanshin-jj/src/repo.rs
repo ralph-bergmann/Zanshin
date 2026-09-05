@@ -649,10 +649,21 @@ impl Repo {
     /// remote-tracking refs. A fresh operation is committed even when nothing changed
     /// (CLI parity).
     ///
+    /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are read
+    /// from the repo's EFFECTIVE config per call and never cached (FR-JJ-17), exactly as
+    /// `cli/src/commands/git/fetch.rs:235` @ v0.44.0 takes both off config. This CHANGED
+    /// the default for `record-synthetic-predecessors`: it used to be hardcoded `false`
+    /// here, while jj-lib's own default (`config/misc.toml`) is `true` — so a fetch now
+    /// records synthetic predecessors unless the user turns them off. Per-remote
+    /// `auto-track-bookmarks` is still NOT honoured — see [`Repo::git_import`].
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::RemoteNotFound`] — `remote_name` has no configured git
-    ///   remote, or the repo has no git backend at all.
+    ///   remote.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend at all.
+    /// - [`crate::MutateError::Config`] — the repo's jj config could not be read, or one
+    ///   of the two `git.*` keys above has a non-boolean value.
     /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
     ///   failed.
     /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
@@ -662,7 +673,9 @@ impl Repo {
         remote_name: &str,
         progress: &crate::ProgressFn,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, progress)
+        let config = crate::config::load(self).map_err(crate::mutate::cfg)?;
+        let options = crate::config::git_import_options(&config).map_err(crate::mutate::cfg)?;
+        crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, &options, progress)
     }
 
     /// Reloads the workspace from disk so a freshly-written git config is visible.
@@ -1382,7 +1395,11 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// Returns [`RepoError::CloneFailed`] if init, remote registration, fetch, or import fails.
+    /// Returns [`RepoError::CloneFailed`] if init, remote registration, fetch, or import fails
+    /// — including when the effective jj config cannot be read, or sets a non-boolean
+    /// `git.abandon-unreachable-commits`, which the clone's import options are built from
+    /// (FR-JJ-17). A config fault is not a separate variant: every clone-step failure travels
+    /// as `CloneFailed`, with the offending key named in `reason`.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
         let settings = make_settings()?;
         let created_dir = !target_path.exists();
@@ -1451,10 +1468,19 @@ impl Repo {
         let subprocess_options = GitSubprocessOptions::from_settings(settings)
             .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
 
+        // `git.abandon-unreachable-commits` comes from the freshly-initialised workspace's
+        // EFFECTIVE config (FR-JJ-17); no Rust constant decides it. The workspace is the
+        // Step-3 reload, which is why this needs `load_for_workspace` — there is no `Repo`
+        // wrapping it yet.
+        let config = crate::config::load_for_workspace(&workspace)
+            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
         let import_options = GitImportOptions {
+            // WHY: CLI parity — `cli/src/commands/git/clone.rs:384-389` @ v0.44.0 pins this
+            // to false REGARDLESS of config ("There may be a large number of new commits").
+            // Only `abandon_unreachable_commits` is taken from config here, exactly as there.
             record_synthetic_predecessors: false,
-            abandon_unreachable_commits: true,
-            remote_auto_track_bookmarks: std::collections::HashMap::new(),
+            ..crate::config::git_import_options(&config)
+                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?
         };
 
         let fetch_expr = GitFetchRefExpression {

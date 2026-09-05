@@ -533,7 +533,10 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 ///
 /// # Errors
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
-/// - `jj.jj_lib_error` — clone failed; detail in `context`.
+/// - `jj.jj_lib_error` — clone failed; detail in `context`. This also covers a config
+///   fault: the clone reads `git.abandon-unreachable-commits` from the effective config,
+///   so an unreadable config or a non-boolean value fails the clone under this code, with
+///   the offending key in `context`.
 ///
 /// # Safety
 /// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
@@ -897,8 +900,13 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `remote_name` is a null pointer.
 /// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
-/// - `jj.remote_not_found` — `remote_name` has no configured git remote, or the repo
-///   has no git backend at all.
+/// - `jj.remote_not_found` — `remote_name` has no configured git remote.
+/// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
+///   cannot run. Carries NO `context` — there is no path to name. Identical to what the
+///   six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
+/// - `jj.config_error` — the repo's effective config could not be read, or
+///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
+///   non-boolean value; both are read per call rather than hardcoded.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
 ///

@@ -6,7 +6,7 @@
 //! and their fetch URLs, and lets [`crate::Repo::git_fetch`] actually sync with one.
 //! Re-resolves to the head operation per call (ADR-0002), never shells to the `jj`
 //! CLI (AR-AP-1). A non-git (native) backend has no remotes and yields an empty list
-//! (never an error) from `list_remotes`, or `RemoteNotFound` from `git_fetch`.
+//! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
 
 use std::io;
 
@@ -181,11 +181,17 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// `working_copy_change_id` is simply the (unchanged) post-commit `@`. A fresh
 /// operation is committed even when nothing changed (CLI parity).
 ///
+/// `import_options` is supplied by the caller — [`crate::Repo::git_fetch`] reads it from
+/// the repo's EFFECTIVE config (FR-JJ-17), mirroring `cli/src/commands/git/fetch.rs:235`
+/// @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
+/// `git.record-synthetic-predecessors` off config. Nothing here hardcodes either key.
+///
 /// # Errors
 ///
-/// - [`MutateError::RemoteNotFound`] — `remote_name` has no configured git remote, or
-///   the repo has no git backend at all (a native backend categorically has no
-///   remotes, so the remote categorically can't exist).
+/// - [`MutateError::RemoteNotFound`] — `remote_name` has no configured git remote.
+/// - [`MutateError::NotAGitRepo`] — the workspace has no git backend at all, so `git fetch`
+///   cannot run — jj-lib's `UnexpectedGitBackendError`, the only failure `GitFetch::new`
+///   has. The same condition the six `crate::git` verbs already report under this variant.
 /// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
 ///   auth, or transport error). No operation is committed.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
@@ -194,6 +200,7 @@ pub(crate) fn git_fetch(
     workspace: &Workspace,
     settings: &UserSettings,
     remote_name: &str,
+    import_options: &GitImportOptions,
     progress: &ProgressFn,
 ) -> Result<MutationResult, MutateError> {
     let remote_buf: RemoteNameBuf = remote_name.into();
@@ -203,16 +210,14 @@ pub(crate) fn git_fetch(
     let mut tx = readonly.start_transaction();
 
     let subprocess_options = GitSubprocessOptions::from_settings(settings).map_err(mutate::be)?;
-    let import_options = GitImportOptions {
-        record_synthetic_predecessors: false,
-        abandon_unreachable_commits: true,
-        remote_auto_track_bookmarks: std::collections::HashMap::new(),
-    };
 
+    // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.44.0
+    // `git.rs:3032-3047`) — `get_git_backend` is its only fallible step — so the blanket
+    // `map_err` swallows nothing else. "No git backend" is the same condition the six
+    // `crate::git` verbs report as `NotAGitRepo`; an unknown REMOTE is raised later, by
+    // `fetch()`, as `GitFetchError::NoSuchRemote` below.
     let mut fetcher =
-        GitFetch::new(tx.repo_mut(), subprocess_options, &import_options).map_err(|_| MutateError::RemoteNotFound {
-            name: remote_name.to_owned(),
-        })?;
+        GitFetch::new(tx.repo_mut(), subprocess_options, import_options).map_err(|_| MutateError::NotAGitRepo)?;
 
     let expr = GitFetchRefExpression {
         bookmark: StringExpression::Pattern(Box::new(

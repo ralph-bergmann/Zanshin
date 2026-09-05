@@ -139,8 +139,10 @@ pub enum MutateError {
     #[error("nothing to undo")]
     NothingToUndo,
     /// [`crate::Repo::git_fetch`] was called with a remote name that has no
-    /// configured git remote — or the repo has no git backend at all, in which case
-    /// no remote can exist categorically (FR-JJ-13).
+    /// configured git remote (FR-JJ-13).
+    ///
+    /// A workspace with no git backend at all is NOT this variant — it is
+    /// [`MutateError::NotAGitRepo`], the same answer the six `crate::git` verbs give.
     #[error("no such remote: {name}")]
     RemoteNotFound {
         /// The remote name that could not be resolved.
@@ -179,6 +181,10 @@ pub enum MutateError {
     },
     /// The open workspace has no git backend, so a git-only verb cannot run at all
     /// (Story 9.5) — jj-lib's `UnexpectedGitBackendError`.
+    ///
+    /// Produced by the six `crate::git` verbs and — since the Epic 9 git-sync follow-up —
+    /// by [`crate::Repo::git_fetch`], which used to report the identical condition as
+    /// [`MutateError::RemoteNotFound`]. One condition, one variant.
     ///
     /// Reuses the already-registered `jj.not_a_git_repo` code, whose meaning widens from
     /// "this PATH is not a git repo" to "this WORKSPACE has no git backend".

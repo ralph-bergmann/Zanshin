@@ -49,6 +49,7 @@ use jj_lib::config::{
     resolve, ConfigGetError, ConfigGetResultExt as _, ConfigLayer, ConfigLoadError, ConfigResolutionContext,
     ConfigSource, StackedConfig,
 };
+use jj_lib::workspace::Workspace;
 
 use crate::Repo;
 
@@ -377,7 +378,20 @@ fn load_with(env: &ConfigEnv, repo_path: &Path, workspace_root: &Path) -> Result
 /// - [`ConfigError::Load`] — a config file is unreadable or not valid TOML, a `config-id`
 ///   is malformed, or a `--when`/`[[--scope]]` condition has the wrong type.
 pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
-    let workspace = repo.workspace();
+    load_for_workspace(repo.workspace())
+}
+
+/// Loads `workspace`'s effective jj config stack, for a caller that has no [`Repo`] yet.
+///
+/// [`load`] is the usual entry point; this exists because `Repo::clone_into` must read the
+/// effective config of the workspace it just initialised, several steps BEFORE that workspace
+/// is wrapped in a [`Repo`].
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a config file is unreadable or not valid TOML, a `config-id`
+///   is malformed, or a `--when`/`[[--scope]]` condition has the wrong type.
+pub(crate) fn load_for_workspace(workspace: &Workspace) -> Result<StackedConfig, ConfigError> {
     // `repo_path()` is jj-lib's already-resolved `.jj/repo` — it follows the FILE
     // indirection a secondary workspace uses.
     load_with(

@@ -740,6 +740,38 @@ fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
     close_handle(handle);
 }
 
+/// The observable half of the Epic 9 git-sync follow-up: a NATIVE workspace (`backend = 0`)
+/// has no git backend, and `zanshin_git_fetch` now reports that as `jj.not_a_git_repo` —
+/// the code the six `zanshin_git_*` wrappers already use — where it used to report
+/// `jj.remote_not_found`. Like every other producer of that code from a workspace (rather
+/// than a path), it carries NO `context`: there is no path to name.
+#[test]
+fn git_fetch_on_native_backend_returns_jj_not_a_git_repo() {
+    pin_env();
+    let dst = tempfile::TempDir::new().unwrap();
+    let dst_cstr = cstr(dst.path().to_str().unwrap());
+    let init_token = unsafe { zanshin_repo_init(dst_cstr.as_ptr(), 0) };
+    let init_bytes = unsafe { read_and_free(init_token) };
+    let init_env = parse_envelope(&init_bytes);
+    assert!(init_env.ok(), "init (native backend) must succeed");
+    let handle = init_env
+        .data_as_repo_handle()
+        .expect("RepoHandle must be present")
+        .handle();
+
+    let remote_cstr = cstr("origin");
+    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok(), "a native backend must produce an error envelope");
+    let error = env.error().expect("error must be present");
+    assert_eq!(error.code(), Some(zanshin_ffi::JJ_NOT_A_GIT_REPO));
+    assert_eq!(error.context(), None, "the variant names no path, so context is absent");
+
+    close_handle(handle);
+}
+
 // ── restore / absorb (Story 9.3) ──────────────────────────────────────────────
 
 /// `A(a.txt="A") -> B(a.txt="B")` off root, plus a source `S` whose one-line edit annotates

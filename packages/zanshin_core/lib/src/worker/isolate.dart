@@ -756,7 +756,9 @@ class ZanshinWorker {
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.remote_not_found`, `jj.network_error`). Completes with a [StateError]
+  /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
+  /// `jj.network_error`). A workspace with no git backend is `jj.not_a_git_repo`;
+  /// `jj.remote_not_found` now means only "no remote of that name". Completes with a [StateError]
   /// after [close]. The close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.gitFetch].
   Future<repo_ffi_mutate.MutationResult> gitFetch(int handleId, String remoteName) async {

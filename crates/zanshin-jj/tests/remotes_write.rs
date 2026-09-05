@@ -19,7 +19,7 @@ use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
-use zanshin_jj::{Backend, MutateError, ProgressEvent, Repo};
+use zanshin_jj::{resolve_revset, Backend, MutateError, ProgressEvent, Repo};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
@@ -87,6 +87,32 @@ fn init_git_repo_with_commits(path: &std::path::Path) {
     git_cmd(&["add", "."], path);
     git_cmd(&["commit", "-m", "second"], path);
     git_cmd(&["tag", "v1"], path);
+}
+
+/// Build a plain Git repo at `path` with one commit on `main` and a second commit `B`
+/// reachable ONLY through the branch `feature` — and no tags, unlike
+/// [`init_git_repo_with_commits`], whose `v1` would keep the tip reachable after the
+/// branch is deleted. Deleting `feature` therefore makes `B` genuinely unreachable, which
+/// is the only state in which `git.abandon-unreachable-commits` is observable.
+fn init_git_repo_with_a_branch_only_commit(path: &std::path::Path) {
+    git_cmd(&["init", "--initial-branch=main"], path);
+    git_cmd(&["config", "user.email", "test@zanshin.test"], path);
+    git_cmd(&["config", "user.name", "Fixture"], path);
+    fs::write(path.join("README.md"), "hello").expect("write README");
+    git_cmd(&["add", "."], path);
+    git_cmd(&["commit", "-m", "initial"], path);
+    git_cmd(&["checkout", "-b", "feature"], path);
+    fs::write(path.join("feature.txt"), "only on feature").expect("write feature file");
+    git_cmd(&["add", "."], path);
+    git_cmd(&["commit", "-m", "only on feature"], path);
+    git_cmd(&["checkout", "main"], path);
+}
+
+/// Writes the repo-layer config (`.jj/repo/config.toml`) of the workspace at `root`.
+/// Mirrors `tests/git_sync.rs`'s helper of the same name — each `tests/*.rs` file is its
+/// own compilation unit, so this is a local copy, not an import.
+fn write_repo_config(root: &std::path::Path, toml: &str) {
+    fs::write(root.join(".jj").join("repo").join("config.toml"), toml).expect("repo config must be writable");
 }
 
 /// Opens a fresh `Workspace` at `root` and returns the commit-id hex of the tracked
@@ -318,8 +344,13 @@ fn git_fetch_nonexistent_remote_returns_remote_not_found() {
 
 // ── Native (non-git) backend ───────────────────────────────────────────────────
 
+/// A native (`init_simple`) workspace has no git backend at all, so `git fetch` cannot run.
+/// That is `NotAGitRepo` — the SAME variant the six `Repo::git_remote_*`/`git_import`/
+/// `git_export` verbs already return for the identical condition — not `RemoteNotFound`,
+/// which now means only "no remote of that name". The remap is exact: `GitFetch::new`'s
+/// only failure mode is jj-lib's `UnexpectedGitBackendError`.
 #[test]
-fn git_fetch_on_native_backend_returns_remote_not_found() {
+fn git_fetch_on_native_backend_returns_not_a_git_repo() {
     pin_env();
     let dst = TempDir::new().unwrap();
     Repo::init(dst.path(), None).unwrap();
@@ -328,11 +359,94 @@ fn git_fetch_on_native_backend_returns_remote_not_found() {
     let no_op = |_: ProgressEvent| {};
     let err = repo
         .git_fetch("origin", &no_op)
-        .expect_err("native backend has no remotes");
+        .expect_err("native backend has no git backend to fetch into");
     assert!(
-        matches!(err, MutateError::RemoteNotFound { ref name } if name == "origin"),
-        "expected RemoteNotFound{{name: \"origin\"}}, got {err:?}"
+        matches!(err, MutateError::NotAGitRepo),
+        "expected NotAGitRepo, got {err:?}"
     );
+}
+
+// ── The two `git.*` import keys come from config, never from a Rust constant ──────
+
+/// `git.abandon-unreachable-commits = false` must actually be honoured by FETCH too — the
+/// option is read from the repo's EFFECTIVE config per call, never hardcoded (FR-JJ-17,
+/// CLI parity with `cli/src/commands/git/fetch.rs:235` @ v0.44.0).
+///
+/// The scenario is the only one in which the flag is observable: a bare remote whose
+/// `feature` branch is the ONLY ref to commit `B`. After the first fetch jj knows `B`;
+/// deleting `feature` upstream and fetching again makes `B` unreachable, which is exactly
+/// what the flag decides the fate of. With the user's `false`, `B` must survive.
+#[test]
+fn git_fetch_honours_abandon_unreachable_commits_false() {
+    pin_env();
+    let src = TempDir::new().unwrap();
+    init_git_repo_with_a_branch_only_commit(src.path());
+    let feature_head = git_stdout(&["rev-parse", "feature"], src.path());
+
+    let parent = TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+
+    let dst = TempDir::new().unwrap();
+    Repo::init(dst.path(), Some(Backend::Git)).unwrap();
+    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(dst.path()).unwrap();
+    repo.git_fetch("origin", &no_op).expect("first fetch imports feature");
+
+    // `B` is in jj's own view now — capture its change id while it is still resolvable.
+    let mut ids = resolve_revset(&repo, &feature_head).expect("a commit hex is a revset symbol");
+    assert_eq!(ids.len(), 1, "a commit hex denotes exactly one change");
+    let b_change = ids.swap_remove(0);
+
+    // Drop the only ref to `B` upstream, so the next fetch prunes `feature@origin` and
+    // leaves `B` unreachable.
+    git_cmd(&["update-ref", "-d", "refs/heads/feature"], &bare);
+
+    write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = false\n");
+    let mut repo = Repo::open(dst.path()).expect("reopen with the new repo config");
+    repo.git_fetch("origin", &no_op).expect("second, pruning fetch");
+
+    let visible = resolve_revset(&repo, "all()").expect("all() resolves");
+    assert!(
+        visible.contains(&b_change),
+        "the user disabled abandoning, so the now-unreachable commit must stay visible; got {visible:?}"
+    );
+}
+
+/// A malformed value for a key this verb reads must arrive as `Config` — the same fault
+/// class the read side reports, never the unclassified `Backend` bucket — and must write
+/// nothing. The remote here is real and reachable, so without the config read this fetch
+/// would SUCCEED: the refusal is the proof that the value is consulted at all.
+#[test]
+fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
+    pin_env();
+    let src = TempDir::new().unwrap();
+    init_git_repo_with_commits(src.path());
+
+    let parent = TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+
+    let dst = TempDir::new().unwrap();
+    Repo::init(dst.path(), Some(Backend::Git)).unwrap();
+    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+    write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
+
+    let mut repo = Repo::open(dst.path()).unwrap();
+    let before = repo.op_log(None).unwrap();
+
+    let no_op = |_: ProgressEvent| {};
+    let err = repo
+        .git_fetch("origin", &no_op)
+        .expect_err("a wrong-typed value must refuse");
+
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        "expected Config naming the key, got {err:?}"
+    );
+    let after = repo.op_log(None).unwrap();
+    assert_eq!(after.len(), before.len(), "a refusal must write no operation");
+    assert_eq!(after[0].id, before[0].id, "the op-log head is untouched");
 }
 
 // ── Reserved remote name falls through to the generic Backend mapping ─────────────

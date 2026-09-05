@@ -55,7 +55,8 @@ pub const JJ_IMMUTABLE: &str = "jj.immutable";
 /// root — there is no parent operation to restore to.
 pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured
-/// git remote, or the repo has no git backend at all; and — since Story 9.5 — by
+/// git remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and —
+/// since Story 9.5 — by
 /// `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does not
 /// exist (for `rename`, the OLD name; for `set_url`, only when at least one URL was given).
 pub const JJ_REMOTE_NOT_FOUND: &str = "jj.remote_not_found";
@@ -123,7 +124,9 @@ pub const JJ_ALREADY_JJ_REPO: &str = "jj.already_jj_repo";
 /// AR-P-4: emitted by `repo.rs` when the path is not a Git repository or does not exist; convert refused.
 /// Since Story 9.5 the meaning is WIDENED: `git.rs`'s six wrappers emit it when the OPEN
 /// WORKSPACE has no git backend at all (jj-lib's `UnexpectedGitBackendError`), which has no
-/// path to name and therefore carries no `context`.
+/// path to name and therefore carries no `context`. Since the Epic 9 git-sync follow-up
+/// `repo.rs::zanshin_git_fetch` emits it for that same condition, which it used to report
+/// as `jj.remote_not_found`.
 pub const JJ_NOT_A_GIT_REPO: &str = "jj.not_a_git_repo";
 /// AR-P-4: emitted by `repo.rs` when a jj-lib failure occurred during colocated conversion; detail in `context`.
 pub const JJ_CONVERT_FAILED: &str = "jj.convert_failed";

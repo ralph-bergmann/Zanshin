@@ -272,9 +272,15 @@ final class RepoHandle {
   /// Progress rides `ZanshinWorker.events` as a `ProgressEvent` carrying this
   /// handle's [handleId].
   ///
+  /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are
+  /// read from the repo's effective config per call, never hardcoded.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.remote_not_found`, `jj.network_error`).
+  /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
+  /// `jj.network_error`). A workspace with no git backend is
+  /// `jj.not_a_git_repo` — not `jj.remote_not_found`, which now means only
+  /// "no remote of that name".
   Future<MutationResult> gitFetch(String remoteName) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
