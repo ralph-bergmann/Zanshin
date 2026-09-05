@@ -66,11 +66,19 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     }
 
     let settings = make_settings()?;
-    match convert_into(&settings, path) {
-        Ok(()) => Repo::open(path),
+    // WHY canonicalize: `convert_into` reaches jj-lib's `init_with_factories`, which records the
+    // new workspace's root in the store RELATIVE to the RAW path it was handed while every read
+    // joins onto the canonical `Workspace::repo_path()`. A symlinked caller path (macOS
+    // `/var/folders/…`) would produce a workspace that cannot resolve its own root — and since
+    // `Repo::open` below canonicalizes too, leaving this raw would break a case that works
+    // today. The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
+    // spelling in the payload.
+    let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
+    match convert_into(&settings, &root) {
+        Ok(()) => Repo::open(&root),
         Err(e) => {
             // Roll back only what convert created: the `.jj/` dir. Never touch `.git/`.
-            let _ = std::fs::remove_dir_all(path.join(".jj"));
+            let _ = std::fs::remove_dir_all(root.join(".jj"));
             Err(e)
         }
     }
@@ -239,6 +247,12 @@ fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
 /// op-count is cosmetic and not replicated (consistent with `convert_colocated`).
 fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
+    // canonicalize has to follow the directory creation. It has to happen at all because
+    // `init_external_git` records the workspace root in the store RELATIVE to this path while
+    // every read joins onto the canonical `Workspace::repo_path()` — see `Repo::open`.
+    let workspace_path =
+        std::fs::canonicalize(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
 
     let resolved = resolve_git_repo_path(git_repo_path);
 
@@ -246,7 +260,7 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     //    Keep `workspace`: we materialise the working copy into the dest below.
     let (mut workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
         settings,
-        workspace_path,
+        &workspace_path,
         &resolved,
     ))
     .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;

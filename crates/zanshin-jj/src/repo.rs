@@ -1352,16 +1352,25 @@ impl Repo {
     /// Returns [`RepoError::PathNotFound`] if `path` does not exist,
     /// [`RepoError::NotARepo`] if `.jj` is absent, or [`RepoError::Backend`] on jj-lib failure.
     pub fn open(path: &Path) -> Result<Self, RepoError> {
-        if !path.exists() {
-            return Err(RepoError::PathNotFound { path: path.to_owned() });
-        }
-        if !path.join(".jj").is_dir() {
+        // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
+        // every workspace's root RELATIVE to the `repo_path` the store was loaded with, while
+        // every read joins that record back onto `Workspace::repo_path()`. A caller path that
+        // still contains a symlink (on macOS every `/var/folders/…` temp dir points at
+        // `/private/var/folders/…`) makes the two spellings disagree, and the workspace's own
+        // root stops resolving. The real CLI never hits it because its loader canonicalizes
+        // first. `std::fs::canonicalize`, never `dunce::` — see `workspace.rs`'s house rule.
+        //
+        // The REFUSAL set is unchanged: `Path::exists()` is `fs::metadata(..).is_ok()`, which
+        // follows symlinks, so it returned `false` exactly where `canonicalize` returns `Err`.
+        // Both error payloads keep the CALLER's spelling.
+        let root = std::fs::canonicalize(path).map_err(|_| RepoError::PathNotFound { path: path.to_owned() })?;
+        if !root.join(".jj").is_dir() {
             return Err(RepoError::NotARepo { path: path.to_owned() });
         }
         let settings = make_settings()?;
         let workspace = Workspace::load(
             &settings,
-            path,
+            &root,
             &default_backend_factories(),
             &default_working_copy_factories(),
         )
@@ -1376,9 +1385,19 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure.
+    /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
+    /// `path` cannot be resolved (it must already exist); `reason` then names it.
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
         let settings = make_settings()?;
+        // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
+        // `init_with_factories`, recording the new root relative to the RAW path it was handed
+        // while `Workspace::repo_path()` — the base every read joins onto — is canonical. A
+        // symlinked caller path (macOS `/var/folders/…`) therefore yields a workspace that
+        // cannot resolve its own root. Doing it after the call would be too late. See
+        // `Repo::open` for the full note.
+        let root = std::fs::canonicalize(path).map_err(|e| RepoError::InitFailed {
+            reason: format!("{}: {e}", path.display()),
+        })?;
         let (workspace, _repo) = match backend {
             // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
             // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
@@ -1387,10 +1406,10 @@ impl Repo {
             // (`git.object-hash` config, caller-overridable) instead of hardcoding it here and in
             // `clone_into`; until then a user configuring "sha256" silently gets sha1.
             Some(Backend::Git) => {
-                pollster::block_on(Workspace::init_internal_git(&settings, path, gix::hash::Kind::Sha1))
+                pollster::block_on(Workspace::init_internal_git(&settings, &root, gix::hash::Kind::Sha1))
                     .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?
             }
-            None => pollster::block_on(Workspace::init_simple(&settings, path))
+            None => pollster::block_on(Workspace::init_simple(&settings, &root))
                 .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?,
         };
         Ok(Self { workspace, settings })
@@ -1401,12 +1420,14 @@ impl Repo {
     /// Composes: `init_internal_git` → `add_remote("origin")` → `GitFetch::fetch` → `import_refs`,
     /// then points the working copy at the fetched default branch (a fresh `@` commit on its tip).
     ///
-    /// On failure, any partial workspace created under `target_path` is rolled back so a
-    /// retry into the same path starts clean.
+    /// On failure, the partial `.jj/` created under `target_path` is rolled back so a
+    /// retry into the same path starts clean. `target_path` must already exist — clone never
+    /// created it (`create_jj_dir` needs the parent), and a missing target is refused up front.
     ///
     /// # Errors
     ///
-    /// Returns [`RepoError::CloneFailed`] if init, remote registration, fetch, or import fails
+    /// Returns [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
+    /// registration, fetch, or import fails
     /// — including when the effective jj config cannot be read, or sets a non-boolean
     /// `git.abandon-unreachable-commits`, which the clone's import options are built from
     /// (FR-JJ-17). A config fault is not a separate variant: every clone-step failure travels
@@ -1415,24 +1436,29 @@ impl Repo {
     /// is unreadable or not valid TOML.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
         let settings = make_settings()?;
-        let created_dir = !target_path.exists();
+        // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
+        // `Repo::init`, so a symlinked target would record a workspace-store entry the clone's
+        // own reads cannot resolve. See `Repo::open` for the full note.
+        let target_path = std::fs::canonicalize(target_path).map_err(|e| RepoError::CloneFailed {
+            reason: format!("{}: {e}", target_path.display()),
+        })?;
 
-        match Self::clone_into(&settings, url, target_path) {
+        match Self::clone_into(&settings, url, &target_path) {
             Ok(workspace) => Ok(Self { workspace, settings }),
             Err(e) => {
-                // Roll back only what clone created: the whole dir if we created it,
-                // otherwise just the `.jj/` that init_internal_git wrote.
-                if created_dir {
-                    let _ = std::fs::remove_dir_all(target_path);
-                } else {
-                    let _ = std::fs::remove_dir_all(target_path.join(".jj"));
-                }
+                // Roll back only what clone created: the `.jj/` that init_internal_git wrote.
+                // A missing target can no longer reach here — `canonicalize` above refuses it.
+                let _ = std::fs::remove_dir_all(target_path.join(".jj"));
                 Err(e)
             }
         }
     }
 
     /// Composes the clone steps, returning the workspace reloaded at the committed head.
+    ///
+    /// `target_path` is the CANONICAL target directory (`Repo::clone` resolves it), so the
+    /// workspace-store entry `init_internal_git` writes and the two `Workspace::load` bases
+    /// below all agree on one spelling.
     fn clone_into(settings: &UserSettings, url: &str, target_path: &Path) -> Result<Workspace, RepoError> {
         // Step 1: Create git-backed jj workspace.
         // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see

@@ -755,11 +755,13 @@ fn convert_import_into_same_dir_is_colocated() {
 
     // D5 default (b): passing the same directory as both source and dest lets jj
     // create a colocated workspace (is_colocated() returns true → check_out step
-    // skipped). The path is passed RAW (not canonicalized) on purpose:
-    // is_colocated() compares against `workspace.workspace_root()`, which jj-lib
-    // canonicalizes, so the colocated detection must hold even for a non-canonical
-    // caller path (macOS /var → /private/var). A prior version canonicalized the
-    // input here, which MASKED the raw-path behaviour.
+    // skipped). The path is passed RAW (not canonicalized) on purpose: the DEST is
+    // canonicalized inside `import_into` (so the workspace store records a root that
+    // resolves), but the SOURCE stays the caller's spelling all the way into
+    // `resolve_git_repo_path`. is_colocated() compares `git_backend.git_workdir()`
+    // against `workspace.workspace_root()` — both canonical, neither a raw caller
+    // path — so the colocated detection must hold for a non-canonical argument
+    // (macOS /var → /private/var). Canonicalizing in the TEST would mask that.
     let result = convert_import(src.path(), src.path());
     assert!(
         result.is_ok(),

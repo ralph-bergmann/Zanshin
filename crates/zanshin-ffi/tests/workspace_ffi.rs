@@ -116,14 +116,9 @@ fn root_request_bytes(name: Option<&str>) -> Vec<u8> {
 ///
 /// Both `FixtureHandle`s are leaked so their `TempDir`s outlive the returned raw handle, exactly
 /// as `commit_views_ffi.rs::open_scenario` does.
-///
-/// # WHY the canonicalize: `SimpleWorkspaceStore::add` records the new root RELATIVE to the
-/// `repo_path` it was loaded with, while every read joins it onto the canonicalized
-/// `Workspace::repo_path()`. On macOS `/var/folders/…` is a symlink to `/private/var/folders/…`,
-/// so a raw fixture path records one `..` too few and nothing would ever resolve.
 fn open_two_workspace_scenario() -> (u64, std::path::PathBuf, std::path::PathBuf) {
     let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
-    let root = fs::canonicalize(&fixture.path).expect("fixture root exists");
+    let root = fixture.path.clone();
     let (second, _wc) = add_workspace(&root, "second");
     let second_root = second.path.clone();
     let handle = open_handle(&root);

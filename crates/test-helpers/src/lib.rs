@@ -518,11 +518,19 @@ fn ref_target(targets: &[&str]) -> RefTarget {
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 #[must_use = "the handle keeps the second workspace alive; dropping it deletes the directory"]
 pub fn add_workspace(workspace_root: &Path, name: &str) -> (FixtureHandle, String) {
-    let (_workspace, repo) = load(workspace_root);
+    let (workspace, repo) = load(workspace_root);
     let temp = TempDir::new().unwrap();
     let second_root = temp.path().join(name);
     std::fs::create_dir_all(&second_root).unwrap();
-    let repo_path = workspace_root.join(".jj").join("repo");
+    // WHY not `workspace_root.join(".jj").join("repo")`: `init_workspace_with_existing_repo` hands
+    // this path to the workspace store, which records the NEW workspace's root RELATIVE to it,
+    // while every read joins that record back onto the canonicalized `Workspace::repo_path()`.
+    // Re-deriving it from the RAW argument (on macOS a `/var/folders/…` temp path that is a
+    // symlink to `/private/var/folders/…`) records one `..` too few and nothing ever resolves.
+    // `Workspace::workspace_root()` is canonicalized by jj-lib, so both spellings agree. This is
+    // the stand-in for Story 9.23's production `workspace add`, which will hold a `Repo` whose
+    // workspace is canonical end to end and get the same alignment for free.
+    let repo_path = workspace.workspace_root().join(".jj").join("repo");
     let (second, repo) = pollster::block_on(Workspace::init_workspace_with_existing_repo(
         &second_root,
         &repo_path,

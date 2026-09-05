@@ -130,19 +130,6 @@ fn head_op_id(repo: &Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
-/// Adds a second workspace whose recorded path can actually be resolved back.
-///
-/// # WHY canonicalize first: `SimpleWorkspaceStore::add` records the new root RELATIVE to the
-/// `repo_path` the store was loaded with, while every read joins it onto
-/// `Workspace::repo_path()`, which jj-lib has canonicalized. On macOS the system temp dir is
-/// `/var/folders/…` → `/private/var/folders/…`, so handing `add_workspace` the raw fixture path
-/// records one `..` too few and NOTHING would ever resolve. The real CLI never hits this: its
-/// workspace loader canonicalizes before either side runs.
-fn add_resolvable_workspace(workspace_root: &Path, name: &str) -> (test_helpers::FixtureHandle, String) {
-    let canonical = fs::canonicalize(workspace_root).expect("the fixture root exists");
-    add_workspace(&canonical, name)
-}
-
 /// Canonicalizes both sides before comparing — the macOS `/var` → `/private/var` trap.
 fn assert_same_dir(actual: &Path, expected: &Path) {
     assert_eq!(
@@ -190,8 +177,8 @@ fn list_with_more_workspaces_reports_resolvable_roots_in_lexicographic_order() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     // The handles keep the added workspaces' directories alive for the duration of the test.
-    let (second, second_wc) = add_resolvable_workspace(&fx.path, "second");
-    let (aaa, _aaa_wc) = add_resolvable_workspace(&fx.path, "aaa");
+    let (second, second_wc) = add_workspace(&fx.path, "second");
+    let (aaa, _aaa_wc) = add_workspace(&fx.path, "aaa");
 
     let repo = Repo::open(&fx.path).unwrap();
     let entries = repo.list_workspaces().unwrap();
@@ -313,10 +300,12 @@ fn root_without_a_name_is_the_open_workspace() {
     assert_same_dir(&root, &fx.path);
     // The `.fbs`, the FFI wrapper and `handle.dart` all promise an ABSOLUTE, canonicalized path.
     // Every other assertion here canonicalizes both sides, so it would pass on a non-canonical
-    // one; this is the only place the guarantee itself is checked. WHY it holds: the no-name path
-    // returns `Workspace::workspace_root()` verbatim, and jj-lib canonicalized it in
-    // `Workspace::new` (`jj-lib-0.44.0/src/workspace.rs:170`, `dunce::canonicalize`) — NOT this
-    // function, which does no path work at all on this branch.
+    // one; this is the only place the guarantee itself is checked. WHY it holds, twice over: the
+    // no-name path returns `Workspace::workspace_root()` verbatim, which jj-lib canonicalized in
+    // `Workspace::new` (`jj-lib-0.44.0/src/workspace.rs:170`, `dunce::canonicalize`), and
+    // `Repo::open` now canonicalizes its own argument before handing it to `Workspace::load` so
+    // the workspace store's records and the base every read joins them onto agree. `resolve_root`
+    // itself still does no path work at all on this branch.
     assert_eq!(
         root,
         fs::canonicalize(&root).unwrap(),
@@ -335,7 +324,7 @@ fn root_without_a_name_is_the_open_workspace() {
 fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let (second, second_wc) = add_resolvable_workspace(&fx.path, "second");
+    let (second, second_wc) = add_workspace(&fx.path, "second");
     assert!(
         second.path.join(".jj").join("repo").is_file(),
         "a secondary workspace's .jj/repo is a FILE pointing at the shared repo"
@@ -382,7 +371,7 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
 fn root_with_a_name_finds_a_sibling_workspace() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let (second, _wc) = add_resolvable_workspace(&fx.path, "second");
+    let (second, _wc) = add_workspace(&fx.path, "second");
     let repo = Repo::open(&fx.path).unwrap();
     let before = head_op_id(&repo);
 
@@ -514,4 +503,62 @@ fn root_with_a_name_on_a_corrupt_repo_is_a_backend_error() {
         repo.resolve_workspace_root(None).is_ok(),
         "the loader-only path cannot fail"
     );
+}
+
+// ── a workspace must resolve its OWN root, symlinked caller path or not ──────
+
+/// Both verbs report `expected` for the single `default` workspace of `repo`.
+fn assert_own_root_resolves(repo: &Repo, expected: &Path) {
+    let entries = repo.list_workspaces().unwrap();
+    assert_eq!(
+        entries.len(),
+        1,
+        "a fresh repo has exactly the default workspace; got {entries:?}"
+    );
+    assert_eq!(entries[0].name, "default");
+    let root = entries[0]
+        .root
+        .as_ref()
+        .expect("a just-created workspace records a path that resolves");
+    assert_same_dir(root, expected);
+
+    let named = repo
+        .resolve_workspace_root(Some("default"))
+        .expect("the workspace's own recorded path must resolve");
+    assert_same_dir(&named, expected);
+    assert_eq!(
+        named,
+        repo.resolve_workspace_root(None).unwrap(),
+        "naming the current workspace must agree with the no-name default"
+    );
+}
+
+/// A repo created through a path that CONTAINS a symlink still resolves its own root.
+///
+/// On macOS every `TempDir` is `/var/folders/…`, a symlink to `/private/var/folders/…`, which is
+/// exactly the shape a caller-supplied path can have. `SimpleWorkspaceStore::add` records a
+/// workspace's root RELATIVE to the `repo_path` the store was loaded with, while every read joins
+/// that record back onto the canonicalized `Workspace::repo_path()` — so unless `Repo::init` and
+/// `Repo::open` canonicalize their argument first, the two spellings differ by one `..` and the
+/// workspace's OWN row goes absent while `root --name default` refuses. The real CLI never hits
+/// it: its workspace loader canonicalizes before either side runs.
+///
+/// Both handles are checked: the one `init` RETURNS (whose `repo_path` jj-lib had already
+/// canonicalized, which is where the defect showed) and a fresh `open` through the same raw path.
+#[test]
+fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    let canonical = fs::canonicalize(tmp.path()).unwrap();
+    assert_ne!(
+        canonical.as_path(),
+        tmp.path(),
+        "this witness needs a temp path that really does go through a symlink"
+    );
+
+    let created = Repo::init(tmp.path(), None).unwrap();
+    assert_own_root_resolves(&created, tmp.path());
+
+    let reopened = Repo::open(tmp.path()).unwrap();
+    assert_own_root_resolves(&reopened, tmp.path());
 }

@@ -70,6 +70,40 @@ fn repo_open_with_nonexistent_path_returns_path_not_found() {
     );
 }
 
+/// `init` resolves its target before handing it to jj-lib (so the workspace store records a path
+/// that resolves), which means a missing target is refused BEFORE the init instead of inside it.
+/// The variant is unchanged — every init-step failure still travels as `InitFailed` — and the
+/// `reason` names the path that could not be resolved.
+#[test]
+fn repo_init_with_nonexistent_path_returns_init_failed() {
+    pin_env();
+    let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
+    let result = Repo::init(missing, None);
+    match result {
+        Err(RepoError::InitFailed { reason }) => assert!(
+            reason.contains("/nonexistent/zanshin-test-abc123"),
+            "the reason must name the unresolvable path, got: {reason}"
+        ),
+        other => panic!("expected InitFailed, got: {other:?}"),
+    }
+}
+
+/// Same for `clone`: the target directory must already exist (clone never created it — jj-lib's
+/// `create_jj_dir` needs the parent), so an absent one is refused up front, still as `CloneFailed`.
+#[test]
+fn repo_clone_with_nonexistent_target_returns_clone_failed() {
+    pin_env();
+    let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
+    let result = Repo::clone("file:///nowhere", missing);
+    match result {
+        Err(RepoError::CloneFailed { reason }) => assert!(
+            reason.contains("/nonexistent/zanshin-test-abc123"),
+            "the reason must name the unresolvable target, got: {reason}"
+        ),
+        other => panic!("expected CloneFailed, got: {other:?}"),
+    }
+}
+
 #[test]
 fn repo_open_with_non_jj_directory_returns_not_a_repo() {
     pin_env();

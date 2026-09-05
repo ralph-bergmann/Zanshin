@@ -40,21 +40,18 @@ void main() {
     late ZanshinWorker worker;
     late Directory tempDir;
 
-    /// The repo root, with symlinks resolved.
+    /// The repo root, exactly as the caller supplies it - RAW, symlinks and all.
     ///
-    /// WHY: jj-lib records a workspace's root in the store RELATIVE to the
-    /// `.jj/repo` path it was handed at init time, while every read joins it onto
-    /// the canonicalized one. On macOS `Directory.systemTemp` is
-    /// `/var/folders/…`, a symlink to `/private/var/folders/…`, so initialising
-    /// through the raw temp path records one `..` too few and the recorded root
-    /// never resolves. A real repo path from a folder picker has no such symlink
-    /// in it; resolving here reproduces the ordinary case instead of the macOS
-    /// temp-dir artifact.
+    /// On macOS `Directory.systemTemp` is `/var/folders/…`, a symlink to
+    /// `/private/var/folders/…`, so this is the end-to-end witness that a repo
+    /// initialised through a symlinked path can still resolve its own root:
+    /// `Repo::init` canonicalizes before jj-lib records the workspace-store
+    /// entry, so the record and the base every read joins it onto agree.
     late String repoPath;
 
     setUp(() async {
       tempDir = Directory.systemTemp.createTempSync('zanshin_workspace_test_');
-      repoPath = tempDir.resolveSymbolicLinksSync();
+      repoPath = tempDir.path;
       worker = await ZanshinWorker.start();
     });
 
@@ -77,7 +74,7 @@ void main() {
       expect(root, isNotNull, reason: 'a just-created workspace records a path that resolves');
       expect(
         Directory(root!).resolveSymbolicLinksSync(),
-        repoPath,
+        tempDir.resolveSymbolicLinksSync(),
         reason: 'both sides resolved: on macOS /var is a symlink to /private/var',
       );
 
@@ -91,7 +88,7 @@ void main() {
 
       expect(
         Directory(root).resolveSymbolicLinksSync(),
-        repoPath,
+        tempDir.resolveSymbolicLinksSync(),
       );
 
       await handle.close();
