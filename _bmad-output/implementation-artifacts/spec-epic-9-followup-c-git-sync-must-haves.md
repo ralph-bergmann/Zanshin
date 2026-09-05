@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up C: the two Story 9.5 git-sync must-haves'
 type: 'chore'
 created: '2026-09-05'
-status: 'done'
+status: 'in-review'
 baseline_revision: '859a3a932c611e4a9972362c4babe395eaaebbd1'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -250,6 +250,42 @@ re-grep rather than trusting a number after the first edit in a file.
 
 ## Spec Change Log
 
+### 2026-09-05 — One task target moved layers; the review pass then extended scope to a pruning-fetch panic
+
+**Trigger.** (a) Task 2(c) told the implementation to add a `MutateError::Config` bullet to
+`remotes::git_fetch`'s `# Errors`. `remotes::git_fetch` RECEIVES the already-built
+`GitImportOptions` and cannot produce `Config` at all — only the `Repo::git_fetch` facade, which
+does the `config::load` + `git_import_options` calls, can. (b) The four-lens review pass found that
+a pruning `git_fetch` PANICS inside jj-lib (`transaction.rs:141` "BUG: Descendants have not been
+rebased after the last rewrites") whenever `git.abandon-unreachable-commits` is at its default
+`true`, and that this run's own new test steered around it by pinning the one value (`false`) that
+avoids the panicking branch.
+
+**Amendment.** (a) The bullet went on `Repo::git_fetch` instead, where the fault actually
+originates; `remotes::git_fetch`'s list stayed as it was. (b) `remotes::git_fetch` gained the
+descendant-rebase pass its sibling verb `crate::git::git_import` already runs for the identical
+reason, plus an `immutable: &Arc<UserRevsetExpression>` parameter (`pub(crate)`, so no public
+signature moved) that `Repo::git_fetch` supplies from `op_support::immutable_user_expression`. The
+false comment above `import_refs()` — which claimed no rebase was needed and cited the CLI at
+v0.42.0 — was replaced by the true reason, cited at v0.44.0. A default-config sibling test now
+covers the previously-panicking branch, and `git.record-synthetic-predecessors` gained the pair of
+force-push witnesses it had none of.
+
+**Authority and bound.** For (a), the intent's own error-taxonomy rule: a `# Errors` bullet names
+what the function can return, and putting `Config` on a function that cannot return it is a false
+doc, not a spec-satisfying edit. For (b), the run's own new test is what exposed the panic; the
+run's own config route is what makes the panicking value user-selectable; the fix is a
+line-for-line mirror of `git_import` in the same crate; and `project-context.md` forbids reaching
+the FFI panic-catch ("no `unwrap`/`panic!` in library code paths reachable from FFI … the goal is
+to never reach the catch"), which a `internal.panic` envelope instead of an error envelope is
+exactly. The bound is the descendant pass, its comment and its test coverage: no change to fetch's
+`MutationResult` projection (its `new_change_ids`/`abandoned_change_ids` stay empty), no new error
+code, no other verb touched.
+
+**Known-bad state avoided.** For (a), an unrecorded deviation — the defect the sibling follow-up B
+had to correct in its own second pass. For (b), shipping a verb that panics on the default config
+while the run's own witness quietly demonstrated only the value that avoids it.
+
 ## Review Triage Log
 
 ## Design Notes
@@ -375,3 +411,8 @@ exercise a pruning fetch at all and so the first to see it. Deliberately NOT fix
 neither of the two ledger bullets, and a fix changes fetch's transaction handling and needs its
 own design + witness. **Not entered in the ledger** either, per this spec's "never defer a
 same-shape leftover" rule — it is reported to the caller instead, as a decision for Ralph.
+
+**Superseded 2026-09-05 by the review pass.** The panic WAS fixed, as a bounded scope extension
+recorded in `## Spec Change Log` above: `remotes::git_fetch` now runs the same descendant-rebase
+pass `crate::git::git_import` already ran for the identical reason, and the default-config branch
+has its own witness.
