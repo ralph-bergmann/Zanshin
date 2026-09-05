@@ -2,13 +2,29 @@
 title: 'Epic 9 follow-up C: the two Story 9.5 git-sync must-haves'
 type: 'chore'
 created: '2026-09-05'
-status: 'in-review'
+status: 'done'
 baseline_revision: '859a3a932c611e4a9972362c4babe395eaaebbd1'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `remotes::git_fetch` projects an EMPTY `MutationResult` — `new_change_ids` and
+      `abandoned_change_ids` are hardcoded `Vec::new()` — so the abandoning that
+      `git.abandon-unreachable-commits` now lets a user control is invisible in fetch's result.
+    evidence: |-
+      `crates/zanshin-jj/src/remotes.rs` (the `MutationResult` literal at the end of `git_fetch`)
+      ships both vectors empty since Story 6.4a, while the sibling verb `git::git_import` projects
+      real stats from the same `import_refs` call. This run's config route makes the abandoning
+      user-controllable and its descendant-rebase pass makes it reach the op log, which is exactly
+      why the new pruning tests have to observe the effect through `resolve_revset(&repo, "all()")`
+      instead of through the returned result. Pre-existing and not one of the two ledger bullets;
+      the projection is a shipped-payload change with its own witnesses, so it is recorded rather
+      than folded in.
+    location: >-
+      crates/zanshin-jj/src/remotes.rs (git_fetch's MutationResult literal)
+    severity: low
 ---
 
 <intent-contract>
@@ -288,6 +304,72 @@ while the run's own witness quietly demonstrated only the value that avoids it.
 
 ## Review Triage Log
 
+### 2026-09-05 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 11: (high 1, medium 5, low 5)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 10: (high 0, medium 0, low 10)
+- addressed_findings:
+  - `[high]` `[patch]` A pruning `git_fetch` PANICKED inside jj-lib on the DEFAULT config
+    (`transaction.rs:141`, "Descendants have not been rebased"): `remotes::git_fetch` never ran a
+    descendant-rebase pass after `import_refs()`, and the comment above the call claimed none was
+    needed, citing the CLI at v0.42.0. Pre-existing on `main`, but this run's config route made
+    the panicking value user-selectable and its own witness had steered around it. Fixed by
+    mirroring `git::git_import`'s `resolve_immutable` + `rebase_descendants_with_options` pass
+    (`immutable` supplied by `Repo::git_fetch`), the comment replaced with the true reason cited at
+    `cli/src/cli_util.rs` @ v0.44.0, plus a default-config sibling test for the previously
+    panicking branch. Recorded as a bounded scope extension in `## Spec Change Log`.
+  - `[medium]` `[patch]` `git.record-synthetic-predecessors` — the key whose effective default
+    this change FLIPPED (`false` → jj-lib's `true`) — was completely unwitnessed for `git_fetch`.
+    Two `Repo::evolog`-based tests now pin both values through a force-push fixture whose upstream
+    commits carry a `change-id` header so both versions share one jj change id; the
+    `record_synthetic_predecessors: false` spread regression fails exactly one of them.
+  - `[medium]` `[patch]` `git_fetch_honours_abandon_unreachable_commits_false` could pass
+    vacuously (never asserted the prune happened); both pruning tests now assert
+    `feature@origin` is gone.
+  - `[medium]` `[patch]` `docs/rust-error-codes.md`'s `jj.jj_lib_error` row was silent about
+    clone's new config-fault cause although the file is the canonical registry; the row now names
+    `zanshin_repo_clone`, the cause and that it is an observable change.
+  - `[medium]` `[patch]` `zanshin_repo_clone`'s new `# Errors` line overclaimed "the offending key
+    in `context`" (the unreadable-file branch names a PATH), baked into generated output; reworded
+    at the `extern "C"` and `Repo::clone` docs, header + `bindings.dart` regenerated.
+  - `[medium]` `[patch]` Task 2(c)'s target moved layers (`remotes::git_fetch` cannot produce
+    `MutateError::Config`; the bullet went on the `Repo::git_fetch` facade) and the pruning-fetch
+    scope extension were unrecorded in an empty `## Spec Change Log` — the same defect follow-up B
+    had to correct. Both now carry a dated entry.
+  - `[low]` `[patch]` `handle.dart`'s / `isolate.dart`'s `gitFetch` throw-lists omitted
+    `jj.jj_lib_error` — added.
+  - `[low]` `[patch]` `git_fetch_with_a_non_boolean_config_value_refuses_as_config` had no
+    positive control and, like its sibling, could not distinguish "read per call" from a
+    per-handle cache; restructured to fetch successfully first, then write the bad config and
+    fetch again on the SAME handle.
+  - `[low]` `[patch]` This run's own ledger text pointed at a "separate, still-open item" for
+    `remote_auto_track_bookmarks` that does not exist — repointed at the section intro's spec-only
+    parking.
+  - `[low]` `[patch]` `JJ_REMOTE_NOT_FOUND`'s doc comment left with a ragged mid-sentence wrap —
+    reflowed, wording unchanged.
+  - `[low]` `[patch]` The `GitFetch::new` remap relied on the error type being exactly
+    `UnexpectedGitBackendError`; the closure parameter is now annotated so a widened jj-lib error
+    surface fails to compile instead of silently reporting as `jj.not_a_git_repo`.
+  - `[low]` `[defer]` `remotes::git_fetch` hardcodes `new_change_ids` / `abandoned_change_ids` as
+    empty, so fetch's `MutationResult` cannot show the abandoning the user can now control.
+    Pre-existing (Story 6.4a), not one of the two ledger bullets, and a shipped-payload change
+    wanting its own witnesses — recorded in frontmatter `deferred` and in `deferred-work.md`.
+  - `[low]` `[reject]` × 10 — noise or out of scope on the intent's own authority: `clone_into`'s
+    subprocess options still come from `make_settings()`'s synthetic stack (pre-existing, Story
+    2.3); no separate `ConfigError::Load` mapping in `clone_into`'s reason string; no FFI/Dart-
+    layer witness for `jj.config_error` from `zanshin_git_fetch` (the crate-level test plus the
+    unchanged `map_mutate_err` unit test cover the mapping); no Dart-layer witness for the
+    `jj.not_a_git_repo` remap (the Rust + FFI witnesses observe the same code); `clone_config.rs`
+    fixture helpers duplicate `remotes_write.rs`/`repo.rs` ones (test-only, no shared test crate
+    exists); the `unsafe { env::set_var }` single-test convention has no mechanical guard;
+    `ENV_GUARD`'s `JJ_CONFIG = ""` pre-pin is overwritten by `set_jj_config` (matches the sibling
+    files' shape); `jj.config_error` row sentence order / `jj.not_a_git_repo` summary column; a
+    TMPDIR-with-spaces `file://` URL edge; and amending `sprint-status.yaml`'s 9-5 line and
+    `spec-6-4a`'s retired mapping (the ledger + registry are the tracked surfaces for this change).
+
 ## Design Notes
 
 **Why `clone_into` keeps `record_synthetic_predecessors: false`.** The naive reading of item 2 —
@@ -416,3 +498,34 @@ same-shape leftover" rule — it is reported to the caller instead, as a decisio
 recorded in `## Spec Change Log` above: `remotes::git_fetch` now runs the same descendant-rebase
 pass `crate::git::git_import` already ran for the identical reason, and the default-config branch
 has its own witness.
+
+### Review findings breakdown
+
+One four-lens review pass over the implementation diff (`824615a` + `0d3281e`): 11 patches
+applied (high 1, medium 5, low 5) in `1b0cbd3` (code, tests, docs, regenerated header +
+`bindings.dart`) and `e7eb26e` (spec change log + one ledger clause); 1 item deferred (low —
+fetch's empty `MutationResult` projection, pre-existing since Story 6.4a); 10 rejected. No
+`intent_gap` and no `bad_spec`, so `review_loop_iteration` stayed at 0. Both behavioural patches
+were mutation-probed: removing the rebase pass fails three tests with the jj-lib panic message,
+and the `record_synthetic_predecessors: false` spread regression fails exactly the new default
+witness.
+
+**Deferred: 1 (recorded in frontmatter `deferred` and under
+`## Deferred from: spec-epic-9-followup-c-git-sync-must-haves (2026-09-05)` in
+`deferred-work.md`).** The ledger still ends smaller than it started (2 must-haves closed, 1 low
+item opened), and the opened item is a payload change the intent excluded, not a same-shape
+leftover.
+
+### Follow-up review recommendation
+
+`true`. Counting only this pass's patched findings: high 1, medium 5, low 5 — a `high` patch alone
+sets it, and the score 3 × 5 + 1 × 5 = 20 is ≥ 5 as well. The `high` finding was a real defect
+(a panic reachable on the default config), fixed and witnessed; the rest were verification and
+documentation corrections.
+
+### Closing verification (2026-09-05, after the session-limit interruption)
+
+The run was cut off between the patch commits and this close-out. On the committed tree at
+`e7eb26e`, `cargo make test` was re-run unpiped and synchronously by the resuming orchestrator:
+exit 0, coverage held (no `coverage-baseline.txt` change). This close-out commit touches only this
+spec and `deferred-work.md`.
