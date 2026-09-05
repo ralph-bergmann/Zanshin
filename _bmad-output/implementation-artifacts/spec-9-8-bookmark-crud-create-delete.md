@@ -73,6 +73,17 @@ deferred:
     location: >-
       crates/zanshin-jj/src/bookmark_ops.rs (has_tracked_remote_bookmarks)
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-b-doc-and-test-low-hanging-fruits, commit 054d87d).
+      tests/bookmark_ops.rs gained create_is_blocked_by_a_tracked_git_remote_on_a_native_backend,
+      placed directly after its git-backed twin
+      (create_is_not_blocked_by_a_tracked_remote_on_the_reserved_git_remote) and documenting WHY the
+      two differ: Repo::init(TempDir, None) is the native backend, a tracked colocated@git is seeded
+      in-test via test_helpers::set_remote_bookmark, and the create is asserted to refuse with
+      BookmarkTrackedRemoteExists AND to leave the head operation unchanged. The ledger's stated
+      semantics were confirmed rather than corrected. Mutation-probed: replacing StringMatcher::all()
+      with the git arm's negated matcher fails that test and only that test. No fixture was
+      regenerated; no production file was touched.
   - summary: >-
       MutationResult's other three fields are asserted nowhere for either bookmark verb.
     evidence: |-
@@ -82,6 +93,17 @@ deferred:
     location: >-
       crates/zanshin-jj/tests/bookmark_ops.rs
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-b-doc-and-test-low-hanging-fruits, commit 054d87d).
+      One assertion helper per layer — assert_no_change_churn in tests/bookmark_ops.rs and
+      tests/bookmark_ops_ffi.rs, expectNoChangeChurn in test/worker/bookmark_ops_test.dart — called
+      on the create happy path, the delete happy path and delete's NO-OP path. The no-op path was
+      included deliberately: finish_or_no_op_at has two exits (the committed construction and
+      no_op_result) and only the first was covered, while the three fields are supposed to be
+      identical on both. The working_copy_change_id oracle is what the status verb reports on each
+      layer; at the FFI layer that read was factored out of wc_commit_hex into a reusable
+      wc_change_id, and both vectors are asserted PRESENT-but-empty rather than absent because the
+      envelope builder always writes Some(vec). Test-only; no production file was touched.
   - summary: >-
       The same "absent revision" doc ambiguity fixed here survives on the Story 9.3/9.4/9.6
       surfaces.
@@ -93,6 +115,20 @@ deferred:
     location: >-
       crates/zanshin-jj/src/file.rs
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-b-doc-and-test-low-hanging-fruits, commit b289a3e).
+      This story's corrected wording was copied to 14 sites, not the three the item names: the
+      identical sentence exists at three layers per verb (private module doc, public Repo facade
+      doc, extern "C" wrapper doc), and leaving the facade ambiguous would have marked the item
+      resolved while the grievance stood on the rustdoc a consumer actually reads. Covered:
+      file_list, interdiff, restore and absorb plus FileError's and CommitViewError's own
+      ChangeNotFound variant docs. Each site keeps its own argument names (revision / from,to /
+      from,into,changes_in), its own trailing clauses, and names the CLI flag that applies there.
+      Deliberately NOT touched: MutateError::ChangeNotFound's variant doc and the twelve
+      describe/new_change/edit/abandon bullets, whose ids are REQUIRED so no omitted-means-default
+      reading exists, and the short-but-unambiguous "revision does not resolve" siblings in
+      file_show/file_annotate/file_search. Comment-only; zanshin_ffi.h and bindings.dart were
+      regenerated with cargo make codegen (no .fbs edited, no other generated output moved).
   - summary: >-
       docs/ffi-abi.md is now six stories stale.
     evidence: |-
