@@ -368,17 +368,22 @@ fn git_fetch_on_native_backend_returns_not_a_git_repo() {
 
 // ── The two `git.*` import keys come from config, never from a Rust constant ──────
 
-/// `git.abandon-unreachable-commits = false` must actually be honoured by FETCH too — the
-/// option is read from the repo's EFFECTIVE config per call, never hardcoded (FR-JJ-17,
-/// CLI parity with `cli/src/commands/git/fetch.rs:235` @ v0.44.0).
-///
-/// The scenario is the only one in which the flag is observable: a bare remote whose
-/// `feature` branch is the ONLY ref to commit `B`. After the first fetch jj knows `B`;
-/// deleting `feature` upstream and fetching again makes `B` unreachable, which is exactly
-/// what the flag decides the fate of. With the user's `false`, `B` must survive.
-#[test]
-fn git_fetch_honours_abandon_unreachable_commits_false() {
-    pin_env();
+/// The pruning-fetch fixture, kept whole so its temp dirs outlive the test body.
+struct PruneFixture {
+    _src: TempDir,
+    _parent: TempDir,
+    /// The jj workspace that already fetched once and whose next fetch is the pruning one.
+    dst: TempDir,
+    /// The change id of the commit that the pruning fetch makes unreachable.
+    b_change: zanshin_jj::ChangeId,
+}
+
+/// Builds the ONLY state in which `git.abandon-unreachable-commits` is observable: a bare
+/// remote whose `feature` branch is the sole ref to commit `B`, a git-backed jj workspace with
+/// `origin` pointing at it, and one completed fetch that imported `B`. `feature` is then
+/// deleted upstream, so the CALLER's next fetch is the pruning one — the caller decides what
+/// the repo config says (or says nothing, exercising the default) before making it.
+fn prune_fixture() -> PruneFixture {
     let src = TempDir::new().unwrap();
     init_git_repo_with_a_branch_only_commit(src.path());
     let feature_head = git_stdout(&["rev-parse", "feature"], src.path());
@@ -391,8 +396,11 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let no_op = |_: ProgressEvent| {};
-    let mut repo = Repo::open(dst.path()).unwrap();
-    repo.git_fetch("origin", &no_op).expect("first fetch imports feature");
+    let repo = {
+        let mut repo = Repo::open(dst.path()).unwrap();
+        repo.git_fetch("origin", &no_op).expect("first fetch imports feature");
+        repo
+    };
 
     // `B` is in jj's own view now — capture its change id while it is still resolvable.
     let mut ids = resolve_revset(&repo, &feature_head).expect("a commit hex is a revset symbol");
@@ -403,21 +411,86 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     // leaves `B` unreachable.
     git_cmd(&["update-ref", "-d", "refs/heads/feature"], &bare);
 
-    write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = false\n");
-    let mut repo = Repo::open(dst.path()).expect("reopen with the new repo config");
+    PruneFixture {
+        _src: src,
+        _parent: parent,
+        dst,
+        b_change,
+    }
+}
+
+/// `git.abandon-unreachable-commits = false` must actually be honoured by FETCH too — the
+/// option is read from the repo's EFFECTIVE config per call, never hardcoded (FR-JJ-17,
+/// CLI parity with `cli/src/commands/git/fetch.rs:235` @ v0.44.0).
+///
+/// The `feature@origin`-is-gone assertion is what keeps this from passing vacuously: if the
+/// pruning ever stopped happening, `B` would stay visible for a reason that has nothing to do
+/// with the flag. Its sibling
+/// [`git_fetch_with_the_default_config_abandons_unreachable_commits`] walks the same fixture
+/// with the other value, so the config value is a real witness rather than a setting whose
+/// effect is never contrasted.
+#[test]
+fn git_fetch_honours_abandon_unreachable_commits_false() {
+    pin_env();
+    let fx = prune_fixture();
+
+    write_repo_config(fx.dst.path(), "[git]\nabandon-unreachable-commits = false\n");
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
     repo.git_fetch("origin", &no_op).expect("second, pruning fetch");
 
+    assert_eq!(
+        remote_bookmark_commit_hex(fx.dst.path(), "feature", "origin"),
+        None,
+        "the fetch must really have pruned feature@origin — otherwise the flag decides nothing"
+    );
     let visible = resolve_revset(&repo, "all()").expect("all() resolves");
     assert!(
-        visible.contains(&b_change),
+        visible.contains(&fx.b_change),
         "the user disabled abandoning, so the now-unreachable commit must stay visible; got {visible:?}"
+    );
+}
+
+/// The same pruning fetch on an UNCONFIGURED repo — no `[git]` key at all, so
+/// `abandon-unreachable-commits` takes jj-lib's own default `true`.
+///
+/// This is the branch a real user hits, and the one the sibling test above deliberately steers
+/// around: it is the value that makes `import_refs` record abandoned commits, so it is the only
+/// value that needs `git_fetch`'s descendant pass. Without that pass jj-lib panics in
+/// `Transaction::write` ("BUG: Descendants have not been rebased after the last rewrites"), and
+/// across FFI a panic is `internal.panic`, not an error envelope — so "does not panic" is half
+/// of what this test pins.
+#[test]
+fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
+    pin_env();
+    let fx = prune_fixture();
+
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
+    repo.git_fetch("origin", &no_op)
+        .expect("the pruning fetch must return, not panic");
+
+    assert_eq!(
+        remote_bookmark_commit_hex(fx.dst.path(), "feature", "origin"),
+        None,
+        "the fetch must really have pruned feature@origin — otherwise nothing became unreachable"
+    );
+    let visible = resolve_revset(&repo, "all()").expect("all() resolves");
+    assert!(
+        !visible.contains(&fx.b_change),
+        "the default is jj-lib's own `true`, so the now-unreachable commit must be abandoned; got {visible:?}"
     );
 }
 
 /// A malformed value for a key this verb reads must arrive as `Config` — the same fault
 /// class the read side reports, never the unclassified `Backend` bucket — and must write
-/// nothing. The remote here is real and reachable, so without the config read this fetch
-/// would SUCCEED: the refusal is the proof that the value is consulted at all.
+/// nothing.
+///
+/// The handle is opened and used BEFORE the bad config exists, which makes the first fetch two
+/// things at once: the positive control that the fixture's remote really is reachable (so the
+/// later refusal cannot be a broken fixture), and the proof that the value is re-read PER CALL
+/// rather than snapshotted when the handle was opened — a per-handle cache would sail through
+/// a test that writes the config first and only then opens the repo.
 #[test]
 fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
     pin_env();
@@ -430,12 +503,15 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
     let dst = TempDir::new().unwrap();
     Repo::init(dst.path(), Some(Backend::Git)).unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
-    write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
 
     let mut repo = Repo::open(dst.path()).unwrap();
+    let no_op = |_: ProgressEvent| {};
+    repo.git_fetch("origin", &no_op)
+        .expect("the fixture's remote is real and reachable");
+
     let before = repo.op_log(None).unwrap();
 
-    let no_op = |_: ProgressEvent| {};
+    write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
     let err = repo
         .git_fetch("origin", &no_op)
         .expect_err("a wrong-typed value must refuse");
@@ -447,6 +523,178 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
     let after = repo.op_log(None).unwrap();
     assert_eq!(after.len(), before.len(), "a refusal must write no operation");
     assert_eq!(after[0].id, before[0].id, "the op-log head is untouched");
+}
+
+// ── `git.record-synthetic-predecessors` — the key whose default this verb FLIPPED ─────
+
+/// The `change-id` header both upstream versions of the amended commit carry, in jj's
+/// reverse-hex alphabet (`z` = 0 … `k` = 15); 32 characters = the git backend's 16-byte change
+/// id.
+const AMENDED_CHANGE_ID: &str = "zyxwvutsrqponmlkzyxwvutsrqponmlk";
+
+/// Writes a raw commit object carrying a `change-id` extra header into the repo at `dir` and
+/// returns its hex id.
+///
+/// Two commits written with the SAME header share a jj change id, which is the only state in
+/// which `git.record-synthetic-predecessors` is observable: jj-lib deduces predecessors by
+/// matching change ids across the ref move (`jj-lib git.rs::record_synthetic_predecessors`),
+/// and it derives a HEADERLESS git commit's change id from its commit id
+/// (`git_backend.rs::synthetic_change_id_from_git_commit_id`) — so a plain `git commit --amend`
+/// upstream would produce an unrelated change and no predecessor could ever be deduced.
+///
+/// `git hash-object` is a fixture-setup subprocess call (AR-AP-1's allowed exception); it reads
+/// a FILE, hence `scratch`.
+fn write_commit_object(
+    dir: &std::path::Path,
+    scratch: &std::path::Path,
+    tree: &str,
+    message: &str,
+    when: u64,
+) -> String {
+    let content = format!(
+        "tree {tree}\n\
+         author Fixture <test@zanshin.test> {when} +0000\n\
+         committer Fixture <test@zanshin.test> {when} +0000\n\
+         change-id {AMENDED_CHANGE_ID}\n\
+         \n\
+         {message}\n"
+    );
+    let path = scratch.join(format!("commit-object-{when}"));
+    fs::write(&path, content).expect("commit object must be writable");
+    git_stdout(&["hash-object", "-t", "commit", "-w", &path.to_string_lossy()], dir)
+}
+
+/// The force-push fixture, kept whole so its temp dirs outlive the test body.
+struct AmendFixture {
+    src: TempDir,
+    _parent: TempDir,
+    scratch: TempDir,
+    bare: std::path::PathBuf,
+    /// The jj workspace that already fetched the pre-amend commit.
+    dst: TempDir,
+    /// Hex id of the pre-amend commit — the predecessor jj-lib must deduce.
+    old_commit: String,
+}
+
+/// Builds the state in which `git.record-synthetic-predecessors` is observable: a remote whose
+/// `main` points at a commit carrying [`AMENDED_CHANGE_ID`], and a jj workspace that has
+/// fetched it once. `amend_upstream` then force-moves `main` to a SECOND commit with the same
+/// change id, which is the "remote ref moves to a NEW target" case the option keys off
+/// (`any_new_referenced`) — not the prune case the two tests above cover.
+fn amend_fixture() -> AmendFixture {
+    let src = TempDir::new().unwrap();
+    let scratch = TempDir::new().unwrap();
+    git_cmd(&["init", "--initial-branch=main"], src.path());
+    git_cmd(&["config", "user.email", "test@zanshin.test"], src.path());
+    git_cmd(&["config", "user.name", "Fixture"], src.path());
+    fs::write(src.path().join("f.txt"), "v1").expect("write f.txt");
+    git_cmd(&["add", "f.txt"], src.path());
+    let tree = git_stdout(&["write-tree"], src.path());
+    let old_commit = write_commit_object(src.path(), scratch.path(), &tree, "amendable", 1_700_000_000);
+    git_cmd(&["update-ref", "refs/heads/main", &old_commit], src.path());
+
+    let parent = TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+
+    let dst = TempDir::new().unwrap();
+    Repo::init(dst.path(), Some(Backend::Git)).unwrap();
+    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(dst.path()).unwrap();
+    repo.git_fetch("origin", &no_op)
+        .expect("first fetch imports the pre-amend commit");
+    assert_eq!(
+        remote_bookmark_commit_hex(dst.path(), "main", "origin").as_deref(),
+        Some(old_commit.as_str()),
+        "the first fetch must have imported main@origin at the pre-amend commit"
+    );
+
+    AmendFixture {
+        src,
+        _parent: parent,
+        scratch,
+        bare,
+        dst,
+        old_commit,
+    }
+}
+
+/// Rewrites the upstream commit — same change-id header, different tree and message — and
+/// force-moves `main` onto it. Returns the new commit's hex id.
+fn amend_upstream(fx: &AmendFixture) -> String {
+    fs::write(fx.src.path().join("f.txt"), "v2").expect("rewrite f.txt");
+    git_cmd(&["add", "f.txt"], fx.src.path());
+    let tree = git_stdout(&["write-tree"], fx.src.path());
+    let new_commit = write_commit_object(fx.src.path(), fx.scratch.path(), &tree, "amended", 1_700_000_100);
+    git_cmd(&["update-ref", "refs/heads/main", &new_commit], fx.src.path());
+    git_cmd(
+        &["push", "--force", &fx.bare.to_string_lossy(), "main:main"],
+        fx.src.path(),
+    );
+    new_commit
+}
+
+/// Collects every predecessor commit id `Repo::evolog` reports for [`AMENDED_CHANGE_ID`].
+fn evolog_predecessor_hexes(repo: &Repo) -> Vec<String> {
+    repo.evolog(Some(AMENDED_CHANGE_ID), None)
+        .expect("the amended change resolves to its one visible commit")
+        .iter()
+        .flat_map(|entry| entry.predecessor_commit_ids.iter().map(|id| id.0.clone()))
+        .collect()
+}
+
+/// With the config left alone, `git.record-synthetic-predecessors` takes jj-lib's own default
+/// `true` — the default this verb FLIPPED, since the old Rust hardcode was `false`. A fetch that
+/// sees a remote bookmark move to a new commit carrying an already-known change id must
+/// therefore record the pre-amend commit as that change's predecessor.
+#[test]
+fn git_fetch_records_synthetic_predecessors_by_default() {
+    pin_env();
+    let fx = amend_fixture();
+    let new_commit = amend_upstream(&fx);
+
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
+    repo.git_fetch("origin", &no_op).expect("the force-push fetch");
+    assert_eq!(
+        remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
+        Some(new_commit.as_str()),
+        "the fetch must really have moved main@origin — otherwise nothing was rewritten"
+    );
+
+    let predecessors = evolog_predecessor_hexes(&repo);
+    assert!(
+        predecessors.contains(&fx.old_commit),
+        "the default `true` must record the pre-amend commit as a predecessor; evolog reported {predecessors:?}"
+    );
+}
+
+/// The same force-push against `git.record-synthetic-predecessors = false`: the option is read
+/// from the repo's EFFECTIVE config per call, so the user's `false` must suppress the
+/// predecessor the sibling test above observes. Together the two pin the VALUE, not merely that
+/// the key is read.
+#[test]
+fn git_fetch_honours_record_synthetic_predecessors_false() {
+    pin_env();
+    let fx = amend_fixture();
+    let new_commit = amend_upstream(&fx);
+
+    write_repo_config(fx.dst.path(), "[git]\nrecord-synthetic-predecessors = false\n");
+    let no_op = |_: ProgressEvent| {};
+    let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
+    repo.git_fetch("origin", &no_op).expect("the force-push fetch");
+    assert_eq!(
+        remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
+        Some(new_commit.as_str()),
+        "the fetch must really have moved main@origin — otherwise there was nothing to suppress"
+    );
+
+    let predecessors = evolog_predecessor_hexes(&repo);
+    assert!(
+        !predecessors.contains(&fx.old_commit),
+        "the user turned recording off, so no predecessor may be recorded; evolog reported {predecessors:?}"
+    );
 }
 
 // ── Reserved remote name falls through to the generic Backend mapping ─────────────

@@ -54,11 +54,10 @@ pub const JJ_IMMUTABLE: &str = "jj.immutable";
 /// AR-P-4: emitted by `repo.rs::zanshin_undo` when the head operation is the op-store
 /// root — there is no parent operation to restore to.
 pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
-/// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured
-/// git remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and —
-/// since Story 9.5 — by
-/// `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does not
-/// exist (for `rename`, the OLD name; for `set_url`, only when at least one URL was given).
+/// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured git
+/// remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and — since Story
+/// 9.5 — by `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does
+/// not exist (for `rename`, the OLD name; for `set_url`, only when at least one URL was given).
 pub const JJ_REMOTE_NOT_FOUND: &str = "jj.remote_not_found";
 /// AR-P-4: emitted by `git.rs::zanshin_git_remote_add` when the name already has a
 /// configured git remote, and by `zanshin_git_remote_rename` when the NEW name does; the

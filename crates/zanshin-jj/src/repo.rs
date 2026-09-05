@@ -662,8 +662,9 @@ impl Repo {
     /// - [`crate::MutateError::RemoteNotFound`] — `remote_name` has no configured git
     ///   remote.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend at all.
-    /// - [`crate::MutateError::Config`] — the repo's jj config could not be read, or one
-    ///   of the two `git.*` keys above has a non-boolean value.
+    /// - [`crate::MutateError::Config`] — the repo's jj config, its
+    ///   `revset-aliases."immutable_heads()"`, or one of the two `git.*` keys above could not
+    ///   be read, parsed, or resolved.
     /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
     ///   failed.
     /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
@@ -673,9 +674,19 @@ impl Repo {
         remote_name: &str,
         progress: &crate::ProgressFn,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        // WHY: all three are built from `&self` BEFORE `workspace()`/`settings()` —
+        // the same borrow split `Repo::git_import` uses.
+        let immutable = crate::op_support::immutable_user_expression(self)?;
         let config = crate::config::load(self).map_err(crate::mutate::cfg)?;
         let options = crate::config::git_import_options(&config).map_err(crate::mutate::cfg)?;
-        crate::remotes::git_fetch(self.workspace(), self.settings(), remote_name, &options, progress)
+        crate::remotes::git_fetch(
+            self.workspace(),
+            self.settings(),
+            remote_name,
+            &immutable,
+            &options,
+            progress,
+        )
     }
 
     /// Reloads the workspace from disk so a freshly-written git config is visible.
@@ -1399,7 +1410,9 @@ impl Repo {
     /// — including when the effective jj config cannot be read, or sets a non-boolean
     /// `git.abandon-unreachable-commits`, which the clone's import options are built from
     /// (FR-JJ-17). A config fault is not a separate variant: every clone-step failure travels
-    /// as `CloneFailed`, with the offending key named in `reason`.
+    /// as `CloneFailed`. `reason` names whichever of the two the config layer reported — the
+    /// offending KEY for a wrong-typed value, the offending FILE PATH for a config file that
+    /// is unreadable or not valid TOML.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
         let settings = make_settings()?;
         let created_dir = !target_path.exists();

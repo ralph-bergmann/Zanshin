@@ -534,9 +534,10 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 /// # Errors
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
 /// - `jj.jj_lib_error` — clone failed; detail in `context`. This also covers a config
-///   fault: the clone reads `git.abandon-unreachable-commits` from the effective config,
-///   so an unreadable config or a non-boolean value fails the clone under this code, with
-///   the offending key in `context`.
+///   fault: the clone reads `git.abandon-unreachable-commits` from the effective config, so
+///   an unreadable config or a non-boolean value fails the clone under this code. `context`
+///   names the offending KEY for a wrong-typed value, and the offending FILE PATH for a
+///   config file that is unreadable or not valid TOML.
 ///
 /// # Safety
 /// `url` and `target_path` must each be a valid, NUL-terminated C string or null.

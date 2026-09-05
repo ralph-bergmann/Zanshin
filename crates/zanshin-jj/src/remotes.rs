@@ -9,21 +9,25 @@
 //! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
 
 use std::io;
+use std::sync::Arc;
 
 use gix::remote::Direction;
 use jj_lib::git;
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitImportOptions, GitProgress,
-    GitSidebandLineTerminator, GitSubprocessCallback, GitSubprocessOptions,
+    GitSidebandLineTerminator, GitSubprocessCallback, GitSubprocessOptions, UnexpectedGitBackendError,
 };
 use jj_lib::object_id::ObjectId as _; // for OperationId::hex()/CommitId::hex()
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
 use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()/view()
+use jj_lib::revset::UserRevsetExpression;
+use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
+use crate::op_support::resolve_immutable;
 use crate::ChangeId;
 
 /// One configured git remote and its fetch URL (FR-JJ-9).
@@ -192,6 +196,8 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend at all, so `git fetch`
 ///   cannot run — jj-lib's `UnexpectedGitBackendError`, the only failure `GitFetch::new`
 ///   has. The same condition the six `crate::git` verbs already report under this variant.
+/// - [`MutateError::Config`] — the immutable-set expression could not be resolved against
+///   the transaction's base repo (same fault class `crate::git::git_import` reports).
 /// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
 ///   auth, or transport error). No operation is committed.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
@@ -200,6 +206,7 @@ pub(crate) fn git_fetch(
     workspace: &Workspace,
     settings: &UserSettings,
     remote_name: &str,
+    immutable: &Arc<UserRevsetExpression>,
     import_options: &GitImportOptions,
     progress: &ProgressFn,
 ) -> Result<MutationResult, MutateError> {
@@ -215,9 +222,11 @@ pub(crate) fn git_fetch(
     // `git.rs:3032-3047`) — `get_git_backend` is its only fallible step — so the blanket
     // `map_err` swallows nothing else. "No git backend" is the same condition the six
     // `crate::git` verbs report as `NotAGitRepo`; an unknown REMOTE is raised later, by
-    // `fetch()`, as `GitFetchError::NoSuchRemote` below.
-    let mut fetcher =
-        GitFetch::new(tx.repo_mut(), subprocess_options, import_options).map_err(|_| MutateError::NotAGitRepo)?;
+    // `fetch()`, as `GitFetchError::NoSuchRemote` below. The explicit parameter type is the
+    // GUARD for that premise: a jj-lib bump that widens the error surface stops compiling
+    // here instead of silently reporting unrelated faults as `jj.not_a_git_repo`.
+    let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, import_options)
+        .map_err(|_e: UnexpectedGitBackendError| MutateError::NotAGitRepo)?;
 
     let expr = GitFetchRefExpression {
         bookmark: StringExpression::Pattern(Box::new(
@@ -249,9 +258,20 @@ pub(crate) fn git_fetch(
             other => mutate::be(other),
         })?;
 
-    // No rebase_descendants() here: import_refs_inner handles any needed rebase
-    // internally, matching the real CLI (v0.42.0 cli/src/commands/git/fetch.rs).
     pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
+
+    // A descendant pass BEFORE the commit, because `import_refs` calls
+    // `record_abandoned_commit` (jj-lib `git.rs:796`), which populates `parent_mapping`, and
+    // `Transaction::write` panics while rewrites are outstanding. This is the CLI's own
+    // `tx.finish` step — `rebase_mutable_descendants` (`cli/src/cli_util.rs` @ v0.44.0) —
+    // which likewise resolves the immutable set against `tx.base_repo()`.
+    // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
+    let resolved = resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&resolved, &RebaseOptions::default(), |_, _| {}),
+    )
+    .map_err(mutate::be)?;
 
     let new_repo =
         pollster::block_on(tx.commit(format!("fetch from git remote(s) {remote_name}"))).map_err(mutate::be)?;

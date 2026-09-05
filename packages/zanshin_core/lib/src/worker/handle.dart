@@ -278,7 +278,7 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`). A workspace with no git backend is
+  /// `jj.network_error`, `jj.jj_lib_error`). A workspace with no git backend is
   /// `jj.not_a_git_repo` — not `jj.remote_not_found`, which now means only
   /// "no remote of that name".
   Future<MutationResult> gitFetch(String remoteName) {
