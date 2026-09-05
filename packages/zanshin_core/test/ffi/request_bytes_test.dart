@@ -16,9 +16,16 @@
 // The NUL is always written as the `\u0000` escape rather than as a literal byte,
 // so the test source stays greppable and diffable.
 //
-// No cdylib required — this is a pure argument guard.
+// The two guard groups need no cdylib — they are pure argument checks. The
+// `readToken` group at the bottom does: it is the one place that pins the
+// token-ownership discipline directly, now that every adapter call site funnels
+// through it.
+
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/bindings.dart';
+import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/request_bytes.dart';
 
 void main() {
@@ -96,6 +103,28 @@ void main() {
 
     test('accepts a NUL-free list, empty strings included', () {
       expect(() => rejectInteriorNuls(<String>['main', '', 'feature/x'], 'names'), returnsNormally);
+    });
+  });
+
+  // `zanshin_diagnostics` is infallible and takes no repo handle, so it yields a
+  // real token without a fixture — the same seam `buffer_free_test.dart` uses.
+  group('readToken (real cdylib)', () {
+    test('returns a decodable heap copy, independent of the freed token', () {
+      final Uint8List first = readToken(zanshin_diagnostics());
+
+      expect(first, isNotEmpty, reason: 'an envelope buffer is never empty');
+      // Read through the generated accessors, not by byte-poking: a wrong shape
+      // is then a compile error (project-context, FlatBuffers wire validation).
+      expect(fbs.Envelope(first).ok, isTrue, reason: 'diagnostics never fails');
+
+      // The token this came from is already freed. If readToken had returned a
+      // VIEW onto the native buffer rather than a copy, `first` would now be
+      // reading reclaimed memory — which the second call is free to reuse.
+      final Uint8List second = readToken(zanshin_diagnostics());
+      expect(first, equals(second), reason: 'the first copy still holds its bytes');
+
+      first[0] ^= 0xFF;
+      expect(first, isNot(equals(second)), reason: 'the two copies share no storage');
     });
   });
 }

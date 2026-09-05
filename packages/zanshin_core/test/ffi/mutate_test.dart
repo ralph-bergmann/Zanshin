@@ -266,7 +266,7 @@ void main() {
     test('zanshinRestore_rejects_interior_nul_in_a_path', () {
       expect(
         () => zanshinRestore(0, paths: ['a${String.fromCharCode(0)}.txt']),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
       );
     });
 
@@ -281,7 +281,7 @@ void main() {
     test('zanshinAbsorb_rejects_interior_nul_in_a_path', () {
       expect(
         () => zanshinAbsorb(0, paths: ['a${String.fromCharCode(0)}.txt']),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
       );
     });
   });

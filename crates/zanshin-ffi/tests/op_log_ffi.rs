@@ -159,6 +159,12 @@ fn op_log_zero_handle_returns_ffi_invalid_handle() {
         Some(FFI_INVALID_HANDLE),
         "error.code must be ffi.invalid_handle"
     );
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        env.error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
+    );
 }
 
 /// `i64::MAX` limit maps to `Some(huge)` via `usize::try_from(limit).ok()` and must

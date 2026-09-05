@@ -307,6 +307,12 @@ fn file_list_rejects_a_null_request_a_garbage_request_and_a_zero_handle() {
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_HANDLE));
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        env.error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
+    );
 
     close_handle(handle);
 }
@@ -463,6 +469,12 @@ fn file_show_rejects_a_null_request_a_garbage_request_and_a_zero_handle() {
         parse_envelope(&bytes).error().and_then(|e| e.code()),
         Some(FFI_INVALID_HANDLE)
     );
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
+    );
 
     close_handle(handle);
 }
@@ -560,6 +572,12 @@ fn file_annotate_surfaces_not_a_file_and_the_three_ffi_guards() {
     assert_eq!(
         parse_envelope(&bytes).error().and_then(|e| e.code()),
         Some(FFI_INVALID_HANDLE)
+    );
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
     );
 
     close_handle(handle);
@@ -704,6 +722,12 @@ fn file_search_surfaces_invalid_input_and_the_three_ffi_guards() {
     assert_eq!(
         parse_envelope(&bytes).error().and_then(|e| e.code()),
         Some(FFI_INVALID_HANDLE)
+    );
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
     );
 
     close_handle(handle);

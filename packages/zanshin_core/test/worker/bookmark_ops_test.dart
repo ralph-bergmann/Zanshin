@@ -154,9 +154,18 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final nul = String.fromCharCode(0);
 
-      expect(() => handle.bookmarkCreate(['fea${nul}ture']), throwsArgumentError);
-      expect(() => handle.bookmarkCreate(['feature'], revision: 'qpv${nul}untsm'), throwsArgumentError);
-      expect(() => handle.bookmarkDelete(['fo${nul}o']), throwsArgumentError);
+      expect(
+        () => handle.bookmarkCreate(['fea${nul}ture']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => handle.bookmarkCreate(['feature'], revision: 'qpv${nul}untsm'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
+      );
+      expect(
+        () => handle.bookmarkDelete(['fo${nul}o']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
 
       await handle.close();
     });

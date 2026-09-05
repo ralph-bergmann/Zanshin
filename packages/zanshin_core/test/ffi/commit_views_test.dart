@@ -286,7 +286,7 @@ void main() {
     test('zanshinInterdiff_rejects_interior_nul_in_a_path', () {
       expect(
         () => zanshinInterdiff(0, from: 'qpvuntsm', paths: ['a${String.fromCharCode(0)}.txt']),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
       );
     });
 

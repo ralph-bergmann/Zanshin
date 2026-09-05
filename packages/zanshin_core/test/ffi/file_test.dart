@@ -262,7 +262,10 @@ void main() {
 
     test('fileList rejects a NUL in revision or a path', () {
       expect(() => zanshinFileList(0, revision: nul), throwsA(isA<ArgumentError>()));
-      expect(() => zanshinFileList(0, paths: [nul]), throwsA(isA<ArgumentError>()));
+      expect(
+        () => zanshinFileList(0, paths: [nul]),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
+      );
     });
 
     test('fileShow rejects a NUL in revision or a path', () {

@@ -528,6 +528,13 @@ fn graph_slice_zero_handle_returns_ffi_invalid_handle() {
 
     let bytes = unsafe { slice_bytes(0, "all()", DEFAULT_GRAPH_PRIORITIZE) };
     assert_error(&bytes, FFI_INVALID_HANDLE);
+    // Not folded into `assert_error`: most codes it serves DO carry a context.
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // does not — pinned so this wrapper cannot start decorating it.
+    assert!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()).is_none(),
+        "the invalid-handle envelope carries no context"
+    );
 }
 
 // ── Story 4.8: metadata, active lanes, elided rows across the wire ───────────

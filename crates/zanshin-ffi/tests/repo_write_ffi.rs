@@ -1298,6 +1298,25 @@ fn abandon_garbage_bytes_returns_ffi_invalid_argument() {
     close_handle(handle);
 }
 
+/// Assert the whole `ffi.invalid_handle` refusal envelope: `ok:false`, the code,
+/// and an ABSENT `context`.
+///
+/// The `context` half is what makes this a witness rather than a smoke check.
+/// Since the 2026-09-05 closing dedupe all eight wrappers below borrow through
+/// `envelope::session_from_handle`, whose refusal carries `context: None`; a
+/// wrapper that started decorating that error would still satisfy a code-only
+/// assertion.
+fn assert_invalid_handle(bytes: &[u8]) {
+    let env = parse_envelope(bytes);
+    assert!(!env.ok(), "handle 0 must produce an error envelope");
+    let err = env.error().expect("error field must be present");
+    assert_eq!(err.code(), Some(FFI_INVALID_HANDLE));
+    assert!(
+        err.context().is_none(),
+        "the invalid-handle envelope carries no context"
+    );
+}
+
 #[test]
 fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     pin_env();
@@ -1308,59 +1327,35 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
 
     let describe_token = unsafe { zanshin_describe(0, id_cstr.as_ptr(), desc_cstr.as_ptr()) };
     let describe_bytes = unsafe { read_and_free(describe_token) };
-    assert_eq!(
-        parse_envelope(&describe_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&describe_bytes);
 
     let new_change_token = unsafe { zanshin_new_change(0, req.as_ptr(), req.len()) };
     let new_change_bytes = unsafe { read_and_free(new_change_token) };
-    assert_eq!(
-        parse_envelope(&new_change_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&new_change_bytes);
 
     let edit_token = unsafe { zanshin_edit(0, id_cstr.as_ptr()) };
     let edit_bytes = unsafe { read_and_free(edit_token) };
-    assert_eq!(
-        parse_envelope(&edit_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&edit_bytes);
 
     let abandon_token = unsafe { zanshin_abandon(0, req.as_ptr(), req.len()) };
     let abandon_bytes = unsafe { read_and_free(abandon_token) };
-    assert_eq!(
-        parse_envelope(&abandon_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&abandon_bytes);
 
     let undo_token = unsafe { zanshin_undo(0) };
     let undo_bytes = unsafe { read_and_free(undo_token) };
-    assert_eq!(
-        parse_envelope(&undo_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&undo_bytes);
 
     let git_fetch_token = unsafe { zanshin_git_fetch(0, remote_cstr.as_ptr()) };
     let git_fetch_bytes = unsafe { read_and_free(git_fetch_token) };
-    assert_eq!(
-        parse_envelope(&git_fetch_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&git_fetch_bytes);
 
     let restore_req = restore_request_bytes(None, Some("qpvuntsm"), None, &[], false);
     let restore_token = unsafe { zanshin_restore(0, restore_req.as_ptr(), restore_req.len()) };
     let restore_bytes = unsafe { read_and_free(restore_token) };
-    assert_eq!(
-        parse_envelope(&restore_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&restore_bytes);
 
     let absorb_req = absorb_request_bytes(None, None, &[]);
     let absorb_token = unsafe { zanshin_absorb(0, absorb_req.as_ptr(), absorb_req.len()) };
     let absorb_bytes = unsafe { read_and_free(absorb_token) };
-    assert_eq!(
-        parse_envelope(&absorb_bytes).error().and_then(|e| e.code()),
-        Some(FFI_INVALID_HANDLE)
-    );
+    assert_invalid_handle(&absorb_bytes);
 }

@@ -277,7 +277,7 @@ void main() {
           syntheticElided: true,
           shortPrefixes: '',
         ),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revset')),
       );
     });
 
@@ -290,7 +290,7 @@ void main() {
           syntheticElided: true,
           shortPrefixes: '',
         ),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'prioritize')),
       );
     });
 
@@ -303,7 +303,7 @@ void main() {
           syntheticElided: true,
           shortPrefixes: 'all()${String.fromCharCode(0)}x',
         ),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'shortPrefixes')),
       );
     });
   });

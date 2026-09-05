@@ -138,7 +138,7 @@ void main() {
       // `internal.dispatch_error`, not as the documented ArgumentError.
       await expectLater(
         handle.workspaceRoot(name: 'de${String.fromCharCode(0)}fault'),
-        throwsArgumentError,
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'name')),
       );
 
       await handle.close();

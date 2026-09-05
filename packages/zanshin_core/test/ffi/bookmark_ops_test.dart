@@ -84,15 +84,24 @@ void main() {
     final nul = String.fromCharCode(0);
 
     test('zanshinBookmarkCreate rejects an interior NUL in a name', () {
-      expect(() => zanshinBookmarkCreate(0, ['fea${nul}ture']), throwsArgumentError);
+      expect(
+        () => zanshinBookmarkCreate(0, ['fea${nul}ture']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
     });
 
     test('zanshinBookmarkCreate rejects an interior NUL in the revision', () {
-      expect(() => zanshinBookmarkCreate(0, ['feature'], revision: 'qpv${nul}untsm'), throwsArgumentError);
+      expect(
+        () => zanshinBookmarkCreate(0, ['feature'], revision: 'qpv${nul}untsm'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
+      );
     });
 
     test('zanshinBookmarkDelete rejects an interior NUL in a pattern', () {
-      expect(() => zanshinBookmarkDelete(0, ['ok', 'fo${nul}o']), throwsArgumentError);
+      expect(
+        () => zanshinBookmarkDelete(0, ['ok', 'fo${nul}o']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
     });
   });
 

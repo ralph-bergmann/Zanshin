@@ -151,4 +151,10 @@ fn remotes_invalid_handle_returns_ffi_error() {
         "error code must be ffi.invalid_handle, got {:?}",
         err.code()
     );
+    // The borrow routes through `envelope::session_from_handle`, whose refusal
+    // carries no context — pinned so a wrapper cannot start decorating it.
+    assert!(
+        err.context().is_none(),
+        "the invalid-handle envelope carries no context"
+    );
 }
