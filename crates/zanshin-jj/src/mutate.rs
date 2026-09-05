@@ -909,8 +909,10 @@ where
 ///
 /// - [`MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`, or a `paths`
 ///   entry is not a valid repo path.
-/// - [`MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is malformed, absent,
-///   only-hidden, or divergent.
+/// - [`MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is malformed, carried
+///   by no VISIBLE commit (unknown or only-hidden), or divergent. Not to be confused with an
+///   ABSENT one, which is not an error at all: it is what selects the CLI's
+///   `--from`/`--into`/`--changes-in` defaults spelled out above.
 /// - [`MutateError::Immutable`] — the destination is inside the repo's effective immutable
 ///   set. The ROOT commit needs no separate guard: `check_rewritable` runs BEFORE any tree
 ///   work and `immutable_user_expression` unions `root()` unconditionally, so root always
@@ -1041,8 +1043,9 @@ pub(crate) fn restore(
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
-/// - [`MutateError::ChangeNotFound`] — `from` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`MutateError::ChangeNotFound`] — `from` is malformed, carried by no VISIBLE commit
+///   (unknown or only-hidden), or divergent. Not to be confused with an ABSENT `from`, which
+///   is not an error at all: it applies the CLI's `--from` default `@`.
 /// - [`MutateError::RevsetResolutionError`] — a symbol in `destinations` cannot be resolved.
 /// - [`MutateError::Immutable`] — a commit the hunks would be absorbed into is inside the
 ///   repo's effective immutable set. Unreachable with the `mutable()` default, which

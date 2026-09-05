@@ -965,8 +965,10 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 /// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
 /// - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
 ///   is not a valid repo path; detail in `context`.
-/// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, absent,
-///   only-hidden, or divergent.
+/// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
+///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
+///   it is exactly the "the user did not supply it" wire form described above, and it is what
+///   applies the CLI's `--from`/`--into`/`--changes-in` defaults.
 /// - `jj.immutable` — the destination resolves to a commit inside the repo's effective
 ///   immutable set; the offending hex commit id in `context`. This wrapper has no separate
 ///   root-commit guard, so restoring INTO the root commit reports this code too (which is
@@ -1027,7 +1029,9 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 /// - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
 ///   resolved; jj-lib's reason in `context`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
-/// - `jj.change_not_found` — `from` is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
+///   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the
+///   CLI's `--from` default `@`.
 /// - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
 ///   effective immutable set; the hex commit id of the FIRST such target in `context`.
 ///   Unreachable with the `mutable()` default, which excludes that set by construction.

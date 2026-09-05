@@ -157,9 +157,11 @@ pub struct SearchMatch {
 /// [`crate::Repo::file_annotate`] and [`crate::Repo::file_search`].
 #[derive(Debug, thiserror::Error)]
 pub enum FileError {
-    /// The `revision` argument is malformed, absent, only-hidden, or DIVERGENT — the same
-    /// refusal `mutate.rs` makes, because the CLI's `-r` is `resolve_single_rev`, which
-    /// refuses an ambiguous revision rather than picking one.
+    /// The `revision` argument is malformed, carried by no VISIBLE commit (unknown or
+    /// only-hidden), or DIVERGENT — the same refusal `mutate.rs` makes, because the CLI's
+    /// `-r` is `resolve_single_rev`, which refuses an ambiguous revision rather than picking
+    /// one. Not to be confused with an ABSENT `revision`, which is not an error at all: it
+    /// applies the CLI's `-r` default `@`.
     #[error("change not found: {id}")]
     ChangeNotFound {
         /// The reverse-hex change id that could not be resolved.
@@ -291,8 +293,9 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 ///
 /// # Errors
 ///
-/// - [`FileError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`FileError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE commit
+///   (unknown or only-hidden), or divergent. Not to be confused with an ABSENT `revision`,
+///   which is not an error at all: it applies the CLI's `-r` default `@`.
 /// - [`FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
 /// - [`FileError::Backend`] — `load_at_head` or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]

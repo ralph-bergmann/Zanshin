@@ -322,8 +322,10 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
 /// - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
 ///   not a valid repo path; detail in `context`.
-/// - `jj.change_not_found` — `from` or `to` is malformed, absent, only-hidden, or divergent; the
-///   offending id in `context`.
+/// - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
+///   or only-hidden), or divergent; the offending id in `context`. An ABSENT side is not an error
+///   — ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the
+///   `jj.invalid_input` bullet above.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety

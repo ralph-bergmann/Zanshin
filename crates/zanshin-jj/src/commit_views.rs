@@ -107,9 +107,11 @@ pub struct EvologEntry {
 /// onto an error code the registry already carries — this story mints none.
 #[derive(Debug, thiserror::Error)]
 pub enum CommitViewError {
-    /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed, absent, only-hidden,
-    /// or DIVERGENT — the same refusal every other single-revision parameter makes, because the
-    /// CLI resolves both sides with `resolve_single_rev`.
+    /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed, carried by no VISIBLE
+    /// commit (unknown or only-hidden), or DIVERGENT — the same refusal every other
+    /// single-revision parameter makes, because the CLI resolves both sides with
+    /// `resolve_single_rev`. Not to be confused with an ABSENT side, which is not an error at
+    /// all: it applies the CLI's `--from`/`--to` default `@` (omitting BOTH is `InvalidInput`).
     #[error("change not found: {id}")]
     ChangeNotFound {
         /// The reverse-hex change id that could not be resolved.
@@ -379,8 +381,10 @@ pub(crate) fn evolog(
 ///
 /// - [`CommitViewError::InvalidInput`] — BOTH `from` and `to` are absent, or a `paths` entry is
 ///   not a valid repo path.
-/// - [`CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, absent, only-hidden, or
-///   divergent.
+/// - [`CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, carried by no VISIBLE
+///   commit (unknown or only-hidden), or divergent. Not to be confused with the ABSENT of the
+///   bullet above: ONE absent side is not an error at all, it applies the CLI's `--from`/`--to`
+///   default `@`.
 /// - [`CommitViewError::Backend`] — `load_at_head`, the in-memory rebase, or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn interdiff(

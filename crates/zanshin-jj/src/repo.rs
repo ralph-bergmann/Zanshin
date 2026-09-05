@@ -278,8 +278,10 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::FileError::ChangeNotFound`] — `revision` is malformed, absent,
-    ///   only-hidden, or divergent (the CLI's `-r` refuses an ambiguous revision too).
+    /// - [`crate::FileError::ChangeNotFound`] — `revision` is malformed, carried by no
+    ///   VISIBLE commit (unknown or only-hidden), or divergent (the CLI's `-r` refuses an
+    ///   ambiguous revision too). An ABSENT `revision` is not an error: it is what applies
+    ///   the CLI's `-r` default `@`.
     /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
     /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
@@ -1026,8 +1028,10 @@ impl Repo {
     ///
     /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, or a
     ///   `paths` entry is not a valid repo path.
-    /// - [`crate::CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, absent,
-    ///   only-hidden, or divergent.
+    /// - [`crate::CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, carried by
+    ///   no VISIBLE commit (unknown or only-hidden), or divergent. Not to be confused with
+    ///   the ABSENT of the bullet above: ONE absent side is not an error, it is what applies
+    ///   the CLI's `--from`/`--to` default `@`.
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: owned `ChangeId`s match the house currency for single-revision parameters
@@ -1211,7 +1215,9 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`,
     ///   or a `paths` entry is not a valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is
-    ///   malformed, absent, only-hidden, or divergent.
+    ///   malformed, carried by no VISIBLE commit (unknown or only-hidden), or divergent. An
+    ///   ABSENT one is not an error: it is what selects the CLI's
+    ///   `--from`/`--into`/`--changes-in` defaults described above.
     /// - [`crate::MutateError::Immutable`] — the destination resolves to a commit inside the
     ///   repo's effective immutable set. Unlike `describe`/`abandon` this verb has no
     ///   separate root-commit guard, so the ROOT commit reports this code too — which is
@@ -1283,8 +1289,9 @@ impl Repo {
     /// - [`crate::MutateError::RevsetResolutionError`] — a symbol in `destinations` cannot
     ///   be resolved.
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
-    /// - [`crate::MutateError::ChangeNotFound`] — `from` is malformed, absent, only-hidden,
-    ///   or divergent.
+    /// - [`crate::MutateError::ChangeNotFound`] — `from` is malformed, carried by no VISIBLE
+    ///   commit (unknown or only-hidden), or divergent. An ABSENT `from` is not an error: it
+    ///   is what applies the CLI's `--from` default `@`.
     /// - [`crate::MutateError::Immutable`] — a commit the hunks would be absorbed into is
     ///   inside the repo's effective immutable set. Unreachable with the `mutable()`
     ///   default, which excludes that set by construction.

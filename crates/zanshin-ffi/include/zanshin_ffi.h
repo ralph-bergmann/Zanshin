@@ -533,8 +533,10 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
  * - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
  *   not a valid repo path; detail in `context`.
- * - `jj.change_not_found` — `from` or `to` is malformed, absent, only-hidden, or divergent; the
- *   offending id in `context`.
+ * - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
+ *   or only-hidden), or divergent; the offending id in `context`. An ABSENT side is not an error
+ *   — ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the
+ *   `jj.invalid_input` bullet above.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -649,7 +651,9 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
- * - `jj.change_not_found` — `revision` is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
+ *   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
+ *   the CLI's `-r` default `@`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
@@ -1479,8 +1483,10 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const char *remote_name);
  * - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
  * - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
  *   is not a valid repo path; detail in `context`.
- * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, absent,
- *   only-hidden, or divergent.
+ * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
+ *   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
+ *   it is exactly the "the user did not supply it" wire form described above, and it is what
+ *   applies the CLI's `--from`/`--into`/`--changes-in` defaults.
  * - `jj.immutable` — the destination resolves to a commit inside the repo's effective
  *   immutable set; the offending hex commit id in `context`. This wrapper has no separate
  *   root-commit guard, so restoring INTO the root commit reports this code too (which is
@@ -1529,7 +1535,9 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
  *   resolved; jj-lib's reason in `context`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
- * - `jj.change_not_found` — `from` is malformed, absent, only-hidden, or divergent.
+ * - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
+ *   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the
+ *   CLI's `--from` default `@`.
  * - `jj.immutable` — a commit the hunks would be absorbed into is inside the repo's
  *   effective immutable set; the hex commit id of the FIRST such target in `context`.
  *   Unreachable with the `mutable()` default, which excludes that set by construction.

@@ -303,7 +303,9 @@ fn file_search_to_envelope(matches: &[SearchMatch]) -> Vec<u8> {
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
-/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden, or divergent.
+/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
+///   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
+///   the CLI's `-r` default `@`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
