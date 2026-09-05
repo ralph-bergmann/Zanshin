@@ -18,7 +18,7 @@ import 'request_bytes.dart';
 // composite whose `revision` must be distinguishably ABSENT (null), which is what
 // applies the CLI's own `@` default instead of one this layer invented.
 
-// ── Request-buffer helpers ───────────────────────────────────────────────────
+// ── Argument guards ──────────────────────────────────────────────────────────
 
 /// Guard [revision] and every entry of [paths] against an interior NUL.
 void _rejectPathNuls(String? revision, List<String> paths) {

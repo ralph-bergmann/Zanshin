@@ -72,14 +72,18 @@ void main() {
       await handle.close();
 
       // Direct worker call with the now-unknown handleId bypasses the closed guard.
+      //
+      // `context` is pinned here and nowhere else: since the 2026-09-05 dedupe all 33
+      // worker arms synthesize this envelope through the single
+      // `_invalidHandleEnvelope(handleId)` helper, so this is the only assertion in the
+      // suite that would notice the id being dropped from the message or the wording
+      // drifting. Every other closed-handle test asserts `code` alone.
       await expectLater(
         worker.bookmarks(handle.handleId),
         throwsA(
-          isA<ZanshinFfiException>().having(
-            (e) => e.code,
-            'code',
-            'ffi.invalid_handle',
-          ),
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'ffi.invalid_handle')
+              .having((e) => e.context, 'context', 'unknown or closed handleId: ${handle.handleId}'),
         ),
       );
     });

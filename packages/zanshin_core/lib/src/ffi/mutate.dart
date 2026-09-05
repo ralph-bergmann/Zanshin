@@ -30,12 +30,8 @@ T _withChangeIdListBytes<T>(List<String> ids, T Function(ffi.Pointer<ffi.Uint8>,
 /// Call `zanshin_describe` with the raw `u64` handle, [changeId], and
 /// [description], and return the FlatBuffers `Envelope` bytes.
 Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
-  if (changeId.codeUnits.contains(0)) {
-    throw ArgumentError.value(changeId, 'changeId', 'must not contain an interior NUL (U+0000)');
-  }
-  if (description.codeUnits.contains(0)) {
-    throw ArgumentError.value(description, 'description', 'must not contain an interior NUL (U+0000)');
-  }
+  rejectInteriorNul(changeId, 'changeId');
+  rejectInteriorNul(description, 'description');
   final ffi.Pointer<Utf8> changeIdPtr = changeId.toNativeUtf8();
   try {
     final ffi.Pointer<Utf8> descriptionPtr = description.toNativeUtf8();
@@ -70,9 +66,7 @@ Uint8List zanshinNewChange(int rawHandle, List<String> parents) => _withChangeId
 /// Call `zanshin_edit` with the raw `u64` handle and [changeId], and return the
 /// FlatBuffers `Envelope` bytes.
 Uint8List zanshinEdit(int rawHandle, String changeId) {
-  if (changeId.codeUnits.contains(0)) {
-    throw ArgumentError.value(changeId, 'changeId', 'must not contain an interior NUL (U+0000)');
-  }
+  rejectInteriorNul(changeId, 'changeId');
   final ffi.Pointer<Utf8> p = changeId.toNativeUtf8();
   try {
     final ffi.Pointer<ZanshinBuf> token = zanshin_edit(rawHandle, p.cast());
@@ -118,9 +112,7 @@ Uint8List zanshinUndo(int rawHandle) {
 /// uses (Story 3.6), tagged with the handle's `session_id` — register a
 /// `zanshin_events_register` sink and demux by `session_id` to observe it.
 Uint8List zanshinGitFetch(int rawHandle, String remoteName) {
-  if (remoteName.codeUnits.contains(0)) {
-    throw ArgumentError.value(remoteName, 'remoteName', 'must not contain an interior NUL (U+0000)');
-  }
+  rejectInteriorNul(remoteName, 'remoteName');
   final ffi.Pointer<Utf8> p = remoteName.toNativeUtf8();
   try {
     final ffi.Pointer<ZanshinBuf> token = zanshin_git_fetch(rawHandle, p.cast());

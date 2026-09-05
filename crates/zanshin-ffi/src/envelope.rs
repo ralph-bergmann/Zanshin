@@ -3,8 +3,10 @@
 //!
 //! Every pub ENVELOPE BUILDER returns a finished, owned `Vec<u8>`. Conversion to the FFI
 //! `(*mut u8, len)` token happens at the `extern "C"` call site (Story 3.4a) via
-//! `ffi_strings::vec_into_ffi_buf` / `vec_into_token`. This module owns nothing beyond
-//! the build step.
+//! `ffi_strings::vec_into_ffi_buf` / `vec_into_token`. The builders own nothing beyond
+//! the build step; the one exception is `session_from_handle` below, which hands out a
+//! borrow of caller-owned state and is why this module depends on `crate::handle` and
+//! `crate::repo` at all.
 
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::handle::handle_from_raw;
@@ -209,15 +211,27 @@ pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
 
 // ── Shared handle borrow ─────────────────────────────────────────────────────
 //
-// The one spelling of the unbounded-lifetime contract, shared by every noun module whose
-// wrappers take a handle as their first argument (`git.rs`, `commit_views.rs`,
-// `workspace.rs`, `bookmark_ops.rs`). Unlike the builders above this returns a BORROW, not
-// a finished buffer — hence its own banner.
+// One spelling of the unbounded-lifetime contract for the four modules that carried a
+// NAMED copy of it (`git.rs`, `commit_views.rs`, `workspace.rs`, `bookmark_ops.rs`).
+// Unlike the builders in this module it returns a BORROW, not a finished buffer — hence
+// its own banner.
+//
+// NOT yet the only spelling in the crate: nine other modules (`repo.rs` with 8 sites,
+// `file.rs` with 4, plus `status.rs`, `change.rs`, `graph.rs`, `op_log.rs`,
+// `bookmarks.rs`, `remotes.rs`, `log_defaults.rs`) still spell the same borrow INLINE
+// inside their `catch(|| …)` closures — about 20 sites, semantically identical. Folding
+// them in is mechanical but was deliberately out of scope for the extraction that created
+// this helper; it is recorded in `deferred-work.md`.
 
 /// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
 ///
 /// # Safety
-/// `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
+/// - `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
+/// - At most ONE borrow per handle may be live at a time. The returned lifetime `'a` is
+///   unbounded, so two calls with the same non-zero handle mint two aliasing `&mut` —
+///   undefined behaviour. Call this once per wrapper invocation and pass the borrow down.
+/// - The borrow must not outlive the `extern "C"` call it was taken in: the handle's owner
+///   is the Dart side, which may close (and free) the session as soon as the call returns.
 pub(crate) unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj> {
     // SAFETY: non-zero handle originated from arm_session's handle_into_raw
     // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
@@ -659,6 +673,21 @@ mod tests {
         assert!(env.ok());
         assert!(env.error().is_none());
         assert_eq!(env.data_type(), fbs::Payload::NONE);
+    }
+
+    /// The refusal arm of the shared handle borrow. A zero handle is the one input the
+    /// helper can be handed safely without a live session, and it must produce exactly the
+    /// `ffi.invalid_handle` shape all 13 call sites forward — code set, `context` absent.
+    #[test]
+    fn session_from_handle_refuses_a_zero_handle() {
+        // SAFETY: 0 is the documented "no handle" input; nothing is dereferenced.
+        // `.err().expect(…)` rather than `expect_err` (which would need `RepoSession: Debug`)
+        // or a `let … else` (whose `panic!` arm would be an uncovered line).
+        let e = unsafe { session_from_handle(0) }
+            .err()
+            .expect("a zero handle must be refused");
+        assert_eq!(e.code, FFI_INVALID_HANDLE);
+        assert_eq!(e.context, None);
     }
 
     #[test]
