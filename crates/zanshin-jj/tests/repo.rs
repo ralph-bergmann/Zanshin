@@ -104,15 +104,22 @@ fn repo_clone_with_nonexistent_target_returns_clone_failed() {
     }
 }
 
+/// `open` canonicalizes before handing the path to jj-lib, but the REFUSAL must still quote the
+/// caller. A macOS `TempDir` is the only refusal input where the two spellings differ
+/// (`/var/folders/…` vs `/private/var/folders/…`), so this is where that boundary is observable.
 #[test]
 fn repo_open_with_non_jj_directory_returns_not_a_repo() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let result = Repo::open(tmp.path());
-    assert!(
-        matches!(result, Err(RepoError::NotARepo { .. })),
-        "expected NotARepo, got: {result:?}"
-    );
+    match result {
+        Err(RepoError::NotARepo { path }) => assert_eq!(
+            path,
+            tmp.path(),
+            "the refusal must carry the caller's spelling, not the canonicalized one"
+        ),
+        other => panic!("expected NotARepo, got: {other:?}"),
+    }
 }
 
 // ── AC-5/AC-19: corrupt repo — no panic ───────────────────────────────────────
