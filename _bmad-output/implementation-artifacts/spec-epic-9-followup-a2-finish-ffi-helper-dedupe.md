@@ -2,13 +2,54 @@
 title: 'Epic 9 follow-up A2: finish the FFI-helper dedupe'
 type: 'refactor'
 created: '2026-09-05'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'ea6005ef66ce1216a797c627a254063d952fad57'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      No Rust invalid-handle test asserts `context == null`, only `error.code`, so the
+      "byte-identical to baseline" half of matrix row 1 is unwitnessed.
+    evidence: |-
+      The I/O matrix's first row expects `Envelope{ok:false, error.code="ffi.invalid_handle",
+      context=null}`. All nineteen re-pointed wrappers do have a zero-handle test
+      (`repo_write_ffi.rs:1302` covers all eight `repo.rs` sites; `file_ffi.rs:304/459/557/701`;
+      one each in `status/change/graph/op_log/bookmarks/remotes/log_defaults_ffi.rs`), but every
+      one asserts the code alone. `context: None` is structurally guaranteed by the single helper
+      today, so this is a strengthening, not a live defect. Pre-existing: those tests predate this
+      run and never asserted `context`.
+    location: >-
+      crates/zanshin-ffi/tests/
+    severity: medium
+  - summary: >-
+      The eleven re-pointed interior-NUL call sites assert only `throwsArgumentError`, so the
+      per-site `name` literal is pinned nowhere.
+    evidence: |-
+      The new `request_bytes_test.dart` cases pin message, `name` and `invalidValue` for
+      `rejectInteriorNul`/`rejectInteriorNuls` in isolation. At the call sites that actually
+      changed — `bookmark_ops_test.dart:86-96`, `workspace_test.dart:140`,
+      `graph_test.dart:271-306`, and the NUL groups in `mutate_test.dart`, `commit_views_test.dart`
+      and `git_test.dart` — the assertion is bare `throwsArgumentError`. A re-pointing that swapped
+      `'names'` for `'name'` would pass the whole suite. This is the one genuinely per-site value
+      and the intent's `not a pure refactor` Block-If names it. Pre-existing weakness: the inline
+      throws were equally unpinned before the change.
+    location: >-
+      packages/zanshin_core/test/worker/graph_test.dart:271
+    severity: medium
+  - summary: >-
+      `readToken` has no direct unit test although it is now the single chokepoint for token
+      ownership across roughly twenty-nine call sites.
+    evidence: |-
+      `test/ffi/request_bytes_test.dart` covers only the two NUL guards. `readToken`'s own
+      behaviour — copy-then-dispose ordering and the documented null-token throw — is exercised
+      only indirectly, through every adapter test. Concentrating twenty-nine call sites onto it is
+      exactly what makes a direct test worth having; the concentration is new, the absent test is
+      pre-existing.
+    location: >-
+      packages/zanshin_core/lib/src/ffi/request_bytes.dart
+    severity: low
 ---
 
 <intent-contract>
@@ -337,6 +378,52 @@ re-grep rather than trusting a number after the first edit in a file.
 
 ## Review Triage Log
 
+### 2026-09-05 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 3, low 6)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 13: (high 0, medium 0, low 13)
+- addressed_findings:
+  - `[medium]` `[patch]` `request_bytes.dart`'s file banner still scoped the file to "the six FFI
+    adapter files that pass a request buffer" although seventeen files now import it — the very
+    defect this run fixed in `envelope.rs`. Banner rewritten to state the three helper groups'
+    three different reaches (commit `aa3b232`).
+  - `[medium]` `[patch]` `deferred-work.md`'s closed section kept a "next pass" preamble and one
+    struck bullet whose preserved body contradicted its own Resolution in the present tense. Both
+    now read as history.
+  - `[medium]` `[patch]` This spec's own two grep expectations undercounted their hits, so a
+    re-verifier following them would have concluded the run failed. `handle_from_raw::<RepoSession>`
+    leaves TWO hits (the helper's body IS that expression); `FfiBuffer.fromToken` matches four lines,
+    two of them doc comments. Corrected in both Acceptance Criteria and Verification.
+  - `[low]` `[patch]` `envelope.rs`'s banner had its second paragraph rewritten but not its first,
+    which still named only the four originally-extracted modules; reworded to the crate-wide role.
+  - `[low]` `[patch]` `diagnostics.dart` pointed at a `repo.dart` decode pattern this run deleted;
+    retargeted at `readToken` (its now-orphaned `ffi_buffer.dart` import removed with it).
+  - `[low]` `[patch]` `readToken`'s null-token rationale argued from "every `extern "C"` wrapper
+    returns a real token", but its newest caller receives the token from a `NativeCallable`; clause
+    added for the callback path.
+  - `[low]` `[patch]` `request_bytes_test.dart`'s header no longer covered `graph.dart` or the
+    worker call sites; updated.
+  - `[low]` `[patch]` The Code Map still instructed dropping `FfiErrorObj` from `status.rs` and
+    `log_defaults.rs`, which the Change Log records as build-breaking; corrected in place so the
+    wrong instruction is not the first thing a reader meets.
+  - `[low]` `[patch]` The stated `deferred-work.md` convention did not match the shape the file
+    actually uses; corrected, along with the matching task line.
+
+Rejected as noise or as excluded by the intent's own authority: the `Iterable<String>` vs
+`List<String>` signature of `rejectInteriorNuls` (the intent prescribes `Iterable`, and no call site
+passes a lazy or single-subscription iterable); a `docs/ffi-abi.md` snippet refresh (the intent
+explicitly forbids a `ffi-abi.md` pass); the ten new tests not distinguishing arms and being
+verbatim copy-paste (the intent prescribes exactly that assertion shape, "modelled verbatim on
+`file_test.dart`'s four"); the unprefixed `request_bytes.dart` import in `isolate.dart` (intent
+prescribes unprefixed); a durability guard against a future 34th arm shipping without a witness;
+NUL-literal spelling inconsistency against pre-existing tests; the two helper names differing by one
+trailing character; the coverage paragraph's direction of reasoning (inside `<intent-contract>`,
+read-only, and the predicted outcome held); and the descriptive intent-alignment observations about
+`graph.dart` being outside the matrix and the per-file coverage signal moving into `envelope.rs`.
+
 ## Design Notes
 
 **Why the SAFETY comment survives.** The ledger phrases item 1 as "deleting the per-site duplicated
@@ -377,3 +464,102 @@ shorter.
 - `git status --porcelain` -- expected: clean after each commit; no generated file and no
   `schemas/*.fbs` in any diff.
 - `git diff --stat` before committing -- expected: only the files named in Tasks & Acceptance.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+The four ledger entries the 2026-09-05 dedupe run left open are closed, and nothing else was
+widened. 19 hand-spelled `session_from_handle` borrows in nine `zanshin-ffi` modules now call the
+one crate helper behind `git.rs`'s existing one-line SAFETY pointer; `zanshin_repo_close`'s
+differently-shaped close path is untouched, as the intent required. 23 inlined `readToken` bodies in
+eleven `zanshin_core` adapters now call the single `readToken`, leaving `FfiBuffer.fromToken` with
+exactly one caller. The interior-NUL guard has one spelling in the package: a new list variant
+`rejectInteriorNuls` replaced six hand-written `for` loops, `ZanshinWorker._rejectInteriorNuls` is
+gone, and the remaining hand-rolled scalar throws delegate. Ten closed-handle worker tests give all
+33 handle-taking dispatch arms a witness. No behaviour changed on any surface.
+
+Two Code Map errors were found and corrected during execution rather than followed: `FfiErrorObj`
+is NOT droppable from `status.rs` or `log_defaults.rs` (both still use it in their error mappers —
+`E0422`/`E0425` on removal), and `graph.dart` held three further hand-rolled scalar guards the Code
+Map never listed, which the acceptance criterion "exactly one `codeUnits.contains(0)` hit in `lib/`"
+made mandatory to convert. Both are recorded in the Spec Change Log.
+
+### Files changed
+
+Commit `53fc8f6` — the refactor:
+- `crates/zanshin-ffi/src/{repo,file,status,change,graph,op_log,bookmarks,remotes,log_defaults}.rs`
+  -- 19 inline borrows re-pointed at the shared helper; orphaned imports deleted.
+- `crates/zanshin-ffi/src/envelope.rs` -- banner rewritten; it no longer claims nine modules inline
+  the borrow.
+- `packages/zanshin_core/lib/src/ffi/{status,bookmarks,op_log,remotes,log_defaults,change,diagnostics,events,graph,repo,mutate}.dart`
+  -- 23 token reads re-pointed at `readToken`; single-return bodies collapsed to `=>`; unused
+  imports dropped.
+- `packages/zanshin_core/lib/src/ffi/request_bytes.dart` -- adds `rejectInteriorNuls`.
+- `packages/zanshin_core/lib/src/ffi/{mutate,bookmark_ops,file,commit_views}.dart` -- six `for`
+  loops replaced by the list guard.
+- `packages/zanshin_core/lib/src/worker/isolate.dart` -- `_rejectInteriorNuls` deleted, four call
+  sites re-pointed at the shared guards.
+- `packages/zanshin_core/test/ffi/request_bytes_test.dart` -- list-form guard cases.
+- `packages/zanshin_core/test/worker/{mutate,git}_test.dart` -- the ten closed-handle tests.
+
+Commit `73469bd` — bookkeeping: `deferred-work.md`'s four bullets struck through; four `resolved:`
+fields added to `spec-epic-9-followup-a-dedupe-ffi-helpers.md`.
+
+Commit `aa3b232` — review patches: the nine statements the refactor falsified, in
+`envelope.rs`, `diagnostics.dart`, `request_bytes.dart`, `request_bytes_test.dart`,
+`deferred-work.md` and this spec.
+
+### Review findings breakdown
+
+Patches applied: 9 (medium 3, low 6) — all doc, comment or bookkeeping text that the refactor made
+untrue; zero behaviour change. Items deferred: 3 (medium 2, low 1), all verification-strength
+observations recorded in frontmatter `deferred`. Items rejected: 13, listed with reasons in the
+Review Triage Log. No `intent_gap` and no `bad_spec`: no reviewer found the code wrong, so no
+revert or re-derivation was triggered.
+
+### Follow-up review recommendation
+
+`true`. Patched findings this pass: high 0, medium 3, low 6. Score = 3 x 3 + 1 x 6 = 15, which is
+at or above the threshold of 5. No `high`-severity patch was applied; the recommendation is driven
+entirely by the volume of falsified-documentation fixes, not by any defect in the shipped code.
+
+### Verification performed
+
+- `cargo make test`, run unpiped and synchronously, twice by this workflow: exit 0 after the
+  refactor (377.73 s) and again after the review patches (467.63 s). Coverage held at 99.20 %
+  (8315/8382 lines over 46 files); `coverage-baseline.txt` is byte-unchanged, so the ratchet neither
+  regressed nor auto-raised, and no `exclude_prefix` was added. `extern-coverage: OK`.
+- `grep -rn "handle_from_raw::<RepoSession>" crates/zanshin-ffi/src/` -- two hits as expected:
+  `envelope.rs:238` (the helper's own body) and `repo.rs:593` (the deliberate close-path
+  non-user). One caller outside the helper.
+- `session_from_handle(handle)` across the crate -- exactly 32 (13 pre-existing + 19 converted).
+- `grep -rn "FfiBuffer.fromToken" packages/zanshin_core/lib/` -- four lines: the definition, the
+  single call in `readToken`, and two doc comments.
+- `grep -rn "codeUnits.contains(0)"` and the literal NUL message in `packages/zanshin_core/lib/` --
+  one hit each, both inside `rejectInteriorNul`.
+- Matrix audit: all seven I/O-matrix rows have a covering test that ran and passed. The ten new
+  closed-handle tests and the four new list-guard cases were re-run by name under the expanded
+  reporter (47/47 passing) to confirm they are registered and not skipped, rather than inferred
+  from the aggregate count.
+- `git diff --stat ea6005e..HEAD` restricted to `zanshin_ffi.h`, `bindings.dart`, `*_generated.rs`,
+  `*.ffi_generated.dart` and `schemas/` -- empty. No codegen was run.
+- `git status --porcelain` -- clean.
+
+### Residual risks
+
+- Behaviour preservation for items 1-3 rests on the pre-existing suite rather than on new
+  differential tests; the two `deferred` verification items above name exactly where that evidence
+  is thinnest (no `context == null` assertion on the Rust side, no per-site `name` assertion on the
+  Dart side). Commit `53fc8f6` is cleanly revertible.
+- The one intended behavioural delta is in `diagnostics.dart` and `events.dart`: decoding now runs
+  on the `Uint8List.fromList` copy after `dispose()` instead of before. `fromList` already copies,
+  so the decoded value is identical and the native buffer's lifetime only shortens. Both paths are
+  exercised against the real cdylib and pass.
+- The frontmatter `warnings` are dispositioned as follows. `multiple-goals`: accepted deliberately
+  — the four goals are one closing transaction over a single ledger section, and splitting them
+  would have left that section open. `oversized`: accepted — the size is breadth of mechanical
+  re-pointing, not depth, and the gate plus the acceptance greps bound it.
