@@ -22,13 +22,11 @@ use tracing::debug;
 use zanshin_jj::{WorkspaceEntry, WorkspaceError};
 
 use crate::envelope::{
-    catch, finish_envelope, invalid_request, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE, JJ_JJ_LIB_ERROR,
+    catch, finish_envelope, invalid_request, reject_null_request, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR,
     JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::RepoSession;
 
 /// Maps a [`WorkspaceError`] onto its AR-P-4 code; user data always rides in `context`.
 ///
@@ -120,20 +118,6 @@ fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
     let root_off = b.create_string(&root.to_string_lossy());
     let table = fbs::WorkspaceRoot::create(&mut b, &fbs::WorkspaceRootArgs { root: Some(root_off) });
     finish_envelope(b, fbs::Payload::WorkspaceRoot, table.as_union_value())
-}
-
-/// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
-///
-/// # Safety
-/// `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
-unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj> {
-    // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-    // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
-    // (AD-2) guarantees no concurrent access.
-    unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-        code: FFI_INVALID_HANDLE.to_owned(),
-        context: None,
-    })
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────

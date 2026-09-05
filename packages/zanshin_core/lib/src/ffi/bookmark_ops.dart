@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
-
-import 'package:ffi/ffi.dart';
 
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.8's two bookmark MUTATIONS: the request
 // builders and the two adapters (bookmarkCreate / bookmarkDelete). `dart:ffi`
@@ -24,46 +21,10 @@ import 'ffi_buffer.dart';
 // names through `parse_bookmark_name`, `bookmark delete` does not) and is
 // documented on each adapter rather than smoothed over.
 
-// ── Request-buffer helpers ───────────────────────────────────────────────────
-
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as `mutate.dart`'s identical helper (AR-P-5 inbound
-/// rule): Rust only borrows the buffer for the duration of the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire — and
-/// then land in a bookmark name or a jj string pattern, where it can only produce
-/// a confusing downstream failure. This is the DIRECT-CALLER backstop: the
-/// primary guard lives on the calling side, in `ZanshinWorker` and `RepoHandle`,
-/// because inside the worker isolate a throw here comes back as
-/// `internal.dispatch_error` rather than as the documented [ArgumentError].
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
-
-/// Copy the envelope out of a returned token before freeing it.
-Uint8List _readToken(ffi.Pointer<ZanshinBuf> token) {
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
+// The shared `rejectInteriorNul` calls below are the DIRECT-CALLER backstop: the
+// primary guard lives on the calling side, in `ZanshinWorker` and `RepoHandle`,
+// because inside the worker isolate a throw here comes back as
+// `internal.dispatch_error` rather than as the documented `ArgumentError`.
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
@@ -79,11 +40,11 @@ Uint8List _readToken(ffi.Pointer<ZanshinBuf> token) {
 /// applies the CLI's own clap default `@`.
 Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revision}) {
   for (final name in names) {
-    _rejectInteriorNul(name, 'names');
+    rejectInteriorNul(name, 'names');
   }
-  _rejectInteriorNul(revision, 'revision');
+  rejectInteriorNul(revision, 'revision');
   final Uint8List request = fbs.BookmarkCreateRequestObjectBuilder(names: names, revision: revision).toBytes();
-  return _withRequestBytes(request, (ptr, len) => _readToken(zanshin_bookmark_create(rawHandle, ptr, len)));
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_create(rawHandle, ptr, len)));
 }
 
 /// Call `zanshin_bookmark_delete` with the raw `u64` handle and a
@@ -96,8 +57,8 @@ Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revi
 /// matching nothing SUCCEEDS and writes no operation.
 Uint8List zanshinBookmarkDelete(int rawHandle, List<String> names) {
   for (final name in names) {
-    _rejectInteriorNul(name, 'names');
+    rejectInteriorNul(name, 'names');
   }
   final Uint8List request = fbs.BookmarkDeleteRequestObjectBuilder(names: names).toBytes();
-  return _withRequestBytes(request, (ptr, len) => _readToken(zanshin_bookmark_delete(rawHandle, ptr, len)));
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_delete(rawHandle, ptr, len)));
 }

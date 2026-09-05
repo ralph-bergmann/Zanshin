@@ -1389,13 +1389,7 @@ void _workerEntry(_WorkerInit init) {
           sessionToId.removeWhere((_, id) => id == handleId);
           if (raw == null) {
             log.warning('Worker: CloseRepoCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi.zanshinRepoClose(raw);
@@ -1407,13 +1401,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: StatusCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_status.zanshinStatus(raw);
@@ -1424,13 +1412,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GetChangeCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_change.zanshinChange(raw, changeId);
@@ -1447,13 +1429,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GraphSliceCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_graph.zanshinGraphSlice(
@@ -1470,13 +1446,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: OpLogCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_op_log.zanshinOpLog(raw, limit);
@@ -1487,13 +1457,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: BookmarksCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmarks.zanshinBookmarks(raw);
@@ -1504,13 +1468,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: RemotesCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_remotes.zanshinRemotes(raw);
@@ -1521,13 +1479,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: LogDefaultsCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_log_defaults.zanshinLogDefaults(raw);
@@ -1546,13 +1498,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: DescribeCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinDescribe(raw, changeId, description);
@@ -1563,13 +1509,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: NewChangeCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinNewChange(raw, parents);
@@ -1580,13 +1520,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: EditCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinEdit(raw, changeId);
@@ -1597,13 +1531,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: AbandonCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbandon(raw, changeIds);
@@ -1614,13 +1542,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: UndoCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinUndo(raw);
@@ -1631,13 +1553,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitFetchCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinGitFetch(raw, remoteName);
@@ -1655,13 +1571,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: RestoreCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinRestore(
@@ -1684,13 +1594,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: AbsorbCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbsorb(raw, from: from, into: into, paths: paths);
@@ -1705,13 +1609,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: FileListCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file.zanshinFileList(raw, revision: revision, paths: paths);
@@ -1726,13 +1624,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: FileShowCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file.zanshinFileShow(raw, revision: revision, paths: paths);
@@ -1747,13 +1639,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: FileAnnotateCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file.zanshinFileAnnotate(raw, path: path, revision: revision);
@@ -1770,13 +1656,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: FileSearchCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file.zanshinFileSearch(
@@ -1793,13 +1673,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitImportCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitImport(raw);
@@ -1810,13 +1684,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitExportCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitExport(raw);
@@ -1832,13 +1700,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitRemoteAddCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitRemoteAdd(raw, name: name, url: url, pushUrl: pushUrl);
@@ -1849,13 +1711,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitRemoteRemoveCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitRemoteRemove(raw, name);
@@ -1866,13 +1722,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitRemoteRenameCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitRemoteRename(raw, oldName, newName);
@@ -1888,13 +1738,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitRemoteSetUrlCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitRemoteSetUrl(raw, name: name, url: url, pushUrl: pushUrl);
@@ -1905,13 +1749,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: ShowCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_commit_views.zanshinShow(raw, revset: revset);
@@ -1922,13 +1760,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: EvologCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_commit_views.zanshinEvolog(raw, revset: revset, limit: limit);
@@ -1944,13 +1776,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: InterdiffCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_commit_views.zanshinInterdiff(raw, from: from, to: to, paths: paths);
@@ -1961,13 +1787,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: WorkspaceListCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceList(raw);
@@ -1978,13 +1798,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: WorkspaceRootCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRoot(raw, name: name);
@@ -1995,13 +1809,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: BookmarkCreateCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkCreate(raw, names, revision: revision);
@@ -2012,13 +1820,7 @@ void _workerEntry(_WorkerInit init) {
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: BookmarkDeleteCommand for unknown handleId $handleId');
-            final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-              ok: false,
-              error: fbs.FfiErrorObjectBuilder(
-                code: 'ffi.invalid_handle',
-                context: 'unknown or closed handleId: $handleId',
-              ),
-            ).toBytes();
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkDelete(raw, names);
@@ -2055,6 +1857,22 @@ void _workerEntry(_WorkerInit init) {
     }
   });
 }
+
+/// The synthesized `ffi.invalid_handle` envelope every command arm replies with
+/// when [handleId] names no live handle.
+///
+/// Rust never sees the call — the handle is gone on this side — so the worker
+/// builds the refusal itself, in exactly the shape `envelope.rs` would have
+/// produced, except that `context` names the Dart-side handle id the caller
+/// actually passed. One definition rather than one per arm: 33 copies of a
+/// literal error code and context string are 33 chances to desync.
+Uint8List _invalidHandleEnvelope(int handleId) => fbs.EnvelopeObjectBuilder(
+  ok: false,
+  error: fbs.FfiErrorObjectBuilder(
+    code: 'ffi.invalid_handle',
+    context: 'unknown or closed handleId: $handleId',
+  ),
+).toBytes();
 
 /// Handle open/init/clone FFI bytes: store the raw handle plus the session-id
 /// event-demux mapping and reply with [HandleResult] on success, or forward

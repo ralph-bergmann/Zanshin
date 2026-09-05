@@ -10,6 +10,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // This file owns the Dart half of the whole mutation surface: the Story 6.5
 // adapters (describe/new_change/edit/abandon/undo/git_fetch), Story 9.3's two
@@ -19,38 +20,10 @@ import 'ffi_buffer.dart';
 
 // ── Request-buffer helpers ───────────────────────────────────────────────────
 
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as the lone-string adapters' `toNativeUtf8()` /
-/// `calloc.free()` pairs (AR-P-5 inbound rule), generalized to raw bytes: Rust
-/// only borrows the buffer for the duration of the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
 /// Build a `ChangeIdList` `FlatBuffers` request buffer for [ids] and hand it to
-/// [fn] through [_withRequestBytes].
+/// [fn] through [withRequestBytes].
 T _withChangeIdListBytes<T>(List<String> ids, T Function(ffi.Pointer<ffi.Uint8>, int) fn) =>
-    _withRequestBytes(fbs.ChangeIdListObjectBuilder(changeIds: ids).toBytes(), fn);
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire —
-/// and then land in a jj change id, revset or path, where it can only produce a
-/// confusing downstream failure. Guarding here keeps the whole mutation surface
-/// consistent with the C-string adapters above, which must reject it.
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
+    withRequestBytes(fbs.ChangeIdListObjectBuilder(changeIds: ids).toBytes(), fn);
 
 // ── FFI adapters ──────────────────────────────────────────────────────────────
 
@@ -180,11 +153,11 @@ Uint8List zanshinRestore(
   List<String> paths = const <String>[],
   bool restoreDescendants = false,
 }) {
-  _rejectInteriorNul(from, 'from');
-  _rejectInteriorNul(into, 'into');
-  _rejectInteriorNul(changesIn, 'changesIn');
+  rejectInteriorNul(from, 'from');
+  rejectInteriorNul(into, 'into');
+  rejectInteriorNul(changesIn, 'changesIn');
   for (final path in paths) {
-    _rejectInteriorNul(path, 'paths');
+    rejectInteriorNul(path, 'paths');
   }
   final Uint8List request = fbs.RestoreRequestObjectBuilder(
     from: from,
@@ -193,7 +166,7 @@ Uint8List zanshinRestore(
     paths: paths,
     restoreDescendants: restoreDescendants,
   ).toBytes();
-  return _withRequestBytes(request, (ptr, len) {
+  return withRequestBytes(request, (ptr, len) {
     final ffi.Pointer<ZanshinBuf> token = zanshin_restore(rawHandle, ptr, len);
     final buf = FfiBuffer.fromToken(token);
     try {
@@ -218,13 +191,13 @@ Uint8List zanshinAbsorb(
   String? into,
   List<String> paths = const <String>[],
 }) {
-  _rejectInteriorNul(from, 'from');
-  _rejectInteriorNul(into, 'into');
+  rejectInteriorNul(from, 'from');
+  rejectInteriorNul(into, 'into');
   for (final path in paths) {
-    _rejectInteriorNul(path, 'paths');
+    rejectInteriorNul(path, 'paths');
   }
   final Uint8List request = fbs.AbsorbRequestObjectBuilder(from: from, into: into, paths: paths).toBytes();
-  return _withRequestBytes(request, (ptr, len) {
+  return withRequestBytes(request, (ptr, len) {
     final ffi.Pointer<ZanshinBuf> token = zanshin_absorb(rawHandle, ptr, len);
     final buf = FfiBuffer.fromToken(token);
     try {

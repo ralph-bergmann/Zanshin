@@ -9,8 +9,8 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
 import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal;
+import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.5's six `jj git` sync + remote-config
 // verbs: the adapters (import/export/remote add/remove/rename/set-url), the two
@@ -26,50 +26,6 @@ import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal;
 // The four remote verbs return a plain `MutationResult`, so they reuse
 // `mutate.dart`'s model and decoder rather than defining a second one.
 
-// ── Request-buffer helpers ───────────────────────────────────────────────────
-
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as `mutate.dart`'s and `file.dart`'s identical
-/// helpers (AR-P-5 inbound rule): Rust only borrows the buffer for the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire — and
-/// then land in a git remote name or URL, where it can only produce a confusing
-/// downstream failure. The C-string adapters below must reject it outright.
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
-
-/// Copy the envelope out of a returned token and free the token.
-Uint8List _readToken(ffi.Pointer<ZanshinBuf> token) {
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
-
-/// Invoke [call] with the request bytes and copy the returned envelope out.
-Uint8List _callWithRequest(
-  Uint8List request,
-  ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Uint8>, int) call,
-) => _withRequestBytes(request, (ptr, len) => _readToken(call(ptr, len)));
-
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
 /// Call `zanshin_git_import` with the raw `u64` handle and return the FlatBuffers
@@ -79,14 +35,14 @@ Uint8List _callWithRequest(
 /// this is NOT skipped in a colocated workspace: that skip exists because the CLI
 /// imports refs during its implicit per-command snapshot, which Zanshin never
 /// performs.
-Uint8List zanshinGitImport(int rawHandle) => _readToken(zanshin_git_import(rawHandle));
+Uint8List zanshinGitImport(int rawHandle) => readToken(zanshin_git_import(rawHandle));
 
 /// Call `zanshin_git_export` with the raw `u64` handle and return the FlatBuffers
 /// `Envelope` bytes.
 ///
 /// Takes no arguments, and — like [zanshinGitImport] — is not skipped in a
 /// colocated workspace.
-Uint8List zanshinGitExport(int rawHandle) => _readToken(zanshin_git_export(rawHandle));
+Uint8List zanshinGitExport(int rawHandle) => readToken(zanshin_git_export(rawHandle));
 
 /// Call `zanshin_git_remote_add` with the raw `u64` handle and a
 /// `GitRemoteAddRequest` request buffer, and return the FlatBuffers `Envelope`
@@ -100,11 +56,11 @@ Uint8List zanshinGitExport(int rawHandle) => _readToken(zanshin_git_export(rawHa
 /// [zanshinGitRemoteRemove]: jj-lib writes a `pushurl` key, which its own
 /// `remove_remote` then refuses (`jj.remote_nonstandard_config`).
 Uint8List zanshinGitRemoteAdd(int rawHandle, {required String name, required String url, String? pushUrl}) {
-  _rejectInteriorNul(name, 'name');
-  _rejectInteriorNul(url, 'url');
-  _rejectInteriorNul(pushUrl, 'pushUrl');
+  rejectInteriorNul(name, 'name');
+  rejectInteriorNul(url, 'url');
+  rejectInteriorNul(pushUrl, 'pushUrl');
   final Uint8List request = fbs.GitRemoteAddRequestObjectBuilder(name: name, url: url, pushUrl: pushUrl).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_git_remote_add(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_git_remote_add(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_git_remote_remove` with the raw `u64` handle and [name], and
@@ -113,10 +69,10 @@ Uint8List zanshinGitRemoteAdd(int rawHandle, {required String name, required Str
 /// Removing the reserved remote `git` SUCCEEDS but writes no operation — it
 /// changes the git config and refs, not jj's view.
 Uint8List zanshinGitRemoteRemove(int rawHandle, String name) {
-  _rejectInteriorNul(name, 'name');
+  rejectInteriorNul(name, 'name');
   final ffi.Pointer<Utf8> p = name.toNativeUtf8();
   try {
-    return _readToken(zanshin_git_remote_remove(rawHandle, p.cast()));
+    return readToken(zanshin_git_remote_remove(rawHandle, p.cast()));
   } finally {
     calloc.free(p); // free the C string we allocated
   }
@@ -129,13 +85,13 @@ Uint8List zanshinGitRemoteRemove(int rawHandle, String name) {
 /// renaming a nonexistent remote to `git` reports the reserved-name refusal. That
 /// ordering is jj-lib's own and is reproduced, not corrected.
 Uint8List zanshinGitRemoteRename(int rawHandle, String oldName, String newName) {
-  _rejectInteriorNul(oldName, 'oldName');
-  _rejectInteriorNul(newName, 'newName');
+  rejectInteriorNul(oldName, 'oldName');
+  rejectInteriorNul(newName, 'newName');
   final ffi.Pointer<Utf8> oldPtr = oldName.toNativeUtf8();
   try {
     final ffi.Pointer<Utf8> newPtr = newName.toNativeUtf8();
     try {
-      return _readToken(zanshin_git_remote_rename(rawHandle, oldPtr.cast(), newPtr.cast()));
+      return readToken(zanshin_git_remote_rename(rawHandle, oldPtr.cast(), newPtr.cast()));
     } finally {
       calloc.free(newPtr);
     }
@@ -153,11 +109,11 @@ Uint8List zanshinGitRemoteRename(int rawHandle, String oldName, String newName) 
 /// does not exist (jj-lib returns early before its own existence check). This verb
 /// never writes an operation, so `newOpId` is always the pre-call op-log head.
 Uint8List zanshinGitRemoteSetUrl(int rawHandle, {required String name, String? url, String? pushUrl}) {
-  _rejectInteriorNul(name, 'name');
-  _rejectInteriorNul(url, 'url');
-  _rejectInteriorNul(pushUrl, 'pushUrl');
+  rejectInteriorNul(name, 'name');
+  rejectInteriorNul(url, 'url');
+  rejectInteriorNul(pushUrl, 'pushUrl');
   final Uint8List request = fbs.GitRemoteSetUrlRequestObjectBuilder(name: name, url: url, pushUrl: pushUrl).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_git_remote_set_url(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_git_remote_set_url(rawHandle, ptr, len));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

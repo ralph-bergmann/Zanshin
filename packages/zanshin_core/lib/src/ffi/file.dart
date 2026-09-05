@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
 import 'mutate.dart' show SkippedPath;
+import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.4's four `jj file` READ verbs: the
 // adapters (list/show/annotate/search), their models, and their decoders.
@@ -22,54 +20,13 @@ import 'mutate.dart' show SkippedPath;
 
 // ── Request-buffer helpers ───────────────────────────────────────────────────
 
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as `mutate.dart`'s identical helper (AR-P-5 inbound
-/// rule): Rust only borrows the buffer for the duration of the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire — and
-/// then land in a jj change id, path or search pattern, where it can only produce a
-/// confusing downstream failure.
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
-
 /// Guard [revision] and every entry of [paths] against an interior NUL.
 void _rejectPathNuls(String? revision, List<String> paths) {
-  _rejectInteriorNul(revision, 'revision');
+  rejectInteriorNul(revision, 'revision');
   for (final path in paths) {
-    _rejectInteriorNul(path, 'paths');
+    rejectInteriorNul(path, 'paths');
   }
 }
-
-/// Invoke [call] with the request bytes and copy the returned envelope out of the
-/// token before freeing it.
-Uint8List _callWithRequest(
-  Uint8List request,
-  ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Uint8>, int) call,
-) => _withRequestBytes(request, (ptr, len) {
-  final ffi.Pointer<ZanshinBuf> token = call(ptr, len);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-});
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
@@ -84,7 +41,7 @@ Uint8List _callWithRequest(
 Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths = const <String>[]}) {
   _rejectPathNuls(revision, paths);
   final Uint8List request = fbs.FileListRequestObjectBuilder(revision: revision, paths: paths).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_file_list(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_file_list(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_file_show` with the raw `u64` handle and a `FileShowRequest`
@@ -96,7 +53,7 @@ Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths =
 Uint8List zanshinFileShow(int rawHandle, {required List<String> paths, String? revision}) {
   _rejectPathNuls(revision, paths);
   final Uint8List request = fbs.FileShowRequestObjectBuilder(revision: revision, paths: paths).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_file_show(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_file_show(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_file_annotate` with the raw `u64` handle and a
@@ -108,10 +65,10 @@ Uint8List zanshinFileShow(int rawHandle, {required List<String> paths, String? r
 /// is refused with `jj.invalid_input`, mirroring the CLI's required positional
 /// argument.
 Uint8List zanshinFileAnnotate(int rawHandle, {required String path, String? revision}) {
-  _rejectInteriorNul(revision, 'revision');
-  _rejectInteriorNul(path, 'path');
+  rejectInteriorNul(revision, 'revision');
+  rejectInteriorNul(path, 'path');
   final Uint8List request = fbs.FileAnnotateRequestObjectBuilder(revision: revision, path: path).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_file_annotate(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_file_annotate(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_file_search` with the raw `u64` handle and a `FileSearchRequest`
@@ -133,14 +90,14 @@ Uint8List zanshinFileSearch(
   bool nameOnly = false,
 }) {
   _rejectPathNuls(revision, paths);
-  _rejectInteriorNul(pattern, 'pattern');
+  rejectInteriorNul(pattern, 'pattern');
   final Uint8List request = fbs.FileSearchRequestObjectBuilder(
     revision: revision,
     pattern: pattern,
     paths: paths,
     nameOnly: nameOnly,
   ).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_file_search(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_file_search(rawHandle, ptr, len));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

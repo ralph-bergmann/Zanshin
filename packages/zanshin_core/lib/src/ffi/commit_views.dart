@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'change.dart' show Change, mapChangeTable;
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 import 'status.dart' show FileChange, mapFileChangeTable;
 
 // This file owns the Dart half of Story 9.6's three commit READ views: the
@@ -25,49 +23,6 @@ import 'status.dart' show FileChange, mapFileChangeTable;
 // The two nested shapes — a `Change` and a `[FileChange]` — are decoded through
 // `change.dart`'s and `status.dart`'s shared table mappers, never a second
 // spelling: a field added to either must reach every payload that carries it.
-
-// ── Request-buffer helpers ───────────────────────────────────────────────────
-
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as `file.dart`'s identical helper (AR-P-5 inbound
-/// rule): Rust only borrows the buffer for the duration of the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire — and
-/// then land in a jj change id, revset or path, where it can only produce a
-/// confusing downstream failure.
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
-
-/// Invoke [call] with the request bytes and copy the returned envelope out of the
-/// token before freeing it.
-Uint8List _callWithRequest(
-  Uint8List request,
-  ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Uint8>, int) call,
-) => _withRequestBytes(request, (ptr, len) {
-  final ffi.Pointer<ZanshinBuf> token = call(ptr, len);
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-});
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
@@ -84,9 +39,9 @@ Uint8List _callWithRequest(
 /// `jj show <divergent-id>` fails in the CLI, and it surfaces as
 /// `jj.revset_resolution_error`. Union the two COMMIT hexes to address both.
 Uint8List zanshinShow(int rawHandle, {String? revset}) {
-  _rejectInteriorNul(revset, 'revset');
+  rejectInteriorNul(revset, 'revset');
   final Uint8List request = fbs.ShowRequestObjectBuilder(revset: revset).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_show(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_show(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_evolog` with the raw `u64` handle and an `EvologRequest` request
@@ -104,7 +59,7 @@ Uint8List zanshinShow(int rawHandle, {String? revset}) {
 /// the caller asked for. A NEGATIVE limit is refused instead of clamped: it can
 /// only be a caller bug, and both `0` and "no limit" are already spelled.
 Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
-  _rejectInteriorNul(revset, 'revset');
+  rejectInteriorNul(revset, 'revset');
   if (limit != null && limit < 0) {
     throw ArgumentError.value(limit, 'limit', 'must not be negative');
   }
@@ -113,7 +68,7 @@ Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
     limit: limit == null ? 0 : (limit > _maxWireLimit ? _maxWireLimit : limit),
     hasLimit: limit != null,
   ).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_evolog(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_evolog(rawHandle, ptr, len));
 }
 
 /// The largest value the `EvologRequest.limit` `uint` field can carry.
@@ -139,13 +94,13 @@ Uint8List zanshinInterdiff(
   String? to,
   List<String> paths = const <String>[],
 }) {
-  _rejectInteriorNul(from, 'from');
-  _rejectInteriorNul(to, 'to');
+  rejectInteriorNul(from, 'from');
+  rejectInteriorNul(to, 'to');
   for (final path in paths) {
-    _rejectInteriorNul(path, 'paths');
+    rejectInteriorNul(path, 'paths');
   }
   final Uint8List request = fbs.InterdiffRequestObjectBuilder(from: from, to: to, paths: paths).toBytes();
-  return _callWithRequest(request, (ptr, len) => zanshin_interdiff(rawHandle, ptr, len));
+  return callWithRequest(request, (ptr, len) => zanshin_interdiff(rawHandle, ptr, len));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 //! `FlatBuffers` `Envelope` builders, AR-P-4 error-code emission, and the `catch_unwind` panic backstop.
 //!
-//! Every pub function returns a finished, owned `Vec<u8>`. Conversion to the FFI
+//! Every pub ENVELOPE BUILDER returns a finished, owned `Vec<u8>`. Conversion to the FFI
 //! `(*mut u8, len)` token happens at the `extern "C"` call site (Story 3.4a) via
 //! `ffi_strings::vec_into_ffi_buf` / `vec_into_token`. This module owns nothing beyond
 //! the build step.
 
 use crate::envelope_generated::zanshin::ffi as fbs;
+use crate::handle::handle_from_raw;
+use crate::repo::RepoSession;
 use flatbuffers::FlatBufferBuilder;
 use std::any::Any;
 use std::panic::{catch_unwind, UnwindSafe};
@@ -203,6 +205,27 @@ pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
         code: JJ_INVALID_INPUT.to_owned(),
         context: Some(format!("{field} is required")),
     }
+}
+
+// ── Shared handle borrow ─────────────────────────────────────────────────────
+//
+// The one spelling of the unbounded-lifetime contract, shared by every noun module whose
+// wrappers take a handle as their first argument (`git.rs`, `commit_views.rs`,
+// `workspace.rs`, `bookmark_ops.rs`). Unlike the builders above this returns a BORROW, not
+// a finished buffer — hence its own banner.
+
+/// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
+///
+/// # Safety
+/// `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
+pub(crate) unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj> {
+    // SAFETY: non-zero handle originated from arm_session's handle_into_raw
+    // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
+    // (AD-2) guarantees no concurrent access.
+    unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
+        code: FFI_INVALID_HANDLE.to_owned(),
+        context: None,
+    })
 }
 
 /// Build a success `Envelope` with no payload and return the finished buffer.

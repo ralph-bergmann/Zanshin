@@ -20,12 +20,11 @@ use tracing::debug;
 use zanshin_jj::ChangeId;
 
 use crate::envelope::{
-    catch, invalid_request, ok_mutation_result, reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE,
+    catch, invalid_request, ok_mutation_result, reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::{map_mutate_err, RepoSession};
+use crate::repo::map_mutate_err;
 
 // ── Request-buffer readers ───────────────────────────────────────────────────
 //
@@ -83,20 +82,6 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
         .map_err(|e| invalid_request(&e))?;
     Ok(BookmarkDeleteRequestOwned {
         names: req.names().into_iter().flatten().map(ToOwned::to_owned).collect(),
-    })
-}
-
-/// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
-///
-/// # Safety
-/// `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
-unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj> {
-    // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-    // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
-    // (AD-2) guarantees no concurrent access.
-    unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-        code: FFI_INVALID_HANDLE.to_owned(),
-        context: None,
     })
 }
 

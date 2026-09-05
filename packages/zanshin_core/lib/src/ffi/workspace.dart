@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'ffi_buffer.dart';
+import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.7's two workspace READ verbs: the
 // adapters (workspaceList / workspaceRoot), the list-row model, and the two
@@ -27,44 +25,6 @@ import 'ffi_buffer.dart';
 // CLI's own list template degrades the same way and points at
 // `jj workspace root --name` for strict path diagnostics.
 
-// ── Request-buffer helpers ───────────────────────────────────────────────────
-
-/// Copy [bytes] into a `malloc`-allocated `Pointer<Uint8>`, invoke [fn] with the
-/// pointer and byte length, and free the pointer afterward.
-///
-/// Same ownership discipline as `commit_views.dart`'s identical helper (AR-P-5
-/// inbound rule): Rust only borrows the buffer for the duration of the call.
-T _withRequestBytes<T>(Uint8List bytes, T Function(ffi.Pointer<ffi.Uint8>, int) fn) {
-  final ffi.Pointer<ffi.Uint8> ptr = malloc.allocate<ffi.Uint8>(bytes.length);
-  ptr.asTypedList(bytes.length).setAll(0, bytes);
-  try {
-    return fn(ptr, bytes.length);
-  } finally {
-    malloc.free(ptr);
-  }
-}
-
-/// Reject an interior NUL in a caller-supplied string.
-///
-/// A FlatBuffers string is length-prefixed, so a NUL would survive the wire — and
-/// then land in a workspace name, where it can only produce a confusing
-/// downstream failure.
-void _rejectInteriorNul(String? value, String name) {
-  if (value != null && value.codeUnits.contains(0)) {
-    throw ArgumentError.value(value, name, 'must not contain an interior NUL (U+0000)');
-  }
-}
-
-/// Copy the envelope out of a returned token before freeing it.
-Uint8List _readToken(ffi.Pointer<ZanshinBuf> token) {
-  final buf = FfiBuffer.fromToken(token);
-  try {
-    return Uint8List.fromList(buf.bytes);
-  } finally {
-    buf.dispose();
-  }
-}
-
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
 /// Call `zanshin_workspace_list` with the raw `u64` handle and return the
@@ -73,7 +33,7 @@ Uint8List _readToken(ffi.Pointer<ZanshinBuf> token) {
 /// Only the worker isolate calls this — raw handles never leave the worker
 /// (Model A, Story 3.9). No argument: `jj workspace list` takes none, and its
 /// `-T/--template` flag is rendering.
-Uint8List zanshinWorkspaceList(int rawHandle) => _readToken(zanshin_workspace_list(rawHandle));
+Uint8List zanshinWorkspaceList(int rawHandle) => readToken(zanshin_workspace_list(rawHandle));
 
 /// Call `zanshin_workspace_root` with the raw `u64` handle and a
 /// `WorkspaceRootRequest` request buffer, and return the FlatBuffers `Envelope`
@@ -86,9 +46,9 @@ Uint8List zanshinWorkspaceList(int rawHandle) => _readToken(zanshin_workspace_li
 /// the CLI's named path never shortcuts to the loader. An explicitly EMPTY [name]
 /// is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
 Uint8List zanshinWorkspaceRoot(int rawHandle, {String? name}) {
-  _rejectInteriorNul(name, 'name');
+  rejectInteriorNul(name, 'name');
   final Uint8List request = fbs.WorkspaceRootRequestObjectBuilder(name: name).toBytes();
-  return _withRequestBytes(request, (ptr, len) => _readToken(zanshin_workspace_root(rawHandle, ptr, len)));
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_workspace_root(rawHandle, ptr, len)));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

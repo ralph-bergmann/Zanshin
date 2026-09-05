@@ -22,12 +22,11 @@ use zanshin_jj::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdat
 
 use crate::envelope::{
     build_mutation_result, catch, finish_envelope, invalid_request, missing_field, ok_mutation_result,
-    reject_null_request, FfiErrorObj, FFI_INVALID_HANDLE,
+    reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
-use crate::handle::handle_from_raw;
-use crate::repo::{map_mutate_err, RepoSession};
+use crate::repo::map_mutate_err;
 
 // ── Request-buffer readers ───────────────────────────────────────────────────
 //
@@ -192,20 +191,6 @@ fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
         },
     );
     finish_envelope(b, fbs::Payload::GitExportResult, table.as_union_value())
-}
-
-/// Borrow the [`RepoSession`] behind a raw handle, or produce `ffi.invalid_handle`.
-///
-/// # Safety
-/// `handle` must be `0` or a live value returned by a successful handle-producing wrapper.
-unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut RepoSession, FfiErrorObj> {
-    // SAFETY: non-zero handle originated from arm_session's handle_into_raw
-    // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
-    // (AD-2) guarantees no concurrent access.
-    unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-        code: FFI_INVALID_HANDLE.to_owned(),
-        context: None,
-    })
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
