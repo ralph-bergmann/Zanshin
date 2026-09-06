@@ -423,8 +423,15 @@ ZanshinBuf* zanshin_repo_convert(const char* path);
 ```
 
 Converts the Git repository at `path` to a colocated jj workspace in-place
-by calling `convert_colocated` (`zanshin_jj`). The operation writes only
-`.jj/` — no working-copy I/O, no `@`-reparent, no snapshot.
+by calling `convert_colocated` (`zanshin_jj`). It runs the same sequence as
+`jj git init` over an existing `.git/`: up to two operations (`import git refs`,
+then `import git head`, each skipped when its import changed nothing), a
+`.jj/.gitignore` containing `/*`, and — when `refs/remotes/upstream/HEAD` or
+`refs/remotes/origin/HEAD` names a bookmark — `revset-aliases.'trunk()'` in the
+repo-level config file, which lives **outside** `.jj/`, under
+`<config_dir>/jj/repos/<config-id>/config.toml`. `.git/` is never touched and
+there is no working-copy I/O: unlike the CLI, the head import does not
+`@`-reparent onto the imported HEAD, and nothing is snapshotted (Story 9.22).
 
 On success the function returns a live `RepoHandle` for the converted
 workspace. The Dart worker stores the raw handle in its Model-A handle table

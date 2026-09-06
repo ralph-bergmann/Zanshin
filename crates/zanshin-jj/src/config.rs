@@ -10,7 +10,7 @@
 //! files change externally and the op-heads watcher does not cover them, so ADR-0002's
 //! re-resolve-per-operation rule extends to config.
 //!
-//! # Reading never writes; exactly two verbs write
+//! # Reading never writes; exactly three verbs write
 //!
 //! Every READ path here is side-effect-free: no directory is created, no file is written,
 //! no `config-id` is generated, nothing is migrated. That stance is unchanged.
@@ -25,23 +25,45 @@
 //! address the same file by construction. No general config-write API exists, and none of
 //! the other verbs — `git remote add`/`set-url` included — writes config at all.
 //!
-//! Both writers take an ALREADY-LOADED [`ConfigFile`], never a path: the CLI's
+//! Those two writers take an ALREADY-LOADED [`ConfigFile`], never a path: the CLI's
 //! `existing_repo_config_file` wraps a layer its process loaded at start-up, so a repo config
 //! that cannot be read or parsed makes the CLI fail before it mutates anything. Loading here
 //! too — in [`existing_repo_config_file`], before the caller opens its transaction — is what
 //! reproduces that end state.
 //!
-//! # WHY: by hand instead of `jj_lib::secure_config::SecureConfig`
+//! Epic 9 follow-up K added the family's third member, [`set_trunk_alias`], called by
+//! `convert.rs` for the `trunk()` alias `jj git init`'s External branch writes. It is the
+//! FIRST writer here that may CREATE the repo-level file, because its CLI counterpart
+//! (`write_repo_presets`, `cli/src/commands/git/mod.rs:156-193` @ v0.44.0) resolves the path
+//! through `ConfigEnv::repo_config_path(ui)` — the create-FORCING spelling — where
+//! remove/rename go through `existing_repo_config_file`, which yields nothing when no file
+//! was loaded. Creation is therefore correct HERE and wrong there: `jj git init` legitimately
+//! brings the repo layer into being, whereas `jj git remote remove` on a repo that has no
+//! repo config must leave the user with no repo config. The create mode lives in its own
+//! resolver ([`create_repo_config_file`], and its `&Workspace` wrapper
+//! [`new_repo_config_file`]) so the two modes can never be reached by accident.
+//!
+//! # WHY: by hand for READS, `SecureConfig` for the one CREATE
 //!
 //! The CLI reaches the repo/workspace layer through `SecureConfig`, whose
 //! `maybe_load_config` WRITES: it creates directories, writes `metadata.binpb`, can
 //! generate a fresh `config-id`, copies configs when it detects a moved/copied repo, and on
 //! Unix replaces the legacy file with a symlink — and it needs a `&mut ChaCha20Rng`. A GUI
-//! backend must not rewrite the user's repo layout while drawing a graph, so the
-//! `config-id` → path indirection is resolved here by reading the id and joining the path.
-//! For a repo the CLI has already seen, that yields identical config CONTENT; what is given
-//! up is the CLI's migration and its terminal warning, and Zanshin has no terminal (it
+//! backend must not rewrite the user's repo layout while drawing a graph, so on every READ
+//! path the `config-id` → path indirection is resolved here by reading the id and joining the
+//! path. For a repo the CLI has already seen, that yields identical config CONTENT; what is
+//! given up is the CLI's migration and its terminal warning, and Zanshin has no terminal (it
 //! replaces the CLI's UX — NFR-R-2).
+//!
+//! [`create_repo_config_file`] is the one place that calls `SecureConfig::load_config`
+//! directly, and it does so deliberately: it runs only from a conversion that is ALREADY
+//! writing the repo into being, where the CLI itself creates the config directory, and
+//! calling jj-lib reproduces that layout exactly — the `<root>/<id>/` directory, the
+//! `metadata.binpb`, and the atomic `.jj/repo/config-id` write — without re-implementing
+//! `config-id` generation. Writing the legacy `.jj/repo/config.toml` instead would be read
+//! correctly by both tools but would leave the CLI to MIGRATE it on its next run (a new
+//! secure directory, a symlink where the file was, a status line), i.e. a different on-disk
+//! end state than `jj git init` produces.
 //!
 //! One documented exception: `handle_metadata_path` (`secure_config.rs:187-252`) re-points
 //! or COPIES the config when it detects that the repo was moved or copied. Zanshin never
@@ -71,7 +93,10 @@ use jj_lib::config::{
     ConfigResolutionContext, ConfigSource, StackedConfig,
 };
 use jj_lib::ref_name::RemoteRefSymbolBuf;
+use jj_lib::secure_config::SecureConfig;
 use jj_lib::workspace::Workspace;
+use rand_chacha::rand_core::SeedableRng as _;
+use rand_chacha::ChaCha20Rng;
 
 use crate::Repo;
 
@@ -516,21 +541,28 @@ pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::
     })
 }
 
-// ── The two repo-config WRITERS ───────────────────────────────────────────────────
+// ── The three repo-config WRITERS ─────────────────────────────────────────────────
 //
-// Ported verbatim from `cli/src/commands/git/mod.rs:195-262` @ v0.44.0, minus its two
-// `ui.status` lines (terminal UX — Zanshin replaces it; NFR-R-2). The effect those lines
-// announce IS ported: Ralph's rule (2026-09-06) is that every on-disk, repo-side effect the
-// CLI produces is required parity.
+// `remove_remote_from_repo_config` / `rename_remote_in_repo_config` are ported verbatim from
+// `cli/src/commands/git/mod.rs:195-262` @ v0.44.0 and `set_trunk_alias` from that file's
+// `write_repo_presets` (`:156-193`), each minus its `ui.status` line (terminal UX — Zanshin
+// replaces it; NFR-R-2). The effect those lines announce IS ported: Ralph's rule
+// (2026-09-06) is that every on-disk, repo-side effect the CLI produces is required parity.
+//
+// The two remote writers resolve their file through `existing_repo_config_file` and can
+// never create one; `set_trunk_alias` is paired with `new_repo_config_file`, which CREATES.
+// See the module doc for why that asymmetry is the CLI's, not an oversight.
 
 /// A failure while WRITING the repo config, rendered through its `source()` chain.
 ///
-/// One generic function rather than a closure per call site: `set_value`/`delete_value`
-/// only fail when the target is a non-inline TABLE, which both call sites below have
-/// already ruled out with `as_str()`, so a per-call-site closure would add lines no test
-/// can execute. Sharing one body means the reachable instantiations
-/// ([`jj_lib::config::ConfigFileSaveError`], via the unwritable-file test) cover the same
-/// lines the unreachable one would.
+/// One generic function rather than a closure per call site. Two of the instantiations are
+/// unreachable by construction — `set_value`/`delete_value` only fail when the target is a
+/// non-inline TABLE, which the two remote writers have already ruled out with `as_str()`,
+/// and `getrandom::fill` only fails when the OS RNG is unavailable — so a per-call-site
+/// closure would add lines no test can execute. Sharing one body means the reachable
+/// instantiations ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file tests,
+/// [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the
+/// same lines the unreachable ones would.
 fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load { reason: describe(&err) }
 }
@@ -589,6 +621,90 @@ pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<
         root.as_ref().map(|r| r.join("repos")).as_deref(),
     )?;
     load_repo_config_file(path.as_deref())
+}
+
+/// The repo-level config file, CREATING it (and its `config-id`) when none exists yet.
+///
+/// The create-mode counterpart of [`load_repo_config_file`], and the crate's only call into
+/// `jj_lib::secure_config`. `repo_dir` is `.jj/repo`; `root_config_dir` is
+/// `<config_dir>/jj/repos`, the very directory [`secure_config_path`] joins the id onto, so
+/// the file this creates is the file every later READ resolves. `None` for the root — no
+/// `$HOME` and no absolute `$XDG_CONFIG_HOME` — yields `Ok(None)` and writes nothing at all,
+/// which is both the CLI's "we couldn't find the user's home directory, so we skip this step"
+/// branch in `write_repo_presets` and the condition under which [`add_secure_layer`] skips
+/// the repo layer. Read and write therefore stay consistent even on such a machine.
+///
+/// `SecureConfig::load_config` does the whole CLI-side layout: it generates the id, creates
+/// `<root>/<id>/`, writes `metadata.binpb`, and writes `.jj/repo/config-id` atomically. Its
+/// `&mut ChaCha20Rng` is seeded here by hand — `rand::make_rng()`, what the CLI passes,
+/// `expect`s on OS-RNG failure, and nothing reachable from FFI may panic.
+///
+/// Split from [`new_repo_config_file`] so it can be unit-tested against plain temp dirs
+/// without standing up a [`Workspace`], exactly as [`load_repo_config_file`] is.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the OS RNG failed, the secure-config directory could not be
+///   created or written, or an already-present config file is unreadable / not valid TOML.
+fn create_repo_config_file(repo_dir: &Path, root_config_dir: Option<&Path>) -> Result<Option<ConfigFile>, ConfigError> {
+    let Some(root) = root_config_dir else {
+        return Ok(None);
+    };
+    let mut seed = [0_u8; 32];
+    getrandom::fill(&mut seed).map_err(write_error)?;
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let loaded = SecureConfig::new_repo(repo_dir.to_owned())
+        .load_config(&mut rng, root)
+        .map_err(write_error)?;
+    // `load_config` generates the file when none exists, so `config_file` is always `Some`
+    // here. Mapping rather than matching — the shape the CLI's own `new_repo_config_file`
+    // uses — keeps the impossible `None` from becoming a branch no test could execute.
+    loaded
+        .config_file
+        .map(|path| ConfigFile::load_or_empty(ConfigSource::Repo, &path).map_err(|e| file_error(&path, &e)))
+        .transpose()
+}
+
+/// The repo-level config file of `workspace`, created if it does not exist.
+///
+/// The create-mode sibling of [`existing_repo_config_file`], resolving through the same
+/// `<config_dir>/jj/repos` root. Mirrors the CLI's `new_repo_config_file`
+/// (`cli/src/config.rs:573-579` @ v0.44.0), which likewise pairs the create-forcing
+/// `repo_config_path` with `ConfigFile::load_or_empty`.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the secure-config directory could not be created or written, or
+///   an already-present config file is unreadable or not valid TOML.
+pub(crate) fn new_repo_config_file(workspace: &Workspace) -> Result<Option<ConfigFile>, ConfigError> {
+    let env = ConfigEnv::from_env();
+    let root = env.root_config_dir();
+    create_repo_config_file(
+        // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
+        workspace.repo_path(),
+        root.as_ref().map(|r| r.join("repos")).as_deref(),
+    )
+}
+
+/// Writes `revset-aliases.'trunk()' = <symbol>` — the one preset `jj git init` sets.
+///
+/// The `trunk` half of the CLI's `write_repo_presets`; its `fetch-bookmarks` / `fetch-tags`
+/// halves belong to `jj git clone` (Story 9.20) and are deliberately absent, as is its
+/// `is_default()` early return, which only matters when all three presets are `None` — a
+/// state this single-preset entry point cannot be in.
+///
+/// `file` is [`new_repo_config_file`]'s answer: `None` means no `<config_dir>` could be
+/// determined, and then this is a no-op that creates nothing.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file could not be written back.
+pub(crate) fn set_trunk_alias(file: Option<ConfigFile>, symbol: &str) -> Result<(), ConfigError> {
+    let Some(mut file) = file else {
+        return Ok(());
+    };
+    file.set_value(TRUNK_CONFIG_NAME, symbol).map_err(write_error)?;
+    file.save().map_err(write_error)
 }
 
 /// The `trunk()` alias's value as `(bookmark, remote)`, iff it is a PLAIN remote symbol.
@@ -702,9 +818,9 @@ mod tests {
     use std::ffi::OsString;
 
     use super::{
-        add_secure_layer, is_valid_config_id, load_repo_config_file, load_with, platform_config_dir,
-        remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path, user_config_paths, ConfigEnv,
-        BUILTIN_CONFIG_TOML,
+        add_secure_layer, create_repo_config_file, is_valid_config_id, load_repo_config_file, load_with,
+        platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
+        set_trunk_alias, user_config_paths, ConfigEnv, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -1196,6 +1312,163 @@ fetch-tags = \"none\"
         // Set AFTER the load, so the load succeeds and only `save()` can fail.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
         let err = rename_remote_in_repo_config(file, "origin", "upstream").expect_err("an unwritable file must refuse");
+        let reason = err.to_string();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            reason.contains("config.toml"),
+            "the io reason must name the file, got: {reason}"
+        );
+    }
+
+    // ── The create-mode resolver + the trunk writer (Epic 9 follow-up K) ──────
+    //
+    // Pinned exactly, header included: `ConfigFile::load_or_empty` stamps a fresh document
+    // with jj-lib's own schema line and re-emits the alias KEY double-quoted. Both are
+    // jj-lib's spelling, so a `jj git init`-created file looks the same — freezing the whole
+    // string is what would catch us hand-rolling the file instead.
+    //
+    // Unit rows only: every assertion here is about the FILE and the `config-id` indirection,
+    // which plain temp dirs reproduce exactly. The rows that need a real conversion (which
+    // remote wins, what `trunk()` then evaluates to, the rollback) live in
+    // `tests/convert.rs` and `tests/convert_alias_write_failure.rs`.
+
+    /// What `ConfigFile::load_or_empty` puts at the top of a file it had to invent.
+    const FRESH_FILE_HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
+
+    #[test]
+    fn create_without_a_config_dir_writes_nothing_and_the_writer_is_a_no_op() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let file = create_repo_config_file(repo_dir.path(), None).expect("an unknown <config_dir> is not an error");
+        assert!(file.is_none(), "no <config_dir> means no file to write");
+        set_trunk_alias(file, "main@origin").expect("the writer must succeed with nothing to write");
+        assert!(
+            !repo_dir.path().join("config-id").exists(),
+            "the skip must be total — not even a config-id may be generated"
+        );
+    }
+
+    /// The whole create path in one row: a fresh `config-id` in the repo dir, the file under
+    /// `<root>/<id>/config.toml`, and the alias line the CLI's `write_repo_presets` emits.
+    #[test]
+    fn create_then_set_trunk_alias_writes_the_alias_under_the_generated_config_id() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+
+        let file = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("the create must succeed");
+        let path = file.as_ref().expect("a config file must be created").path().to_owned();
+
+        let id = std::fs::read_to_string(repo_dir.path().join("config-id")).expect("config-id must be written");
+        assert!(
+            is_valid_config_id(&id),
+            "the generated id must satisfy jj-lib's own validity rule, got: {id:?}"
+        );
+        assert_eq!(
+            path,
+            root.path().join(&id).join("config.toml"),
+            "the file must land where `secure_config_path` will later look for it"
+        );
+
+        set_trunk_alias(file, "main@origin").expect("the alias write must succeed");
+        assert_eq!(
+            read_back(&path),
+            format!("{FRESH_FILE_HEADER}[revset-aliases]\n\"trunk()\" = \"main@origin\"\n"),
+            "the alias must be the file's only content"
+        );
+    }
+
+    /// A second call re-uses the id the first one wrote and EDITS the existing file rather
+    /// than replacing it — the same `load_or_empty` guarantee the CLI relies on.
+    #[test]
+    fn create_reuses_an_existing_config_id_and_preserves_the_file() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let first = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("first create");
+        let path = first.as_ref().expect("file").path().to_owned();
+        set_trunk_alias(first, "main@origin").expect("first write");
+        let id = std::fs::read_to_string(repo_dir.path().join("config-id")).expect("config-id");
+
+        let second = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("second create");
+        assert_eq!(second.as_ref().expect("file").path(), path, "the id must be re-used");
+        set_trunk_alias(second, "master@upstream").expect("second write");
+
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.path().join("config-id")).unwrap(),
+            id,
+            "a second create must not mint a new id"
+        );
+        assert_eq!(
+            read_back(&path),
+            format!("{FRESH_FILE_HEADER}[revset-aliases]\n\"trunk()\" = \"master@upstream\"\n")
+        );
+    }
+
+    #[test]
+    fn a_secure_config_root_that_cannot_be_created_is_a_config_error() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let blocker = tmp.path().join("not-a-dir");
+        std::fs::write(&blocker, "regular file").unwrap();
+
+        let err = create_repo_config_file(repo_dir.path(), Some(&blocker.join("repos")))
+            .expect_err("an uncreatable secure-config root must refuse");
+        assert!(
+            err.to_string().contains("repos"),
+            "the offending path must be named, got: {err}"
+        );
+        assert!(
+            !repo_dir.path().join("config-id").exists(),
+            "a failed create must not leave a config-id pointing at nothing"
+        );
+    }
+
+    /// The other half: the directory is fine but the file already there is not TOML — the
+    /// `load_or_empty` step refuses, exactly as it does on the read side.
+    #[test]
+    fn an_unparseable_existing_repo_config_refuses_the_create() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let id = "0123456789abcdef0123";
+        std::fs::write(repo_dir.path().join("config-id"), id).unwrap();
+        std::fs::create_dir_all(root.path().join(id)).unwrap();
+        std::fs::write(root.path().join(id).join("config.toml"), "not = = toml\n").unwrap();
+
+        let err = create_repo_config_file(repo_dir.path(), Some(root.path()))
+            .expect_err("invalid TOML must refuse before anything is written");
+        let reason = err.to_string();
+        assert!(
+            reason.contains("config.toml") && reason.contains("TOML"),
+            "the file and the parse position must both be named, got: {reason}"
+        );
+    }
+
+    /// The alias is SET, not appended: a repo config that already defines `trunk()` ends up
+    /// with the new symbol and keeps everything else byte-for-byte.
+    #[test]
+    fn set_trunk_alias_overwrites_an_existing_alias_and_leaves_the_rest_alone() {
+        let (_tmp, path) = repo_config(PINNED);
+        set_trunk_alias(load(&path), "master@upstream").expect("the alias write must succeed");
+        assert_eq!(
+            read_back(&path),
+            "\
+[remotes.origin]
+fetch-bookmarks = \"main\"
+
+[revset-aliases]
+'trunk()' = \"master@upstream\"
+",
+            "only the alias value may change"
+        );
+    }
+
+    #[test]
+    fn an_unwritable_file_makes_the_trunk_writer_refuse() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let (_tmp, path) = repo_config(PINNED);
+        let file = load(&path);
+        // Set AFTER the load, so the load succeeds and only `save()` can fail.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let err = set_trunk_alias(file, "main@origin").expect_err("an unwritable file must refuse");
         let reason = err.to_string();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(

@@ -669,8 +669,19 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// identical in semantics to the one returned by `zanshin_repo_open` / `_init` /
 /// `_clone` and must be released via `zanshin_repo_close`.
 ///
-/// The conversion only writes `.jj/` — `.git/` is never touched. If the operation
-/// fails `.jj/` is rolled back, leaving the Git repo intact (no-data-loss invariant).
+/// `.git/` is never touched and no working-copy file is written: the conversion runs the
+/// same sequence as `jj git init` over an existing `.git/`, which writes up to two
+/// operations (`import git refs`, then `import git head`, each skipped when its import
+/// changed nothing), seeds a `.jj/.gitignore` that hides the whole `.jj/` directory from
+/// the colocated Git repo, and — when `refs/remotes/upstream/HEAD` or
+/// `refs/remotes/origin/HEAD` names a bookmark — writes `revset-aliases.'trunk()'` into
+/// the repo-level config file, which lives OUTSIDE `.jj/` under `<config_dir>/jj/repos/`.
+/// Unlike the CLI, the head import does not re-parent `@` onto the imported HEAD (that
+/// working-copy half is Story 9.22's).
+///
+/// If the operation fails, `.jj/` is rolled back, leaving the Git repo intact
+/// (no-data-loss invariant); a failure after the alias step can leave the created
+/// secure-config directory behind.
 ///
 /// # Errors
 /// - `jj.already_jj_repo` — the path already has a `.jj/` directory.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::{env, fs};
 
@@ -11,17 +12,32 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
-use zanshin_jj::{convert_colocated, convert_import, RepoError, RepoKind};
+use zanshin_jj::{convert_colocated, convert_import, Repo, RepoError, RepoKind};
 
 /// Env-var pin: same rationale as tests/repo.rs — defence-in-depth against
 /// local `JJ_CONFIG` / `GIT_CONFIG_GLOBAL` interfering with jj-lib init calls.
-static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
-    env::set_var("JJ_CONFIG", "");
-    env::set_var("GIT_CONFIG_GLOBAL", "");
+///
+/// `$XDG_CONFIG_HOME` is pinned to a process-lifetime temp dir — deliberately LEAKED
+/// (`TempDir::keep`), because it must outlive every test and there is no teardown hook that
+/// could — for a stronger reason than hygiene: both convert verbs now WRITE the repo-level
+/// `revset-aliases.'trunk()'` file, which `config.rs` resolves to
+/// `$XDG_CONFIG_HOME/jj/repos/<config-id>/config.toml`. Without the pin, every conversion of
+/// a repo that has a remote HEAD would land in the developer's real `~/.config`. The same
+/// pattern as `tests/git_remotes.rs:39-53`.
+static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
+    let xdg = TempDir::new().expect("xdg tempdir").keep();
+    // SAFETY: set once, before any test body runs, and never changed afterwards.
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("XDG_CONFIG_HOME", &xdg);
+    }
+    xdg
 });
 
-fn pin_env() {
-    LazyLock::force(&ENV_GUARD);
+/// Pins the process environment; returns the pinned `$XDG_CONFIG_HOME`.
+fn pin_env() -> &'static Path {
+    &ENV_GUARD
 }
 
 /// The commit ids the workspace's imported Git `HEAD` points at — the view's `git_head`.
@@ -886,4 +902,285 @@ fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
     let imported = convert_import(src.path(), &dest).expect("convert_import");
 
     assert_own_root_resolves(&imported, &dest);
+}
+
+// =============================================================================
+// `jj git init` External-branch parity (Epic 9 follow-up K)
+//
+// The CLI's own on-disk effects: two operations with its descriptions, each skipped when its
+// import changed nothing; `.jj/.gitignore` for a colocated workspace; and the repo-level
+// `revset-aliases.'trunk()'`. Oracles are `git` and the file system, never a second call into
+// the code under test.
+// =============================================================================
+
+/// What `ConfigFile::load_or_empty` puts at the top of a file it had to invent — jj-lib's
+/// own schema line, so a `jj git init`-created file carries it too.
+const FRESH_FILE_HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
+
+/// Operation descriptions, newest-first — what `jj op log` would print, root op last.
+fn op_descriptions(repo: &Repo) -> Vec<String> {
+    repo.op_log(None)
+        .expect("op log")
+        .into_iter()
+        .map(|op| op.description)
+        .collect()
+}
+
+/// The repo-level config file `config.rs` resolves for `workspace_root`, iff a `config-id`
+/// was written. Read straight off disk so it witnesses the `config-id` indirection rather
+/// than trusting the crate's own resolver.
+fn repo_config_path(workspace_root: &Path, xdg: &Path) -> Option<PathBuf> {
+    let id = fs::read_to_string(workspace_root.join(".jj").join("repo").join("config-id")).ok()?;
+    Some(xdg.join("jj").join("repos").join(id).join("config.toml"))
+}
+
+/// `refs/heads` + `refs/tags` and the resolved HEAD, as `convert_git_repo_does_not_modify_git_dir`
+/// reads them.
+fn git_ref_snapshot(dir: &Path) -> (String, String) {
+    (
+        git_stdout(&["rev-parse", "HEAD"], dir),
+        git_stdout(
+            &[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/heads",
+                "refs/tags",
+            ],
+            dir,
+        ),
+    )
+}
+
+/// A clone of `src` at `parent/work`, which is how a repo acquires a symbolic
+/// `refs/remotes/origin/HEAD` — the input `maybe_set_repository_level_trunk_alias` reads.
+fn git_clone(src: &Path, parent: &Path) -> PathBuf {
+    let work = parent.join("work");
+    git(&["clone", &src.to_string_lossy(), &work.to_string_lossy()], parent);
+    git(&["config", "user.email", "test@zanshin.test"], &work);
+    git(&["config", "user.name", "Fixture"], &work);
+    work
+}
+
+#[test]
+fn convert_colocated_writes_the_two_cli_operations() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+    let before = git_ref_snapshot(tmp.path());
+
+    let repo = convert_colocated(tmp.path()).expect("convert");
+
+    assert_eq!(
+        op_descriptions(&repo),
+        vec!["import git head", "import git refs", "add workspace 'default'", ""],
+        "the op log must be the CLI's, newest-first — one folded op would fail here"
+    );
+    // `export_refs` runs for a colocated workspace; it writes back exactly the values it
+    // just imported, so the user-visible ref namespace must still be untouched.
+    assert_eq!(
+        git_ref_snapshot(tmp.path()),
+        before,
+        "the colocated export must not move HEAD or any user-visible ref"
+    );
+}
+
+#[test]
+fn convert_import_writes_the_two_cli_operations_and_materialises_head() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let repo = convert_import(src.path(), &dst).expect("convert_import");
+
+    assert_eq!(
+        op_descriptions(&repo),
+        vec!["import git head", "import git refs", "add workspace 'default'", ""],
+        "the non-colocated branch must write the same two operations, in the same order"
+    );
+    assert_eq!(
+        fs::read_to_string(dst.join("README.md")).expect("README in dest"),
+        "hello",
+        "the working copy must still be materialised from the imported HEAD"
+    );
+}
+
+/// The `has_changes()` guards: a source with nothing to import writes NEITHER operation, so
+/// the op log is exactly what `Workspace::init_external_git` left behind.
+#[test]
+fn a_source_with_no_refs_writes_no_operation_at_all() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git(&["init", "--initial-branch=main"], tmp.path());
+    git(&["config", "user.email", "test@zanshin.test"], tmp.path());
+    git(&["config", "user.name", "Fixture"], tmp.path());
+
+    let repo = convert_colocated(tmp.path()).expect("convert of an unborn branch");
+    assert_eq!(
+        op_descriptions(&repo),
+        vec!["add workspace 'default'", ""],
+        "an unborn source must add neither `import git refs` nor `import git head`"
+    );
+}
+
+/// Undo granularity is the whole point of splitting the operations: one `undo` must revert
+/// the HEAD import alone, leaving the imported bookmarks in place.
+#[test]
+fn undo_after_convert_import_reverts_only_the_head_import() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    let mut repo = convert_import(src.path(), &dst).expect("convert_import");
+    let head_ids = git_head_ids(&dst);
+    let [head] = head_ids.as_slice() else {
+        panic!("expected exactly one imported git_head commit; got: {head_ids:?}");
+    };
+    let descendants = format!("descendants({0}) ~ {0}", head.hex());
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, &descendants)
+            .expect("resolve revset")
+            .len(),
+        1,
+        "after the head import `@` sits on top of the imported HEAD"
+    );
+
+    repo.undo().expect("undo must succeed");
+
+    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    assert!(
+        bookmarks.iter().any(|b| b.name == "main"),
+        "undo must revert only the head import — the bookmark the refs operation imported \
+         survives; got: {bookmarks:?}"
+    );
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, &descendants)
+            .expect("resolve revset")
+            .len(),
+        0,
+        "…while the working-copy commit reverts to the one that existed before the head import"
+    );
+}
+
+#[test]
+fn convert_colocated_seeds_the_jj_gitignore() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+
+    convert_colocated(tmp.path()).expect("convert");
+
+    assert_eq!(
+        fs::read_to_string(tmp.path().join(".jj").join(".gitignore")).expect(".jj/.gitignore must exist"),
+        "/*\n",
+        "the literal the CLI's maybe_add_gitignore writes"
+    );
+}
+
+#[test]
+fn convert_import_writes_no_gitignore() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    convert_import(src.path(), &dst).expect("convert_import");
+
+    assert!(
+        !dst.join(".jj").join(".gitignore").exists(),
+        ".jj/.gitignore is colocated-only — a jj-native workspace has no git to hide it from"
+    );
+}
+
+#[test]
+fn a_symbolic_origin_head_sets_the_repo_level_trunk_alias() {
+    let xdg = pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let parent = TempDir::new().expect("tempdir parent");
+    let work = git_clone(src.path(), parent.path());
+
+    let repo = convert_colocated(&work).expect("convert");
+
+    let path = repo_config_path(&work, xdg).expect("a config-id must have been written");
+    assert_eq!(
+        fs::read_to_string(&path).expect("the repo config must exist"),
+        format!("{FRESH_FILE_HEADER}[revset-aliases]\n\"trunk()\" = \"main@origin\"\n"),
+        "the alias the CLI's write_repo_presets emits, and nothing else"
+    );
+    // …and it is the alias the repo's own config stack then resolves.
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, "trunk()")
+            .expect("trunk() must resolve")
+            .len(),
+        1,
+        "the written alias must name a bookmark the repo actually has"
+    );
+}
+
+#[test]
+fn upstream_head_wins_over_origin_head() {
+    let xdg = pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let parent = TempDir::new().expect("tempdir parent");
+    let work = git_clone(src.path(), parent.path());
+    // A real remote-tracking ref for `upstream`, then the symbolic HEAD on top of it.
+    git(&["remote", "add", "upstream", &src.path().to_string_lossy()], &work);
+    git(&["fetch", "upstream"], &work);
+    git(
+        &[
+            "symbolic-ref",
+            "refs/remotes/upstream/HEAD",
+            "refs/remotes/upstream/main",
+        ],
+        &work,
+    );
+
+    convert_colocated(&work).expect("convert");
+
+    let path = repo_config_path(&work, xdg).expect("a config-id must have been written");
+    assert_eq!(
+        fs::read_to_string(&path).expect("the repo config must exist"),
+        format!("{FRESH_FILE_HEADER}[revset-aliases]\n\"trunk()\" = \"main@upstream\"\n"),
+        "`upstream` is tried first, so `origin` must not be consulted"
+    );
+}
+
+/// A remote whose `HEAD` is a DIRECT ref has no symbolic target, so no alias is written —
+/// and the loop stops there rather than falling through to `origin`, which does have one.
+#[test]
+fn an_unparseable_upstream_head_writes_no_alias_and_stops_the_loop() {
+    let xdg = pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let parent = TempDir::new().expect("tempdir parent");
+    let work = git_clone(src.path(), parent.path());
+    let head_sha = git_stdout(&["rev-parse", "HEAD"], &work);
+    git(&["update-ref", "refs/remotes/upstream/HEAD", &head_sha], &work);
+
+    convert_colocated(&work).expect("convert");
+
+    assert!(
+        repo_config_path(&work, xdg).is_none(),
+        "no alias means no config-id and no repo config file — origin/HEAD must not be reached"
+    );
+}
+
+#[test]
+fn a_source_without_any_remote_head_writes_no_alias() {
+    let xdg = pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+
+    convert_colocated(tmp.path()).expect("convert");
+
+    assert!(
+        repo_config_path(tmp.path(), xdg).is_none(),
+        "a plain `git init` has no refs/remotes/*, so nothing may be created"
+    );
 }

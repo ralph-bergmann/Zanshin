@@ -34,16 +34,41 @@
 //! 0.42: `jj git init --no-colocate` over an existing `.git/` is a hard error.
 //! A genuinely non-colocated result always requires a separate destination
 //! directory, hence the two-parameter signature of `convert_import`.
+//!
+//! ## What both verbs write (Epic 9 follow-up K)
+//!
+//! Both port `do_init`'s `GitInitMode::External` arm (`cli/src/commands/git/init.rs:244-272`
+//! @ v0.44.0) step for step, so a repo Zanshin converts is on-disk indistinguishable from one
+//! `jj git init` converted — including the op log, which is state a user undoes with the CLI:
+//!
+//! 1. **`import git refs`** ([`init_git_refs`]) — one transaction running
+//!    [`jj_lib::git::import_refs`]; NO operation is written when it changed nothing
+//!    (`has_changes()`), and a colocated workspace also runs [`jj_lib::git::export_refs`]
+//!    before the commit.
+//! 2. **`.jj/.gitignore`** ([`maybe_add_gitignore`]) — the literal `/*\n`, colocated only.
+//! 3. **`import git head`** ([`import_git_head`]) — again skipped entirely when
+//!    [`jj_lib::git::import_head`] changed nothing.
+//! 4. **`revset-aliases.'trunk()'`** ([`maybe_set_trunk_alias`]) — written into the
+//!    REPO-level config file, which lives OUTSIDE `.jj/` (under `<config_dir>/jj/repos/`),
+//!    when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark.
+//!
+//! Two deliberate departures, both documented at their site: the colocated head import omits
+//! the working-copy reset the CLI pairs it with (Story 9.22 owns the locked-working-copy
+//! lifecycle; project decision D2 — Zanshin never snapshots), and a failed conversion rolls
+//! back further than the CLI does, which never undoes a partial `jj git init`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use jj_lib::git::{import_head, import_refs, GitImportOptions};
-use jj_lib::repo::Repo as _;
+use jj_lib::git::{import_refs, GitImportOptions, GitRefKind};
+use jj_lib::ref_name::{GitRefName, RemoteName};
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::settings::UserSettings;
+use jj_lib::workspace::Workspace;
 
 use crate::repo::make_settings;
-use crate::{detect_repo, Repo, RepoError, RepoKind};
+use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 
 /// Converts the Git repository at `path` into a colocated jj workspace (FR-JJ-18a).
 ///
@@ -51,13 +76,30 @@ use crate::{detect_repo, Repo, RepoError, RepoKind};
 /// non-destructively-reused `.git/`; the working-copy files are never
 /// overwritten. Returns a warm [`Repo`] handle for the now-colocated workspace.
 ///
+/// # What lands on disk
+///
+/// The CLI's `GitInitMode::External` sequence, unabridged (see the module doc): up to two
+/// operations, `import git refs` then `import git head`, each written only when its import
+/// changed something; `.jj/.gitignore` containing `/*`; and — when `refs/remotes/upstream/HEAD`
+/// or `refs/remotes/origin/HEAD` names a bookmark — `revset-aliases.'trunk()'` in the
+/// repo-level config file, which lives **outside** `.jj/`, under `<config_dir>/jj/repos/`.
+///
+/// Two deliberate departures from the CLI:
+///
+/// - The head import omits the working-copy `reset` the CLI pairs with it (Story 9.22 /
+///   decision D2), so `@` is not re-parented onto the imported HEAD; it settles there on the
+///   first colocated snapshot (D3a).
+/// - A failure rolls back further than the CLI, which leaves a partially converted repo in
+///   place. Rollback removes `.jj/` only — never `.git/` — so a conversion that fails *after*
+///   the alias step can orphan the secure-config directory it created.
+///
 /// # Errors
 ///
 /// - [`RepoError::AlreadyJjRepo`] — `path` is already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists, or it cannot be
 ///   resolved to an absolute path (the same answer the not-found case gives).
-/// - [`RepoError::ConvertFailed`] — a jj-lib failure (or a `detect_repo` I/O
-///   error) during conversion; the partially-created `.jj/` is rolled back.
+/// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error during
+///   conversion; the partially-created `.jj/` is rolled back.
 pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
@@ -104,15 +146,34 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// modified; jj only adds its own objects (commit objects, `refs/jj/keep/*`
 /// GC-keep markers) to the shared store.
 ///
+/// # What lands on disk
+///
+/// The same CLI sequence [`convert_colocated`] runs, taking the NON-colocated shape (see the
+/// module doc): up to two operations, `import git refs` then `import git head`, each written
+/// only when its import changed something, with the working copy materialised from the
+/// imported HEAD; NO `.jj/.gitignore` and no `export_refs`, both of which are colocated-only;
+/// and, when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark,
+/// `revset-aliases.'trunk()'` in the repo-level config file, which lives **outside** the
+/// destination, under `<config_dir>/jj/repos/`.
+///
+/// Passing `workspace_path == git_repo_path` (D5) is a colocated request and takes the
+/// colocated shape instead — including its `.jj/.gitignore`, and its head import without the
+/// CLI's paired working-copy reset (Story 9.22 / decision D2).
+///
+/// A failure rolls back further than the CLI, which leaves a partially initialised repo in
+/// place: the destination (or just its `.jj/`, when the directory already existed) is
+/// removed, the source is never touched, and a failure *after* the alias step can orphan the
+/// secure-config directory it created.
+///
 /// # Errors
 ///
 /// - [`RepoError::AlreadyJjRepo`] — `workspace_path` (or `git_repo_path`) is
 ///   already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
 ///   bare) or does not exist.
-/// - [`RepoError::ConvertFailed`] — a jj-lib failure (or a `detect_repo` I/O
-///   error), or `workspace_path` cannot be created or resolved; the partially-created
-///   destination is rolled back.
+/// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
+///   `workspace_path` cannot be created or resolved; the partially-created destination is
+///   rolled back.
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
@@ -206,49 +267,159 @@ fn is_colocated(repo: &impl jj_lib::repo::Repo, workspace_root: &Path) -> bool {
     git_workdir == workspace_root
 }
 
-/// Runs the colocated external-git init + ref/head import. On `Err`, the caller
-/// rolls back `.jj/`.
-fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
-    // 1. Open the EXISTING `.git` as the backing store (gix::open — strictly
-    //    non-destructive). Because `.git` is inside `path`, the workspace is
-    //    colocated. This is what `jj git init --colocate` does for an existing
-    //    repo (cli/src/commands/git/init.rs @ v0.42.0 -> GitInitMode::External).
-    let git_repo_path = path.join(".git");
-    let (_workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
-        settings,
-        path,
-        &git_repo_path,
-    ))
-    .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-
-    // 2. Import existing Git history into jj's view — no WORKING-COPY writes (no
-    //    check_out/snapshot); the `tx.commit` below persists the new op/view to
-    //    `.jj/`. branches/tags -> bookmarks (makes the HEAD commit reachable via
-    //    its branch), and HEAD -> git_head + the HEAD commit object (covers a
-    //    detached HEAD too). NO `@`-reparent, NO working-copy snapshot/check_out
-    //    (D3/D3a): `@` settles onto HEAD on the next colocated snapshot.
+/// Ports `init_git_refs` (`cli/src/commands/git/init.rs:285-320` @ v0.44.0): one transaction
+/// importing branches and tags, exporting them back when the workspace is colocated.
+///
+/// Returns the repo the following steps must build on — the NEW head when the operation was
+/// written, and the one passed in when `import_refs` changed nothing, in which case NO
+/// operation is written at all (the CLI's `if !tx.repo().has_changes() { return Ok(repo) }`).
+/// That early return is what makes a conversion of a repo with no refs — a fresh `git init`
+/// with no commits — leave the op log at `add workspace 'default'`.
+///
+/// The `GitImportOptions` are the CLI's own overrides for this flow, hardcoded rather than
+/// read from config: at this point in `do_init` the CLI pins `abandon_unreachable_commits`
+/// ("There should be no old refs to abandon, but enforce it") and
+/// `record_synthetic_predecessors` ("There may be a large number of new commits") to `false`
+/// regardless of the user's config, and only `remote_auto_track_bookmarks` comes off config.
+/// Leaving that map EMPTY is the one remaining gap, and it is a SEPARATE, crate-wide ledger
+/// item — `Repo::git_fetch` and `clone_into` leave it empty too (see
+/// [`crate::config::git_import_options`]).
+fn init_git_refs(repo: &Arc<ReadonlyRepo>, colocated: bool) -> Result<Arc<ReadonlyRepo>, RepoError> {
     let import_options = GitImportOptions {
-        abandon_unreachable_commits: false, // fresh import: no stale jj refs (CLI init path)
+        abandon_unreachable_commits: false,
         record_synthetic_predecessors: false,
         remote_auto_track_bookmarks: HashMap::new(),
     };
     let mut tx = repo.start_transaction();
     pollster::block_on(import_refs(tx.repo_mut(), &import_options))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-    pollster::block_on(import_head(tx.repo_mut())).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-    pollster::block_on(tx.commit("convert to colocated"))
+    if !tx.repo().has_changes() {
+        return Ok(Arc::clone(repo));
+    }
+    if colocated {
+        jj_lib::git::export_refs(tx.repo_mut()).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    }
+    pollster::block_on(tx.commit("import git refs")).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
+}
+
+/// Ports `maybe_add_gitignore` (`cli/src/commands/git/mod.rs:110-123` @ v0.44.0): the literal
+/// `/*\n` into `<workspace_root>/.jj/.gitignore`, and ONLY when the working copy is shared
+/// with git.
+///
+/// It does NOT touch the workspace's own `.gitignore` — the file it writes lives inside
+/// `.jj/` and hides that directory from the colocated git repo.
+fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), RepoError> {
+    if !colocated {
+        return Ok(());
+    }
+    std::fs::write(workspace_root.join(".jj").join(".gitignore"), "/*\n")
+        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
+}
+
+/// The `import git head` operation, without the working-copy half.
+///
+/// Ports three of the four things `cli_util.rs::import_git_head` (`:1352-1416` @ v0.44.0)
+/// does — [`jj_lib::git::import_head`], the early return that writes NO operation when it
+/// changed nothing, and the `import git head` commit. The fourth, `check_out` +
+/// `locked_wc().reset(&wc_commit)`, is deliberately left out: it needs
+/// `start_working_copy_mutation`, the locked-working-copy lifecycle **Story 9.22** owns, and
+/// reversing project decision D2 (Zanshin never snapshots) is not this port's call.
+///
+/// Consequence, restated in both verbs' rustdoc: after a colocated conversion the op log
+/// matches the CLI's, but `@` has not been re-parented onto the imported HEAD — it settles
+/// there on the first snapshot, exactly as 2.12's D3a already documented.
+fn import_git_head(repo: &Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>, RepoError> {
+    let mut tx = repo.start_transaction();
+    pollster::block_on(jj_lib::git::import_head(tx.repo_mut()))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    if !tx.repo().has_changes() {
+        return Ok(Arc::clone(repo));
+    }
+    pollster::block_on(tx.commit("import git head")).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
+}
+
+/// Ports `maybe_set_repository_level_trunk_alias` (`cli/src/commands/git/init.rs:324-364` @
+/// v0.44.0): `revset-aliases.'trunk()' = '<bookmark>@<remote>'` in the REPO-level config.
+///
+/// `upstream` is tried first, then `origin`, and the loop stops at the first remote that HAS
+/// a `refs/remotes/<remote>/HEAD` reference **whether or not it parses** — the CLI's own
+/// comment is that it makes no sense to fall back to `origin` once `upstream` is known to
+/// exist. The alias is written only when that reference's symbolic target parses as a
+/// [`GitRefKind::Bookmark`]; a direct (non-symbolic) `HEAD` has no symbolic target, so it
+/// yields no alias and no config file.
+///
+/// At v0.44.0 there is NO `get_single_remote` guard on this — a repo with several remotes
+/// still gets the alias, as long as `upstream` or `origin` has a HEAD reference.
+///
+/// The file this writes lives OUTSIDE `.jj/`, under `<config_dir>/jj/repos/<config-id>/`
+/// (see [`crate::config::new_repo_config_file`]); `.jj/repo/config-id` is created alongside
+/// it. When no `<config_dir>` can be determined, the whole step is skipped silently — the
+/// CLI's own "we couldn't find the user's home directory" branch.
+fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) -> Result<(), RepoError> {
+    let git_repo =
+        jj_lib::git::get_git_repo(repo.store()).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    for remote in ["upstream", "origin"] {
+        let ref_name = format!("refs/remotes/{remote}/HEAD");
+        let found = git_repo
+            .try_find_reference(ref_name.as_str())
+            .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        let Some(reference) = found else { continue };
+        // Found — the CLI returns after this remote whether or not the reference parses, so
+        // a later remote is never consulted. A direct (non-symbolic) HEAD has no symbolic
+        // target, and a symbolic one that resolves to anything but a bookmark (a tag, say)
+        // is not a trunk either; both simply yield no alias.
+        // Bound, not chained: `try_name` borrows from the `TargetRef`, which would otherwise
+        // be a temporary dropped before the symbol it lends its bytes to is read.
+        let head_target = reference.target();
+        let bookmark = head_target
+            .try_name()
+            .and_then(|target| std::str::from_utf8(target.as_bstr()).ok())
+            .and_then(|name| jj_lib::git::parse_git_ref(GitRefName::new(name)))
+            .and_then(|(kind, symbol)| matches!(kind, GitRefKind::Bookmark).then_some(symbol));
+        if let Some(symbol) = bookmark {
+            // TODO(upstream): the CLI assumes the symbolic target names the same remote.
+            let alias = symbol.name.to_remote_symbol(RemoteName::new(remote)).to_string();
+            let file = config::new_repo_config_file(workspace)
+                .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+            config::set_trunk_alias(file, &alias).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        }
+        return Ok(());
+    }
     Ok(())
 }
 
-/// Ports `do_init`'s `GitInitMode::External` (non-colocated) branch (jj CLI @
-/// v0.42.0). Creates and populates the jj workspace at `workspace_path`. On
+/// Runs the colocated external-git init and then `do_init`'s External sequence. On `Err`,
+/// the caller rolls back `.jj/`.
+fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
+    // 1. Open the EXISTING `.git` as the backing store (gix::open — strictly
+    //    non-destructive). Because `.git` is inside `path`, the workspace is
+    //    colocated. This is what `jj git init --colocate` does for an existing
+    //    repo (cli/src/commands/git/init.rs @ v0.44.0 -> GitInitMode::External).
+    let git_repo_path = path.join(".git");
+    let (workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
+        settings,
+        path,
+        &git_repo_path,
+    ))
+    .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+
+    // 2. The CLI's four External-arm steps, in its order. NO working-copy writes anywhere
+    //    (no check_out, no snapshot, no `@`-reparent — D3/D3a): `@` settles onto HEAD on the
+    //    next colocated snapshot. `is_colocated` is normally true here (`.git` lives inside
+    //    `path`); it is read rather than assumed because a linked git worktree — where `.git`
+    //    is a gitdir POINTER file and the git workdir is the main repo — is classified `Git`
+    //    by `detect_repo` and reaches this far, and in that shape `export_refs` and the
+    //    `.gitignore` would both be wrong.
+    let colocated = is_colocated(repo.as_ref(), workspace.workspace_root());
+    let repo = init_git_refs(&repo, colocated)?;
+    maybe_add_gitignore(workspace.workspace_root(), colocated)?;
+    let repo = import_git_head(&repo)?;
+    maybe_set_trunk_alias(&workspace, repo.as_ref())
+}
+
+/// Ports `do_init`'s `GitInitMode::External` branch (jj CLI @ v0.44.0), non-colocated in the
+/// intended two-path use. Creates and populates the jj workspace at `workspace_path`. On
 /// `Err`, the caller rolls back the destination.
-///
-/// Single transaction (`"import git repo"`): the CLI uses two ops ("import git
-/// refs" then "import git head"); we fold into one. The op-log *effect*
-/// (one visible, reversible op for the conversion) is preserved; the exact
-/// op-count is cosmetic and not replicated (consistent with `convert_colocated`).
 fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
@@ -271,24 +442,28 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
 
     let workspace_name = workspace.workspace_name().to_owned();
 
-    let import_options = GitImportOptions {
-        abandon_unreachable_commits: false,
-        record_synthetic_predecessors: false,
-        remote_auto_track_bookmarks: HashMap::new(),
-    };
-    let mut tx = repo.start_transaction();
-    pollster::block_on(import_refs(tx.repo_mut(), &import_options))
-        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-    pollster::block_on(import_head(tx.repo_mut())).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    // 2. The CLI's External-arm steps, in its order: refs op, `.jj/.gitignore`, the colocated
+    //    head op, the `trunk()` alias, and only then the non-colocated head op below.
+    //    `is_colocated` is false for the intended two-path use and true when a caller passes
+    //    `workspace_path == git_repo_path` (D5), which is a colocated request jj honours.
+    let colocated = is_colocated(repo.as_ref(), workspace.workspace_root());
+    let repo = init_git_refs(&repo, colocated)?;
+    maybe_add_gitignore(workspace.workspace_root(), colocated)?;
+    let repo = if colocated { import_git_head(&repo)? } else { repo };
+    maybe_set_trunk_alias(&workspace, repo.as_ref())?;
+    if colocated {
+        return Ok(());
+    }
 
-    // 2. For a jj-native (non-colocated) workspace, create `@` on top of the
-    //    imported HEAD commit and materialise the working copy.
-    //    Skip entirely if: (a) colocated (dest == source path), or (b) HEAD is
-    //    unborn (git_head().as_normal() == None — e.g. fresh `git init` with no
-    //    commits). This mirrors `clone_into` (repo.rs:~346–371).
-    let new_wc_commit = if is_colocated(tx.repo(), workspace.workspace_root()) {
-        None
-    } else if let Some(git_head_id) = tx.repo().view().git_head().as_normal().cloned() {
+    // 3. The CLI's non-colocated head import (`init.rs:262-270`): import HEAD, create `@` on
+    //    top of the imported commit, and write the operation only when something changed.
+    //    Skipped when HEAD is unborn (`git_head().as_normal() == None` — e.g. a fresh
+    //    `git init` with no commits), in which case `import_head` also changed nothing and no
+    //    operation is written. This mirrors `clone_into` (repo.rs:~1650–1700).
+    let mut tx = repo.start_transaction();
+    pollster::block_on(jj_lib::git::import_head(tx.repo_mut()))
+        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    let new_wc_commit = if let Some(git_head_id) = tx.repo().view().git_head().as_normal().cloned() {
         let mut_repo = tx.repo_mut();
         let commit = mut_repo
             .store()
@@ -302,12 +477,19 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     } else {
         None
     };
+    // The CLI writes the operation only when something changed (its `if tx.repo().has_changes()`
+    // around `tx.finish`); with an unborn HEAD the import was a no-op, no `@` was created, and
+    // the transaction is dropped uncommitted.
+    let new_repo = if tx.repo().has_changes() {
+        let committed = pollster::block_on(tx.commit("import git head"))
+            .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        Some(committed)
+    } else {
+        None
+    };
 
-    let new_repo = pollster::block_on(tx.commit("import git repo"))
-        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-
-    // 3. Materialise HEAD's tree into the (empty) destination directory.
-    if let Some(wc_commit) = &new_wc_commit {
+    // 4. Materialise HEAD's tree into the (empty) destination directory.
+    if let (Some(new_repo), Some(wc_commit)) = (&new_repo, &new_wc_commit) {
         pollster::block_on(workspace.check_out(new_repo.op_id().clone(), None, wc_commit))
             .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     }
@@ -327,6 +509,23 @@ mod tests {
         let (_ws, repo) =
             pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
         assert!(!is_colocated(repo.as_ref(), tmp.path()));
+    }
+
+    /// The alias reader needs a GIT backend; on anything else `get_git_repo` refuses and the
+    /// refusal is forwarded rather than swallowed. Unreachable from either verb (both go
+    /// through `init_external_git`), so it is pinned here on the same `init_simple`
+    /// workspace its sibling above uses.
+    #[test]
+    fn maybe_set_trunk_alias_with_simple_backend_is_a_convert_failure() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let settings = make_settings().expect("settings");
+        let (ws, repo) =
+            pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
+        let result = maybe_set_trunk_alias(&ws, repo.as_ref());
+        assert!(
+            matches!(result, Err(RepoError::ConvertFailed { .. })),
+            "a non-git backend must surface as ConvertFailed, got: {result:?}"
+        );
     }
 
     #[test]
