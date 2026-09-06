@@ -173,6 +173,12 @@ deferred:
     location: >-
       crates/zanshin-jj/src/git.rs (git_remote_remove / git_remote_rename)
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-j-remote-config-rewrite, commit 3eb466b). Same item as
+      the first entry of this list: the CLI's `.jj/repo/config.toml` edit on remote remove/rename is
+      now ported. The reading itself is settled by Ralph's rule of 2026-09-06 — Zanshin always
+      behaves like the CLI; every on-disk, repo-side effect is required parity — so "resolved
+      against porting" is no longer an admissible outcome for any such clause.
 ---
 
 <intent-contract>
