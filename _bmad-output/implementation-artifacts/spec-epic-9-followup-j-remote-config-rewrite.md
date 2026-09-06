@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up J: port the repo-config rewrite on `git remote remove`/`rename`'
 type: 'feature'
 created: '2026-09-06'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: '70c6018572d3acbc5371292e2a6631d1755e2a76'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -235,6 +235,37 @@ Anchors read against the working tree at baseline `70c6018`.
   `.jj/repo/config.toml` is not edited or that the rewrite is a deliberate divergence.
 
 ## Spec Change Log
+
+### 2026-09-06 — Implementation
+
+Where the built change is narrower, wider or stricter than the prose above. The
+`<intent-contract>` is unchanged; these are corrections to the Code Map, Tasks and Design
+Notes.
+
+- **`write_error`'s covered instantiation is the SAVE error, not the load error.** The Design
+  Notes sketch (`:262`) shows `ConfigFile::load_or_empty(ConfigSource::Repo, path)
+  .map_err(write_error)`, and closes with "the `ConfigLoadError` instantiation is covered by the
+  unparseable-TOML test". The shipped code does not route the load through `write_error` at all:
+  a load failure must name the FILE, so it goes through the existing `file_error(path, &e)`
+  helper, whose reason is `"<path>: <chain>"` and which the `an_unparseable_repo_config…` rows
+  assert on. `write_error` is therefore instantiated only by `ConfigFileSaveError` (covered by the
+  unwritable-file row) and by `ConfigUpdateError` (structurally unreachable) — one covered
+  instantiation is still enough to execute the shared body, which is the property the Design Note
+  actually needed, so `config.rs` holds at 100.00 % either way.
+- **The load was hoisted OUT of the transaction closure — the built behaviour is STRICTER than
+  the I/O matrix's "Unparseable repo config" row.** That row (`:101`) expects "Verb refuses; the
+  git-config edit inside the aborted transaction is not committed", and the Always bullet at `:52-55`
+  puts only PATH resolution before the closure. Both are inside `<intent-contract>` and stay as
+  written. What ships refuses EARLIER: the file is resolved *and loaded* before the transaction
+  opens, so an unreadable file, invalid TOML or a malformed `config-id` leaves nothing mutated at
+  all — the git config included — and only a `save()` failure can still abort a transaction after
+  jj-lib's git-config edit. This is closer to the CLI, not further from it: `existing_repo_config_file`
+  (`cli/src/config.rs:682-691`) wraps a repo layer the process parsed at start-up, so the CLI too
+  fails before `git::remove_remote` writes anything. The loaded `ConfigFile` (a `jj_lib` type in a
+  `pub(crate)` position, as `conflict_marker_style` already is) is moved into the closure, which
+  keeps the WRITE where the intent contract puts it. Hoisting also removes a way to violate the
+  contract's own "never create a repo config file": `load_or_empty` answers a missing file with an
+  empty document, and the unconditional `save()` would then have created it.
 
 ## Review Triage Log
 

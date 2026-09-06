@@ -21,9 +21,15 @@
 //! two verbs whose CLI counterparts rewrite the repo-level file
 //! (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0). They make exactly the CLI's two edits
 //! and NEVER create a file: the path is resolved by the same [`secure_config_path`] the read
-//! side uses and filtered by existence ([`existing_repo_config_path`]), so read and write
+//! side uses and filtered by existence ([`existing_repo_config_file`]), so read and write
 //! address the same file by construction. No general config-write API exists, and none of
 //! the other verbs — `git remote add`/`set-url` included — writes config at all.
+//!
+//! Both writers take an ALREADY-LOADED [`ConfigFile`], never a path: the CLI's
+//! `existing_repo_config_file` wraps a layer its process loaded at start-up, so a repo config
+//! that cannot be read or parsed makes the CLI fail before it mutates anything. Loading here
+//! too — in [`existing_repo_config_file`], before the caller opens its transaction — is what
+//! reproduces that end state.
 //!
 //! # WHY: by hand instead of `jj_lib::secure_config::SecureConfig`
 //!
@@ -135,11 +141,13 @@ const CONFIG_ID_HEX_LEN: usize = 20;
 /// contains `(` and `)`, so the dotted spelling would be re-split in the wrong places.
 const TRUNK_CONFIG_NAME: [&str; 2] = ["revset-aliases", "trunk()"];
 
-/// Errors from reading the repo's effective jj config.
+/// Errors from reading the repo's effective jj config — or, for the two repo-config
+/// writers below, from writing the repo-level file back.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// A config file could not be read or parsed, a `config-id` is malformed, or a config
-    /// value has the wrong type. The offending file path or config key is in `reason`.
+    /// A config file could not be read, parsed or written back, a `config-id` is malformed,
+    /// or a config value has the wrong type. The offending file path or config key is in
+    /// `reason`.
     #[error("config error: {reason}")]
     Load {
         /// Human-readable failure, naming the file or the config key.
@@ -527,20 +535,50 @@ fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load { reason: describe(&err) }
 }
 
-/// The repo-level config file this workspace READS, if it exists on disk.
+/// Loads the repo-level config file at `path`, iff `path` is `Some` AND exists on disk.
+///
+/// The `.exists()` filter and the load are ONE step on purpose. `ConfigFile::load_or_empty`
+/// answers a missing file with an empty document, and both writers below `save()`
+/// unconditionally — so resolving a path and only loading it later, at save time, would
+/// turn a file that vanished in between into a file this crate CREATED, which is exactly
+/// what the ported helpers must never do.
+///
+/// Split from [`existing_repo_config_file`] so the writers can be unit-tested against a
+/// tempfile path without standing up a [`Workspace`].
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file exists but could not be read or is not valid TOML.
+fn load_repo_config_file(path: Option<&Path>) -> Result<Option<ConfigFile>, ConfigError> {
+    let Some(path) = path.filter(|p| p.exists()) else {
+        return Ok(None);
+    };
+    let file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
+    Ok(Some(file))
+}
+
+/// The repo-level config file this workspace READS, loaded, if it exists on disk.
 ///
 /// Resolution is [`secure_config_path`] — the very same call [`add_secure_layer`] makes for
-/// `ConfigSource::Repo` — so a writer built on this path can never rewrite a file the
-/// session does not read. The `.exists()` filter is the CLI's
-/// `existing_repo_config_file` (`cli/src/config.rs:682-691`), which picks an ALREADY-LOADED
-/// repo layer and therefore yields nothing when no file was loaded: mirroring it as
-/// "resolve, then filter by existence" is what keeps both writers from CREATING a file.
+/// `ConfigSource::Repo` — so a writer built on this file can never rewrite a file the
+/// session does not read. That includes the `Ok(None)` case where no `<config_dir>` can be
+/// determined at all (no `$HOME`, no absolute `$XDG_CONFIG_HOME`): the whole rewrite then
+/// vanishes silently — and it must, because [`add_secure_layer`] skips the repo LAYER under
+/// exactly the same condition, so read and write stay consistent by construction.
+///
+/// This mirrors the CLI's `existing_repo_config_file` (`cli/src/config.rs:682-691`), which
+/// wraps an ALREADY-LOADED repo layer and yields nothing when no file was loaded. Loading
+/// here rather than inside the writer is what reproduces the CLI's ORDERING: its layer was
+/// parsed at process start, so an unreadable or unparseable repo config makes it fail before
+/// `git::remove_remote` writes anything. Callers therefore call this BEFORE they open their
+/// transaction, and only a `save()` failure can still abort one.
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — `.jj/repo/config-id` exists but is not exactly 20 ASCII hex
-///   characters, or could not be read.
-pub(crate) fn existing_repo_config_path(workspace: &Workspace) -> Result<Option<PathBuf>, ConfigError> {
+///   characters or could not be read; or the config file itself is unreadable or not valid
+///   TOML.
+pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<ConfigFile>, ConfigError> {
     let env = ConfigEnv::from_env();
     let root = env.root_config_dir();
     let path = secure_config_path(
@@ -550,7 +588,7 @@ pub(crate) fn existing_repo_config_path(workspace: &Workspace) -> Result<Option<
         "config.toml",
         root.as_ref().map(|r| r.join("repos")).as_deref(),
     )?;
-    Ok(path.filter(|p| p.exists()))
+    load_repo_config_file(path.as_deref())
 }
 
 /// The `trunk()` alias's value as `(bookmark, remote)`, iff it is a PLAIN remote symbol.
@@ -576,23 +614,25 @@ fn trunk_symbol(layer: &ConfigLayer) -> Option<(String, String)> {
 /// Drops `remote`'s repo-config presets — the CLI's `remove_remote_from_repo_config`.
 ///
 /// Two edits and no more: `[remotes.<remote>]` is removed, and `revset-aliases.'trunk()'`
-/// is DELETED (so the builtin `trunk()` applies again) when it is a plain remote symbol
-/// naming `remote`. Both are keyed on the REMOTE name alone — the alias's bookmark half is
-/// never compared, because the alias becomes meaningless the moment its remote is gone,
-/// whatever bookmark it named.
+/// is DELETED when it is a plain remote symbol naming `remote`. Both are keyed on the
+/// REMOTE name alone — the alias's bookmark half is never compared, because the alias
+/// becomes meaningless the moment its remote is gone, whatever bookmark it named.
 ///
-/// `path` is [`existing_repo_config_path`]'s answer: `None` means no repo-level config file
+/// Deleting the alias makes the REPO layer stop defining `trunk()`; what then applies is
+/// whatever the remaining stack resolves to — the builtin, unless the workspace or user
+/// layer defines a `trunk()` of its own, which still wins. Only the repo layer is written,
+/// exactly as in the CLI.
+///
+/// `file` is [`existing_repo_config_file`]'s answer: `None` means no repo-level config file
 /// exists, and then this is a no-op that creates nothing.
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — the file could not be read, is not valid TOML, or could not be
-///   written back.
-pub(crate) fn remove_remote_from_repo_config(path: Option<&Path>, remote: &str) -> Result<(), ConfigError> {
-    let Some(path) = path else {
+/// - [`ConfigError::Load`] — the file could not be written back.
+pub(crate) fn remove_remote_from_repo_config(file: Option<ConfigFile>, remote: &str) -> Result<(), ConfigError> {
+    let Some(mut file) = file else {
         return Ok(());
     };
-    let mut file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
 
     // [remotes.<remote>]
     if let Some(remotes_item) = file.data_mut().as_table_mut().get_mut("remotes") {
@@ -622,17 +662,15 @@ pub(crate) fn remove_remote_from_repo_config(path: Option<&Path>, remote: &str) 
 /// The mirror image of [`remove_remote_from_repo_config`]: `[remotes.<old>]` is re-inserted
 /// as `[remotes.<new>]` (value untouched), and a plain-remote-symbol `trunk()` naming `old`
 /// is REWRITTEN to name `new`, keeping its bookmark. Same remote-name-only keying, same
-/// hands-off treatment of any richer expression.
+/// hands-off treatment of any richer expression, same repo-layer-only reach.
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — the file could not be read, is not valid TOML, or could not be
-///   written back.
-pub(crate) fn rename_remote_in_repo_config(path: Option<&Path>, old: &str, new: &str) -> Result<(), ConfigError> {
-    let Some(path) = path else {
+/// - [`ConfigError::Load`] — the file could not be written back.
+pub(crate) fn rename_remote_in_repo_config(file: Option<ConfigFile>, old: &str, new: &str) -> Result<(), ConfigError> {
+    let Some(mut file) = file else {
         return Ok(());
     };
-    let mut file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
 
     // [remotes.<old>] -> [remotes.<new>]
     if let Some(remotes_item) = file.data_mut().as_table_mut().get_mut("remotes") {
@@ -664,10 +702,11 @@ mod tests {
     use std::ffi::OsString;
 
     use super::{
-        add_secure_layer, is_valid_config_id, load_with, platform_config_dir, remove_remote_from_repo_config,
-        rename_remote_in_repo_config, secure_config_path, user_config_paths, ConfigEnv, BUILTIN_CONFIG_TOML,
+        add_secure_layer, is_valid_config_id, load_repo_config_file, load_with, platform_config_dir,
+        remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path, user_config_paths, ConfigEnv,
+        BUILTIN_CONFIG_TOML,
     };
-    use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+    use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
@@ -952,6 +991,12 @@ mod tests {
         std::fs::read_to_string(path).expect("the config file must still be readable")
     }
 
+    /// Loads `path` exactly as the two verbs do, so every writer row below exercises the
+    /// real load-then-write pairing rather than a shortcut the production path never takes.
+    fn load(path: &Path) -> Option<ConfigFile> {
+        load_repo_config_file(Some(path)).expect("the repo config must load")
+    }
+
     const PINNED: &str = "\
 [remotes.origin]
 fetch-bookmarks = \"main\"
@@ -963,28 +1008,36 @@ fetch-bookmarks = \"main\"
     #[test]
     fn remove_drops_the_remotes_section_and_the_matching_trunk_alias() {
         let (_tmp, path) = repo_config(PINNED);
-        remove_remote_from_repo_config(Some(&path), "origin").expect("the rewrite must succeed");
+        remove_remote_from_repo_config(load(&path), "origin").expect("the rewrite must succeed");
         let after = read_back(&path);
         assert!(!after.contains("remotes.origin"), "the section must be gone: {after:?}");
         assert!(
             !after.contains("trunk()"),
-            "the alias must be DELETED so the builtin applies again: {after:?}"
+            "the alias must be DELETED so the repo layer stops defining it: {after:?}"
         );
     }
 
     #[test]
     fn rename_moves_the_remotes_section_and_repoints_the_trunk_alias() {
         let (_tmp, path) = repo_config(PINNED);
-        rename_remote_in_repo_config(Some(&path), "origin", "upstream").expect("the rewrite must succeed");
+        rename_remote_in_repo_config(load(&path), "origin", "upstream").expect("the rewrite must succeed");
         let after = read_back(&path);
-        assert!(after.contains("upstream"), "the section must move: {after:?}");
-        assert!(!after.contains("remotes.origin"), "…and not be duplicated: {after:?}");
+        assert!(
+            after.contains("[remotes.upstream]"),
+            "the SECTION itself must move — a re-pointed alias alone is not enough: {after:?}"
+        );
+        assert!(
+            !after.contains("remotes.origin"),
+            "…and the old name must be gone: {after:?}"
+        );
         assert!(
             after.contains("fetch-bookmarks = \"main\""),
             "the section's VALUE must survive the move: {after:?}"
         );
+        // Pinned exactly, not `contains(a) || contains(b)`: `set_value` re-emits the value,
+        // so the resulting spelling is a fact about the writer worth freezing.
         assert!(
-            after.contains("'trunk()' = \"main@upstream\"") || after.contains("'trunk()' = 'main@upstream'"),
+            after.contains("'trunk()' = \"main@upstream\"\n"),
             "the alias must keep its bookmark and name the new remote: {after:?}"
         );
     }
@@ -995,12 +1048,12 @@ fetch-bookmarks = \"main\"
     fn an_alias_and_a_section_naming_a_different_remote_survive_both_verbs() {
         let body = "[remotes.other]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@other'\n";
         let (_tmp, remove_path) = repo_config(body);
-        remove_remote_from_repo_config(Some(&remove_path), "origin").expect("remove");
+        remove_remote_from_repo_config(load(&remove_path), "origin").expect("remove");
         assert!(read_back(&remove_path).contains("main@other"));
         assert!(read_back(&remove_path).contains("remotes.other"));
 
         let (_tmp2, rename_path) = repo_config(body);
-        rename_remote_in_repo_config(Some(&rename_path), "origin", "upstream").expect("rename");
+        rename_remote_in_repo_config(load(&rename_path), "origin", "upstream").expect("rename");
         assert!(read_back(&rename_path).contains("main@other"));
         assert!(read_back(&rename_path).contains("remotes.other"));
     }
@@ -1012,11 +1065,11 @@ fetch-bookmarks = \"main\"
         for value in ["'latest(main@origin)'", "'('", "42"] {
             let body = format!("[revset-aliases]\n'trunk()' = {value}\n");
             let (_tmp, path) = repo_config(&body);
-            remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+            remove_remote_from_repo_config(load(&path), "origin").expect("remove");
             assert_eq!(read_back(&path), body, "remove must leave {value} alone");
 
             let (_tmp2, path2) = repo_config(&body);
-            rename_remote_in_repo_config(Some(&path2), "origin", "upstream").expect("rename");
+            rename_remote_in_repo_config(load(&path2), "origin", "upstream").expect("rename");
             assert_eq!(read_back(&path2), body, "rename must leave {value} alone");
         }
     }
@@ -1027,23 +1080,38 @@ fetch-bookmarks = \"main\"
     fn a_non_table_revset_aliases_key_is_left_alone() {
         let body = "revset-aliases = 42\n";
         let (_tmp, path) = repo_config(body);
-        remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+        remove_remote_from_repo_config(load(&path), "origin").expect("remove");
         assert_eq!(read_back(&path), body);
     }
 
     /// `None` is the state the CLI's `existing_repo_config_file` returns when no repo layer
-    /// was loaded: both writers succeed and, having no path at all, touch no file. That
-    /// [`existing_repo_config_path`] really answers `None` for a workspace with no
-    /// repo-level file — the other half of "creates nothing" — is pinned by
+    /// was loaded: both writers succeed and, having no file at all, touch nothing. The
+    /// loader must produce that `None` for a path that does not exist — and must NOT create
+    /// the file by loading an empty document into it, which is what the unconditional
+    /// `save()` would otherwise do. That [`existing_repo_config_file`] resolves such a path
+    /// for a real workspace with no repo-level file is pinned by
     /// `tests/git_remotes.rs::without_a_repo_config_file_both_verbs_succeed_and_create_none`.
     #[test]
     fn an_absent_repo_config_is_a_no_op_for_both_writers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("config.toml");
+
+        remove_remote_from_repo_config(load(&missing), "origin").expect("remove must succeed");
+        rename_remote_in_repo_config(load(&missing), "origin", "upstream").expect("rename must succeed");
+        assert!(!missing.exists(), "neither writer may bring the file into being");
+
+        // The `path == None` arm (no `<config_dir>` at all) is the same no-op.
+        assert!(load_repo_config_file(None).expect("no path is not an error").is_none());
         remove_remote_from_repo_config(None, "origin").expect("remove must succeed");
         rename_remote_in_repo_config(None, "origin", "upstream").expect("rename must succeed");
     }
 
     /// `toml_edit` round-trips the document, so everything the two edits do not touch —
-    /// comments, key order, quoting, unrelated tables — survives byte-for-byte.
+    /// comments, key order, quoting, blank lines, unrelated tables — survives byte-for-byte.
+    ///
+    /// Asserted as the WHOLE expected file, not as fragments: re-indentation, a collapsed
+    /// blank line or a reordered key would leave every `contains` row green while changing
+    /// the file the user has to keep reading.
     #[test]
     fn comments_and_unrelated_keys_survive_the_rewrite() {
         let body = "\
@@ -1062,25 +1130,33 @@ fetch-tags = \"none\"
 'wip()' = 'description(\"wip\")'
 ";
         let (_tmp, path) = repo_config(body);
-        remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
-        let after = read_back(&path);
-        assert!(after.contains("# a comment the user wrote"));
-        assert!(after.contains("log = \"mine\"   # trailing comment"));
-        assert!(after.contains("[remotes.keepme]"));
-        assert!(after.contains("'wip()' = 'description(\"wip\")'"));
-        assert!(!after.contains("[remotes.origin]"));
-        assert!(!after.contains("trunk()"));
+        remove_remote_from_repo_config(load(&path), "origin").expect("remove");
+        assert_eq!(
+            read_back(&path),
+            "\
+# a comment the user wrote
+[revsets]
+log = \"mine\"   # trailing comment
+
+[remotes.keepme]
+fetch-tags = \"none\"
+
+[revset-aliases]
+'wip()' = 'description(\"wip\")'
+",
+            "only the two edits may change the file"
+        );
     }
 
     #[test]
     fn an_absent_or_non_table_remotes_key_is_not_an_error() {
         for body in ["[revsets]\nlog = \"mine\"\n", "remotes = 42\n"] {
             let (_tmp, path) = repo_config(body);
-            remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+            remove_remote_from_repo_config(load(&path), "origin").expect("remove");
             assert_eq!(read_back(&path), body);
 
             let (_tmp2, path2) = repo_config(body);
-            rename_remote_in_repo_config(Some(&path2), "origin", "upstream").expect("rename");
+            rename_remote_in_repo_config(load(&path2), "origin", "upstream").expect("rename");
             assert_eq!(read_back(&path2), body);
         }
     }
@@ -1090,16 +1166,18 @@ fetch-tags = \"none\"
     #[test]
     fn an_inline_remotes_table_is_edited_too() {
         let (_tmp, path) = repo_config("remotes = { origin = { fetch-tags = \"none\" } }\n");
-        rename_remote_in_repo_config(Some(&path), "origin", "upstream").expect("rename");
+        rename_remote_in_repo_config(load(&path), "origin", "upstream").expect("rename");
         let after = read_back(&path);
         assert!(after.contains("upstream"), "the inline entry must move: {after:?}");
         assert!(!after.contains("origin"), "…and the old key must be gone: {after:?}");
     }
 
+    /// Invalid TOML is refused by the LOADER, which the verbs run before they open a
+    /// transaction — so this refusal costs no mutation at all.
     #[test]
     fn an_unparseable_repo_config_is_a_config_error_naming_the_file() {
         let (_tmp, path) = repo_config("not = = toml\n");
-        let err = remove_remote_from_repo_config(Some(&path), "origin").expect_err("invalid TOML must refuse");
+        let err = load_repo_config_file(Some(&path)).expect_err("invalid TOML must refuse");
         let reason = err.to_string();
         assert!(
             reason.contains("config.toml") && reason.contains("TOML"),
@@ -1107,15 +1185,17 @@ fetch-tags = \"none\"
         );
     }
 
+    /// The other half: an unwritable file LOADS fine, so only `save()` fails — the one
+    /// failure the verbs cannot raise before mutating.
     #[test]
     fn an_unwritable_repo_config_is_a_config_error() {
         use std::os::unix::fs::PermissionsExt as _;
 
         let (_tmp, path) = repo_config(PINNED);
-        // Readable, so the load succeeds and only `save()` can fail.
+        let file = load(&path);
+        // Set AFTER the load, so the load succeeds and only `save()` can fail.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-        let err = rename_remote_in_repo_config(Some(&path), "origin", "upstream")
-            .expect_err("an unwritable file must refuse");
+        let err = rename_remote_in_repo_config(file, "origin", "upstream").expect_err("an unwritable file must refuse");
         let reason = err.to_string();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(

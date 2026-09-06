@@ -556,8 +556,10 @@ final class RepoHandle {
   ///
   /// The repo-level jj config file is rewritten as well, exactly as the CLI does:
   /// the `[remotes.<name>]` section is dropped, and a `revset-aliases.'trunk()'`
-  /// that is a plain remote symbol naming this remote is deleted, so the builtin
-  /// `trunk()` applies again. It is the file this repo's config layer reads
+  /// that is a plain remote symbol naming this remote is deleted — so the REPO
+  /// layer stops defining `trunk()` and the rest of the stack decides, which is
+  /// the builtin unless the workspace or user layer defines its own `trunk()`. It
+  /// is the file this repo's config layer reads
   /// (`<config_dir>/jj/repos/<config-id>/config.toml`, or the legacy
   /// `.jj/repo/config.toml`); with no such file nothing is written and none is
   /// created.

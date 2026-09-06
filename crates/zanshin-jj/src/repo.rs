@@ -721,10 +721,12 @@ impl Repo {
         Ok(())
     }
 
-    /// Runs [`Repo::reload_workspace`] after a verb that rewrote the git config, on BOTH
-    /// the success and the failure path — `remove_remote`/`rename_remote` write the config
-    /// BEFORE the git-ref edits that can still fail, so a mid-verb failure would otherwise
-    /// leave a stale cache behind.
+    /// Runs [`Repo::reload_workspace`] after a verb that MAY have rewritten the git config,
+    /// on BOTH the success and the failure path — `remove_remote`/`rename_remote` write the
+    /// config BEFORE the git-ref edits that can still fail, so a mid-verb failure would
+    /// otherwise leave a stale cache behind. Some failures reach here having written nothing
+    /// at all (a repo-level jj config that could not be read refuses before the transaction
+    /// opens); reloading then is merely redundant, never wrong.
     ///
     /// A reload failure is surfaced only when the verb itself succeeded: an already-failing
     /// call must keep its own error, which is the one that explains what the user did. That
@@ -847,25 +849,31 @@ impl Repo {
     ///
     /// The repo-level jj config file is rewritten as well, exactly as the CLI does: the
     /// `[remotes.<name>]` section is dropped, and a `revset-aliases.'trunk()'` that is a
-    /// plain remote symbol naming this remote is DELETED, so the builtin `trunk()` applies
-    /// again. Both edits key on the remote name alone. The file is the one this repo's
-    /// config layer actually reads (`<config_dir>/jj/repos/<config-id>/config.toml`, or the
-    /// legacy `.jj/repo/config.toml`); if no such file exists, nothing is written and NONE
-    /// is created.
+    /// plain remote symbol naming this remote is DELETED — so the REPO layer stops defining
+    /// `trunk()` and whatever the rest of the stack resolves to applies instead, which is
+    /// the builtin unless the workspace or user layer defines a `trunk()` of its own. Both
+    /// edits key on the remote name alone, and only the repo layer is touched. The file is
+    /// the one this repo's config layer actually reads
+    /// (`<config_dir>/jj/repos/<config-id>/config.toml`, or the legacy
+    /// `.jj/repo/config.toml`); if no such file exists, nothing is written and NONE is
+    /// created.
     ///
-    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
-    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
-    /// refusal raised late — including a failed repo-config rewrite, which drops the
-    /// transaction — can leave the git config already rewritten; and a reload failure is
-    /// reported only AFTER the operation has committed, discarding an otherwise-successful
-    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
-    /// rather than assuming the pre-call one.
+    /// **An `Err` does NOT mean "nothing happened."** The repo-level jj config is read
+    /// before the transaction opens, so a read-side config fault refuses with nothing
+    /// mutated at all; but jj-lib writes the git config file BEFORE the git-ref edits, and
+    /// both happen before the transaction commits, so a refusal raised late — including a
+    /// failed repo-config WRITE, which drops the transaction — can leave the git config
+    /// already rewritten; and a reload failure is reported only AFTER the operation has
+    /// committed, discarding an otherwise-successful [`crate::MutationResult`]. Re-read
+    /// [`Repo::list_remotes`] to learn the actual state rather than assuming the pre-call
+    /// one.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::Config`] — the repo-level jj config file exists but could not
-    ///   be read, is not valid TOML, or could not be written back; or `.jj/repo/config-id`
-    ///   is malformed (refused before anything is mutated).
+    /// - [`crate::MutateError::Config`] — the repo-level jj config could not be READ (a
+    ///   malformed `.jj/repo/config-id`, an unreadable file, invalid TOML), refused before
+    ///   anything is mutated; or it could not be WRITTEN back, which aborts the transaction
+    ///   after jj-lib's git-config edit has landed.
     /// - [`crate::MutateError::RemoteNotFound`] — no such remote.
     /// - [`crate::MutateError::RemoteNonstandardConfig`] — jj refuses to rewrite this
     ///   remote's git config (a remote added with a push URL is exactly this case).
@@ -892,19 +900,22 @@ impl Repo {
     /// `git_remote_rename("nonexistent", "git")` reports the reserved-name refusal. That
     /// ordering is jj-lib's own and is reproduced, not corrected.
     ///
-    /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
-    /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
-    /// refusal raised late — including a failed repo-config rewrite, which drops the
-    /// transaction — can leave the git config already rewritten; and a reload failure is
-    /// reported only AFTER the operation has committed, discarding an otherwise-successful
-    /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
-    /// rather than assuming the pre-call one.
+    /// **An `Err` does NOT mean "nothing happened."** The repo-level jj config is read
+    /// before the transaction opens, so a read-side config fault refuses with nothing
+    /// mutated at all; but jj-lib writes the git config file BEFORE the git-ref edits, and
+    /// both happen before the transaction commits, so a refusal raised late — including a
+    /// failed repo-config WRITE, which drops the transaction — can leave the git config
+    /// already rewritten; and a reload failure is reported only AFTER the operation has
+    /// committed, discarding an otherwise-successful [`crate::MutationResult`]. Re-read
+    /// [`Repo::list_remotes`] to learn the actual state rather than assuming the pre-call
+    /// one.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::Config`] — the repo-level jj config file exists but could not
-    ///   be read, is not valid TOML, or could not be written back; or `.jj/repo/config-id`
-    ///   is malformed (refused before anything is mutated).
+    /// - [`crate::MutateError::Config`] — the repo-level jj config could not be READ (a
+    ///   malformed `.jj/repo/config-id`, an unreadable file, invalid TOML), refused before
+    ///   anything is mutated; or it could not be WRITTEN back, which aborts the transaction
+    ///   after jj-lib's git-config edit has landed.
     /// - [`crate::MutateError::InvalidInput`] — `new_name` is the reserved `git`, contains
     ///   a slash, or is not a valid gix remote name.
     /// - [`crate::MutateError::RemoteNotFound`] — `old_name` has no configured remote.

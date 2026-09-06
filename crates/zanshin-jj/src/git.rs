@@ -33,6 +33,14 @@
 //! created: with no repo-level config file the rewrite is a no-op. The CLI's two `ui.status`
 //! lines announcing it are terminal UX and are NOT ported — the effect they announce is.
 //!
+//! The config file is RESOLVED AND LOADED before the transaction opens, and only the moved-in
+//! `ConfigFile` is written inside the closure. That is the CLI's ordering, not a refinement of
+//! it: its repo layer is parsed at process start, so a malformed `config-id`, an unreadable
+//! file or unparseable TOML makes the CLI refuse before `git::remove_remote` touches the git
+//! config. Here likewise — such a refusal leaves NOTHING mutated, git config included. Only a
+//! `save()` failure can still abort the transaction after jj-lib's git-config edit has landed,
+//! which is the asymmetry the CLI's own `?` produces.
+//!
 //! # Deliberate divergences from the CLI at v0.44.0
 //!
 //! - **No colocated skip.** `git import`/`git export` refuse in a colocated workspace with
@@ -447,8 +455,10 @@ pub(crate) fn git_remote_add(
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — the repo-level jj config file exists but could not be read,
-///   is not valid TOML, or could not be written back; or `.jj/repo/config-id` is malformed.
+/// - [`MutateError::Config`] — the repo-level jj config could not be read (a malformed
+///   `.jj/repo/config-id`, an unreadable file, invalid TOML), in which case NOTHING is
+///   mutated; or it could not be written back, which aborts the transaction after jj-lib's
+///   git-config edit has already landed.
 /// - [`MutateError::RemoteNotFound`] — no such remote.
 /// - [`MutateError::RemoteNonstandardConfig`] — the remote's `[remote "…"]` section carries
 ///   a key outside `url`/`fetch`/`tagOpt` (a remote added WITH a push URL is exactly this
@@ -459,12 +469,13 @@ pub(crate) fn git_remote_add(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_remove(workspace: &mut Workspace, name: &str) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
-    // Resolved BEFORE the transaction opens, so a malformed `config-id` refuses before
-    // anything at all is mutated.
-    let config_path = crate::config::existing_repo_config_path(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), |tx| {
+    // Resolved AND LOADED before the transaction opens, so every read-side fault — a
+    // malformed `config-id`, an unreadable file, invalid TOML — refuses before anything at
+    // all is mutated, exactly as the CLI's start-up-parsed repo layer does.
+    let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
+    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), move |tx| {
         git::remove_remote(tx.repo_mut(), &remote).map_err(map_remote_mgmt_err)?;
-        crate::config::remove_remote_from_repo_config(config_path.as_deref(), name).map_err(mutate::cfg)
+        crate::config::remove_remote_from_repo_config(config_file, name).map_err(mutate::cfg)
     })?;
     Ok(finished.mutation)
 }
@@ -484,8 +495,10 @@ pub(crate) fn git_remote_remove(workspace: &mut Workspace, name: &str) -> Result
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — the repo-level jj config file exists but could not be read,
-///   is not valid TOML, or could not be written back; or `.jj/repo/config-id` is malformed.
+/// - [`MutateError::Config`] — the repo-level jj config could not be read (a malformed
+///   `.jj/repo/config-id`, an unreadable file, invalid TOML), in which case NOTHING is
+///   mutated; or it could not be written back, which aborts the transaction after jj-lib's
+///   git-config edit has already landed.
 /// - [`MutateError::InvalidInput`] — `new_name` is the reserved `git`, contains a slash, or
 ///   is not a valid gix remote name.
 /// - [`MutateError::RemoteNotFound`] — `old_name` has no configured remote.
@@ -503,11 +516,11 @@ pub(crate) fn git_remote_rename(
     let old: RemoteNameBuf = old_name.into();
     let new: RemoteNameBuf = new_name.into();
     let description = format!("rename git remote {old_name} to {new_name}");
-    // Resolved BEFORE the transaction opens — see `git_remote_remove`.
-    let config_path = crate::config::existing_repo_config_path(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &description, |tx| {
+    // Resolved AND LOADED before the transaction opens — see `git_remote_remove`.
+    let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
+    let finished = mutate::finish_or_no_op(workspace, &description, move |tx| {
         git::rename_remote(tx.repo_mut(), &old, &new).map_err(map_remote_mgmt_err)?;
-        crate::config::rename_remote_in_repo_config(config_path.as_deref(), old_name, new_name).map_err(mutate::cfg)
+        crate::config::rename_remote_in_repo_config(config_file, old_name, new_name).map_err(mutate::cfg)
     })?;
     Ok(finished.mutation)
 }

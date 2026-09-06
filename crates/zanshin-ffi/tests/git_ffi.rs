@@ -530,8 +530,9 @@ fn git_remote_remove_rewrites_the_repo_config_across_the_boundary() {
 }
 
 /// The rewrite's own failure mode crossing the boundary: an unparseable repo-level config
-/// makes both remote verbs answer `jj.config_error` — a code neither of them could reach
-/// before this rewrite was ported.
+/// makes `remove` answer `jj.config_error` — a code it could not reach before this rewrite
+/// was ported. `git_remote_rename_with_an_unparseable_repo_config_returns_jj_config_error`
+/// is the rename twin.
 #[test]
 fn git_remote_remove_with_an_unparseable_repo_config_returns_jj_config_error() {
     pin_env();
@@ -585,6 +586,32 @@ fn git_remote_rename_happy_path_and_reserved_new_name_refusal() {
     // SAFETY: both are valid NUL-terminated C strings alive for the call.
     let refused = unsafe { read_and_free(zanshin_git_remote_rename(handle, missing.as_ptr(), reserved.as_ptr())) };
     assert_eq!(error_code(&refused), JJ_INVALID_INPUT);
+
+    close_handle(handle);
+}
+
+/// Rename's own `jj.config_error` witness. It is not `remove`'s: the rename arm rewrites the
+/// alias with `set_value` where `remove` deletes it, so the code its rustdoc and its
+/// `docs/ffi-abi.md` row advertise needs its own row crossing the boundary.
+#[test]
+fn git_remote_rename_with_an_unparseable_repo_config_returns_jj_config_error() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    let req = add_request_bytes(Some("origin"), Some("/tmp/nowhere"), None);
+    // SAFETY: req outlives the call.
+    unsafe { read_and_free(zanshin_git_remote_add(handle, req.as_ptr(), req.len())) };
+    fs::write(
+        tmp.path().join(".jj").join("repo").join("config.toml"),
+        "not = = toml\n",
+    )
+    .expect("repo config must be writable");
+
+    let old = cstr("origin");
+    let new = cstr("upstream");
+    // SAFETY: both are valid NUL-terminated C strings alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_git_remote_rename(handle, old.as_ptr(), new.as_ptr())) };
+    assert_eq!(error_code(&bytes), JJ_CONFIG_ERROR);
 
     close_handle(handle);
 }

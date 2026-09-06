@@ -28,13 +28,28 @@ use zanshin_jj::{Backend, MutateError, Repo};
 
 // ── Harness ───────────────────────────────────────────────────────────────────────
 
-static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
-    env::set_var("JJ_CONFIG", "");
-    env::set_var("GIT_CONFIG_GLOBAL", "");
+/// The process-lifetime `$XDG_CONFIG_HOME` this suite runs under — deliberately LEAKED
+/// (`TempDir::keep`), because it must outlive every test and there is no teardown hook that
+/// could outlive them all.
+///
+/// Pinning it matters for more than hygiene: `config.rs` resolves the repo layer to
+/// `$XDG_CONFIG_HOME/jj/repos/<config-id>/config.toml` and only falls back to the legacy
+/// `.jj/repo/config.toml` when no `config-id` exists — so without a pin the canonical rows
+/// below would address a path under the DEVELOPER's real `$HOME`.
+static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
+    let xdg = TempDir::new().expect("xdg tempdir").keep();
+    // SAFETY: set once, before any test body runs, and never changed afterwards.
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("XDG_CONFIG_HOME", &xdg);
+    }
+    xdg
 });
 
-fn pin_env() {
-    LazyLock::force(&ENV_GUARD);
+/// Pins the process environment; returns the pinned `$XDG_CONFIG_HOME`.
+fn pin_env() -> &'static Path {
+    &ENV_GUARD
 }
 
 /// Run a git command in `dir`; panics on non-zero exit.
@@ -259,11 +274,20 @@ fn git_remote_remove_refuses_a_missing_remote() {
 ///
 /// The section has to be created with plain `git`, because `git_remote_add` (correctly)
 /// refuses the name.
+///
+/// This is also the row that pins WHERE the repo-config rewrite sits: it runs BEFORE the
+/// CLI's `has_changes()` guard, so it must happen even though no operation is written. A
+/// repo config is present here for exactly that reason — gating the rewrite on a committed
+/// transaction would leave every other row green and only fail here.
 #[test]
 fn git_remote_remove_of_the_reserved_git_remote_writes_no_operation() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     git_cmd(&["remote", "add", "git", &url], &git_store(tmp.path()));
+    let config_path = write_repo_config(
+        tmp.path(),
+        "[remotes.git]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@git'\n",
+    );
     let mut repo = Repo::open(tmp.path()).expect("open AFTER the config write");
     assert_eq!(remote_names(&repo), vec!["git".to_owned()], "precondition");
     let before = head_op_id(&repo);
@@ -278,6 +302,12 @@ fn git_remote_remove_of_the_reserved_git_remote_writes_no_operation() {
     );
     assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
     assert!(remote_names(&repo).is_empty(), "the git config really was rewritten");
+
+    let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
+    assert!(
+        !after.contains("[remotes.git]") && !after.contains("trunk()"),
+        "the repo-config rewrite runs even when NO operation is written: {after:?}"
+    );
 }
 
 /// A remote ADDED with a push URL cannot afterwards be removed: jj-lib's own `save_remote`
@@ -377,12 +407,17 @@ fn git_remote_rename_refuses_a_missing_old_name_and_a_taken_new_name() {
 }
 
 /// Renaming FROM the reserved remote `git` rewrites the git config and refs but touches no
-/// jj view state, so no operation is written — the same guard `remove` carries.
+/// jj view state, so no operation is written — the same guard `remove` carries, and the same
+/// reason a repo config is present: the rewrite must survive the no-operation path.
 #[test]
 fn git_remote_rename_from_the_reserved_git_remote_writes_no_operation() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     git_cmd(&["remote", "add", "git", &url], &git_store(tmp.path()));
+    let config_path = write_repo_config(
+        tmp.path(),
+        "[remotes.git]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@git'\n",
+    );
     let mut repo = Repo::open(tmp.path()).expect("open AFTER the config write");
     let before = head_op_id(&repo);
 
@@ -399,6 +434,16 @@ fn git_remote_rename_from_the_reserved_git_remote_writes_no_operation() {
         remote_names(&repo),
         vec!["origin".to_owned()],
         "the git config really was rewritten"
+    );
+
+    let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
+    assert!(
+        after.contains("[remotes.origin]") && !after.contains("[remotes.git]"),
+        "the repo-config rewrite runs even when NO operation is written: {after:?}"
+    );
+    assert!(
+        after.contains("'trunk()' = \"main@origin\"\n"),
+        "…including the alias re-point: {after:?}"
     );
 }
 
@@ -567,18 +612,26 @@ fn a_remote_added_externally_can_be_renamed_and_removed_through_the_same_handle(
 //
 // A workspace created by `Repo::init` carries no `.jj/repo/config-id`, so the legacy
 // `.jj/repo/config.toml` IS this repo's config layer — the same fact `tests/revset.rs`'s
-// repo-layer rows rely on.
+// repo-layer rows rely on. `the_canonical_config_id_addressed_file_is_the_one_rewritten`
+// covers the OTHER half, the 0.44.0 layout under the pinned `$XDG_CONFIG_HOME`, which the
+// legacy fallback would otherwise leave untested.
 
 /// Path of the repo-level config layer of a `Repo::init`ed workspace.
 fn repo_config_path(root: &Path) -> PathBuf {
     root.join(".jj").join("repo").join("config.toml")
 }
 
+/// Writes `body` as the repo-level config layer and returns its path.
+fn write_repo_config(root: &Path, body: &str) -> PathBuf {
+    let path = repo_config_path(root);
+    fs::write(&path, body).expect("repo config must be writable");
+    path
+}
+
 /// A repo config with `[remotes.origin]` and a `trunk()` pinned to `origin`.
 fn write_pinned_repo_config(root: &Path) -> PathBuf {
-    let path = repo_config_path(root);
-    fs::write(
-        &path,
+    write_repo_config(
+        root,
         "# keep me\n\
          [revsets]\n\
          log = \"mine\"\n\n\
@@ -590,8 +643,6 @@ fn write_pinned_repo_config(root: &Path) -> PathBuf {
          'trunk()' = 'main@origin'\n\
          'wip()' = 'description(\"wip\")'\n",
     )
-    .expect("repo config must be writable");
-    path
 }
 
 /// `trunk()` evaluated through the SAME handle: `Ok` with the resolved changes, or the
@@ -662,10 +713,17 @@ fn rename_moves_the_repo_config_section_and_repoints_the_trunk_alias() {
         !after.contains("[remotes.origin]"),
         "the old key must be gone: {after:?}"
     );
-    assert!(after.contains("upstream"), "the section must move: {after:?}");
+    // The SECTION, not just the re-pointed alias: `contains("upstream")` alone would stay
+    // green if the `[remotes.<old>]` → `[remotes.<new>]` move were dropped entirely.
+    assert!(after.contains("[remotes.upstream]"), "the section must move: {after:?}");
     assert!(
         after.contains("fetch-bookmarks = \"main\""),
         "the section's value survives the move: {after:?}"
+    );
+    // Pinned exactly rather than hedged across quotings: `set_value` re-emits the value.
+    assert!(
+        after.contains("'trunk()' = \"main@upstream\"\n"),
+        "the alias keeps its bookmark and names the new remote: {after:?}"
     );
 
     let refusal = eval_trunk(&repo).expect_err("`main@upstream` names no remote bookmark");
@@ -737,28 +795,125 @@ fn a_malformed_config_id_refuses_before_anything_is_mutated() {
     assert_eq!(head_op_id(&repo), before, "and no operation was written");
 }
 
-/// A rewrite failure inside the closure drops the transaction, so NO operation is written —
-/// while the git-config edit jj-lib already performed stands. That asymmetry is the CLI's
-/// own (its `?` aborts the same way) and is exactly what the facades' "an `Err` does not
-/// mean nothing happened" paragraph is about.
+/// Every READ-side config fault is raised before the transaction opens — the file is loaded
+/// there, exactly as the CLI parses its repo layer at process start — so an unparseable repo
+/// config leaves NOTHING mutated: no operation, and no git-config edit either.
 #[test]
-fn an_unparseable_repo_config_aborts_the_transaction_but_not_the_git_config_edit() {
+fn an_unparseable_repo_config_refuses_before_anything_is_mutated() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
     let before = head_op_id(&repo);
-    fs::write(repo_config_path(tmp.path()), "not = = toml\n").expect("repo config must be writable");
+    write_repo_config(tmp.path(), "not = = toml\n");
 
     let err = repo
         .git_remote_remove("origin")
         .expect_err("an unparseable repo config must refuse");
 
     assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
+    assert_eq!(head_op_id(&repo), before, "no operation was written");
+    assert_eq!(
+        remote_names(&repo),
+        vec!["origin".to_owned()],
+        "and jj-lib's git-config edit never ran either — the load precedes it"
+    );
+}
+
+/// Rename reaches the same code by a different arm (`set_value`, not `delete_value`), so it
+/// gets its own refusal row rather than inheriting `remove`'s.
+#[test]
+fn an_unparseable_repo_config_refuses_rename_too_before_anything_is_mutated() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+    let before = head_op_id(&repo);
+    write_repo_config(tmp.path(), "not = = toml\n");
+
+    let err = repo
+        .git_remote_rename("origin", "upstream")
+        .expect_err("an unparseable repo config must refuse");
+
+    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
+    assert_eq!(head_op_id(&repo), before, "no operation was written");
+    assert_eq!(
+        remote_names(&repo),
+        vec!["origin".to_owned()],
+        "and the git config was not rewritten"
+    );
+}
+
+/// The other ordering, and the only one that can still abort a transaction late: an
+/// UNWRITABLE repo config loads fine, so the refusal lands on `save()` — after jj-lib has
+/// already rewritten the git config. That asymmetry is the CLI's own (its `?` aborts the
+/// same way) and is exactly what the facades' "an `Err` does not mean nothing happened"
+/// paragraph is about. Both orderings stay pinned so neither can drift into the other.
+#[test]
+fn an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+    let before = head_op_id(&repo);
+    let config_path = write_pinned_repo_config(tmp.path());
+    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o444)).expect("chmod");
+
+    let err = repo
+        .git_remote_remove("origin")
+        .expect_err("an unwritable repo config must refuse");
+
+    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644)).expect("chmod back");
+    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
     assert_eq!(head_op_id(&repo), before, "the transaction was dropped");
     assert!(
         remote_names(&repo).is_empty(),
-        "jj-lib's own git-config edit ran before the rewrite and is NOT rolled back"
+        "jj-lib's own git-config edit ran before the save and is NOT rolled back"
+    );
+}
+
+/// The canonical 0.44.0 layout, which every other row here reaches only through the LEGACY
+/// `.jj/repo/config.toml` fallback: with a valid `config-id`, the file that must be rewritten
+/// lives at `$XDG_CONFIG_HOME/jj/repos/<id>/config.toml`. Swapping `repos` for anything else
+/// in the resolver would disable the rewrite on every real repo while leaving the legacy rows
+/// green, so this row is what makes the resolver's own composition load-bearing.
+#[test]
+fn the_canonical_config_id_addressed_file_is_the_one_rewritten() {
+    let xdg = pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let id = "0f1e2d3c4b5a69788796";
+    fs::write(tmp.path().join(".jj").join("repo").join("config-id"), id).expect("config-id must be writable");
+    let canonical_dir = xdg.join("jj").join("repos").join(id);
+    fs::create_dir_all(&canonical_dir).expect("the canonical config dir must be creatable");
+    let canonical = canonical_dir.join("config.toml");
+    fs::write(
+        &canonical,
+        "[remotes.origin]\nfetch-bookmarks = \"main\"\n\n[revset-aliases]\n'trunk()' = 'main@origin'\n",
+    )
+    .expect("the canonical config must be writable");
+    // Present on purpose: with a valid id file the legacy path is neither read nor written.
+    let legacy = write_repo_config(tmp.path(), "[revsets]\nlog = \"legacy\"\n");
+
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+    repo.git_remote_remove("origin").expect("remove");
+
+    let after = fs::read_to_string(&canonical).expect("the canonical config must still be readable");
+    assert!(
+        !after.contains("[remotes.origin]") && !after.contains("trunk()"),
+        "the config-id-addressed file is the one rewritten: {after:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&legacy).expect("readable"),
+        "[revsets]\nlog = \"legacy\"\n",
+        "the legacy file is neither read nor written once a config-id exists"
+    );
+    assert_eq!(
+        eval_trunk(&repo),
+        Ok(1),
+        "the same-session read-back must agree: the rewritten file IS this repo's repo layer"
     );
 }
 

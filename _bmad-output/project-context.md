@@ -571,7 +571,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **NEVER parse `jj` CLI output strings.** Even for "just a quick lookup".
   Structured access through the adapter is the WHOLE POINT.
 - **NEVER diverge from the jj CLI's observable behavior** for a given input — same verbs,
-  preconditions, refusals, op-log effect. The CLI is the semantic oracle (read at the pinned
+  preconditions, refusals, op-log effect. Observable behaviour includes every ON-DISK, repo-side
+  effect the CLI produces (its repo-level config rewrites, for instance), not only the op-log and
+  refusals; only the terminal UX is replaced. The CLI is the semantic oracle (read at the pinned
   tag in `../jj`), but only for behavior: Zanshin REPLACES its terminal UX (no TUI/`$EDITOR`/
   pager/prompts/templated stdout); interactive verbs take a GUI-supplied `TreeId`. (NFR-R-2, ADR-0003)
 - **NEVER bake in a default path or silently pick a parameter the jj CLI leaves to the user.**
@@ -744,7 +746,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `~/.claude/projects/.../memory/project_zanshin.md` — auto-memory snapshot
   of the 12 validated architectural decisions (2026-05-15)
 
-Last Updated: 2026-08-23 (Story 4.4: the `zanshin-graph` slice API is `collect_lanes`, a collect-all over the lazy `stream_lanes` stream — the render-slice-over-cache performance gotcha is retired; windowing deferred past WIP.)
+Last Updated: 2026-09-06 (Epic 9 follow-up J: the CLI-parity anti-pattern now binds every ON-DISK, repo-side effect the CLI produces — its repo-level config rewrites included — not just op-log and refusals.)
 Previously: 2026-06-27 (ADR-0003 adopted: `zanshin-jj` exposes the jj CLI's operation set as a typed verb-level API over jj-lib — we compose, consumers name the verb; no mutation primitives cross FFI (impossible — borrowed handles/locks; transaction stays Rust-side); reads add a generic `eval_revset` joker + direct `View`; a shared support module re-ports the `cli_util` orchestration jj-lib doesn't expose. Backed by the jj-0.42 feasibility map (69 ops mapped+verified). Pin bump 0.41→0.42 is the first impl step.)
 Previously: 2026-06-22 (ADR-0002 adopted: the repo handle is a warm `Workspace` loader + op-heads-watcher owner that re-resolves per operation, NOT an authoritative state cache; app is multi-repo (0..N handles); FR-GR-3 lane-cache decision resolved (AC-4): the lane graph is streamed (GG model), no materialized cache — full derive ~3 ms @ 10k (Story 3.11). Performance-gotchas + handle-semantics sections reconciled.)
 Previously: 2026-06-20 (Relicensed Apache-2.0 → MIT per OD-2; SPDX headers, `LICENSE`, `Cargo.toml`, and planning docs updated. Apache-2.0 remains an accepted *dependency* license.)
