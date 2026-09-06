@@ -140,6 +140,24 @@ deferred:
     location: >-
       schemas/envelope.fbs
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-h-request-kind-tag, commit 4e4e710). Ralph's
+      call was a wrapper-side TYPE TAG, not a file_identifier: `enum RequestKind : ubyte` is now
+      field 0 of all 15 request tables, and one pub(crate) helper,
+      `envelope.rs::expect_request_kind`, refuses a mismatch with `ffi.invalid_argument` and
+      `request kind mismatch: expected <K>, got <K>` in `context`. The tag is per-WRAPPER, not
+      per-table, so `ChangeIdList` carries TWO kinds (`NewChange`, `Abandon`) — a per-table tag
+      would have left the parents-vs-change-ids collision, the destructive one, unrefused.
+      `Unspecified = 0` is FlatBuffers' absent-field default, so a buffer whose tag was never set
+      is byte-identical to a pre-tag one, decodes as `Unspecified`, and is always refused. The
+      refusal ORDER changed deliberately: all sixteen wrappers now read the buffer BEFORE
+      `session_from_handle`, so a mis-routed buffer is refused on its own merits rather than only
+      when the caller also holds a live handle. No new error code, no new `extern "C"` symbol, no
+      signature change (EXPECTED_EXPORTS stays 47); one `cargo make codegen` moved all four
+      committed outputs together. Witnessed by a table-driven wrong-kind test in each of the six
+      FFI suites, covering all sixteen wrappers plus an untagged case and a `handle == 0` row. `commit_views_ffi.rs::every_wrapper_refuses_a_buffer_built_for_another_verb`
+      is this story's witness, including the exact ShowRequest-fed-to-evolog feed described
+      above.
   - summary: >-
       `evolog`'s start set is unbounded and entries from several start commits interleave
       with no per-start grouping.

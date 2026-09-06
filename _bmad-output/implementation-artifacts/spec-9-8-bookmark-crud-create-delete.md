@@ -22,6 +22,27 @@ deferred:
     location: >-
       schemas/envelope.fbs (BookmarkCreateRequest / BookmarkDeleteRequest)
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-h-request-kind-tag, commit 4e4e710). Ralph's
+      call was a wrapper-side TYPE TAG, not a file_identifier: `enum RequestKind : ubyte` is now
+      field 0 of all 15 request tables, and one pub(crate) helper,
+      `envelope.rs::expect_request_kind`, refuses a mismatch with `ffi.invalid_argument` and
+      `request kind mismatch: expected <K>, got <K>` in `context`. The tag is per-WRAPPER, not
+      per-table, so `ChangeIdList` carries TWO kinds (`NewChange`, `Abandon`) — a per-table tag
+      would have left the parents-vs-change-ids collision, the destructive one, unrefused.
+      `Unspecified = 0` is FlatBuffers' absent-field default, so a buffer whose tag was never set
+      is byte-identical to a pre-tag one, decodes as `Unspecified`, and is always refused. The
+      refusal ORDER changed deliberately: all sixteen wrappers now read the buffer BEFORE
+      `session_from_handle`, so a mis-routed buffer is refused on its own merits rather than only
+      when the caller also holds a live handle. No new error code, no new `extern "C"` symbol, no
+      signature change (EXPECTED_EXPORTS stays 47); one `cargo make codegen` moved all four
+      committed outputs together. Witnessed by a table-driven wrong-kind test in each of the six
+      FFI suites, covering all sixteen wrappers plus an untagged case and a `handle == 0` row. This story's own cited evidence became the
+      witness: `a_zero_handle_is_refused_by_both_wrappers` no longer feeds ONE create buffer to
+      both wrappers (it builds the correct kind per wrapper, and its doc comment was rewritten),
+      and that cross-feed is now
+      `a_buffer_built_for_the_other_wrapper_is_refused_as_a_kind_mismatch`, asserted in BOTH
+      directions.
   - summary: >-
       session_from_handle is now duplicated verbatim in four zanshin-ffi modules.
     evidence: |-
