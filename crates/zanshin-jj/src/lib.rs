@@ -51,7 +51,7 @@ pub(crate) mod workspace;
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use commit_meta::{CommitMeta, CommitRef};
-pub use commit_views::{CommitViewError, EvologEntry, InterdiffView, ShowEntry};
+pub use commit_views::{CommitViewError, EvologEntry, InterdiffView, RevisionRef, ShowEntry};
 pub use config::{ConfigError, LogDefaults};
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};

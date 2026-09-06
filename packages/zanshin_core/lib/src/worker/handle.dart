@@ -2,7 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
-import '../ffi/commit_views.dart' show EvologEntry, InterdiffView, ShowEntry;
+import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
@@ -618,8 +618,8 @@ final class RepoHandle {
   ///
   /// A `null` [revset] applies the CLI's own default `@` — here the
   /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. Unlike
-  /// [interdiff]'s two sides, [revset] is a pass-through EXPRESSION, not a change
-  /// id: the CLI unions its revsets, so entries are per COMMIT — a revset naming
+  /// [interdiff]'s two single revisions, [revset] is a pass-through EXPRESSION:
+  /// the CLI unions its revsets, so entries are per COMMIT — a revset naming
   /// two commits of ONE divergent change yields two entries with the same
   /// `Change.id`, both flagged `divergent`. A BARE divergent change-id symbol does
   /// NOT get that far: jj-lib's own `SymbolResolver` refuses it
@@ -674,8 +674,9 @@ final class RepoHandle {
   /// silent.
   ///
   /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each
-  /// entry's predecessors — which [interdiff]'s change-id currency cannot address,
-  /// since they are hidden, so the two verbs do NOT currently compose into it.
+  /// entry's predecessors — so a caller composes the two verbs, feeding an
+  /// `EvologEntry.predecessorCommitIds` entry to [interdiff] as a [CommitIdRef],
+  /// the arm that reaches hidden commits.
   ///
   /// `EvologEntry.change` carries two fields derived against the CURRENT view
   /// rather than this version's moment: `divergent` (whether the change has
@@ -696,14 +697,16 @@ final class RepoHandle {
   /// Compare what two revisions each CHANGE, with the parent difference factored
   /// out (Story 9.6) — the CLI's `jj interdiff`.
   ///
-  /// Unlike [show], each side is a SINGLE revision (a jj reverse-hex CHANGE id).
-  /// Each inherits the CLI `resolve_single_rev`'s REFUSAL — a divergent id is
-  /// rejected rather than guessed — but NOT its address space: a side resolves to
-  /// the one VISIBLE commit carrying that change-id prefix, so a commit hex, a
-  /// revset expression (`main`, `@-`) and a HIDDEN commit are all unaddressable
-  /// here, where the CLI accepts all three. In particular the
-  /// `EvologEntry.predecessorCommitIds` [evolog] reports are hidden, so the two
-  /// verbs do NOT compose into a version-to-version diff. An absent side is `@` —
+  /// Unlike [show], each side is a SINGLE revision, written as a [ChangeIdRef]
+  /// (the house reverse-hex change-id prefix) or a [CommitIdRef] (a commit-id hex
+  /// prefix). Each inherits the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
+  /// revision is rejected rather than guessed. A [ChangeIdRef] resolves only to the
+  /// currently VISIBLE commit carrying it; a [CommitIdRef] resolves through jj's
+  /// index, which ignores visibility, so the
+  /// `EvologEntry.predecessorCommitIds` [evolog] reports — hidden by construction
+  /// — ARE addressable and the two verbs compose into a version-to-version diff.
+  /// A revset expression (`main`, `@-`) is still unaddressable on either arm,
+  /// where the CLI accepts one. An absent side is `@` —
   /// but omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
   /// required argument group: interdiffing `@` against itself is trivially empty
   /// and never what a caller meant.
@@ -726,8 +729,9 @@ final class RepoHandle {
   /// This read writes no operation — the rebase behind it is in-memory only.
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
-  Future<InterdiffView> interdiff({String? from, String? to, List<String> paths = const <String>[]}) {
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error` —
+  /// an ambiguous [CommitIdRef] prefix — `jj.jj_lib_error`).
+  Future<InterdiffView> interdiff({RevisionRef? from, RevisionRef? to, List<String> paths = const <String>[]}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -799,7 +803,9 @@ final class RepoHandle {
   /// A `null` [revision] is the CLI's own `-r` default `@` — the LAST-SNAPSHOTTED
   /// working-copy commit, since Zanshin never snapshots. It is a jj reverse-hex
   /// CHANGE id, so a divergent one is refused rather than guessed, and a commit
-  /// hex, a revset expression and a hidden commit are unaddressable.
+  /// hex, a revset expression and a hidden commit are unaddressable. ([interdiff]
+  /// used to make the same trade; it gained a [CommitIdRef] arm, and this verb was
+  /// deliberately left alone.)
   ///
   /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
   /// whose second name already exists creates NOTHING — not even the first — and

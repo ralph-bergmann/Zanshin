@@ -18,13 +18,13 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{ChangeId, CommitViewError, EvologEntry, InterdiffView, ShowEntry};
+use zanshin_jj::{ChangeId, CommitId, CommitViewError, EvologEntry, InterdiffView, RevisionRef, ShowEntry};
 
 use crate::change::change_offset;
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, reject_null_request, session_from_handle,
-    FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request,
+    session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
+    JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -72,11 +72,43 @@ struct EvologRequestOwned {
 }
 
 /// Owned Rust form of an `InterdiffRequest` buffer. Both revisions are `Option`: an absent side
-/// is `@`, and BOTH absent is refused by `zanshin-jj` (the CLI's `ArgGroup`).
+/// is `@`, and BOTH absent is refused by `zanshin-jj` (the CLI's `ArgGroup`). Each present side
+/// keeps the wire union's arm, because the two arms resolve differently — the change-id one to a
+/// VISIBLE commit, the commit-id one through the visibility-blind index.
 struct InterdiffRequestOwned {
-    from: Option<ChangeId>,
-    to: Option<ChangeId>,
+    from: Option<RevisionRef>,
+    to: Option<RevisionRef>,
     paths: Vec<String>,
+}
+
+/// Lift ONE `RevisionRef` union field into `zanshin-jj`'s `Option<RevisionRef>`.
+///
+/// `NONE` is a genuinely ABSENT side (the CLI's `@` default) and never a lost discriminant: a
+/// union's two vtable slots are checked TOGETHER by `Verifier::visit_union`
+/// (`flatbuffers verifier.rs`), which refuses any (present, absent) pair as an inconsistent
+/// union at ladder rung 2 — before this reader runs. An out-of-RANGE tag byte does verify (a
+/// union tag is range-checked no more than a plain enum is), so its refusal is this function's
+/// own, and it names the tag. An absent inner `id` under a present tag is the reader's
+/// required-field guard, ladder rung 4.
+fn read_revision_ref(
+    tag: fbs::RevisionRef,
+    change: Option<&str>,
+    commit: Option<&str>,
+    field: &str,
+) -> Result<Option<RevisionRef>, FfiErrorObj> {
+    match tag {
+        fbs::RevisionRef::NONE => Ok(None),
+        fbs::RevisionRef::ChangeIdRef => Ok(Some(RevisionRef::ChangeId(ChangeId(
+            change.ok_or_else(|| missing_field(&format!("{field}.id")))?.to_owned(),
+        )))),
+        fbs::RevisionRef::CommitIdRef => Ok(Some(RevisionRef::CommitId(CommitId(
+            commit.ok_or_else(|| missing_field(&format!("{field}.id")))?.to_owned(),
+        )))),
+        other => Err(FfiErrorObj {
+            code: FFI_INVALID_ARGUMENT.to_owned(),
+            context: Some(format!("unknown {field} revision ref: {other:?}")),
+        }),
+    }
 }
 
 /// Parse a `ShowRequest` buffer into an owned [`ShowRequestOwned`].
@@ -125,8 +157,9 @@ fn read_evolog_request(data: *const u8, len: usize) -> Result<EvologRequestOwned
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its
-///   `kind` is not `Interdiff`.
+/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, its
+///   `kind` is not `Interdiff`, or a `RevisionRef` discriminant is outside the union.
+/// - `jj.invalid_input` — a present `RevisionRef` carries no `id`.
 fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
@@ -135,8 +168,18 @@ fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffReques
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::Interdiff)?;
     Ok(InterdiffRequestOwned {
-        from: req.from().map(|s| ChangeId(s.to_owned())),
-        to: req.to().map(|s| ChangeId(s.to_owned())),
+        from: read_revision_ref(
+            req.from_type(),
+            req.from_as_change_id_ref().and_then(|r| r.id()),
+            req.from_as_commit_id_ref().and_then(|r| r.id()),
+            "from",
+        )?,
+        to: read_revision_ref(
+            req.to_type(),
+            req.to_as_change_id_ref().and_then(|r| r.id()),
+            req.to_as_commit_id_ref().and_then(|r| r.id()),
+            "to",
+        )?,
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
 }
@@ -327,12 +370,14 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// identified by `handle` — the CLI's `jj interdiff`.
 ///
 /// The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
-/// `zanshin_show`, both sides are single jj reverse-hex CHANGE IDS. They inherit the CLI
-/// `resolve_single_rev`'s REFUSAL — a divergent id is rejected rather than guessed — but NOT
-/// its address space: each side resolves to the one VISIBLE commit carrying that change-id
-/// prefix, so a commit hex, a revset expression and a HIDDEN commit are all unaddressable
-/// here, where the CLI accepts all three. In particular the predecessors `zanshin_evolog`
-/// reports are hidden, so the two cannot be composed into a version-to-version diff. An
+/// `zanshin_show`, each side is a SINGLE revision, carried by the schema's `RevisionRef` UNION:
+/// a `ChangeIdRef` is the house reverse-hex change-id prefix, resolved to the one VISIBLE commit
+/// carrying it, and a `CommitIdRef` is a commit-id hex prefix resolved through jj-lib's index,
+/// which is visibility-BLIND. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
+/// revision is rejected rather than guessed, never resolved to one of the candidates. The
+/// commit-id arm is what makes the predecessors `zanshin_evolog` reports — hidden by
+/// construction — addressable, so the two verbs compose into a version-to-version diff. A revset
+/// expression remains unaddressable on either arm, where the CLI accepts one. An
 /// absent side is `@`; omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
 /// `ArgGroup … required(true)`. `paths` entries are repo-relative PREFIXES; an empty list means
 /// all paths, and a filter matching nothing yields an empty list rather than a refusal.
@@ -353,14 +398,20 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its `kind`
-///   is not `Interdiff`, i.e. the buffer was built for a different wrapper.
-/// - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
-///   not a valid repo path; detail in `context`.
-/// - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
-///   or only-hidden), or divergent; the offending id in `context`. An ABSENT side is not an error
-///   — ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the
-///   `jj.invalid_input` bullet above.
+/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer (an
+///   inconsistent `RevisionRef` union — one of its two vtable slots set — is refused here by the
+///   verifier), its `kind` is not `Interdiff`, i.e. the buffer was built for a different wrapper,
+///   or a `RevisionRef` discriminant is outside the union; the offending tag in `context`.
+/// - `jj.invalid_input` — both `from` and `to` are absent from the buffer, a present
+///   `RevisionRef` carries no `id`, a `CommitIdRef` is empty or not valid hex, or a `paths` entry
+///   is not a valid repo path; detail in `context`.
+/// - `jj.change_not_found` — a `ChangeIdRef` is malformed, carried by no VISIBLE commit (unknown
+///   or only-hidden), or divergent; or a `CommitIdRef` is valid hex that no indexed commit
+///   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
+///   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
+///   bullet above.
+/// - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
+///   jj-lib's own ambiguity wording in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety

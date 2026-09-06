@@ -156,11 +156,22 @@ call). Five distinct refusals sit at five distinct layers:
 
 Row 4 is the *reader's* own required-field guard, which only four readers have
 (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
-and `url`, `interdiff`'s from+to pair). Refusals raised further in — an empty
-`names` vector, an unparseable pattern — come from the jj layer and therefore
-land AFTER row 5, not at row 4. The per-symbol `# Errors` bullets in
+and `url`, `interdiff`'s `from.id` / `to.id` — the `id` inside a present
+`RevisionRef` union arm). `interdiff`'s "at least one of from or to" refusal is
+*not* row 4: an absent side is a legal value there, and the pair is judged by the
+jj layer after row 5. Refusals raised further in — an empty `names` vector, an
+unparseable pattern, a malformed commit-id prefix — likewise come from the jj
+layer and land AFTER row 5. The per-symbol `# Errors` bullets in
 `zanshin_ffi.h` are an inventory, not an evaluation order; this table is the
 order.
+
+`InterdiffRequest`'s two `RevisionRef` unions add one refusal *shape* to row 2:
+a union occupies two vtable slots (discriminant + value) and
+`Verifier::visit_union` requires them present or absent **together**, so a
+half-written union is an inconsistent-union failure at row 2 rather than
+anything the reader ever sees. An out-of-**range** discriminant byte does verify
+— a union tag is range-checked no more than a plain enum is — and is refused by
+the reader, as `ffi.invalid_argument` naming the tag.
 
 A **zero-length or garbage buffer** fails verification, so it lands on
 `ffi.invalid_argument` — never on `ffi.null_pointer`. Only a genuinely null
@@ -223,6 +234,12 @@ committed codegen sides in the same commit.
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
 one caller, and no table is orphaned. 15 tables + 1 shared reuse = the 16
 request-buffer symbols.
+
+`ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
+members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
+so they are nested values, never a buffer root: nothing verifies them
+standalone, and they carry no `kind` tag of their own — the tag belongs to the
+request table that owns them.
 
 #### The `RequestKind` tag
 
@@ -309,7 +326,7 @@ or no `# Errors` block.
 | `zanshin_graph_slice` | `(uint64_t handle, const char *revset, const char *prioritize, bool synthetic_elided, const char *short_prefixes)` | — | `GraphSlice` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`, `jj.config_error`, `graph.dangling_edge` | 4.6 (+4.8) |
 | `zanshin_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ShowRequest` | `ShowView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_evolog` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `EvologRequest` | `EvologView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error` | 9.6 |
-| `zanshin_interdiff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `InterdiffRequest` | `InterdiffView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error` | 9.6 |
+| `zanshin_interdiff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `InterdiffRequest` | `InterdiffView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_file_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileListRequest` | `FileList` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileShowRequest` | `FileContents` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.path_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_annotate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileAnnotateRequest` | `FileAnnotation` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`, `jj.jj_lib_error` | 9.4 |

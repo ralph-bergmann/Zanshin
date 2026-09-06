@@ -163,7 +163,7 @@ void main() {
 
       // One side is enough; the other defaults to `@`. Comparing `@` with itself is
       // trivially empty — which is exactly the empty-payload decode path.
-      final InterdiffView view = await handle.interdiff(from: status.workingCopyChangeId);
+      final InterdiffView view = await handle.interdiff(from: ChangeIdRef(status.workingCopyChangeId));
       expect(view.fileChanges, isEmpty);
       // The fast path returns `from`'s own tree — here `@`, which is clean — so
       // nothing is conflicted. This
@@ -180,7 +180,7 @@ void main() {
 
       // A revision that does not resolve can only be refused if `from` reached Rust.
       await expectLater(
-        handle.interdiff(from: 'nonexistentchangeid'),
+        handle.interdiff(from: const ChangeIdRef('nonexistentchangeid')),
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.change_not_found')
@@ -190,8 +190,49 @@ void main() {
 
       // A malformed prefix proves `paths` crossed too.
       await expectLater(
-        handle.interdiff(to: 'nonexistentchangeid', paths: ['/absolute.txt']),
+        handle.interdiff(to: const ChangeIdRef('nonexistentchangeid'), paths: ['/absolute.txt']),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+
+      await handle.close();
+    });
+
+    test('interdiff_carries_the_commit_id_arm_of_the_union_through_to_the_rust_resolver', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // A commit hex read back through another shipped verb - the shape a caller
+      // has when it composes evolog with interdiff, minus the rewrite (no verb
+      // reachable from Dart writes committed content; see the scope note above).
+      final List<ShowEntry> entries = await handle.show();
+      final String commitHex = entries.single.change.commitId;
+      final InterdiffView view = await handle.interdiff(from: CommitIdRef(commitHex));
+      expect(view.fileChanges, isEmpty, reason: '@ against itself is trivially empty');
+
+      // The DISCRIMINANT is what decides which Rust resolver runs, and one string
+      // proves it end to end: only the commit arm can answer `jj.invalid_input`
+      // for a non-hex value, and only the change arm answers `jj.change_not_found`
+      // for the same one.
+      await expectLater(
+        handle.interdiff(from: const CommitIdRef('nothex!')),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', contains('nothex!')),
+        ),
+      );
+      await expectLater(
+        handle.interdiff(from: const ChangeIdRef('nothex!')),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.change_not_found')),
+      );
+
+      // Valid hex that no commit carries is the not-found half of the commit arm.
+      await expectLater(
+        handle.interdiff(from: const CommitIdRef('deadbeefdeadbeef')),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.change_not_found')
+              .having((e) => e.context, 'context', 'deadbeefdeadbeef'),
+        ),
       );
 
       await handle.close();
@@ -207,7 +248,7 @@ void main() {
       // command reaches the worker.
       expect(handle.show, throwsA(isA<StateError>()));
       expect(handle.evolog, throwsA(isA<StateError>()));
-      expect(() => handle.interdiff(from: 'qpvuntsm'), throwsA(isA<StateError>()));
+      expect(() => handle.interdiff(from: const ChangeIdRef('qpvuntsm')), throwsA(isA<StateError>()));
     });
 
     // -- Worker-level unknown handle (the synthesized ffi.invalid_handle) -------
@@ -224,7 +265,7 @@ void main() {
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
       await expectLater(
-        worker.interdiff(unknown, from: 'qpvuntsm'),
+        worker.interdiff(unknown, from: const ChangeIdRef('qpvuntsm')),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });

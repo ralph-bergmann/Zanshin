@@ -35,9 +35,9 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{
     add_commit_off_root, add_commit_with_files, add_conflicted_merge_off_root, add_divergent_twin, describe_commit,
-    extract_fixture, FixtureHandle,
+    extract_fixture, rewrite_commit_files, FixtureHandle,
 };
-use zanshin_jj::{Backend, ChangeId, ChangeKind, CommitViewError, Repo};
+use zanshin_jj::{Backend, ChangeId, ChangeKind, CommitId, CommitViewError, Repo, RevisionRef};
 
 // ── Harness ───────────────────────────────────────────────────────────────────────
 
@@ -131,6 +131,17 @@ fn summary(changes: &[zanshin_jj::FileChange]) -> Vec<(String, &'static str)> {
             (c.path.to_string_lossy().into_owned(), label)
         })
         .collect()
+}
+
+/// `interdiff`'s change-id arm — the house currency, and what every row wrote before the union.
+fn chg(id: &ChangeId) -> RevisionRef {
+    RevisionRef::ChangeId(id.clone())
+}
+
+/// `interdiff`'s commit-id arm — a commit-id HEX prefix, resolved through the index and
+/// therefore reaching hidden commits.
+fn cmt(hex: &str) -> RevisionRef {
+    RevisionRef::CommitId(CommitId(hex.to_owned()))
 }
 
 /// Two commits with DIFFERENT parents whose parent trees also differ — the shape that makes
@@ -872,7 +883,7 @@ fn interdiff_factors_out_the_parent_difference() {
     let before = head_op_id(&repo);
 
     let view = repo
-        .interdiff(Some(p.from.clone()), Some(p.to.clone()), &[])
+        .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &[])
         .expect("interdiff succeeds");
 
     // A plain `diff --from from --to to` would ALSO report `extra.txt`, which the two
@@ -897,7 +908,7 @@ fn interdiff_of_a_revision_against_itself_is_empty() {
     let repo = open(&p.fx);
 
     let view = repo
-        .interdiff(Some(p.to.clone()), Some(p.to.clone()), &[])
+        .interdiff(Some(chg(&p.to)), Some(chg(&p.to)), &[])
         .expect("interdiff succeeds");
     assert!(
         view.file_changes.is_empty(),
@@ -917,14 +928,14 @@ fn interdiff_filters_by_path_prefix() {
     let repo = open(&p.fx);
 
     let matching = repo
-        .interdiff(Some(p.from.clone()), Some(p.to.clone()), &["b.txt".to_owned()])
+        .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &["b.txt".to_owned()])
         .expect("interdiff succeeds");
     assert_eq!(summary(&matching.file_changes), vec![("b.txt".to_owned(), "A")]);
 
     // An unmatched filter is a CLI *warning*, not an error — this API has no warning channel,
     // so it is simply an empty result.
     let unmatched = repo
-        .interdiff(Some(p.from.clone()), Some(p.to.clone()), &["nosuchdir".to_owned()])
+        .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &["nosuchdir".to_owned()])
         .expect("an unmatched path filter is not a refusal");
     assert!(unmatched.file_changes.is_empty());
 }
@@ -957,10 +968,10 @@ fn interdiff_defaults_the_omitted_side_to_the_working_copy() {
 
     // Supplying ONE side is enough; the other becomes `@`. Both spellings must agree.
     let defaulted = repo
-        .interdiff(Some(other_change.clone()), None, &[])
+        .interdiff(Some(chg(&other_change)), None, &[])
         .expect("one side is enough");
     let explicit = repo
-        .interdiff(Some(other_change), Some(wc), &[])
+        .interdiff(Some(chg(&other_change)), Some(chg(&wc)), &[])
         .expect("the explicit spelling succeeds");
     assert_eq!(
         summary(&defaulted.file_changes),
@@ -998,9 +1009,9 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     ] {
         for side in ["from", "to"] {
             let (from, to) = if side == "from" {
-                (Some(id.clone()), Some(good.clone()))
+                (Some(chg(&id)), Some(chg(&good)))
             } else {
-                (Some(good.clone()), Some(id.clone()))
+                (Some(chg(&good)), Some(chg(&id)))
             };
             let err = match repo.interdiff(from, to, &[]) {
                 Ok(view) => panic!("the {spelling} id must be refused as `{side}`, got {view:?}"),
@@ -1045,7 +1056,7 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
     let before = head_op_id(&repo);
 
     let view = repo
-        .interdiff(Some(from.clone()), Some(to.clone()), &[])
+        .interdiff(Some(chg(&from)), Some(chg(&to)), &[])
         .expect("a conflicted rebase base is not a refusal");
     assert!(
         view.base_has_conflicts,
@@ -1062,7 +1073,7 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
     // The flag is about the TREE, not the filtered result: narrowing to a path that matches
     // nothing empties `file_changes` and must leave the flag alone.
     let filtered = repo
-        .interdiff(Some(from), Some(to), &["nosuchdir".to_owned()])
+        .interdiff(Some(chg(&from)), Some(chg(&to)), &["nosuchdir".to_owned()])
         .expect("an unmatched path filter is not a refusal");
     assert!(filtered.file_changes.is_empty());
     assert!(
@@ -1096,7 +1107,7 @@ fn interdiff_flags_a_conflicted_base_reached_through_the_rebase_fast_path() {
     let before = head_op_id(&repo);
 
     let view = repo
-        .interdiff(Some(merge.clone()), Some(merge), &[])
+        .interdiff(Some(chg(&merge)), Some(chg(&merge)), &[])
         .expect("a conflicted base is not a refusal on the fast path either");
 
     assert!(
@@ -1124,7 +1135,11 @@ fn interdiff_never_reports_a_rename_even_where_show_does() {
     // `interdiff` passes NO copy records (`show_inter_diff`'s own `CopyRecords::default()`),
     // so the rename decomposes into an Added+Removed pair. That asymmetry is the CLI's.
     let view = repo
-        .interdiff(Some(status.parent_change_id), Some(status.working_copy_change_id), &[])
+        .interdiff(
+            Some(chg(&status.parent_change_id)),
+            Some(chg(&status.working_copy_change_id)),
+            &[],
+        )
         .expect("interdiff succeeds");
     let mut labels = summary(&view.file_changes);
     labels.sort();
@@ -1133,4 +1148,124 @@ fn interdiff_never_reports_a_rename_even_where_show_does() {
         vec![("new_name.txt".to_owned(), "A"), ("old_name.txt".to_owned(), "D")],
         "interdiff must never produce a Renamed/Copied entry"
     );
+}
+
+// ── interdiff: the commit-id arm ──────────────────────────────────────────────────
+
+/// The motivating composition (Epic 9 follow-up I): `evolog` names a version by its HIDDEN
+/// commit id, and `interdiff` diffs that version against the current one.
+///
+/// This is the stand-in for the CLI's unported `evolog --patch`, and it is only expressible
+/// because the commit-id arm resolves through the INDEX, which does not filter by visibility.
+/// The content rewrite matters: `describe_commit` (the other evolution helper) leaves every
+/// version sharing one tree, so the same composition on a description-only chain is trivially
+/// empty and would pass against a resolver that returned the wrong commit.
+///
+/// The second half is the tripwire that keeps the two arms apart: the SAME string, offered as a
+/// `ChangeIdRef`, must still be refused byte-identically to before this arm existed — a commit
+/// hex is not valid reverse-hex, and nothing about the union widened the change-id currency.
+#[test]
+fn interdiff_diffs_an_evolog_predecessor_against_the_current_version() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let v1 = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\n")], "v1");
+    let v2 = rewrite_commit_files(&fx.path, &v1, &[("a.txt", "two\n"), ("b.txt", "added\n")]);
+    let change = change_id_of(&fx.path, &v2);
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    let entries = repo.evolog(Some(&change.0), None).expect("evolog succeeds");
+    let pred = entries[0]
+        .predecessor_commit_ids
+        .first()
+        .expect("the rewritten version names its predecessor")
+        .clone();
+    assert_eq!(pred.0, v1, "the predecessor edge is the pre-rewrite COMMIT id");
+
+    let view = repo
+        .interdiff(Some(cmt(&pred.0)), Some(chg(&change)), &[])
+        .expect("a hidden predecessor resolves through the commit-id arm");
+    assert_eq!(
+        summary(&view.file_changes),
+        vec![("a.txt".to_owned(), "M"), ("b.txt".to_owned(), "A")],
+        "the two VERSIONS of one change differ by the rewrite"
+    );
+    assert!(!view.base_has_conflicts);
+
+    // The same hex through the change-id arm is refused exactly as it always was.
+    let err = repo
+        .interdiff(Some(chg(&ChangeId(pred.0.clone()))), Some(chg(&change)), &[])
+        .expect_err("a commit hex is not a reverse-hex change id");
+    assert!(
+        matches!(&err, CommitViewError::ChangeNotFound { id } if *id == pred.0),
+        "the change-id arm must keep refusing it, echoing the offending id: {err:?}"
+    );
+
+    assert_eq!(head_op_id(&repo), before, "neither call writes an operation");
+}
+
+/// A one-character commit-id prefix that at least two commits in `workspace_root` share.
+///
+/// DETERMINISTIC, not probabilistic: a commit id is hex, so there are 16 possible first digits
+/// and by pigeonhole 17 added commits must collide on one. Only the commits this function adds
+/// are counted, so a collision with a pre-existing fixture commit merely makes the answer
+/// ambiguous EARLIER — it can never make the loop run longer than its bound.
+fn ambiguous_one_char_commit_prefix(workspace_root: &Path) -> String {
+    let mut seen = std::collections::HashSet::new();
+    for i in 0..17 {
+        let hex = add_commit_off_root(workspace_root, &format!("ambiguity seed {i}"));
+        let first = hex.chars().next().expect("a commit hex is never empty");
+        if !seen.insert(first) {
+            return first.to_string();
+        }
+    }
+    unreachable!("17 commits cannot avoid a collision over 16 hex digits");
+}
+
+/// The commit-id arm's three refusals, each on BOTH sides and each under its OWN code.
+///
+/// The three-way split is the whole point of the arm having its own resolver: "that is not hex",
+/// "that prefix is too short" and "no such commit" need three different remedies, and collapsing
+/// any two of them would leave a caller guessing. The ambiguous row also pins that the prefix is
+/// never resolved to one of its candidates.
+#[test]
+fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let ambiguous = ambiguous_one_char_commit_prefix(&fx.path);
+    // A resolvable counterpart, so the OTHER side is never the reason for the refusal.
+    let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    for (spelling, hex) in [
+        ("empty", String::new()),
+        ("not hex", "nothex!".to_owned()),
+        // Valid hex, 16 digits, no commit: the fixture's ids are 64-digit SHAs.
+        ("unknown", "deadbeefdeadbeef".to_owned()),
+        ("ambiguous", ambiguous.clone()),
+    ] {
+        for side in ["from", "to"] {
+            let (from, to) = if side == "from" {
+                (Some(cmt(&hex)), Some(chg(&good)))
+            } else {
+                (Some(chg(&good)), Some(cmt(&hex)))
+            };
+            let err = match repo.interdiff(from, to, &[]) {
+                Ok(view) => panic!("the {spelling} commit id must be refused as `{side}`, got {view:?}"),
+                Err(e) => e,
+            };
+            let ok = match (spelling, &err) {
+                ("empty" | "not hex", CommitViewError::InvalidInput { reason }) => reason.contains(&hex),
+                ("unknown", CommitViewError::ChangeNotFound { id }) => *id == hex,
+                ("ambiguous", CommitViewError::RevsetResolutionError { reason }) => {
+                    reason.contains(&hex) && reason.contains("ambiguous")
+                }
+                _ => false,
+            };
+            assert!(ok, "the {spelling} commit id given as `{side}` landed wrong: {err:?}");
+        }
+    }
+
+    assert_eq!(head_op_id(&repo), before, "a refusal writes no operation either");
 }

@@ -19,7 +19,9 @@ use std::sync::LazyLock;
 use std::{env, fs};
 
 use flatbuffers::root as fb_root;
-use test_helpers::{add_commit_off_root, add_commit_with_files, describe_commit, extract_fixture};
+use test_helpers::{
+    add_commit_off_root, add_commit_with_files, describe_commit, extract_fixture, rewrite_commit_files,
+};
 use zanshin_ffi::commit_views::{zanshin_evolog, zanshin_interdiff, zanshin_show};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
@@ -158,21 +160,115 @@ fn evolog_request_bytes(revset: Option<&str>, limit: Option<u32>) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
+/// One side of an `InterdiffRequest`, in the schema's `RevisionRef` union.
+#[derive(Clone, Copy)]
+enum Side<'a> {
+    /// Neither vtable slot written — the ABSENT side, which the verb reads as `@`.
+    Absent,
+    /// A `ChangeIdRef`: the house reverse-hex change-id currency, visible commits only.
+    Change(&'a str),
+    /// A `CommitIdRef`: a commit-id hex prefix, resolved through the visibility-blind index.
+    Commit(&'a str),
+}
+
+/// Write one union side: its discriminant plus the value table it selects.
+fn build_side(
+    b: &mut flatbuffers::FlatBufferBuilder<'_>,
+    side: Side<'_>,
+) -> (
+    fbs::RevisionRef,
+    Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
+) {
+    match side {
+        Side::Absent => (fbs::RevisionRef::NONE, None),
+        Side::Change(id) => {
+            let id_off = b.create_string(id);
+            let table = fbs::ChangeIdRef::create(b, &fbs::ChangeIdRefArgs { id: Some(id_off) });
+            (fbs::RevisionRef::ChangeIdRef, Some(table.as_union_value()))
+        }
+        Side::Commit(id) => {
+            let id_off = b.create_string(id);
+            let table = fbs::CommitIdRef::create(b, &fbs::CommitIdRefArgs { id: Some(id_off) });
+            (fbs::RevisionRef::CommitIdRef, Some(table.as_union_value()))
+        }
+    }
+}
+
 /// An `InterdiffRequest` buffer. BOTH revisions absent is a legal buffer that the verb itself
 /// refuses (the CLI's `ArgGroup … required(true)`) — it is not a malformed request.
-fn interdiff_request_bytes(from: Option<&str>, to: Option<&str>, paths: &[&str]) -> Vec<u8> {
+fn interdiff_request_bytes(from: Side<'_>, to: Side<'_>, paths: &[&str]) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
-    let from_off = from.map(|s| b.create_string(s));
-    let to_off = to.map(|s| b.create_string(s));
+    let (from_type, from_off) = build_side(&mut b, from);
+    let (to_type, to_off) = build_side(&mut b, to);
     let path_offs: Vec<_> = paths.iter().map(|s| b.create_string(s)).collect();
     let paths_vec = b.create_vector(&path_offs);
     let req = fbs::InterdiffRequest::create(
         &mut b,
         &fbs::InterdiffRequestArgs {
             kind: fbs::RequestKind::Interdiff,
+            from_type,
             from: from_off,
+            to_type,
             to: to_off,
             paths: Some(paths_vec),
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// The three union shapes no honest builder produces, each isolating one rung.
+#[derive(Clone, Copy)]
+enum MalformedUnion {
+    /// A `ChangeIdRef` value with the discriminant left at its default `NONE`. `FlatBuffers`
+    /// never writes a default-valued scalar, so this is exactly the (value present,
+    /// discriminant absent) pair `Verifier::visit_union` calls an INCONSISTENT union — refused
+    /// at ladder rung 2, before the reader runs.
+    ValueWithoutDiscriminant,
+    /// A discriminant BYTE outside the union, with a value present. A union tag is
+    /// range-checked no more than a plain enum is (the generated variant match ends in
+    /// `_ => Ok(())`), so this verifies and the READER refuses it.
+    OutOfRangeDiscriminant,
+    /// A correctly tagged `ChangeIdRef` whose `id` field is ABSENT — the reader's own
+    /// required-field guard, ladder rung 4.
+    RefWithoutId,
+}
+
+/// Build an `InterdiffRequest` in which ONE side's union is written slot by slot.
+///
+/// `on_to` picks which side gets `shape`; the other is a valid `ChangeIdRef` carrying `good`, so
+/// nothing but the malformed side can be the reason for a refusal. Both placements matter: the
+/// reader lifts the two sides in sequence, so a `to` that never fails leaves its propagation arm
+/// unexercised.
+fn malformed_union_request_bytes(shape: MalformedUnion, on_to: bool, good: &str) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let bad = match shape {
+        MalformedUnion::ValueWithoutDiscriminant => {
+            let id_off = b.create_string("qpvuntsm");
+            let table = fbs::ChangeIdRef::create(&mut b, &fbs::ChangeIdRefArgs { id: Some(id_off) });
+            (fbs::RevisionRef::NONE, Some(table.as_union_value()))
+        }
+        MalformedUnion::OutOfRangeDiscriminant => {
+            let id_off = b.create_string("qpvuntsm");
+            let table = fbs::ChangeIdRef::create(&mut b, &fbs::ChangeIdRefArgs { id: Some(id_off) });
+            (fbs::RevisionRef(200), Some(table.as_union_value()))
+        }
+        MalformedUnion::RefWithoutId => {
+            let table = fbs::ChangeIdRef::create(&mut b, &fbs::ChangeIdRefArgs { id: None });
+            (fbs::RevisionRef::ChangeIdRef, Some(table.as_union_value()))
+        }
+    };
+    let ok = build_side(&mut b, Side::Change(good));
+    let ((from_type, from_off), (to_type, to_off)) = if on_to { (ok, bad) } else { (bad, ok) };
+    let req = fbs::InterdiffRequest::create(
+        &mut b,
+        &fbs::InterdiffRequestArgs {
+            kind: fbs::RequestKind::Interdiff,
+            from_type,
+            from: from_off,
+            to_type,
+            to: to_off,
+            paths: None,
         },
     );
     b.finish(req, None);
@@ -229,6 +325,47 @@ fn open_interdiff_scenario() -> (u64, String, String) {
     let handle = open_handle(&fixture.path);
     std::mem::forget(fixture);
     (handle, from, to)
+}
+
+/// A change rewritten with different CONTENT, so its two versions have different trees. Returns
+/// `(handle, change id, the HIDDEN pre-rewrite commit hex)`.
+///
+/// `describe_commit` cannot stand in: a description-only rewrite leaves both versions sharing
+/// one tree, so the interdiff between them is empty whichever commit the resolver picked.
+fn open_rewritten_content_scenario() -> (u64, String, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let v1 = add_commit_with_files(&fixture.path, &[], &[("a.txt", "one\n")], "v1");
+    let v2 = rewrite_commit_files(&fixture.path, &v1, &[("a.txt", "two\n"), ("b.txt", "added\n")]);
+    let change_id = change_id_for_commit(&fixture.path, &v2);
+    let handle = open_handle(&fixture.path);
+    std::mem::forget(fixture);
+    (handle, change_id, v1)
+}
+
+/// A fixture holding two commits whose ids share their first hex digit. Returns
+/// `(handle, a resolvable change id, that one-character AMBIGUOUS prefix)`.
+///
+/// DETERMINISTIC, not probabilistic: a commit id is hex, so there are 16 possible first digits
+/// and by pigeonhole 17 added commits must collide on one. Only the commits added here are
+/// counted, so a collision with a fixture commit merely makes the answer ambiguous EARLIER.
+fn open_ambiguous_prefix_scenario() -> (u64, String, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let mut seen = std::collections::HashSet::new();
+    let mut ambiguous = None;
+    for i in 0..17 {
+        let hex = add_commit_off_root(&fixture.path, &format!("ambiguity seed {i}"));
+        let first = hex.chars().next().expect("a commit hex is never empty");
+        if !seen.insert(first) {
+            ambiguous = Some(first.to_string());
+            break;
+        }
+    }
+    let ambiguous = ambiguous.expect("17 commits cannot avoid a collision over 16 hex digits");
+    // A resolvable counterpart, so the OTHER side is never the reason for a refusal.
+    let change_id = change_id_for_commit(&fixture.path, &add_commit_off_root(&fixture.path, "resolvable"));
+    let handle = open_handle(&fixture.path);
+    std::mem::forget(fixture);
+    (handle, change_id, ambiguous)
 }
 
 /// A parent→child range, so the entry ORDER is observable across the buffer. Returns
@@ -456,7 +593,7 @@ fn interdiff_round_trip_factors_out_the_parent_difference_and_honours_paths() {
     pin_env();
     let (handle, from, to) = open_interdiff_scenario();
 
-    let req = interdiff_request_bytes(Some(&from), Some(&to), &[]);
+    let req = interdiff_request_bytes(Side::Change(&from), Side::Change(&to), &[]);
     // SAFETY: handle is live; req is a valid buffer alive for the call.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: token is the fresh, non-null token the call just returned.
@@ -475,7 +612,7 @@ fn interdiff_round_trip_factors_out_the_parent_difference_and_honours_paths() {
 
     // The `paths` field really crosses the buffer: an unmatched prefix empties the result
     // rather than being ignored (an unmatched filter is a CLI warning, never a refusal).
-    let req = interdiff_request_bytes(Some(&from), Some(&to), &["nosuchdir"]);
+    let req = interdiff_request_bytes(Side::Change(&from), Side::Change(&to), &["nosuchdir"]);
     // SAFETY: see above.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: see above.
@@ -501,7 +638,7 @@ fn interdiff_round_trip_flags_a_conflicted_rebase_base() {
     let (handle, from, to) = open_conflicting_interdiff_scenario();
 
     for paths in [&[][..], &["nosuchdir"][..]] {
-        let req = interdiff_request_bytes(Some(&from), Some(&to), paths);
+        let req = interdiff_request_bytes(Side::Change(&from), Side::Change(&to), paths);
         // SAFETY: handle is live; req is a valid buffer alive for the call.
         let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
         // SAFETY: token is the fresh, non-null token the call just returned.
@@ -531,7 +668,7 @@ fn interdiff_refuses_both_revisions_absent_and_an_unresolvable_one() {
     let (handle, _from, to) = open_interdiff_scenario();
 
     // A legal buffer the VERB refuses — the CLI's `ArgGroup … required(true)`.
-    let req = interdiff_request_bytes(None, None, &[]);
+    let req = interdiff_request_bytes(Side::Absent, Side::Absent, &[]);
     // SAFETY: handle is live; req is a valid buffer alive for the call.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: token is the fresh, non-null token the call just returned.
@@ -547,7 +684,7 @@ fn interdiff_refuses_both_revisions_absent_and_an_unresolvable_one() {
     );
 
     // One side supplied is enough — the other defaults to `@`.
-    let req = interdiff_request_bytes(None, Some(&to), &[]);
+    let req = interdiff_request_bytes(Side::Absent, Side::Change(&to), &[]);
     // SAFETY: see above.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: see above.
@@ -556,7 +693,7 @@ fn interdiff_refuses_both_revisions_absent_and_an_unresolvable_one() {
 
     // A single-revision argument that does not resolve is `jj.change_not_found`, with the id
     // echoed in `context` — never the revset codes `show`/`evolog` use.
-    let req = interdiff_request_bytes(Some("nonexistentchangeid"), None, &[]);
+    let req = interdiff_request_bytes(Side::Change("nonexistentchangeid"), Side::Absent, &[]);
     // SAFETY: see above.
     let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
     // SAFETY: see above.
@@ -565,6 +702,163 @@ fn interdiff_refuses_both_revisions_absent_and_an_unresolvable_one() {
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CHANGE_NOT_FOUND));
     assert_eq!(env.error().and_then(|e| e.context()), Some("nonexistentchangeid"));
+
+    close_handle(handle);
+}
+
+/// The motivating composition across the FFI: `zanshin_evolog` names a version by its HIDDEN
+/// commit id and `zanshin_interdiff` diffs it against the current one, through the `CommitIdRef`
+/// arm of the request buffer's `RevisionRef` union.
+///
+/// The rewrite changes CONTENT, not just the description, so the two versions have different
+/// trees and the diff is non-empty — a description-only chain would pass against a resolver that
+/// returned the wrong commit. The second half is the tripwire that keeps the two arms apart: the
+/// same hex through `ChangeIdRef` is still `jj.change_not_found`, byte-identically to before the
+/// union existed.
+#[test]
+fn interdiff_round_trip_diffs_an_evolog_predecessor_through_the_commit_id_arm() {
+    pin_env();
+    let (handle, change_id, predecessor) = open_rewritten_content_scenario();
+
+    // The predecessor edge really comes out of `zanshin_evolog`, not out of the fixture builder.
+    let req = evolog_request_bytes(Some(&change_id), None);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_evolog(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
+    assert_eq!(
+        env.data_as_evolog_view()
+            .expect("EvologView payload")
+            .entries()
+            .expect("entries present")
+            .get(0)
+            .predecessor_commit_ids()
+            .map(|v| v.iter().collect::<Vec<_>>()),
+        Some(vec![predecessor.as_str()])
+    );
+
+    let req = interdiff_request_bytes(Side::Commit(&predecessor), Side::Change(&change_id), &[]);
+    // SAFETY: see above.
+    let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
+    // SAFETY: see above.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(
+        env.ok(),
+        "a hidden predecessor must resolve: {:?}",
+        env.error().and_then(|e| e.code())
+    );
+    let files = env
+        .data_as_interdiff_view()
+        .expect("InterdiffView payload")
+        .file_changes()
+        .expect("file_changes present");
+    assert_eq!(
+        (0..files.len())
+            .map(|i| (files.get(i).path().unwrap_or_default(), files.get(i).kind()))
+            .collect::<Vec<_>>(),
+        vec![("a.txt", fbs::ChangeKind::Modified), ("b.txt", fbs::ChangeKind::Added)],
+        "the two VERSIONS of one change differ by the rewrite"
+    );
+
+    // The same hex as a ChangeIdRef stays refused — the change-id arm did not widen.
+    let req = interdiff_request_bytes(Side::Change(&predecessor), Side::Change(&change_id), &[]);
+    // SAFETY: see above.
+    let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
+    // SAFETY: see above.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CHANGE_NOT_FOUND));
+    assert_eq!(env.error().and_then(|e| e.context()), Some(predecessor.as_str()));
+
+    close_handle(handle);
+}
+
+/// The `CommitIdRef` arm's three refusals, each under its OWN registered code across the wire.
+///
+/// Nothing new is minted: malformed is the same `jj.invalid_input` the both-absent refusal uses,
+/// ambiguity is the registry's ambiguity code (`jj.revset_resolution_error`, where a divergent
+/// change-id symbol lands for `show`/`evolog`), and no-match is the plain `jj.change_not_found`.
+#[test]
+fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_ref() {
+    pin_env();
+    let (handle, change_id, ambiguous) = open_ambiguous_prefix_scenario();
+
+    for (spelling, hex, expected) in [
+        ("empty", String::new(), JJ_INVALID_INPUT),
+        ("not hex", "nothex!".to_owned(), JJ_INVALID_INPUT),
+        ("unknown", "deadbeefdeadbeef".to_owned(), JJ_CHANGE_NOT_FOUND),
+        ("ambiguous", ambiguous.clone(), JJ_REVSET_RESOLUTION_ERROR),
+    ] {
+        let req = interdiff_request_bytes(Side::Commit(&hex), Side::Change(&change_id), &[]);
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token the call just returned.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "the {spelling} commit id must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(expected),
+            "the {spelling} commit id must not collapse onto another code"
+        );
+        assert!(
+            env.error().and_then(|e| e.context()).is_some_and(|c| c.contains(&hex)),
+            "the {spelling} commit id must ride in `context`, never in the code"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// The three union shapes no honest builder produces, each isolating one refusal rung.
+///
+/// The last row puts the fault on `to` instead of `from`: the reader lifts the two sides in
+/// sequence and names the offending FIELD, so a suite that only ever malformed `from` would
+/// leave the second lift — and its `to.id` message — unwitnessed.
+#[test]
+fn interdiff_refuses_every_malformed_revision_ref_union() {
+    pin_env();
+    let (handle, _from, to) = open_interdiff_scenario();
+
+    for (shape, on_to, expected, needle) in [
+        (
+            // (value present, discriminant absent) — refused by the Verifier at rung 2.
+            MalformedUnion::ValueWithoutDiscriminant,
+            false,
+            FFI_INVALID_ARGUMENT,
+            "union",
+        ),
+        // Range-checked by nobody, so the READER refuses it and names the tag.
+        (
+            MalformedUnion::OutOfRangeDiscriminant,
+            false,
+            FFI_INVALID_ARGUMENT,
+            "200",
+        ),
+        // The reader's own required-field guard, rung 4 — a jj-layer code, not an FFI one.
+        (MalformedUnion::RefWithoutId, false, JJ_INVALID_INPUT, "from.id"),
+        (MalformedUnion::RefWithoutId, true, JJ_INVALID_INPUT, "to.id"),
+    ] {
+        let req = malformed_union_request_bytes(shape, on_to, &to);
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token the call just returned.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{needle}: a malformed union must be refused");
+        assert_eq!(env.error().and_then(|e| e.code()), Some(expected), "{needle}: code");
+        assert!(
+            env.error()
+                .and_then(|e| e.context())
+                .is_some_and(|c| c.to_lowercase().contains(needle)),
+            "{needle}: the context must say what was wrong, got {:?}",
+            env.error().and_then(|e| e.context())
+        );
+    }
 
     close_handle(handle);
 }
@@ -585,7 +879,7 @@ fn every_wrapper_guards_the_handle_and_the_request_buffer() {
         (
             "zanshin_interdiff",
             zanshin_interdiff,
-            interdiff_request_bytes(Some(&change_id), None, &[]),
+            interdiff_request_bytes(Side::Change(&change_id), Side::Absent, &[]),
         ),
     ];
 
@@ -657,10 +951,14 @@ fn no_commit_view_wrapper_writes_an_operation() {
         (zanshin_evolog, evolog_request_bytes(Some("::("), None), false),
         (
             zanshin_interdiff,
-            interdiff_request_bytes(Some(&change_id), None, &[]),
+            interdiff_request_bytes(Side::Change(&change_id), Side::Absent, &[]),
             true,
         ),
-        (zanshin_interdiff, interdiff_request_bytes(None, None, &[]), false),
+        (
+            zanshin_interdiff,
+            interdiff_request_bytes(Side::Absent, Side::Absent, &[]),
+            false,
+        ),
     ];
     for (call, req, expect_ok) in cases {
         // SAFETY: handle is live; req is a valid buffer alive for the call.
@@ -692,15 +990,20 @@ type KindCase<'a> = (&'a str, Wrapper, &'a [u8], &'a str, &'a str, u64);
 /// Every wrapper in this file refuses a buffer built for a DIFFERENT verb, and refuses an
 /// untagged one, naming both kinds in `context`.
 ///
-/// The ledger names `ShowRequest`/`EvologRequest`/`InterdiffRequest`/`WorkspaceRootRequest` as
-/// the four-way collision — all four put one string in the slot after `kind` — so the cross-feeds
-/// between them carry POPULATED buffers of the real tables, which is the ledger's own
-/// demonstration case. (`WorkspaceRootRequest` is built here rather than imported: any test may
-/// construct any request table, and a populated one-string table is what verifies as all four.)
-/// A populated `ShowRequest` fed to `zanshin_interdiff` is NOT among them: its inline `limit`
-/// would be followed as `to`'s string offset and the Verifier refuses it one rung earlier — that
-/// is what the minimal tagged buffer is for. Every wrapper also gets a `handle == 0` row, which
-/// is what proves the kind rung runs BEFORE the handle lookup, and an untagged row.
+/// The ledger named `ShowRequest`/`EvologRequest`/`InterdiffRequest`/`WorkspaceRootRequest` as a
+/// FOUR-way collision — all four put one string in the slot after `kind`. That is now a
+/// THREE-way one: Epic 9 follow-up I turned `InterdiffRequest`'s `from`/`to` into a `RevisionRef`
+/// UNION, whose discriminant byte occupies the slot the string used to, so an interdiff buffer
+/// and the other three no longer share a layout. The cross-feeds among the remaining three still
+/// carry POPULATED buffers of the real tables, which is the ledger's own demonstration case.
+/// (`WorkspaceRootRequest` is built here rather than imported: any test may construct any request
+/// table, and a populated one-string table is what verifies as the other two.)
+/// Anything involving `InterdiffRequest`'s layout is refused one rung EARLIER now, by the
+/// Verifier — that divergence is pinned by
+/// `an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables`, and the minimal
+/// tagged buffer is what isolates the kind rung for `zanshin_interdiff` here. Every wrapper also
+/// gets a `handle == 0` row, which is what proves the kind rung runs BEFORE the handle lookup,
+/// and an untagged row.
 #[test]
 fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     pin_env();
@@ -708,23 +1011,15 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
 
     let show_req = show_request_bytes_raw(Some("@"), 3, true);
     let evolog_req = evolog_request_bytes(Some("@"), Some(3));
-    let interdiff_req = interdiff_request_bytes(Some("@"), Some("@-"), &[]);
     let workspace_root_req = workspace_root_request_bytes("default");
     let minimal_show = tagged_request_bytes(fbs::RequestKind::Show);
+    let minimal_workspace_root = tagged_request_bytes(fbs::RequestKind::WorkspaceRoot);
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
     let out_of_range = tagged_request_bytes(fbs::RequestKind(200));
 
-    let cases: [KindCase<'_>; 14] = [
+    let cases: [KindCase<'_>; 13] = [
         ("show", zanshin_show, &evolog_req, "Show", "Evolog", handle),
         ("evolog", zanshin_evolog, &show_req, "Evolog", "Show", handle),
-        (
-            "show/interdiff",
-            zanshin_show,
-            &interdiff_req,
-            "Show",
-            "Interdiff",
-            handle,
-        ),
         (
             "show/workspace_root",
             zanshin_show,
@@ -744,7 +1039,7 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
         (
             "interdiff/workspace_root",
             zanshin_interdiff,
-            &workspace_root_req,
+            &minimal_workspace_root,
             "Interdiff",
             "WorkspaceRoot",
             handle,
@@ -780,7 +1075,7 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
         (
             "interdiff/zero-handle",
             zanshin_interdiff,
-            &workspace_root_req,
+            &minimal_workspace_root,
             "Interdiff",
             "WorkspaceRoot",
             0,
@@ -788,6 +1083,53 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     ];
 
     assert_kind_mismatches(&cases);
+    close_handle(handle);
+}
+
+/// The layout divergence follow-up I introduced, pinned from both directions.
+///
+/// A POPULATED `InterdiffRequest` no longer verifies as one of the one-string tables, and a
+/// populated one-string table no longer verifies as an `InterdiffRequest`: the union's
+/// discriminant sits where the string offset used to, and its two vtable slots must be present
+/// or absent TOGETHER. Both are still `ffi.invalid_argument` — the same code the kind rung
+/// answers with — but they land at rung 2, so the message is the Verifier's rather than the
+/// kind-mismatch one. Pinned because it is the ONE observable consequence of the schema change
+/// on buffers that are not interdiff's own, and because the table above stopped covering it.
+#[test]
+fn an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables() {
+    pin_env();
+    let (handle, _change_id) = open_scenario();
+
+    let interdiff_req = interdiff_request_bytes(Side::Change("@"), Side::Change("@-"), &[]);
+    let workspace_root_req = workspace_root_request_bytes("default");
+
+    for (name, call, req) in [
+        ("interdiff buffer into show", zanshin_show as Wrapper, &interdiff_req),
+        (
+            "one-string buffer into interdiff",
+            zanshin_interdiff as Wrapper,
+            &workspace_root_req,
+        ),
+    ] {
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { call(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name} must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: still an invalid argument"
+        );
+        assert!(
+            env.error()
+                .and_then(|e| e.context())
+                .is_some_and(|c| !c.starts_with("request kind mismatch")),
+            "{name}: refused by the Verifier at rung 2, not by the kind rung"
+        );
+    }
+
     close_handle(handle);
 }
 

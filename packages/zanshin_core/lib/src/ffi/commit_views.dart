@@ -96,34 +96,108 @@ Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
 /// than wraps.
 const _maxWireLimit = 0xFFFFFFFF;
 
+/// Which currency ONE side of [zanshinInterdiff] is written in (mirrors
+/// `zanshin_jj::RevisionRef`, and the schema's `RevisionRef` union).
+///
+/// Modelled as a sealed class so an arm without an id is unrepresentable and a
+/// `switch` over the two is exhaustive at compile time — the same reason
+/// `BookmarkKind` is one. [zanshinInterdiff] is the ONLY consumer; every other
+/// verb keeps its own parameter currency.
+sealed class RevisionRef {
+  const RevisionRef(this.id);
+
+  /// The prefix, in the currency the concrete arm names.
+  final String id;
+}
+
+/// A jj reverse-hex CHANGE-ID prefix — the house currency for a single revision.
+///
+/// Resolves to the one VISIBLE commit carrying it; an unknown, malformed,
+/// only-hidden or DIVERGENT prefix is refused (`jj.change_not_found`) rather than
+/// guessed. Use a [CommitIdRef] to reach a hidden commit.
+final class ChangeIdRef extends RevisionRef {
+  const ChangeIdRef(super.id);
+}
+
+/// A commit-id HEX prefix, resolved through jj's index.
+///
+/// That lookup is visibility-BLIND, so a HIDDEN commit resolves —
+/// [EvologEntry.predecessorCommitIds] entries among them, which is what lets
+/// `evolog` and `interdiff` compose into a version-to-version diff. An ambiguous
+/// prefix is refused (`jj.revset_resolution_error`), never guessed; an empty or
+/// non-hex value is `jj.invalid_input`; valid hex matching nothing is
+/// `jj.change_not_found`. It is a CURRENCY, not a revset symbol resolver: there is
+/// no bookmark, tag or change-id fallback.
+final class CommitIdRef extends RevisionRef {
+  const CommitIdRef(super.id);
+}
+
+/// The union discriminant [ref] selects, or `null` for an ABSENT side.
+fbs.RevisionRefTypeId? _revisionRefType(RevisionRef? ref) => switch (ref) {
+  null => null,
+  ChangeIdRef() => fbs.RevisionRefTypeId.ChangeIdRef,
+  CommitIdRef() => fbs.RevisionRefTypeId.CommitIdRef,
+};
+
+/// The union value table [ref] carries, or `null` for an ABSENT side.
+///
+/// Both slots must be written together or not at all: the FlatBuffers verifier
+/// refuses a half-set union outright, which is why this and [_revisionRefType]
+/// are always used as a pair.
+Object? _revisionRefValue(RevisionRef? ref) => switch (ref) {
+  null => null,
+  ChangeIdRef(:final String id) => fbs.ChangeIdRefObjectBuilder(id: id),
+  CommitIdRef(:final String id) => fbs.CommitIdRefObjectBuilder(id: id),
+};
+
 /// Call `zanshin_interdiff` with the raw `u64` handle and an `InterdiffRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///
-/// Unlike [zanshinShow], [from] and [to] are single jj reverse-hex CHANGE IDS.
-/// They inherit the CLI `resolve_single_rev`'s ambiguity REFUSAL but NOT its
-/// address space: each side resolves to the one VISIBLE commit carrying that
-/// change-id prefix, so a commit hex, a revset expression and a HIDDEN commit are
-/// all unaddressable here — [EvologEntry.predecessorCommitIds] among them. An
+/// Unlike [zanshinShow], [from] and [to] are single revisions rather than revsets,
+/// each written in one of the two [RevisionRef] currencies. Both inherit the CLI
+/// `resolve_single_rev`'s ambiguity REFUSAL — an ambiguous revision is rejected,
+/// never resolved to one of its candidates. A [ChangeIdRef] reaches only the
+/// currently VISIBLE commit of a change; a [CommitIdRef] resolves through the
+/// index and therefore reaches a HIDDEN one, which is how
+/// [EvologEntry.predecessorCommitIds] become addressable. A revset expression is
+/// still unaddressable on either arm. An
 /// absent side is `@`, but omitting BOTH is refused with `jj.invalid_input`
 /// (the CLI's `ArgGroup … required(true)`). [paths] entries are repo-relative
 /// PREFIXES; an empty list means all paths.
 Uint8List zanshinInterdiff(
   int rawHandle, {
-  String? from,
-  String? to,
+  RevisionRef? from,
+  RevisionRef? to,
   List<String> paths = const <String>[],
 }) {
-  rejectInteriorNul(from, 'from');
-  rejectInteriorNul(to, 'to');
+  rejectInteriorNul(from?.id, 'from');
+  rejectInteriorNul(to?.id, 'to');
   rejectInteriorNuls(paths, 'paths');
-  final Uint8List request = fbs.InterdiffRequestObjectBuilder(
-    kind: fbs.RequestKind.Interdiff,
-    from: from,
-    to: to,
-    paths: paths,
-  ).toBytes();
+  final Uint8List request = interdiffRequestBytes(from: from, to: to, paths: paths);
   return callWithRequest(request, (ptr, len) => zanshin_interdiff(rawHandle, ptr, len));
 }
+
+/// Build the `InterdiffRequest` buffer [zanshinInterdiff] sends.
+///
+/// Exposed so a test can read the WIRE SHAPE back: the two union fields are the
+/// only request fields whose discriminant and value must be written together —
+/// a half-written pair is refused outright by the Rust verifier — and a call
+/// through [zanshinInterdiff] hands the bytes straight to the cdylib, leaving a
+/// test nothing to inspect. The interior-NUL guards stay on [zanshinInterdiff],
+/// which is the adapter boundary they belong to.
+@visibleForTesting
+Uint8List interdiffRequestBytes({
+  RevisionRef? from,
+  RevisionRef? to,
+  List<String> paths = const <String>[],
+}) => fbs.InterdiffRequestObjectBuilder(
+  kind: fbs.RequestKind.Interdiff,
+  fromType: _revisionRefType(from),
+  from: _revisionRefValue(from),
+  toType: _revisionRefType(to),
+  to: _revisionRefValue(to),
+  paths: paths,
+).toBytes();
 
 // ── Dart models ──────────────────────────────────────────────────────────────
 
@@ -185,7 +259,9 @@ final class EvologEntry {
 
   /// The commit ids (hex) this version was rewritten FROM. Empty when
   /// [operationId] is `null`, and for a commit that was never rewritten. These are
-  /// HIDDEN commits, so they cannot be passed to [zanshinInterdiff].
+  /// HIDDEN commits, so they are addressable by [zanshinInterdiff] only as a
+  /// [CommitIdRef] — the arm whose index lookup ignores visibility. Passing one as
+  /// a [ChangeIdRef] is refused: a commit hex is not a reverse-hex change id.
   final List<String> predecessorCommitIds;
 
   /// The operation that created or rewrote this commit, or `null` for an entry

@@ -16,6 +16,10 @@
 
 #define ENUM_MAX_REQUEST_KIND 16
 
+#define ENUM_MIN_REVISION_REF 0
+
+#define ENUM_MAX_REVISION_REF 2
+
 #define ENUM_MIN_CHANGE_KIND 0
 
 #define ENUM_MAX_CHANGE_KIND 4
@@ -93,7 +97,13 @@ typedef struct {
 
 #define ShowRequest_VT_HAS_LIMIT 10
 
-#define InterdiffRequest_VT_TO 8
+#define ChangeIdRef_VT_ID 4
+
+#define InterdiffRequest_VT_FROM_TYPE 6
+
+#define InterdiffRequest_VT_TO_TYPE 10
+
+#define InterdiffRequest_VT_TO 12
 
 #define BookmarkCreateRequest_VT_NAMES 6
 
@@ -112,8 +122,6 @@ typedef struct {
 #define Signature_VT_TIMESTAMP_MILLIS 8
 
 #define Signature_VT_TZ_OFFSET_MINUTES 10
-
-#define Change_VT_ID 4
 
 #define Change_VT_COMMIT_ID 6
 
@@ -532,12 +540,14 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * identified by `handle` — the CLI's `jj interdiff`.
  *
  * The arguments cross as an `InterdiffRequest` `FlatBuffers` request buffer. Unlike
- * `zanshin_show`, both sides are single jj reverse-hex CHANGE IDS. They inherit the CLI
- * `resolve_single_rev`'s REFUSAL — a divergent id is rejected rather than guessed — but NOT
- * its address space: each side resolves to the one VISIBLE commit carrying that change-id
- * prefix, so a commit hex, a revset expression and a HIDDEN commit are all unaddressable
- * here, where the CLI accepts all three. In particular the predecessors `zanshin_evolog`
- * reports are hidden, so the two cannot be composed into a version-to-version diff. An
+ * `zanshin_show`, each side is a SINGLE revision, carried by the schema's `RevisionRef` UNION:
+ * a `ChangeIdRef` is the house reverse-hex change-id prefix, resolved to the one VISIBLE commit
+ * carrying it, and a `CommitIdRef` is a commit-id hex prefix resolved through jj-lib's index,
+ * which is visibility-BLIND. Both inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous
+ * revision is rejected rather than guessed, never resolved to one of the candidates. The
+ * commit-id arm is what makes the predecessors `zanshin_evolog` reports — hidden by
+ * construction — addressable, so the two verbs compose into a version-to-version diff. A revset
+ * expression remains unaddressable on either arm, where the CLI accepts one. An
  * absent side is `@`; omitting BOTH is refused with `jj.invalid_input`, mirroring the CLI's
  * `ArgGroup … required(true)`. `paths` entries are repo-relative PREFIXES; an empty list means
  * all paths, and a filter matching nothing yields an empty list rather than a refusal.
@@ -558,14 +568,20 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its `kind`
- *   is not `Interdiff`, i.e. the buffer was built for a different wrapper.
- * - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
- *   not a valid repo path; detail in `context`.
- * - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
- *   or only-hidden), or divergent; the offending id in `context`. An ABSENT side is not an error
- *   — ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the
- *   `jj.invalid_input` bullet above.
+ * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer (an
+ *   inconsistent `RevisionRef` union — one of its two vtable slots set — is refused here by the
+ *   verifier), its `kind` is not `Interdiff`, i.e. the buffer was built for a different wrapper,
+ *   or a `RevisionRef` discriminant is outside the union; the offending tag in `context`.
+ * - `jj.invalid_input` — both `from` and `to` are absent from the buffer, a present
+ *   `RevisionRef` carries no `id`, a `CommitIdRef` is empty or not valid hex, or a `paths` entry
+ *   is not a valid repo path; detail in `context`.
+ * - `jj.change_not_found` — a `ChangeIdRef` is malformed, carried by no VISIBLE commit (unknown
+ *   or only-hidden), or divergent; or a `CommitIdRef` is valid hex that no indexed commit
+ *   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
+ *   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
+ *   bullet above.
+ * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
+ *   jj-lib's own ambiguity wording in `context`.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -573,9 +589,7 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * `fbs.InterdiffRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_interdiff(uint64_t handle,
-                              const uint8_t *data,
-                              uintptr_t len);
+ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location

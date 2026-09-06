@@ -106,6 +106,51 @@ class _RequestKindReader extends fb.Reader<RequestKind> {
   RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  Which currency one side of `zanshin_interdiff` is written in.
+///
+///  Member order IS the wire discriminant (no explicit numbers) — APPEND only. An ABSENT union
+///  (both vtable slots unset, discriminant `NONE`) is the wire form of "the user did not supply
+///  this side", which applies the CLI's `@` default. `zanshin_interdiff` is the ONLY consumer:
+///  every other verb keeps its own currency untouched.
+enum RevisionRefTypeId {
+  NONE(0),
+  ChangeIdRef(1),
+  CommitIdRef(2);
+
+  final int value;
+  const RevisionRefTypeId(this.value);
+
+  factory RevisionRefTypeId.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RevisionRefTypeId.NONE;
+      case 1:
+        return RevisionRefTypeId.ChangeIdRef;
+      case 2:
+        return RevisionRefTypeId.CommitIdRef;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RevisionRefTypeId? _createOrNull(int? value) => value == null ? null : RevisionRefTypeId.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<RevisionRefTypeId> reader = _RevisionRefTypeIdReader();
+}
+
+class _RevisionRefTypeIdReader extends fb.Reader<RevisionRefTypeId> {
+  const _RevisionRefTypeIdReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RevisionRefTypeId read(fb.BufferContext bc, int offset) =>
+      RevisionRefTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  How a working-copy file changed between @- and @.
 enum ChangeKind {
   Added(0),
@@ -1847,15 +1892,173 @@ class EvologRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  A single revision addressed by its jj reverse-hex CHANGE-ID prefix — the house currency for
+///  single-revision parameters (Story 9.3, FR-JJ-17).
+///
+///  Resolves to the one VISIBLE commit carrying that prefix; an unknown, malformed, only-hidden
+///  or DIVERGENT prefix is refused rather than guessed, exactly as the CLI's `resolve_single_rev`
+///  refuses an ambiguous revision. Use CommitIdRef to reach a hidden commit.
+class ChangeIdRef {
+  ChangeIdRef._(this._bc, this._bcOffset);
+  factory ChangeIdRef(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ChangeIdRef> reader = _ChangeIdRefReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get id => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ChangeIdRef{id: ${id}}';
+  }
+}
+
+class _ChangeIdRefReader extends fb.TableReader<ChangeIdRef> {
+  const _ChangeIdRefReader();
+
+  @override
+  ChangeIdRef createObject(fb.BufferContext bc, int offset) => ChangeIdRef._(bc, offset);
+}
+
+class ChangeIdRefBuilder {
+  ChangeIdRefBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ChangeIdRefObjectBuilder extends fb.ObjectBuilder {
+  final String? _id;
+
+  ChangeIdRefObjectBuilder({
+    String? id,
+  }) : _id = id;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? idOffset = _id == null ? null : fbBuilder.writeString(_id!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, idOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A single revision addressed by its commit-id HEX prefix — the CLI's `commit_id()` reading of
+///  a bare hex symbol.
+///
+///  Resolved through jj-lib's INDEX prefix lookup, which is VISIBILITY-BLIND: a HIDDEN commit —
+///  an EvologEntry.predecessor_commit_ids entry among them — resolves here, which is what lets
+///  evolog and interdiff compose into a version-to-version diff. An ambiguous prefix is refused
+///  (`jj.revset_resolution_error`), never guessed; an empty or non-hex value is
+///  `jj.invalid_input`; valid hex matching nothing is `jj.change_not_found`. It is NOT a revset
+///  symbol resolver: there is no bookmark, tag or change-id fallback.
+class CommitIdRef {
+  CommitIdRef._(this._bc, this._bcOffset);
+  factory CommitIdRef(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CommitIdRef> reader = _CommitIdRefReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get id => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'CommitIdRef{id: ${id}}';
+  }
+}
+
+class _CommitIdRefReader extends fb.TableReader<CommitIdRef> {
+  const _CommitIdRefReader();
+
+  @override
+  CommitIdRef createObject(fb.BufferContext bc, int offset) => CommitIdRef._(bc, offset);
+}
+
+class CommitIdRefBuilder {
+  CommitIdRefBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CommitIdRefObjectBuilder extends fb.ObjectBuilder {
+  final String? _id;
+
+  CommitIdRefObjectBuilder({
+    String? id,
+  }) : _id = id;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? idOffset = _id == null ? null : fbBuilder.writeString(_id!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, idOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
 ///
-///  Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS. They
-///  inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous (divergent) revision is
-///  rejected rather than guessed — but NOT its address space: each side resolves to the one
-///  VISIBLE commit carrying that change-id prefix, so a commit hex, a revset expression
-///  (`main`, `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all
-///  three. In particular EvologEntry's predecessor_commit_ids are hidden by construction, so
-///  evolog and interdiff do NOT compose into a version-to-version diff.
+///  Unlike ShowRequest/EvologRequest each side is a SINGLE revision rather than a revset, and it
+///  crosses as a RevisionRef union: a ChangeIdRef is the house reverse-hex change-id currency
+///  (visible commits only, divergence refused), a CommitIdRef is a commit-id hex prefix resolved
+///  through the index and therefore reaches HIDDEN commits. Both inherit the CLI
+///  `resolve_single_rev`'s REFUSAL — an ambiguous revision is rejected rather than guessed.
+///  Feeding an EvologEntry.predecessor_commit_ids entry in as a CommitIdRef is what composes the
+///  two verbs into a version-to-version diff — the stand-in for the unported `evolog --patch`.
+///  A revset EXPRESSION (`main`, `@-`) is still not accepted on either side.
 ///  An ABSENT side is `@` — but omitting BOTH is refused with
 ///  `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
 ///  `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
@@ -1874,13 +2077,37 @@ class InterdiffRequest {
   final int _bcOffset;
 
   RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
-  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  RevisionRefTypeId? get fromType =>
+      RevisionRefTypeId._createOrNull(const fb.Uint8Reader().vTableGetNullable(_bc, _bcOffset, 6));
+  dynamic get from {
+    switch (fromType?.value) {
+      case 1:
+        return ChangeIdRef.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      case 2:
+        return CommitIdRef.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      default:
+        return null;
+    }
+  }
+
+  RevisionRefTypeId? get toType =>
+      RevisionRefTypeId._createOrNull(const fb.Uint8Reader().vTableGetNullable(_bc, _bcOffset, 10));
+  dynamic get to {
+    switch (toType?.value) {
+      case 1:
+        return ChangeIdRef.reader.vTableGetNullable(_bc, _bcOffset, 12);
+      case 2:
+        return CommitIdRef.reader.vTableGetNullable(_bc, _bcOffset, 12);
+      default:
+        return null;
+    }
+  }
+
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
 
   @override
   String toString() {
-    return 'InterdiffRequest{kind: ${kind}, from: ${from}, to: ${to}, paths: ${paths}}';
+    return 'InterdiffRequest{kind: ${kind}, fromType: ${fromType}, from: ${from}, toType: ${toType}, to: ${to}, paths: ${paths}}';
   }
 }
 
@@ -1897,7 +2124,7 @@ class InterdiffRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(6);
   }
 
   int addKind(RequestKind? kind) {
@@ -1905,18 +2132,28 @@ class InterdiffRequestBuilder {
     return fbBuilder.offset;
   }
 
-  int addFromOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+  int addFromType(RevisionRefTypeId? fromType) {
+    fbBuilder.addUint8(1, fromType?.value);
     return fbBuilder.offset;
   }
 
-  int addToOffset(int? offset) {
+  int addFromOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
+  int addToType(RevisionRefTypeId? toType) {
+    fbBuilder.addUint8(3, toType?.value);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int addPathsOffset(int? offset) {
-    fbBuilder.addOffset(3, offset);
+    fbBuilder.addOffset(5, offset);
     return fbBuilder.offset;
   }
 
@@ -1927,31 +2164,39 @@ class InterdiffRequestBuilder {
 
 class InterdiffRequestObjectBuilder extends fb.ObjectBuilder {
   final RequestKind? _kind;
-  final String? _from;
-  final String? _to;
+  final RevisionRefTypeId? _fromType;
+  final dynamic _from;
+  final RevisionRefTypeId? _toType;
+  final dynamic _to;
   final List<String>? _paths;
 
   InterdiffRequestObjectBuilder({
     RequestKind? kind,
-    String? from,
-    String? to,
+    RevisionRefTypeId? fromType,
+    dynamic from,
+    RevisionRefTypeId? toType,
+    dynamic to,
     List<String>? paths,
   }) : _kind = kind,
+       _fromType = fromType,
        _from = from,
+       _toType = toType,
        _to = to,
        _paths = paths;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
-    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    final int? fromOffset = _from?.getOrCreateOffset(fbBuilder);
+    final int? toOffset = _to?.getOrCreateOffset(fbBuilder);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(6);
     fbBuilder.addUint8(0, _kind?.value);
-    fbBuilder.addOffset(1, fromOffset);
-    fbBuilder.addOffset(2, toOffset);
-    fbBuilder.addOffset(3, pathsOffset);
+    fbBuilder.addUint8(1, _fromType?.value);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addUint8(3, _toType?.value);
+    fbBuilder.addOffset(4, toOffset);
+    fbBuilder.addOffset(5, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -6532,8 +6777,9 @@ class ShowViewObjectBuilder extends fb.ObjectBuilder {
 ///  conflict) is this version's own.
 ///  Rows carry commit ids
 ///  in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
-///  id, and predecessors are HIDDEN by construction, so a change id could not be resolved back —
-///  which is also why they cannot be fed to `zanshin_interdiff` (see InterdiffRequest).
+///  id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+///  They ARE addressable by `zanshin_interdiff`, as a CommitIdRef (see InterdiffRequest): that is
+///  how the two verbs compose into a version-to-version diff.
 ///  `operation_id` is the operation that created or rewrote this commit and is ABSENT
 ///  (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
 ///  operation storing no predecessors and could go no further. That absence is the ONLY signal a

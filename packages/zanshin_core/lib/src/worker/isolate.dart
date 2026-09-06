@@ -1072,7 +1072,7 @@ class ZanshinWorker {
   /// A BARE divergent change-id symbol is REFUSED by jj-lib's own `SymbolResolver`
   /// (`jj.revset_resolution_error`), exactly as `jj show <divergent-id>` fails in
   /// the CLI; union the two COMMIT hexes to address both. Unlike [interdiff]'s
-  /// change-id sides, a revset can therefore reach a commit by its hex. This read
+  /// two SINGLE revisions, a revset can also name a set and use aliases. This read
   /// writes no operation.
   ///
   /// [limit] is a ZANSHIN-SIDE cap the CLI has no counterpart for, applied in RAW
@@ -1139,10 +1139,13 @@ class ZanshinWorker {
   /// out, in the repo identified by [handleId] (Story 9.6) — the CLI's
   /// `jj interdiff`.
   ///
-  /// Both sides are jj reverse-hex CHANGE ids. They inherit the CLI
-  /// `resolve_single_rev`'s ambiguity REFUSAL but not its address space: a commit
-  /// hex, a revset expression and a HIDDEN commit are all unaddressable, so
-  /// [evolog]'s hidden predecessors cannot be fed back in. An absent side is `@`;
+  /// Each side is a single revision in one of the two `RevisionRef` currencies: a
+  /// `ChangeIdRef` (reverse-hex change-id prefix, resolving only to the currently
+  /// VISIBLE commit) or a `CommitIdRef` (commit-id hex prefix, resolved through
+  /// the index and therefore reaching a HIDDEN commit — which is how [evolog]'s
+  /// predecessors are fed back in). Both inherit the CLI `resolve_single_rev`'s
+  /// ambiguity REFUSAL; a revset expression is unaddressable on either arm. An
+  /// absent side is `@`;
   /// omitting BOTH is refused with `jj.invalid_input`. No
   /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
   /// records, the CLI's own asymmetry with `show`. This read writes no operation.
@@ -1160,8 +1163,8 @@ class ZanshinWorker {
   /// [RepoHandle.interdiff].
   Future<repo_ffi_commit_views.InterdiffView> interdiff(
     int handleId, {
-    String? from,
-    String? to,
+    repo_ffi_commit_views.RevisionRef? from,
+    repo_ffi_commit_views.RevisionRef? to,
     List<String> paths = const <String>[],
   }) async {
     final Uint8List bytes = await send(
@@ -1778,8 +1781,8 @@ void _workerEntry(_WorkerInit init) {
 
         case InterdiffCommand(
           :final int handleId,
-          :final String? from,
-          :final String? to,
+          :final repo_ffi_commit_views.RevisionRef? from,
+          :final repo_ffi_commit_views.RevisionRef? to,
           :final List<String> paths,
         ):
           final int? raw = handles[handleId]; // lookup — never remove

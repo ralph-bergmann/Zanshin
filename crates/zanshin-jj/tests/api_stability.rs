@@ -109,6 +109,8 @@ type _ShowEntry = zanshin_jj::ShowEntry;
 type _EvologEntry = zanshin_jj::EvologEntry;
 type _InterdiffView = zanshin_jj::InterdiffView;
 type _CommitViewError = zanshin_jj::CommitViewError;
+// Epic 9 follow-up I: `interdiff`'s single-revision currency
+type _RevisionRef = zanshin_jj::RevisionRef;
 
 // view (Story 9.2)
 type _Tag = zanshin_jj::Tag;
@@ -659,8 +661,13 @@ fn git_ops_surface_resolves() {
 /// clippy's `too_many_lines` ceiling. All three methods are `fn`-pointer-pinnable (none takes a
 /// visitor), so the PARAMETER CURRENCY SPLIT is pinned structurally: `show`/`evolog` take a
 /// revset `Option<&str>` because their CLI form is a SET whose aliases must survive (FR-JJ-17),
-/// while `interdiff` takes two owned `Option<ChangeId>` because the CLI resolves each side with
-/// `resolve_single_rev`. Swapping either currency breaks this test at compile time.
+/// while `interdiff` takes two owned `Option<RevisionRef>` because the CLI resolves each side
+/// with `resolve_single_rev`. Swapping either currency breaks this test at compile time.
+///
+/// `interdiff` is the ONE verb whose single revision is a UNION rather than a bare `ChangeId`
+/// (Epic 9 follow-up I): its commit-id arm reaches HIDDEN commits, which is what makes `evolog`
+/// and `interdiff` compose. Both arms are constructed below, so narrowing the parameter back to
+/// a `ChangeId` — or dropping either variant — breaks this test at compile time too.
 ///
 /// Each `CommitViewError` variant is constructed AND its `Display` asserted: an unexercised
 /// `thiserror` arm is an uncovered line in `commit_views.rs`, which the coverage ratchet pins.
@@ -698,6 +705,10 @@ fn commit_views_surface_resolves() {
     _ = sample_evolog_entry();
     _ = sample_interdiff_view();
 
+    // Both arms of the one union currency, named by their public paths.
+    _ = zanshin_jj::RevisionRef::ChangeId(zanshin_jj::ChangeId(String::new()));
+    _ = zanshin_jj::RevisionRef::CommitId(zanshin_jj::CommitId(String::new()));
+
     _ = zanshin_jj::Repo::show
         as fn(
             &zanshin_jj::Repo,
@@ -713,8 +724,8 @@ fn commit_views_surface_resolves() {
     _ = zanshin_jj::Repo::interdiff
         as fn(
             &zanshin_jj::Repo,
-            Option<zanshin_jj::ChangeId>,
-            Option<zanshin_jj::ChangeId>,
+            Option<zanshin_jj::RevisionRef>,
+            Option<zanshin_jj::RevisionRef>,
             &[String],
         ) -> Result<zanshin_jj::InterdiffView, zanshin_jj::CommitViewError>;
 }

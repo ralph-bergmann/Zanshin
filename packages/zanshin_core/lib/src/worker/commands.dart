@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 
+import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
+
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
 ///
 /// Commands flow from the main isolate to the single long-running worker via
-/// a `SendPort`. Every subtype carries only `int`, `String` or `bool`
-/// fields so instances are sendable across isolate boundaries without copying.
+/// a `SendPort`. Almost every subtype carries only `int`, `String` or `bool`
+/// fields so instances are sendable across isolate boundaries without copying;
+/// the one exception is [InterdiffCommand]'s [RevisionRef] pair, which is a
+/// plain final-field class and therefore sendable too — `Isolate.spawn`
+/// isolates share a code group.
 ///
 /// Handle-taking commands carry the opaque `handleId` from the worker's
 /// handle table, never the raw `*mut Repo` pointer (Model A, Story 3.9).
@@ -706,12 +711,17 @@ final class InterdiffCommand extends WorkerCommand {
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   final int handleId;
 
-  /// First revision, jj reverse-hex change id; `null` = `@`. Omitting BOTH sides
-  /// is refused (`jj.invalid_input`).
-  final String? from;
+  /// First revision — a [ChangeIdRef] (reverse-hex change-id prefix, visible
+  /// commits only) or a [CommitIdRef] (commit-id hex prefix, reaches hidden
+  /// commits); `null` = `@`. Omitting BOTH sides is refused
+  /// (`jj.invalid_input`).
+  ///
+  /// The first non-primitive field to cross the port. `Isolate.spawn` isolates
+  /// share a code group, so a plain final-field class is sendable as-is.
+  final RevisionRef? from;
 
-  /// Second revision, jj reverse-hex change id; `null` = `@`.
-  final String? to;
+  /// Second revision, same two currencies as [from]; `null` = `@`.
+  final RevisionRef? to;
 
   /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
   final List<String> paths;

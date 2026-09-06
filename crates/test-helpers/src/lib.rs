@@ -314,6 +314,31 @@ pub fn describe_commit(workspace_root: &Path, commit_id_hex: &str, description: 
     rewritten.id().hex()
 }
 
+/// Rewrites `commit_id_hex` with a NEW TREE holding exactly `files`, as an external edit
+/// followed by `jj commit` would; returns the rewritten commit's hex id.
+///
+/// The [`describe_commit`] twin for CONTENT. `describe_commit` changes only the description, so
+/// every version of that change shares one tree and an interdiff between two of them is
+/// trivially empty — which makes it useless as the input to "what differs between two versions
+/// of this change". This helper is what gives an evolution chain a non-empty per-version diff,
+/// so an `evolog` predecessor fed back into `interdiff` reports something.
+///
+/// # Panics
+/// Panics on any jj-lib failure — a failure here is a broken fixture.
+#[must_use = "the rewritten commit id is what the assertions compare against"]
+pub fn rewrite_commit_files(workspace_root: &Path, commit_id_hex: &str, files: &[(&str, &str)]) -> String {
+    let (_workspace, repo) = load(workspace_root);
+    let store = repo.store().clone();
+    let commit = repo.store().get_commit(&commit_id(commit_id_hex)).unwrap();
+    let tree = multi_file_tree(&store, files);
+
+    let mut tx = repo.start_transaction();
+    let rewritten = pollster::block_on(tx.repo_mut().rewrite_commit(&commit).set_tree(tree).write()).unwrap();
+    pollster::block_on(tx.repo_mut().rebase_descendants()).unwrap();
+    pollster::block_on(tx.commit("test: rewrite commit files")).unwrap();
+    rewritten.id().hex()
+}
+
 /// Adds a SECOND visible commit carrying `commit_id_hex`'s change id, making that change
 /// divergent; returns the new commit's hex id.
 ///

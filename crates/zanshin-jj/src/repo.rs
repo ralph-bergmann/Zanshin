@@ -1022,8 +1022,9 @@ impl Repo {
     /// silent.
     ///
     /// The CLI's `-p/--patch` has no counterpart: it *is* an interdiff of each entry's
-    /// predecessors. Note that [`Repo::interdiff`]'s change-id currency cannot address those
-    /// predecessors — they are hidden — so the two verbs do NOT currently compose into it.
+    /// predecessors — so a caller composes the two verbs, feeding a
+    /// [`crate::EvologEntry::predecessor_commit_ids`] entry to [`Repo::interdiff`] as a
+    /// [`crate::RevisionRef::CommitId`], the arm that reaches hidden commits.
     ///
     /// [`crate::EvologEntry::change`] carries two fields derived against the CURRENT view
     /// rather than this version's moment (`divergent`, `is_anonymous`); see its doc.
@@ -1052,14 +1053,16 @@ impl Repo {
     /// `jj interdiff` (AR-AP-1), and never writes an operation — not even on a refusal. Nothing
     /// is written by the rebase either: `rebase_to_dest_parent` merges in memory.
     ///
-    /// Unlike [`Repo::show`], each side is a SINGLE revision, and it inherits the CLI's
-    /// `resolve_single_rev` REFUSAL — a divergent id is rejected rather than guessed. It does
-    /// NOT inherit the CLI's address space: a side is a reverse-hex CHANGE-ID prefix resolved
-    /// to the one VISIBLE commit carrying it, so a commit hex, a revset expression (`main`,
-    /// `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all three.
-    /// That is the house currency (Story 9.3, FR-JJ-17); its consequence is that the
-    /// predecessors [`Repo::evolog`] reports — hidden by construction — cannot be fed back in,
-    /// so the two verbs do not compose into a diff of one version against the next.
+    /// Unlike [`Repo::show`], each side is a SINGLE revision, written in one of the two
+    /// [`crate::RevisionRef`] currencies, and both inherit the CLI's `resolve_single_rev`
+    /// REFUSAL — an ambiguous revision is rejected rather than guessed. A
+    /// [`crate::RevisionRef::ChangeId`] is the house reverse-hex change-id prefix (Story 9.3,
+    /// FR-JJ-17) and resolves only to the currently VISIBLE commit carrying it; a
+    /// [`crate::RevisionRef::CommitId`] is a commit-id hex prefix resolved through jj-lib's
+    /// index, which is visibility-blind and therefore reaches a HIDDEN commit. That second arm
+    /// is what lets the predecessors [`Repo::evolog`] reports be fed back in, so the two verbs
+    /// DO compose into a diff of one version of a change against the next. A revset expression
+    /// (`main`, `@-`) is still unaddressable on either arm, where the CLI accepts one.
     /// An absent side defaults to `@` — but omitting BOTH is a refusal, mirroring the CLI's
     /// `ArgGroup … required(true)`: interdiffing `@` against itself is trivially empty and
     /// never what a caller meant.
@@ -1083,21 +1086,25 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, or a
-    ///   `paths` entry is not a valid repo path.
-    /// - [`crate::CommitViewError::ChangeNotFound`] — `from` or `to` is malformed, carried by
-    ///   no VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT side is not an
-    ///   error: ONE absent side applies the CLI's `--from`/`--to` default `@`, and omitting
-    ///   BOTH is the `InvalidInput` bullet above.
+    /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, a `paths`
+    ///   entry is not a valid repo path, or a [`crate::RevisionRef::CommitId`] is empty or not
+    ///   valid hex.
+    /// - [`crate::CommitViewError::ChangeNotFound`] — a [`crate::RevisionRef::ChangeId`] is
+    ///   malformed, carried by no VISIBLE commit (unknown or only-hidden), or divergent; or a
+    ///   [`crate::RevisionRef::CommitId`] is valid hex that no indexed commit carries. An
+    ///   ABSENT side is not an error: ONE absent side applies the CLI's `--from`/`--to` default
+    ///   `@`, and omitting BOTH is the `InvalidInput` bullet above.
+    /// - [`crate::CommitViewError::RevsetResolutionError`] — a [`crate::RevisionRef::CommitId`]
+    ///   prefix is carried by two or more commits; refused, never resolved to one of them.
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    // WHY: owned `ChangeId`s match the house currency for single-revision parameters
+    // WHY: owned `RevisionRef`s match the house currency for single-revision parameters
     // (epics.md Story 6.1 / AC-1); the implementation only needs to borrow them.
     #[allow(clippy::needless_pass_by_value)]
     pub fn interdiff(
         &self,
-        from: Option<crate::ChangeId>,
-        to: Option<crate::ChangeId>,
+        from: Option<crate::RevisionRef>,
+        to: Option<crate::RevisionRef>,
         paths: &[String],
     ) -> Result<crate::InterdiffView, crate::CommitViewError> {
         crate::commit_views::interdiff(self.workspace(), from.as_ref(), to.as_ref(), paths)
@@ -1178,7 +1185,9 @@ impl Repo {
     /// Zanshin never snapshots (D2). It is a change id, so it inherits `resolve_single_rev`'s
     /// ambiguity REFUSAL (a divergent id is rejected, never guessed) but not its address
     /// space: a commit hex, a revset expression and a hidden commit are unaddressable, the
-    /// same trade [`Repo::interdiff`] and [`Repo::file_list`] document.
+    /// same trade [`Repo::file_list`] documents. ([`Repo::interdiff`] used to make it too;
+    /// Epic 9 follow-up I gave that ONE verb a commit-id arm, and this one was deliberately
+    /// left alone.)
     ///
     /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as the CLI's are:
     /// a run whose second name already exists creates NOTHING — not even the first name — and

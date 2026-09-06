@@ -551,9 +551,15 @@ fn workspace_root_refuses_a_buffer_built_for_another_verb() {
     close_handle(handle);
 }
 
-/// A POPULATED `ShowRequest` buffer, built here so this suite can cross-feed one of the four
-/// tables the ledger names as the collision (`Show`/`Evolog`/`Interdiff`/`WorkspaceRoot`, which
-/// all put one string in the slot after `kind`).
+/// A POPULATED `ShowRequest` buffer, built here so this suite can cross-feed one of the tables
+/// the ledger names as the collision (`Show`/`Evolog`/`WorkspaceRoot`, which all put one string
+/// in the slot after `kind`).
+///
+/// The ledger called that a FOUR-way collision, with `InterdiffRequest` as the fourth. It is a
+/// three-way one since Epic 9 follow-up I turned interdiff's `from`/`to` into a `RevisionRef`
+/// union, whose discriminant byte occupies the slot the string used to — so an interdiff buffer
+/// and these three no longer verify as each other. This suite never fed one either way, so no
+/// row here moved; `commit_views_ffi.rs` pins the divergence.
 fn show_request_bytes(revset: &str) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let revset_off = b.create_string(revset);

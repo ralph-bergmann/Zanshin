@@ -185,6 +185,105 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_REVISION_REF: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_REVISION_REF: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_REVISION_REF: [RevisionRef; 3] =
+            [RevisionRef::NONE, RevisionRef::ChangeIdRef, RevisionRef::CommitIdRef];
+
+        /// Which currency one side of `zanshin_interdiff` is written in.
+        ///
+        /// Member order IS the wire discriminant (no explicit numbers) — APPEND only. An ABSENT union
+        /// (both vtable slots unset, discriminant `NONE`) is the wire form of "the user did not supply
+        /// this side", which applies the CLI's `@` default. `zanshin_interdiff` is the ONLY consumer:
+        /// every other verb keeps its own currency untouched.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RevisionRef(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RevisionRef {
+            pub const NONE: Self = Self(0);
+            pub const ChangeIdRef: Self = Self(1);
+            pub const CommitIdRef: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::ChangeIdRef, Self::CommitIdRef];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NONE => Some("NONE"),
+                    Self::ChangeIdRef => Some("ChangeIdRef"),
+                    Self::CommitIdRef => Some("CommitIdRef"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RevisionRef {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RevisionRef {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RevisionRef {
+            type Output = RevisionRef;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RevisionRef {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RevisionRef {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RevisionRef {}
+        pub struct RevisionRefUnionTableOffset {}
+
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_CHANGE_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -3238,18 +3337,238 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum ChangeIdRefOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A single revision addressed by its jj reverse-hex CHANGE-ID prefix — the house currency for
+        /// single-revision parameters (Story 9.3, FR-JJ-17).
+        ///
+        /// Resolves to the one VISIBLE commit carrying that prefix; an unknown, malformed, only-hidden
+        /// or DIVERGENT prefix is refused rather than guessed, exactly as the CLI's `resolve_single_rev`
+        /// refuses an ambiguous revision. Use CommitIdRef to reach a hidden commit.
+        pub struct ChangeIdRef<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ChangeIdRef<'a> {
+            type Inner = ChangeIdRef<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ChangeIdRef<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ChangeIdRef { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ChangeIdRefArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ChangeIdRef<'bldr>> {
+                let mut builder = ChangeIdRefBuilder::new(_fbb);
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ChangeIdRef::VT_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ChangeIdRef<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ChangeIdRefArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ChangeIdRefArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ChangeIdRefArgs { id: None }
+            }
+        }
+
+        pub struct ChangeIdRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ChangeIdRefBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ChangeIdRef::VT_ID, id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeIdRefBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ChangeIdRefBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ChangeIdRef<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ChangeIdRef<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ChangeIdRef");
+                ds.field("id", &self.id());
+                ds.finish()
+            }
+        }
+        pub enum CommitIdRefOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A single revision addressed by its commit-id HEX prefix — the CLI's `commit_id()` reading of
+        /// a bare hex symbol.
+        ///
+        /// Resolved through jj-lib's INDEX prefix lookup, which is VISIBILITY-BLIND: a HIDDEN commit —
+        /// an EvologEntry.predecessor_commit_ids entry among them — resolves here, which is what lets
+        /// evolog and interdiff compose into a version-to-version diff. An ambiguous prefix is refused
+        /// (`jj.revset_resolution_error`), never guessed; an empty or non-hex value is
+        /// `jj.invalid_input`; valid hex matching nothing is `jj.change_not_found`. It is NOT a revset
+        /// symbol resolver: there is no bookmark, tag or change-id fallback.
+        pub struct CommitIdRef<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CommitIdRef<'a> {
+            type Inner = CommitIdRef<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CommitIdRef<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CommitIdRef { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CommitIdRefArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CommitIdRef<'bldr>> {
+                let mut builder = CommitIdRefBuilder::new(_fbb);
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitIdRef::VT_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CommitIdRef<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct CommitIdRefArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for CommitIdRefArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CommitIdRefArgs { id: None }
+            }
+        }
+
+        pub struct CommitIdRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CommitIdRefBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitIdRef::VT_ID, id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitIdRefBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CommitIdRefBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CommitIdRef<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CommitIdRef<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CommitIdRef");
+                ds.field("id", &self.id());
+                ds.finish()
+            }
+        }
         pub enum InterdiffRequestOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
         /// Arguments of `zanshin_interdiff` (Story 9.6) — the CLI's `jj interdiff`.
         ///
-        /// Unlike ShowRequest/EvologRequest both sides are single jj reverse-hex CHANGE IDS. They
-        /// inherit the CLI `resolve_single_rev`'s REFUSAL — an ambiguous (divergent) revision is
-        /// rejected rather than guessed — but NOT its address space: each side resolves to the one
-        /// VISIBLE commit carrying that change-id prefix, so a commit hex, a revset expression
-        /// (`main`, `@-`) and a HIDDEN commit are all unaddressable here, where the CLI accepts all
-        /// three. In particular EvologEntry's predecessor_commit_ids are hidden by construction, so
-        /// evolog and interdiff do NOT compose into a version-to-version diff.
+        /// Unlike ShowRequest/EvologRequest each side is a SINGLE revision rather than a revset, and it
+        /// crosses as a RevisionRef union: a ChangeIdRef is the house reverse-hex change-id currency
+        /// (visible commits only, divergence refused), a CommitIdRef is a commit-id hex prefix resolved
+        /// through the index and therefore reaches HIDDEN commits. Both inherit the CLI
+        /// `resolve_single_rev`'s REFUSAL — an ambiguous revision is rejected rather than guessed.
+        /// Feeding an EvologEntry.predecessor_commit_ids entry in as a CommitIdRef is what composes the
+        /// two verbs into a version-to-version diff — the stand-in for the unported `evolog --patch`.
+        /// A revset EXPRESSION (`main`, `@-`) is still not accepted on either side.
         /// An ABSENT side is `@` — but omitting BOTH is refused with
         /// `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
         /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths, and the
@@ -3271,9 +3590,11 @@ pub mod zanshin {
 
         impl<'a> InterdiffRequest<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
-            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
-            pub const VT_TO: ::flatbuffers::VOffsetT = 8;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_FROM_TYPE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TO_TYPE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 12;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3294,6 +3615,8 @@ pub mod zanshin {
                 if let Some(x) = args.from {
                     builder.add_from(x);
                 }
+                builder.add_to_type(args.to_type);
+                builder.add_from_type(args.from_type);
                 builder.add_kind(args.kind);
                 builder.finish()
             }
@@ -3310,23 +3633,48 @@ pub mod zanshin {
                 }
             }
             #[inline]
-            pub fn from(&self) -> Option<&'a str> {
+            pub fn from_type(&self) -> RevisionRef {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(InterdiffRequest::VT_FROM, None)
+                        .get::<RevisionRef>(InterdiffRequest::VT_FROM_TYPE, Some(RevisionRef::NONE))
+                        .unwrap()
                 }
             }
             #[inline]
-            pub fn to(&self) -> Option<&'a str> {
+            pub fn from(&self) -> Option<::flatbuffers::Table<'a>> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(InterdiffRequest::VT_TO, None)
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(
+                            InterdiffRequest::VT_FROM,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn to_type(&self) -> RevisionRef {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RevisionRef>(InterdiffRequest::VT_TO_TYPE, Some(RevisionRef::NONE))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<::flatbuffers::Table<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(InterdiffRequest::VT_TO, None)
                 }
             }
             #[inline]
@@ -3340,6 +3688,65 @@ pub mod zanshin {
                     >>(InterdiffRequest::VT_PATHS, None)
                 }
             }
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn from_as_change_id_ref(&self) -> Option<ChangeIdRef<'a>> {
+                if self.from_type() == RevisionRef::ChangeIdRef {
+                    self.from().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ChangeIdRef::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn from_as_commit_id_ref(&self) -> Option<CommitIdRef<'a>> {
+                if self.from_type() == RevisionRef::CommitIdRef {
+                    self.from().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { CommitIdRef::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn to_as_change_id_ref(&self) -> Option<ChangeIdRef<'a>> {
+                if self.to_type() == RevisionRef::ChangeIdRef {
+                    self.to().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ChangeIdRef::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn to_as_commit_id_ref(&self) -> Option<CommitIdRef<'a>> {
+                if self.to_type() == RevisionRef::CommitIdRef {
+                    self.to().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { CommitIdRef::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for InterdiffRequest<'_> {
@@ -3350,8 +3757,20 @@ pub mod zanshin {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
      .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+     .visit_union::<RevisionRef, _>("from_type", Self::VT_FROM_TYPE, "from", Self::VT_FROM, false, |key, v, pos| {
+        match key {
+          RevisionRef::ChangeIdRef => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeIdRef>>("RevisionRef::ChangeIdRef", pos),
+          RevisionRef::CommitIdRef => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<CommitIdRef>>("RevisionRef::CommitIdRef", pos),
+          _ => Ok(()),
+        }
+     })?
+     .visit_union::<RevisionRef, _>("to_type", Self::VT_TO_TYPE, "to", Self::VT_TO, false, |key, v, pos| {
+        match key {
+          RevisionRef::ChangeIdRef => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeIdRef>>("RevisionRef::ChangeIdRef", pos),
+          RevisionRef::CommitIdRef => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<CommitIdRef>>("RevisionRef::CommitIdRef", pos),
+          _ => Ok(()),
+        }
+     })?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .finish();
                 Ok(())
@@ -3359,8 +3778,10 @@ pub mod zanshin {
         }
         pub struct InterdiffRequestArgs<'a> {
             pub kind: RequestKind,
-            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from_type: RevisionRef,
+            pub from: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
+            pub to_type: RevisionRef,
+            pub to: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
             pub paths:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
@@ -3369,7 +3790,9 @@ pub mod zanshin {
             fn default() -> Self {
                 InterdiffRequestArgs {
                     kind: RequestKind::Unspecified,
+                    from_type: RevisionRef::NONE,
                     from: None,
+                    to_type: RevisionRef::NONE,
                     to: None,
                     paths: None,
                 }
@@ -3387,12 +3810,22 @@ pub mod zanshin {
                     .push_slot::<RequestKind>(InterdiffRequest::VT_KIND, kind, RequestKind::Unspecified);
             }
             #[inline]
-            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+            pub fn add_from_type(&mut self, from_type: RevisionRef) {
+                self.fbb_
+                    .push_slot::<RevisionRef>(InterdiffRequest::VT_FROM_TYPE, from_type, RevisionRef::NONE);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffRequest::VT_FROM, from);
             }
             #[inline]
-            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+            pub fn add_to_type(&mut self, to_type: RevisionRef) {
+                self.fbb_
+                    .push_slot::<RevisionRef>(InterdiffRequest::VT_TO_TYPE, to_type, RevisionRef::NONE);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffRequest::VT_TO, to);
             }
@@ -3423,8 +3856,48 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("InterdiffRequest");
                 ds.field("kind", &self.kind());
-                ds.field("from", &self.from());
-                ds.field("to", &self.to());
+                ds.field("from_type", &self.from_type());
+                match self.from_type() {
+                    RevisionRef::ChangeIdRef => {
+                        if let Some(x) = self.from_as_change_id_ref() {
+                            ds.field("from", &x)
+                        } else {
+                            ds.field("from", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    RevisionRef::CommitIdRef => {
+                        if let Some(x) = self.from_as_commit_id_ref() {
+                            ds.field("from", &x)
+                        } else {
+                            ds.field("from", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    _ => {
+                        let x: Option<()> = None;
+                        ds.field("from", &x)
+                    }
+                };
+                ds.field("to_type", &self.to_type());
+                match self.to_type() {
+                    RevisionRef::ChangeIdRef => {
+                        if let Some(x) = self.to_as_change_id_ref() {
+                            ds.field("to", &x)
+                        } else {
+                            ds.field("to", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    RevisionRef::CommitIdRef => {
+                        if let Some(x) = self.to_as_commit_id_ref() {
+                            ds.field("to", &x)
+                        } else {
+                            ds.field("to", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    _ => {
+                        let x: Option<()> = None;
+                        ds.field("to", &x)
+                    }
+                };
                 ds.field("paths", &self.paths());
                 ds.finish()
             }
@@ -10922,8 +11395,9 @@ pub mod zanshin {
         /// conflict) is this version's own.
         /// Rows carry commit ids
         /// in `predecessor_commit_ids` rather than change ids: every predecessor shares the change's own
-        /// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back —
-        /// which is also why they cannot be fed to `zanshin_interdiff` (see InterdiffRequest).
+        /// id, and predecessors are HIDDEN by construction, so a change id could not be resolved back.
+        /// They ARE addressable by `zanshin_interdiff`, as a CommitIdRef (see InterdiffRequest): that is
+        /// how the two verbs compose into a version-to-version diff.
         /// `operation_id` is the operation that created or rewrote this commit and is ABSENT
         /// (null-for-absence) for an entry the walk emitted from its flush tail — it reached an
         /// operation storing no predecessors and could go no further. That absence is the ONLY signal a

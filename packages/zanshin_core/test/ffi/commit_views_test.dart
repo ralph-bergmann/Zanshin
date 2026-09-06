@@ -299,16 +299,24 @@ void main() {
     });
 
     test('zanshinInterdiff_rejects_interior_nul_in_from', () {
-      expect(() => zanshinInterdiff(0, from: 'qpv${String.fromCharCode(0)}x'), throwsArgumentError);
+      expect(
+        () => zanshinInterdiff(0, from: ChangeIdRef('qpv${String.fromCharCode(0)}x')),
+        throwsArgumentError,
+      );
     });
 
     test('zanshinInterdiff_rejects_interior_nul_in_to', () {
-      expect(() => zanshinInterdiff(0, to: 'qpv${String.fromCharCode(0)}x'), throwsArgumentError);
+      // The COMMIT arm too: the guard reads `RevisionRef.id`, so a NUL must be
+      // caught whichever currency the caller picked.
+      expect(
+        () => zanshinInterdiff(0, to: CommitIdRef('abc${String.fromCharCode(0)}1')),
+        throwsArgumentError,
+      );
     });
 
     test('zanshinInterdiff_rejects_interior_nul_in_a_path', () {
       expect(
-        () => zanshinInterdiff(0, from: 'qpvuntsm', paths: ['a${String.fromCharCode(0)}.txt']),
+        () => zanshinInterdiff(0, from: const ChangeIdRef('qpvuntsm'), paths: ['a${String.fromCharCode(0)}.txt']),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
       );
     });
@@ -323,6 +331,53 @@ void main() {
       // Same guard, same reason: `show`'s limit rides the same `uint` field shape,
       // and both `0` and "no limit" are already spelled without it.
       expect(() => zanshinShow(0, limit: -1), throwsArgumentError);
+    });
+  });
+
+  // ── Request wire shape (no cdylib call) ────────────────────────────────────
+
+  group('interdiffRequestBytes writes the RevisionRef union', () {
+    test('both arms carry their own discriminant and id', () {
+      final req = fbs.InterdiffRequest(
+        interdiffRequestBytes(
+          from: const ChangeIdRef('qpvuntsm'),
+          to: const CommitIdRef('abc123'),
+          paths: const ['a.txt'],
+        ),
+      );
+
+      expect(req.kind, fbs.RequestKind.Interdiff);
+      expect(req.fromType, fbs.RevisionRefTypeId.ChangeIdRef);
+      expect((req.from as fbs.ChangeIdRef?)?.id, 'qpvuntsm');
+      expect(req.toType, fbs.RevisionRefTypeId.CommitIdRef);
+      expect((req.to as fbs.CommitIdRef?)?.id, 'abc123');
+      expect(req.paths, ['a.txt']);
+    });
+
+    test('the arms are not swapped when both are the same currency', () {
+      // A builder that wrote one side's discriminant into the other's slot would
+      // still produce a well-formed buffer, so the two ids have to be distinct
+      // and both read back.
+      final req = fbs.InterdiffRequest(
+        interdiffRequestBytes(from: const CommitIdRef('aaa'), to: const CommitIdRef('bbb')),
+      );
+
+      expect((req.from as fbs.CommitIdRef?)?.id, 'aaa');
+      expect((req.to as fbs.CommitIdRef?)?.id, 'bbb');
+    });
+
+    test('an absent side leaves BOTH of its vtable slots unset', () {
+      // Not a cosmetic detail: FlatBuffers refuses a half-written union outright,
+      // so "absent" has to mean discriminant AND value absent — which is what
+      // makes the Rust side read it as the CLI's `@` default rather than as a
+      // malformed buffer.
+      final req = fbs.InterdiffRequest(
+        interdiffRequestBytes(to: const ChangeIdRef('qpvuntsm')),
+      );
+
+      expect(req.fromType, isNull);
+      expect(req.from, isNull);
+      expect(req.toType, fbs.RevisionRefTypeId.ChangeIdRef);
     });
   });
 }
