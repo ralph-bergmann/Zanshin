@@ -80,11 +80,22 @@ fn cstr(s: &str) -> CString {
 
 /// Build a `ChangeIdList` request buffer via `fbs::ChangeIdListArgs` (the ADR-0001
 /// composite-input pattern).
-fn change_id_list_bytes(ids: &[&str]) -> Vec<u8> {
+///
+/// `kind` is a PARAMETER because this one table is read by two wrappers: `NewChange` for
+/// `zanshin_new_change`, `Abandon` for `zanshin_abandon`. Passing `Unspecified` builds an
+/// UNTAGGED buffer — `FlatBuffers` writes nothing for a default-valued field, so those bytes
+/// are identical to a pre-tag buffer's.
+fn change_id_list_bytes(kind: fbs::RequestKind, ids: &[&str]) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let offs: Vec<_> = ids.iter().map(|s| b.create_string(s)).collect();
     let vec = b.create_vector(&offs);
-    let list = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { change_ids: Some(vec) });
+    let list = fbs::ChangeIdList::create(
+        &mut b,
+        &fbs::ChangeIdListArgs {
+            kind,
+            change_ids: Some(vec),
+        },
+    );
     b.finish(list, None);
     b.finished_data().to_vec()
 }
@@ -107,6 +118,7 @@ fn restore_request_bytes(
     let req = fbs::RestoreRequest::create(
         &mut b,
         &fbs::RestoreRequestArgs {
+            kind: fbs::RequestKind::Restore,
             from: from_off,
             into: into_off,
             changes_in: changes_in_off,
@@ -128,6 +140,7 @@ fn absorb_request_bytes(from: Option<&str>, into: Option<&str>, paths: &[&str]) 
     let req = fbs::AbsorbRequest::create(
         &mut b,
         &fbs::AbsorbRequestArgs {
+            kind: fbs::RequestKind::Absorb,
             from: from_off,
             into: into_off,
             paths: Some(paths_vec),
@@ -242,7 +255,7 @@ fn new_change_valid_round_trip_returns_one_new_change_id() {
     // SAFETY: valid fixture path; well-formed handle lifetime within this test.
     let (handle, wc_change_id) = unsafe { open_fixture_and_get_wc_change_id() };
 
-    let req = change_id_list_bytes(&[&wc_change_id]);
+    let req = change_id_list_bytes(fbs::RequestKind::NewChange, &[&wc_change_id]);
     let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
@@ -268,7 +281,7 @@ fn new_change_empty_parents_returns_jj_invalid_input() {
     // SAFETY: valid fixture path; well-formed handle lifetime within this test.
     let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
 
-    let req = change_id_list_bytes(&[]);
+    let req = change_id_list_bytes(fbs::RequestKind::NewChange, &[]);
     let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
@@ -292,7 +305,7 @@ fn edit_valid_round_trip_moves_working_copy() {
     // real "switch to a different, already-existing change" — unlike editing @ to
     // itself, which hits jj-lib's implicit-abandon-of-a-discardable-previous-@ side
     // effect (see mutate::edit's doc comment) and mints a replacement instead.
-    let req = change_id_list_bytes(&[&wc_change_id]);
+    let req = change_id_list_bytes(fbs::RequestKind::NewChange, &[&wc_change_id]);
     let new_change_token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     let new_change_bytes = unsafe { read_and_free(new_change_token) };
     assert!(parse_envelope(&new_change_bytes).ok(), "new_change must succeed");
@@ -329,7 +342,7 @@ fn abandon_wc_included_returns_replacement_new_change_id() {
     // SAFETY: valid fixture path; well-formed handle lifetime within this test.
     let (handle, wc_change_id) = unsafe { open_fixture_and_get_wc_change_id() };
 
-    let req = change_id_list_bytes(&[&wc_change_id]);
+    let req = change_id_list_bytes(fbs::RequestKind::Abandon, &[&wc_change_id]);
     let token = unsafe { zanshin_abandon(handle, req.as_ptr(), req.len()) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
@@ -352,7 +365,7 @@ fn abandon_empty_change_ids_returns_jj_invalid_input() {
     // SAFETY: valid fixture path; well-formed handle lifetime within this test.
     let (handle, _) = unsafe { open_fixture_and_get_wc_change_id() };
 
-    let req = change_id_list_bytes(&[]);
+    let req = change_id_list_bytes(fbs::RequestKind::Abandon, &[]);
     let token = unsafe { zanshin_abandon(handle, req.as_ptr(), req.len()) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
@@ -1142,7 +1155,10 @@ fn every_wrapper_bogus_change_id_returns_jj_change_not_found() {
     let bogus = "nonexistentchangeid";
     let bogus_cstr = cstr(bogus);
     let desc_cstr = cstr("desc");
-    let req = change_id_list_bytes(&[bogus]);
+    // Two buffers, not one: the shared `ChangeIdList` table carries a PER-WRAPPER tag, so the
+    // same bytes can no longer serve both verbs.
+    let new_change_req = change_id_list_bytes(fbs::RequestKind::NewChange, &[bogus]);
+    let abandon_req = change_id_list_bytes(fbs::RequestKind::Abandon, &[bogus]);
 
     let describe_token = unsafe { zanshin_describe(handle, bogus_cstr.as_ptr(), desc_cstr.as_ptr()) };
     let describe_bytes = unsafe { read_and_free(describe_token) };
@@ -1152,7 +1168,7 @@ fn every_wrapper_bogus_change_id_returns_jj_change_not_found() {
         "zanshin_describe with a bogus change id"
     );
 
-    let new_change_token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
+    let new_change_token = unsafe { zanshin_new_change(handle, new_change_req.as_ptr(), new_change_req.len()) };
     let new_change_bytes = unsafe { read_and_free(new_change_token) };
     assert_eq!(
         parse_envelope(&new_change_bytes).error().and_then(|e| e.code()),
@@ -1168,7 +1184,7 @@ fn every_wrapper_bogus_change_id_returns_jj_change_not_found() {
         "zanshin_edit with a bogus change id"
     );
 
-    let abandon_token = unsafe { zanshin_abandon(handle, req.as_ptr(), req.len()) };
+    let abandon_token = unsafe { zanshin_abandon(handle, abandon_req.as_ptr(), abandon_req.len()) };
     let abandon_bytes = unsafe { read_and_free(abandon_token) };
     assert_eq!(
         parse_envelope(&abandon_bytes).error().and_then(|e| e.code()),
@@ -1354,14 +1370,19 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     pin_env();
     let id_cstr = cstr("qpvuntsm");
     let desc_cstr = cstr("desc");
-    let req = change_id_list_bytes(&["qpvuntsm"]);
+    // Each buffer carries its OWN wrapper's tag, so the kind rung passes and the handle rung —
+    // now the FOURTH — is what refuses. A wrongly-tagged buffer would answer
+    // `ffi.invalid_argument` here instead; that is asserted in
+    // `every_wrapper_wrong_request_kind_is_refused_before_the_handle`.
+    let new_change_req = change_id_list_bytes(fbs::RequestKind::NewChange, &["qpvuntsm"]);
+    let abandon_req = change_id_list_bytes(fbs::RequestKind::Abandon, &["qpvuntsm"]);
     let remote_cstr = cstr("origin");
 
     let describe_token = unsafe { zanshin_describe(0, id_cstr.as_ptr(), desc_cstr.as_ptr()) };
     let describe_bytes = unsafe { read_and_free(describe_token) };
     assert_invalid_handle(&describe_bytes);
 
-    let new_change_token = unsafe { zanshin_new_change(0, req.as_ptr(), req.len()) };
+    let new_change_token = unsafe { zanshin_new_change(0, new_change_req.as_ptr(), new_change_req.len()) };
     let new_change_bytes = unsafe { read_and_free(new_change_token) };
     assert_invalid_handle(&new_change_bytes);
 
@@ -1369,7 +1390,7 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let edit_bytes = unsafe { read_and_free(edit_token) };
     assert_invalid_handle(&edit_bytes);
 
-    let abandon_token = unsafe { zanshin_abandon(0, req.as_ptr(), req.len()) };
+    let abandon_token = unsafe { zanshin_abandon(0, abandon_req.as_ptr(), abandon_req.len()) };
     let abandon_bytes = unsafe { read_and_free(abandon_token) };
     assert_invalid_handle(&abandon_bytes);
 
@@ -1390,4 +1411,119 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let absorb_token = unsafe { zanshin_absorb(0, absorb_req.as_ptr(), absorb_req.len()) };
     let absorb_bytes = unsafe { read_and_free(absorb_token) };
     assert_invalid_handle(&absorb_bytes);
+}
+
+// ── Request-kind tag ──────────────────────────────────────────────────────────
+
+/// The request-buffer wrapper shape, for the wrong-kind table below.
+type BufWrapper = unsafe extern "C" fn(u64, *const u8, usize) -> *mut ZanshinBuf;
+
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
+
+/// Every request-buffer wrapper in this file refuses a buffer built for a DIFFERENT verb, and
+/// refuses an untagged one, naming both kinds in `context`.
+///
+/// The `NewChange` ↔ `Abandon` rows are the sharpest case the tag closes, and the only pair
+/// that could not be closed by a per-TABLE tag: those two wrappers read the SAME `ChangeIdList`
+/// table, as `parents` and as `change_ids`, so one shared variant would have left a mis-routed
+/// buffer abandoning the commits the caller named as parents. They carry a full payload for
+/// that reason. The `handle == 0` rows prove the kind rung runs BEFORE the handle lookup.
+#[test]
+fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
+    pin_env();
+    let (handle, wc_change_id) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    let new_change_req = change_id_list_bytes(fbs::RequestKind::NewChange, &[&wc_change_id]);
+    let abandon_req = change_id_list_bytes(fbs::RequestKind::Abandon, &[&wc_change_id]);
+    // Two untagged shapes: the `ChangeIdList` one carries a real payload (the two wrappers that
+    // read that table accept its shape), the minimal one is what verifies as every table.
+    let untagged_list = change_id_list_bytes(fbs::RequestKind::Unspecified, &[&wc_change_id]);
+    let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+    let restore_req = tagged_request_bytes(fbs::RequestKind::Restore);
+    let absorb_req = tagged_request_bytes(fbs::RequestKind::Absorb);
+
+    let cases: [KindCase<'_>; 11] = [
+        (
+            "new_change",
+            zanshin_new_change,
+            &abandon_req,
+            "NewChange",
+            "Abandon",
+            handle,
+        ),
+        (
+            "abandon",
+            zanshin_abandon,
+            &new_change_req,
+            "Abandon",
+            "NewChange",
+            handle,
+        ),
+        ("restore", zanshin_restore, &absorb_req, "Restore", "Absorb", handle),
+        ("absorb", zanshin_absorb, &restore_req, "Absorb", "Restore", handle),
+        (
+            "new_change",
+            zanshin_new_change,
+            &untagged_list,
+            "NewChange",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "abandon",
+            zanshin_abandon,
+            &untagged_list,
+            "Abandon",
+            "Unspecified",
+            handle,
+        ),
+        ("restore", zanshin_restore, &untagged, "Restore", "Unspecified", handle),
+        ("absorb", zanshin_absorb, &untagged, "Absorb", "Unspecified", handle),
+        (
+            "new_change",
+            zanshin_new_change,
+            &abandon_req,
+            "NewChange",
+            "Abandon",
+            0,
+        ),
+        ("abandon", zanshin_abandon, &new_change_req, "Abandon", "NewChange", 0),
+        ("restore", zanshin_restore, &absorb_req, "Restore", "Absorb", 0),
+    ];
+
+    for (name, call, req, expected, got, h) in cases {
+        // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+        let token = unsafe { call(h, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "{name}: the context names both kinds"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// A minimal request buffer carrying `kind` and nothing else.
+///
+/// With every other field absent all fifteen request tables serialise to IDENTICAL bytes — the
+/// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
+/// verb and a buffer that verifies as every other request table. That is what isolates the kind
+/// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }

@@ -22,12 +22,12 @@ use zanshin_jj::{
 };
 
 use crate::envelope::{
-    catch, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, reject_null_request,
-    session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
-    JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED,
-    JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
-    JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
-    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    catch, expect_request_kind, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle,
+    reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
+    JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
+    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
+    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG,
+    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -183,15 +183,21 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
 
 /// Parse a `ChangeIdList` request buffer into an owned `Vec<ChangeId>`.
 ///
+/// `expected` is the caller's own [`fbs::RequestKind`]: this ONE table is read by TWO wrappers,
+/// as `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so the tag is
+/// what keeps a mis-routed buffer from abandoning the commits the caller named as parents.
+///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
-fn read_change_id_list(data: *const u8, len: usize) -> Result<Vec<ChangeId>, FfiErrorObj> {
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+///   is not `expected`.
+fn read_change_id_list(data: *const u8, len: usize, expected: fbs::RequestKind) -> Result<Vec<ChangeId>, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let list = flatbuffers::root_with_opts::<fbs::ChangeIdList>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(list.kind(), expected)?;
     Ok(list
         .change_ids()
         .into_iter()
@@ -225,13 +231,15 @@ struct AbsorbRequestOwned {
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
+///   is not `Restore`.
 fn read_restore_request(data: *const u8, len: usize) -> Result<RestoreRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::RestoreRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Restore)?;
     Ok(RestoreRequestOwned {
         from: req.from().map(|s| ChangeId(s.to_owned())),
         // WHY the fully-qualified inherent call: the generated accessor is named after
@@ -248,13 +256,15 @@ fn read_restore_request(data: *const u8, len: usize) -> Result<RestoreRequestOwn
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer, or its `kind`
+///   is not `Absorb`.
 fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::AbsorbRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Absorb)?;
     Ok(AbsorbRequestOwned {
         from: req.from().map(|s| ChangeId(s.to_owned())),
         // WHY the fully-qualified inherent call: see `read_restore_request`.
@@ -752,7 +762,9 @@ pub unsafe extern "C" fn zanshin_describe(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+///   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
+///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
 /// - `jj.invalid_input` — the parsed `parents` list is empty.
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -771,9 +783,9 @@ pub unsafe extern "C" fn zanshin_describe(
 pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_new_change", handle);
     let buf = catch(|| {
+        let parents = read_change_id_list(data, len, fbs::RequestKind::NewChange)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let parents = read_change_id_list(data, len)?;
         let result = session.repo.new_change(&parents).map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
     });
@@ -837,7 +849,10 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+///   is not `Abandon`. The two wrappers that read this ONE table carry different kinds, so a
+///   `NewChange`-tagged buffer is refused here rather than abandoning the commits the caller
+///   named as parents.
 /// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
 /// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
 /// - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
@@ -861,9 +876,9 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_abandon", handle);
     let buf = catch(|| {
+        let change_ids = read_change_id_list(data, len, fbs::RequestKind::Abandon)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let change_ids = read_change_id_list(data, len)?;
         let result = session.repo.abandon(&change_ids).map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
     });
@@ -990,7 +1005,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
+///   is not `Restore`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
 ///   is not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
@@ -1020,9 +1036,9 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_restore", handle);
     let buf = catch(|| {
+        let req = read_restore_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_restore_request(data, len)?;
         let result = session
             .repo
             .restore(req.from, req.into, req.changes_in, &req.paths, req.restore_descendants)
@@ -1051,7 +1067,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer, or its `kind`
+///   is not `Absorb`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
 ///   function; jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
@@ -1082,9 +1099,9 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 pub unsafe extern "C" fn zanshin_absorb(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_absorb", handle);
     let buf = catch(|| {
+        let req = read_absorb_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_absorb_request(data, len)?;
         let result = session
             .repo
             .absorb(req.from, req.into.as_deref(), &req.paths)

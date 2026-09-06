@@ -113,6 +113,7 @@ fn list_request_bytes(revision: Option<&str>, paths: &[&str], show: bool) -> Vec
         let req = fbs::FileShowRequest::create(
             &mut b,
             &fbs::FileShowRequestArgs {
+                kind: fbs::RequestKind::FileShow,
                 revision: revision_off,
                 paths: Some(paths_vec),
             },
@@ -122,6 +123,7 @@ fn list_request_bytes(revision: Option<&str>, paths: &[&str], show: bool) -> Vec
         let req = fbs::FileListRequest::create(
             &mut b,
             &fbs::FileListRequestArgs {
+                kind: fbs::RequestKind::FileList,
                 revision: revision_off,
                 paths: Some(paths_vec),
             },
@@ -138,6 +140,7 @@ fn annotate_request_bytes(revision: Option<&str>, path: &str) -> Vec<u8> {
     let req = fbs::FileAnnotateRequest::create(
         &mut b,
         &fbs::FileAnnotateRequestArgs {
+            kind: fbs::RequestKind::FileAnnotate,
             revision: revision_off,
             path: Some(path_off),
         },
@@ -153,6 +156,7 @@ fn annotate_request_without_path() -> Vec<u8> {
     let req = fbs::FileAnnotateRequest::create(
         &mut b,
         &fbs::FileAnnotateRequestArgs {
+            kind: fbs::RequestKind::FileAnnotate,
             revision: None,
             path: None,
         },
@@ -167,6 +171,7 @@ fn search_request_without_pattern() -> Vec<u8> {
     let req = fbs::FileSearchRequest::create(
         &mut b,
         &fbs::FileSearchRequestArgs {
+            kind: fbs::RequestKind::FileSearch,
             revision: None,
             pattern: None,
             paths: None,
@@ -186,6 +191,7 @@ fn search_request_bytes(revision: Option<&str>, pattern: &str, paths: &[&str], n
     let req = fbs::FileSearchRequest::create(
         &mut b,
         &fbs::FileSearchRequestArgs {
+            kind: fbs::RequestKind::FileSearch,
             revision: revision_off,
             pattern: Some(pattern_off),
             paths: Some(paths_vec),
@@ -858,4 +864,135 @@ fn no_file_read_wrapper_writes_an_operation() {
         .collect();
     after.sort();
     assert_eq!(before, after, "a read never writes an operation, success or refusal");
+}
+
+// ── Request-kind tag ──────────────────────────────────────────────────────────
+
+/// The request-buffer wrapper shape, for the wrong-kind table below.
+type BufWrapper = unsafe extern "C" fn(u64, *const u8, usize) -> *mut ZanshinBuf;
+
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
+
+/// Every wrapper in this file refuses a buffer built for a DIFFERENT verb, and refuses an
+/// untagged one, naming both kinds in `context`.
+///
+/// `FileListRequest` and `FileShowRequest` are field-for-field identical, so the real
+/// list ↔ show cross-feed carries a full payload; the other rows use minimal tagged buffers,
+/// which every request table serialises to identically. The `handle == 0` row proves the kind
+/// rung runs BEFORE the handle lookup: a mis-routed buffer is refused on its own merits.
+#[test]
+fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
+    pin_env();
+    let (handle, _change_id) = open_scenario();
+
+    let list_req = list_request_bytes(None, &[], false);
+    let show_req = list_request_bytes(None, &["a.txt"], true);
+    let annotate_req = tagged_request_bytes(fbs::RequestKind::FileAnnotate);
+    let search_req = tagged_request_bytes(fbs::RequestKind::FileSearch);
+    let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+
+    // (label, wrapper, buffer, expected kind, received kind, handle)
+    let cases: [KindCase<'_>; 9] = [
+        (
+            "file_list",
+            zanshin_file_list,
+            &show_req,
+            "FileList",
+            "FileShow",
+            handle,
+        ),
+        (
+            "file_show",
+            zanshin_file_show,
+            &list_req,
+            "FileShow",
+            "FileList",
+            handle,
+        ),
+        (
+            "file_annotate",
+            zanshin_file_annotate,
+            &search_req,
+            "FileAnnotate",
+            "FileSearch",
+            handle,
+        ),
+        (
+            "file_search",
+            zanshin_file_search,
+            &annotate_req,
+            "FileSearch",
+            "FileAnnotate",
+            handle,
+        ),
+        (
+            "file_list",
+            zanshin_file_list,
+            &untagged,
+            "FileList",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "file_show",
+            zanshin_file_show,
+            &untagged,
+            "FileShow",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "file_annotate",
+            zanshin_file_annotate,
+            &untagged,
+            "FileAnnotate",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "file_search",
+            zanshin_file_search,
+            &untagged,
+            "FileSearch",
+            "Unspecified",
+            handle,
+        ),
+        ("file_list", zanshin_file_list, &show_req, "FileList", "FileShow", 0),
+    ];
+
+    for (name, call, req, expected, got, h) in cases {
+        // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+        let token = unsafe { call(h, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "{name}: the context names both kinds"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// A minimal request buffer carrying `kind` and nothing else.
+///
+/// With every other field absent all fifteen request tables serialise to IDENTICAL bytes — the
+/// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
+/// verb and a buffer that verifies as every other request table. That is what isolates the kind
+/// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }

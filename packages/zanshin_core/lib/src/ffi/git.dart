@@ -59,7 +59,12 @@ Uint8List zanshinGitRemoteAdd(int rawHandle, {required String name, required Str
   rejectInteriorNul(name, 'name');
   rejectInteriorNul(url, 'url');
   rejectInteriorNul(pushUrl, 'pushUrl');
-  final Uint8List request = fbs.GitRemoteAddRequestObjectBuilder(name: name, url: url, pushUrl: pushUrl).toBytes();
+  final Uint8List request = fbs.GitRemoteAddRequestObjectBuilder(
+    kind: fbs.RequestKind.GitRemoteAdd,
+    name: name,
+    url: url,
+    pushUrl: pushUrl,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_git_remote_add(rawHandle, ptr, len));
 }
 
@@ -112,7 +117,12 @@ Uint8List zanshinGitRemoteSetUrl(int rawHandle, {required String name, String? u
   rejectInteriorNul(name, 'name');
   rejectInteriorNul(url, 'url');
   rejectInteriorNul(pushUrl, 'pushUrl');
-  final Uint8List request = fbs.GitRemoteSetUrlRequestObjectBuilder(name: name, url: url, pushUrl: pushUrl).toBytes();
+  final Uint8List request = fbs.GitRemoteSetUrlRequestObjectBuilder(
+    kind: fbs.RequestKind.GitRemoteSetUrl,
+    name: name,
+    url: url,
+    pushUrl: pushUrl,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_git_remote_set_url(rawHandle, ptr, len));
 }
 

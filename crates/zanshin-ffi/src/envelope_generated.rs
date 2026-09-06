@@ -12,6 +12,176 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_REQUEST_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 16;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 17] = [
+            RequestKind::Unspecified,
+            RequestKind::Restore,
+            RequestKind::Absorb,
+            RequestKind::NewChange,
+            RequestKind::Abandon,
+            RequestKind::FileList,
+            RequestKind::FileShow,
+            RequestKind::FileAnnotate,
+            RequestKind::FileSearch,
+            RequestKind::GitRemoteAdd,
+            RequestKind::GitRemoteSetUrl,
+            RequestKind::Show,
+            RequestKind::Evolog,
+            RequestKind::Interdiff,
+            RequestKind::WorkspaceRoot,
+            RequestKind::BookmarkCreate,
+            RequestKind::BookmarkDelete,
+        ];
+
+        /// Which `extern "C"` wrapper a request buffer was built FOR.
+        ///
+        /// Every request table carries this as field 0, and every wrapper refuses a buffer whose
+        /// `kind` is not its own — before the handle lookup and before any other field is read.
+        /// Without it a buffer built for one verb VERIFIES as another verb's table (the tables are
+        /// structurally interchangeable), so a `BookmarkCreateRequest` fed to `zanshin_bookmark_delete`
+        /// would silently glob-delete names the caller meant literally.
+        ///
+        /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+        /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
+        /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
+        /// named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+        ///
+        /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
+        /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
+        /// `Unspecified`, and is ALWAYS refused. Nothing untagged is ever silently accepted.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RequestKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RequestKind {
+            pub const Unspecified: Self = Self(0);
+            pub const Restore: Self = Self(1);
+            pub const Absorb: Self = Self(2);
+            pub const NewChange: Self = Self(3);
+            pub const Abandon: Self = Self(4);
+            pub const FileList: Self = Self(5);
+            pub const FileShow: Self = Self(6);
+            pub const FileAnnotate: Self = Self(7);
+            pub const FileSearch: Self = Self(8);
+            pub const GitRemoteAdd: Self = Self(9);
+            pub const GitRemoteSetUrl: Self = Self(10);
+            pub const Show: Self = Self(11);
+            pub const Evolog: Self = Self(12);
+            pub const Interdiff: Self = Self(13);
+            pub const WorkspaceRoot: Self = Self(14);
+            pub const BookmarkCreate: Self = Self(15);
+            pub const BookmarkDelete: Self = Self(16);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 16;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::Unspecified,
+                Self::Restore,
+                Self::Absorb,
+                Self::NewChange,
+                Self::Abandon,
+                Self::FileList,
+                Self::FileShow,
+                Self::FileAnnotate,
+                Self::FileSearch,
+                Self::GitRemoteAdd,
+                Self::GitRemoteSetUrl,
+                Self::Show,
+                Self::Evolog,
+                Self::Interdiff,
+                Self::WorkspaceRoot,
+                Self::BookmarkCreate,
+                Self::BookmarkDelete,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::Restore => Some("Restore"),
+                    Self::Absorb => Some("Absorb"),
+                    Self::NewChange => Some("NewChange"),
+                    Self::Abandon => Some("Abandon"),
+                    Self::FileList => Some("FileList"),
+                    Self::FileShow => Some("FileShow"),
+                    Self::FileAnnotate => Some("FileAnnotate"),
+                    Self::FileSearch => Some("FileSearch"),
+                    Self::GitRemoteAdd => Some("GitRemoteAdd"),
+                    Self::GitRemoteSetUrl => Some("GitRemoteSetUrl"),
+                    Self::Show => Some("Show"),
+                    Self::Evolog => Some("Evolog"),
+                    Self::Interdiff => Some("Interdiff"),
+                    Self::WorkspaceRoot => Some("WorkspaceRoot"),
+                    Self::BookmarkCreate => Some("BookmarkCreate"),
+                    Self::BookmarkDelete => Some("BookmarkDelete"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RequestKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RequestKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RequestKind {
+            type Output = RequestKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RequestKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RequestKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RequestKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_CHANGE_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -1116,7 +1286,8 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-        /// `parents` and `zanshin_abandon`'s `change_ids`.
+        /// `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
+        /// wrappers: `NewChange` or `Abandon`.
         pub struct ChangeIdList<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -1132,7 +1303,8 @@ pub mod zanshin {
         }
 
         impl<'a> ChangeIdList<'a> {
-            pub const VT_CHANGE_IDS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1147,9 +1319,21 @@ pub mod zanshin {
                 if let Some(x) = args.change_ids {
                     builder.add_change_ids(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ChangeIdList::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn change_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
                 // Safety:
@@ -1170,19 +1354,24 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("change_ids", Self::VT_CHANGE_IDS, false)?
      .finish();
                 Ok(())
             }
         }
         pub struct ChangeIdListArgs<'a> {
+            pub kind: RequestKind,
             pub change_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for ChangeIdListArgs<'a> {
             #[inline]
             fn default() -> Self {
-                ChangeIdListArgs { change_ids: None }
+                ChangeIdListArgs {
+                    kind: RequestKind::Unspecified,
+                    change_ids: None,
+                }
             }
         }
 
@@ -1191,6 +1380,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ChangeIdListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ChangeIdList::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_change_ids(
                 &mut self,
@@ -1219,6 +1413,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for ChangeIdList<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("ChangeIdList");
+                ds.field("kind", &self.kind());
                 ds.field("change_ids", &self.change_ids());
                 ds.finish()
             }
@@ -1252,11 +1447,12 @@ pub mod zanshin {
         }
 
         impl<'a> RestoreRequest<'a> {
-            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
-            pub const VT_INTO: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CHANGES_IN: ::flatbuffers::VOffsetT = 8;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INTO: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CHANGES_IN: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1281,9 +1477,21 @@ pub mod zanshin {
                     builder.add_from(x);
                 }
                 builder.add_restore_descendants(args.restore_descendants);
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RestoreRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn from(&self) -> Option<&'a str> {
                 // Safety:
@@ -1345,6 +1553,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("into", Self::VT_INTO, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("changes_in", Self::VT_CHANGES_IN, false)?
@@ -1355,6 +1564,7 @@ pub mod zanshin {
             }
         }
         pub struct RestoreRequestArgs<'a> {
+            pub kind: RequestKind,
             pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub into: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub changes_in: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -1366,6 +1576,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 RestoreRequestArgs {
+                    kind: RequestKind::Unspecified,
                     from: None,
                     into: None,
                     changes_in: None,
@@ -1380,6 +1591,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RestoreRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RestoreRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -1426,6 +1642,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for RestoreRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("RestoreRequest");
+                ds.field("kind", &self.kind());
                 ds.field("from", &self.from());
                 ds.field("into", &self.into());
                 ds.field("changes_in", &self.changes_in());
@@ -1460,9 +1677,10 @@ pub mod zanshin {
         }
 
         impl<'a> AbsorbRequest<'a> {
-            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
-            pub const VT_INTO: ::flatbuffers::VOffsetT = 6;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INTO: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1483,9 +1701,21 @@ pub mod zanshin {
                 if let Some(x) = args.from {
                     builder.add_from(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(AbsorbRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn from(&self) -> Option<&'a str> {
                 // Safety:
@@ -1526,6 +1756,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("into", Self::VT_INTO, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
@@ -1534,6 +1765,7 @@ pub mod zanshin {
             }
         }
         pub struct AbsorbRequestArgs<'a> {
+            pub kind: RequestKind,
             pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub into: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub paths:
@@ -1543,6 +1775,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 AbsorbRequestArgs {
+                    kind: RequestKind::Unspecified,
                     from: None,
                     into: None,
                     paths: None,
@@ -1555,6 +1788,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AbsorbRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(AbsorbRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -1591,6 +1829,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for AbsorbRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("AbsorbRequest");
+                ds.field("kind", &self.kind());
                 ds.field("from", &self.from());
                 ds.field("into", &self.into());
                 ds.field("paths", &self.paths());
@@ -1624,8 +1863,9 @@ pub mod zanshin {
         }
 
         impl<'a> FileListRequest<'a> {
-            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1643,9 +1883,21 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileListRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revision(&self) -> Option<&'a str> {
                 // Safety:
@@ -1676,6 +1928,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .finish();
@@ -1683,6 +1936,7 @@ pub mod zanshin {
             }
         }
         pub struct FileListRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub paths:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
@@ -1691,6 +1945,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 FileListRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revision: None,
                     paths: None,
                 }
@@ -1702,6 +1957,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileListRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileListRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -1733,6 +1993,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for FileListRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FileListRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revision", &self.revision());
                 ds.field("paths", &self.paths());
                 ds.finish()
@@ -1759,8 +2020,9 @@ pub mod zanshin {
         }
 
         impl<'a> FileShowRequest<'a> {
-            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1778,9 +2040,21 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileShowRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revision(&self) -> Option<&'a str> {
                 // Safety:
@@ -1811,6 +2085,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .finish();
@@ -1818,6 +2093,7 @@ pub mod zanshin {
             }
         }
         pub struct FileShowRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub paths:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
@@ -1826,6 +2102,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 FileShowRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revision: None,
                     paths: None,
                 }
@@ -1837,6 +2114,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileShowRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileShowRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -1868,6 +2150,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for FileShowRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FileShowRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revision", &self.revision());
                 ds.field("paths", &self.paths());
                 ds.finish()
@@ -1896,8 +2179,9 @@ pub mod zanshin {
         }
 
         impl<'a> FileAnnotateRequest<'a> {
-            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_PATH: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1915,9 +2199,21 @@ pub mod zanshin {
                 if let Some(x) = args.revision {
                     builder.add_revision(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileAnnotateRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revision(&self) -> Option<&'a str> {
                 // Safety:
@@ -1947,6 +2243,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
                     .finish();
@@ -1954,6 +2251,7 @@ pub mod zanshin {
             }
         }
         pub struct FileAnnotateRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
@@ -1961,6 +2259,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 FileAnnotateRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revision: None,
                     path: None,
                 }
@@ -1972,6 +2271,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileAnnotateRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileAnnotateRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2000,6 +2304,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for FileAnnotateRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FileAnnotateRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revision", &self.revision());
                 ds.field("path", &self.path());
                 ds.finish()
@@ -2034,10 +2339,11 @@ pub mod zanshin {
         }
 
         impl<'a> FileSearchRequest<'a> {
-            pub const VT_REVISION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_PATTERN: ::flatbuffers::VOffsetT = 6;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
-            pub const VT_NAME_ONLY: ::flatbuffers::VOffsetT = 10;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATTERN: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NAME_ONLY: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2059,9 +2365,21 @@ pub mod zanshin {
                     builder.add_revision(x);
                 }
                 builder.add_name_only(args.name_only);
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileSearchRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revision(&self) -> Option<&'a str> {
                 // Safety:
@@ -2113,6 +2431,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pattern", Self::VT_PATTERN, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
@@ -2122,6 +2441,7 @@ pub mod zanshin {
             }
         }
         pub struct FileSearchRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub pattern: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub paths:
@@ -2132,6 +2452,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 FileSearchRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revision: None,
                     pattern: None,
                     paths: None,
@@ -2145,6 +2466,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileSearchRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileSearchRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2186,6 +2512,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for FileSearchRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FileSearchRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revision", &self.revision());
                 ds.field("pattern", &self.pattern());
                 ds.field("paths", &self.paths());
@@ -2222,9 +2549,10 @@ pub mod zanshin {
         }
 
         impl<'a> GitRemoteAddRequest<'a> {
-            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
-            pub const VT_URL: ::flatbuffers::VOffsetT = 6;
-            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_URL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2245,9 +2573,21 @@ pub mod zanshin {
                 if let Some(x) = args.name {
                     builder.add_name(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(GitRemoteAddRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn name(&self) -> Option<&'a str> {
                 // Safety:
@@ -2287,6 +2627,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("push_url", Self::VT_PUSH_URL, false)?
@@ -2295,6 +2636,7 @@ pub mod zanshin {
             }
         }
         pub struct GitRemoteAddRequestArgs<'a> {
+            pub kind: RequestKind,
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub push_url: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -2303,6 +2645,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 GitRemoteAddRequestArgs {
+                    kind: RequestKind::Unspecified,
                     name: None,
                     url: None,
                     push_url: None,
@@ -2315,6 +2658,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitRemoteAddRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(GitRemoteAddRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2348,6 +2696,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for GitRemoteAddRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("GitRemoteAddRequest");
+                ds.field("kind", &self.kind());
                 ds.field("name", &self.name());
                 ds.field("url", &self.url());
                 ds.field("push_url", &self.push_url());
@@ -2383,9 +2732,10 @@ pub mod zanshin {
         }
 
         impl<'a> GitRemoteSetUrlRequest<'a> {
-            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
-            pub const VT_URL: ::flatbuffers::VOffsetT = 6;
-            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_URL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PUSH_URL: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2406,9 +2756,21 @@ pub mod zanshin {
                 if let Some(x) = args.name {
                     builder.add_name(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(GitRemoteSetUrlRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn name(&self) -> Option<&'a str> {
                 // Safety:
@@ -2448,6 +2810,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("url", Self::VT_URL, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("push_url", Self::VT_PUSH_URL, false)?
@@ -2456,6 +2819,7 @@ pub mod zanshin {
             }
         }
         pub struct GitRemoteSetUrlRequestArgs<'a> {
+            pub kind: RequestKind,
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub push_url: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -2464,6 +2828,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 GitRemoteSetUrlRequestArgs {
+                    kind: RequestKind::Unspecified,
                     name: None,
                     url: None,
                     push_url: None,
@@ -2476,6 +2841,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitRemoteSetUrlRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(GitRemoteSetUrlRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2511,6 +2881,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for GitRemoteSetUrlRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("GitRemoteSetUrlRequest");
+                ds.field("kind", &self.kind());
                 ds.field("name", &self.name());
                 ds.field("url", &self.url());
                 ds.field("push_url", &self.push_url());
@@ -2555,9 +2926,10 @@ pub mod zanshin {
         }
 
         impl<'a> ShowRequest<'a> {
-            pub const VT_REVSET: ::flatbuffers::VOffsetT = 4;
-            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVSET: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2574,9 +2946,21 @@ pub mod zanshin {
                     builder.add_revset(x);
                 }
                 builder.add_has_limit(args.has_limit);
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ShowRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revset(&self) -> Option<&'a str> {
                 // Safety:
@@ -2610,6 +2994,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revset", Self::VT_REVSET, false)?
                     .visit_field::<u32>("limit", Self::VT_LIMIT, false)?
                     .visit_field::<bool>("has_limit", Self::VT_HAS_LIMIT, false)?
@@ -2618,6 +3003,7 @@ pub mod zanshin {
             }
         }
         pub struct ShowRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revset: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub limit: u32,
             pub has_limit: bool,
@@ -2626,6 +3012,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 ShowRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revset: None,
                     limit: 0,
                     has_limit: false,
@@ -2638,6 +3025,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ShowRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ShowRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2669,6 +3061,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for ShowRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("ShowRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revset", &self.revset());
                 ds.field("limit", &self.limit());
                 ds.field("has_limit", &self.has_limit());
@@ -2699,9 +3092,10 @@ pub mod zanshin {
         }
 
         impl<'a> EvologRequest<'a> {
-            pub const VT_REVSET: ::flatbuffers::VOffsetT = 4;
-            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVSET: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2718,9 +3112,21 @@ pub mod zanshin {
                     builder.add_revset(x);
                 }
                 builder.add_has_limit(args.has_limit);
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(EvologRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn revset(&self) -> Option<&'a str> {
                 // Safety:
@@ -2754,6 +3160,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revset", Self::VT_REVSET, false)?
                     .visit_field::<u32>("limit", Self::VT_LIMIT, false)?
                     .visit_field::<bool>("has_limit", Self::VT_HAS_LIMIT, false)?
@@ -2762,6 +3169,7 @@ pub mod zanshin {
             }
         }
         pub struct EvologRequestArgs<'a> {
+            pub kind: RequestKind,
             pub revset: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub limit: u32,
             pub has_limit: bool,
@@ -2770,6 +3178,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 EvologRequestArgs {
+                    kind: RequestKind::Unspecified,
                     revset: None,
                     limit: 0,
                     has_limit: false,
@@ -2782,6 +3191,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EvologRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(EvologRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2814,6 +3228,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for EvologRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("EvologRequest");
+                ds.field("kind", &self.kind());
                 ds.field("revset", &self.revset());
                 ds.field("limit", &self.limit());
                 ds.field("has_limit", &self.has_limit());
@@ -2852,9 +3267,10 @@ pub mod zanshin {
         }
 
         impl<'a> InterdiffRequest<'a> {
-            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
-            pub const VT_TO: ::flatbuffers::VOffsetT = 6;
-            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2875,9 +3291,21 @@ pub mod zanshin {
                 if let Some(x) = args.from {
                     builder.add_from(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(InterdiffRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn from(&self) -> Option<&'a str> {
                 // Safety:
@@ -2918,6 +3346,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
@@ -2926,6 +3355,7 @@ pub mod zanshin {
             }
         }
         pub struct InterdiffRequestArgs<'a> {
+            pub kind: RequestKind,
             pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub paths:
@@ -2935,6 +3365,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 InterdiffRequestArgs {
+                    kind: RequestKind::Unspecified,
                     from: None,
                     to: None,
                     paths: None,
@@ -2947,6 +3378,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> InterdiffRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(InterdiffRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -2983,6 +3419,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for InterdiffRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("InterdiffRequest");
+                ds.field("kind", &self.kind());
                 ds.field("from", &self.from());
                 ds.field("to", &self.to());
                 ds.field("paths", &self.paths());
@@ -3016,7 +3453,8 @@ pub mod zanshin {
         }
 
         impl<'a> WorkspaceRootRequest<'a> {
-            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3031,9 +3469,21 @@ pub mod zanshin {
                 if let Some(x) = args.name {
                     builder.add_name(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(WorkspaceRootRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn name(&self) -> Option<&'a str> {
                 // Safety:
@@ -3053,18 +3503,23 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
                     .finish();
                 Ok(())
             }
         }
         pub struct WorkspaceRootRequestArgs<'a> {
+            pub kind: RequestKind,
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for WorkspaceRootRequestArgs<'a> {
             #[inline]
             fn default() -> Self {
-                WorkspaceRootRequestArgs { name: None }
+                WorkspaceRootRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    name: None,
+                }
             }
         }
 
@@ -3073,6 +3528,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceRootRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(WorkspaceRootRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
@@ -3098,6 +3558,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for WorkspaceRootRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("WorkspaceRootRequest");
+                ds.field("kind", &self.kind());
                 ds.field("name", &self.name());
                 ds.finish()
             }
@@ -3134,8 +3595,9 @@ pub mod zanshin {
         }
 
         impl<'a> BookmarkCreateRequest<'a> {
-            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
-            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3153,9 +3615,21 @@ pub mod zanshin {
                 if let Some(x) = args.names {
                     builder.add_names(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(BookmarkCreateRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
                 // Safety:
@@ -3186,6 +3660,7 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
      .finish();
@@ -3193,6 +3668,7 @@ pub mod zanshin {
             }
         }
         pub struct BookmarkCreateRequestArgs<'a> {
+            pub kind: RequestKind,
             pub names:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -3201,6 +3677,7 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 BookmarkCreateRequestArgs {
+                    kind: RequestKind::Unspecified,
                     names: None,
                     revision: None,
                 }
@@ -3212,6 +3689,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkCreateRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(BookmarkCreateRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_names(
                 &mut self,
@@ -3245,6 +3727,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for BookmarkCreateRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("BookmarkCreateRequest");
+                ds.field("kind", &self.kind());
                 ds.field("names", &self.names());
                 ds.field("revision", &self.revision());
                 ds.finish()
@@ -3278,7 +3761,8 @@ pub mod zanshin {
         }
 
         impl<'a> BookmarkDeleteRequest<'a> {
-            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3293,9 +3777,21 @@ pub mod zanshin {
                 if let Some(x) = args.names {
                     builder.add_names(x);
                 }
+                builder.add_kind(args.kind);
                 builder.finish()
             }
 
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(BookmarkDeleteRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
             #[inline]
             pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
                 // Safety:
@@ -3316,19 +3812,24 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
      .finish();
                 Ok(())
             }
         }
         pub struct BookmarkDeleteRequestArgs<'a> {
+            pub kind: RequestKind,
             pub names:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for BookmarkDeleteRequestArgs<'a> {
             #[inline]
             fn default() -> Self {
-                BookmarkDeleteRequestArgs { names: None }
+                BookmarkDeleteRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                }
             }
         }
 
@@ -3337,6 +3838,11 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkDeleteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(BookmarkDeleteRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
             #[inline]
             pub fn add_names(
                 &mut self,
@@ -3365,6 +3871,7 @@ pub mod zanshin {
         impl ::core::fmt::Debug for BookmarkDeleteRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("BookmarkDeleteRequest");
+                ds.field("kind", &self.kind());
                 ds.field("names", &self.names());
                 ds.finish()
             }

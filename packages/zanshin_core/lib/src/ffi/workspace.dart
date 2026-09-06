@@ -47,7 +47,10 @@ Uint8List zanshinWorkspaceList(int rawHandle) => readToken(zanshin_workspace_lis
 /// is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
 Uint8List zanshinWorkspaceRoot(int rawHandle, {String? name}) {
   rejectInteriorNul(name, 'name');
-  final Uint8List request = fbs.WorkspaceRootRequestObjectBuilder(name: name).toBytes();
+  final Uint8List request = fbs.WorkspaceRootRequestObjectBuilder(
+    kind: fbs.RequestKind.WorkspaceRoot,
+    name: name,
+  ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_workspace_root(rawHandle, ptr, len)));
 }
 

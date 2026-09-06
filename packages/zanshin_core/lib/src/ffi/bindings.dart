@@ -1517,7 +1517,7 @@ const int AnnotationLine_VT_ORIGINAL_LINE_NUMBER = 8;
 
 const int AnnotationLine_VT_ORIGIN_FOUND = 12;
 
-const int BookmarkCreateRequest_VT_NAMES = 4;
+const int BookmarkCreateRequest_VT_NAMES = 6;
 
 const int Bookmark_VT_REMOTE_NAME = 10;
 
@@ -1525,7 +1525,9 @@ const int Bookmark_VT_TARGET = 6;
 
 const int Bookmarks_VT_BOOKMARKS = 4;
 
-const int ChangeIdList_VT_CHANGE_IDS = 4;
+const int ChangeIdList_VT_CHANGE_IDS = 6;
+
+const int ChangeIdList_VT_KIND = 4;
 
 const int Change_VT_AUTHOR = 12;
 
@@ -1563,6 +1565,8 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
+const int ENUM_MAX_REQUEST_KIND = 16;
+
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
 const int ENUM_MIN_BOOKMARK_KIND = 0;
@@ -1579,19 +1583,19 @@ const int ENUM_MIN_GRAPH_EDGE_KIND = 0;
 
 const int ENUM_MIN_REPO_KIND = 0;
 
+const int ENUM_MIN_REQUEST_KIND = 0;
+
 const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 
 const int EvologEntry_VT_OPERATION_ID = 8;
 
 const int EvologEntry_VT_PREDECESSOR_COMMIT_IDS = 6;
 
-const int FileAnnotateRequest_VT_PATH = 6;
+const int FileAnnotateRequest_VT_PATH = 8;
 
 const int FileAnnotation_VT_LINES = 4;
 
 const int FileChange_VT_FROM_PATH = 8;
-
-const int FileChange_VT_KIND = 6;
 
 const int FileContents_VT_SKIPPED = 6;
 
@@ -1601,13 +1605,13 @@ const int FileEntry_VT_EXECUTABLE = 8;
 
 const int FileEntry_VT_FILE_TYPE = 6;
 
-const int FileListRequest_VT_REVISION = 4;
+const int FileListRequest_VT_REVISION = 6;
 
 const int FileList_VT_ENTRIES = 4;
 
-const int FileSearchRequest_VT_NAME_ONLY = 10;
+const int FileSearchRequest_VT_NAME_ONLY = 12;
 
-const int FileSearchRequest_VT_PATTERN = 6;
+const int FileSearchRequest_VT_PATTERN = 8;
 
 const int FileSearch_VT_MATCHES = 4;
 
@@ -1625,11 +1629,11 @@ const int GitImportResult_VT_NUM_REWRITTEN = 12;
 
 const int GitRefUpdate_VT_TRACKED = 10;
 
-const int GitRemoteAddRequest_VT_NAME = 4;
+const int GitRemoteAddRequest_VT_NAME = 6;
 
-const int GitRemoteAddRequest_VT_PUSH_URL = 8;
+const int GitRemoteAddRequest_VT_PUSH_URL = 10;
 
-const int GitRemoteAddRequest_VT_URL = 6;
+const int GitRemoteAddRequest_VT_URL = 8;
 
 const int GraphActiveLane_VT_LANE = 4;
 
@@ -1689,7 +1693,7 @@ const int GraphSlice_VT_ROWS = 4;
 
 const int GraphSlice_VT_TOTAL_ROWS = 6;
 
-const int InterdiffRequest_VT_TO = 6;
+const int InterdiffRequest_VT_TO = 8;
 
 const int InterdiffView_VT_BASE_HAS_CONFLICTS = 6;
 
@@ -1729,15 +1733,15 @@ const int RepoDetect_VT_SUGGESTED_ROOT = 6;
 
 const int RepoHandle_VT_SESSION_ID = 6;
 
-const int RestoreRequest_VT_CHANGES_IN = 8;
+const int RestoreRequest_VT_CHANGES_IN = 10;
 
-const int RestoreRequest_VT_FROM = 4;
+const int RestoreRequest_VT_FROM = 6;
 
-const int RestoreRequest_VT_INTO = 6;
+const int RestoreRequest_VT_INTO = 8;
 
-const int RestoreRequest_VT_PATHS = 10;
+const int RestoreRequest_VT_PATHS = 12;
 
-const int RestoreRequest_VT_RESTORE_DESCENDANTS = 12;
+const int RestoreRequest_VT_RESTORE_DESCENDANTS = 14;
 
 const int SearchMatch_VT_CONFLICT_SIDE = 10;
 
@@ -1749,11 +1753,11 @@ const int ShowEntry_VT_CHANGE = 4;
 
 const int ShowEntry_VT_FILE_CHANGES = 6;
 
-const int ShowRequest_VT_HAS_LIMIT = 8;
+const int ShowRequest_VT_HAS_LIMIT = 10;
 
-const int ShowRequest_VT_LIMIT = 6;
+const int ShowRequest_VT_LIMIT = 8;
 
-const int ShowRequest_VT_REVSET = 4;
+const int ShowRequest_VT_REVSET = 6;
 
 const int ShownFile_VT_CONTENT = 6;
 

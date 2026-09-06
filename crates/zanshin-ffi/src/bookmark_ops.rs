@@ -20,7 +20,8 @@ use tracing::debug;
 use zanshin_jj::ChangeId;
 
 use crate::envelope::{
-    catch, invalid_request, ok_mutation_result, reject_null_request, session_from_handle, FfiErrorObj,
+    catch, expect_request_kind, invalid_request, ok_mutation_result, reject_null_request, session_from_handle,
+    FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -56,13 +57,16 @@ struct BookmarkDeleteRequestOwned {
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer, or its
+///   `kind` is not `BookmarkCreate`. The tag is what stops a create buffer from reaching
+///   `zanshin_bookmark_delete`, whose `names` are GLOB-by-default patterns.
 fn read_bookmark_create_request(data: *const u8, len: usize) -> Result<BookmarkCreateRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::BookmarkCreateRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkCreate)?;
     Ok(BookmarkCreateRequestOwned {
         names: req.names().into_iter().flatten().map(ToOwned::to_owned).collect(),
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
@@ -73,13 +77,15 @@ fn read_bookmark_create_request(data: *const u8, len: usize) -> Result<BookmarkC
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer, or its
+///   `kind` is not `BookmarkDelete`.
 fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkDeleteRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::BookmarkDeleteRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkDelete)?;
     Ok(BookmarkDeleteRequestOwned {
         names: req.names().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
@@ -106,7 +112,8 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer, or its `kind`
+///   is not `BookmarkCreate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
 ///   empty string.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
@@ -132,9 +139,9 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_bookmark_create", handle);
     let buf = catch(|| {
+        let req = read_bookmark_create_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_bookmark_create_request(data, len)?;
         let result = session
             .repo
             .bookmark_create(&req.names, req.revision.as_ref())
@@ -163,7 +170,8 @@ pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, l
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer, or its `kind`
+///   is not `BookmarkDelete`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
 ///   parse; jj-lib's reason in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -178,9 +186,9 @@ pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, l
 pub unsafe extern "C" fn zanshin_bookmark_delete(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_bookmark_delete", handle);
     let buf = catch(|| {
+        let req = read_bookmark_delete_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_bookmark_delete_request(data, len)?;
         let result = session.repo.bookmark_delete(&req.names).map_err(map_mutate_err)?;
         Ok(ok_mutation_result(&result))
     });

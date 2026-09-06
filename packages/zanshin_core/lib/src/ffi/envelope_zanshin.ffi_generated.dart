@@ -7,6 +7,102 @@ import 'dart:typed_data' show Uint8List;
 
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
+///  Which `extern "C"` wrapper a request buffer was built FOR.
+///
+///  Every request table carries this as field 0, and every wrapper refuses a buffer whose
+///  `kind` is not its own — before the handle lookup and before any other field is read.
+///  Without it a buffer built for one verb VERIFIES as another verb's table (the tables are
+///  structurally interchangeable), so a `BookmarkCreateRequest` fed to `zanshin_bookmark_delete`
+///  would silently glob-delete names the caller meant literally.
+///
+///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
+///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
+///  named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+///
+///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
+///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
+///  `Unspecified`, and is ALWAYS refused. Nothing untagged is ever silently accepted.
+enum RequestKind {
+  Unspecified(0),
+  Restore(1),
+  Absorb(2),
+  NewChange(3),
+  Abandon(4),
+  FileList(5),
+  FileShow(6),
+  FileAnnotate(7),
+  FileSearch(8),
+  GitRemoteAdd(9),
+  GitRemoteSetUrl(10),
+  Show(11),
+  Evolog(12),
+  Interdiff(13),
+  WorkspaceRoot(14),
+  BookmarkCreate(15),
+  BookmarkDelete(16);
+
+  final int value;
+  const RequestKind(this.value);
+
+  factory RequestKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RequestKind.Unspecified;
+      case 1:
+        return RequestKind.Restore;
+      case 2:
+        return RequestKind.Absorb;
+      case 3:
+        return RequestKind.NewChange;
+      case 4:
+        return RequestKind.Abandon;
+      case 5:
+        return RequestKind.FileList;
+      case 6:
+        return RequestKind.FileShow;
+      case 7:
+        return RequestKind.FileAnnotate;
+      case 8:
+        return RequestKind.FileSearch;
+      case 9:
+        return RequestKind.GitRemoteAdd;
+      case 10:
+        return RequestKind.GitRemoteSetUrl;
+      case 11:
+        return RequestKind.Show;
+      case 12:
+        return RequestKind.Evolog;
+      case 13:
+        return RequestKind.Interdiff;
+      case 14:
+        return RequestKind.WorkspaceRoot;
+      case 15:
+        return RequestKind.BookmarkCreate;
+      case 16:
+        return RequestKind.BookmarkDelete;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 16;
+  static const fb.Reader<RequestKind> reader = _RequestKindReader();
+}
+
+class _RequestKindReader extends fb.Reader<RequestKind> {
+  const _RequestKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  How a working-copy file changed between @- and @.
 enum ChangeKind {
   Added(0),
@@ -544,7 +640,8 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-///  `parents` and `zanshin_abandon`'s `change_ids`.
+///  `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
+///  wrappers: `NewChange` or `Abandon`.
 class ChangeIdList {
   ChangeIdList._(this._bc, this._bcOffset);
   factory ChangeIdList(List<int> bytes) {
@@ -557,11 +654,12 @@ class ChangeIdList {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  List<String>? get changeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get changeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'ChangeIdList{changeIds: ${changeIds}}';
+    return 'ChangeIdList{kind: ${kind}, changeIds: ${changeIds}}';
   }
 }
 
@@ -578,11 +676,16 @@ class ChangeIdListBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addChangeIdsOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -592,11 +695,14 @@ class ChangeIdListBuilder {
 }
 
 class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final List<String>? _changeIds;
 
   ChangeIdListObjectBuilder({
+    RequestKind? kind,
     List<String>? changeIds,
-  }) : _changeIds = changeIds;
+  }) : _kind = kind,
+       _changeIds = changeIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -604,8 +710,9 @@ class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
     final int? changeIdsOffset = _changeIds == null
         ? null
         : fbBuilder.writeList(_changeIds!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(1);
-    fbBuilder.addOffset(0, changeIdsOffset);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, changeIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -641,15 +748,16 @@ class RestoreRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  String? get changesIn => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
-  bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get changesIn => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
 
   @override
   String toString() {
-    return 'RestoreRequest{from: ${from}, into: ${into}, changesIn: ${changesIn}, paths: ${paths}, restoreDescendants: ${restoreDescendants}}';
+    return 'RestoreRequest{kind: ${kind}, from: ${from}, into: ${into}, changesIn: ${changesIn}, paths: ${paths}, restoreDescendants: ${restoreDescendants}}';
   }
 }
 
@@ -666,31 +774,36 @@ class RestoreRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
-  int addFromOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addIntoOffset(int? offset) {
+  int addFromOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addChangesInOffset(int? offset) {
+  int addIntoOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
-  int addPathsOffset(int? offset) {
+  int addChangesInOffset(int? offset) {
     fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int addRestoreDescendants(bool? restoreDescendants) {
-    fbBuilder.addBool(4, restoreDescendants);
+    fbBuilder.addBool(5, restoreDescendants);
     return fbBuilder.offset;
   }
 
@@ -700,6 +813,7 @@ class RestoreRequestBuilder {
 }
 
 class RestoreRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _from;
   final String? _into;
   final String? _changesIn;
@@ -707,12 +821,14 @@ class RestoreRequestObjectBuilder extends fb.ObjectBuilder {
   final bool? _restoreDescendants;
 
   RestoreRequestObjectBuilder({
+    RequestKind? kind,
     String? from,
     String? into,
     String? changesIn,
     List<String>? paths,
     bool? restoreDescendants,
-  }) : _from = from,
+  }) : _kind = kind,
+       _from = from,
        _into = into,
        _changesIn = changesIn,
        _paths = paths,
@@ -725,12 +841,13 @@ class RestoreRequestObjectBuilder extends fb.ObjectBuilder {
     final int? intoOffset = _into == null ? null : fbBuilder.writeString(_into!);
     final int? changesInOffset = _changesIn == null ? null : fbBuilder.writeString(_changesIn!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(5);
-    fbBuilder.addOffset(0, fromOffset);
-    fbBuilder.addOffset(1, intoOffset);
-    fbBuilder.addOffset(2, changesInOffset);
-    fbBuilder.addOffset(3, pathsOffset);
-    fbBuilder.addBool(4, _restoreDescendants);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, fromOffset);
+    fbBuilder.addOffset(2, intoOffset);
+    fbBuilder.addOffset(3, changesInOffset);
+    fbBuilder.addOffset(4, pathsOffset);
+    fbBuilder.addBool(5, _restoreDescendants);
     return fbBuilder.endTable();
   }
 
@@ -763,13 +880,14 @@ class AbsorbRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'AbsorbRequest{from: ${from}, into: ${into}, paths: ${paths}}';
+    return 'AbsorbRequest{kind: ${kind}, from: ${from}, into: ${into}, paths: ${paths}}';
   }
 }
 
@@ -786,21 +904,26 @@ class AbsorbRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
-  int addFromOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addIntoOffset(int? offset) {
+  int addFromOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addPathsOffset(int? offset) {
+  int addIntoOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
@@ -810,15 +933,18 @@ class AbsorbRequestBuilder {
 }
 
 class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _from;
   final String? _into;
   final List<String>? _paths;
 
   AbsorbRequestObjectBuilder({
+    RequestKind? kind,
     String? from,
     String? into,
     List<String>? paths,
-  }) : _from = from,
+  }) : _kind = kind,
+       _from = from,
        _into = into,
        _paths = paths;
 
@@ -828,10 +954,11 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
     final int? intoOffset = _into == null ? null : fbBuilder.writeString(_into!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, fromOffset);
-    fbBuilder.addOffset(1, intoOffset);
-    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, fromOffset);
+    fbBuilder.addOffset(2, intoOffset);
+    fbBuilder.addOffset(3, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -865,12 +992,13 @@ class FileListRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'FileListRequest{revision: ${revision}, paths: ${paths}}';
+    return 'FileListRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}}';
   }
 }
 
@@ -887,16 +1015,21 @@ class FileListRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addRevisionOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addPathsOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
@@ -906,13 +1039,16 @@ class FileListRequestBuilder {
 }
 
 class FileListRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revision;
   final List<String>? _paths;
 
   FileListRequestObjectBuilder({
+    RequestKind? kind,
     String? revision,
     List<String>? paths,
-  }) : _revision = revision,
+  }) : _kind = kind,
+       _revision = revision,
        _paths = paths;
 
   /// Finish building, and store into the [fbBuilder].
@@ -920,9 +1056,10 @@ class FileListRequestObjectBuilder extends fb.ObjectBuilder {
   int finish(fb.Builder fbBuilder) {
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(2);
-    fbBuilder.addOffset(0, revisionOffset);
-    fbBuilder.addOffset(1, pathsOffset);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -950,12 +1087,13 @@ class FileShowRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'FileShowRequest{revision: ${revision}, paths: ${paths}}';
+    return 'FileShowRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}}';
   }
 }
 
@@ -972,16 +1110,21 @@ class FileShowRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addRevisionOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addPathsOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
@@ -991,13 +1134,16 @@ class FileShowRequestBuilder {
 }
 
 class FileShowRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revision;
   final List<String>? _paths;
 
   FileShowRequestObjectBuilder({
+    RequestKind? kind,
     String? revision,
     List<String>? paths,
-  }) : _revision = revision,
+  }) : _kind = kind,
+       _revision = revision,
        _paths = paths;
 
   /// Finish building, and store into the [fbBuilder].
@@ -1005,9 +1151,10 @@ class FileShowRequestObjectBuilder extends fb.ObjectBuilder {
   int finish(fb.Builder fbBuilder) {
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(2);
-    fbBuilder.addOffset(0, revisionOffset);
-    fbBuilder.addOffset(1, pathsOffset);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -1037,12 +1184,13 @@ class FileAnnotateRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'FileAnnotateRequest{revision: ${revision}, path: ${path}}';
+    return 'FileAnnotateRequest{kind: ${kind}, revision: ${revision}, path: ${path}}';
   }
 }
 
@@ -1059,16 +1207,21 @@ class FileAnnotateRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addRevisionOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addPathOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
@@ -1078,13 +1231,16 @@ class FileAnnotateRequestBuilder {
 }
 
 class FileAnnotateRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revision;
   final String? _path;
 
   FileAnnotateRequestObjectBuilder({
+    RequestKind? kind,
     String? revision,
     String? path,
-  }) : _revision = revision,
+  }) : _kind = kind,
+       _revision = revision,
        _path = path;
 
   /// Finish building, and store into the [fbBuilder].
@@ -1092,9 +1248,10 @@ class FileAnnotateRequestObjectBuilder extends fb.ObjectBuilder {
   int finish(fb.Builder fbBuilder) {
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
     final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
-    fbBuilder.startTable(2);
-    fbBuilder.addOffset(0, revisionOffset);
-    fbBuilder.addOffset(1, pathOffset);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, pathOffset);
     return fbBuilder.endTable();
   }
 
@@ -1130,14 +1287,15 @@ class FileSearchRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get pattern => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
-  bool get nameOnly => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get pattern => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get nameOnly => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
 
   @override
   String toString() {
-    return 'FileSearchRequest{revision: ${revision}, pattern: ${pattern}, paths: ${paths}, nameOnly: ${nameOnly}}';
+    return 'FileSearchRequest{kind: ${kind}, revision: ${revision}, pattern: ${pattern}, paths: ${paths}, nameOnly: ${nameOnly}}';
   }
 }
 
@@ -1154,26 +1312,31 @@ class FileSearchRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
-  int addRevisionOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addPatternOffset(int? offset) {
+  int addRevisionOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addPathsOffset(int? offset) {
+  int addPatternOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int addNameOnly(bool? nameOnly) {
-    fbBuilder.addBool(3, nameOnly);
+    fbBuilder.addBool(4, nameOnly);
     return fbBuilder.offset;
   }
 
@@ -1183,17 +1346,20 @@ class FileSearchRequestBuilder {
 }
 
 class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revision;
   final String? _pattern;
   final List<String>? _paths;
   final bool? _nameOnly;
 
   FileSearchRequestObjectBuilder({
+    RequestKind? kind,
     String? revision,
     String? pattern,
     List<String>? paths,
     bool? nameOnly,
-  }) : _revision = revision,
+  }) : _kind = kind,
+       _revision = revision,
        _pattern = pattern,
        _paths = paths,
        _nameOnly = nameOnly;
@@ -1204,11 +1370,12 @@ class FileSearchRequestObjectBuilder extends fb.ObjectBuilder {
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
     final int? patternOffset = _pattern == null ? null : fbBuilder.writeString(_pattern!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
-    fbBuilder.addOffset(0, revisionOffset);
-    fbBuilder.addOffset(1, patternOffset);
-    fbBuilder.addOffset(2, pathsOffset);
-    fbBuilder.addBool(3, _nameOnly);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, patternOffset);
+    fbBuilder.addOffset(3, pathsOffset);
+    fbBuilder.addBool(4, _nameOnly);
     return fbBuilder.endTable();
   }
 
@@ -1244,13 +1411,14 @@ class GitRemoteAddRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'GitRemoteAddRequest{name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
+    return 'GitRemoteAddRequest{kind: ${kind}, name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
   }
 }
 
@@ -1267,21 +1435,26 @@ class GitRemoteAddRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
-  int addNameOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addUrlOffset(int? offset) {
+  int addNameOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addPushUrlOffset(int? offset) {
+  int addUrlOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPushUrlOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
@@ -1291,15 +1464,18 @@ class GitRemoteAddRequestBuilder {
 }
 
 class GitRemoteAddRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _name;
   final String? _url;
   final String? _pushUrl;
 
   GitRemoteAddRequestObjectBuilder({
+    RequestKind? kind,
     String? name,
     String? url,
     String? pushUrl,
-  }) : _name = name,
+  }) : _kind = kind,
+       _name = name,
        _url = url,
        _pushUrl = pushUrl;
 
@@ -1309,10 +1485,11 @@ class GitRemoteAddRequestObjectBuilder extends fb.ObjectBuilder {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
     final int? pushUrlOffset = _pushUrl == null ? null : fbBuilder.writeString(_pushUrl!);
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, nameOffset);
-    fbBuilder.addOffset(1, urlOffset);
-    fbBuilder.addOffset(2, pushUrlOffset);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
+    fbBuilder.addOffset(2, urlOffset);
+    fbBuilder.addOffset(3, pushUrlOffset);
     return fbBuilder.endTable();
   }
 
@@ -1348,13 +1525,14 @@ class GitRemoteSetUrlRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get url => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get pushUrl => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'GitRemoteSetUrlRequest{name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
+    return 'GitRemoteSetUrlRequest{kind: ${kind}, name: ${name}, url: ${url}, pushUrl: ${pushUrl}}';
   }
 }
 
@@ -1371,21 +1549,26 @@ class GitRemoteSetUrlRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
-  int addNameOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addUrlOffset(int? offset) {
+  int addNameOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addPushUrlOffset(int? offset) {
+  int addUrlOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPushUrlOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
@@ -1395,15 +1578,18 @@ class GitRemoteSetUrlRequestBuilder {
 }
 
 class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _name;
   final String? _url;
   final String? _pushUrl;
 
   GitRemoteSetUrlRequestObjectBuilder({
+    RequestKind? kind,
     String? name,
     String? url,
     String? pushUrl,
-  }) : _name = name,
+  }) : _kind = kind,
+       _name = name,
        _url = url,
        _pushUrl = pushUrl;
 
@@ -1413,10 +1599,11 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? urlOffset = _url == null ? null : fbBuilder.writeString(_url!);
     final int? pushUrlOffset = _pushUrl == null ? null : fbBuilder.writeString(_pushUrl!);
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, nameOffset);
-    fbBuilder.addOffset(1, urlOffset);
-    fbBuilder.addOffset(2, pushUrlOffset);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
+    fbBuilder.addOffset(2, urlOffset);
+    fbBuilder.addOffset(3, pushUrlOffset);
     return fbBuilder.endTable();
   }
 
@@ -1461,13 +1648,14 @@ class ShowRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
 
   @override
   String toString() {
-    return 'ShowRequest{revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
+    return 'ShowRequest{kind: ${kind}, revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
   }
 }
 
@@ -1484,21 +1672,26 @@ class ShowRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addRevsetOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addLimit(int? limit) {
-    fbBuilder.addUint32(1, limit);
+    fbBuilder.addUint32(2, limit);
     return fbBuilder.offset;
   }
 
   int addHasLimit(bool? hasLimit) {
-    fbBuilder.addBool(2, hasLimit);
+    fbBuilder.addBool(3, hasLimit);
     return fbBuilder.offset;
   }
 
@@ -1508,15 +1701,18 @@ class ShowRequestBuilder {
 }
 
 class ShowRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revset;
   final int? _limit;
   final bool? _hasLimit;
 
   ShowRequestObjectBuilder({
+    RequestKind? kind,
     String? revset,
     int? limit,
     bool? hasLimit,
-  }) : _revset = revset,
+  }) : _kind = kind,
+       _revset = revset,
        _limit = limit,
        _hasLimit = hasLimit;
 
@@ -1524,10 +1720,11 @@ class ShowRequestObjectBuilder extends fb.ObjectBuilder {
   @override
   int finish(fb.Builder fbBuilder) {
     final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, revsetOffset);
-    fbBuilder.addUint32(1, _limit);
-    fbBuilder.addBool(2, _hasLimit);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revsetOffset);
+    fbBuilder.addUint32(2, _limit);
+    fbBuilder.addBool(3, _hasLimit);
     return fbBuilder.endTable();
   }
 
@@ -1558,13 +1755,14 @@ class EvologRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
 
   @override
   String toString() {
-    return 'EvologRequest{revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
+    return 'EvologRequest{kind: ${kind}, revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
   }
 }
 
@@ -1581,21 +1779,26 @@ class EvologRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addRevsetOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addLimit(int? limit) {
-    fbBuilder.addUint32(1, limit);
+    fbBuilder.addUint32(2, limit);
     return fbBuilder.offset;
   }
 
   int addHasLimit(bool? hasLimit) {
-    fbBuilder.addBool(2, hasLimit);
+    fbBuilder.addBool(3, hasLimit);
     return fbBuilder.offset;
   }
 
@@ -1605,15 +1808,18 @@ class EvologRequestBuilder {
 }
 
 class EvologRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _revset;
   final int? _limit;
   final bool? _hasLimit;
 
   EvologRequestObjectBuilder({
+    RequestKind? kind,
     String? revset,
     int? limit,
     bool? hasLimit,
-  }) : _revset = revset,
+  }) : _kind = kind,
+       _revset = revset,
        _limit = limit,
        _hasLimit = hasLimit;
 
@@ -1621,10 +1827,11 @@ class EvologRequestObjectBuilder extends fb.ObjectBuilder {
   @override
   int finish(fb.Builder fbBuilder) {
     final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, revsetOffset);
-    fbBuilder.addUint32(1, _limit);
-    fbBuilder.addBool(2, _hasLimit);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revsetOffset);
+    fbBuilder.addUint32(2, _limit);
+    fbBuilder.addBool(3, _hasLimit);
     return fbBuilder.endTable();
   }
 
@@ -1663,13 +1870,14 @@ class InterdiffRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'InterdiffRequest{from: ${from}, to: ${to}, paths: ${paths}}';
+    return 'InterdiffRequest{kind: ${kind}, from: ${from}, to: ${to}, paths: ${paths}}';
   }
 }
 
@@ -1686,21 +1894,26 @@ class InterdiffRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
-  int addFromOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
     return fbBuilder.offset;
   }
 
-  int addToOffset(int? offset) {
+  int addFromOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
-  int addPathsOffset(int? offset) {
+  int addToOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
@@ -1710,15 +1923,18 @@ class InterdiffRequestBuilder {
 }
 
 class InterdiffRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _from;
   final String? _to;
   final List<String>? _paths;
 
   InterdiffRequestObjectBuilder({
+    RequestKind? kind,
     String? from,
     String? to,
     List<String>? paths,
-  }) : _from = from,
+  }) : _kind = kind,
+       _from = from,
        _to = to,
        _paths = paths;
 
@@ -1728,10 +1944,11 @@ class InterdiffRequestObjectBuilder extends fb.ObjectBuilder {
     final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
     final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, fromOffset);
-    fbBuilder.addOffset(1, toOffset);
-    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, fromOffset);
+    fbBuilder.addOffset(2, toOffset);
+    fbBuilder.addOffset(3, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -1765,11 +1982,12 @@ class WorkspaceRootRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'WorkspaceRootRequest{name: ${name}}';
+    return 'WorkspaceRootRequest{kind: ${kind}, name: ${name}}';
   }
 }
 
@@ -1786,11 +2004,16 @@ class WorkspaceRootRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addNameOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -1800,18 +2023,22 @@ class WorkspaceRootRequestBuilder {
 }
 
 class WorkspaceRootRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final String? _name;
 
   WorkspaceRootRequestObjectBuilder({
+    RequestKind? kind,
     String? name,
-  }) : _name = name;
+  }) : _kind = kind,
+       _name = name;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
-    fbBuilder.startTable(1);
-    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
     return fbBuilder.endTable();
   }
 
@@ -1850,12 +2077,13 @@ class BookmarkCreateRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
-  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'BookmarkCreateRequest{names: ${names}, revision: ${revision}}';
+    return 'BookmarkCreateRequest{kind: ${kind}, names: ${names}, revision: ${revision}}';
   }
 }
 
@@ -1872,16 +2100,21 @@ class BookmarkCreateRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addNamesOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
   int addRevisionOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
@@ -1891,13 +2124,16 @@ class BookmarkCreateRequestBuilder {
 }
 
 class BookmarkCreateRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final List<String>? _names;
   final String? _revision;
 
   BookmarkCreateRequestObjectBuilder({
+    RequestKind? kind,
     List<String>? names,
     String? revision,
-  }) : _names = names,
+  }) : _kind = kind,
+       _names = names,
        _revision = revision;
 
   /// Finish building, and store into the [fbBuilder].
@@ -1905,9 +2141,10 @@ class BookmarkCreateRequestObjectBuilder extends fb.ObjectBuilder {
   int finish(fb.Builder fbBuilder) {
     final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
     final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
-    fbBuilder.startTable(2);
-    fbBuilder.addOffset(0, namesOffset);
-    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, revisionOffset);
     return fbBuilder.endTable();
   }
 
@@ -1942,11 +2179,12 @@ class BookmarkDeleteRequest {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'BookmarkDeleteRequest{names: ${names}}';
+    return 'BookmarkDeleteRequest{kind: ${kind}, names: ${names}}';
   }
 }
 
@@ -1963,11 +2201,16 @@ class BookmarkDeleteRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
   }
 
   int addNamesOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -1977,18 +2220,22 @@ class BookmarkDeleteRequestBuilder {
 }
 
 class BookmarkDeleteRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
   final List<String>? _names;
 
   BookmarkDeleteRequestObjectBuilder({
+    RequestKind? kind,
     List<String>? names,
-  }) : _names = names;
+  }) : _kind = kind,
+       _names = names;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(1);
-    fbBuilder.addOffset(0, namesOffset);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
     return fbBuilder.endTable();
   }
 

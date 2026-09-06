@@ -21,8 +21,16 @@ import 'request_bytes.dart';
 
 /// Build a `ChangeIdList` `FlatBuffers` request buffer for [ids] and hand it to
 /// [fn] through [withRequestBytes].
-T _withChangeIdListBytes<T>(List<String> ids, T Function(ffi.Pointer<ffi.Uint8>, int) fn) =>
-    withRequestBytes(fbs.ChangeIdListObjectBuilder(changeIds: ids).toBytes(), fn);
+///
+/// [kind] tags the buffer for ONE wrapper: this single table is read by both
+/// `zanshin_new_change` (as `parents`) and `zanshin_abandon` (as `change_ids`),
+/// and Rust refuses a buffer whose tag is not its own — so mis-routing it can no
+/// longer abandon the commits the caller named as parents.
+T _withChangeIdListBytes<T>(
+  fbs.RequestKind kind,
+  List<String> ids,
+  T Function(ffi.Pointer<ffi.Uint8>, int) fn,
+) => withRequestBytes(fbs.ChangeIdListObjectBuilder(kind: kind, changeIds: ids).toBytes(), fn);
 
 // ── FFI adapters ──────────────────────────────────────────────────────────────
 
@@ -46,8 +54,11 @@ Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
 
 /// Call `zanshin_new_change` with the raw `u64` handle and [parents] (crossed as
 /// a `ChangeIdList` request buffer), and return the FlatBuffers `Envelope` bytes.
-Uint8List zanshinNewChange(int rawHandle, List<String> parents) =>
-    _withChangeIdListBytes(parents, (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)));
+Uint8List zanshinNewChange(int rawHandle, List<String> parents) => _withChangeIdListBytes(
+  fbs.RequestKind.NewChange,
+  parents,
+  (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)),
+);
 
 /// Call `zanshin_edit` with the raw `u64` handle and [changeId], and return the
 /// FlatBuffers `Envelope` bytes.
@@ -63,8 +74,11 @@ Uint8List zanshinEdit(int rawHandle, String changeId) {
 
 /// Call `zanshin_abandon` with the raw `u64` handle and [changeIds] (crossed as
 /// a `ChangeIdList` request buffer), and return the FlatBuffers `Envelope` bytes.
-Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) =>
-    _withChangeIdListBytes(changeIds, (ptr, len) => readToken(zanshin_abandon(rawHandle, ptr, len)));
+Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeIdListBytes(
+  fbs.RequestKind.Abandon,
+  changeIds,
+  (ptr, len) => readToken(zanshin_abandon(rawHandle, ptr, len)),
+);
 
 /// Call `zanshin_undo` with the raw `u64` handle, and return the FlatBuffers
 /// `Envelope` bytes.
@@ -109,6 +123,7 @@ Uint8List zanshinRestore(
   rejectInteriorNul(changesIn, 'changesIn');
   rejectInteriorNuls(paths, 'paths');
   final Uint8List request = fbs.RestoreRequestObjectBuilder(
+    kind: fbs.RequestKind.Restore,
     from: from,
     into: into,
     changesIn: changesIn,
@@ -135,7 +150,12 @@ Uint8List zanshinAbsorb(
   rejectInteriorNul(from, 'from');
   rejectInteriorNul(into, 'into');
   rejectInteriorNuls(paths, 'paths');
-  final Uint8List request = fbs.AbsorbRequestObjectBuilder(from: from, into: into, paths: paths).toBytes();
+  final Uint8List request = fbs.AbsorbRequestObjectBuilder(
+    kind: fbs.RequestKind.Absorb,
+    from: from,
+    into: into,
+    paths: paths,
+  ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_absorb(rawHandle, ptr, len)));
 }
 

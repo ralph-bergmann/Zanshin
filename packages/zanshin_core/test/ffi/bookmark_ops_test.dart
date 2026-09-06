@@ -30,16 +30,21 @@ void main() {
   group('BookmarkCreateRequest wire shape', () {
     test('an absent revision stays null - it is what applies the CLI -r default', () {
       final req = fbs.BookmarkCreateRequest(
-        fbs.BookmarkCreateRequestObjectBuilder(names: ['feature']).toBytes(),
+        fbs.BookmarkCreateRequestObjectBuilder(kind: fbs.RequestKind.BookmarkCreate, names: ['feature']).toBytes(),
       );
 
+      expect(req.kind, fbs.RequestKind.BookmarkCreate, reason: 'the tag rides field 0 of every request');
       expect(req.names, ['feature']);
       expect(req.revision, isNull, reason: 'null-for-absence: absent means `@`');
     });
 
     test('a present revision and several names survive in ARGUMENT order', () {
       final req = fbs.BookmarkCreateRequest(
-        fbs.BookmarkCreateRequestObjectBuilder(names: ['b', 'a'], revision: 'qpvuntsm').toBytes(),
+        fbs.BookmarkCreateRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkCreate,
+          names: ['b', 'a'],
+          revision: 'qpvuntsm',
+        ).toBytes(),
       );
 
       expect(req.names, ['b', 'a'], reason: 'argument order is the fail-fast order');
@@ -48,7 +53,11 @@ void main() {
 
     test('an explicitly empty revision is a VALUE, not an absence', () {
       final req = fbs.BookmarkCreateRequest(
-        fbs.BookmarkCreateRequestObjectBuilder(names: ['feature'], revision: '').toBytes(),
+        fbs.BookmarkCreateRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkCreate,
+          names: ['feature'],
+          revision: '',
+        ).toBytes(),
       );
 
       expect(req.revision, isNotNull);
@@ -59,20 +68,54 @@ void main() {
   group('BookmarkDeleteRequest wire shape', () {
     test('patterns cross verbatim, including their kind prefixes', () {
       final req = fbs.BookmarkDeleteRequest(
-        fbs.BookmarkDeleteRequestObjectBuilder(names: [r'glob:"foo-*"', 'exact:bar']).toBytes(),
+        fbs.BookmarkDeleteRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkDelete,
+          names: [r'glob:"foo-*"', 'exact:bar'],
+        ).toBytes(),
       );
 
+      expect(req.kind, fbs.RequestKind.BookmarkDelete, reason: 'the tag rides field 0 of every request');
       expect(req.names, [r'glob:"foo-*"', 'exact:bar']);
     });
 
     test('an empty pattern list is carried as an empty vector, not dropped', () {
       final req = fbs.BookmarkDeleteRequest(
-        fbs.BookmarkDeleteRequestObjectBuilder(names: const <String>[]).toBytes(),
+        fbs.BookmarkDeleteRequestObjectBuilder(kind: fbs.RequestKind.BookmarkDelete, names: const <String>[]).toBytes(),
       );
 
       // Either wire form reaches the same jj-level refusal (`jj.invalid_input`),
       // so the assertion is only that nothing else is smuggled in.
       expect(req.names ?? const <String>[], isEmpty);
+      expect(req.kind, fbs.RequestKind.BookmarkDelete);
+    });
+  });
+
+  group('the request-kind tag', () {
+    test('an unset kind reads back as Unspecified, which Rust always refuses', () {
+      // FlatBuffers writes no bytes for a field equal to its default, so this buffer is
+      // byte-identical to one built before the tag existed - "legacy buffer" and "forgotten
+      // tag" are the same, always-refused state.
+      final req = fbs.BookmarkDeleteRequest(
+        fbs.BookmarkDeleteRequestObjectBuilder(names: ['feature']).toBytes(),
+      );
+
+      expect(req.kind, fbs.RequestKind.Unspecified);
+    });
+
+    test('the two ChangeIdList wrappers tag the SAME table differently', () {
+      // The one table read by both zanshin_new_change (as parents) and zanshin_abandon (as
+      // change_ids): a per-table tag would leave that pair - one of them destructive -
+      // unrefused, so the tag is per-WRAPPER.
+      final asParents = fbs.ChangeIdList(
+        fbs.ChangeIdListObjectBuilder(kind: fbs.RequestKind.NewChange, changeIds: ['qpvuntsm']).toBytes(),
+      );
+      final asTargets = fbs.ChangeIdList(
+        fbs.ChangeIdListObjectBuilder(kind: fbs.RequestKind.Abandon, changeIds: ['qpvuntsm']).toBytes(),
+      );
+
+      expect(asParents.kind, fbs.RequestKind.NewChange);
+      expect(asTargets.kind, fbs.RequestKind.Abandon);
+      expect(asParents.changeIds, asTargets.changeIds, reason: 'only the tag differs');
     });
   });
 

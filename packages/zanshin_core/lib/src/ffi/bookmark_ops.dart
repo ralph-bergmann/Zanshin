@@ -41,7 +41,11 @@ import 'request_bytes.dart';
 Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revision}) {
   rejectInteriorNuls(names, 'names');
   rejectInteriorNul(revision, 'revision');
-  final Uint8List request = fbs.BookmarkCreateRequestObjectBuilder(names: names, revision: revision).toBytes();
+  final Uint8List request = fbs.BookmarkCreateRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkCreate,
+    names: names,
+    revision: revision,
+  ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_create(rawHandle, ptr, len)));
 }
 
@@ -55,6 +59,9 @@ Uint8List zanshinBookmarkCreate(int rawHandle, List<String> names, {String? revi
 /// matching nothing SUCCEEDS and writes no operation.
 Uint8List zanshinBookmarkDelete(int rawHandle, List<String> names) {
   rejectInteriorNuls(names, 'names');
-  final Uint8List request = fbs.BookmarkDeleteRequestObjectBuilder(names: names).toBytes();
+  final Uint8List request = fbs.BookmarkDeleteRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkDelete,
+    names: names,
+  ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_delete(rawHandle, ptr, len)));
 }

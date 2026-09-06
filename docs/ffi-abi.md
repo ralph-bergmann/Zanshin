@@ -144,17 +144,27 @@ All sixteen wrappers share one reader shape (worked example:
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
 own scope and returns an OWNED struct, so the slice provably cannot outlive the
-call). Three distinct refusals sit at three distinct layers:
+call). Five distinct refusals sit at five distinct layers:
 
 | Order | Check | Code | `context` |
 |-------|-------|------|-----------|
 | 1 | `reject_null_request(data)` — `envelope.rs:183-191` | `ffi.null_pointer` | **absent** |
 | 2 | `flatbuffers::root_with_opts::<fbs::X>(…)` verification — `envelope.rs:194-199` | `ffi.invalid_argument` | the flatbuffers verifier message |
-| 3 | a required field is ABSENT from an otherwise valid table — `envelope.rs:201-206` | `jj.invalid_input` | the field name |
+| 3 | `expect_request_kind(req.kind(), …)` — the buffer was built for THIS wrapper | `ffi.invalid_argument` | `request kind mismatch: expected <K>, got <K>` |
+| 4 | a required field is ABSENT from an otherwise valid table | `jj.invalid_input` | the field name |
+| 5 | `session_from_handle(handle)` — the handle is `0` or the borrow yields `None` | `ffi.invalid_handle` | **absent** |
 
 A **zero-length or garbage buffer** fails verification, so it lands on
 `ffi.invalid_argument` — never on `ffi.null_pointer`. Only a genuinely null
 `data` pointer produces `ffi.null_pointer`.
+
+**The whole request buffer is judged before the handle is borrowed.** Every one
+of the sixteen wrappers calls its reader BEFORE `session_from_handle`, so rows 1
+through 4 all precede row 5. That order is deliberate: a buffer built for the
+wrong verb has to be refused on its own merits, not only when the caller happens
+to hold a live handle. The only callers that see a different answer than they
+would have before the tag landed are those that get BOTH wrong at once — a
+malformed, mis-tagged or incomplete buffer together with a dead handle.
 
 **The ladder starts only once `len` is honest.** `len` must describe exactly the
 bytes readable at `data`; the reader builds its slice with
@@ -163,7 +173,7 @@ larger than the allocation is an out-of-bounds read — undefined behaviour, not
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
 repeated in every one of the sixteen symbols' `# Safety` blocks.
 
-Layer 3 is a different question from layer 2: the buffer verified, but the *table*
+Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
 across these tables an absent field is the wire form of "the user did not supply
 it", which is what applies the CLI's own default (`@` for a revision, `mutable()`
@@ -188,32 +198,51 @@ The check is deliberately spelled at both layers for that reason.
 **Rust does not re-check.** There is no `reject_interior_nul` beside
 `reject_null_request`: both enforcement layers are Dart-side, so a caller that
 bypasses the generated adapters can put a NUL into a request string and it will
-reach jj-lib. That is the same posture as the interchangeable-verification caveat
-below — the guard is the adapter, not the wrapper.
+reach jj-lib. The guard is the adapter, not the wrapper. (The `RequestKind` tag
+below is guarded on BOTH sides for the opposite reason: mis-routing a buffer is a
+wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs:31-266` declares **15** request tables. They are **not**
-members of the `Payload` union (that union is response-only). Field order IS the
-wire contract: field ids are assigned by declaration order and baked into both
-committed codegen sides, so the tables are **APPEND-only** — never reorder,
-never remove.
+`schemas/envelope.fbs` declares **15** request tables. They are **not** members of
+the `Payload` union (that union is response-only). Field order IS the wire
+contract: field ids are assigned by declaration order and baked into both
+committed codegen sides. `kind` is **always field 0**; any other change to a
+request table's field order is an in-place WIP edit that MUST regenerate BOTH
+committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
 one caller, and no table is orphaned. 15 tables + 1 shared reuse = the 16
 request-buffer symbols.
 
-**Known caveat — request tables verify interchangeably.** No request table
-carries a `file_identifier`, and several put one string in slot 0, so a buffer
-built for one verb verifies as another's table instead of being refused with
-`ffi.invalid_argument`. This is only reachable by a caller bypassing the
-generated Dart adapters. It is an open must-have on the central ledger,
-`_bmad-output/implementation-artifacts/deferred-work.md`, under the bullet
-*"Request tables verify interchangeably — no `file_identifier` — and Story 9.8 is
-the first place the collision is DANGEROUS"* (cited by title, not by line: that
-file grows by insertion). Do not work around it per-symbol — the fix is a
-schema-convention decision.
+#### The `RequestKind` tag
+
+The request tables are **structurally interchangeable**: a buffer built for one
+verb verifies as another verb's table, because none carries a `file_identifier`
+and several put one string in the same slot. Field 0 of every request table is
+therefore `kind: RequestKind`, and every reader refuses a buffer whose tag is not
+its own — row 3 of the ladder above, before any other field is read and before
+the handle is borrowed.
+
+The tag is per-**wrapper**, not per-table. For 14 tables the variant name plus
+`Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
+and `Abandon`, because a per-table tag would have left the sharpest collision
+unrefused — a buffer meant as `parents` abandoning those commits instead.
+
+`Unspecified = 0` is FlatBuffers' default for an absent field, so a buffer built
+by a producer that never sets `kind` is **byte-identical to a pre-tag buffer**,
+decodes as `Unspecified`, and is always refused. "Legacy buffer" and "forgotten
+tag" are the same, always-refused state; nothing untagged is ever accepted as any
+verb.
+
+The tag guards the **wire**, not the caller: a caller bypassing the generated
+adapters can still set it by hand. What it removes is the silent
+mis-**execution** — a mis-routed buffer is now a refusal.
+
+This closes the former "request tables verify interchangeably" caveat, which was
+the last open must-have on the central ledger,
+`_bmad-output/implementation-artifacts/deferred-work.md`.
 
 ---
 

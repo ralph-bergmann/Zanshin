@@ -129,6 +129,7 @@ fn create_request_bytes(names: Option<&[&str]>, revision: Option<&str>) -> Vec<u
     let req = fbs::BookmarkCreateRequest::create(
         &mut b,
         &fbs::BookmarkCreateRequestArgs {
+            kind: fbs::RequestKind::BookmarkCreate,
             names: names_off,
             revision: revision_off,
         },
@@ -146,7 +147,13 @@ fn delete_request_bytes(names: Option<&[&str]>) -> Vec<u8> {
         let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
         b.create_vector(&offsets)
     });
-    let req = fbs::BookmarkDeleteRequest::create(&mut b, &fbs::BookmarkDeleteRequestArgs { names: names_off });
+    let req = fbs::BookmarkDeleteRequest::create(
+        &mut b,
+        &fbs::BookmarkDeleteRequestArgs {
+            kind: fbs::RequestKind::BookmarkDelete,
+            names: names_off,
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }
@@ -433,14 +440,20 @@ fn an_absent_names_vector_refuses_as_invalid_input() {
 
 // ── Shared guards ─────────────────────────────────────────────────────────────
 
-/// A zero handle is refused BEFORE the request buffer is even looked at, for both wrappers.
+/// A zero handle is refused once the request buffer itself is above reproach, for both wrappers.
+///
+/// Each wrapper gets a buffer carrying its OWN `RequestKind`, so the null, verify and kind rungs
+/// all pass and the handle rung — the fourth — is what answers. Feeding ONE create buffer to both
+/// wrappers, which this test did before the tag landed, is now a kind mismatch and is asserted as
+/// such in `a_buffer_built_for_the_other_wrapper_is_refused_as_a_kind_mismatch`.
 #[test]
 fn a_zero_handle_is_refused_by_both_wrappers() {
     pin_env();
-    let req = create_request_bytes(Some(&["feature"]), None);
-    for wrapper in [
-        zanshin_bookmark_create as BufWrapper,
-        zanshin_bookmark_delete as BufWrapper,
+    let create_req = create_request_bytes(Some(&["feature"]), None);
+    let delete_req = delete_request_bytes(Some(&["feature"]));
+    for (wrapper, req) in [
+        (zanshin_bookmark_create as BufWrapper, &create_req),
+        (zanshin_bookmark_delete as BufWrapper, &delete_req),
     ] {
         // SAFETY: 0 is the documented null handle; the buffer outlives the call.
         let token = unsafe { wrapper(0, req.as_ptr(), req.len()) };
@@ -449,7 +462,82 @@ fn a_zero_handle_is_refused_by_both_wrappers() {
         let env = parse_envelope(&bytes);
         assert!(!env.ok());
         assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_HANDLE));
+        assert!(
+            env.error().and_then(|e| e.context()).is_none(),
+            "the invalid-handle envelope carries no context"
+        );
     }
+}
+
+/// A buffer built for the OTHER bookmark verb is refused as a kind mismatch — in both
+/// directions, and whether or not the caller also holds a live handle.
+///
+/// This is the ledger's own cited hazard: `BookmarkCreateRequest.names` are EXACT decoded names
+/// while `BookmarkDeleteRequest.names` are GLOB-by-default patterns, and the two tables verify
+/// interchangeably, so before the tag a create buffer fed to delete silently glob-deleted what
+/// the caller meant literally. The zero-handle half of the table proves the kind rung runs
+/// BEFORE the handle lookup: a mis-routed buffer is refused on its own merits.
+#[test]
+fn a_buffer_built_for_the_other_wrapper_is_refused_as_a_kind_mismatch() {
+    pin_env();
+    let (handle, _root) = open_fixture();
+    let create_req = create_request_bytes(Some(&["feature"]), None);
+    let delete_req = delete_request_bytes(Some(&["feature"]));
+    // An UNTAGGED buffer: `FlatBuffers` writes nothing for a field equal to its default, so
+    // these bytes are identical to a pre-tag buffer's and must be refused as `Unspecified`.
+    let untagged = untagged_request_bytes();
+
+    let cases: [(BufWrapper, &Vec<u8>, &str, &str); 6] = [
+        (zanshin_bookmark_create, &delete_req, "BookmarkCreate", "BookmarkDelete"),
+        (zanshin_bookmark_delete, &create_req, "BookmarkDelete", "BookmarkCreate"),
+        (zanshin_bookmark_create, &untagged, "BookmarkCreate", "Unspecified"),
+        (zanshin_bookmark_delete, &untagged, "BookmarkDelete", "Unspecified"),
+        (zanshin_bookmark_create, &delete_req, "BookmarkCreate", "BookmarkDelete"),
+        (zanshin_bookmark_delete, &create_req, "BookmarkDelete", "BookmarkCreate"),
+    ];
+
+    for (i, (wrapper, req, expected, got)) in cases.into_iter().enumerate() {
+        // The last two rows repeat the first two with handle 0: the answer must still be the
+        // KIND refusal, not `ffi.invalid_handle`.
+        let h = if i >= 4 { 0 } else { handle };
+        // SAFETY: the handle is live (or the documented null handle); the buffer outlives the call.
+        let token = unsafe { wrapper(h, req.as_ptr(), req.len()) };
+        // SAFETY: fresh, non-null token.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "row {i}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "row {i}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "row {i}: the context names both kinds"
+        );
+    }
+
+    // No operation was written by any of the six refusals.
+    close_handle(handle);
+}
+
+/// A request buffer whose `kind` was never set.
+///
+/// Built as a `ChangeIdList` with the DEFAULT tag: `FlatBuffers` emits no bytes for a field
+/// equal to its default, so this is byte-identical to a buffer built before the tag existed —
+/// and, the tables being structurally interchangeable, it verifies as any request table.
+fn untagged_request_bytes() -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(
+        &mut b,
+        &fbs::ChangeIdListArgs {
+            kind: fbs::RequestKind::Unspecified,
+            change_ids: None,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }
 
 /// A null buffer and a buffer that does not verify are distinct failures, for both wrappers.

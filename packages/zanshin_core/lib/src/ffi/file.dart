@@ -38,7 +38,11 @@ void _rejectPathNuls(String? revision, List<String> paths) {
 /// repository root, which prefixes everything.
 Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths = const <String>[]}) {
   _rejectPathNuls(revision, paths);
-  final Uint8List request = fbs.FileListRequestObjectBuilder(revision: revision, paths: paths).toBytes();
+  final Uint8List request = fbs.FileListRequestObjectBuilder(
+    kind: fbs.RequestKind.FileList,
+    revision: revision,
+    paths: paths,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_list(rawHandle, ptr, len));
 }
 
@@ -50,7 +54,11 @@ Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths =
 /// `jj.invalid_input`.
 Uint8List zanshinFileShow(int rawHandle, {required List<String> paths, String? revision}) {
   _rejectPathNuls(revision, paths);
-  final Uint8List request = fbs.FileShowRequestObjectBuilder(revision: revision, paths: paths).toBytes();
+  final Uint8List request = fbs.FileShowRequestObjectBuilder(
+    kind: fbs.RequestKind.FileShow,
+    revision: revision,
+    paths: paths,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_show(rawHandle, ptr, len));
 }
 
@@ -65,7 +73,11 @@ Uint8List zanshinFileShow(int rawHandle, {required List<String> paths, String? r
 Uint8List zanshinFileAnnotate(int rawHandle, {required String path, String? revision}) {
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNul(path, 'path');
-  final Uint8List request = fbs.FileAnnotateRequestObjectBuilder(revision: revision, path: path).toBytes();
+  final Uint8List request = fbs.FileAnnotateRequestObjectBuilder(
+    kind: fbs.RequestKind.FileAnnotate,
+    revision: revision,
+    path: path,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_annotate(rawHandle, ptr, len));
 }
 
@@ -90,6 +102,7 @@ Uint8List zanshinFileSearch(
   _rejectPathNuls(revision, paths);
   rejectInteriorNul(pattern, 'pattern');
   final Uint8List request = fbs.FileSearchRequestObjectBuilder(
+    kind: fbs.RequestKind.FileSearch,
     revision: revision,
     pattern: pattern,
     paths: paths,

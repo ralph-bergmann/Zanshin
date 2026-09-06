@@ -16,8 +16,9 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileSearch, FileType};
 
 use crate::envelope::{
-    catch, finish_envelope, invalid_request, missing_field, reject_null_request, session_from_handle, FfiErrorObj,
-    JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request,
+    session_from_handle, FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR,
+    JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -75,13 +76,15 @@ struct FileSearchRequestOwned {
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its
+///   `kind` is not `FileList`.
 fn read_file_list_request(data: *const u8, len: usize) -> Result<RevisionAndPathsOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileListRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileList)?;
     Ok(RevisionAndPathsOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
@@ -93,13 +96,15 @@ fn read_file_list_request(data: *const u8, len: usize) -> Result<RevisionAndPath
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its
+///   `kind` is not `FileShow`.
 fn read_file_show_request(data: *const u8, len: usize) -> Result<RevisionAndPathsOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileShowRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileShow)?;
     Ok(RevisionAndPathsOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
@@ -110,7 +115,8 @@ fn read_file_show_request(data: *const u8, len: usize) -> Result<RevisionAndPath
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its
+///   `kind` is not `FileAnnotate`.
 /// - `jj.invalid_input` — `path` is ABSENT from the buffer (the CLI's positional `path` is
 ///   required); an explicitly empty string is a value and is passed through.
 fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotateRequestOwned, FfiErrorObj> {
@@ -119,6 +125,7 @@ fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotat
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileAnnotateRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileAnnotate)?;
     Ok(FileAnnotateRequestOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         path: req.path().ok_or_else(|| missing_field("path"))?.to_owned(),
@@ -129,7 +136,8 @@ fn read_file_annotate_request(data: *const u8, len: usize) -> Result<FileAnnotat
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its
+///   `kind` is not `FileSearch`.
 /// - `jj.invalid_input` — `pattern` is ABSENT from the buffer (the CLI marks `-p/--pattern`
 ///   `required = true`); an explicitly empty string is a value and is passed through, where
 ///   it is the empty regex and matches every line.
@@ -139,6 +147,7 @@ fn read_file_search_request(data: *const u8, len: usize) -> Result<FileSearchReq
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::FileSearchRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileSearch)?;
     Ok(FileSearchRequestOwned {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
         pattern: req.pattern().ok_or_else(|| missing_field("pattern"))?.to_owned(),
@@ -328,7 +337,8 @@ fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its `kind`
+///   is not `FileList`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
 ///   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
 ///   the CLI's `-r` default `@`.
@@ -349,9 +359,9 @@ fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
 pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_list", handle);
     let buf = catch(|| {
+        let req = read_file_list_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_file_list_request(data, len)?;
         let entries = session.repo.file_list(req.revision, &req.paths).map_err(map_file_err)?;
         Ok(file_list_to_envelope(&entries))
     });
@@ -377,7 +387,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
+///   is not `FileShow`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
@@ -394,9 +405,9 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_show", handle);
     let buf = catch(|| {
+        let req = read_file_show_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_file_show_request(data, len)?;
         let contents = session.repo.file_show(req.revision, &req.paths).map_err(map_file_err)?;
         Ok(file_contents_to_envelope(&contents))
     });
@@ -417,7 +428,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
+///   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
 ///   path.
@@ -434,9 +446,9 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_annotate", handle);
     let buf = catch(|| {
+        let req = read_file_annotate_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_file_annotate_request(data, len)?;
         let lines = session
             .repo
             .file_annotate(req.revision, &req.path)
@@ -464,7 +476,8 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
+///   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
 ///   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
@@ -478,9 +491,9 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_file_search", handle);
     let buf = catch(|| {
+        let req = read_file_search_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_file_search_request(data, len)?;
         let search = session
             .repo
             .file_search(req.revision, &req.pattern, &req.paths, req.name_only)

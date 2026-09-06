@@ -52,6 +52,7 @@ Uint8List zanshinShow(int rawHandle, {String? revset, int? limit}) {
     throw ArgumentError.value(limit, 'limit', 'must not be negative');
   }
   final Uint8List request = fbs.ShowRequestObjectBuilder(
+    kind: fbs.RequestKind.Show,
     revset: revset,
     limit: limit == null ? 0 : (limit > _maxWireLimit ? _maxWireLimit : limit),
     hasLimit: limit != null,
@@ -79,6 +80,7 @@ Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
     throw ArgumentError.value(limit, 'limit', 'must not be negative');
   }
   final Uint8List request = fbs.EvologRequestObjectBuilder(
+    kind: fbs.RequestKind.Evolog,
     revset: revset,
     limit: limit == null ? 0 : (limit > _maxWireLimit ? _maxWireLimit : limit),
     hasLimit: limit != null,
@@ -114,7 +116,12 @@ Uint8List zanshinInterdiff(
   rejectInteriorNul(from, 'from');
   rejectInteriorNul(to, 'to');
   rejectInteriorNuls(paths, 'paths');
-  final Uint8List request = fbs.InterdiffRequestObjectBuilder(from: from, to: to, paths: paths).toBytes();
+  final Uint8List request = fbs.InterdiffRequestObjectBuilder(
+    kind: fbs.RequestKind.Interdiff,
+    from: from,
+    to: to,
+    paths: paths,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_interdiff(rawHandle, ptr, len));
 }
 

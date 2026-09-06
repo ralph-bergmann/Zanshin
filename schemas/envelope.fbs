@@ -34,13 +34,54 @@ table FfiError {
 // (ADR-0001 composite-input pattern, Story 6-5).
 //
 // Field order IS the wire contract here too — a table's field ids are assigned by
-// declaration order and are baked into BOTH committed codegen sides. APPEND only,
-// never reorder or remove: a Dart writer and a Rust reader built from different
-// field orders would silently mis-read every field after the first change.
+// declaration order and are baked into BOTH committed codegen sides. `kind` is
+// ALWAYS field 0 of a request table; any other change to a request table's field
+// order is an in-place WIP edit (no `id:` attribute, no `_v2` table, no in-wire
+// schema version) that MUST regenerate BOTH committed codegen sides in the SAME
+// commit — a Dart writer and a Rust reader built from different field orders would
+// silently mis-read every field after the first change.
+
+/// Which `extern "C"` wrapper a request buffer was built FOR.
+///
+/// Every request table carries this as field 0, and every wrapper refuses a buffer whose
+/// `kind` is not its own — before the handle lookup and before any other field is read.
+/// Without it a buffer built for one verb VERIFIES as another verb's table (the tables are
+/// structurally interchangeable), so a `BookmarkCreateRequest` fed to `zanshin_bookmark_delete`
+/// would silently glob-delete names the caller meant literally.
+///
+/// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+/// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
+/// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
+/// named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+///
+/// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
+/// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
+/// `Unspecified`, and is ALWAYS refused. Nothing untagged is ever silently accepted.
+enum RequestKind : ubyte {
+  Unspecified,
+  Restore,
+  Absorb,
+  NewChange,
+  Abandon,
+  FileList,
+  FileShow,
+  FileAnnotate,
+  FileSearch,
+  GitRemoteAdd,
+  GitRemoteSetUrl,
+  Show,
+  Evolog,
+  Interdiff,
+  WorkspaceRoot,
+  BookmarkCreate,
+  BookmarkDelete
+}
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-/// `parents` and `zanshin_abandon`'s `change_ids`.
+/// `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
+/// wrappers: `NewChange` or `Abandon`.
 table ChangeIdList {
+  kind: RequestKind;
   change_ids: [string];
 }
 
@@ -56,6 +97,7 @@ table ChangeIdList {
 /// `restore_descendants` reparents children (preserving their content) instead of
 /// rebasing them.
 table RestoreRequest {
+  kind: RequestKind;
   from: string;
   into: string;
   changes_in: string;
@@ -72,6 +114,7 @@ table RestoreRequest {
 /// destroy that meaning (FR-JJ-17).
 /// `paths` behaves exactly as in RestoreRequest.
 table AbsorbRequest {
+  kind: RequestKind;
   from: string;
   into: string;
   paths: [string];
@@ -87,6 +130,7 @@ table AbsorbRequest {
 /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
 /// fileset DSL is terminal input language and is not parsed (ADR-0003).
 table FileListRequest {
+  kind: RequestKind;
   revision: string;
   paths: [string];
 }
@@ -95,6 +139,7 @@ table FileListRequest {
 /// except `paths` may NOT be empty — the CLI marks its FILESETS argument `required`, and an
 /// empty list is `jj.invalid_input`.
 table FileShowRequest {
+  kind: RequestKind;
   revision: string;
   paths: [string];
 }
@@ -105,6 +150,7 @@ table FileShowRequest {
 /// `jj.invalid_input`, mirroring the CLI's required positional argument; an explicitly
 /// present EMPTY string is a value, not an absence, and means the repository root.
 table FileAnnotateRequest {
+  kind: RequestKind;
   revision: string;
   path: string;
 }
@@ -121,6 +167,7 @@ table FileAnnotateRequest {
 /// result shape, which is why it survives the terminal-UX cut that dropped `--line-number`
 /// (the result always carries `SearchMatch.line_number`).
 table FileSearchRequest {
+  kind: RequestKind;
   revision: string;
   pattern: string;
   paths: [string];
@@ -139,6 +186,7 @@ table FileSearchRequest {
 /// jj-lib's own `save_remote` writes a `pushurl` key, and its `remove_remote` refuses any
 /// key outside `url`/`fetch`/`tagOpt` (`jj.remote_nonstandard_config`).
 table GitRemoteAddRequest {
+  kind: RequestKind;
   name: string;
   url: string;
   push_url: string;
@@ -156,6 +204,7 @@ table GitRemoteAddRequest {
 /// This verb never writes an operation — jj-lib takes a `&Store`, not a transaction — so
 /// the returned `MutationResult.new_op_id` is always the PRE-CALL op-log head.
 table GitRemoteSetUrlRequest {
+  kind: RequestKind;
   name: string;
   url: string;
   push_url: string;
@@ -182,6 +231,7 @@ table GitRemoteSetUrlRequest {
 /// optional scalars for Dart), it is applied in RAW REVSET order, and `limit = 0` is an empty
 /// result, not an error. ABSENCE is therefore the CLI-parity default: unbounded, as `jj show` is.
 table ShowRequest {
+  kind: RequestKind;
   revset: string;
   limit: uint;            // 0 / ignored when has_limit == false
   has_limit: bool;
@@ -194,6 +244,7 @@ table ShowRequest {
 /// 25.12.19 rejects optional scalars for Dart). It is applied in WALK order — the CLI limits
 /// before reversing — and `limit = 0` is an empty result, not an error.
 table EvologRequest {
+  kind: RequestKind;
   revset: string;
   limit: uint;            // 0 / ignored when has_limit == false
   has_limit: bool;
@@ -214,6 +265,7 @@ table EvologRequest {
 /// fileset DSL is not parsed (ADR-0003). A filter matching nothing yields an EMPTY list, where
 /// the CLI only warns.
 table InterdiffRequest {
+  kind: RequestKind;
   from: string;
   to: string;
   paths: [string];
@@ -229,6 +281,7 @@ table InterdiffRequest {
 /// `zanshin_workspace_list` has NO request table: the CLI's `jj workspace list` takes no
 /// argument at all (its only flag, `-T/--template`, is rendering).
 table WorkspaceRootRequest {
+  kind: RequestKind;
   name: string;
 }
 
@@ -247,6 +300,7 @@ table WorkspaceRootRequest {
 /// exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
 /// absence, and refuses with `jj.change_not_found`.
 table BookmarkCreateRequest {
+  kind: RequestKind;
   names: [string];
   revision: string;
 }
@@ -262,6 +316,7 @@ table BookmarkCreateRequest {
 /// SUCCESS that writes no operation, so `MutationResult.new_op_id` is the PRE-CALL op-log
 /// head.
 table BookmarkDeleteRequest {
+  kind: RequestKind;
   names: [string];
 }
 

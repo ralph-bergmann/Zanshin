@@ -104,7 +104,13 @@ fn close_handle(handle: u64) {
 fn root_request_bytes(name: Option<&str>) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let name_off = name.map(|s| b.create_string(s));
-    let req = fbs::WorkspaceRootRequest::create(&mut b, &fbs::WorkspaceRootRequestArgs { name: name_off });
+    let req = fbs::WorkspaceRootRequest::create(
+        &mut b,
+        &fbs::WorkspaceRootRequestArgs {
+            kind: fbs::RequestKind::WorkspaceRoot,
+            name: name_off,
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }
@@ -463,4 +469,87 @@ fn no_workspace_wrapper_writes_an_operation() {
         .collect();
     after.sort();
     assert_eq!(before, after, "neither verb may write an operation, refusals included");
+}
+
+// ── Request-kind tag ──────────────────────────────────────────────────────────
+
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
+
+/// `zanshin_workspace_root` refuses a buffer built for a different verb, and refuses an
+/// untagged one, naming both kinds in `context`.
+///
+/// The other verb has to come from another noun module — `zanshin_workspace_list` takes no
+/// buffer at all — which is exactly the point: EVERY request table verifies as every other, so
+/// a `BookmarkDeleteRequest` reached this reader intact before the `RequestKind` tag. The
+/// `handle == 0` row proves the kind rung runs BEFORE the handle lookup.
+#[test]
+fn workspace_root_refuses_a_buffer_built_for_another_verb() {
+    pin_env();
+    let (handle, _root) = open_stale_scenario();
+
+    let foreign = tagged_request_bytes(fbs::RequestKind::BookmarkDelete);
+    let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+
+    let cases: [KindCase<'_>; 3] = [
+        (
+            "live handle",
+            zanshin_workspace_root,
+            &foreign,
+            "WorkspaceRoot",
+            "BookmarkDelete",
+            handle,
+        ),
+        (
+            "untagged",
+            zanshin_workspace_root,
+            &untagged,
+            "WorkspaceRoot",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "zero handle",
+            zanshin_workspace_root,
+            &foreign,
+            "WorkspaceRoot",
+            "BookmarkDelete",
+            0,
+        ),
+    ];
+
+    for (name, call, req, expected, got, h) in cases {
+        // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+        let token = unsafe { call(h, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "{name}: the context names both kinds"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// A minimal request buffer carrying `kind` and nothing else.
+///
+/// With every other field absent all fifteen request tables serialise to IDENTICAL bytes — the
+/// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
+/// verb and a buffer that verifies as every other request table. That is what isolates the kind
+/// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }

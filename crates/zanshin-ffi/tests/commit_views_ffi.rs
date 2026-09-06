@@ -130,6 +130,7 @@ fn show_request_bytes_raw(revset: Option<&str>, limit: u32, has_limit: bool) -> 
     let req = fbs::ShowRequest::create(
         &mut b,
         &fbs::ShowRequestArgs {
+            kind: fbs::RequestKind::Show,
             revset: revset_off,
             limit,
             has_limit,
@@ -147,6 +148,7 @@ fn evolog_request_bytes(revset: Option<&str>, limit: Option<u32>) -> Vec<u8> {
     let req = fbs::EvologRequest::create(
         &mut b,
         &fbs::EvologRequestArgs {
+            kind: fbs::RequestKind::Evolog,
             revset: revset_off,
             limit: limit.unwrap_or(0),
             has_limit: limit.is_some(),
@@ -167,6 +169,7 @@ fn interdiff_request_bytes(from: Option<&str>, to: Option<&str>, paths: &[&str])
     let req = fbs::InterdiffRequest::create(
         &mut b,
         &fbs::InterdiffRequestArgs {
+            kind: fbs::RequestKind::Interdiff,
             from: from_off,
             to: to_off,
             paths: Some(paths_vec),
@@ -679,4 +682,86 @@ fn no_commit_view_wrapper_writes_an_operation() {
         .collect();
     after.sort();
     assert_eq!(before, after, "no commit-view wrapper may write an operation");
+}
+
+// ── Request-kind tag ──────────────────────────────────────────────────────────
+
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, Wrapper, &'a [u8], &'a str, &'a str, u64);
+
+/// Every wrapper in this file refuses a buffer built for a DIFFERENT verb, and refuses an
+/// untagged one, naming both kinds in `context`.
+///
+/// `ShowRequest` and `EvologRequest` are field-for-field identical, so the real show ↔ evolog
+/// cross-feed carries a payload; `InterdiffRequest`'s rows use a minimal tagged buffer, which
+/// every request table serialises to identically. The `handle == 0` row proves the kind rung
+/// runs BEFORE the handle lookup.
+#[test]
+fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
+    pin_env();
+    let (handle, _change_id) = open_scenario();
+
+    let show_req = show_request_bytes_raw(Some("@"), 3, true);
+    let evolog_req = evolog_request_bytes(Some("@"), Some(3));
+    let minimal_show = tagged_request_bytes(fbs::RequestKind::Show);
+    let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+
+    let cases: [KindCase<'_>; 7] = [
+        ("show", zanshin_show, &evolog_req, "Show", "Evolog", handle),
+        ("evolog", zanshin_evolog, &show_req, "Evolog", "Show", handle),
+        (
+            "interdiff",
+            zanshin_interdiff,
+            &minimal_show,
+            "Interdiff",
+            "Show",
+            handle,
+        ),
+        ("show", zanshin_show, &untagged, "Show", "Unspecified", handle),
+        ("evolog", zanshin_evolog, &untagged, "Evolog", "Unspecified", handle),
+        (
+            "interdiff",
+            zanshin_interdiff,
+            &untagged,
+            "Interdiff",
+            "Unspecified",
+            handle,
+        ),
+        ("show", zanshin_show, &evolog_req, "Show", "Evolog", 0),
+    ];
+
+    for (name, call, req, expected, got, h) in cases {
+        // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+        let token = unsafe { call(h, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "{name}: the context names both kinds"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// A minimal request buffer carrying `kind` and nothing else.
+///
+/// With every other field absent all fifteen request tables serialise to IDENTICAL bytes — the
+/// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
+/// verb and a buffer that verifies as every other request table. That is what isolates the kind
+/// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }

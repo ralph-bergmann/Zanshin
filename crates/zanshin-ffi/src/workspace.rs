@@ -22,8 +22,8 @@ use tracing::debug;
 use zanshin_jj::{WorkspaceEntry, WorkspaceError};
 
 use crate::envelope::{
-    catch, finish_envelope, invalid_request, reject_null_request, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR,
-    JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
+    catch, expect_request_kind, finish_envelope, invalid_request, reject_null_request, session_from_handle,
+    FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -64,13 +64,15 @@ struct WorkspaceRootRequestOwned {
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer, or its
+///   `kind` is not `WorkspaceRoot`.
 fn read_workspace_root_request(data: *const u8, len: usize) -> Result<WorkspaceRootRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::WorkspaceRootRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::WorkspaceRoot)?;
     Ok(WorkspaceRootRequestOwned {
         name: req.name().map(ToOwned::to_owned),
     })
@@ -176,7 +178,8 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer, or its `kind`
+///   is not `WorkspaceRoot`, i.e. the buffer was built for a different wrapper.
 /// - `jj.workspace_not_found` — no workspace of that name is in the head view; the name in
 ///   `context`.
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
@@ -199,9 +202,9 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
 pub unsafe extern "C" fn zanshin_workspace_root(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_workspace_root", handle);
     let buf = catch(|| {
+        let req = read_workspace_root_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_workspace_root_request(data, len)?;
         let root = session
             .repo
             .resolve_workspace_root(req.name.as_deref())

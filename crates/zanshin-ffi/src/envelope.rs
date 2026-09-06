@@ -198,6 +198,34 @@ pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj
     }
 }
 
+/// Reject a request buffer that was built for a different wrapper.
+///
+/// The request tables are structurally interchangeable — a buffer built for one verb VERIFIES
+/// as another verb's table — so every request table carries a `RequestKind` tag as field 0 and
+/// every reader checks it here, immediately after `root_with_opts` and BEFORE any other field
+/// is read. `RequestKind::Unspecified` is `FlatBuffers`' absent-field default, so a producer
+/// that never set the tag lands here too and is refused; nothing untagged is ever accepted.
+///
+/// WHY this must precede the handle borrow: a mis-routed buffer has to be refused on its own
+/// merits, not only when the caller happens to hold a live handle. Each wrapper therefore calls
+/// its reader BEFORE `session_from_handle`, which puts the four request-buffer rungs (null →
+/// verify → kind → fields) ahead of the handle rung. The message names the `RequestKind`
+/// VARIANT rather than the table: `ChangeIdList` is read by two wrappers, so a table-named
+/// message would read `expected ChangeIdList, got ChangeIdList` for the one pair where the
+/// distinction matters most.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — `actual` is not `expected`.
+pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::RequestKind) -> Result<(), FfiErrorObj> {
+    if actual == expected {
+        return Ok(());
+    }
+    Err(FfiErrorObj {
+        code: FFI_INVALID_ARGUMENT.to_owned(),
+        context: Some(format!("request kind mismatch: expected {expected:?}, got {actual:?}")),
+    })
+}
+
 /// The `jj.invalid_input` refusal an ABSENT required request field produces.
 ///
 /// Argument arity is observable CLI behavior: `jj file annotate`'s positional `path`,

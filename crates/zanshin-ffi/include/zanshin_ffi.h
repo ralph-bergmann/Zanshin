@@ -12,6 +12,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define ENUM_MIN_REQUEST_KIND 0
+
+#define ENUM_MAX_REQUEST_KIND 16
+
 #define ENUM_MIN_CHANGE_KIND 0
 
 #define ENUM_MAX_CHANGE_KIND 4
@@ -55,45 +59,45 @@ typedef struct {
   uintptr_t len;
 } ZanshinBuf;
 
-#define ChangeIdList_VT_CHANGE_IDS 4
+#define ChangeIdList_VT_KIND 4
 
-#define RestoreRequest_VT_FROM 4
+#define ChangeIdList_VT_CHANGE_IDS 6
 
-#define RestoreRequest_VT_INTO 6
+#define RestoreRequest_VT_FROM 6
 
-#define RestoreRequest_VT_CHANGES_IN 8
+#define RestoreRequest_VT_INTO 8
 
-#define RestoreRequest_VT_PATHS 10
+#define RestoreRequest_VT_CHANGES_IN 10
 
-#define RestoreRequest_VT_RESTORE_DESCENDANTS 12
+#define RestoreRequest_VT_PATHS 12
 
-#define FileListRequest_VT_REVISION 4
+#define RestoreRequest_VT_RESTORE_DESCENDANTS 14
 
-#define FileAnnotateRequest_VT_PATH 6
+#define FileListRequest_VT_REVISION 6
 
-#define FileSearchRequest_VT_PATTERN 6
+#define FileAnnotateRequest_VT_PATH 8
 
-#define FileSearchRequest_VT_NAME_ONLY 10
+#define FileSearchRequest_VT_PATTERN 8
 
-#define GitRemoteAddRequest_VT_NAME 4
+#define FileSearchRequest_VT_NAME_ONLY 12
 
-#define GitRemoteAddRequest_VT_URL 6
+#define GitRemoteAddRequest_VT_NAME 6
 
-#define GitRemoteAddRequest_VT_PUSH_URL 8
+#define GitRemoteAddRequest_VT_URL 8
 
-#define ShowRequest_VT_REVSET 4
+#define GitRemoteAddRequest_VT_PUSH_URL 10
 
-#define ShowRequest_VT_LIMIT 6
+#define ShowRequest_VT_REVSET 6
 
-#define ShowRequest_VT_HAS_LIMIT 8
+#define ShowRequest_VT_LIMIT 8
 
-#define InterdiffRequest_VT_TO 6
+#define ShowRequest_VT_HAS_LIMIT 10
 
-#define BookmarkCreateRequest_VT_NAMES 4
+#define InterdiffRequest_VT_TO 8
+
+#define BookmarkCreateRequest_VT_NAMES 6
 
 #define RepoHandle_VT_SESSION_ID 6
-
-#define FileChange_VT_KIND 6
 
 #define FileChange_VT_FROM_PATH 8
 

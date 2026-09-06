@@ -22,8 +22,8 @@ use zanshin_jj::{ChangeId, CommitViewError, EvologEntry, InterdiffView, ShowEntr
 
 use crate::change::change_offset;
 use crate::envelope::{
-    catch, finish_envelope, invalid_request, reject_null_request, session_from_handle, FfiErrorObj,
-    JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, reject_null_request, session_from_handle,
+    FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
     JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
@@ -83,13 +83,15 @@ struct InterdiffRequestOwned {
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer, or its `kind`
+///   is not `Show`.
 fn read_show_request(data: *const u8, len: usize) -> Result<ShowRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::ShowRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Show)?;
     Ok(ShowRequestOwned {
         revset: req.revset().map(ToOwned::to_owned),
         // Presence pair, not a sentinel: `limit = 0` is a MEANINGFUL value (an empty result),
@@ -102,13 +104,15 @@ fn read_show_request(data: *const u8, len: usize) -> Result<ShowRequestOwned, Ff
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer, or its `kind`
+///   is not `Evolog`.
 fn read_evolog_request(data: *const u8, len: usize) -> Result<EvologRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::EvologRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Evolog)?;
     Ok(EvologRequestOwned {
         revset: req.revset().map(ToOwned::to_owned),
         // Presence pair, not a sentinel: `limit = 0` is a MEANINGFUL value (an empty result),
@@ -121,13 +125,15 @@ fn read_evolog_request(data: *const u8, len: usize) -> Result<EvologRequestOwned
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its
+///   `kind` is not `Interdiff`.
 fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffRequestOwned, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only.
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::InterdiffRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::Interdiff)?;
     Ok(InterdiffRequestOwned {
         from: req.from().map(|s| ChangeId(s.to_owned())),
         to: req.to().map(|s| ChangeId(s.to_owned())),
@@ -239,7 +245,8 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer, or its `kind`
+///   is not `Show`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `revset` is syntactically invalid or names an unknown function;
 ///   jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved; reason in
@@ -261,9 +268,9 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
 pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_show", handle);
     let buf = catch(|| {
+        let req = read_show_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_show_request(data, len)?;
         let entries = session
             .repo
             .show(req.revset.as_deref(), req.limit)
@@ -288,7 +295,8 @@ pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) 
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer, or its `kind`
+///   is not `Evolog`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
 /// - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
 /// - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
@@ -303,9 +311,9 @@ pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) 
 pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_evolog", handle);
     let buf = catch(|| {
+        let req = read_evolog_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_evolog_request(data, len)?;
         let entries = session
             .repo
             .evolog(req.revset.as_deref(), req.limit)
@@ -345,7 +353,8 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its `kind`
+///   is not `Interdiff`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
 ///   not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
@@ -362,9 +371,9 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 pub unsafe extern "C" fn zanshin_interdiff(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_interdiff", handle);
     let buf = catch(|| {
+        let req = read_interdiff_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let req = read_interdiff_request(data, len)?;
         let view = session
             .repo
             .interdiff(req.from, req.to, &req.paths)

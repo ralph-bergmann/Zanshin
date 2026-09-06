@@ -81,6 +81,7 @@ fn add_request_bytes(name: Option<&str>, url: Option<&str>, push_url: Option<&st
     let req = fbs::GitRemoteAddRequest::create(
         &mut b,
         &fbs::GitRemoteAddRequestArgs {
+            kind: fbs::RequestKind::GitRemoteAdd,
             name: name_off,
             url: url_off,
             push_url: push_off,
@@ -99,6 +100,7 @@ fn set_url_request_bytes(name: Option<&str>, url: Option<&str>, push_url: Option
     let req = fbs::GitRemoteSetUrlRequest::create(
         &mut b,
         &fbs::GitRemoteSetUrlRequestArgs {
+            kind: fbs::RequestKind::GitRemoteSetUrl,
             name: name_off,
             url: url_off,
             push_url: push_off,
@@ -405,8 +407,13 @@ fn git_remote_add_rejects_a_null_buffer_garbage_and_a_missing_field() {
         "an ABSENT required field is a caller bug, named as one"
     );
 
+    // A COMPLETE buffer for the zero-handle row: since the request-kind tag landed, the reader
+    // runs BEFORE `session_from_handle`, so every rung the reader owns — null, verify, kind and
+    // the required-field check above — now precedes the handle rung. Reusing `no_url` here would
+    // answer `jj.invalid_input`, which is correct but would no longer witness the handle guard.
+    let complete = add_request_bytes(Some("origin"), Some("/tmp/x"), None);
     // SAFETY: 0 is the documented null handle.
-    let handle_bytes = unsafe { read_and_free(zanshin_git_remote_add(0, no_url.as_ptr(), no_url.len())) };
+    let handle_bytes = unsafe { read_and_free(zanshin_git_remote_add(0, complete.as_ptr(), complete.len())) };
     assert_eq!(error_code(&handle_bytes), FFI_INVALID_HANDLE);
 
     close_handle(handle);
@@ -680,4 +687,108 @@ fn init_handle_by_open(path: &Path) -> u64 {
     env.data_as_repo_handle()
         .expect("RepoHandle payload must be present")
         .handle()
+}
+
+// ── Request-kind tag ──────────────────────────────────────────────────────────
+
+/// The request-buffer wrapper shape, for the wrong-kind table below.
+type BufWrapper = unsafe extern "C" fn(u64, *const u8, usize) -> *mut ZanshinBuf;
+
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
+
+/// Both request-buffer wrappers in this file refuse a buffer built for the OTHER verb, and
+/// refuse an untagged one, naming both kinds in `context`.
+///
+/// `GitRemoteAddRequest` and `GitRemoteSetUrlRequest` are field-for-field identical, so they
+/// verify interchangeably: before the `RequestKind` tag an add buffer ran as a set-url and vice
+/// versa, with a full payload — which is why these two rows carry one. The `handle == 0` row
+/// proves the kind rung runs BEFORE the handle lookup.
+#[test]
+fn both_request_wrappers_refuse_a_buffer_built_for_the_other_verb() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+
+    let add_req = add_request_bytes(Some("origin"), Some("https://example.invalid/r.git"), None);
+    let set_url_req = set_url_request_bytes(Some("origin"), Some("https://example.invalid/r.git"), None);
+    let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+
+    let cases: [KindCase<'_>; 5] = [
+        (
+            "remote_add",
+            zanshin_git_remote_add,
+            &set_url_req,
+            "GitRemoteAdd",
+            "GitRemoteSetUrl",
+            handle,
+        ),
+        (
+            "remote_set_url",
+            zanshin_git_remote_set_url,
+            &add_req,
+            "GitRemoteSetUrl",
+            "GitRemoteAdd",
+            handle,
+        ),
+        (
+            "remote_add",
+            zanshin_git_remote_add,
+            &untagged,
+            "GitRemoteAdd",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "remote_set_url",
+            zanshin_git_remote_set_url,
+            &untagged,
+            "GitRemoteSetUrl",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "remote_add",
+            zanshin_git_remote_add,
+            &set_url_req,
+            "GitRemoteAdd",
+            "GitRemoteSetUrl",
+            0,
+        ),
+    ];
+
+    for (name, call, req, expected, got, h) in cases {
+        // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+        let token = unsafe { call(h, req.as_ptr(), req.len()) };
+        // SAFETY: token is fresh and non-null.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
+        assert_eq!(
+            env.error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT),
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
+        );
+        assert_eq!(
+            env.error().and_then(|e| e.context()),
+            Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
+            "{name}: the context names both kinds"
+        );
+    }
+
+    close_handle(handle);
+}
+
+/// A minimal request buffer carrying `kind` and nothing else.
+///
+/// With every other field absent all fifteen request tables serialise to IDENTICAL bytes — the
+/// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
+/// verb and a buffer that verifies as every other request table. That is what isolates the kind
+/// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }
