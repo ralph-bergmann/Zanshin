@@ -29,9 +29,18 @@ use zanshin_ffi::{
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // WHY: empty string avoids needing a tempdir just for an env pin; matches the
     // zanshin-jj test convention so CI and local runs produce identical results.
+    //
+    // `$XDG_CONFIG_HOME` needs a real directory instead, leaked for the process lifetime:
+    // this binary calls `zanshin_repo_convert`, and a conversion writes the repo-level
+    // `revset-aliases.'trunk()'` OUTSIDE the repo, into `$XDG_CONFIG_HOME/jj/repos/`. The
+    // fixtures here happen to have no `refs/remotes/*/HEAD`, so nothing lands there today —
+    // the pin is what keeps that an accident rather than a write into the developer's real
+    // `~/.config`. Same pattern as `zanshin-jj/tests/convert.rs`.
+    let xdg = TempDir::new().expect("xdg tempdir").keep();
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("XDG_CONFIG_HOME", &xdg);
     }
 });
 

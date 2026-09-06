@@ -26,11 +26,23 @@ use zanshin_jj::{resolve_revset, Backend, ChangeId, GitRefUpdateKind, MutateErro
 
 // ── Harness ───────────────────────────────────────────────────────────────────────
 
-static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
+static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // Same env pin as every other suite: the config stack must see the repo's own layers,
     // not the developer's `~/.jjconfig.toml` or global git config.
-    env::set_var("JJ_CONFIG", "");
-    env::set_var("GIT_CONFIG_GLOBAL", "");
+    //
+    // `$XDG_CONFIG_HOME` gets a real directory, leaked for the process lifetime, for a
+    // stronger reason: this binary calls `convert_colocated`, and a conversion writes the
+    // repo-level `revset-aliases.'trunk()'` OUTSIDE the repo, into
+    // `$XDG_CONFIG_HOME/jj/repos/`. The fixture it converts happens to have no
+    // `refs/remotes/*/HEAD`, so nothing lands there today — the pin is what keeps that an
+    // accident rather than a write into the developer's real `~/.config`. Same pattern as
+    // `tests/convert.rs`.
+    let xdg = TempDir::new().expect("xdg tempdir").keep();
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("XDG_CONFIG_HOME", &xdg);
+    }
 });
 
 fn pin_env() {

@@ -5,10 +5,86 @@ created: '2026-09-06'
 status: 'done'
 baseline_revision: '7e799c04073ede02dc6e1820ca853b3568e7aad4'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The colocated head import omits the working-copy `check_out` + `reset` the CLI pairs with
+      it, so the operation's view CONTENT differs even though its description and skip rule match.
+    evidence: |-
+      `cli/src/cli_util.rs::import_git_head` (`:1352-1416` @ v0.44.0) does four things:
+      `git::import_head`, the no-change early return, `check_out` + `locked_wc().reset(&wc_commit)`,
+      and the `import git head` commit. This run ports the first, second and fourth. The `reset`
+      needs `start_working_copy_mutation` — the locked-working-copy lifecycle Story 9.22 owns —
+      and reversing project decision D2 ("Zanshin never snapshots") was out of this run's scope,
+      so `@` is not re-parented onto the imported HEAD; it settles there on the first snapshot
+      (2.12's D3a). Same cause: on a DIRTY working tree the CLI's colocated `maybe_snapshot` also
+      writes a `snapshot working copy` operation and a second `import git refs`; Zanshin writes
+      neither, so the colocated op-log witness pins "and nothing more" only for a clean tree.
+      Documented at the function, the module doc, both public verbs' rustdoc, the FFI rustdoc,
+      `docs/ffi-abi.md` and the ledger resolution.
+    location: >-
+      crates/zanshin-jj/src/convert.rs::import_git_head
+    severity: medium
+  - summary: >-
+      The CLI's refusal to colocate inside a linked Git worktree is not ported, so
+      `convert_colocated` succeeds where `jj git init --colocate` hard-errors.
+    evidence: |-
+      `cli/src/commands/git/init.rs:209-219` @ v0.44.0 guards the colocate-over-existing-`.git`
+      path with `is_linked_git_worktree(workspace_root)` and returns
+      "Cannot create a colocated jj repo inside a Git worktree." with a hint. `detect_repo`
+      classifies a linked worktree (whose `.git` is a gitdir POINTER file) as `Git`, so it reaches
+      `convert_into`, which ACCOMMODATES the shape by reading `is_colocated` instead of refusing.
+      Pre-existing since Story 2.12 and outside this run's ledger bullet (which covers the op
+      split, the `trunk()` alias and the `.gitignore`), but a real divergence under Ralph's
+      "Zanshin always behaves like the CLI" rule, and untested either way.
+    location: >-
+      crates/zanshin-jj/src/convert.rs::convert_colocated
+    severity: medium
+  - summary: >-
+      No Zanshin verb sets the operation's `workspace_name` metadata, which the CLI writes on
+      every transaction and which is persisted op-log state.
+    evidence: |-
+      The CLI opens every transaction through `cli_util.rs::start_repo_transaction`
+      (`:2883-2894` @ v0.44.0), which calls `tx.set_workspace_name(workspace_name)` — jj-lib's
+      `Transaction::set_workspace_name` writes `op_metadata.workspace_name`
+      (`jj-lib-0.44.0/src/transaction.rs:120-122`) — before the command-arg attributes (those the
+      intent explicitly excludes). `grep set_workspace_name crates/` has zero hits, so every
+      Zanshin operation records `workspace_name = None` where a CLI-written one records the
+      workspace. Surfaced by this run's op-log-parity claim but crate-wide and pre-existing: the
+      fix belongs to a shared transaction-opening helper, not to the convert verbs alone.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs (and every verb that calls `start_transaction`)
+    severity: medium
+  - summary: >-
+      A conversion that fails after the alias step orphans the secure-config directory it created,
+      because the rollback removes only `.jj/` and with it the `config-id` back-pointer.
+    evidence: |-
+      `create_repo_config_file` calls `SecureConfig::load_config`, which creates
+      `<config_dir>/jj/repos/<id>/` with a `metadata.binpb` and writes `.jj/repo/config-id`. The
+      rollback in both verbs deletes `.jj/` (2.12 D4 / 2.13's `created_dir` branch) and never
+      reaches outside it, so the directory is left with a metadata back-pointer to a path that no
+      longer exists. The CLI cannot produce this state because it never rolls back. Documented in
+      three rustdoc blocks; not fixed, because extending the rollback outside `.jj/` is a change to
+      the no-data-loss invariant's stated reach, which the intent froze.
+    location: >-
+      crates/zanshin-jj/src/convert.rs::convert_colocated / convert_import (rollback arms)
+    severity: low
+  - summary: >-
+      The `LazyLock` env-var pin used by the test suites is only sound because every test remembers
+      to call `pin_env()` first; nothing states or enforces it.
+    evidence: |-
+      `tests/convert.rs`, `tests/git_remotes.rs`, `tests/git_sync.rs` and `tests/repo_ffi.rs` all
+      set `JJ_CONFIG` / `GIT_CONFIG_GLOBAL` / `XDG_CONFIG_HOME` from a `LazyLock` forced inside
+      whichever test body wins the race, while sibling test threads are already running — the
+      `unsafe` that Rust 2024's `env::set_var` signature is warning about. The pattern predates
+      this run (follow-up J introduced it), and this run only widened its blast radius: a test that
+      forgets `pin_env()` now writes a `trunk()` alias into the developer's real `~/.config`.
+      A real fix is a process-start hook (`#[ctor]`) or a serialised harness, project-wide.
+    location: >-
+      crates/zanshin-jj/tests/convert.rs:20-42 (and the three sibling suites)
+    severity: low
 ---
 
 <intent-contract>
@@ -334,6 +410,65 @@ Notes. Both oracle corrections the Always bullets called out were confirmed agai
 
 ## Review Triage Log
 
+### 2026-09-07 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 0, medium 5, low 7)
+- defer: 5: (high 0, medium 3, low 2)
+- reject: 14: (high 0, medium 1, low 13)
+- addressed_findings:
+  - `[medium]` `[patch]` `import_into`'s `maybe_set_trunk_alias` call was exercised by NO test —
+    all four alias rows drive `convert_colocated`, and every `convert_import` row builds a source
+    with no `refs/remotes/*/HEAD`, so deleting the line broke nothing. Added
+    `convert_import_sets_the_trunk_alias_on_the_destination`, which converts a CLONED source and
+    asserts the destination's own `config-id` and alias file; verified by hand that removing the
+    call fails it.
+  - `[medium]` `[patch]` The D5 (`workspace_path == git_repo_path`) branch of `import_into` gained
+    three behaviours — the colocated `.jj/.gitignore`, the colocated `import_git_head` operation
+    and the early return that skips the non-colocated head import — and
+    `convert_import_into_same_dir_is_colocated` still asserted only `.jj`/`.git` presence. It now
+    asserts the op-log descriptions and the `.gitignore`.
+  - `[medium]` `[patch]` The non-colocated head transaction has its OWN `has_changes()` guard,
+    separate from the two in `init_git_refs` / `import_git_head`, and no `convert_import` row with
+    an empty source read the op log — so dropping it would have shipped a spurious `import git
+    head` operation undetected. `convert_import_unborn_branch_source_succeeds` now asserts the op
+    descriptions.
+  - `[medium]` `[patch]` "`.git/` is never touched" became literally false: `init_git_refs` calls
+    `git::export_refs` for a colocated workspace, which WRITES git refs (it writes back exactly
+    what it just imported, which is why the 2.12 ref-invariance row still passes). Corrected at
+    every layer that carries the claim to the guarantee actually held — no user-visible ref and no
+    HEAD is moved, and the rollback never deletes or rewrites `.git/`.
+  - `[medium]` `[patch]` Hermeticity: convert now writes OUTSIDE the repo, into
+    `$XDG_CONFIG_HOME/jj/repos/`, but only the three suites that assert the alias pinned that
+    variable. `crates/zanshin-ffi/tests/repo_ffi.rs` and `crates/zanshin-jj/tests/git_sync.rs` also
+    call a convert verb and were safe only because their fixtures happen to have no remote HEAD;
+    both now pin it.
+  - `[low]` `[patch]` `cargo make codegen` had not been re-run after the last rustdoc re-wrap, so
+    `zanshin_ffi.h` and `bindings.dart` carried a different line-wrapping than
+    `crates/zanshin-ffi/src/repo.rs`. Re-run; the diff is doc-comment-only, no signature drift.
+  - `[low]` `[patch]` `zanshin_repo_convert`'s `# Errors`, `docs/ffi-abi.md` and
+    `docs/rust-error-codes.md` still described `jj.convert_failed` as "a jj-lib failure during
+    conversion" after `convert_colocated`'s own rustdoc was widened to include config-write
+    failures. Widened to match; no new code minted.
+  - `[low]` `[patch]` The module doc's numbered step list claimed both verbs port the External arm
+    "step for step" with one order, but the non-colocated verb runs 1, 2, 4 and then an inline head
+    import that does not go through `import_git_head`. Both shapes are now stated.
+  - `[low]` `[patch]` `config.rs`'s heading "exactly three verbs write" sat above a module whose
+    `create_repo_config_file` also writes a directory, `metadata.binpb` and `.jj/repo/config-id`
+    without being a verb. Reworded so the invariant it asserts is exactly true.
+  - `[low]` `[patch]` The comment above the ref-snapshot assertion in
+    `convert_colocated_writes_the_two_cli_operations` read as if it verified that `export_refs`
+    ran; the assertion holds either way, and per the CLI's own comment the export only has an
+    effect once `remote_auto_track_bookmarks` creates local bookmarks — a map this crate hardcodes
+    empty. Rewritten to say what it actually pins.
+  - `[low]` `[patch]` `tests/convert.rs`'s `ENV_GUARD` SAFETY note claimed the `set_var` runs
+    "before any test body runs"; it runs INSIDE whichever test wins the `LazyLock` race. The note
+    now states the invariant that actually makes it sound and the consequence of forgetting
+    `pin_env()`.
+  - `[low]` `[patch]` `repo_config_path` turned ANY read error into `None`, so the three "no alias
+    was written" rows could pass vacuously; only `NotFound` is treated as absence now.
+
 ## Design Notes
 
 **Why `SecureConfig` and not the legacy path.** Zanshin's `config.rs` deliberately never wrote a
@@ -382,3 +517,94 @@ relax.
 **Manual checks (if no CLI):**
 - `git diff` on `coverage-baseline.txt`: entries may rise, none may fall.
 - The two bookkeeping files parse, and the ledger resolution names the 9.22 remainder explicitly.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+`convert_colocated` and `convert_import` now run `do_init`'s `GitInitMode::External` arm step for
+step instead of folding it into one operation with a description the CLI never writes. Both write
+`import git refs` (with `git::export_refs` when colocated) and then `import git head`, each only
+when its import reports `has_changes()`, so a source with no refs writes neither and a `jj undo`
+issued from either tool lands in the same state. A colocated conversion also seeds
+`.jj/.gitignore` with the literal `/*`, and both verbs write `revset-aliases.'trunk()'` into the
+repo-level config file when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a
+bookmark. `config.rs` gains the writer family's third member and its first CREATING resolver,
+built on jj-lib's own `SecureConfig::load_config`, so the alias lands where `jj git init` puts it —
+`<config_dir>/jj/repos/<config-id>/config.toml` plus `metadata.binpb` and an atomic
+`.jj/repo/config-id` — rather than in the legacy file the CLI would later migrate.
+
+Two of the ledger bullet's own citations were stale and the v0.44.0 oracle won: at that tag
+`maybe_set_repository_level_trunk_alias` has NO `get_single_remote` guard, and
+`maybe_add_gitignore` writes `<root>/.jj/.gitignore`, not a `.jj/` line in the workspace's
+`.gitignore`. Both corrections are recorded in the spec, the code and the ledger resolution.
+
+### Files changed
+
+- `crates/zanshin-jj/src/convert.rs` — the two folded transactions replaced by the CLI's sequence,
+  plus four private helpers (`init_git_refs`, `maybe_add_gitignore`, `import_git_head`,
+  `maybe_set_trunk_alias`) and rewritten module/verb rustdoc.
+- `crates/zanshin-jj/src/config.rs` — `create_repo_config_file` / `new_repo_config_file` /
+  `set_trunk_alias`, the family's create mode, with seven new inline unit rows.
+- `crates/zanshin-jj/tests/convert.rs` — twelve new or extended rows: both op-log shapes, the
+  no-refs case, undo granularity, both `.gitignore` cases, five `trunk()` cases (including one
+  through `convert_import`), the D5 same-dir shape and the unborn-source op log; `pin_env` now
+  pins `$XDG_CONFIG_HOME`.
+- `crates/zanshin-jj/tests/convert_alias_write_failure.rs` (new) — the alias-write failure and its
+  rollback, in its own binary because it needs a broken `$XDG_CONFIG_HOME`.
+- `crates/zanshin-ffi/tests/repo_ffi.rs`, `crates/zanshin-jj/tests/git_sync.rs` — the same
+  `$XDG_CONFIG_HOME` pin, since both call a convert verb.
+- `crates/zanshin-ffi/src/repo.rs`, `crates/zanshin-ffi/include/zanshin_ffi.h`,
+  `packages/zanshin_core/lib/src/ffi/bindings.dart`, `docs/ffi-abi.md`,
+  `docs/rust-error-codes.md` — the convert wrapper's documented effects and the widened
+  `jj.convert_failed` description; the two generated files come from `cargo make codegen`.
+- `Cargo.toml`, `crates/zanshin-jj/Cargo.toml`, `Cargo.lock` — `rand_chacha` and `getrandom`,
+  exact-pinned to versions already in the lockfile, for the one `ChaCha20Rng` seed.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the ledger bullet struck through and
+  resolved; five new deferrals recorded.
+- `_bmad-output/implementation-artifacts/2-13-implement-external-git-import-conversion-convert-import.md`
+  — a dated note under Decision D10 recording that D10 and D4 are superseded and where the port
+  lives.
+
+### Review findings breakdown
+
+- Patches applied: 12 (high 0, medium 5, low 7) — see the Review Triage Log.
+- Items deferred: 5 (medium 3, low 2) — recorded in this spec's `deferred:` frontmatter and in the
+  central ledger under `## Deferred from: spec-epic-9-followup-k-convert-cli-parity (2026-09-06)`.
+- Items rejected: 14 (medium 1, low 13) — chiefly findings that would diverge from the CLI rather
+  than towards it (the trunk symbol's remote assumption and the unchecked `export_refs` stats are
+  the CLI's own behaviour), the request for a distinct `jj.config_error` on convert (error codes
+  were frozen by the intent), the request to spread `GitImportOptions` off config (behaviourally
+  identical today, since the only config-derived field is one no verb in this crate populates),
+  and a claim that `coverage-baseline.txt` should have been committed (coverage held at 99.26 %,
+  so the ratchet rewrote nothing).
+- Follow-up review recommended: **true** — patched counts high 0, medium 5, low 7; score
+  3 × 5 + 1 × 7 = 22, which is ≥ 5.
+
+### Verification performed
+
+- `cargo make codegen` — run twice (once to repair a stale wrap, once after the review patches);
+  the final diff in `zanshin_ffi.h` and `bindings.dart` is doc-comment-only, no parameter type,
+  name or order drift, so the `unexpected codegen drift` block-if never fired.
+- `cargo make test` — run unpiped and synchronously by this session after implementation
+  (405 s, exit 0) and again after the review patches (416 s, exit 0). Both green across
+  `cargo test`, clippy pedantic, rustfmt, `flutter test`, `dart analyze`/`format`, `cargo deny`
+  and the coverage ratchet: `coverage held at 99.26% (8961/9028)`, `extern-coverage: OK`.
+- `git diff coverage-baseline.txt` is empty — nothing lowered, no `exclude_prefix` added;
+  `crates/zanshin-jj/src/convert.rs` and `.../config.rs` both still `= 100.00`.
+- Matrix audit: every row of the I/O & Edge-Case Matrix is covered by a named test that ran and
+  passed in the final gate (`tests/convert.rs` 41 passed, `tests/convert_alias_write_failure.rs`
+  1 passed, plus the `config.rs` inline rows).
+
+### Residual risks
+
+- The colocated `import git head` operation matches the CLI's description and skip rule but not
+  its view content: `@` is not re-parented onto the imported HEAD. That is the Story 9.22
+  remainder, deferred and documented at six sites.
+- A conversion that fails after the alias step leaves the created secure-config directory behind,
+  because the rollback reaches only into `.jj/`. Deferred; documented in the rustdoc.
+- `remote_auto_track_bookmarks` stays empty in the convert import options, as it does at every
+  other import site in the crate — a separate, still-open ledger bullet.

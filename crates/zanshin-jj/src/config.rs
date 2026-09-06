@@ -10,10 +10,17 @@
 //! files change externally and the op-heads watcher does not cover them, so ADR-0002's
 //! re-resolve-per-operation rule extends to config.
 //!
-//! # Reading never writes; exactly three verbs write
+//! # Reading never writes; only the writer family does
 //!
 //! Every READ path here is side-effect-free: no directory is created, no file is written,
 //! no `config-id` is generated, nothing is migrated. That stance is unchanged.
+//!
+//! Everything that DOES write belongs to the writer family below — the three writers named
+//! in the next two paragraphs plus [`create_repo_config_file`], the create-mode resolver the
+//! third of them is paired with, which is also the only path here that creates a directory
+//! and writes `metadata.binpb` and `.jj/repo/config-id`. Between them they serve exactly
+//! three crate verbs (`git remote remove`, `git remote rename`, and the conversion the two
+//! convert entry points share); nothing else in this module touches the disk.
 //!
 //! What changed (Epic 9 follow-up J) is that this module now also holds the crate's only
 //! config WRITERS, [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`],

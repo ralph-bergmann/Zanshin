@@ -26,7 +26,13 @@ use zanshin_jj::{convert_colocated, convert_import, Repo, RepoError, RepoKind};
 /// pattern as `tests/git_remotes.rs:39-53`.
 static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
     let xdg = TempDir::new().expect("xdg tempdir").keep();
-    // SAFETY: set once, before any test body runs, and never changed afterwards.
+    // SAFETY: `set_var` is only sound while no other thread reads the environment, and
+    // cargo runs this binary's tests on parallel threads — this initialiser therefore runs
+    // INSIDE whichever test body won the race, with siblings already started. What makes it
+    // sound is that every test in this binary calls `pin_env()` as its FIRST statement: the
+    // `LazyLock` serialises the initialiser and blocks every other caller until it returns,
+    // so no test body has reached a `getenv` yet. A test that forgets that first call can
+    // race this write — and would read the developer's real environment besides.
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
@@ -591,8 +597,17 @@ fn convert_import_unborn_branch_source_succeeds() {
         "must detect as Jj even with unborn branch source"
     );
     // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1).
-    zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
     assert_eq!(git_head_ids(&dst).len(), 0, "unborn source must import no HEAD commit");
+    // The NON-colocated head transaction carries its own `has_changes()` guard, separate
+    // from the ones inside `init_git_refs` / `import_git_head` — and this is the only
+    // `convert_import` row with an empty source. Without this assertion, dropping that guard
+    // would ship a spurious `import git head` operation unnoticed.
+    assert_eq!(
+        op_descriptions(&repo),
+        vec!["add workspace 'default'", ""],
+        "an unborn source must write neither operation on the non-colocated path either"
+    );
 }
 
 // ── Test 8b: bare + unborn source → Ok, empty history (AC-10 bare-unborn arm) ─
@@ -791,6 +806,22 @@ fn convert_import_into_same_dir_is_colocated() {
     // the imported HEAD. If is_colocated() had wrongly returned false (the raw-path
     // bug), check_out would have run and git_head would gain a strict descendant.
     let repo = zanshin_jj::Repo::open(src.path()).expect("Repo::open");
+
+    // D5 takes the COLOCATED shape whole, not just its `check_out` skip: the head import is
+    // the reset-free `import_git_head` (so the op log is the CLI's two operations, and the
+    // non-colocated tail's `if colocated { return }` really did fire), and the `.gitignore`
+    // is seeded like any other colocated conversion.
+    assert_eq!(
+        op_descriptions(&repo),
+        vec!["import git head", "import git refs", "add workspace 'default'", ""],
+        "the colocated shape writes the CLI's two operations here too"
+    );
+    assert_eq!(
+        fs::read_to_string(src.path().join(".jj").join(".gitignore")).expect(".jj/.gitignore must exist"),
+        "/*\n",
+        "the colocated shape seeds `.jj/.gitignore`; only the two-path use skips it"
+    );
+
     // The removed `git_head()` revset function is replaced by substituting the commit id
     // the view records, so the descendants/exclusion query itself is unchanged.
     let head_ids = git_head_ids(repo.workspace_root());
@@ -929,9 +960,17 @@ fn op_descriptions(repo: &Repo) -> Vec<String> {
 /// The repo-level config file `config.rs` resolves for `workspace_root`, iff a `config-id`
 /// was written. Read straight off disk so it witnesses the `config-id` indirection rather
 /// than trusting the crate's own resolver.
+///
+/// Only `NotFound` means "no alias was written". Any OTHER read error is a fault in the
+/// fixture, not an answer — swallowing it would let the three `is_none()` rows below pass
+/// vacuously.
 fn repo_config_path(workspace_root: &Path, xdg: &Path) -> Option<PathBuf> {
-    let id = fs::read_to_string(workspace_root.join(".jj").join("repo").join("config-id")).ok()?;
-    Some(xdg.join("jj").join("repos").join(id).join("config.toml"))
+    let id_path = workspace_root.join(".jj").join("repo").join("config-id");
+    match fs::read_to_string(&id_path) {
+        Ok(id) => Some(xdg.join("jj").join("repos").join(id).join("config.toml")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => panic!("reading {}: {e}", id_path.display()),
+    }
 }
 
 /// `refs/heads` + `refs/tags` and the resolved HEAD, as `convert_git_repo_does_not_modify_git_dir`
@@ -975,8 +1014,13 @@ fn convert_colocated_writes_the_two_cli_operations() {
         vec!["import git head", "import git refs", "add workspace 'default'", ""],
         "the op log must be the CLI's, newest-first — one folded op would fail here"
     );
-    // `export_refs` runs for a colocated workspace; it writes back exactly the values it
-    // just imported, so the user-visible ref namespace must still be untouched.
+    // This pins the OUTCOME, not the branch: HEAD and the user-visible refs are where they
+    // were. It would hold with the colocated `export_refs` removed, too — per the CLI's own
+    // comment at `init.rs:308-310` that export only has anything to write once
+    // `remotes.<name>.auto-track-bookmarks` has created local bookmarks for the imported
+    // remote branches, and this crate hardcodes that map EMPTY (a separate ledger item; see
+    // `config::git_import_options`). So the branch is unobservable today; what this row is
+    // for is to fail the moment it starts moving a ref.
     assert_eq!(
         git_ref_snapshot(tmp.path()),
         before,
@@ -1119,6 +1163,35 @@ fn a_symbolic_origin_head_sets_the_repo_level_trunk_alias() {
             .len(),
         1,
         "the written alias must name a bookmark the repo actually has"
+    );
+}
+
+/// The alias step is part of the NON-colocated shape too — step 4 of `import_into`, ahead of
+/// its own head import — and it writes into the DESTINATION's config, not the source's.
+///
+/// The only row that covers `import_into`'s own `maybe_set_trunk_alias` call: every other
+/// alias row drives `convert_colocated`, and every other `convert_import` row builds a source
+/// with no `refs/remotes/*/HEAD`, so without this one that call could be deleted outright and
+/// the suite would stay green.
+#[test]
+fn convert_import_sets_the_trunk_alias_on_the_destination() {
+    let xdg = pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let parent = TempDir::new().expect("tempdir parent");
+    // A clone is what gives the SOURCE its symbolic `refs/remotes/origin/HEAD`; the alias
+    // step reads it through the store the destination shares with it.
+    let work = git_clone(src.path(), parent.path());
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("workspace");
+
+    convert_import(&work, &dst).expect("convert_import");
+
+    let path = repo_config_path(&dst, xdg).expect("the destination must have its own config-id");
+    assert_eq!(
+        fs::read_to_string(&path).expect("the repo config must exist"),
+        format!("{FRESH_FILE_HEADER}[revset-aliases]\n\"trunk()\" = \"main@origin\"\n"),
+        "the non-colocated shape writes the same alias the colocated one does"
     );
 }
 

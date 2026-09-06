@@ -38,19 +38,33 @@
 //! ## What both verbs write (Epic 9 follow-up K)
 //!
 //! Both port `do_init`'s `GitInitMode::External` arm (`cli/src/commands/git/init.rs:244-272`
-//! @ v0.44.0) step for step, so a repo Zanshin converts is on-disk indistinguishable from one
-//! `jj git init` converted — including the op log, which is state a user undoes with the CLI:
+//! @ v0.44.0), so a repo Zanshin converts is on-disk indistinguishable from one `jj git init`
+//! converted — including the op log, which is state a user undoes with the CLI. That arm has
+//! TWO shapes, and which one runs is read from [`is_colocated`], never assumed:
 //!
-//! 1. **`import git refs`** ([`init_git_refs`]) — one transaction running
+//! 1. **`import git refs`** ([`init_git_refs`]) — both shapes. One transaction running
 //!    [`jj_lib::git::import_refs`]; NO operation is written when it changed nothing
 //!    (`has_changes()`), and a colocated workspace also runs [`jj_lib::git::export_refs`]
 //!    before the commit.
-//! 2. **`.jj/.gitignore`** ([`maybe_add_gitignore`]) — the literal `/*\n`, colocated only.
-//! 3. **`import git head`** ([`import_git_head`]) — again skipped entirely when
-//!    [`jj_lib::git::import_head`] changed nothing.
-//! 4. **`revset-aliases.'trunk()'`** ([`maybe_set_trunk_alias`]) — written into the
-//!    REPO-level config file, which lives OUTSIDE `.jj/` (under `<config_dir>/jj/repos/`),
-//!    when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark.
+//! 2. **`.jj/.gitignore`** ([`maybe_add_gitignore`]) — the literal `/*\n`, COLOCATED only.
+//! 3. **`import git head`** ([`import_git_head`]) — COLOCATED only, and again skipped
+//!    entirely when [`jj_lib::git::import_head`] changed nothing.
+//! 4. **`revset-aliases.'trunk()'`** ([`maybe_set_trunk_alias`]) — both shapes. Written into
+//!    the REPO-level config file, which lives OUTSIDE `.jj/` (under
+//!    `<config_dir>/jj/repos/`), when `refs/remotes/upstream/HEAD` or
+//!    `refs/remotes/origin/HEAD` names a bookmark.
+//! 5. **`import git head`, once more** — NON-colocated only, and written inline in
+//!    [`import_into`] rather than through [`import_git_head`]: this is the CLI's own
+//!    non-colocated tail, the same import paired with the `check_out` + materialisation that
+//!    gives a fresh destination its files, so it cannot share the reset-free helper.
+//!
+//! The colocated shape is therefore steps 1-2-3-4 and the non-colocated one steps 1-4-5.
+//! [`convert_import`] runs whichever its two paths select; [`convert_colocated`] always stops
+//! after step 4, deliberately — see [`convert_into`].
+//!
+//! What `.git/` sees is step 1's colocated `export_refs` and nothing else: it writes back the
+//! refs jj has just imported, so no user-visible ref and no HEAD is moved, and the rollback
+//! below never deletes or rewrites `.git/`.
 //!
 //! Two deliberate departures, both documented at their site: the colocated head import omits
 //! the working-copy reset the CLI pairs it with (Story 9.22 owns the locked-working-copy
@@ -84,14 +98,19 @@ use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 /// or `refs/remotes/origin/HEAD` names a bookmark — `revset-aliases.'trunk()'` in the
 /// repo-level config file, which lives **outside** `.jj/`, under `<config_dir>/jj/repos/`.
 ///
+/// The one thing written into `.git/` is the refs operation's colocated `export_refs`, the
+/// CLI's own step: it writes back exactly the refs jj has just imported, so no user-visible
+/// ref and no `HEAD` is moved.
+///
 /// Two deliberate departures from the CLI:
 ///
 /// - The head import omits the working-copy `reset` the CLI pairs with it (Story 9.22 /
 ///   decision D2), so `@` is not re-parented onto the imported HEAD; it settles there on the
 ///   first colocated snapshot (D3a).
 /// - A failure rolls back further than the CLI, which leaves a partially converted repo in
-///   place. Rollback removes `.jj/` only — never `.git/` — so a conversion that fails *after*
-///   the alias step can orphan the secure-config directory it created.
+///   place. Rollback removes `.jj/` only — it never deletes or rewrites `.git/` — so a
+///   conversion that fails *after* the alias step can orphan the secure-config directory it
+///   created.
 ///
 /// # Errors
 ///
@@ -144,7 +163,9 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 ///
 /// The source's user-visible refs (`refs/heads`, `refs/tags`) and `HEAD` are never
 /// modified; jj only adds its own objects (commit objects, `refs/jj/keep/*`
-/// GC-keep markers) to the shared store.
+/// GC-keep markers) to the shared store. `export_refs` — the single step that writes git
+/// refs at all — runs only in the colocated shape below, and even there it writes back
+/// exactly the refs it has just imported.
 ///
 /// # What lands on disk
 ///

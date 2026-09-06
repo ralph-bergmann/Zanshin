@@ -429,9 +429,12 @@ then `import git head`, each skipped when its import changed nothing), a
 `.jj/.gitignore` containing `/*`, and — when `refs/remotes/upstream/HEAD` or
 `refs/remotes/origin/HEAD` names a bookmark — `revset-aliases.'trunk()'` in the
 repo-level config file, which lives **outside** `.jj/`, under
-`<config_dir>/jj/repos/<config-id>/config.toml`. `.git/` is never touched and
-there is no working-copy I/O: unlike the CLI, the head import does not
-`@`-reparent onto the imported HEAD, and nothing is snapshotted (Story 9.22).
+`<config_dir>/jj/repos/<config-id>/config.toml`. There is no working-copy I/O:
+unlike the CLI, the head import does not `@`-reparent onto the imported HEAD,
+and nothing is snapshotted (Story 9.22). `.git/` is written to exactly once, by
+the CLI's own colocated `export_refs` step inside the refs operation — jj
+exports back the refs it has just imported, so no user-visible ref and no HEAD
+is moved, and a rollback never deletes or rewrites `.git/`.
 
 On success the function returns a live `RepoHandle` for the converted
 workspace. The Dart worker stores the raw handle in its Model-A handle table
@@ -453,7 +456,7 @@ RepoHandle {
 |----------------------|--------------------------------------------------------|
 | `jj.already_jj_repo` | `.jj/` already exists at `path`.                       |
 | `jj.not_a_git_repo`  | No `.git/` at `path` (or path does not exist).         |
-| `jj.convert_failed`  | jj-lib failure during conversion; detail in `context`. |
+| `jj.convert_failed`  | jj-lib, config-write or `detect_repo` I/O error during conversion; detail in `context`. |
 | `ffi.null_pointer`   | `path` is null.                                        |
 | `ffi.utf8_error`     | `path` contains invalid UTF-8.                         |
 | `watcher.io_error`   | The filesystem watcher could not be armed, so no handle is returned (strict-fail, OQ-1 — see *Async events* below). The written `.jj/` persists; detail in `context`. |
