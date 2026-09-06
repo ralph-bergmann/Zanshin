@@ -245,6 +245,10 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
 /// - `jj.revset_resolution_error` — an expression names a symbol that cannot be
 ///   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
 /// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
+/// - `jj.config_error` — the repo's effective jj config, which the revset aliases are
+///   resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
+///   a wrong-typed value; the file path or config key in `context`. A single bad
+///   `[revset-aliases]` entry does NOT produce this — it warns and is skipped.
 /// - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
 ///   non-`Missing` edge after the stream was exhausted); the target id in `context`.
 ///

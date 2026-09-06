@@ -21,9 +21,19 @@ Every **fallible composite** `extern "C"` function returns a `*mut ZanshinBuf`
 The Dart copy is isolated from Rust memory; it is safe to send across isolate
 ports and use after disposal.
 
-**Infallible hot-path functions** (`zanshin_ffi_version`, `zanshin_string_free`,
-`zanshin_buffer_free`, `zanshin_buffer_free_token`) return plain types — no
-envelope.
+**Infallible functions return plain types — no envelope.** There are eight:
+`zanshin_ffi_version` (a `char *` the caller frees via `zanshin_string_free`) and
+the seven `void`-returning ones — `zanshin_string_free`, `zanshin_buffer_free`,
+`zanshin_buffer_free_token`, `zanshin_log`, `zanshin_logging_init`,
+`zanshin_events_register`, `zanshin_events_unregister`.
+
+The converse does **not** hold: returning an envelope does not make a function
+fallible. `zanshin_diagnostics` returns a `ZanshinBuf *` token and is infallible
+by contract (two compile-time constants plus one path resolution with a temp
+fallback), so it carries no `# Errors` block and always answers `ok == true`. It
+is on the token path purely because its result is composite. "Infallible" in this
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 47
+exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
 points at, and the token struct itself. It skips the payload when `ptr` is null
@@ -54,6 +64,127 @@ Envelope {
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
 holds human-readable detail. See `docs/rust-error-codes.md` for the full registry.
 
+`Payload` has **25** members. Two of them — `WatcherEvent` and `Progress` — are
+returned by no exported symbol: they arrive asynchronously through the
+`zanshin_events_register` callback (see *Async events* below). Union member order
+is the wire discriminant, so the union is **append-only**.
+
+### `internal.panic` — the universal backstop
+
+Every fallible wrapper's body runs inside `envelope::catch`, a `catch_unwind`
+that turns any Rust panic into an ordinary error envelope carrying
+**`internal.panic`** with the panic message in `context` — no panic ever crosses
+the C ABI. Because it is universal it is documented **only here**: it appears in
+no symbol's `# Errors` block and therefore in no row of the symbol index below.
+Assume it for every symbol that returns an envelope, including the
+otherwise-infallible `zanshin_diagnostics`. The `void`-returning infallible
+functions are `catch_unwind`-wrapped too, but they have no channel to report on —
+a panic there is swallowed (for `zanshin_log`, deliberately: logging must never
+break its caller).
+
+---
+
+## Request-buffer contract
+
+Sixteen of the 47 exported symbols take their arguments as a **FlatBuffers
+request buffer** — the ADR-0001 composite-input pattern — rather than as C
+strings. The signature is always the same three-parameter shape:
+
+```c
+ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
+```
+
+This section is the whole convention. The per-symbol rustdoc in
+`crates/zanshin-ffi/include/zanshin_ffi.h` does not repeat it.
+
+### Building the buffer (Dart side)
+
+Dart builds the table with the flatc-generated object builder and hands the bytes
+to `withRequestBytes` (`packages/zanshin_core/lib/src/ffi/request_bytes.dart:46-54`),
+which `malloc`-copies them, calls the wrapper, and frees the pointer in a
+`finally`. `callWithRequest` (`:110-113`) composes that with `readToken` for the
+common call-and-decode shape:
+
+```dart
+// packages/zanshin_core/lib/src/ffi/commit_views.dart:59
+final Uint8List request = fbs.ShowRequestObjectBuilder(revset: revset, ...).toBytes();
+return callWithRequest(request, (ptr, len) => zanshin_show(rawHandle, ptr, len));
+```
+
+**Ownership is the AR-P-5 *inbound* rule: Dart allocates AND frees; Rust only
+borrows for the duration of the call.** That is the exact **reverse** of the
+outbound token rule above, where Rust allocates and Dart releases the allocation
+through `zanshin_buffer_free_token`. The two directions never mix: a request
+buffer is never freed Rust-side, and a returned token is never freed by `malloc`.
+
+An empty buffer is deliberately **not** collapsed to `nullptr`
+(`request_bytes.dart:40-45`). Every caller passes a finished FlatBuffers buffer,
+which always carries at least a root offset and a vtable — but if a zero-length
+buffer ever did arrive, passing `nullptr` instead would change the observable
+answer to `ffi.null_pointer`, which is a different refusal.
+
+### Reading the buffer (Rust side) — the refusal ladder
+
+All sixteen wrappers share one reader shape (worked example:
+`crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
+carries the SAFETY argument for the unbounded lifetime
+`std::slice::from_raw_parts` produces — each reader builds its own slice in its
+own scope and returns an OWNED struct, so the slice provably cannot outlive the
+call). Three distinct refusals sit at three distinct layers:
+
+| Order | Check | Code | `context` |
+|-------|-------|------|-----------|
+| 1 | `reject_null_request(data)` — `envelope.rs:183-191` | `ffi.null_pointer` | **absent** |
+| 2 | `flatbuffers::root_with_opts::<fbs::X>(…)` verification — `envelope.rs:194-199` | `ffi.invalid_argument` | the flatbuffers verifier message |
+| 3 | a required field is ABSENT from an otherwise valid table — `envelope.rs:201-206` | `jj.invalid_input` | the field name |
+
+A **zero-length or garbage buffer** fails verification, so it lands on
+`ffi.invalid_argument` — never on `ffi.null_pointer`. Only a genuinely null
+`data` pointer produces `ffi.null_pointer`.
+
+Layer 3 is a different question from layer 2: the buffer verified, but the *table*
+does not carry a field the verb requires. ABSENCE is meaningful throughout —
+across these tables an absent field is the wire form of "the user did not supply
+it", which is what applies the CLI's own default (`@` for a revision, `mutable()`
+for `absorb`'s `into`, the current workspace for `workspace root`). An explicitly
+present **empty string is a VALUE, not an absence**, and takes the value path.
+
+### Interior NUL
+
+A FlatBuffers string is length-prefixed, so a NUL survives the wire and would
+land inside a jj change id, path, pattern, bookmark name or remote URL. It is
+rejected **Dart-side, at two layers**:
+
+- `rejectInteriorNul` / `rejectInteriorNuls`
+  (`request_bytes.dart:56-73`, `:81-85`) throw an `ArgumentError` — the
+  direct-caller backstop.
+- The **primary** guard sits one layer up, on the calling side in `ZanshinWorker`
+  and `RepoHandle`, because a throw inside the worker isolate comes back as
+  `internal.dispatch_error` rather than as the documented `ArgumentError`.
+
+The check is deliberately spelled at both layers for that reason.
+
+### The request tables
+
+`schemas/envelope.fbs:31-266` declares **15** request tables. They are **not**
+members of the `Payload` union (that union is response-only). Field order IS the
+wire contract: field ids are assigned by declaration order and baked into both
+committed codegen sides, so the tables are **APPEND-only** — never reorder,
+never remove.
+
+`ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
+`parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
+one caller, and no table is orphaned. 15 tables + 1 shared reuse = the 16
+request-buffer symbols.
+
+**Known caveat — request tables verify interchangeably.** No request table
+carries a `file_identifier`, and several put one string in slot 0, so a buffer
+built for one verb verifies as another's table instead of being refused with
+`ffi.invalid_argument`. This is only reachable by a caller bypassing the
+generated Dart adapters. It is an open must-have on the central ledger:
+`_bmad-output/implementation-artifacts/deferred-work.md:194`. Do not work around
+it per-symbol — the fix is a schema-convention decision.
+
 ---
 
 ## RepoKind enum
@@ -72,7 +203,85 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ---
 
-## Exported symbols (Story 3.4c)
+## Symbol index
+
+The cdylib exports **47** `extern "C"` functions. Every one has a row here; the
+list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
+by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
+appears in neither a heading nor a first table cell of this file.
+
+**The header rustdoc is authoritative for each code's CONDITION** — when a code
+fires, what lands in `context`, which argument it blames. This index only *names*
+the codes a symbol can return; read `zanshin_ffi.h`'s `# Errors` block for that
+symbol to learn why. `internal.panic` is documented once under *Envelope format*
+and is deliberately absent from every row.
+
+Rows are grouped by noun: repository lifecycle, repo-state reads, commit views,
+file reads, refs and workspaces, change mutations, bookmarks, git sync, and
+infrastructure. `—` means "not applicable": no request table, no success payload,
+or no `# Errors` block.
+
+| Symbol | Args | Request table | Success payload | Error codes | Story |
+|--------|------|---------------|-----------------|-------------|-------|
+| `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c |
+| `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
+| `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
+| `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle`, `jj.no_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_change` | `(uint64_t handle, const char *change_id)` | — | `Change` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_op_log` | `(uint64_t handle, int64_t limit)` | — | `OpLog` | `ffi.invalid_handle`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_log_defaults` | `(uint64_t handle)` | — | `LogDefaults` | `ffi.invalid_handle`, `jj.config_error` | 4.9 |
+| `zanshin_graph_slice` | `(uint64_t handle, const char *revset, const char *prioritize, bool synthetic_elided, const char *short_prefixes)` | — | `GraphSlice` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`, `jj.config_error`, `graph.dangling_edge` | 4.6 (+4.8) |
+| `zanshin_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ShowRequest` | `ShowView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error` | 9.6 |
+| `zanshin_evolog` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `EvologRequest` | `EvologView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error` | 9.6 |
+| `zanshin_interdiff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `InterdiffRequest` | `InterdiffView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error` | 9.6 |
+| `zanshin_file_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileListRequest` | `FileList` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.jj_lib_error` | 9.4 |
+| `zanshin_file_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileShowRequest` | `FileContents` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.path_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.4 |
+| `zanshin_file_annotate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileAnnotateRequest` | `FileAnnotation` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`, `jj.jj_lib_error` | 9.4 |
+| `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` | `FileSearch` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.jj_lib_error` | 9.4 |
+| `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` | `ffi.invalid_handle`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.jj_lib_error` | 9.7 |
+| `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.workspace_path_unresolved`, `jj.jj_lib_error` | 9.7 |
+| `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 9.3 |
+| `zanshin_absorb` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `AbsorbRequest` | `AbsorbResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 9.3 |
+| `zanshin_undo` | `(uint64_t handle)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a) |
+| `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_remove` | `(uint64_t handle, const char *name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_rename` | `(uint64_t handle, const char *old_name, const char *new_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_set_url` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteSetUrlRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
+| `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
+| `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |
+| `zanshin_logging_init` | `(void)` → `void` | — | — | — | 3.3 |
+| `zanshin_events_register` | `(void (*callback)(ZanshinBuf *event))` → `void` | — | — | — | 3.6 |
+| `zanshin_events_unregister` | `(void)` → `void` | — | — | — | 3.6 |
+| `zanshin_string_free` | `(char *ptr)` → `void` | — | — | — | 3.2 |
+| `zanshin_buffer_free` | `(uint8_t *ptr, uintptr_t len)` → `void` | — | — | — | 3.2 |
+| `zanshin_buffer_free_token` | `(ZanshinBuf *token)` → `void` | — | — | — | 3.2 |
+
+Every symbol not marked `→ char *` or `→ void` returns `ZanshinBuf *` — the
+never-null token described under *Token contract*.
+
+---
+
+## Per-symbol contracts
+
+Four symbols carry more contract than their rustdoc can hold, and keep a prose
+section: `zanshin_repo_detect` and `zanshin_repo_convert` here,
+`zanshin_graph_slice` and `zanshin_log_defaults` further down. For every other
+symbol the rustdoc block above its declaration in `zanshin_ffi.h` is the contract.
 
 ### `zanshin_repo_detect`
 
@@ -150,6 +359,7 @@ RepoHandle {
 | `jj.convert_failed`  | jj-lib failure during conversion; detail in `context`. |
 | `ffi.null_pointer`   | `path` is null.                                        |
 | `ffi.utf8_error`     | `path` contains invalid UTF-8.                         |
+| `watcher.io_error`   | The filesystem watcher could not be armed, so no handle is returned (strict-fail, OQ-1 — see *Async events* below). The written `.jj/` persists; detail in `context`. |
 
 ---
 
@@ -256,15 +466,26 @@ invoking the callback — the token transfers to Dart exactly like a
 synchronous return value:
 
 ```dart
-void _onNativeEvent(ffi.Pointer<ZanshinBuf> token) {
-  final buf = FfiBuffer.fromToken(token);
+// packages/zanshin_core/lib/src/ffi/events.dart:104
+void _handleNativeEvent(
+  void Function(ZanshinRawEvent event) onEvent,
+  ffi.Pointer<ZanshinBuf> token,
+) {
   try {
-    /* decode buf.bytes, forward */
-  } finally {
-    buf.dispose();
+    final Uint8List bytes = readToken(token);   // copies out, then frees the token
+    onEvent(decodeEventEnvelope(bytes));
+  } catch (e, st) {
+    _log.warning('dropping malformed event: $e', e, st);  // never unwind into Rust
   }
 }
 ```
+
+`readToken` is the shared outbound helper in
+`packages/zanshin_core/lib/src/ffi/request_bytes.dart:99-106` — the same one every
+`extern "C"` adapter uses. This handler is its one caller whose token is not an
+`extern "C"` return value; the guarantee is the same (Rust only ever posts a real
+token), and the handler's own `try`/`catch` is what keeps a violation from
+unwinding into the callback.
 
 **Undelivered tokens at callable-close leak by design.** If the callable is
 closed while events are still in flight, those tokens are never freed. This
@@ -305,13 +526,15 @@ carries the `watcher.io_error` code string (single-emission-point rule).
 Events carry the session's **`session_id`** — a process-unique `u64` allocated
 from a monotonic counter when the session is armed (starts at 1; 0 is never
 issued) and returned to the worker alongside the raw handle in the `RepoHandle`
-payload (`RepoHandle { handle, session_id }`). The worker's
-`_onNativeEvent`/`onEvent` handler looks up `sessionToId[sessionId]` to recover
-the small dense `handleId` before constructing the public `RepoEvent` sent to
-main; an unknown session id (a benign close race) is logged and dropped, never
-thrown. Raw pointers still never reach the main isolate (Model A holds), and
-the raw handle is used only for calls back INTO the cdylib
-(`zanshin_repo_close`, read wrappers).
+payload (`RepoHandle { handle, session_id }`). The lookup lives in the
+`registerEventSink` closure the worker installs
+(`packages/zanshin_core/lib/src/worker/isolate.dart:1349-1352`): it reads
+`sessionToId[raw.sessionId]` to recover the small dense `handleId` before
+constructing the public `RepoEvent` sent to main; an unknown session id (a benign
+close race) is logged and dropped, never thrown. Raw pointers still never reach
+the main isolate (Model A holds); the raw handle is the worker-side token for
+calls back INTO the cdylib — `zanshin_repo_close`, every read wrapper, and — since
+Story 6.5 and Epic 9 — every mutation wrapper too.
 
 **Resolved (2026-07-04) — raw-pointer ABA** (formerly a known accepted gap,
 3-6 review): events used to carry the raw `*mut RepoSession`-derived `u64`; a
@@ -325,10 +548,13 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 ### Dart worker integration
 
-- `lib/src/ffi/events.dart` — the only new file besides `bindings.dart`/the
-  generated FlatBuffers accessors allowed to import `dart:ffi`. Owns the
-  `NativeCallable.listener`, the try/catch-wrapped native handler, and
-  `registerEventSink` / `closeEventSink` / `unregisterEventSink`.
+- `lib/src/ffi/events.dart` — owns the `NativeCallable.listener`, the
+  try/catch-wrapped native handler, and `registerEventSink` / `closeEventSink` /
+  `unregisterEventSink`. It is **not** the only file that imports `dart:ffi`;
+  every adapter under `lib/src/ffi/` does. The invariant is the layer boundary:
+  **`dart:ffi` never reaches `lib/src/worker/`** — the worker deals in raw `int`
+  handles and `Uint8List` envelopes only, which is what keeps `Pointer` out of
+  the isolate seam.
 - `lib/src/worker/events.dart` — pure Dart `RepoEvent` sealed family
   (`OpHeadsChangedEvent` / `WorkingCopyHeartbeatEvent` / `WatchErrorEvent` /
   `ProgressEvent`), exported from `zanshin_core.dart`.
@@ -420,7 +646,7 @@ return-all; windowing is deferred past WIP).
   disambiguation index — symbol resolution included — logs a `tracing::warn!` and
   degrades to full-index prefixes rather than failing the call, exactly as the CLI
   does (pinned by jj's `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`
-  @ v0.42.0: `revsets.short-prefixes = 'missing'` warns and still prints the whole
+  @ v0.44.0: `revsets.short-prefixes = 'missing'` warns and still prints the whole
   log). So an unknown bookmark in `short_prefixes` succeeds; an unknown bookmark in
   `revset` or `prioritize` is `jj.revset_resolution_error`.
 
@@ -469,8 +695,10 @@ An error envelope never carries partial rows.
   required syntheticElided, required shortPrefixes})` → `GraphSlice` via
   `decodeGraphSliceEnvelopeInternal`.
 - `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize,
-  syntheticElided = true, shortPrefixes = defaultShortPrefixes})` —
-  closed-handle guard (`StateError`), pre-fills the CLI defaults, delegates.
+  syntheticElided = defaultSyntheticElided, shortPrefixes = defaultShortPrefixes})`
+  — closed-handle guard (`StateError`), pre-fills the CLI defaults, delegates.
+  (`defaultSyntheticElided` is `true`; the constant, not the literal, is the
+  default — `packages/zanshin_core/lib/src/worker/handle.dart:126`.)
 
 ```
 enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_graph::EdgeKind order
@@ -607,12 +835,12 @@ Handle-only — no C-string argument, so there is no `ffi.null_pointer` /
 `ffi.utf8_error` path (the same asymmetry as `zanshin_remotes`).
 
 **What "effective" means.** `zanshin-jj` rebuilds, per call, the layered config
-the jj CLI would have at v0.42.0 for that workspace and reads the four values out
-of it:
+the jj CLI would have at the pinned **v0.44.0** for that workspace and reads the
+four values out of it:
 
 | Layer (ascending precedence) | Source |
 |------------------------------|--------|
-| `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.42.0) |
+| `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, `ui.conflict-marker-style` (Story 9.4 — the style `zanshin_file_show` materializes a conflicted file with), and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.44.0) |
 | `ConfigSource::User`         | `JJ_CONFIG` (a `PATH`-style list of files and/or directories, which REPLACES discovery — including when it is the empty string, which disables user config entirely), else `$HOME/.jjconfig.toml`, `<config_dir>/jj/config.toml`, `<config_dir>/jj/conf.d/`. Non-existent entries are skipped silently. `<config_dir>` = `$XDG_CONFIG_HOME` when absolute, else `$HOME/.config`. |
 | `ConfigSource::Repo`         | `.jj/repo/config-id` (20 ASCII hex chars) → `<config_dir>/jj/repos/<id>/config.toml`; absent id file → legacy `.jj/repo/config.toml` |
 | `ConfigSource::Workspace`    | `.jj/workspace-config-id` → `<config_dir>/jj/workspaces/<id>/config.toml`; absent id file → legacy `.jj/workspace-config.toml` |
@@ -648,7 +876,8 @@ LogDefaults {
 - **`short_prefixes` fallback rule.** `revsets.short-prefixes` falls back to the
   EFFECTIVE `revsets.log` when the key is ABSENT from every layer — never when it
   is present but empty. An explicit `""` means "prefix disambiguation disabled"
-  and is returned verbatim (`cli/src/cli_util.rs:991-995`).
+  and is returned verbatim (`cli/src/cli_util.rs:987-1009`, the citation the
+  implementing code carries at `crates/zanshin-jj/src/config.rs:407`).
 - **These are offers, not policy (FR-JJ-17).** `zanshin_graph_slice`'s
   `revset` / `prioritize` / `short_prefixes` remain caller pass-throughs;
   nothing Rust-side substitutes a config value for a caller argument. The UI

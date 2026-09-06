@@ -1038,6 +1038,10 @@ ZanshinBuf *zanshin_git_remote_set_url(uint64_t handle, const uint8_t *data, uin
  * - `jj.revset_resolution_error` — an expression names a symbol that cannot be
  *   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
  * - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
+ * - `jj.config_error` — the repo's effective jj config, which the revset aliases are
+ *   resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
+ *   a wrong-typed value; the file path or config key in `context`. A single bad
+ *   `[revset-aliases]` entry does NOT produce this — it warns and is skipped.
  * - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
  *   non-`Missing` edge after the stream was exhausted); the target id in `context`.
  *
@@ -1167,6 +1171,8 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  * - `jj.repo_not_found` — `path` exists but is not a jj repo.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
+ * - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
+ *   returned (strict-fail, OQ-1); detail in `context`.
  *
  * # Safety
  * `path` must be a valid, NUL-terminated C string or null (null is detected and
@@ -1187,6 +1193,8 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  * - `ffi.invalid_argument` — `backend` is not `0` or `1`.
  * - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
  * - `jj.jj_lib_error` — init failed (e.g. repo already exists).
+ * - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
+ *   returned (strict-fail, OQ-1); the created `.jj/` persists. Detail in `context`.
  *
  * # Safety
  * `path` must be a valid, NUL-terminated C string or null. The returned token
@@ -1209,6 +1217,8 @@ ZanshinBuf *zanshin_repo_init(const char *path, int32_t backend);
  *   an unreadable config or a non-boolean value fails the clone under this code. `context`
  *   names the offending KEY for a wrong-typed value, and the offending FILE PATH for a
  *   config file that is unreadable or not valid TOML.
+ * - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
+ *   returned (strict-fail, OQ-1); the cloned workspace persists. Detail in `context`.
  *
  * # Safety
  * `url` and `target_path` must each be a valid, NUL-terminated C string or null.
@@ -1281,6 +1291,8 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * - `jj.convert_failed` — a jj-lib failure during conversion; detail in `context`.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
+ * - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
+ *   returned (strict-fail, OQ-1); the written `.jj/` persists. Detail in `context`.
  *
  * # Safety
  * `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
