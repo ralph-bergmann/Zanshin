@@ -845,18 +845,27 @@ impl Repo {
     /// changes no jj view state, so NO operation is written and the returned `new_op_id` is
     /// the pre-call op-log head — the CLI behaves identically.
     ///
-    /// Unlike the CLI, `.jj/repo/config.toml` is NOT edited: a `[remotes.<name>]` section
-    /// survives, and a `revset-aliases.'trunk()'` pinned to this remote keeps naming it.
+    /// The repo-level jj config file is rewritten as well, exactly as the CLI does: the
+    /// `[remotes.<name>]` section is dropped, and a `revset-aliases.'trunk()'` that is a
+    /// plain remote symbol naming this remote is DELETED, so the builtin `trunk()` applies
+    /// again. Both edits key on the remote name alone. The file is the one this repo's
+    /// config layer actually reads (`<config_dir>/jj/repos/<config-id>/config.toml`, or the
+    /// legacy `.jj/repo/config.toml`); if no such file exists, nothing is written and NONE
+    /// is created.
     ///
     /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
     /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
-    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// refusal raised late — including a failed repo-config rewrite, which drops the
+    /// transaction — can leave the git config already rewritten; and a reload failure is
     /// reported only AFTER the operation has committed, discarding an otherwise-successful
     /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
     /// rather than assuming the pre-call one.
     ///
     /// # Errors
     ///
+    /// - [`crate::MutateError::Config`] — the repo-level jj config file exists but could not
+    ///   be read, is not valid TOML, or could not be written back; or `.jj/repo/config-id`
+    ///   is malformed (refused before anything is mutated).
     /// - [`crate::MutateError::RemoteNotFound`] — no such remote.
     /// - [`crate::MutateError::RemoteNonstandardConfig`] — jj refuses to rewrite this
     ///   remote's git config (a remote added with a push URL is exactly this case).
@@ -872,7 +881,12 @@ impl Repo {
     ///
     /// The workspace is reloaded before returning (see [`Repo::git_remote_add`]). Renaming
     /// FROM the reserved remote `git` writes no operation, for the same reason removing it
-    /// does not. `.jj/repo/config.toml` is NOT edited — see [`Repo::git_remote_remove`].
+    /// does not.
+    ///
+    /// The repo-level jj config file is rewritten as well — see [`Repo::git_remote_remove`]
+    /// for which file that is and when nothing is written. Here `[remotes.<old_name>]`
+    /// becomes `[remotes.<new_name>]` with its value untouched, and a plain-remote-symbol
+    /// `trunk()` naming `old_name` is re-pointed at `new_name`, keeping its bookmark.
     ///
     /// jj-lib validates `new_name` BEFORE it reports that `old_name` is missing, so
     /// `git_remote_rename("nonexistent", "git")` reports the reserved-name refusal. That
@@ -880,13 +894,17 @@ impl Repo {
     ///
     /// **An `Err` does NOT mean "nothing happened."** jj-lib writes the git config file
     /// BEFORE the git-ref edits, and both happen before the transaction commits, so a
-    /// refusal raised late can leave the config already rewritten; and a reload failure is
+    /// refusal raised late — including a failed repo-config rewrite, which drops the
+    /// transaction — can leave the git config already rewritten; and a reload failure is
     /// reported only AFTER the operation has committed, discarding an otherwise-successful
     /// [`crate::MutationResult`]. Re-read [`Repo::list_remotes`] to learn the actual state
     /// rather than assuming the pre-call one.
     ///
     /// # Errors
     ///
+    /// - [`crate::MutateError::Config`] — the repo-level jj config file exists but could not
+    ///   be read, is not valid TOML, or could not be written back; or `.jj/repo/config-id`
+    ///   is malformed (refused before anything is mutated).
     /// - [`crate::MutateError::InvalidInput`] — `new_name` is the reserved `git`, contains
     ///   a slash, or is not a valid gix remote name.
     /// - [`crate::MutateError::RemoteNotFound`] — `old_name` has no configured remote.

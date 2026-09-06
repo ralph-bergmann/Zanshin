@@ -336,22 +336,29 @@ pub unsafe extern "C" fn zanshin_git_remote_add(handle: u64, data: *const u8, le
 ///
 /// Removing the reserved remote `git` SUCCEEDS and updates the git config and refs, but
 /// changes no jj view state — so NO operation is written and `MutationResult.new_op_id`
-/// carries the PRE-CALL op-log head, exactly as in the CLI. Unlike the CLI,
-/// `.jj/repo/config.toml` is not edited: a `[remotes.<name>]` section survives and a
-/// `trunk()` alias pinned to this remote keeps naming it.
+/// carries the PRE-CALL op-log head, exactly as in the CLI.
+///
+/// The repo-level jj config file is rewritten too, as the CLI does: `[remotes.<name>]` is
+/// dropped, and a `revset-aliases.'trunk()'` that is a plain remote symbol naming this
+/// remote is deleted, so the builtin `trunk()` applies again. It is the file this repo's
+/// config layer reads (`<config_dir>/jj/repos/<config-id>/config.toml`, or the legacy
+/// `.jj/repo/config.toml`); with no such file nothing is written and NONE is created.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 ///
 /// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
 /// git config file BEFORE the git-ref edits, and both happen before the transaction
-/// commits, so a late refusal can leave the config already rewritten — and a failed
-/// workspace reload is reported after the operation has already committed. Re-read
-/// `zanshin_remotes` rather than assuming the pre-call state.
+/// commits, so a late refusal — a failed repo-config rewrite included — can leave the git
+/// config already rewritten; and a failed workspace reload is reported after the operation
+/// has already committed. Re-read `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `name` is a null pointer.
 /// - `ffi.utf8_error` — `name` is not valid UTF-8.
+/// - `jj.config_error` — the repo-level jj config file exists but could not be read, is not
+///   valid TOML, or could not be written back; or `.jj/repo/config-id` is malformed (that
+///   one refuses before anything is mutated). Detail in `context`.
 /// - `jj.remote_not_found` — no such remote; the name in `context`.
 /// - `jj.remote_nonstandard_config` — jj refuses to rewrite this remote's git config (a
 ///   remote ADDED with a push URL is exactly this case); the name in `context`.
@@ -383,8 +390,12 @@ pub unsafe extern "C" fn zanshin_git_remote_remove(handle: u64, name: *const cor
 ///
 /// Both names are required lone strings (ADR-0001 → `CString`). The workspace is reloaded
 /// before returning (see `zanshin_git_remote_add`). Renaming FROM the reserved remote `git`
-/// writes no operation, for the same reason removing it does not, and
-/// `.jj/repo/config.toml` is not edited.
+/// writes no operation, for the same reason removing it does not.
+///
+/// The repo-level jj config file is rewritten too — see `zanshin_git_remote_remove` for
+/// which file that is and when nothing is written. Here `[remotes.<old_name>]` becomes
+/// `[remotes.<new_name>]` with its value untouched, and a plain-remote-symbol `trunk()`
+/// naming `old_name` is re-pointed at `new_name`, keeping its bookmark.
 ///
 /// jj-lib validates `new_name` BEFORE it reports that `old_name` is missing, so renaming a
 /// nonexistent remote to `git` reports the reserved-name refusal. That ordering is jj-lib's
@@ -394,14 +405,17 @@ pub unsafe extern "C" fn zanshin_git_remote_remove(handle: u64, name: *const cor
 ///
 /// An error envelope from this verb does NOT mean "nothing happened": jj-lib writes the
 /// git config file BEFORE the git-ref edits, and both happen before the transaction
-/// commits, so a late refusal can leave the config already rewritten — and a failed
-/// workspace reload is reported after the operation has already committed. Re-read
-/// `zanshin_remotes` rather than assuming the pre-call state.
+/// commits, so a late refusal — a failed repo-config rewrite included — can leave the git
+/// config already rewritten; and a failed workspace reload is reported after the operation
+/// has already committed. Re-read `zanshin_remotes` rather than assuming the pre-call state.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `old_name` or `new_name` is a null pointer.
 /// - `ffi.utf8_error` — either name is not valid UTF-8.
+/// - `jj.config_error` — the repo-level jj config file exists but could not be read, is not
+///   valid TOML, or could not be written back; or `.jj/repo/config-id` is malformed (that
+///   one refuses before anything is mutated). Detail in `context`.
 /// - `jj.invalid_input` — `new_name` is the reserved `git`, contains a slash, or is not a
 ///   valid gix remote name.
 /// - `jj.remote_not_found` — `old_name` has no configured remote; the name in `context`.

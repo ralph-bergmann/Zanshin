@@ -247,8 +247,10 @@ fn git_import_and_export_with_a_zero_handle_return_ffi_invalid_handle() {
     assert_eq!(error_code(&export_bytes), FFI_INVALID_HANDLE);
 }
 
-/// `zanshin_git_import` is the only one of the six that reads config, so it is the only one
-/// that can surface `jj.config_error` — proving the arm is reachable from this noun too.
+/// `zanshin_git_import` READS the repo config (both `git.*` keys plus the immutable-set
+/// alias), so it surfaces `jj.config_error` — proving the arm is reachable from this noun.
+/// `_remote_remove`/`_rename` reach the same code by WRITING it; see
+/// `git_remote_remove_with_an_unparseable_repo_config_returns_jj_config_error`.
 #[test]
 fn git_import_with_a_non_boolean_config_value_returns_jj_config_error() {
     pin_env();
@@ -487,6 +489,67 @@ fn git_remote_remove_rejects_a_null_name_and_a_zero_handle() {
     // SAFETY: name is a valid NUL-terminated C string alive for the call.
     let missing_bytes = unsafe { read_and_free(zanshin_git_remote_remove(handle, name.as_ptr())) };
     assert_eq!(error_code(&missing_bytes), JJ_REMOTE_NOT_FOUND);
+
+    close_handle(handle);
+}
+
+/// The repo-config rewrite is observable through the FFI path, not only from Rust: after a
+/// remove, the `[remotes.<name>]` section and the `trunk()` alias pinned to it are gone from
+/// the very file this repo's config layer reads.
+#[test]
+fn git_remote_remove_rewrites_the_repo_config_across_the_boundary() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    let req = add_request_bytes(Some("origin"), Some("/tmp/nowhere"), None);
+    // SAFETY: req outlives the call.
+    unsafe { read_and_free(zanshin_git_remote_add(handle, req.as_ptr(), req.len())) };
+
+    // A `Repo::init`ed workspace carries no `config-id`, so this legacy file IS the layer.
+    let config_path = tmp.path().join(".jj").join("repo").join("config.toml");
+    fs::write(
+        &config_path,
+        "[remotes.origin]\nfetch-bookmarks = \"main\"\n\n[revset-aliases]\n'trunk()' = 'main@origin'\n",
+    )
+    .expect("repo config must be writable");
+
+    let name = cstr("origin");
+    // SAFETY: name is a valid NUL-terminated C string alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_git_remote_remove(handle, name.as_ptr())) };
+    assert!(
+        parse_envelope(&bytes).ok(),
+        "remove failed: {:?}",
+        parse_envelope(&bytes).error().and_then(|e| e.code())
+    );
+
+    let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
+    assert!(!after.contains("[remotes.origin]"), "section must be gone: {after:?}");
+    assert!(!after.contains("trunk()"), "the pinned alias must be gone: {after:?}");
+
+    close_handle(handle);
+}
+
+/// The rewrite's own failure mode crossing the boundary: an unparseable repo-level config
+/// makes both remote verbs answer `jj.config_error` — a code neither of them could reach
+/// before this rewrite was ported.
+#[test]
+fn git_remote_remove_with_an_unparseable_repo_config_returns_jj_config_error() {
+    pin_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    let req = add_request_bytes(Some("origin"), Some("/tmp/nowhere"), None);
+    // SAFETY: req outlives the call.
+    unsafe { read_and_free(zanshin_git_remote_add(handle, req.as_ptr(), req.len())) };
+    fs::write(
+        tmp.path().join(".jj").join("repo").join("config.toml"),
+        "not = = toml\n",
+    )
+    .expect("repo config must be writable");
+
+    let name = cstr("origin");
+    // SAFETY: name is a valid NUL-terminated C string alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_git_remote_remove(handle, name.as_ptr())) };
+    assert_eq!(error_code(&bytes), JJ_CONFIG_ERROR);
 
     close_handle(handle);
 }

@@ -554,14 +554,18 @@ final class RepoHandle {
   /// reserved remote `git` SUCCEEDS but writes no operation — it changes the git
   /// config and refs, not jj's view.
   ///
-  /// Unlike the CLI, `.jj/repo/config.toml` is not edited: a `[remotes.<name>]`
-  /// section survives, and a `revset-aliases.'trunk()'` pinned to this remote keeps
-  /// naming it.
+  /// The repo-level jj config file is rewritten as well, exactly as the CLI does:
+  /// the `[remotes.<name>]` section is dropped, and a `revset-aliases.'trunk()'`
+  /// that is a plain remote symbol naming this remote is deleted, so the builtin
+  /// `trunk()` applies again. It is the file this repo's config layer reads
+  /// (`<config_dir>/jj/repos/<config-id>/config.toml`, or the legacy
+  /// `.jj/repo/config.toml`); with no such file nothing is written and none is
+  /// created.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`,
-  /// `jj.jj_lib_error`).
+  /// `jj.config_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`,
+  /// `jj.not_a_git_repo`, `jj.jj_lib_error`).
   Future<MutationResult> gitRemoteRemove(String name) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -573,7 +577,13 @@ final class RepoHandle {
   ///
   /// [remotes] on this SAME handle reflects the rename immediately. Renaming FROM
   /// the reserved remote `git` writes no operation, for the same reason removing it
-  /// does not, and `.jj/repo/config.toml` is not edited — see [gitRemoteRemove].
+  /// does not.
+  ///
+  /// The repo-level jj config file is rewritten as well — see [gitRemoteRemove] for
+  /// which file that is and when nothing is written. Here `[remotes.<oldName>]`
+  /// becomes `[remotes.<newName>]` with its value untouched, and a
+  /// plain-remote-symbol `trunk()` naming [oldName] is re-pointed at [newName],
+  /// keeping its bookmark.
   ///
   /// jj validates [newName] BEFORE it reports that [oldName] is missing, so
   /// renaming a nonexistent remote to `git` reports the reserved-name refusal. That
@@ -581,8 +591,9 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`,
-  /// `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error`).
+  /// `jj.config_error`, `jj.invalid_input`, `jj.remote_not_found`,
+  /// `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`,
+  /// `jj.jj_lib_error`).
   Future<MutationResult> gitRemoteRename(String oldName, String newName) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

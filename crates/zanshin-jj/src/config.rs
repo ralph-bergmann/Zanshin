@@ -10,7 +10,22 @@
 //! files change externally and the op-heads watcher does not cover them, so ADR-0002's
 //! re-resolve-per-operation rule extends to config.
 //!
-//! # WHY: read-only by hand instead of `jj_lib::secure_config::SecureConfig`
+//! # Reading never writes; exactly two verbs write
+//!
+//! Every READ path here is side-effect-free: no directory is created, no file is written,
+//! no `config-id` is generated, nothing is migrated. That stance is unchanged.
+//!
+//! What changed (Epic 9 follow-up J) is that this module now also holds the crate's only
+//! config WRITERS, [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`],
+//! called by [`crate::Repo::git_remote_remove`] / [`crate::Repo::git_remote_rename`] — the
+//! two verbs whose CLI counterparts rewrite the repo-level file
+//! (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0). They make exactly the CLI's two edits
+//! and NEVER create a file: the path is resolved by the same [`secure_config_path`] the read
+//! side uses and filtered by existence ([`existing_repo_config_path`]), so read and write
+//! address the same file by construction. No general config-write API exists, and none of
+//! the other verbs — `git remote add`/`set-url` included — writes config at all.
+//!
+//! # WHY: by hand instead of `jj_lib::secure_config::SecureConfig`
 //!
 //! The CLI reaches the repo/workspace layer through `SecureConfig`, whose
 //! `maybe_load_config` WRITES: it creates directories, writes `metadata.binpb`, can
@@ -46,9 +61,10 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use jj_lib::config::{
-    resolve, ConfigGetError, ConfigGetResultExt as _, ConfigLayer, ConfigLoadError, ConfigResolutionContext,
-    ConfigSource, StackedConfig,
+    resolve, ConfigFile, ConfigGetError, ConfigGetResultExt as _, ConfigLayer, ConfigLoadError,
+    ConfigResolutionContext, ConfigSource, StackedConfig,
 };
+use jj_lib::ref_name::RemoteRefSymbolBuf;
 use jj_lib::workspace::Workspace;
 
 use crate::Repo;
@@ -111,6 +127,13 @@ latest(
 /// Length of a `config-id` in ASCII hex characters (`jj_lib::secure_config`'s
 /// `CONFIG_ID_BYTES * 2` at v0.42.0).
 const CONFIG_ID_HEX_LEN: usize = 20;
+
+/// The `trunk()` alias's config name path, verbatim from
+/// `cli/src/commands/git/mod.rs:133` @ v0.44.0.
+///
+/// A `[&str; N]` array, never the dotted string `"revset-aliases.trunk()"`: the alias name
+/// contains `(` and `)`, so the dotted spelling would be re-split in the wrong places.
+const TRUNK_CONFIG_NAME: [&str; 2] = ["revset-aliases", "trunk()"];
 
 /// Errors from reading the repo's effective jj config.
 #[derive(Debug, thiserror::Error)]
@@ -485,13 +508,164 @@ pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::
     })
 }
 
+// ── The two repo-config WRITERS ───────────────────────────────────────────────────
+//
+// Ported verbatim from `cli/src/commands/git/mod.rs:195-262` @ v0.44.0, minus its two
+// `ui.status` lines (terminal UX — Zanshin replaces it; NFR-R-2). The effect those lines
+// announce IS ported: Ralph's rule (2026-09-06) is that every on-disk, repo-side effect the
+// CLI produces is required parity.
+
+/// A failure while WRITING the repo config, rendered through its `source()` chain.
+///
+/// One generic function rather than a closure per call site: `set_value`/`delete_value`
+/// only fail when the target is a non-inline TABLE, which both call sites below have
+/// already ruled out with `as_str()`, so a per-call-site closure would add lines no test
+/// can execute. Sharing one body means the reachable instantiations
+/// ([`jj_lib::config::ConfigFileSaveError`], via the unwritable-file test) cover the same
+/// lines the unreachable one would.
+fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
+    ConfigError::Load { reason: describe(&err) }
+}
+
+/// The repo-level config file this workspace READS, if it exists on disk.
+///
+/// Resolution is [`secure_config_path`] — the very same call [`add_secure_layer`] makes for
+/// `ConfigSource::Repo` — so a writer built on this path can never rewrite a file the
+/// session does not read. The `.exists()` filter is the CLI's
+/// `existing_repo_config_file` (`cli/src/config.rs:682-691`), which picks an ALREADY-LOADED
+/// repo layer and therefore yields nothing when no file was loaded: mirroring it as
+/// "resolve, then filter by existence" is what keeps both writers from CREATING a file.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — `.jj/repo/config-id` exists but is not exactly 20 ASCII hex
+///   characters, or could not be read.
+pub(crate) fn existing_repo_config_path(workspace: &Workspace) -> Result<Option<PathBuf>, ConfigError> {
+    let env = ConfigEnv::from_env();
+    let root = env.root_config_dir();
+    let path = secure_config_path(
+        // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
+        workspace.repo_path(),
+        "config-id",
+        "config.toml",
+        root.as_ref().map(|r| r.join("repos")).as_deref(),
+    )?;
+    Ok(path.filter(|p| p.exists()))
+}
+
+/// The `trunk()` alias's value as `(bookmark, remote)`, iff it is a PLAIN remote symbol.
+///
+/// Mirrors the CLI's `get_trunk_symbol` (`mod.rs:264-274`): look the item up, require a
+/// string, parse it as a revset program, and accept only [`jj_lib::revset::ExpressionKind`]
+/// `::RemoteSymbol`. Everything else — a missing alias, a non-string value, a compound
+/// expression such as `latest(main@origin)`, an unparseable one — yields `None`, so the
+/// alias is left exactly as the user wrote it. Rewriting anything richer would mean editing
+/// a revset the user composed by hand, which the CLI declines to do too.
+fn trunk_symbol(layer: &ConfigLayer) -> Option<(String, String)> {
+    let item = layer.look_up_item(TRUNK_CONFIG_NAME).ok().flatten()?;
+    let node = jj_lib::revset::parse_program(item.as_str()?).ok()?;
+    match node.kind {
+        jj_lib::revset::ExpressionKind::RemoteSymbol(symbol) => {
+            let RemoteRefSymbolBuf { name, remote } = symbol;
+            Some((name.into_string(), remote.into_string()))
+        }
+        _ => None,
+    }
+}
+
+/// Drops `remote`'s repo-config presets — the CLI's `remove_remote_from_repo_config`.
+///
+/// Two edits and no more: `[remotes.<remote>]` is removed, and `revset-aliases.'trunk()'`
+/// is DELETED (so the builtin `trunk()` applies again) when it is a plain remote symbol
+/// naming `remote`. Both are keyed on the REMOTE name alone — the alias's bookmark half is
+/// never compared, because the alias becomes meaningless the moment its remote is gone,
+/// whatever bookmark it named.
+///
+/// `path` is [`existing_repo_config_path`]'s answer: `None` means no repo-level config file
+/// exists, and then this is a no-op that creates nothing.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file could not be read, is not valid TOML, or could not be
+///   written back.
+pub(crate) fn remove_remote_from_repo_config(path: Option<&Path>, remote: &str) -> Result<(), ConfigError> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    let mut file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
+
+    // [remotes.<remote>]
+    if let Some(remotes_item) = file.data_mut().as_table_mut().get_mut("remotes") {
+        // `as_table_like_mut`, not `as_table_mut`: it also covers the inline spelling
+        // `remotes = { origin = { … } }`, exactly as the CLI does.
+        if let Some(remotes_table) = remotes_item.as_table_like_mut() {
+            remotes_table.remove(remote);
+        }
+    }
+
+    // trunk = <name>@<remote>
+    if let Some((_, old_remote)) = trunk_symbol(file.layer()) {
+        if old_remote == remote {
+            file.delete_value(TRUNK_CONFIG_NAME).map_err(write_error)?;
+        }
+    }
+
+    // Saved unconditionally, as the CLI does: `toml_edit` round-trips the document
+    // byte-for-byte, so a no-edit save changes only the file's mtime, and auditing when a
+    // save is "needed" would be more code for less parity.
+    file.save().map_err(write_error)
+}
+
+/// Re-points `old`'s repo-config presets at `new` — the CLI's
+/// `rename_remote_in_repo_config`.
+///
+/// The mirror image of [`remove_remote_from_repo_config`]: `[remotes.<old>]` is re-inserted
+/// as `[remotes.<new>]` (value untouched), and a plain-remote-symbol `trunk()` naming `old`
+/// is REWRITTEN to name `new`, keeping its bookmark. Same remote-name-only keying, same
+/// hands-off treatment of any richer expression.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file could not be read, is not valid TOML, or could not be
+///   written back.
+pub(crate) fn rename_remote_in_repo_config(path: Option<&Path>, old: &str, new: &str) -> Result<(), ConfigError> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    let mut file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
+
+    // [remotes.<old>] -> [remotes.<new>]
+    if let Some(remotes_item) = file.data_mut().as_table_mut().get_mut("remotes") {
+        if let Some(remotes_table) = remotes_item.as_table_like_mut() {
+            if let Some(old_item) = remotes_table.remove(old) {
+                remotes_table.insert(new, old_item);
+            }
+        }
+    }
+
+    // trunk = <name>@<old> -> <name>@<new>
+    if let Some((bookmark, old_remote)) = trunk_symbol(file.layer()) {
+        if old_remote == old {
+            let new_symbol = RemoteRefSymbolBuf {
+                name: bookmark.into(),
+                remote: new.into(),
+            };
+            // `Display` quotes and escapes the way jj's own revset syntax needs.
+            file.set_value(TRUNK_CONFIG_NAME, new_symbol.to_string())
+                .map_err(write_error)?;
+        }
+    }
+
+    file.save().map_err(write_error)
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
 
     use super::{
-        add_secure_layer, is_valid_config_id, load_with, platform_config_dir, secure_config_path, user_config_paths,
-        ConfigEnv, BUILTIN_CONFIG_TOML,
+        add_secure_layer, is_valid_config_id, load_with, platform_config_dir, remove_remote_from_repo_config,
+        rename_remote_in_repo_config, secure_config_path, user_config_paths, ConfigEnv, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -757,6 +931,196 @@ mod tests {
             config.get::<String>("revsets.short-prefixes").unwrap(),
             "repo",
             "a key only the repo layer sets still comes through"
+        );
+    }
+
+    // ── Repo-config writers (Epic 9 follow-up J) ──────────────────────────────
+    //
+    // Unit-tested directly against tempfile paths: every row here is about the FILE, and a
+    // real workspace would add nothing but cost. The rows that need a repo (the transaction
+    // ordering, the same-session read-back) live in `tests/git_remotes.rs`.
+
+    /// Writes `body` to a fresh temp dir and returns `(dir, path)`.
+    fn repo_config(body: &str) -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, body).unwrap();
+        (tmp, path)
+    }
+
+    fn read_back(path: &Path) -> String {
+        std::fs::read_to_string(path).expect("the config file must still be readable")
+    }
+
+    const PINNED: &str = "\
+[remotes.origin]
+fetch-bookmarks = \"main\"
+
+[revset-aliases]
+'trunk()' = 'main@origin'
+";
+
+    #[test]
+    fn remove_drops_the_remotes_section_and_the_matching_trunk_alias() {
+        let (_tmp, path) = repo_config(PINNED);
+        remove_remote_from_repo_config(Some(&path), "origin").expect("the rewrite must succeed");
+        let after = read_back(&path);
+        assert!(!after.contains("remotes.origin"), "the section must be gone: {after:?}");
+        assert!(
+            !after.contains("trunk()"),
+            "the alias must be DELETED so the builtin applies again: {after:?}"
+        );
+    }
+
+    #[test]
+    fn rename_moves_the_remotes_section_and_repoints_the_trunk_alias() {
+        let (_tmp, path) = repo_config(PINNED);
+        rename_remote_in_repo_config(Some(&path), "origin", "upstream").expect("the rewrite must succeed");
+        let after = read_back(&path);
+        assert!(after.contains("upstream"), "the section must move: {after:?}");
+        assert!(!after.contains("remotes.origin"), "…and not be duplicated: {after:?}");
+        assert!(
+            after.contains("fetch-bookmarks = \"main\""),
+            "the section's VALUE must survive the move: {after:?}"
+        );
+        assert!(
+            after.contains("'trunk()' = \"main@upstream\"") || after.contains("'trunk()' = 'main@upstream'"),
+            "the alias must keep its bookmark and name the new remote: {after:?}"
+        );
+    }
+
+    /// Both edits key on the REMOTE name alone, so a remote of another name is untouched —
+    /// and so is an alias that names one.
+    #[test]
+    fn an_alias_and_a_section_naming_a_different_remote_survive_both_verbs() {
+        let body = "[remotes.other]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@other'\n";
+        let (_tmp, remove_path) = repo_config(body);
+        remove_remote_from_repo_config(Some(&remove_path), "origin").expect("remove");
+        assert!(read_back(&remove_path).contains("main@other"));
+        assert!(read_back(&remove_path).contains("remotes.other"));
+
+        let (_tmp2, rename_path) = repo_config(body);
+        rename_remote_in_repo_config(Some(&rename_path), "origin", "upstream").expect("rename");
+        assert!(read_back(&rename_path).contains("main@other"));
+        assert!(read_back(&rename_path).contains("remotes.other"));
+    }
+
+    /// Anything that is not a PLAIN remote symbol is left exactly as the user wrote it — a
+    /// compound expression, an unparseable one, and a non-string value alike.
+    #[test]
+    fn a_trunk_alias_that_is_not_a_plain_remote_symbol_survives_both_verbs() {
+        for value in ["'latest(main@origin)'", "'('", "42"] {
+            let body = format!("[revset-aliases]\n'trunk()' = {value}\n");
+            let (_tmp, path) = repo_config(&body);
+            remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+            assert_eq!(read_back(&path), body, "remove must leave {value} alone");
+
+            let (_tmp2, path2) = repo_config(&body);
+            rename_remote_in_repo_config(Some(&path2), "origin", "upstream").expect("rename");
+            assert_eq!(read_back(&path2), body, "rename must leave {value} alone");
+        }
+    }
+
+    /// A `revset-aliases` that is not a table at all: `look_up_item` reports the middle node,
+    /// which is treated exactly like an absent alias.
+    #[test]
+    fn a_non_table_revset_aliases_key_is_left_alone() {
+        let body = "revset-aliases = 42\n";
+        let (_tmp, path) = repo_config(body);
+        remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+        assert_eq!(read_back(&path), body);
+    }
+
+    /// `None` is the state the CLI's `existing_repo_config_file` returns when no repo layer
+    /// was loaded: both writers succeed and, having no path at all, touch no file. That
+    /// [`existing_repo_config_path`] really answers `None` for a workspace with no
+    /// repo-level file — the other half of "creates nothing" — is pinned by
+    /// `tests/git_remotes.rs::without_a_repo_config_file_both_verbs_succeed_and_create_none`.
+    #[test]
+    fn an_absent_repo_config_is_a_no_op_for_both_writers() {
+        remove_remote_from_repo_config(None, "origin").expect("remove must succeed");
+        rename_remote_in_repo_config(None, "origin", "upstream").expect("rename must succeed");
+    }
+
+    /// `toml_edit` round-trips the document, so everything the two edits do not touch —
+    /// comments, key order, quoting, unrelated tables — survives byte-for-byte.
+    #[test]
+    fn comments_and_unrelated_keys_survive_the_rewrite() {
+        let body = "\
+# a comment the user wrote
+[revsets]
+log = \"mine\"   # trailing comment
+
+[remotes.origin]
+fetch-bookmarks = \"main\"
+
+[remotes.keepme]
+fetch-tags = \"none\"
+
+[revset-aliases]
+'trunk()' = 'main@origin'
+'wip()' = 'description(\"wip\")'
+";
+        let (_tmp, path) = repo_config(body);
+        remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+        let after = read_back(&path);
+        assert!(after.contains("# a comment the user wrote"));
+        assert!(after.contains("log = \"mine\"   # trailing comment"));
+        assert!(after.contains("[remotes.keepme]"));
+        assert!(after.contains("'wip()' = 'description(\"wip\")'"));
+        assert!(!after.contains("[remotes.origin]"));
+        assert!(!after.contains("trunk()"));
+    }
+
+    #[test]
+    fn an_absent_or_non_table_remotes_key_is_not_an_error() {
+        for body in ["[revsets]\nlog = \"mine\"\n", "remotes = 42\n"] {
+            let (_tmp, path) = repo_config(body);
+            remove_remote_from_repo_config(Some(&path), "origin").expect("remove");
+            assert_eq!(read_back(&path), body);
+
+            let (_tmp2, path2) = repo_config(body);
+            rename_remote_in_repo_config(Some(&path2), "origin", "upstream").expect("rename");
+            assert_eq!(read_back(&path2), body);
+        }
+    }
+
+    /// `as_table_like_mut`, not `as_table_mut`: the inline spelling is edited too, exactly
+    /// as the CLI does.
+    #[test]
+    fn an_inline_remotes_table_is_edited_too() {
+        let (_tmp, path) = repo_config("remotes = { origin = { fetch-tags = \"none\" } }\n");
+        rename_remote_in_repo_config(Some(&path), "origin", "upstream").expect("rename");
+        let after = read_back(&path);
+        assert!(after.contains("upstream"), "the inline entry must move: {after:?}");
+        assert!(!after.contains("origin"), "…and the old key must be gone: {after:?}");
+    }
+
+    #[test]
+    fn an_unparseable_repo_config_is_a_config_error_naming_the_file() {
+        let (_tmp, path) = repo_config("not = = toml\n");
+        let err = remove_remote_from_repo_config(Some(&path), "origin").expect_err("invalid TOML must refuse");
+        let reason = err.to_string();
+        assert!(
+            reason.contains("config.toml") && reason.contains("TOML"),
+            "the file and the parse position must both be named, got: {reason}"
+        );
+    }
+
+    #[test]
+    fn an_unwritable_repo_config_is_a_config_error() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let (_tmp, path) = repo_config(PINNED);
+        // Readable, so the load succeeds and only `save()` can fail.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let err = rename_remote_in_repo_config(Some(&path), "origin", "upstream")
+            .expect_err("an unwritable file must refuse");
+        let reason = err.to_string();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            reason.contains("config.toml"),
+            "the io reason must name the file, got: {reason}"
         );
     }
 

@@ -556,20 +556,64 @@ fn a_remote_added_externally_can_be_renamed_and_removed_through_the_same_handle(
     assert!(remote_names(&repo).is_empty());
 }
 
-/// `.jj/repo/config.toml` is untouched by remove (and rename): the CLI edits it — dropping
-/// `[remotes.<name>]` and rewriting the `revset-aliases.'trunk()'` alias — and this crate
-/// deliberately does not, because `config.rs` is read-only. This row pins the resulting
-/// divergence so it stays a decision rather than drifting into an accident.
-#[test]
-fn remove_does_not_edit_the_jj_repo_config() {
-    pin_env();
-    let (tmp, _remote_dir, url) = git_workspace();
-    let config_path = tmp.path().join(".jj").join("repo").join("config.toml");
+// ── The repo-config rewrite (Epic 9 follow-up J) ──────────────────────────────────
+//
+// `remote remove`/`rename` rewrite the repo-level jj config exactly as the CLI does:
+// `[remotes.<name>]` is dropped or moved, and a plain-remote-symbol `revset-aliases.
+// 'trunk()'` naming that remote is deleted or re-pointed. These rows are the ones that need
+// a REPO: the transaction ordering, and the same-session read-back through the very layer
+// the rewrite edited. The file-shape matrix (comment preservation, non-symbol aliases,
+// unparseable/unwritable files) is unit-tested inline in `src/config.rs`.
+//
+// A workspace created by `Repo::init` carries no `.jj/repo/config-id`, so the legacy
+// `.jj/repo/config.toml` IS this repo's config layer — the same fact `tests/revset.rs`'s
+// repo-layer rows rely on.
+
+/// Path of the repo-level config layer of a `Repo::init`ed workspace.
+fn repo_config_path(root: &Path) -> PathBuf {
+    root.join(".jj").join("repo").join("config.toml")
+}
+
+/// A repo config with `[remotes.origin]` and a `trunk()` pinned to `origin`.
+fn write_pinned_repo_config(root: &Path) -> PathBuf {
+    let path = repo_config_path(root);
     fs::write(
-        &config_path,
-        "[revset-aliases]\n'trunk()' = 'remote_bookmarks(exact:\"main\", exact:\"origin\")'\n",
+        &path,
+        "# keep me\n\
+         [revsets]\n\
+         log = \"mine\"\n\n\
+         [remotes.origin]\n\
+         fetch-bookmarks = \"main\"\n\n\
+         [remotes.keepme]\n\
+         fetch-tags = \"none\"\n\n\
+         [revset-aliases]\n\
+         'trunk()' = 'main@origin'\n\
+         'wip()' = 'description(\"wip\")'\n",
     )
     .expect("repo config must be writable");
+    path
+}
+
+/// `trunk()` evaluated through the SAME handle: `Ok` with the resolved changes, or the
+/// refusal's reason.
+fn eval_trunk(repo: &Repo) -> Result<usize, String> {
+    let mut n = 0;
+    repo.eval_revset("trunk()", |_| {
+        n += 1;
+        std::ops::ControlFlow::Continue(())
+    })
+    .map(|_| n)
+    .map_err(|e| e.to_string())
+}
+
+/// The rewrite this follow-up ports: after `remove`, the section is gone, the pinned
+/// `trunk()` alias is DELETED — so the builtin applies again, on the same handle — and
+/// everything else in the file survives.
+#[test]
+fn remove_rewrites_the_jj_repo_config_and_the_builtin_trunk_applies_again() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let config_path = write_pinned_repo_config(tmp.path());
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
 
@@ -577,9 +621,144 @@ fn remove_does_not_edit_the_jj_repo_config() {
 
     let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
     assert!(
-        after.contains("exact:\"origin\""),
-        "the jj repo config is deliberately NOT rewritten — a `trunk()` alias pinned to a \
-         removed remote keeps naming it (documented divergence), got: {after:?}"
+        !after.contains("[remotes.origin]"),
+        "the removed remote's section must be gone: {after:?}"
+    );
+    assert!(
+        !after.contains("trunk()"),
+        "a `trunk()` pinned to the removed remote must be deleted: {after:?}"
+    );
+    // Everything the two edits do not touch survives, comments and quoting included.
+    assert!(after.contains("# keep me"), "comments must survive: {after:?}");
+    assert!(after.contains("log = \"mine\""), "unrelated keys survive: {after:?}");
+    assert!(after.contains("[remotes.keepme]"), "other remotes survive: {after:?}");
+    assert!(
+        after.contains("'wip()' = 'description(\"wip\")'"),
+        "other aliases survive: {after:?}"
+    );
+
+    assert_eq!(
+        eval_trunk(&repo),
+        Ok(1),
+        "the SAME handle must resolve `trunk()` through the builtin alias (root(), in a \
+         repo with no remote bookmarks) — config is re-read per call"
+    );
+}
+
+/// Rename's mirror image: the section moves, the alias keeps its bookmark and names the NEW
+/// remote — proved by the same-session refusal, which names `upstream`, not `origin`.
+#[test]
+fn rename_moves_the_repo_config_section_and_repoints_the_trunk_alias() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let config_path = write_pinned_repo_config(tmp.path());
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+
+    repo.git_remote_rename("origin", "upstream").expect("rename");
+
+    let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
+    assert!(
+        !after.contains("[remotes.origin]"),
+        "the old key must be gone: {after:?}"
+    );
+    assert!(after.contains("upstream"), "the section must move: {after:?}");
+    assert!(
+        after.contains("fetch-bookmarks = \"main\""),
+        "the section's value survives the move: {after:?}"
+    );
+
+    let refusal = eval_trunk(&repo).expect_err("`main@upstream` names no remote bookmark");
+    assert!(
+        refusal.contains("upstream"),
+        "the reloaded session must read the RE-POINTED alias, got: {refusal}"
+    );
+}
+
+/// Both edits key on the remote NAME alone, and only on a plain remote symbol: an alias
+/// naming another remote, and one that is any richer expression, are left alone by both
+/// verbs.
+#[test]
+fn an_alias_naming_another_remote_or_a_compound_expression_survives_both_verbs() {
+    pin_env();
+    for alias in ["'main@other'", "'latest(main@origin)'"] {
+        let (tmp, _remote_dir, url) = git_workspace();
+        let config_path = repo_config_path(tmp.path());
+        let body = format!("[revset-aliases]\n'trunk()' = {alias}\n");
+        fs::write(&config_path, &body).expect("repo config must be writable");
+        let mut repo = Repo::open(tmp.path()).expect("open");
+        repo.git_remote_add("origin", &url, None).expect("add");
+
+        repo.git_remote_rename("origin", "upstream").expect("rename");
+        repo.git_remote_remove("upstream").expect("remove");
+
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("readable"),
+            body,
+            "{alias} is not a plain symbol naming the touched remote, so it must survive"
+        );
+    }
+}
+
+/// The CLI's helpers early-return when no repo-level config file was loaded; the ported ones
+/// resolve the path and filter by existence, so neither verb may bring a file into being.
+#[test]
+fn without_a_repo_config_file_both_verbs_succeed_and_create_none() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let config_path = repo_config_path(tmp.path());
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+
+    repo.git_remote_rename("origin", "upstream").expect("rename");
+    assert!(!config_path.exists(), "rename must not create a repo config file");
+
+    repo.git_remote_remove("upstream").expect("remove");
+    assert!(!config_path.exists(), "remove must not create a repo config file");
+}
+
+/// The path is resolved BEFORE the transaction opens, so a malformed `config-id` refuses
+/// with nothing mutated at all — the remote is still there afterwards.
+#[test]
+fn a_malformed_config_id_refuses_before_anything_is_mutated() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+    let before = head_op_id(&repo);
+    fs::write(tmp.path().join(".jj").join("repo").join("config-id"), "not-hex").expect("config-id must be writable");
+
+    let err = repo
+        .git_remote_remove("origin")
+        .expect_err("a malformed config-id must refuse");
+
+    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
+    assert_eq!(remote_names(&repo), vec!["origin".to_owned()], "nothing was mutated");
+    assert_eq!(head_op_id(&repo), before, "and no operation was written");
+}
+
+/// A rewrite failure inside the closure drops the transaction, so NO operation is written —
+/// while the git-config edit jj-lib already performed stands. That asymmetry is the CLI's
+/// own (its `?` aborts the same way) and is exactly what the facades' "an `Err` does not
+/// mean nothing happened" paragraph is about.
+#[test]
+fn an_unparseable_repo_config_aborts_the_transaction_but_not_the_git_config_edit() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &url, None).expect("add");
+    let before = head_op_id(&repo);
+    fs::write(repo_config_path(tmp.path()), "not = = toml\n").expect("repo config must be writable");
+
+    let err = repo
+        .git_remote_remove("origin")
+        .expect_err("an unparseable repo config must refuse");
+
+    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
+    assert_eq!(head_op_id(&repo), before, "the transaction was dropped");
+    assert!(
+        remote_names(&repo).is_empty(),
+        "jj-lib's own git-config edit ran before the rewrite and is NOT rolled back"
     );
 }
 
