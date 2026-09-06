@@ -9,14 +9,42 @@ followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
 deferred:
-  - 'No jj repo-config rewrite on `git remote remove`/`rename`. The CLI additionally edits
-    `.jj/repo/config.toml` (drops `[remotes.<name>]`, rewrites the
-    `revset-aliases.''trunk()''` alias — `cli/src/commands/git/mod.rs:196-262` @ v0.44.0);
-    `config.rs` is deliberately read-only and no TOML writer was added. Consequence: a
-    `trunk()` alias pinned to a renamed or removed remote keeps naming the old one, and a
-    `[remotes.<name>]` section outlives its remote. Documented on `Repo::git_remote_remove`
-    and `Repo::git_remote_rename`, and pinned by
-    `tests/git_remotes.rs::remove_does_not_edit_the_jj_repo_config`.'
+  - summary: >-
+      No jj repo-config rewrite on `git remote remove`/`rename`.
+    evidence: |-
+      The CLI additionally edits `.jj/repo/config.toml` (drops `[remotes.<name>]`, rewrites
+      the `revset-aliases.'trunk()'` alias — `cli/src/commands/git/mod.rs:196-262` @
+      v0.44.0); `config.rs` is deliberately read-only and no TOML writer was added.
+      Consequence: a `trunk()` alias pinned to a renamed or removed remote keeps naming the
+      old one, and a `[remotes.<name>]` section outlives its remote. Documented on
+      `Repo::git_remote_remove` and `Repo::git_remote_rename`, and pinned by
+      `tests/git_remotes.rs::remove_does_not_edit_the_jj_repo_config`.
+    location: >-
+      crates/zanshin-jj/src/git.rs (git_remote_remove / git_remote_rename) +
+      crates/zanshin-jj/src/config.rs
+    severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-j-remote-config-rewrite, commit 3eb466b).
+      Both CLI helpers are ported verbatim minus their two ui.status lines, on Ralph's rule
+      that Zanshin always behaves like the CLI — every on-disk, repo-side effect the CLI
+      produces is required parity, only its terminal UX is cosmetic. config.rs gains its
+      first WRITERS (remove_remote_from_repo_config / rename_remote_in_repo_config, plus
+      existing_repo_config_path and a private trunk_symbol mirroring get_trunk_symbol), built
+      on jj-lib's own toml_edit-backed ConfigFile so comments and formatting survive; no
+      general config-write API, no direct toml_edit dependency, and both edits keyed on the
+      REMOTE name alone. The path is resolved by the same secure_config_path the read side
+      uses and filtered by existence, so read and write agree by construction and NO file is
+      ever created. CLI ordering is exact: resolve before the transaction (a malformed
+      config-id refuses with nothing mutated), rewrite inside mutate::finish_or_no_op's
+      closure after the jj-lib remote mutation and before the conditional commit, so the
+      rewrite runs even when no operation is written and a rewrite failure drops the
+      transaction. A failure is MutateError::Config → jj.config_error (no new code), added to
+      both # Errors blocks, both docs/ffi-abi.md rows, the registry row and both Dart doc
+      lists; one cargo make codegen, doc-comment hunks only. The pinning test was INVERTED
+      (remove_rewrites_the_jj_repo_config_and_the_builtin_trunk_applies_again) and the
+      same-session Repo::eval_revset("trunk()") read-back proves the rewritten file is the
+      one the session reads. config.rs stays at 100.00 % coverage. See
+      _bmad-output/implementation-artifacts/deferred-work.md for the full record.
   - 'No `remotes.<name>.auto-track-bookmarks` support. `GitImportOptions
     .remote_auto_track_bookmarks` stays empty in `git_import`, exactly as `git_fetch`
     (`remotes.rs:209`) and `clone_into` (`repo.rs:936`) already leave it. Porting the CLI''s
