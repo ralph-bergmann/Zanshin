@@ -142,6 +142,15 @@ deferred:
     location: >-
       docs/ffi-abi.md
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-06 by spec-epic-9-followup-g-ffi-abi-doc-pass. `docs/ffi-abi.md` gained
+      a `## Symbol index` covering all 47 exported symbols — `zanshin_bookmark_create` and
+      `zanshin_bookmark_delete` among them, each naming its request table
+      (`BookmarkCreateRequest` / `BookmarkDeleteRequest`), its `MutationResult` payload and
+      its full error-code set — and a `## Request-buffer contract` section that documents the
+      shared pattern once, including the ledger-tracked no-`file_identifier` caveat this
+      story surfaced. `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` keeps the index in sync
+      with the generated header.
 ---
 
 <intent-contract>

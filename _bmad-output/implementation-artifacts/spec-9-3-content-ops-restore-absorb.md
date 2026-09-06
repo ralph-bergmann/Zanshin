@@ -58,6 +58,15 @@ deferred:
     location: >-
       docs/ffi-abi.md
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-06 by spec-epic-9-followup-g-ffi-abi-doc-pass. `docs/ffi-abi.md` gained a
+      `## Request-buffer contract` section documenting the composite-request pattern ONCE
+      (build/ownership/refusal-ladder/interior-NUL/the 15 request tables) and a
+      `## Symbol index` table with a row per exported symbol — all 47, so Story 6.5's six
+      mutation wrappers and 9.3's `zanshin_restore` / `zanshin_absorb` (with
+      `RestoreRequest` / `AbsorbRequest` and the `AbsorbResult` payload) are covered.
+      `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` now fails if a header symbol has no
+      heading or index row, so this cannot recur silently.
   - summary: >-
       A workspace with no working-copy commit surfaces as `jj.jj_lib_error`, although
       `jj.no_working_copy` is registered for exactly that condition.

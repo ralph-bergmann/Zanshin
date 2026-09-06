@@ -87,6 +87,15 @@ deferred:
     location: >-
       docs/ffi-abi.md
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-06 by spec-epic-9-followup-g-ffi-abi-doc-pass. `docs/ffi-abi.md` now
+      carries a `## Symbol index` with one row per exported symbol — 47 of them, so
+      `zanshin_workspace_list` and `zanshin_workspace_root` (with `WorkspaceRootRequest` and
+      the `WorkspaceList` / `WorkspaceRoot` payloads and their three distinct workspace
+      refusals) are covered alongside every verb Stories 9.4–9.6 added — plus a
+      `## Request-buffer contract` section documenting the shared composite-input pattern
+      once. `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` fails the build if the ABI surface
+      grows past the document again.
   - summary: >-
       `WorkspaceEntry.wc_commit_id` is the LAST-SNAPSHOTTED working-copy commit, where the
       CLI's `jj workspace list` snapshots first.

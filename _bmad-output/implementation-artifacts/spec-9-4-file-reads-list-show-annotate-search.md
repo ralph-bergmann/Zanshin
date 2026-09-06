@@ -79,6 +79,16 @@ deferred:
     location: >-
       docs/ffi-abi.md
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-06 by spec-epic-9-followup-g-ffi-abi-doc-pass. The stale
+      `## Exported symbols (Story 3.4c)` heading was replaced by a `## Symbol index` covering
+      all 47 exported symbols — the four `zanshin_file_*` reads included, with their request
+      tables and `FileList` / `FileContents` / `FileAnnotation` / `FileSearch` payloads — plus
+      a new `## Request-buffer contract` section. The `AbsorbSkippedPath` → `SkippedPath`
+      rename turned out to be a NON-issue for this document: neither name ever appeared in
+      `docs/`, so the gap was coverage, not a stale name, and it is closed by
+      `zanshin_absorb`'s row naming the `AbsorbResult` payload.
+      `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` guards the index against re-staling.
   - summary: >-
       `nameOnly` cannot be pinned by any Dart-side assertion.
     evidence: |-
