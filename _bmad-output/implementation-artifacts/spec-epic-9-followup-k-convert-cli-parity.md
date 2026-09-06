@@ -2,7 +2,7 @@
 title: 'Epic 9 follow-up K: make both convert verbs match `jj git init`''s External branch'
 type: 'feature'
 created: '2026-09-06'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '7e799c04073ede02dc6e1820ca853b3568e7aad4'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -262,6 +262,75 @@ Anchors read against the working tree at baseline `7e799c0`.
   alias and `.gitignore` are out of scope as terminal UX.
 
 ## Spec Change Log
+
+### 2026-09-06 — Implementation (commit `2590d7f`)
+
+Where the built change is narrower, wider or shaped differently than the prose above. The
+`<intent-contract>` is unchanged; these are corrections to the Code Map, Tasks and Design
+Notes. Both oracle corrections the Always bullets called out were confirmed against
+`v0.44.0` and shipped as written (no `get_single_remote` guard; `/*` into
+`<workspace_root>/.jj/.gitignore`, colocated only).
+
+- **Four private helpers, not three.** The Tasks list names `init_git_refs`,
+  `maybe_add_gitignore` and `maybe_set_trunk_alias`; the colocated head import needed a
+  fourth, `import_git_head`, because it is the CLI's `cli_util.rs::import_git_head` minus
+  its working-copy half and is called from both verbs. Same shape as `init_git_refs`:
+  one transaction, `has_changes()` early return handing back the UNCHANGED repo, commit.
+- **`convert_colocated` does NOT take the CLI's non-colocated tail, deliberately.** The
+  "Order" bullet reads refs op → `.gitignore` → head op (colocated) → alias → head op
+  (non-colocated), and `import_into` implements all five. `convert_into` implements the
+  first four and stops: it reads `is_colocated` rather than assuming it (a linked git
+  worktree, where `.git` is a gitdir POINTER file, is classified `Git` by `detect_repo` and
+  reaches this far — a documented 2.12 deferral), but in that shape it must still write no
+  working-copy files, because 2.12's D3 promises the colocated verb never does. Running the
+  non-colocated tail there would `check_out` + materialise into the user's linked worktree.
+  So the colocated verb's head import is unconditional and always the reset-free one.
+- **The non-colocated head op's `has_changes()` guard is the COMMIT, not an early return.**
+  Writing `if !has_changes() { return Ok(()) }` before the materialisation step makes the
+  `new_wc_commit == None` arm of that step unreachable — a region no test can execute, and
+  `convert.rs` is baselined at 100.00. The shipped shape binds
+  `let new_repo = if tx.repo().has_changes() { Some(tx.commit("import git head")?) } else
+  { None }` and materialises under `if let (Some(new_repo), Some(wc_commit))`, which is the
+  same behaviour with both arms reachable (the unborn-source rows take the `None` path).
+- **`maybe_set_trunk_alias` collapses the CLI's two nested conditions into one `Option`
+  chain.** The CLI nests `if let Some(reference_name) = reference.target().try_name()`
+  inside `if let Some((GitRefKind::Bookmark, symbol)) = …`. Keeping both nested left the
+  inner false arm (a symbolic `HEAD` that parses as something other than a bookmark — a
+  tag, say) as an unexecutable region. The chain `try_name → from_utf8 → parse_git_ref →
+  matches!(kind, Bookmark)` yields one `Option`, so "no symbolic target" and "not a
+  bookmark" share the arm the direct-ref row exercises. Observable behaviour is identical:
+  either way no alias is written and the loop still stops at that remote.
+- **The alias-write-failure row lives in its own test binary.** Tasks put every new row in
+  `crates/zanshin-jj/tests/convert.rs`, but `config.rs` reads `$XDG_CONFIG_HOME` from the
+  PROCESS environment on every call, and the rest of that file's rows need it pointing at a
+  writable directory. Cargo gives each `tests/*.rs` its own binary, so
+  `crates/zanshin-jj/tests/convert_alias_write_failure.rs` sets a broken
+  `$XDG_CONFIG_HOME` (a regular file at `<xdg>/jj`) hermetically. Mutating it from a
+  `#[test]` sharing a process with the others would be a data race on the environment.
+- **The "No `<config_dir>`" matrix row is a unit row, for the same reason.** It cannot be
+  built from an integration test without unsetting `$HOME` and `$XDG_CONFIG_HOME` for the
+  whole process; `config.rs::create_without_a_config_dir_writes_nothing_and_the_writer_is_a_no_op`
+  covers both the `Ok(None)` resolver arm and `set_trunk_alias(None, …)` instead.
+- **The created file carries jj-lib's own header and quoting.** `ConfigFile::load_or_empty`
+  stamps a document it had to invent with `#:schema https://docs.jj-vcs.dev/latest/config-schema.json`
+  and re-emits the alias key double-quoted (`"trunk()" = "main@origin"`), not in the
+  `'trunk()'` spelling the shipped repo-config fixtures use. Both are jj-lib's, so
+  `jj git init` produces the same bytes; the tests pin the whole string.
+- **`create_repo_config_file` maps rather than matches its `Option`.** The Tasks sketch
+  implies a `let … else` around `loaded.config_file`; `load_config` always fills it, so that
+  arm would be unexecutable. `.map(…).transpose()` — the shape the CLI's own
+  `new_repo_config_file` uses — has no dead branch.
+- **The FFI rustdoc must not contain the literal `/*`.** cbindgen copies it verbatim into
+  the C header, where it is a `'/*' within block comment` warning, and ffigen refuses to
+  generate bindings from a header with warnings. `zanshin_repo_convert`'s doc therefore
+  describes the `.jj/.gitignore` in words instead of quoting its contents. The generated
+  diff is doc-comment-only in both `zanshin_ffi.h` and `bindings.dart` — no signature drift,
+  so the `unexpected codegen drift` block-if did not fire.
+- **`write_error`'s rustdoc was widened, not rewritten.** It claimed both of its
+  instantiations were unreachable-by-construction because the two remote writers rule the
+  failure out with `as_str()`. There are now four call sites and two reachable
+  instantiations (`ConfigFileSaveError` via the unwritable-file rows, `SecureConfigError`
+  via the uncreatable-root row); the note names them.
 
 ## Review Triage Log
 
