@@ -2,13 +2,31 @@
 title: 'Epic 9 follow-up J: port the repo-config rewrite on `git remote remove`/`rename`'
 type: 'feature'
 created: '2026-09-06'
-status: 'in-review'
+status: 'done'
 baseline_revision: '70c6018572d3acbc5371292e2a6631d1755e2a76'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `Repo::clone_into` writes none of the repo-level presets the CLI's `jj git clone` writes,
+      so a Zanshin-cloned repo has a different `trunk()` default than a CLI-cloned one.
+    evidence: |-
+      `cli/src/commands/git/clone.rs:289-296` @ v0.44.0 calls `write_repo_presets`, the third
+      member of the same helper family as the two ported here (`cli/src/commands/git/mod.rs:151-190`):
+      it writes `[remotes.<name>].fetch-bookmarks`/`fetch-tags` and
+      `revset-aliases.'trunk()' = <default-branch>@<remote>` into the repo-level file through the
+      same `ConfigFile` API. `grep write_repo_presets` over `crates/`, `docs/` and `_bmad-output/`
+      has zero hits, so the omission is neither tested nor recorded as a divergence. Follow-up J
+      ports remove/rename only, so the two verbs now MAINTAIN presets Zanshin itself never creates,
+      and the "the rewrite finds what the clone wrote" round trip is never closed. Surfaced by this
+      run's review; not caused by it — but Ralph's rule (on-disk CLI side effects are required
+      parity) makes it a must-have rather than an accepted divergence. Belongs with the clone/init
+      verbs (Story 9.20 territory), not with the remote-config verbs.
+    location: >-
+      crates/zanshin-jj/src/repo.rs::Repo::clone_into
+    severity: medium
 ---
 
 <intent-contract>
@@ -269,6 +287,66 @@ Notes.
 
 ## Review Triage Log
 
+### 2026-09-06 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 16: (high 0, medium 4, low 12)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 11: (high 0, medium 2, low 9)
+- addressed_findings:
+  - `[medium]` `[patch]` The repo config was LOADED inside the transaction closure, so an
+    unreadable/unparseable file or a malformed `config-id` refused only AFTER jj-lib had already
+    rewritten the git config — the CLI, whose repo layer is parsed at process start, refuses before
+    touching anything. The load was hoisted before `finish_or_no_op` (`config.rs::existing_repo_config_file`
+    now returns a loaded `Option<ConfigFile>`); only a `save()` failure can still abort a transaction
+    late, which is the CLI's own shape. Routed `patch`, not `bad_spec`: the fix is one call moved
+    earlier plus two test contracts, with no ripple through the design, and the correction is recorded
+    in the Spec Change Log.
+  - `[medium]` `[patch]` `ConfigFile::load_or_empty` answers a missing file with an EMPTY document
+    and the writers `save()` unconditionally, so a file deleted between the `.exists()` filter and
+    the load would have been CREATED — the one thing the ported helpers must never do. The same hoist
+    makes the filter and the load one step.
+  - `[medium]` `[patch]` The reserved remote `git` — the case three doc layers cite as the reason the
+    rewrite sits before the `has_changes()` guard — was never tested with a repo config present.
+    Both reserved-remote rows now carry `[remotes.git]` + `'trunk()' = 'main@git'` and assert the
+    rewrite happened while `new_op_id` is unchanged.
+  - `[medium]` `[patch]` Every row reached the file through the legacy `.jj/repo/config.toml`
+    fallback, which ignores `root_config_dir` entirely, so the canonical
+    `<config_dir>/jj/repos/<config-id>/config.toml` branch was unpinned (swapping `repos` for
+    `workspaces` broke no test). The suite now pins `$XDG_CONFIG_HOME` to a process-lifetime temp dir
+    (also making it hermetic, as project-context.md requires) and adds a row through the canonical
+    layout, asserting the legacy file is neither read nor written.
+  - `[low]` `[patch]` `zanshin_git_remote_rename` advertised `jj.config_error` with no witness at any
+    layer, though it takes the `set_value` arm rather than `remove`'s `delete_value`; a verb-level and
+    an FFI refusal row were added.
+  - `[low]` `[patch]` The rename rows asserted `contains("upstream")`, which the re-pointed alias
+    alone satisfies — the `[remotes.<old>]` → `[remotes.<new>]` move could have been dropped without
+    failing. The moved section and the vanished old name are now asserted explicitly.
+  - `[low]` `[patch]` The rename rows hedged across quotings (`"main@upstream"` OR `'main@upstream'`),
+    pinning nothing; the exact emitted line is asserted now.
+  - `[low]` `[patch]` "Comments and unrelated keys survive byte-for-byte" was asserted with fragment
+    `contains` checks after an edit; it is a whole-file `assert_eq!` now.
+  - `[low]` `[patch]` `docs/rust-error-codes.md` still called `zanshin_git_import` "the only one of
+    the six git verbs that reads config" and described `jj.config_error` as a READ failure only.
+  - `[low]` `[patch]` `ConfigError` / `ConfigError::Load` rustdoc still said "errors from reading".
+  - `[low]` `[patch]` "so the builtin `trunk()` applies again" was asserted unconditionally at four
+    layers, but the writers touch the REPO layer only — a `trunk()` in the workspace or user layer
+    still wins; qualified everywhere.
+  - `[low]` `[patch]` The resolver silently yields `Ok(None)` when no `<config_dir>` can be
+    determined, making the whole rewrite vanish; documented, together with why read and write stay
+    consistent (the read side skips the repo layer under the same condition).
+  - `[low]` `[patch]` `reload_after_config_write`'s doc claimed every caller had rewritten the git
+    config; after the hoist a pre-transaction refusal reaches it having written nothing.
+  - `[low]` `[patch]` The ledger resolution overclaimed on two points — `ffi_abi_doc_sync.rs` checks
+    rustdoc against `docs/ffi-abi.md` only (nothing machine-checks the Dart lists) and `set_value`
+    re-emits the alias value, so the user's quoting is not preserved byte-for-byte — and its ordering
+    sentence needed restating after the hoist.
+  - `[low]` `[patch]` Ralph's rule was recorded only as narrative. `_bmad-output/project-context.md`'s
+    "NEVER diverge from the jj CLI's observable behavior" anti-pattern now says observable behaviour
+    includes every on-disk, repo-side effect, and the ledger carries the forward prohibition.
+  - `[low]` `[patch]` `docs/ffi-abi.md`'s general `jj.config_error` blurb described reads only.
+
 ## Design Notes
 
 **Why inside the transaction closure.** `mutate::finish_or_no_op` runs its closure between
@@ -325,3 +403,109 @@ diverging here would mean auditing when a save is "needed" — more code for les
 - The two bookkeeping files parse: the ledger bullet is struck through with a resolution line, and
   `spec-9-5-…`'s frontmatter still loads as YAML with the first `deferred:` item carrying
   `summary:`/`evidence:`/`resolved:`.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+`jj git remote remove`/`rename` now rewrite the repo-level jj config the way the CLI does, closing
+the last must-have of `deferred-work.md`'s Story 9.5 git-sync group. `crates/zanshin-jj/src/config.rs`
+— until now deliberately read-only — gains the crate's only config WRITERS: exactly the CLI's two
+edits (`[remotes.<name>]` dropped or moved; a `revset-aliases.'trunk()'` that is a plain remote
+symbol naming that remote deleted or re-pointed), keyed on the remote name alone, built on jj-lib's
+own `toml_edit`-backed `ConfigFile` so comments, key order and unrelated keys survive. The file is
+resolved by the same `secure_config_path` the READ side uses — canonical
+`<config_dir>/jj/repos/<config-id>/config.toml`, legacy `.jj/repo/config.toml` as fallback — and
+loaded BEFORE the transaction opens, so read and write address one file by construction and every
+read-side fault refuses with nothing mutated at all, exactly as the CLI (whose repo layer is parsed
+at process start) does. The rewrite itself runs inside `mutate::finish_or_no_op`'s closure, after
+the jj-lib remote mutation and before the conditional commit, so it happens even when NO operation
+is written (the reserved remote `git`), and a `save()` failure aborts the transaction while jj-lib's
+git-config edit stands — the CLI's own shape. With no repo-level file the rewrite is a no-op that
+creates nothing. The two `ui.status` lines are terminal UX and are not ported; the effect they
+announce is. A rewrite failure is `MutateError::Config` → `jj.config_error`; no new error code, no
+`.fbs` edit, no new `extern "C"` symbol, no new dependency, no signature change at any layer.
+
+### Files changed
+
+- `crates/zanshin-jj/src/config.rs` — the two writers, `existing_repo_config_file` (resolve + load,
+  one step), the private `trunk_symbol` mirroring the CLI's `get_trunk_symbol`, the generic
+  `write_error`, the revised module contract, and 11 inline rows covering the file-shape matrix.
+- `crates/zanshin-jj/src/git.rs` — both verbs load the repo config before the transaction and rewrite
+  it inside the closure; the module doc's "No jj repo-config rewrite" divergence bullet became a
+  section describing the ported behaviour.
+- `crates/zanshin-jj/src/repo.rs` — both facades' divergence paragraphs replaced, `MutateError::Config`
+  added to their `# Errors`, `reload_after_config_write`'s doc widened for callers that wrote nothing.
+- `crates/zanshin-jj/tests/git_remotes.rs` — `remove_does_not_edit_the_jj_repo_config` inverted, plus
+  the rename twin, the survivors, create-nothing, both refusal orderings, the two reserved-`git` rows
+  extended, the canonical-`config-id` row, and a hermetic `$XDG_CONFIG_HOME` pin.
+- `crates/zanshin-ffi/src/git.rs` + `include/zanshin_ffi.h` — the two wrappers' divergence sentences
+  rewritten and `jj.config_error` added to their `# Errors` (one `cargo make codegen`).
+- `crates/zanshin-ffi/tests/git_ffi.rs` — the rewrite across the boundary, `jj.config_error` for both
+  remote verbs, and the corrected "only one of the six reads config" comment.
+- `packages/zanshin_core/lib/src/worker/handle.dart` + `ffi/bindings.dart` — the two doc paragraphs
+  and both error-code lists.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — the two symbol rows, the general `jj.config_error`
+  blurb, and the registry row (these two verbs are its first emitters that also WRITE config).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — ledger item struck through and resolved;
+  one new deferral recorded.
+- `_bmad-output/implementation-artifacts/spec-9-5-git-local-sync-remote-config.md` — the matching
+  `deferred:` item converted to the `summary:`/`evidence:`/`resolved:` shape.
+- `_bmad-output/project-context.md` — the CLI-parity anti-pattern now says observable behaviour
+  includes every on-disk, repo-side effect (Ralph's rule, made binding for future stories).
+
+### Review findings breakdown
+
+- Patches applied: 16 (high 0, medium 4, low 12) — see the Review Triage Log for each.
+- Items deferred: 1 (medium) — `Repo::clone_into` writes none of the CLI's repo-level clone presets;
+  recorded in the spec frontmatter and in the central ledger under this run's own section.
+- Items rejected: 11 — chiefly Story 9.5's still-standing "No jj repo-config rewrite" bullet (it
+  lives inside that spec's immutable `<intent-contract>`; the `resolved:` frontmatter block is the
+  sanctioned record), the unconditional `save()` and the empty `[remotes]`/`[revset-aliases]` tables
+  it can leave behind (both CLI parity), a guard against overwriting an existing `[remotes.<new>]` on
+  rename (the CLI overwrites too, and jj-lib refuses the rename first anyway), `fs::write`
+  atomicity/concurrency (jj-lib's own behaviour, shared with the CLI), `trunk_symbol` returning
+  `(String, String)` instead of `RemoteRefSymbolBuf` (cosmetic), `write_error` resembling
+  `value_error` (different receiver, both needed), the chmod-0444 row failing under root (the suite
+  never runs as root), historical references to the renamed test inside struck-through ledger text,
+  and the FFI suite's remaining `$HOME` dependence (pre-existing across every suite).
+- Follow-up review recommended: **true**. Patched severities: high 0, medium 4, low 12; score
+  = 3 × 4 + 1 × 12 = 24, at or above the threshold of 5.
+
+### Verification performed
+
+- `cargo make codegen` — run twice (once per commit round); the second run produced no diff at all,
+  and the first's `zanshin_ffi.h` / `bindings.dart` diff is doc-comment hunks only: no `extern "C"`
+  parameter type, name or order changed.
+- `cargo make test` — exit 0, run unpiped and synchronously by this session after the review patches
+  (434 s): cargo tests, clippy pedantic `-D warnings`, rustfmt, `flutter test`, `dart analyze`/`format`,
+  `cargo deny`, `extern-coverage` OK, and the coverage ratchet green at 99.24 % with
+  `coverage-baseline.txt` unchanged (`crates/zanshin-jj/src/config.rs` still 100.00).
+- Matrix audit: every I/O-matrix row has a covering test that ran and passed — verified by name in the
+  gate log (`remove_rewrites_…`, `rename_moves_…`, `an_alias_naming_another_remote_…`,
+  `a_trunk_alias_that_is_not_a_plain_remote_symbol_…`, `without_a_repo_config_file_…`,
+  `comments_and_unrelated_keys_survive_the_rewrite`, `the_canonical_config_id_addressed_file_is_the_one_rewritten`,
+  `a_malformed_config_id_refuses_before_anything_is_mutated`,
+  `an_unparseable_repo_config_refuses_before_anything_is_mutated` (+ the rename twin and the two FFI
+  rows), `an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit`, and the
+  pre-existing missing-remote / reserved-`git` rows).
+- Bookkeeping parsed: both edited specs' frontmatter loads as YAML; 9.5's first `deferred:` item now
+  carries `summary:`/`evidence:`/`resolved:` and this spec's `deferred:` list holds the one new item.
+
+### Residual risks
+
+- **The exists→load race is narrowed, not eliminated.** If the repo config file is deleted between
+  the `.exists()` filter and `ConfigFile::load_or_empty` (adjacent statements now), `load_or_empty`
+  still yields an empty document and the unconditional `save()` recreates the file. Closing it fully
+  would mean dropping the CLI's unconditional `save()`, which the intent contract pins.
+- **Only the repo LAYER is rewritten.** A `trunk()` defined in the workspace or user layer still wins
+  after a remove; the docs now say so, and the suite only sees the builtin because it pins
+  `JJ_CONFIG=""`.
+- **`an_unwritable_repo_config_…` relies on `chmod 0o444`** and would not provoke a failure if the
+  suite ever ran as root.
+- **The FFI suite is not hermetic on `$XDG_CONFIG_HOME`** (only `git_remotes.rs` is): its config rows
+  all take the legacy fallback, so they still depend on the developer's `$HOME` yielding *some*
+  `<config_dir>`. Pre-existing and shared with every other suite; judged noise rather than a deferral.

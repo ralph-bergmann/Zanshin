@@ -767,7 +767,7 @@ copied once into Dart — windowing is deferred past WIP.
 | `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation). The only `short_prefixes` failure that surfaces as an error code. Reason in `context`. |
 | `jj.revset_resolution_error` | `revset` or `prioritize` names a symbol that cannot be resolved; reason in `context`. NOT raised for `short_prefixes` (it warns and degrades — see above). |
 | `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
-| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value (Story 4.9); the file path or config key in `context`. A single bad `[revset-aliases]` entry does NOT produce this — it warns and is skipped. |
+| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value (Story 4.9) — or, for `zanshin_git_remote_remove`/`_rename`, the repo-level file could not be WRITTEN back (Epic 9 follow-up J); the file path or config key in `context`. A single bad `[revset-aliases]` entry does NOT produce this — it warns and is skipped. |
 | `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
 
 An error envelope never carries partial rows.
