@@ -983,6 +983,9 @@ impl Repo {
     /// in RAW REVSET order, the same order the unbounded call returns, and BEFORE that per-entry
     /// work, so nothing past the limit is computed. `Some(0)` is an empty result, not an error,
     /// and `None` is the CLI-parity default: unbounded, byte-identical to the pre-`limit` output.
+    /// Not computing those entries also means not FAILING on them: a revset whose later commits
+    /// are unreadable succeeds under a limit that stops short of them and errors without one —
+    /// the price of the early stop, and the same property [`Repo::evolog`]'s limit has always had.
     ///
     /// # Errors
     ///

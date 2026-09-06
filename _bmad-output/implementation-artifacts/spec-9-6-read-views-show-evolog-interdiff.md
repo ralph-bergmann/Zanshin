@@ -42,6 +42,34 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit_views.rs::show
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-f-show-limit-and-interdiff-conflicts, commit
+      d592215). ShowRequest
+      gains `limit`, modelled field-for-field on EvologRequest.limit at every layer: the presence
+      PAIR `limit: uint; has_limit: bool;` (flatc 25.12.19 rejects optional scalars for Dart, and
+      `limit = 0` is a MEANINGFUL empty result, so absence cannot be encoded as zero),
+      Option<usize> in Rust, and a Dart adapter that SATURATES at 0xFFFFFFFF and refuses a
+      negative limit with ArgumentError on both the calling side (ZanshinWorker.show) and in the
+      adapter. Neither alternative in the ledger's "or" was taken - no cursor, and no GUI-side
+      revset cap; `limit` is the whole mechanism. Absence stays the CLI-parity default
+      (unbounded, byte-identical to the pre-change output), because `jj show` has no `-n/--limit`
+      - documented as a Zanshin-side addition at every layer, which is what keeps NFR-R-2 and
+      FR-JJ-17 satisfied. The early stop is `.take(limit.unwrap_or(usize::MAX))` on the COMMIT
+      STREAM, before the loop body, so parent_tree / copy_records_over_all_parents /
+      tree_file_changes / change_from_commit are never reached past the limit; the limit applies
+      in RAW REVSET order, the same order the unbounded call returns. "Does not compute the rest"
+      is a STRUCTURAL property no behavioural test can observe - a skipped entry leaves no trace
+      in the result - so the perf witness this item asked for is
+      crates/zanshin-jj/benches/show_limit.rs (harness = false, printing only, asserting NOTHING
+      about wall-clock; benches are outside `cargo make test` and outside coverage, while
+      `clippy --all-targets` still compiles them). It measures 1002 entries at 452 ms unbounded
+      vs 345 us at limit=1, 1.6 ms at 10 and 17.5 ms at 100 - linear in the limit, so the early
+      stop is real. Behavioural witnesses at all three layers: commit_views.rs's
+      show_applies_the_limit_in_raw_revset_order_and_is_unbounded_when_absent (first-n-of-
+      unbounded on a parent-to-child range, above-set-size, zero, empty revset, absent-unchanged),
+      commit_views_ffi.rs's show_distinguishes_an_absent_limit_from_an_explicit_zero (the presence
+      pair across the buffer, plus that limit=1 keeps the CHILD), and the Dart worker row
+      show_honours_an_explicit_zero_limit_and_saturates_an_over_large_one through the real cdylib.
   - summary: >-
       `InterdiffView` carries no signal that the rebase behind it left conflict states in the
       computed base tree.
@@ -56,6 +84,35 @@ deferred:
     location: >-
       schemas/envelope.fbs::InterdiffView
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-f-show-limit-and-interdiff-conflicts, commit
+      d592215).
+      InterdiffView gains `base_has_conflicts: bool` - a PRESENCE FLAG, not a conflicts() path
+      list: the conflicted tree is a transient in-memory artefact a caller cannot resolve, only
+      distrust, and a per-path channel belongs with Epic 5's hunk payload, where the CLI's own
+      signal (conflict markers in the patch text) lands. It is derived by
+      MergedTree::has_conflict(), literally the same !...is_resolved() predicate
+      Commit::has_conflict() gives Change.conflict (jj-lib-0.44.0 merged_tree.rs:211-213 /
+      commit.rs:167-169), so the two payloads agree; it returns a plain bool, so no jj_lib type
+      reaches a public signature. The flag is about the LEFT side only - the REBASED `from` tree -
+      and is true whatever the cause: the 3-way merge left the conflict, OR the fast path
+      (rewrite.rs:456-460, same parents) returned `from`'s own already-conflicted tree. It
+      describes the TREE, not the filtered result, so a `paths` filter matching nothing still
+      leaves it set, and it never turns the call into a refusal. Because the payload stopped
+      being a bare list, `interdiff` now returns a pub struct zanshin_jj::InterdiffView
+      { file_changes, base_has_conflicts } (the FileSearch pattern from follow-up E), threaded
+      through Repo::interdiff, the FFI writer, a new Dart InterdiffView model and both worker
+      seams. The conflicting rebase this item said no test constructs is now built in-test from
+      add_commit_with_files alone - two parents that already differ at f.txt, one child of each
+      editing it differently, so the merge's base is from.parent_tree() and BOTH sides changed
+      it; add_conflicted_merge_off_root could NOT stand in, because it builds a conflicted merge
+      COMMIT rather than a conflict the rebase produces. Both arms are witnessed:
+      commit_views.rs's interdiff_reports_a_conflicted_rebase_base_without_refusing and
+      commit_views_ffi.rs's interdiff_round_trip_flags_a_conflicted_rebase_base (each also
+      pinning the unmatched-filter case), the three existing clean rows carry the `false` pole,
+      and the writer unit test walks both bool arms. The Dart `true` arm is decode-contract-only
+      by necessity - no verb reachable from Dart writes committed file content (D2), the scope
+      note that suite already carries.
   - summary: >-
       A workspace with no working-copy commit still surfaces as `jj.jj_lib_error` instead of
       the registered `jj.no_working_copy`; `interdiff`'s `@` default widens the reach.

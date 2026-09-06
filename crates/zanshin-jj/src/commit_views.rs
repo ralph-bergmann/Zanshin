@@ -289,7 +289,10 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 /// per-parent copy-record stream. `None` is therefore the CLI-parity default — unbounded, and
 /// byte-identical to the pre-`limit` output. It is `take(n)` applied in RAW REVSET order (the
 /// same order the unbounded call returns) BEFORE the per-entry work, so nothing beyond the limit
-/// is computed; `Some(0)` is an empty result, not an error.
+/// is computed; `Some(0)` is an empty result, not an error. Not computing them also means not
+/// FAILING on them: a revset whose later commits are unreadable succeeds under a limit that stops
+/// short of them and errors without one. That is the price of the early stop, and [`evolog`]'s
+/// `take` has carried the same property since Story 9.6.
 ///
 /// # Errors
 ///
@@ -451,9 +454,11 @@ pub(crate) fn interdiff(
             jj_lib::rewrite::rebase_to_dest_parent(repo_dyn, std::slice::from_ref(&from_commit), &to_commit)
                 .await
                 .map_err(be)?;
-        // Read BEFORE the diff: the flag describes the rebased TREE, so a `paths` filter that
-        // narrows the change list must not narrow it. `MergedTree::has_conflict()` is the same
-        // `!…is_resolved()` predicate `Change.conflict` uses (`commit.rs:167-169`).
+        // `MergedTree::has_conflict()` is the same `!…is_resolved()` predicate
+        // `Commit::has_conflict()` gives `Change.conflict` (`jj-lib-0.44.0 commit.rs:167-169`).
+        // It takes NO matcher, so the flag is independent of `paths` by CONSTRUCTION — a filter
+        // that empties the change list cannot empty it, whatever the read order. Read here
+        // because this is where the tree it describes is in scope.
         let base_has_conflicts = from_tree.has_conflict();
         let to_tree = to_commit.tree();
         // `CopyRecords::default()` — `show_inter_diff` passes no copy records (diff_util.rs:650).

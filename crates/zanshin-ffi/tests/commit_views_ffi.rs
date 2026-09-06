@@ -117,14 +117,22 @@ fn show_request_bytes(revset: Option<&str>) -> Vec<u8> {
 /// A `ShowRequest` buffer carrying the presence-flag pair, so `Some(0)` and `None` are DIFFERENT
 /// requests — the reader must not collapse them.
 fn show_request_bytes_with_limit(revset: Option<&str>, limit: Option<u32>) -> Vec<u8> {
+    show_request_bytes_raw(revset, limit.unwrap_or(0), limit.is_some())
+}
+
+/// A `ShowRequest` buffer whose two limit fields are set INDEPENDENTLY, so a test can build the
+/// one combination no honest caller produces: `has_limit == false` with a non-zero `limit`. That
+/// is the case the schema's "0 / ignored when `has_limit` == false" comment exists for, and the
+/// only way to prove the reader keys off the FLAG rather than off a zero sentinel.
+fn show_request_bytes_raw(revset: Option<&str>, limit: u32, has_limit: bool) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let revset_off = revset.map(|s| b.create_string(s));
     let req = fbs::ShowRequest::create(
         &mut b,
         &fbs::ShowRequestArgs {
             revset: revset_off,
-            limit: limit.unwrap_or(0),
-            has_limit: limit.is_some(),
+            limit,
+            has_limit,
         },
     );
     b.finish(req, None);
@@ -320,6 +328,25 @@ fn show_distinguishes_an_absent_limit_from_an_explicit_zero() {
             );
         }
     }
+
+    // The FLAG is what decides, not a zero sentinel: `has_limit = false` with a NON-ZERO
+    // `limit` — the combination the schema's "0 / ignored when has_limit == false" comment
+    // exists for — must read as unbounded, not as `limit = 1`.
+    let req = show_request_bytes_raw(Some(&range), 1, false);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_show(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token the call just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "an ignored limit field must not fail the call");
+    assert_eq!(
+        env.data_as_show_view()
+            .expect("ShowView payload")
+            .entries()
+            .map_or(0, |e| e.len()),
+        2,
+        "a non-zero `limit` with `has_limit = false` is IGNORED, not applied"
+    );
 
     close_handle(handle);
 }

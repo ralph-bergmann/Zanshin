@@ -165,7 +165,8 @@ void main() {
       // trivially empty — which is exactly the empty-payload decode path.
       final InterdiffView view = await handle.interdiff(from: status.workingCopyChangeId);
       expect(view.fileChanges, isEmpty);
-      // The fast path returns `@`'s own (clean) tree, so nothing is conflicted. This
+      // The fast path returns `from`'s own tree — here `@`, which is clean — so
+      // nothing is conflicted. This
       // is the `false` arm reaching Dart through the REAL cdylib; the `true` arm needs
       // committed trees, which no verb reachable from Dart can write (see the scope
       // note above), so it lives in the two Rust suites.

@@ -12,7 +12,9 @@
 //!
 //! It asserts NOTHING about wall-clock. Perf-budget enforcement is deferred to the release phase
 //! (project-context § "Performance assertions"), and a timing assertion here would be exactly
-//! the flaky test the project bans `#[ignore]` as a workaround for.
+//! the flaky test the project bans `#[ignore]` as a workaround for. It DOES assert the entry
+//! COUNTS, which cannot be flaky: without them a `take` that stopped bounding the walk would
+//! print faster numbers and read as a success — the opposite of a witness.
 //!
 //! It is NOT run by `cargo make test` / coverage (benches are excluded; see docs/coverage.md),
 //! but `cargo clippy --workspace --all-targets` DOES compile it. Run it on demand, optimised:
@@ -37,15 +39,29 @@ fn main() {
     let fixture = extract_fixture(FIXTURE).expect("fixture must extract");
     let repo = Repo::open(&fixture.path).expect("fixture must open");
 
+    // This run doubles as the warmup, so the expensive unbounded case is not paid one extra
+    // time purely to print a count.
     let total = repo.show(Some("all()"), None).expect("show must succeed").len();
-    let (full_min, full_med) = measure(1, 3, || {
-        std::hint::black_box(repo.show(Some("all()"), None).expect("show must succeed"));
+    let (full_min, full_med) = measure(0, 3, || {
+        let entries = repo.show(Some("all()"), None).expect("show must succeed");
+        assert_eq!(entries.len(), total, "the unbounded entry count must be stable");
+        std::hint::black_box(entries);
     });
     eprintln!("[show {FIXTURE}] entries={total} | unbounded: min {full_min:?} / med {full_med:?}");
 
     for limit in LIMITS {
         let (min, med) = measure(2, 7, || {
-            std::hint::black_box(repo.show(Some("all()"), Some(limit)).expect("show must succeed"));
+            let entries = repo.show(Some("all()"), Some(limit)).expect("show must succeed");
+            // NOT a timing assertion — those are the flaky kind this file exists to avoid.
+            // A `take` that silently stopped bounding the walk would print FASTER numbers and
+            // read as a SUCCESS, so the witness has to pin the shape of the answer as well as
+            // print its cost.
+            assert_eq!(
+                entries.len(),
+                limit.min(total),
+                "limit={limit} must bound the entry count"
+            );
+            std::hint::black_box(entries);
         });
         eprintln!("[show {FIXTURE}] limit={limit}: min {min:?} / med {med:?}");
     }

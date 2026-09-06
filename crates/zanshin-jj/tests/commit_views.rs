@@ -906,7 +906,7 @@ fn interdiff_of_a_revision_against_itself_is_empty() {
     );
     assert!(
         !view.base_has_conflicts,
-        "the fast path returns `to`'s own clean tree, so nothing is conflicted"
+        "the fast path returns `from`'s own tree — here the same clean commit as `to`"
     );
 }
 
@@ -1051,6 +1051,13 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
         view.base_has_conflicts,
         "the 3-way merge could not resolve f.txt, got {view:?}"
     );
+    // The COMPARISON must survive too, not just the flag: a regression that reported the
+    // conflict and threw the change list away would otherwise pass this test.
+    assert_eq!(
+        summary(&view.file_changes),
+        vec![("f.txt".to_owned(), "M")],
+        "the diff against `to`'s tree is still reported alongside the flag"
+    );
 
     // The flag is about the TREE, not the filtered result: narrowing to a path that matches
     // nothing empties `file_changes` and must leave the flag alone.
@@ -1063,6 +1070,44 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
         "the flag describes the rebased tree, not the filtered change list"
     );
 
+    assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
+}
+
+/// The SECOND documented cause of `base_has_conflicts`: the rebase's FAST PATH.
+///
+/// `rebase_to_dest_parent` returns `source.tree()` verbatim when the single source already has
+/// the destination's parents (`jj-lib rewrite.rs:456-460`), so no merge runs at all — the flag
+/// then reports whether `from`'s OWN tree was already conflicted. Both `base_has_conflicts`
+/// docs enumerate this arm beside the 3-way-merge one, and without this row a derivation that
+/// only looked at merge results (say, computing the flag inside the non-fast-path branch) would
+/// leave the whole class of same-parent comparisons silently unflagged while every other test
+/// still passed.
+///
+/// A conflicted MERGE commit interdiffed against itself is the cheapest way there: identical
+/// parents force the fast path, and identical trees make the change list empty — so the flag is
+/// the ONLY thing distinguishing this from the clean self-comparison two tests above.
+#[test]
+fn interdiff_flags_a_conflicted_base_reached_through_the_rebase_fast_path() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let merge_hex = add_conflicted_merge_off_root(&fx.path);
+    let merge = change_id_of(&fx.path, &merge_hex);
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    let view = repo
+        .interdiff(Some(merge.clone()), Some(merge), &[])
+        .expect("a conflicted base is not a refusal on the fast path either");
+
+    assert!(
+        view.file_changes.is_empty(),
+        "identical trees produce no entries: {:?}",
+        view.file_changes
+    );
+    assert!(
+        view.base_has_conflicts,
+        "the fast path handed back `from`'s own CONFLICTED tree, got {view:?}"
+    );
     assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
 }
 
