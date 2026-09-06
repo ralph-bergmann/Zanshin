@@ -6,6 +6,7 @@
 /// rather than reaching into `src/` directly. Internal files stay under `src/`.
 library;
 
+export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;

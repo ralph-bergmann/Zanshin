@@ -27,6 +27,38 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit_views.rs::interdiff
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-06 (spec-epic-9-followup-i-interdiff-revision-ref, commit `d427eee`).
+      `interdiff`'s two
+      sides became a commit-id-or-change-id UNION - the first of the two options the ledger
+      offered, scoped to this ONE verb (Ralph's call); `evolog` gains no `--patch`, and `show`,
+      `evolog` and every other verb keep their currency untouched. `schemas/envelope.fbs` grows
+      `table ChangeIdRef`, `table CommitIdRef` and `union RevisionRef`, and
+      `InterdiffRequest.from`/`.to` change from `string` to `RevisionRef` in place (a WIP edit:
+      one `cargo make codegen`, all four committed outputs in one commit); `zanshin-jj` grows a
+      jj_lib-type-free `pub enum RevisionRef { ChangeId(ChangeId), CommitId(CommitId) }` threaded
+      through `Repo::interdiff`, the FFI reader, the Dart adapter, `InterdiffCommand`,
+      `ZanshinWorker` and `RepoHandle`. The change-id arm resolves EXACTLY as before
+      (`op_support::resolve_commit`, `into_visible()`, divergence refused), so the same commit hex
+      offered as a `ChangeIdRef` is still `jj.change_not_found` - pinned in all three suites. The
+      commit arm is a new `op_support::resolve_commit_id_prefix` calling
+      `repo.index().resolve_commit_id_prefix`, which is visibility-BLIND, so an
+      `EvologEntry.predecessor_commit_ids` entry resolves and the two verbs compose into a
+      version-to-version diff. The CLI's `IdPrefixContext` was deliberately NOT adopted: it
+      consults `revsets.short-prefixes` and falls back to exactly this index lookup, so it would
+      buy only a prefix ambiguous repo-wide but unique inside `revsets.log`, at the price of a
+      config read plus a revset parse per call - failure modes `interdiff` does not have - and its
+      default set holds only VISIBLE commits anyway. No new error code, no new `extern "C"` symbol
+      and no new `RequestKind` variant: the commit arm's three refusals map onto
+      `jj.invalid_input` (empty/non-hex), `jj.revset_resolution_error` (ambiguous prefix, with
+      jj-lib's own wording in `context`) and `jj.change_not_found` (valid hex, no match), and the
+      two ref tables are nested union members rather than request roots, so the schema still
+      declares 15 request tables and EXPECTED_EXPORTS stays 47. Witnessed at all three layers with
+      a change rewritten by a new `test-helpers::rewrite_commit_files` (the `describe_commit`
+      twin: a description-only rewrite leaves both versions sharing one tree, so its interdiff is
+      empty whichever commit the resolver picked), plus a DETERMINISTIC ambiguous-prefix fixture
+      (17 commits must collide on their first hex digit by pigeonhole) and the three malformed
+      union shapes.
   - summary: >-
       `show` returns an unbounded entry list in one envelope, with a per-parent copy-record
       stream and a full tree diff per entry.

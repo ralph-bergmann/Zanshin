@@ -490,7 +490,8 @@ fn workspace_root_refuses_a_buffer_built_for_another_verb() {
 
     let foreign = tagged_request_bytes(fbs::RequestKind::BookmarkDelete);
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
-    // A POPULATED `ShowRequest` — the ledger's own four-way collision names this table beside
+    // A POPULATED `ShowRequest` — the ledger's own one-string collision (four-way until Epic 9
+    // follow-up I dropped interdiff out of it, three-way since) names this table beside
     // `WorkspaceRootRequest`, and a real one carrying a revset verifies here as a `name`.
     let show_req = show_request_bytes("@");
 

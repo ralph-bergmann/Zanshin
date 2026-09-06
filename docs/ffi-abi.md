@@ -154,10 +154,10 @@ call). Five distinct refusals sit at five distinct layers:
 | 4 | a required field is ABSENT from an otherwise valid table | `jj.invalid_input` | the field name |
 | 5 | `session_from_handle(handle)` — the handle is `0` or the borrow yields `None` | `ffi.invalid_handle` | **absent** |
 
-Row 4 is the *reader's* own required-field guard, which only four readers have
+Row 4 is the *reader's* own required-field guard, which only five readers have
 (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
-and `url`, `interdiff`'s `from.id` / `to.id` — the `id` inside a present
-`RevisionRef` union arm). `interdiff`'s "at least one of from or to" refusal is
+and `url`, `git remote set-url`'s `name`, `interdiff`'s `from.id` / `to.id` — the
+`id` inside a present `RevisionRef` union arm). `interdiff`'s "at least one of from or to" refusal is
 *not* row 4: an absent side is a legal value there, and the pair is judged by the
 jj layer after row 5. Refusals raised further in — an empty `names` vector, an
 unparseable pattern, a malformed commit-id prefix — likewise come from the jj

@@ -1204,6 +1204,53 @@ fn interdiff_diffs_an_evolog_predecessor_against_the_current_version() {
     assert_eq!(head_op_id(&repo), before, "neither call writes an operation");
 }
 
+/// BOTH sides hidden — the shape only the commit-id arm can express at all.
+///
+/// The composition test above pairs a hidden `from` with the VISIBLE head, so the change-id arm
+/// still reaches one end of it. Asking "what did the SECOND rewrite change?" reaches neither end:
+/// both versions are hidden, one change id names only the third, and there is no other currency
+/// for them. Three versions with three different trees make the answer specific to the pair
+/// chosen — a resolver that silently landed on the visible head would report `a.txt` as `three`
+/// and drop `b.txt` entirely.
+#[test]
+fn interdiff_diffs_two_hidden_versions_of_one_change() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let v1 = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\n")], "v1");
+    let v2 = rewrite_commit_files(&fx.path, &v1, &[("a.txt", "two\n"), ("b.txt", "added\n")]);
+    let v3 = rewrite_commit_files(&fx.path, &v2, &[("a.txt", "three\n")]);
+    let change = change_id_of(&fx.path, &v3);
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    let entries = repo.evolog(Some(&change.0), None).expect("evolog succeeds");
+    let pred_of_v3 = entries[0]
+        .predecessor_commit_ids
+        .first()
+        .expect("the head names the version it rewrote")
+        .0
+        .clone();
+    let pred_of_v2 = entries[1]
+        .predecessor_commit_ids
+        .first()
+        .expect("the middle version names the one it rewrote")
+        .0
+        .clone();
+    assert_eq!((pred_of_v3.as_str(), pred_of_v2.as_str()), (v2.as_str(), v1.as_str()));
+
+    let view = repo
+        .interdiff(Some(cmt(&pred_of_v2)), Some(cmt(&pred_of_v3)), &[])
+        .expect("two HIDDEN commits both resolve through the commit-id arm");
+    assert_eq!(
+        summary(&view.file_changes),
+        vec![("a.txt".to_owned(), "M"), ("b.txt".to_owned(), "A")],
+        "the first rewrite is what separates version 1 from version 2"
+    );
+    assert!(!view.base_has_conflicts);
+
+    assert_eq!(head_op_id(&repo), before, "the read writes no operation");
+}
+
 /// A one-character commit-id prefix that at least two commits in `workspace_root` share.
 ///
 /// DETERMINISTIC, not probabilistic: a commit id is hex, so there are 16 possible first digits
@@ -1241,7 +1288,8 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
     for (spelling, hex) in [
         ("empty", String::new()),
         ("not hex", "nothex!".to_owned()),
-        // Valid hex, 16 digits, no commit: the fixture's ids are 64-digit SHAs.
+        // Valid hex, 16 digits, no commit: the fixtures are git-backed, so their commit ids are
+        // 40-hex SHA-1s and nothing this short is a whole id either.
         ("unknown", "deadbeefdeadbeef".to_owned()),
         ("ambiguous", ambiguous.clone()),
     ] {
@@ -1256,7 +1304,12 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
                 Err(e) => e,
             };
             let ok = match (spelling, &err) {
-                ("empty" | "not hex", CommitViewError::InvalidInput { reason }) => reason.contains(&hex),
+                // An empty id has nothing to echo, so `contains(&hex)` would be vacuously true
+                // here — pin `res_commit`'s own wording instead.
+                ("empty", CommitViewError::InvalidInput { reason }) => {
+                    reason.contains("is not a valid commit id prefix")
+                }
+                ("not hex", CommitViewError::InvalidInput { reason }) => reason.contains(&hex),
                 ("unknown", CommitViewError::ChangeNotFound { id }) => *id == hex,
                 ("ambiguous", CommitViewError::RevsetResolutionError { reason }) => {
                     reason.contains(&hex) && reason.contains("ambiguous")

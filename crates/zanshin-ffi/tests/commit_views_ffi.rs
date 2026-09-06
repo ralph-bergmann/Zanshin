@@ -805,8 +805,17 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_ref() {
             Some(expected),
             "the {spelling} commit id must not collapse onto another code"
         );
+        // An empty id has nothing to echo, so `contains(&hex)` would be vacuously true on that
+        // row — pin `res_commit`'s own wording there instead.
+        let needle = if hex.is_empty() {
+            "is not a valid commit id prefix"
+        } else {
+            hex.as_str()
+        };
         assert!(
-            env.error().and_then(|e| e.context()).is_some_and(|c| c.contains(&hex)),
+            env.error()
+                .and_then(|e| e.context())
+                .is_some_and(|c| c.contains(needle)),
             "the {spelling} commit id must ride in `context`, never in the code"
         );
     }
@@ -1089,12 +1098,18 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
 /// The layout divergence follow-up I introduced, pinned from both directions.
 ///
 /// A POPULATED `InterdiffRequest` no longer verifies as one of the one-string tables, and a
-/// populated one-string table no longer verifies as an `InterdiffRequest`: the union's
-/// discriminant sits where the string offset used to, and its two vtable slots must be present
-/// or absent TOGETHER. Both are still `ffi.invalid_argument` — the same code the kind rung
-/// answers with — but they land at rung 2, so the message is the Verifier's rather than the
-/// kind-mismatch one. Pinned because it is the ONE observable consequence of the schema change
-/// on buffers that are not interdiff's own, and because the table above stopped covering it.
+/// populated one-string table no longer verifies as an `InterdiffRequest` — for two DIFFERENT
+/// reasons. Read as an `InterdiffRequest`, a one-string buffer offers that string's slot as the
+/// union's DISCRIMINANT and has nothing in the value slot: the union's two slots must be present
+/// or absent TOGETHER, so it is the inconsistent union the Verifier refuses outright, and that
+/// row pins that the message says so. The other direction reads the union's discriminant BYTE
+/// where `revset`'s string OFFSET is read, so it fails as an out-of-range offset instead — a
+/// plain range fault whose exact wording is the Verifier's internal business, left unpinned so
+/// a flatbuffers bump cannot break this test over a rephrasing. Both are still
+/// `ffi.invalid_argument` — the same code the kind rung answers with — but they land at rung 2,
+/// so neither message is the kind-mismatch one. Pinned because it is the ONE observable
+/// consequence of the schema change on buffers that are not interdiff's own, and because the
+/// table above stopped covering it.
 #[test]
 fn an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables() {
     pin_env();
@@ -1103,12 +1118,18 @@ fn an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables() {
     let interdiff_req = interdiff_request_bytes(Side::Change("@"), Side::Change("@-"), &[]);
     let workspace_root_req = workspace_root_request_bytes("default");
 
-    for (name, call, req) in [
-        ("interdiff buffer into show", zanshin_show as Wrapper, &interdiff_req),
+    for (name, call, req, names_the_union) in [
+        (
+            "interdiff buffer into show",
+            zanshin_show as Wrapper,
+            &interdiff_req,
+            false,
+        ),
         (
             "one-string buffer into interdiff",
             zanshin_interdiff as Wrapper,
             &workspace_root_req,
+            true,
         ),
     ] {
         // SAFETY: handle is live; req is a valid buffer alive for the call.
@@ -1127,6 +1148,15 @@ fn an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables() {
                 .and_then(|e| e.context())
                 .is_some_and(|c| !c.starts_with("request kind mismatch")),
             "{name}: refused by the Verifier at rung 2, not by the kind rung"
+        );
+        assert!(
+            !names_the_union
+                || env
+                    .error()
+                    .and_then(|e| e.context())
+                    .is_some_and(|c| c.to_lowercase().contains("union")),
+            "{name}: the half-set union must be named, got {:?}",
+            env.error().and_then(|e| e.context())
         );
     }
 

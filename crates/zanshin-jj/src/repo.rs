@@ -1098,8 +1098,10 @@ impl Repo {
     ///   prefix is carried by two or more commits; refused, never resolved to one of them.
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    // WHY: owned `RevisionRef`s match the house currency for single-revision parameters
-    // (epics.md Story 6.1 / AC-1); the implementation only needs to borrow them.
+    // WHY: an OWNED single-revision parameter is the house SHAPE (epics.md Story 6.1 / AC-1);
+    // the implementation only needs to borrow it. What the parameter is owned OF is this verb's
+    // one deliberate exception: `RevisionRef` widens the crate-wide `ChangeId` currency for
+    // `interdiff` alone (Epic 9 follow-up I).
     #[allow(clippy::needless_pass_by_value)]
     pub fn interdiff(
         &self,

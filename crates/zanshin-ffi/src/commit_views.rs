@@ -90,6 +90,11 @@ struct InterdiffRequestOwned {
 /// union tag is range-checked no more than a plain enum is), so its refusal is this function's
 /// own, and it names the tag. An absent inner `id` under a present tag is the reader's
 /// required-field guard, ladder rung 4.
+///
+/// The caller evaluates BOTH `*_as_change_id_ref()` and `*_as_commit_id_ref()` and hands both in.
+/// That is sound because each generated accessor first compares the field's own discriminant and
+/// returns `None` unless it matches — so at most one of the two is ever `Some`, `tag` is what
+/// selects between them here, and the arm not selected is a `None` this function never reads.
 fn read_revision_ref(
     tag: fbs::RevisionRef,
     change: Option<&str>,

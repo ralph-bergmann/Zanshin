@@ -132,22 +132,24 @@ final class CommitIdRef extends RevisionRef {
   const CommitIdRef(super.id);
 }
 
-/// The union discriminant [ref] selects, or `null` for an ABSENT side.
-fbs.RevisionRefTypeId? _revisionRefType(RevisionRef? ref) => switch (ref) {
-  null => null,
-  ChangeIdRef() => fbs.RevisionRefTypeId.ChangeIdRef,
-  CommitIdRef() => fbs.RevisionRefTypeId.CommitIdRef,
-};
-
-/// The union value table [ref] carries, or `null` for an ABSENT side.
+/// BOTH union slots [ref] occupies — its discriminant and its value table — or
+/// `(null, null)` for an ABSENT side.
 ///
-/// Both slots must be written together or not at all: the FlatBuffers verifier
-/// refuses a half-set union outright, which is why this and [_revisionRefType]
-/// are always used as a pair.
-Object? _revisionRefValue(RevisionRef? ref) => switch (ref) {
-  null => null,
-  ChangeIdRef(:final String id) => fbs.ChangeIdRefObjectBuilder(id: id),
-  CommitIdRef(:final String id) => fbs.CommitIdRefObjectBuilder(id: id),
+/// The two are returned together, from ONE `switch`, because they must be written
+/// together or not at all: the FlatBuffers verifier refuses a half-set union
+/// outright, and a MIS-PAIRED one (a `ChangeIdRef` discriminant over a
+/// `CommitIdRef` value) would verify and silently route the id to the wrong Rust
+/// resolver. Deriving both from a single match makes that unrepresentable.
+(fbs.RevisionRefTypeId?, Object?) _revisionRefSlots(RevisionRef? ref) => switch (ref) {
+  null => (null, null),
+  ChangeIdRef(:final String id) => (
+    fbs.RevisionRefTypeId.ChangeIdRef,
+    fbs.ChangeIdRefObjectBuilder(id: id),
+  ),
+  CommitIdRef(:final String id) => (
+    fbs.RevisionRefTypeId.CommitIdRef,
+    fbs.CommitIdRefObjectBuilder(id: id),
+  ),
 };
 
 /// Call `zanshin_interdiff` with the raw `u64` handle and an `InterdiffRequest`
@@ -179,25 +181,29 @@ Uint8List zanshinInterdiff(
 
 /// Build the `InterdiffRequest` buffer [zanshinInterdiff] sends.
 ///
-/// Exposed so a test can read the WIRE SHAPE back: the two union fields are the
-/// only request fields whose discriminant and value must be written together —
-/// a half-written pair is refused outright by the Rust verifier — and a call
-/// through [zanshinInterdiff] hands the bytes straight to the cdylib, leaving a
-/// test nothing to inspect. The interior-NUL guards stay on [zanshinInterdiff],
+/// This is the PRODUCTION builder — [zanshinInterdiff] calls it — kept as its own
+/// public function so a test can read the WIRE SHAPE back: the two union fields
+/// are the only request fields whose discriminant and value must be written
+/// together (a half-written pair is refused outright by the Rust verifier), and a
+/// call through [zanshinInterdiff] hands the bytes straight to the cdylib, leaving
+/// a test nothing to inspect. The interior-NUL guards stay on [zanshinInterdiff],
 /// which is the adapter boundary they belong to.
-@visibleForTesting
 Uint8List interdiffRequestBytes({
   RevisionRef? from,
   RevisionRef? to,
   List<String> paths = const <String>[],
-}) => fbs.InterdiffRequestObjectBuilder(
-  kind: fbs.RequestKind.Interdiff,
-  fromType: _revisionRefType(from),
-  from: _revisionRefValue(from),
-  toType: _revisionRefType(to),
-  to: _revisionRefValue(to),
-  paths: paths,
-).toBytes();
+}) {
+  final (fbs.RevisionRefTypeId? fromType, Object? fromValue) = _revisionRefSlots(from);
+  final (fbs.RevisionRefTypeId? toType, Object? toValue) = _revisionRefSlots(to);
+  return fbs.InterdiffRequestObjectBuilder(
+    kind: fbs.RequestKind.Interdiff,
+    fromType: fromType,
+    from: fromValue,
+    toType: toType,
+    to: toValue,
+    paths: paths,
+  ).toBytes();
+}
 
 // ── Dart models ──────────────────────────────────────────────────────────────
 

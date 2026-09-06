@@ -2,10 +2,10 @@
 title: 'Epic 9 follow-up I: `interdiff` takes a commit-id-or-change-id union (`RevisionRef`)'
 type: 'feature'
 created: '2026-09-06'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '8e3a8f8eef8dfec76d39193db0eaccf2228486e8'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
 deferred: []
@@ -318,7 +318,127 @@ Anchors read against the working tree at baseline `8e3a8f8`.
 
 ## Spec Change Log
 
+### 2026-09-06 — Implementation
+
+Where the built change is narrower or wider than the prose above. The `<intent-contract>` is
+unchanged; these are corrections to the Code Map, Tasks and Design Notes.
+
+- **The `workspace_ffi.rs` row does not exist.** The Code Map (`:184-185`) and the Tasks
+  (`crates/zanshin-ffi/tests/workspace_ffi.rs -- re-verify the row that feeds an
+  `InterdiffRequest` to `zanshin_workspace_root``) both assume such a row. At baseline `8e3a8f8`
+  that suite mentions `interdiff` nowhere: its kind-mismatch table only ever fed a *populated
+  `ShowRequest`* to `zanshin_workspace_root` (the one-string layout collision), never an
+  `InterdiffRequest`. Nothing to re-verify, so the layout change left that row's BEHAVIOUR
+  untouched and only its comment was edited — the "four-way collision" it cited is now a
+  three-way one.
+- **The reader has no "value present, discriminant NONE" arm.** The I/O matrix row and the
+  Tasks' reader sketch both list it, but the spec's own Design Notes predicted the outcome
+  correctly: `Verifier::visit_union` refuses a half-set union at ladder rung 2, so that shape
+  never reaches `read_revision_ref`. Its `NONE` arm means an ABSENT side and nothing else. The
+  refusal is witnessed (`interdiff_refuses_every_malformed_revision_ref_union`, the
+  `ValueWithoutDiscriminant` row) as a VERIFIER refusal, not a reader branch — which is also why
+  `commit_views.rs` stays at 100.00 % with no defensive-and-unreachable code.
+- **The four-way collision became three-way, so interdiff's kind rows changed shape.** The Code
+  Map treats `commit_views_ffi.rs:695-702`'s four-way "one string after `kind`" block as a doc to
+  re-comment. Turning `from`/`to` into a union changed `InterdiffRequest`'s slot layout, so a
+  populated interdiff buffer and a populated one-string buffer no longer verify as each other:
+  the collision is now three-way (`Show`/`Evolog`/`WorkspaceRoot`) and interdiff's kind-table rows
+  had to move to MINIMAL or foreign tagged buffers to keep testing the kind rung rather than the
+  verifier. The divergence itself is pinned separately by
+  `an_interdiff_buffer_no_longer_shares_a_layout_with_the_one_string_tables`, which also records
+  that the two directions fail for different reasons (a half-set union one way, an out-of-range
+  offset the other).
+
 ## Review Triage Log
+
+### 2026-09-06 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 16: (high 0, medium 3, low 13)
+- defer: 0
+- reject: 6: (high 0, medium 1, low 5)
+- addressed_findings:
+  - `[medium]` `[patch]` **`RevisionRef` was unreachable from the package barrel.**
+    `ZanshinWorker` is exported and `ZanshinWorker.interdiff`'s parameter type changed from
+    `String?` to `RevisionRef?` — a type a barrel-only consumer could not name or construct, so
+    the exported method became uncallable. `zanshin_core.dart` now exports `ChangeIdRef`,
+    `CommitIdRef` and `RevisionRef` (return-type models stay unexported, as before).
+  - `[medium]` `[patch]` **The ledger claimed a Dart witness that does not exist.** The closing
+    entry said the motivating composition is "witnessed at all three layers … each rewriting a
+    change's CONTENT through `test-helpers::rewrite_commit_files`". False of the Dart row: no
+    verb reachable from Dart writes committed content, so that test interdiffs a VISIBLE `@` hex
+    against the absent-`@` default and witnesses ARM ROUTING (`CommitIdRef('nothex!')` →
+    `jj.invalid_input` vs `ChangeIdRef('nothex!')` → `jj.change_not_found`), not the composition.
+    The entry now says exactly that, with the structural reason.
+  - `[medium]` `[patch]` **No test interdiffed TWO `CommitIdRef`s** — the feature's strongest
+    shape (two hidden versions of one change). Added
+    `interdiff_diffs_two_hidden_versions_of_one_change`: three versions via
+    `add_commit_with_files` + two `rewrite_commit_files`, both evolog predecessor edges fed back
+    as commit refs, both hidden.
+  - `[low]` `[patch]` The `("empty", …)` row of both refusal tables asserted `context.contains("")`
+    — vacuously true, and precisely the row where there is no id to echo. Both now pin the literal
+    `is not a valid commit id prefix` wording.
+  - `[low]` `[patch]` `workspace_ffi.rs:493` still called the collision "four-way" while `:559` in
+    the same file had been corrected to three-way. Made consistent.
+  - `[low]` `[patch]` The Dart builder chose the union's discriminant and its value table in two
+    INDEPENDENT switches; a mis-pairing would have verified and routed an id to the wrong
+    resolver. Replaced by one `_revisionRefSlots` returning a record. `interdiffRequestBytes` also
+    lost its `@visibleForTesting` annotation: it is the production path, unlike the file's own
+    `decodeShowViewEnvelope`/`…Internal` pattern.
+  - `[low]` `[patch]` A test comment said the fixtures' ids are "64-digit SHAs"; they are git-backed
+    (`gen_fixture.rs` uses `Workspace::init_internal_git`), so 40-hex SHA-1.
+  - `[low]` `[patch]` `Repo::interdiff`'s `needless_pass_by_value` WHY comment claimed owned
+    `RevisionRef`s "match the house currency" — the house currency IS `ChangeId` and this verb is
+    the one exception. Reworded to argue the owned-parameter SHAPE and name the exception.
+  - `[low]` `[patch]` The layout-divergence test asserted only `!starts_with("request kind
+    mismatch")` (true of any verifier failure) and explained both directions with the half-set-union
+    mechanism, which fits only one of them. Its doc now separates the two mechanisms and the
+    one-string→interdiff row additionally asserts the message names the union.
+  - `[low]` `[patch]` The composition promise was unconditional, but the resolver reaches only
+    INDEXED commits — a garbage-collected predecessor still appears in `predecessor_commit_ids`
+    and answers `jj.change_not_found`. Caveat added where the promise is made (the
+    `InterdiffRequest` schema doc and `interdiff`'s rustdoc), not sprayed across every layer.
+  - `[low]` `[patch]` `read_revision_ref` is handed BOTH `*_as_change_id_ref()` and
+    `*_as_commit_id_ref()`; its soundness rests on the generated accessors comparing the
+    discriminant first, which was stated nowhere. Recorded in its doc.
+  - `[low]` `[patch]` `docs/ffi-abi.md` still said the rung-4 required-field guard exists in "only
+    four readers"; `git remote set-url`'s `name` makes five. Verified against the five
+    `missing_field` call sites and corrected.
+  - `[low]` `[patch]` `res_commit`'s comment claimed building jj-lib's own error value keeps the
+    messages "byte-identical"; only the WORDING is jj-lib's — jj-lib passes its normalized
+    `prefix.hex()`, this passes the caller's own spelling. Reworded.
+  - `[low]` `[patch]` cbindgen displaced another public constant: `Change_VT_ID` vanished from
+    `zanshin_ffi.h` and `bindings.dart` when `ChangeIdRef_VT_ID` appeared, and `CommitIdRef_VT_ID`
+    was never emitted. Appended as EVIDENCE to the existing ledger bullet (`deferred-work.md:49`),
+    following follow-up H's precedent — no new bullet.
+  - `[low]` `[patch]` Both bookkeeping entries lacked the commit hash the convention requires; they
+    now read `commit d427eee`.
+  - `[low]` `[patch]` The spec's Code Map and Tasks asserted a `workspace_ffi.rs` row feeding an
+    `InterdiffRequest` that never existed. Recorded in the Spec Change Log above, together with two
+    other places where the built change is narrower than the prose.
+
+Rejected (recorded, not dropped silently):
+
+- **The ambiguity refusal is not witnessed from Dart** (`jj.revset_resolution_error` is listed in
+  `RepoHandle.interdiff`'s doc and the `docs/ffi-abi.md` row). It is not constructible there: an
+  ambiguous prefix needs ≥17 commits added to the repo and no verb reachable from Dart writes
+  commits. The code path is witnessed at the FFI layer, and the Dart layer surfaces envelope codes
+  verbatim — proved by the two refusal codes it does assert.
+- **The motivating composition is not witnessed from Dart** — same structural reason. The actual
+  defect was the ledger OVERSTATING it, which is patched above.
+- **`op_support.rs`'s baseline was "not raised" despite ~50 new lines.** Measured: 545/547 =
+  **99.63 %** against a 99.59 baseline — it ROSE, inside the 0.10 pp epsilon that suppresses
+  baseline churn. Nothing dropped; there is nothing to fix.
+- **Move the deterministic pigeonhole prefix finder into `test-helpers`.** The two sites are not
+  the same helper: one returns a prefix for a `Repo`-level test, the other builds a whole FFI
+  scenario (fixture + handle + change id). The shared part is an 8-line loop, and hoisting it would
+  put one suite's fixture policy into the shared crate.
+- **The `revsets.short-prefixes` divergence is untested.** It is exactly the ambiguity refusal:
+  a prefix ambiguous repo-wide but unique inside `revsets.log` resolves in the CLI and refuses
+  here, and the refusal is pinned at two layers. Nothing further is observable without adopting the
+  context the spec forbids.
+- **The Spec Change Log / Review Triage Log were empty.** They are this step's own output.
 
 ## Design Notes
 
@@ -391,3 +511,110 @@ UNPIPED and synchronously; it takes ~15 minutes. Disk is tight (~4.5 GiB): on
   -- expected: no live text asserting the old limitation as current behaviour.
 - `python3 -c "import yaml,sys; [yaml.safe_load(open(p).read().split('---')[1]) for p in sys.argv[1:]]" <this spec> <spec-9-6>`
   -- expected: exit 0.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+`interdiff`'s two sides stopped being reverse-hex change-id prefixes and became a `RevisionRef`
+union over `ChangeIdRef` (unchanged currency, `into_visible()`, divergence refused) and
+`CommitIdRef` (a commit-id HEX PREFIX resolved through `repo.index().resolve_commit_id_prefix`,
+which is **visibility-blind** — that is the whole mechanism). An `EvologEntry`'s
+`predecessor_commit_ids` entry can therefore be fed straight back into `interdiff`, so `evolog` and
+`interdiff` now compose into the version-to-version diff that stood in for the unported
+`evolog --patch`. `show`, `evolog` and every other verb keep their currency; `diff` may adopt the
+union when it lands. This closes the ledger's "`evolog` + `interdiff` do not compose" must-have.
+
+### Files changed
+
+- `schemas/envelope.fbs` -- `table ChangeIdRef`, `table CommitIdRef`, `union RevisionRef`;
+  `InterdiffRequest.from`/`.to` changed from `string` to `RevisionRef` in place; the
+  `InterdiffRequest` and `EvologEntry.predecessor_commit_ids` docs now describe the composition
+  (with the indexed-commit caveat) instead of denying it; the request-table banner gained the
+  two-vtable-slots-per-union-field rule.
+- `crates/zanshin-jj/src/op_support.rs` -- `CommitPrefixError` + `resolve_commit_id_prefix`
+  (empty/non-hex → `Malformed`, `AmbiguousMatch` → `Ambiguous`, `NoMatch` → `NotFound`), next to
+  the unchanged `resolve_commit`; documents why the CLI's `IdPrefixContext` was not adopted.
+- `crates/zanshin-jj/src/commit_views.rs` -- `pub enum RevisionRef`, `res_commit` (four outcomes
+  onto four EXISTING codes), `resolve_side`, `interdiff` takes `Option<&RevisionRef>` twice.
+- `crates/zanshin-jj/src/{repo,lib}.rs` -- `Repo::interdiff` takes `Option<RevisionRef>`;
+  `RevisionRef` re-exported; the `evolog`/`interdiff`/`bookmark_create` docs corrected.
+- `crates/zanshin-ffi/src/commit_views.rs` -- `read_revision_ref` lifts each union field
+  (NONE → absent, either arm → `missing_field("<side>.id")`, unknown tag → `ffi.invalid_argument`);
+  the rustdoc `# Errors` blocks gained the ambiguity code.
+- `crates/zanshin-ffi/src/envelope_generated.rs`, `.../envelope_zanshin.ffi_generated.dart`,
+  `crates/zanshin-ffi/include/zanshin_ffi.h`, `.../bindings.dart` -- regenerated.
+- `packages/zanshin_core/lib/src/ffi/commit_views.dart` -- `sealed class RevisionRef` +
+  `ChangeIdRef`/`CommitIdRef`, one `_revisionRefSlots` writing both union slots together, and
+  `interdiffRequestBytes`; `packages/zanshin_core/lib/zanshin_core.dart` exports the three types.
+- `packages/zanshin_core/lib/src/worker/{commands,isolate,handle}.dart` -- `InterdiffCommand`,
+  `ZanshinWorker.interdiff` and `RepoHandle.interdiff` take `RevisionRef?` twice.
+- `crates/test-helpers/src/lib.rs` -- `rewrite_commit_files`, a `describe_commit` twin that also
+  sets a new tree (a description-only rewrite leaves both versions sharing one tree, so its
+  interdiff would be empty whichever commit resolved).
+- `crates/zanshin-{jj,ffi}/tests/*` -- the composition witness at both Rust layers, a
+  two-hidden-versions row, the malformed/ambiguous/unknown refusal tables with a DETERMINISTIC
+  pigeonhole ambiguity fixture, the three malformed-union shapes, and the layout-divergence pin;
+  `api_stability.rs`'s pinned `Repo::interdiff` signature updated.
+- `packages/zanshin_core/test/{ffi,worker}/commit_views_test.dart` -- the wire shape read back per
+  arm, and the commit arm driven end-to-end through the real cdylib.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` -- the `zanshin_interdiff` row, the rung-4 reader
+  list, the nested-tables-are-not-roots note, and the affected registry rows.
+- `_bmad-output/implementation-artifacts/deferred-work.md` + `spec-9-6-…` -- the must-have struck
+  through and marked resolved; a `resolved:` block on the matching `deferred:` item.
+
+### Review findings breakdown
+
+- Patches applied: 16 (medium 3, low 13) — each listed in the Review Triage Log above.
+- Items deferred: **0**. The one candidate (a cbindgen-displaced `#define`) was appended as
+  evidence to the pre-existing ledger bullet at `deferred-work.md:49`, so the ledger ends this run
+  strictly smaller: one must-have struck through, no bullet added.
+- Items rejected: 6 — each named in the Review Triage Log with its reason.
+
+Follow-up review recommended: **true** (patched: high 0, medium 3, low 13 → 3×3 + 13 = 22 ≥ 5).
+
+### Verification performed
+
+- `flatc --version` -- `25.12.19`.
+- `cargo make codegen` -- exit 0, re-run after the review patches; a further run produces no diff,
+  so the four committed outputs match the schema and the rustdoc. The `zanshin_ffi.h` /
+  `bindings.dart` diff is `*_VT_*` / `ENUM_MIN/MAX_*` constants plus cbindgen re-wrapping
+  `zanshin_interdiff`'s declaration onto one line — no parameter type, name or order changed, so
+  not the `unexpected codegen drift` HALT.
+- `cargo make test` -- exit 0 twice (before and after the review patches), ~400 s each: 115 test
+  binaries green, clippy pedantic `-D warnings`, rustfmt, `flutter test`, `dart analyze`/`format`,
+  `cargo deny`, and the coverage ratchet. Coverage **99.23 % (8598/8665 lines over 46 files)**;
+  `coverage-baseline.txt` carries the raise `crates/zanshin-jj/src/commit_views.rs` 98.13 → 98.54
+  and nothing lowered; `crates/zanshin-ffi/src/commit_views.rs` stays at 100.00 and
+  `op_support.rs` measures 99.63 against its 99.59 baseline; `extern-coverage: OK`.
+- Matrix audit: every I/O row maps to a test that RAN and passed — the composition and its
+  change-arm tripwire, the ambiguous/malformed/unknown refusals on both sides, both-absent and
+  one-absent, the half-set union (verifier), the out-of-range tag and the absent inner `id`
+  (reader), and the wrong-verb buffer.
+- `grep -rn "do NOT compose\|cannot be composed\|do not compose" …` -- no live hit.
+- Both touched spec frontmatters parse as YAML.
+
+### Residual risks
+
+- **One deliberate CLI divergence:** a commit-id prefix that is ambiguous repo-wide but unique
+  inside `revsets.short-prefixes` (default `revsets.log`) resolves in `jj interdiff` and is refused
+  here. Adopting the CLI's `IdPrefixContext` would cost a config read plus a revset parse+evaluate
+  per call — i.e. `jj.config_error` / `jj.revset_parse_error` failure modes `interdiff` does not
+  have — and its default set holds only VISIBLE commits, so it would not have helped a hidden
+  predecessor anyway. Refusing rather than guessing is the safe direction; documented at the
+  resolver, in the registry and in the ledger.
+- **The composition reaches only INDEXED commits.** A garbage-collected predecessor still appears
+  in `predecessor_commit_ids` and answers `jj.change_not_found`. Stated where the promise is made.
+- **The Dart layer proves the union's shape and arm routing, not the composition** — no verb
+  reachable from Dart writes committed content, so a rewritten history cannot be built there. The
+  composition is witnessed at the two Rust layers.
+- **One observable side effect on OTHER buffers:** the union's discriminant occupies the slot
+  `from`'s string used to, so the `Show`/`Evolog`/`Interdiff`/`WorkspaceRoot` layout collision is
+  now three-way. Cross-feeding a populated interdiff buffer is refused one rung EARLIER (the
+  verifier, not the kind tag) — same code, different message. Pinned by a dedicated test.
+- Nothing in `cargo make test` proves the committed codegen matches the schema; `verify-codegen` is
+  deliberately manual (`Makefile.toml`). This run re-ran codegen explicitly and confirmed a no-op
+  diff.

@@ -251,8 +251,10 @@ fn res_commit(e: CommitPrefixError, id: &CommitId) -> CommitViewError {
             reason: format!("`{}` is not a valid commit id prefix", id.0),
         },
         // jj-lib's OWN error value rather than a copy of its wording: the CLI raises exactly
-        // `RevsetResolutionError::AmbiguousCommitIdPrefix` for this input, so building it here
-        // keeps the two messages byte-identical even if jj-lib rephrases it.
+        // `RevsetResolutionError::AmbiguousCommitIdPrefix` for this input, so the WORDING stays
+        // jj-lib's even if it rephrases it. Only the wording — the CLI hands that variant its
+        // NORMALIZED `prefix.hex()`, this hands it the caller's own spelling, so an upper-case
+        // prefix is echoed back as the caller wrote it.
         CommitPrefixError::Ambiguous => CommitViewError::RevsetResolutionError {
             reason: jj_lib::revset::RevsetResolutionError::AmbiguousCommitIdPrefix(id.0.clone()).to_string(),
         },
@@ -479,8 +481,10 @@ pub(crate) fn evolog(
 /// visibility-blind, so it reaches a HIDDEN commit. Feeding an
 /// [`EvologEntry::predecessor_commit_ids`] entry in as a [`RevisionRef::CommitId`] is therefore
 /// how [`evolog`] and this verb compose into a diff of one version of a change against the
-/// next. What is still NOT addressable on either arm is a revset EXPRESSION (`main`, `@-`),
-/// which the CLI does accept.
+/// next — for as long as that predecessor is still INDEXED: a garbage-collected one is still
+/// listed by [`evolog`] but resolves to nothing, and is refused as
+/// [`CommitViewError::ChangeNotFound`]. What is still NOT addressable on either arm is a revset
+/// EXPRESSION (`main`, `@-`), which the CLI does accept.
 ///
 /// `from` is rebased onto `to`'s parents in memory (`rewrite::rebase_to_dest_parent` — no
 /// transaction, nothing written) and the result is diffed against `to`'s tree. Copy records are

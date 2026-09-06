@@ -303,6 +303,8 @@ union RevisionRef {
 /// `resolve_single_rev`'s REFUSAL — an ambiguous revision is rejected rather than guessed.
 /// Feeding an EvologEntry.predecessor_commit_ids entry in as a CommitIdRef is what composes the
 /// two verbs into a version-to-version diff — the stand-in for the unported `evolog --patch`.
+/// That composition holds for as long as the predecessor is INDEXED: a garbage-collected one is
+/// still listed by evolog but no longer resolvable, and answers `jj.change_not_found`.
 /// A revset EXPRESSION (`main`, `@-`) is still not accepted on either side.
 /// An ABSENT side is `@` — but omitting BOTH is refused with
 /// `jj.invalid_input`, mirroring the CLI's `ArgGroup … required(true)`.
