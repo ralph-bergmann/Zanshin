@@ -625,8 +625,12 @@ fn file_search_round_trip_carries_name_only_and_the_path_filter() {
     assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
     assert_eq!(env.data_type(), fbs::Payload::FileSearch);
     let payload = env.data_as_file_search().expect("FileSearch payload");
+    let skipped = payload.skipped().expect(
+        "nothing was unreadable, so `skipped` is PRESENT and empty — an absent vector would \
+         collapse back into the ambiguity this channel exists to remove",
+    );
     assert_eq!(
-        payload.skipped().map_or(0, |s| s.len()),
+        skipped.len(),
         0,
         "nothing was unreadable, so `skipped` is present and EMPTY — that is what makes \
          \"no match\" distinguishable from \"blob unreadable\""

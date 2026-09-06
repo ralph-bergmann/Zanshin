@@ -431,6 +431,15 @@ fn git_remote_set_url_changes_the_fetch_url_without_writing_an_operation() {
         None,
         "a fetch-only set-url must not invent a push url"
     );
+    // `push_url` is a DIFFERENCE, so the assertion above alone is blind to the specific
+    // regression the retired `git config --get remote.origin.pushurl` oracle caught: a
+    // set-url that copied its `url` argument into the push slot as well would write
+    // `pushurl == url`, and `list_remotes` would still report `None`. That stray key is not
+    // cosmetic — jj-lib's `remove_remote_git_config_sections` refuses ANY key outside
+    // `url`/`fetch`, so the remote would become unremovable. `remove` is therefore the
+    // witness for key ABSENCE that the difference rule cannot give us.
+    repo.git_remote_remove("origin")
+        .expect("a fetch-only set-url leaves a standard remote section, so remove succeeds");
 }
 
 /// set-url's `push_url` argument, which no other row exercises: every other call passes

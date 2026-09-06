@@ -54,6 +54,12 @@ pub struct Remote {
     /// parity rather than information loss.
     ///
     /// Verbatim on the same terms as [`Remote::url`]: credentials survive.
+    ///
+    /// **Not round-trippable back through the write side.** Feeding this field
+    /// straight into [`crate::Repo::git_remote_set_url`] DELETES a `pushurl` that
+    /// was configured but happened to equal the fetch URL, because the read
+    /// reports it as absent. A caller that re-applies a whole remote's config
+    /// must treat `None` as "leave the push URL alone", not "clear it".
     pub push_url: Option<String>,
 }
 

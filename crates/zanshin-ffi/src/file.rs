@@ -718,11 +718,10 @@ mod tests {
         );
         assert!(fbs_matches.get(1).has_conflict_side());
         assert_eq!(fbs_matches.get(1).conflict_side(), 1);
-        assert_eq!(
-            payload.skipped().map_or(0, |s| s.len()),
-            0,
-            "an empty skipped vector is still WRITTEN, as an empty vector"
-        );
+        let fbs_skipped = payload
+            .skipped()
+            .expect("an empty skipped vector is still WRITTEN, as a present empty vector");
+        assert_eq!(fbs_skipped.len(), 0, "nothing was skipped in this search");
     }
 
     /// The search payload's `skipped` channel — the mirror of

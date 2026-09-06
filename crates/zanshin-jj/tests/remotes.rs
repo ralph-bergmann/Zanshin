@@ -187,6 +187,58 @@ fn remotes_without_a_push_url_report_none() {
     );
 }
 
+/// Every other push-URL row holds exactly ONE remote, so none of them can catch a build
+/// loop that paired remote *n*'s push URL with remote *n+1* — or that read the push URLs in
+/// insertion order while the rows come out sorted. This row seeds three remotes whose sorted
+/// order (`alpha`, `mid`, `zulu`) is the REVERSE of their insertion order, gives the outer
+/// two a distinct push URL and the middle one none, and asserts each row against its own
+/// name.
+#[test]
+fn remotes_pair_each_push_url_with_its_own_remote() {
+    pin_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.git_remote_add(
+        "zulu",
+        "https://github.com/zulu/repo.git",
+        Some("ssh://git@github.com/zulu/repo.git"),
+    )
+    .unwrap();
+    repo.git_remote_add("mid", "https://github.com/mid/repo.git", None)
+        .unwrap();
+    repo.git_remote_add(
+        "alpha",
+        "https://github.com/alpha/repo.git",
+        Some("ssh://git@github.com/alpha/repo.git"),
+    )
+    .unwrap();
+
+    let remotes = repo.list_remotes().unwrap();
+    let rows: Vec<(&str, &str, Option<&str>)> = remotes
+        .iter()
+        .map(|r| (r.name.as_str(), r.url.as_str(), r.push_url.as_deref()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (
+                "alpha",
+                "https://github.com/alpha/repo.git",
+                Some("ssh://git@github.com/alpha/repo.git")
+            ),
+            ("mid", "https://github.com/mid/repo.git", None),
+            (
+                "zulu",
+                "https://github.com/zulu/repo.git",
+                Some("ssh://git@github.com/zulu/repo.git")
+            ),
+        ],
+        "each row's push URL must belong to that row's own remote"
+    );
+}
+
 #[test]
 fn remotes_report_a_push_url_added_later() {
     pin_env();

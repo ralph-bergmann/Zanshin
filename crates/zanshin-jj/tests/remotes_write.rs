@@ -491,10 +491,13 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
     );
     // The abandoning is REPORTED, not only observable through a second revset query: fetch
     // projects `import_refs`' own `GitImportStats` into `abandoned_change_ids`.
-    assert!(
-        result.abandoned_change_ids.contains(&fx.b_change),
-        "the abandoned change must be reported in the MutationResult; got {:?}",
-        result.abandoned_change_ids
+    // Asserted as the EXACT set, not with `contains`: this fixture makes exactly one commit
+    // unreachable, so a projection that echoed every commit it saw would satisfy `contains`
+    // while reporting nonsense.
+    assert_eq!(
+        result.abandoned_change_ids,
+        vec![fx.b_change.clone()],
+        "exactly the one now-unreachable change must be reported in the MutationResult"
     );
     assert!(
         result.new_change_ids.is_empty(),

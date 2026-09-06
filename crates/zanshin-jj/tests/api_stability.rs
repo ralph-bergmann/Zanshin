@@ -230,12 +230,14 @@ fn sample_search_match() -> zanshin_jj::SearchMatch {
 }
 
 /// Names every `Remote` field by its public path (FR-JJ-9). `push_url` is null-for-absence:
-/// `Some` only when the remote's push URL DIFFERS from its fetch URL.
+/// `Some` only when the remote's push URL DIFFERS from its fetch URL. The sample carries a
+/// NON-empty string there because `Some("")` is the one shape the producer never emits —
+/// this file is where a reader looks up the type's contract, so it must not model it wrong.
 fn sample_remote() -> zanshin_jj::Remote {
     zanshin_jj::Remote {
         name: String::new(),
         url: String::new(),
-        push_url: Some(String::new()),
+        push_url: Some("ssh://example.invalid/push".to_owned()),
     }
 }
 

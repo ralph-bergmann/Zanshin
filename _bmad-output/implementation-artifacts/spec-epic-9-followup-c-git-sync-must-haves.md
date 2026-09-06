@@ -25,6 +25,27 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs (git_fetch's MutationResult literal)
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-e-payload-widenings, commit 28a9aaa). git_fetch now binds the
+      GitImportStats that import_refs() already returned and threw away one line later, and
+      fills abandoned_change_ids from it. This item's premise about the sibling was wrong, and
+      the fix follows its own prescription instead: git_import does NOT project into
+      MutationResult either — it leaves both vectors empty (git.rs:103-106) and puts the
+      abandonments in its own GitImportResult.abandoned_change_ids. Fetch has no second result
+      struct, so the stats land in MutationResult.abandoned_change_ids, which WIDENS that
+      field's documented meaning for this one verb: everywhere else it is the ids abandon's
+      caller echoed back, here it is jj-lib's OWN abandonments. Both call sites go through one
+      pub(crate) git::project_abandoned helper so the two verbs cannot drift. new_change_ids
+      stays Vec::new() with a WHY — GitImportStats has no minted-change concept at all, and a
+      replacement @ for an abandoned one is already reported through working_copy_change_id.
+      Every doc claiming both vectors are always empty for git_fetch was corrected at all four
+      layers (the two MutationResult field docs, the Repo facade, the extern "C" wrapper — so
+      zanshin_ffi.h and bindings.dart moved, doc-only — and the Dart field docs plus
+      RepoHandle.gitFetch). Witnessed on this run's own prune fixture at both poles: the
+      default-config row asserts the pruned change IS reported and new_change_ids is empty, and
+      the abandon-unreachable-commits = false sibling is the negative control with an empty
+      list, so the pair proves the projection reads the stats rather than being hardcoded
+      either way.
 ---
 
 <intent-contract>

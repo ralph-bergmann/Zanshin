@@ -43,6 +43,27 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs (Remote) + schemas/envelope.fbs (Remotes)
     severity: medium
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-e-payload-widenings, commit 28a9aaa). Remote gains
+      push_url: Option<String>, carried through schemas/envelope.fbs (one cargo make codegen),
+      the FFI writer and the Dart model, where it is mapped with NO ?? '' coalesce unlike its
+      two siblings — null-for-absence, never Some(""). It is a DIFFERENCE test, not a raw
+      remote.<name>.pushurl read, and it has to be: gix resolves url(Direction::Push) as
+      push_url_alias.or(push_url).or_else(|| url(Fetch)) (gix-0.85.0/src/remote/access.rs:38-47)
+      and exposes neither push_url field publicly, so "was a pushurl configured?" is not
+      answerable through the API Zanshin already uses. The CLI does not ask it either:
+      cli/src/commands/git/remote/list.rs:49-55 @ v0.44.0 reads both directions through one
+      get_url and prints its (push: ...) suffix ONLY when the two differ. So a pushurl equal to
+      url reports None — CLI parity, and it keeps the field's meaning the one a UI wants. Both
+      directions are read by one remote_urls helper (the generalised fetch_url), keeping the
+      to_bstring()-not-Display rule so credentials survive verbatim. The raw
+      git config --get remote.<n>.pushurl oracle this item named as the tell is RETIRED at both
+      layers — tests/git_remotes.rs uses a new remote_push_url helper, and git_ffi.rs's two
+      inline Command::new("git") copies now read the Remotes payload those tests already
+      decoded. Five new rows in tests/remotes.rs seed through the shipped verbs (distinct push
+      URL, none, added later, equal-to-fetch, credentials), plus sample_remote() in
+      api_stability.rs, both writer arms in the FFI unit test, and .pushUrl end-to-end through
+      the real cdylib in test/worker/git_test.dart.
   - summary: >-
       "This workspace has no git backend" maps to two different error codes depending on the
       verb.

@@ -47,6 +47,27 @@ deferred:
     location: >-
       crates/zanshin-jj/src/file.rs (file_search) + schemas/envelope.fbs (FileSearch)
     severity: low
+    resolved: >-
+      RESOLVED 2026-09-05 (spec-epic-9-followup-e-payload-widenings, commit 28a9aaa). file_search now returns a
+      FileSearch { matches, skipped } struct mirroring FileContents and reusing SkippedPath
+      rather than minting a second type; the change goes through the Repo facade, the extern "C"
+      doc, schemas/envelope.fbs (vtable slot 6, the same slot FileContents uses), the Dart model
+      and both worker seams. skipped carries ONLY AccessDenied, because that is the single case
+      jj file search warns about (cli/src/commands/file/search.rs:109-115 @ v0.44.0) — Symlink,
+      GitSubmodule and OtherConflict are skipped SILENTLY there (:134, :159-160), the exact
+      opposite of jj file show — and the reason string is search's OWN sentence
+      ("Skipping '<path>' due to permission error: {e}"), not render_entry's show wording, so
+      the two verbs' contracts stay distinct. The witness is INLINE in src/file.rs rather than
+      in tests/: MaterializedTreeValue::AccessDenied comes from exactly one jj-lib error
+      (BackendError::ReadAccessDenied), raised by exactly one backend — the testing-gated
+      SecretBackend, which refuses any path containing "secret" — and Repo::open hardcodes
+      default_backend_factories(), which this change deliberately does NOT widen, so the test
+      builds the Workspace itself with an add_backend(SecretBackend::name(), ...) factory and
+      calls the pub(crate) file_search directly. That is also what keeps the new arm covered.
+      jj-lib with features = ["testing"] went into zanshin-jj's [dev-dependencies] only, so
+      cargo build and the shipped cdylib never enable it. The eight existing file_search rows
+      moved to the new return type, and the symlink row's silent-skip claim plus the no-match
+      row are now checkable via skipped.is_empty(). No fixture was regenerated.
   - summary: >-
       `docs/ffi-abi.md` has been stale since Story 4.9 — it documents none of Epic 9's
       wrappers, payload discriminants, or the `AbsorbSkippedPath` → `SkippedPath` rename.

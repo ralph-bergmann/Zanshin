@@ -40,6 +40,11 @@ final class Remote {
   /// This is a DIFFERENCE, not a raw `remote.<name>.pushurl` read: it is exactly
   /// the question `jj git remote list` answers when it prints its `(push: …)`
   /// suffix only for remotes whose two URLs differ.
+  ///
+  /// Because of that, this value is NOT round-trippable back through
+  /// `gitRemoteSetUrl`: feeding a `null` back would clear a `pushurl` that was
+  /// configured but happened to equal [url]. Treat `null` as "leave the push URL
+  /// alone", not "clear it".
   final String? pushUrl;
 }
 
