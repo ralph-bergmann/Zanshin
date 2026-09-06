@@ -30,7 +30,8 @@ the seven `void`-returning ones — `zanshin_string_free`, `zanshin_buffer_free`
 The converse does **not** hold: returning an envelope does not make a function
 fallible. `zanshin_diagnostics` returns a `ZanshinBuf *` token and is infallible
 by contract (two compile-time constants plus one path resolution with a temp
-fallback), so it carries no `# Errors` block and always answers `ok == true`. It
+fallback), so it carries no `# Errors` block and answers `ok == true` for every
+input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
 document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 47
 exported symbols, these eight plus `zanshin_diagnostics`.
@@ -73,14 +74,27 @@ is the wire discriminant, so the union is **append-only**.
 
 Every fallible wrapper's body runs inside `envelope::catch`, a `catch_unwind`
 that turns any Rust panic into an ordinary error envelope carrying
-**`internal.panic`** with the panic message in `context` — no panic ever crosses
-the C ABI. Because it is universal it is documented **only here**: it appears in
-no symbol's `# Errors` block and therefore in no row of the symbol index below.
-Assume it for every symbol that returns an envelope, including the
-otherwise-infallible `zanshin_diagnostics`. The `void`-returning infallible
-functions are `catch_unwind`-wrapped too, but they have no channel to report on —
-a panic there is swallowed (for `zanshin_log`, deliberately: logging must never
-break its caller).
+**`internal.panic`** with the panic message in `context`. Because it is universal
+it is documented **only here**: it appears in no symbol's `# Errors` block and
+therefore in no row of the symbol index below. Assume it for every symbol that
+returns an envelope, including the otherwise-infallible `zanshin_diagnostics` —
+that is the one way such a symbol can answer `ok == false`.
+
+The backstop relies on the crate being built with `panic = "unwind"` (the
+workspace default); under `panic = "abort"` `catch_unwind` cannot intercept at
+all (`crates/zanshin-ffi/src/envelope.rs:499-502`).
+
+**Coverage is not universal across the `void`-returning symbols.** Four of the
+seven are wrapped and swallow a panic, having no channel to report on:
+`zanshin_log` and `zanshin_logging_init` (`crates/zanshin-ffi/src/logging.rs`)
+and `zanshin_events_register` / `_unregister`
+(`crates/zanshin-ffi/src/events.rs`) — for `zanshin_log` deliberately, since
+logging must never break its caller. The three deallocators —
+`zanshin_string_free`, `zanshin_buffer_free`, `zanshin_buffer_free_token`
+(`crates/zanshin-ffi/src/ffi_strings.rs`) — carry **no** `catch_unwind`, so a
+panic in them would unwind across the C ABI. Their bodies are pointer-validity
+checks plus a `drop`, which is why nothing was added; do not read the backstop as
+a blanket guarantee that no panic ever crosses the boundary.
 
 ---
 
@@ -142,6 +156,13 @@ A **zero-length or garbage buffer** fails verification, so it lands on
 `ffi.invalid_argument` — never on `ffi.null_pointer`. Only a genuinely null
 `data` pointer produces `ffi.null_pointer`.
 
+**The ladder starts only once `len` is honest.** `len` must describe exactly the
+bytes readable at `data`; the reader builds its slice with
+`std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
+larger than the allocation is an out-of-bounds read — undefined behaviour, not a
+refusal, and no ladder row covers it. That obligation is the caller's, and it is
+repeated in every one of the sixteen symbols' `# Safety` blocks.
+
 Layer 3 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
 across these tables an absent field is the wire form of "the user did not supply
@@ -164,6 +185,12 @@ rejected **Dart-side, at two layers**:
 
 The check is deliberately spelled at both layers for that reason.
 
+**Rust does not re-check.** There is no `reject_interior_nul` beside
+`reject_null_request`: both enforcement layers are Dart-side, so a caller that
+bypasses the generated adapters can put a NUL into a request string and it will
+reach jj-lib. That is the same posture as the interchangeable-verification caveat
+below — the guard is the adapter, not the wrapper.
+
 ### The request tables
 
 `schemas/envelope.fbs:31-266` declares **15** request tables. They are **not**
@@ -181,9 +208,12 @@ request-buffer symbols.
 carries a `file_identifier`, and several put one string in slot 0, so a buffer
 built for one verb verifies as another's table instead of being refused with
 `ffi.invalid_argument`. This is only reachable by a caller bypassing the
-generated Dart adapters. It is an open must-have on the central ledger:
-`_bmad-output/implementation-artifacts/deferred-work.md:194`. Do not work around
-it per-symbol — the fix is a schema-convention decision.
+generated Dart adapters. It is an open must-have on the central ledger,
+`_bmad-output/implementation-artifacts/deferred-work.md`, under the bullet
+*"Request tables verify interchangeably — no `file_identifier` — and Story 9.8 is
+the first place the collision is DANGEROUS"* (cited by title, not by line: that
+file grows by insertion). Do not work around it per-symbol — the fix is a
+schema-convention decision.
 
 ---
 

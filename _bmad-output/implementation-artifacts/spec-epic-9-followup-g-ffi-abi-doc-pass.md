@@ -2,10 +2,10 @@
 title: 'Epic 9 follow-up G: bring `docs/ffi-abi.md` current for all 47 exported symbols and guard it with a doc-sync test'
 type: 'chore'
 created: '2026-09-06'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'd115e5f9ef066e2147c8e27885e4de0d0f5a80c3'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
 deferred: []
@@ -163,9 +163,10 @@ the infrastructure symbols. For those, the owning story is the spec file in
 - Story 3.6 — `zanshin_events_register`, `zanshin_events_unregister`
   (`3-6-nativecallable-listener-dispatch-events-progress-callbacks.md`)
 - Story 3.8 — `zanshin_diagnostics` (`3-8-diagnostics-api-wip-minimal.md`)
-- Story 6.4a — `zanshin_git_fetch` (`spec-6-4a-git-fetch-progress-callback.md`; the `.fbs`
-  registry would place it under 6-5 by payload alone, and `envelope.fbs:453` names 6-4a as the
-  `git fetch` progress producer)
+- ~~Story 6.4a — `zanshin_git_fetch`~~ **Corrected during implementation: the owning story is
+  6.5.** `spec-6-4a-git-fetch-progress-callback.md` never mentions the symbol;
+  `spec-6-5-ffi-mutation-surface.md` introduces it. 6.4a owns the domain side and the
+  `Progress` producer (`envelope.fbs:453`), which is what the index row records.
 
 **Facts the request-buffer convention section must state (all verified)**
 - Dart builds the table with the flatc-generated `<X>RequestObjectBuilder(...).toBytes()`.
@@ -223,9 +224,10 @@ the infrastructure symbols. For those, the owning story is the spec file in
    at `packages/zanshin_core/lib/src/worker/isolate.dart:1349-1352`.
 5. `:312-314` "the raw handle is used only for … `zanshin_repo_close`, read wrappers" — Story 6.5
    and Epic 9 dispatch the raw handle to every mutation wrapper too (`isolate.dart:1513` ff.).
-6. `:328-329` "the only new file … allowed to import `dart:ffi`" — ten files under
-   `packages/zanshin_core/lib/src/ffi/` import it. The true invariant is that `dart:ffi` never
-   reaches `lib/src/worker/`.
+6. `:328-329` "the only new file … allowed to import `dart:ffi`" — **fourteen** files under
+   `packages/zanshin_core/lib/` import it (the "ten" this Code Map first recorded was an
+   undercount, corrected during implementation). The true invariant, and what the doc states
+   instead of a brittle count, is that `dart:ffi` never reaches `lib/src/worker/`.
 7. `:610` "the layered config the jj CLI would have **at v0.42.0**" — a claim about current
    behaviour; `Cargo.toml:33` pins `jj-lib =0.44.0` and `crates/zanshin-jj/src/config.rs:60` says
    v0.44.0.
@@ -316,12 +318,17 @@ the infrastructure symbols. For those, the owning story is the spec file in
   D's single frontmatter deferral verbatim in the file's bullet style -- the central ledger must
   be complete.
 - `_bmad-output/implementation-artifacts/spec-9-3-content-ops-restore-absorb.md`,
-  `spec-9-4-file-reads-list-show-annotate-search.md`, `spec-9-5-git-local-sync-remote-config.md`,
-  `spec-9-6-read-views-show-evolog-interdiff.md`, `spec-9-7-workspace-reads-list-root.md`,
+  `spec-9-4-file-reads-list-show-annotate-search.md`, `spec-9-7-workspace-reads-list-root.md`,
   `spec-9-8-bookmark-crud-create-delete.md` -- add a `resolved: >-` block scalar to the one
   `deferred:` item in each that mentions `docs/ffi-abi.md`; if an item is a plain string rather
   than a mapping, convert just that item to the `summary:`/`evidence:`/`resolved:` shape without
-  changing its text -- every 9.x spec carried this item forward and must record its close.
+  changing its text -- each of these specs carried the item forward and must record its close.
+  **Corrected during implementation: FOUR files, not six.** The dispatching intent asserted that
+  every spec from 9-3 to 9-8 carries a matching `deferred:` item; it does not.
+  `spec-9-5-git-local-sync-remote-config.md:847` mentions `docs/ffi-abi.md` only in its Review
+  Triage Log, and says the item was "already recorded as deferred by Story 9.4";
+  `spec-9-6-read-views-show-evolog-interdiff.md` does not mention the file at all. Neither has a
+  frontmatter item to annotate, so neither is touched.
 
 **Acceptance Criteria:**
 - Given the doc pass is complete, when `cargo test -p zanshin-ffi --test ffi_abi_doc_sync` runs,
@@ -345,12 +352,86 @@ the infrastructure symbols. For those, the owning story is the spec file in
 - Given the ledger, when the `docs/ffi-abi.md` bullet and the new follow-up-D section are read,
   then the bullet is struck through with a resolution line and the ledger holds one MORE resolved
   item and no new open one.
-- Given each of the six `spec-9-*` files, when its YAML frontmatter is parsed, then it parses and
-  its `docs/ffi-abi.md` deferral carries a `resolved:` field.
+- Given each `spec-9-*` file that actually carries a `docs/ffi-abi.md` item in its `deferred:`
+  frontmatter (four of them — 9-3, 9-4, 9-7, 9-8; see the corrected task above), when its YAML
+  frontmatter is parsed, then it parses and that item carries a `resolved:` field.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-09-06 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 14: (high 1, medium 6, low 7)
+- defer: 0
+- reject: 14: (high 0, medium 1, low 13)
+- addressed_findings:
+  - `[high]` `[patch]` **The pass introduced a false safety claim.** The new `internal.panic`
+    section said "no panic ever crosses the C ABI" and that "the `void`-returning infallible
+    functions are `catch_unwind`-wrapped too". Verified: `crates/zanshin-ffi/src/ffi_strings.rs`
+    contains no `catch_unwind` at all, so `zanshin_string_free`, `zanshin_buffer_free` and
+    `zanshin_buffer_free_token` are NOT wrapped — only four of the seven are (`logging.rs`,
+    `events.rs`). Rewritten to name the four that are wrapped and the three that are not, and to
+    say why nothing was added to them (pointer checks plus a `drop`). Shipping this was the exact
+    defect class the run exists to remove.
+  - `[low]` `[patch]` The `panic = "unwind"` precondition (`envelope.rs:499-502`) was dropped in
+    the move from rustdoc into the doc; restored with its citation.
+  - `[low]` `[patch]` `zanshin_diagnostics` "always answers `ok == true`" contradicted the
+    backstop paragraph; reworded to "for every input — the backstop is its only `ok == false` arm".
+  - `[medium]` `[patch]` The guard could pass VACUOUSLY: only `!exported.is_empty()` was asserted,
+    so a scanner regression that silently dropped symbols would leave it green. Pinned with
+    `EXPECTED_EXPORTS = 47` (the `test-cargo-hygiene` expected-count precedent), and
+    `declared_symbol` — which bailed after the first `zanshin_` on a line — became
+    `declared_symbols`, scanning every occurrence, with a fixture test for a `zanshin_`-prefixed
+    return type.
+  - `[medium]` `[patch]` `documented_symbols` was not fence-aware, so a `#`- or `|`-prefixed line
+    inside one of the doc's own ```c / ```dart samples counted as coverage. Fence toggle added,
+    with a fixture test.
+  - `[medium]` `[patch]` **The strongest claim in the change had no committed check.** The AC
+    "the row's Error codes cell contains exactly the codes bulleted in that symbol's `# Errors`
+    block" was verified by a one-off script that was never committed, so five of the six index
+    columns could rot exactly as the doc had. Three tests now enforce it against the real
+    artifacts — per-symbol set equality against the rustdoc bullets, registry membership for every
+    named code, and `internal.panic` in no row — plus two fixture tests for the parser (a
+    `# Safety` mention must not count; a dropped code must be detected).
+  - `[low]` `[patch]` The negative test re-implemented the filter instead of driving the
+    production path; `missing_symbols` extracted and both call it.
+  - `[medium]` `[patch]` The request-buffer contract documented the refusal ladder but not the
+    caller's `len` obligation — an over-long `len` is an out-of-bounds read before any
+    verification runs, i.e. UB, not a refusal. Stated explicitly.
+  - `[medium]` `[patch]` The interior-NUL section named two Dart layers and no Rust layer without
+    saying that Rust never re-checks; a caller bypassing the adapters is unguarded. Stated.
+  - `[low]` `[patch]` `(strict-fail, OQ-1)` reached the public generated header with no expansion;
+    the four `watcher.io_error` bullets now spell the rule out instead.
+  - `[medium]` `[patch]` In `zanshin_repo_clone`'s block the new bullet ("the cloned workspace
+    persists") sat three lines under "the partial workspace is already rolled back". Both are
+    true; the bullet now says arming runs AFTER the clone has succeeded, so the rollback does not
+    apply. The `init`/`convert` bullets got the same clarification.
+  - `[low]` `[patch]` The no-`file_identifier` caveat cited `deferred-work.md:194` — a line number
+    in a file this very change inserts a section into. Now cited by the bullet's title.
+  - `[low]` `[patch]` Three Code Map/task facts the implementation disproved were left standing in
+    the spec: the intent's premise that all six `spec-9-*` specs carry the deferral (only four do
+    — 9-5 mentions it in prose only, 9-6 not at all), "ten" files importing `dart:ffi` (fourteen),
+    and `zanshin_git_fetch`'s owning story (6.5, not 6.4a). All three corrected in place with
+    their evidence, and the last acceptance criterion rewritten so it is satisfiable.
+  - `[low]` `[patch]` The lifted follow-up-D ledger entry dropped that item's own reason for
+    having been spec-only; the preamble now records that this lift overrides that call.
+  - Rejected (not fixed, with reasons): the "eight vs nine infallible" reading (the text already
+    distinguishes plain-return from no-`# Errors` explicitly); guarding the doc's other prose
+    counts (16/15/25) — the export-count pin covers the failure mode that matters; group
+    separators, anchors and a TOC for the index (the nine-group ordering was verified correct, the
+    rest is cosmetic); the overloaded `—` legend and the two narrative Story cells (both explained
+    in the text); the reverse-direction guard (matches the intent's literal predicate; recorded as
+    a design choice); a panic-return contract for `zanshin_ffi_version`; a recovery paragraph for
+    arming failure (already in *Async events*); enforcing the "no `dart:ffi` in `lib/src/worker/`"
+    invariant with a new lint; `verify-codegen` being outside `cargo make test` (pre-existing,
+    deliberately deferred at `Makefile.toml:349`, and mitigated by the extern-fn coverage guard);
+    a path-existence check over every citation (the doc legitimately cites jj-CLI and jj-lib paths
+    absent from this repo); mid-line block-comment state tracking (a shape cbindgen never emits;
+    the multi-occurrence fix covers the real risk); and speculative parser cases (two declarations
+    on one line, a duplicate index row, an empty document).
 
 ## Design Notes
 
@@ -422,4 +503,111 @@ false-by-omission in the way the two `# Errors` gaps are, and none is in this do
 - Spot-check five index rows spanning different shapes (one infallible, one handle-only, one
   request-buffer, one C-string, `zanshin_graph_slice`) against the header's `# Errors` block and
   against `schemas/envelope.fbs` — every field of the row must be traceable to a line in one of
-  those two files.
+  those two files. (Superseded for the Error-codes column by the review pass, which committed
+  `every_index_row_names_exactly_the_error_codes_its_rustdoc_bullets_do`.)
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+`docs/ffi-abi.md` is current for the whole FFI surface again, and can no longer go stale
+silently. Three things landed.
+
+**(a) The request-buffer convention is documented once.** A new `## Request-buffer contract`
+section covers the shared three-parameter shape, the AR-P-5 **inbound** ownership rule (Dart
+allocates AND frees; Rust only borrows) as the explicit reverse of the outbound token rule, the
+three-layer refusal ladder — `ffi.null_pointer` with no context → `ffi.invalid_argument` with the
+verifier message, where a zero-length or garbage buffer lands → `jj.invalid_input` for a required
+field absent from an otherwise valid table — the caller's `len` obligation (an over-long `len` is
+an out-of-bounds read before verification runs: UB, not a refusal), the deliberate non-collapse
+of an empty buffer to `nullptr`, the interior-NUL rule with both Dart enforcement layers **and**
+the fact that Rust never re-checks, the 15 request tables with `ChangeIdList` as the only shared
+one, the append-only field-order contract, and the open no-`file_identifier` caveat cited by
+ledger-bullet title rather than by line.
+
+**(b) A `## Symbol index` with one row per exported symbol — all 47, no allow-list.** Columns are
+`| Symbol | Args | Request table | Success payload | Error codes | Story |`, grouped by noun.
+Every row is derived: signature from `crates/zanshin-ffi/include/zanshin_ffi.h`, request and
+payload tables from `schemas/envelope.fbs`, error codes verbatim from that symbol's `# Errors`
+block, cross-checked against `docs/rust-error-codes.md`. `internal.panic` is documented once as
+the universal backstop and appears in no row.
+
+**(c) Fifteen falsified statements corrected.** Thirteen were found in planning (the infallible
+list naming 4 of 8; `zanshin_repo_convert`'s error table; a `_onNativeEvent` sample naming a
+function that does not exist; the event-demux lookup site; "the raw handle is used only for close
+plus read wrappers", false since Story 6.5; "the only file allowed to import `dart:ffi`",
+contradicted by fourteen files; three `v0.42.0` anchors for a pin that moved to `=0.44.0`; the
+missing `ui.conflict-marker-style` builtin; a stale `cli_util.rs` line range; `syntheticElided =
+true`), and two more were introduced by the pass itself and caught in review — see the Triage Log.
+
+Two premises the dispatching intent named turned out to be **non-issues, and that is a finding**:
+`AbsorbSkippedPath`/`SkippedPath` appears nowhere under `docs/`, so the gap was coverage rather
+than a stale name; and the `session_id` correlation section was verified accurate and left alone.
+A third intent premise was simply false: only four of the six `spec-9-*` specs carry a
+`docs/ffi-abi.md` deferral.
+
+**The guard.** `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` — no new dependency, no
+`Makefile.toml` wiring (`cargo make test` already runs `cargo test --workspace`). Fifteen tests
+over four pure `&str` scanners: the header's export set must be a subset of the doc's covered set
+(naming every miss, sorted, in one message), the export count is pinned at 47 so a scanner
+regression cannot make the subset check pass vacuously, every index row's Error-codes cell must
+equal that symbol's `# Errors` bullets exactly, every named code must be registered, and
+`internal.panic` must appear in no row. Ten fixture tests pin the parsing rules themselves.
+
+Two `# Errors` rustdoc gaps the cross-check proved were fixed at the source and regenerated
+(comment-only, one `cargo make codegen`, no declaration line moved, no `.fbs` edit):
+`watcher.io_error` was documented on **no** symbol although `arm_session` returns it from
+`zanshin_repo_open`/`_init`/`_clone`/`_convert`, and `jj.config_error` was missing from
+`zanshin_graph_slice` although `graph.rs:46-47` maps it and `:749-752` asserts it.
+
+### Files changed
+
+- `docs/ffi-abi.md` — the doc pass: request-buffer contract, 47-row symbol index, fifteen corrections.
+- `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` — new; the doc-staleness guard (15 tests).
+- `crates/zanshin-ffi/src/repo.rs` — `watcher.io_error` added to four `# Errors` blocks (comment-only).
+- `crates/zanshin-ffi/src/graph.rs` — `jj.config_error` added to one `# Errors` block (comment-only).
+- `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` — regenerated; doc-comment hunks only.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the `docs/ffi-abi.md` fruit struck through and resolved; follow-up D's single deferral lifted into a new section before follow-up E.
+- `spec-9-3-…`, `spec-9-4-…`, `spec-9-7-…`, `spec-9-8-…` — `resolved:` block scalars on their `docs/ffi-abi.md` deferrals (9-5 and 9-6 carry no such frontmatter item).
+
+### Review findings breakdown
+
+- Patches applied: **14** (high 1, medium 6, low 7) — detailed in the Triage Log.
+- Items deferred: **0**. The ledger ends this run with one item resolved and none added.
+- Items rejected: **14** (medium 1, low 13), each with a reason recorded in the Triage Log.
+
+Follow-up review recommendation: **true** — a `high`-severity patch was applied (the false
+`catch_unwind` claim), and the weighted score is 3×6 + 1×7 = 25, well over the threshold of 5.
+
+### Verification performed
+
+- `cargo make test` — **exit 0** (620 s), run unpiped and synchronously. Coverage held at 99.22 %
+  (8492/8559); `coverage-baseline.txt` did not move, as expected for a file under `tests/`.
+- `cargo test -p zanshin-ffi --test ffi_abi_doc_sync` — 15 passed, 0 ignored.
+- Negative probe: removing `zanshin_absorb`'s index row fails with
+  `1 of 47 symbols … zanshin_absorb`; row restored via `git checkout`.
+- Independent script cross-check (before the equivalent test was committed): all 47 rows matched
+  their header `# Errors` block exactly, all 31 named codes registered, `internal.panic` in no row.
+- `git diff` over the regenerated header and bindings, filtered to non-comment lines: empty.
+- `git diff -- coverage-baseline.txt schemas/`: empty.
+- `cargo fmt --all --check`: clean. `cargo clippy -p zanshin-ffi --all-targets -- -D warnings`: clean.
+- All touched YAML frontmatter re-parsed with `yaml.safe_load`.
+
+### Residual risks
+
+- **The guard is one-directional.** A row for a symbol the header no longer exports is not caught.
+  This matches the intent's literal predicate and is recorded in the test's module doc.
+- **Five of the six index columns beyond Error codes are still unguarded.** Args, Request table,
+  Success payload and Story are verified by reading, not by a test. Error codes — the column most
+  likely to drift, and the one the spec made an acceptance criterion — is now enforced.
+- **The doc's other prose counts (16 request-buffer symbols, 15 request tables, 25 union members)
+  are unguarded.** Only the export count is pinned; a `.fbs` change could leave the others stale.
+- **`EXPECTED_EXPORTS` must be bumped deliberately** when a symbol lands. That is the intended
+  cost: it forces a reader back to the doc's prose counts at the same moment.
+- **The guard reads the committed header**, and `verify-codegen` is deliberately outside
+  `cargo make test` (`Makefile.toml:349`), so a new `extern "C" fn` added without running
+  `cargo make codegen` is invisible to it. Pre-existing repo posture, mitigated by the extern-fn
+  coverage guard, which requires a Dart test calling the symbol through the cdylib.

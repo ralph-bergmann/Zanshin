@@ -1120,8 +1120,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 /// an unreadable config or a non-boolean value fails the clone under this code. `context`
 /// names the offending KEY for a wrong-typed value, and the offending FILE PATH for a
 /// config file that is unreadable or not valid TOML.
-/// - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
-/// returned (strict-fail, OQ-1); the cloned workspace persists. Detail in `context`.
+/// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
+/// no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
+/// has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
+/// persists and a retry sees an existing repo. Detail in `context`.
 ///
 /// # Safety
 /// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
@@ -1172,8 +1174,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 /// - `jj.convert_failed` — a jj-lib failure during conversion; detail in `context`.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
-/// - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
-/// returned (strict-fail, OQ-1); the written `.jj/` persists. Detail in `context`.
+/// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
+/// no handle is returned rather than one for an unwatched repo. It runs AFTER the
+/// conversion has succeeded, so the written `.jj/` persists and a retry sees an existing
+/// jj repo. Detail in `context`.
 ///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
@@ -1222,8 +1226,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_detect(
 /// - `ffi.invalid_argument` — `backend` is not `0` or `1`.
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
 /// - `jj.jj_lib_error` — init failed (e.g. repo already exists).
-/// - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
-/// returned (strict-fail, OQ-1); the created `.jj/` persists. Detail in `context`.
+/// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
+/// no handle is returned rather than one for an unwatched repo. It runs AFTER the init
+/// has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
+/// Detail in `context`.
 ///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned token
@@ -1245,8 +1251,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_init(
 /// - `jj.repo_not_found` — `path` exists but is not a jj repo.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
-/// - `watcher.io_error` — the filesystem watcher could not be armed, so no handle is
-/// returned (strict-fail, OQ-1); detail in `context`.
+/// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
+/// no handle is returned rather than one for an unwatched repo. `open` leaves no residue.
+/// Detail in `context`.
 ///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null (null is detected and

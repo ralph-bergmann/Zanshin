@@ -15,7 +15,7 @@
 //! testable without touching the filesystem. Parsing is plain `str` methods: there is
 //! no `regex` crate in this workspace and adding one would be a `cargo deny` surface.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// Repo-root-relative path of the generated C header — the export inventory.
@@ -23,6 +23,18 @@ const HEADER_PATH: &str = "crates/zanshin-ffi/include/zanshin_ffi.h";
 
 /// Repo-root-relative path of the ABI reference — the coverage source.
 const DOC_PATH: &str = "docs/ffi-abi.md";
+
+/// Repo-root-relative path of the error-code registry.
+const REGISTRY_PATH: &str = "docs/rust-error-codes.md";
+
+/// How many `zanshin_*` functions the header is expected to declare.
+///
+/// Pinned so the subset check cannot pass vacuously: if a scanner regression shrank the
+/// export set, every remaining symbol would still be documented and the guard would stay
+/// green. Same reasoning as the expected-file-count assertion in `Makefile.toml`'s
+/// `test-cargo-hygiene`. Bumping it is a deliberate edit that rides with the doc's own
+/// prose counts.
+const EXPECTED_EXPORTS: usize = 47;
 
 /// The workspace root, derived from this crate's manifest directory.
 ///
@@ -53,19 +65,28 @@ fn is_comment_line(line: &str) -> bool {
     t.starts_with('*') || t.starts_with("/*") || t.starts_with("//")
 }
 
-/// Extract the name of the `zanshin_*` function declared on `line`, if any.
+/// Every `zanshin_*` function declared on `line`.
 ///
 /// A declaration is a lowercase `zanshin_` prefix followed by identifier characters and
 /// then `(`. The lowercase prefix is what excludes the type `ZanshinBuf` and the include
 /// guard `ZANSHIN_FFI_H`; the `(` is what excludes anything that merely mentions a name.
-fn declared_symbol(line: &str) -> Option<String> {
-    let start = line.find("zanshin_")?;
-    let rest = &line[start..];
-    let end = rest.find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')?;
-    if rest.as_bytes().get(end) != Some(&b'(') {
-        return None;
+///
+/// EVERY occurrence on the line is examined, not just the first. Bailing after one miss
+/// would silently drop the declaration on a line whose return type also starts with
+/// `zanshin_` — and a symbol the scanner drops is a symbol the doc is never asked for,
+/// which is the one way this guard could pass while stale.
+fn declared_symbols(line: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for (start, _) in line.match_indices("zanshin_") {
+        let rest = &line[start..];
+        let Some(end) = rest.find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_') else {
+            continue;
+        };
+        if rest.as_bytes().get(end) == Some(&b'(') {
+            found.push(rest[..end].to_owned());
+        }
     }
-    Some(rest[..end].to_owned())
+    found
 }
 
 /// Every `zanshin_*` function the header declares, sorted and deduplicated.
@@ -76,7 +97,7 @@ fn exported_symbols(header_src: &str) -> BTreeSet<String> {
     header_src
         .lines()
         .filter(|line| !is_comment_line(line))
-        .filter_map(declared_symbol)
+        .flat_map(declared_symbols)
         .collect()
 }
 
@@ -88,10 +109,22 @@ fn exported_symbols(header_src: &str) -> BTreeSet<String> {
 ///
 /// A name mentioned in a later cell — an *Error codes* cell naming another wrapper, say
 /// — is a cross-reference, not documentation of that symbol, and is not counted.
+///
+/// Fenced code blocks are skipped: the document carries ```` ```c ```` and ```` ```dart ````
+/// samples, and a `#`-comment or pipe-prefixed line inside one is a sample, not a heading
+/// or a row. This mirrors [`is_comment_line`] on the header side.
 fn documented_symbols(doc_src: &str) -> BTreeSet<String> {
     let mut covered = BTreeSet::new();
+    let mut in_fence = false;
     for line in doc_src.lines() {
         let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
         let cell = if trimmed.starts_with('#') {
             trimmed.trim_start_matches('#')
         } else if let Some(body) = trimmed.strip_prefix('|') {
@@ -112,24 +145,35 @@ fn documented_symbols(doc_src: &str) -> BTreeSet<String> {
     covered
 }
 
+/// Exported symbols with no heading and no index row, sorted.
+///
+/// Factored out so the failure the guard reports is produced by the same code the
+/// fixture test drives.
+fn missing_symbols(header_src: &str, doc_src: &str) -> Vec<String> {
+    let documented = documented_symbols(doc_src);
+    exported_symbols(header_src)
+        .into_iter()
+        .filter(|name| !documented.contains(name))
+        .collect()
+}
+
 #[test]
 fn every_exported_symbol_has_a_heading_or_an_index_row_in_the_abi_doc() {
     let header = read_artifact(HEADER_PATH).expect("the generated C header is committed");
     let doc = read_artifact(DOC_PATH).expect("the ABI reference is committed");
 
     let exported = exported_symbols(&header);
-    assert!(
-        !exported.is_empty(),
-        "parsed no exported symbols out of {HEADER_PATH} — the scanner is broken, not the doc"
+    assert_eq!(
+        exported.len(),
+        EXPECTED_EXPORTS,
+        "the header now declares {} exported symbols, not {EXPECTED_EXPORTS}.\n\
+         If a symbol really landed or left, bump EXPECTED_EXPORTS and update the counts \
+         `docs/ffi-abi.md` states in prose. If it did not, the scanner is broken — a symbol \
+         it silently drops is a symbol the doc is never asked for.",
+        exported.len()
     );
-    let documented = documented_symbols(&doc);
 
-    let missing: Vec<&str> = exported
-        .iter()
-        .filter(|name| !documented.contains(*name))
-        .map(String::as_str)
-        .collect();
-
+    let missing = missing_symbols(&header, &doc);
     assert!(
         missing.is_empty(),
         "{} of {} symbols exported from {HEADER_PATH} are undocumented in {DOC_PATH}.\n\
@@ -137,6 +181,225 @@ fn every_exported_symbol_has_a_heading_or_an_index_row_in_the_abi_doc() {
         missing.len(),
         exported.len(),
         missing.join("\n  ")
+    );
+}
+
+/// Every dotted `<domain>.<reason>` code named inside backticks on `text`.
+fn backticked_codes(text: &str) -> BTreeSet<String> {
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|token| {
+            let mut halves = token.splitn(2, '.');
+            let (Some(domain), Some(reason)) = (halves.next(), halves.next()) else {
+                return false;
+            };
+            let ok = |s: &str| {
+                !s.is_empty()
+                    && s.bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            };
+            ok(domain) && ok(reason)
+        })
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+/// Each exported symbol paired with the codes bulleted under its `# Errors` rustdoc.
+///
+/// Only bullet-START lines contribute: a continuation line may quote an argument name or
+/// another identifier in backticks, and only the bullet itself names a code.
+fn header_error_codes(header_src: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let mut map = BTreeMap::new();
+    let mut in_errors = false;
+    let mut codes = BTreeSet::new();
+    for line in header_src.lines() {
+        if is_comment_line(line) {
+            let body = line.trim_start().trim_start_matches(['*', '/']).trim();
+            if let Some(section) = body.strip_prefix("# ") {
+                in_errors = section.trim() == "Errors";
+            } else if in_errors {
+                if let Some(bullet) = body.strip_prefix("- ") {
+                    codes.extend(backticked_codes(bullet));
+                }
+            }
+            continue;
+        }
+        for name in declared_symbols(line) {
+            map.insert(name, std::mem::take(&mut codes));
+            in_errors = false;
+        }
+    }
+    map
+}
+
+/// Each symbol-index row paired with the codes its *Error codes* cell names.
+///
+/// Rows are the six-column `| Symbol | Args | Request table | Success payload | Error codes
+/// | Story |` shape; anything shorter is some other table and is skipped.
+fn index_error_codes(doc_src: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let mut map = BTreeMap::new();
+    let mut in_fence = false;
+    for line in doc_src.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        let Some(body) = (if in_fence { None } else { trimmed.strip_prefix('|') }) else {
+            continue;
+        };
+        let cells: Vec<&str> = body.split('|').collect();
+        if cells.len() < 6 {
+            continue;
+        }
+        let names = backticked_names(cells[0]);
+        let [name] = names.as_slice() else { continue };
+        map.insert((*name).to_owned(), backticked_codes(cells[4]));
+    }
+    map
+}
+
+/// The `zanshin_*` names quoted in backticks in `text`.
+fn backticked_names(text: &str) -> Vec<&str> {
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|t| t.starts_with("zanshin_"))
+        .collect()
+}
+
+#[test]
+fn every_index_row_names_exactly_the_error_codes_its_rustdoc_bullets_do() {
+    let header = read_artifact(HEADER_PATH).expect("the generated C header is committed");
+    let doc = read_artifact(DOC_PATH).expect("the ABI reference is committed");
+
+    let from_header = header_error_codes(&header);
+    let from_index = index_error_codes(&doc);
+
+    let mut problems = Vec::new();
+    for (name, want) in &from_header {
+        let Some(got) = from_index.get(name) else {
+            problems.push(format!("{name}: no index row"));
+            continue;
+        };
+        if want != got {
+            let only_header: Vec<&str> = want.difference(got).map(String::as_str).collect();
+            let only_doc: Vec<&str> = got.difference(want).map(String::as_str).collect();
+            problems.push(format!(
+                "{name}: missing from the row {only_header:?}, not in the rustdoc {only_doc:?}"
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the symbol index disagrees with {HEADER_PATH}'s `# Errors` bullets:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+#[test]
+fn every_error_code_named_in_the_symbol_index_is_registered() {
+    let doc = read_artifact(DOC_PATH).expect("the ABI reference is committed");
+    let registry = read_artifact(REGISTRY_PATH).expect("the error-code registry is committed");
+
+    let registered: BTreeSet<String> = registry
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix('|'))
+        .flat_map(|body| backticked_codes(body.split('|').next().unwrap_or("")))
+        .collect();
+
+    let named: BTreeSet<String> = index_error_codes(&doc).into_values().flatten().collect();
+    let unregistered: Vec<&str> = named.difference(&registered).map(String::as_str).collect();
+
+    assert!(
+        !registered.is_empty(),
+        "parsed no codes out of {REGISTRY_PATH} — the scanner is broken, not the doc"
+    );
+    assert!(
+        unregistered.is_empty(),
+        "the symbol index names codes that {REGISTRY_PATH} does not register: {unregistered:?}"
+    );
+}
+
+#[test]
+fn internal_panic_is_documented_once_and_named_in_no_index_row() {
+    let doc = read_artifact(DOC_PATH).expect("the ABI reference is committed");
+    let rows_naming_it: Vec<String> = index_error_codes(&doc)
+        .into_iter()
+        .filter(|(_, codes)| codes.contains("internal.panic"))
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        rows_naming_it.is_empty(),
+        "`internal.panic` is the universal backstop and belongs only in the prose, \
+         but these rows name it: {rows_naming_it:?}"
+    );
+    assert!(
+        doc.contains("`internal.panic`"),
+        "the universal backstop must still be documented in the prose"
+    );
+}
+
+#[test]
+fn a_rustdoc_errors_block_is_read_per_symbol_and_stops_at_the_next_section() {
+    let header = "\
+/**
+ * Do a thing.
+ *
+ * # Errors
+ * - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
+ * - `jj.repo_not_found` — `path` is not a jj repo; the `context` names it.
+ *
+ * # Safety
+ * The caller must not pass `jj.jj_lib_error` here — prose, not a bullet.
+ */
+ZanshinBuf *zanshin_repo_open(const char *path);
+
+/**
+ * # Errors
+ * - `ffi.invalid_handle` — handle is 0.
+ */
+ZanshinBuf *zanshin_status(uint64_t handle);
+";
+    let map = header_error_codes(header);
+    assert_eq!(
+        map["zanshin_repo_open"],
+        BTreeSet::from([
+            "ffi.null_pointer".to_owned(),
+            "ffi.utf8_error".to_owned(),
+            "jj.repo_not_found".to_owned(),
+        ]),
+        "two codes on one bullet must both count; a `# Safety` mention must not"
+    );
+    assert_eq!(
+        map["zanshin_status"],
+        BTreeSet::from(["ffi.invalid_handle".to_owned()]),
+        "each symbol's block must start empty, not inherit the previous symbol's codes"
+    );
+}
+
+#[test]
+fn an_index_row_whose_codes_disagree_with_the_rustdoc_is_detected() {
+    let header = "\
+/**
+ * # Errors
+ * - `ffi.invalid_handle` — handle is 0.
+ * - `jj.jj_lib_error` — backend failure.
+ */
+ZanshinBuf *zanshin_status(uint64_t handle);
+";
+    let doc = "\
+| Symbol | Args | Request table | Success payload | Error codes | Story |
+|---|---|---|---|---|---|
+| `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle` | 3.4b |
+";
+    let want = &header_error_codes(header)["zanshin_status"];
+    let got = &index_error_codes(doc)["zanshin_status"];
+    assert_ne!(want, got, "a dropped code must not compare equal");
+    assert_eq!(
+        want.difference(got).map(String::as_str).collect::<Vec<_>>(),
+        ["jj.jj_lib_error"]
     );
 }
 
@@ -196,14 +459,33 @@ fn a_name_in_a_non_first_table_cell_is_not_counted_as_documentation() {
 fn a_symbol_present_in_the_header_and_absent_from_the_doc_is_reported_as_missing() {
     let header = "ZanshinBuf *zanshin_undo(uint64_t handle);\n";
     let doc = "### `zanshin_status`\n";
-    let exported = exported_symbols(header);
+    assert_eq!(missing_symbols(header, doc), ["zanshin_undo"]);
+}
+
+#[test]
+fn a_declaration_whose_return_type_also_starts_with_zanshin_is_still_found() {
+    let header = "zanshin_result_t zanshin_future_verb(uint64_t handle);\n";
+    assert_eq!(
+        exported_symbols(header),
+        BTreeSet::from(["zanshin_future_verb".to_owned()]),
+        "bailing after the first `zanshin_` on the line would drop this symbol silently"
+    );
+}
+
+#[test]
+fn a_symbol_named_inside_a_fenced_code_block_is_not_counted_as_documentation() {
+    let doc = "\
+```c
+| `zanshin_undo` | a sample row, not the index |
+```
+### `zanshin_status`
+";
     let documented = documented_symbols(doc);
-    let missing: Vec<&str> = exported
-        .iter()
-        .filter(|n| !documented.contains(*n))
-        .map(String::as_str)
-        .collect();
-    assert_eq!(missing, ["zanshin_undo"]);
+    assert!(documented.contains("zanshin_status"));
+    assert!(
+        !documented.contains("zanshin_undo"),
+        "a code sample must not satisfy coverage"
+    );
 }
 
 #[test]
