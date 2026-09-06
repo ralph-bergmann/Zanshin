@@ -1443,6 +1443,12 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
 ///  `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
 ///  explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
 ///  There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+///  `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
+///  `-n/--limit` and streams to a pager, where this builds ONE buffer whose every entry pays a
+///  merged-parent tree diff plus a per-parent copy-record stream. It is meaningful ONLY when
+///  has_limit == true (presence pair, same rule as EvologRequest.limit: flatc 25.12.19 rejects
+///  optional scalars for Dart), it is applied in RAW REVSET order, and `limit = 0` is an empty
+///  result, not an error. ABSENCE is therefore the CLI-parity default: unbounded, as `jj show` is.
 class ShowRequest {
   ShowRequest._(this._bc, this._bcOffset);
   factory ShowRequest(List<int> bytes) {
@@ -1456,10 +1462,12 @@ class ShowRequest {
   final int _bcOffset;
 
   String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get limit => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  bool get hasLimit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
 
   @override
   String toString() {
-    return 'ShowRequest{revset: ${revset}}';
+    return 'ShowRequest{revset: ${revset}, limit: ${limit}, hasLimit: ${hasLimit}}';
   }
 }
 
@@ -1476,11 +1484,21 @@ class ShowRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(3);
   }
 
   int addRevsetOffset(int? offset) {
     fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLimit(int? limit) {
+    fbBuilder.addUint32(1, limit);
+    return fbBuilder.offset;
+  }
+
+  int addHasLimit(bool? hasLimit) {
+    fbBuilder.addBool(2, hasLimit);
     return fbBuilder.offset;
   }
 
@@ -1491,17 +1509,25 @@ class ShowRequestBuilder {
 
 class ShowRequestObjectBuilder extends fb.ObjectBuilder {
   final String? _revset;
+  final int? _limit;
+  final bool? _hasLimit;
 
   ShowRequestObjectBuilder({
     String? revset,
-  }) : _revset = revset;
+    int? limit,
+    bool? hasLimit,
+  }) : _revset = revset,
+       _limit = limit,
+       _hasLimit = hasLimit;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, revsetOffset);
+    fbBuilder.addUint32(1, _limit);
+    fbBuilder.addBool(2, _hasLimit);
     return fbBuilder.endTable();
   }
 
@@ -6443,6 +6469,16 @@ class EvologViewObjectBuilder extends fb.ObjectBuilder {
 ///  `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
 ///  reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
 ///  success, as is a path filter that matches nothing.
+///
+///  `base_has_conflicts` reports whether the REBASED `from` tree — the LEFT side of the diff,
+///  which exists only in memory — is conflicted. It is a ZANSHIN-SIDE addition: the CLI signals
+///  this by rendering conflict markers in the patch TEXT, which is Epic 5's surface here, so a
+///  caller would otherwise see a plausible change list derived from a conflicted rebase with no
+///  way to tell. It is true whatever the cause — the 3-way merge left the conflict, OR
+///  `rebase_to_dest_parent`'s fast path (same parents) returned `from`'s own already-conflicted
+///  tree. `to`'s own conflict state is NOT reported here; that is `Change.conflict`'s job, via
+///  `zanshin_show` / `zanshin_change`. The flag describes the TREE, not the filtered result:
+///  a `paths` filter matching nothing still leaves it set.
 class InterdiffView {
   InterdiffView._(this._bc, this._bcOffset);
   factory InterdiffView(List<int> bytes) {
@@ -6457,10 +6493,11 @@ class InterdiffView {
 
   List<FileChange>? get fileChanges =>
       const fb.ListReader<FileChange>(FileChange.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  bool get baseHasConflicts => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
 
   @override
   String toString() {
-    return 'InterdiffView{fileChanges: ${fileChanges}}';
+    return 'InterdiffView{fileChanges: ${fileChanges}, baseHasConflicts: ${baseHasConflicts}}';
   }
 }
 
@@ -6477,11 +6514,16 @@ class InterdiffViewBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
   }
 
   int addFileChangesOffset(int? offset) {
     fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBaseHasConflicts(bool? baseHasConflicts) {
+    fbBuilder.addBool(1, baseHasConflicts);
     return fbBuilder.offset;
   }
 
@@ -6492,10 +6534,13 @@ class InterdiffViewBuilder {
 
 class InterdiffViewObjectBuilder extends fb.ObjectBuilder {
   final List<FileChangeObjectBuilder>? _fileChanges;
+  final bool? _baseHasConflicts;
 
   InterdiffViewObjectBuilder({
     List<FileChangeObjectBuilder>? fileChanges,
-  }) : _fileChanges = fileChanges;
+    bool? baseHasConflicts,
+  }) : _fileChanges = fileChanges,
+       _baseHasConflicts = baseHasConflicts;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -6503,8 +6548,9 @@ class InterdiffViewObjectBuilder extends fb.ObjectBuilder {
     final int? fileChangesOffset = _fileChanges == null
         ? null
         : fbBuilder.writeList(_fileChanges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(1);
+    fbBuilder.startTable(2);
     fbBuilder.addOffset(0, fileChangesOffset);
+    fbBuilder.addBool(1, _baseHasConflicts);
     return fbBuilder.endTable();
   }
 

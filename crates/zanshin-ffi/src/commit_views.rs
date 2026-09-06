@@ -10,7 +10,7 @@
 //! All three take a request BUFFER rather than C strings, the ADR-0001 composite-input case
 //! Story 9.3 established: `show`'s `revset` and `interdiff`'s two revisions must be
 //! distinguishably ABSENT (that absence is what applies the CLI's own `@` default), and
-//! `evolog` additionally carries an optional scalar limit.
+//! `show` and `evolog` additionally carry an optional scalar limit.
 //!
 //! The two nested shapes — a `Change` and a `[FileChange]` — are built through the shipped
 //! construction sites (`change.rs::change_offset`, `status.rs::file_changes_vector`), never a
@@ -18,7 +18,7 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{ChangeId, CommitViewError, EvologEntry, FileChange, ShowEntry};
+use zanshin_jj::{ChangeId, CommitViewError, EvologEntry, InterdiffView, ShowEntry};
 
 use crate::change::change_offset;
 use crate::envelope::{
@@ -57,9 +57,11 @@ fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
 
 /// Owned Rust form of a `ShowRequest` buffer. `revset` is `Option<String>` — an ABSENT field is
 /// the wire form of "the user did not supply it", which applies the CLI's `@` default; an
-/// explicitly EMPTY string is a value and reaches the revset parser (where it fails).
+/// explicitly EMPTY string is a value and reaches the revset parser (where it fails). `limit` is
+/// `Option<usize>`, reconstructed from the presence-flag pair the schema carries.
 struct ShowRequestOwned {
     revset: Option<String>,
+    limit: Option<usize>,
 }
 
 /// Owned Rust form of an `EvologRequest` buffer. `limit` is `Option<usize>`, reconstructed from
@@ -90,6 +92,9 @@ fn read_show_request(data: *const u8, len: usize) -> Result<ShowRequestOwned, Ff
         .map_err(|e| invalid_request(&e))?;
     Ok(ShowRequestOwned {
         revset: req.revset().map(ToOwned::to_owned),
+        // Presence pair, not a sentinel: `limit = 0` is a MEANINGFUL value (an empty result),
+        // so absence cannot be encoded as zero.
+        limit: req.has_limit().then(|| req.limit() as usize),
     })
 }
 
@@ -186,14 +191,18 @@ fn evolog_view_to_envelope(entries: &[EvologEntry]) -> Vec<u8> {
     finish_envelope(b, fbs::Payload::EvologView, table.as_union_value())
 }
 
-/// Serialise `&[FileChange]` into a finished `Envelope<InterdiffView>` buffer.
-fn interdiff_view_to_envelope(file_changes: &[FileChange]) -> Vec<u8> {
+/// Serialise an [`InterdiffView`] into a finished `Envelope<InterdiffView>` buffer.
+///
+/// `base_has_conflicts` rides alongside the change list rather than replacing it: a conflicted
+/// rebase base is a fact about the comparison, never a refusal.
+fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
-    let vec = file_changes_vector(&mut b, file_changes);
+    let vec = file_changes_vector(&mut b, &view.file_changes);
     let table = fbs::InterdiffView::create(
         &mut b,
         &fbs::InterdiffViewArgs {
             file_changes: Some(vec),
+            base_has_conflicts: view.base_has_conflicts,
         },
     );
     finish_envelope(b, fbs::Payload::InterdiffView, table.as_union_value())
@@ -217,6 +226,13 @@ fn interdiff_view_to_envelope(file_changes: &[FileChange]) -> Vec<u8> {
 /// `jj.change_not_found`. Union the two COMMIT hexes to address both.
 /// Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
 /// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
+///
+/// `limit` is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it streams to a
+/// pager where this builds ONE buffer whose every entry pays a merged-parent tree diff plus a
+/// per-parent copy-record stream. It uses the established presence-flag pair (`has_limit`)
+/// because `limit = 0` is a MEANINGFUL value (an empty result, not an error), it is applied in
+/// RAW REVSET order BEFORE that per-entry work, and ABSENCE is the CLI-parity default:
+/// unbounded, byte-identical to a buffer built before the field existed.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `ShowView` payload on success.
 ///
@@ -248,7 +264,10 @@ pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) 
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         let req = read_show_request(data, len)?;
-        let entries = session.repo.show(req.revset.as_deref()).map_err(map_commit_view_err)?;
+        let entries = session
+            .repo
+            .show(req.revset.as_deref(), req.limit)
+            .map_err(map_commit_view_err)?;
         Ok(show_view_to_envelope(&entries))
     });
     vec_into_token(buf)
@@ -314,6 +333,13 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 /// records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
 /// it is in-memory only, so this read writes NO operation.
 ///
+/// The payload's `base_has_conflicts` is a ZANSHIN-SIDE addition reporting whether the REBASED
+/// `from` tree — the left side of the diff — is conflicted. The CLI signals this by rendering
+/// conflict markers in the patch TEXT, which is Epic 5's surface here, so without the flag a
+/// caller sees a plausible change list derived from a conflicted rebase with no way to tell. It
+/// never turns the call into a refusal, and it describes the TREE, not the filtered result: a
+/// `paths` filter matching nothing still leaves it set.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying an `InterdiffView` payload on success.
 ///
 /// # Errors
@@ -339,11 +365,11 @@ pub unsafe extern "C" fn zanshin_interdiff(handle: u64, data: *const u8, len: us
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         let req = read_interdiff_request(data, len)?;
-        let changes = session
+        let view = session
             .repo
             .interdiff(req.from, req.to, &req.paths)
             .map_err(map_commit_view_err)?;
-        Ok(interdiff_view_to_envelope(&changes))
+        Ok(interdiff_view_to_envelope(&view))
     });
     vec_into_token(buf)
 }
@@ -353,8 +379,8 @@ mod tests {
     use flatbuffers::root as fb_root;
     use std::path::PathBuf;
     use zanshin_jj::{
-        Change, ChangeId, ChangeKind, CommitId, CommitViewError, ConflictState, EvologEntry, FileChange, OperationId,
-        ShowEntry, Signature, Timestamp, Timestamps,
+        Change, ChangeId, ChangeKind, CommitId, CommitViewError, ConflictState, EvologEntry, FileChange, InterdiffView,
+        OperationId, ShowEntry, Signature, Timestamp, Timestamps,
     };
 
     use super::{evolog_view_to_envelope, interdiff_view_to_envelope, map_commit_view_err, show_view_to_envelope};
@@ -531,20 +557,32 @@ mod tests {
             .is_some_and(|v| v.is_empty()));
     }
 
+    /// Both `base_has_conflicts` arms, because a writer that hardcoded either one would still
+    /// produce a well-formed payload — and the `false` arm is the byte-identical-to-before
+    /// default a caller reads when nothing conflicted.
     #[test]
-    fn interdiff_view_carries_the_change_list() {
-        let changes = vec![FileChange {
-            path: PathBuf::from("b.txt"),
-            kind: ChangeKind::Added,
-        }];
-        let buf = interdiff_view_to_envelope(&changes);
-        let env = verified(&buf);
-        assert_eq!(env.data_type(), fbs::Payload::InterdiffView);
-        let view = env.data_as_interdiff_view().expect("InterdiffView payload");
-        let files = view.file_changes().expect("file_changes present");
-        assert_eq!(files.len(), 1);
-        assert_eq!(files.get(0).path(), Some("b.txt"));
-        assert_eq!(files.get(0).kind(), fbs::ChangeKind::Added);
+    fn interdiff_view_carries_the_change_list_and_both_conflict_arms() {
+        for base_has_conflicts in [false, true] {
+            let buf = interdiff_view_to_envelope(&InterdiffView {
+                file_changes: vec![FileChange {
+                    path: PathBuf::from("b.txt"),
+                    kind: ChangeKind::Added,
+                }],
+                base_has_conflicts,
+            });
+            let env = verified(&buf);
+            assert_eq!(env.data_type(), fbs::Payload::InterdiffView);
+            let view = env.data_as_interdiff_view().expect("InterdiffView payload");
+            let files = view.file_changes().expect("file_changes present");
+            assert_eq!(files.len(), 1);
+            assert_eq!(files.get(0).path(), Some("b.txt"));
+            assert_eq!(files.get(0).kind(), fbs::ChangeKind::Added);
+            assert_eq!(
+                view.base_has_conflicts(),
+                base_has_conflicts,
+                "the flag must survive the round trip in BOTH directions"
+            );
+        }
     }
 
     #[test]
@@ -552,7 +590,13 @@ mod tests {
         for (buf, expected) in [
             (show_view_to_envelope(&[]), fbs::Payload::ShowView),
             (evolog_view_to_envelope(&[]), fbs::Payload::EvologView),
-            (interdiff_view_to_envelope(&[]), fbs::Payload::InterdiffView),
+            (
+                interdiff_view_to_envelope(&InterdiffView {
+                    file_changes: Vec::new(),
+                    base_has_conflicts: false,
+                }),
+                fbs::Payload::InterdiffView,
+            ),
         ] {
             let env = verified(&buf);
             assert!(env.ok(), "an empty result is a success, not an error");

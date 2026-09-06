@@ -30,7 +30,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_views.dart';
-import 'package:zanshin_core/src/ffi/status.dart' show FileChange, WorkingCopyStatus;
+import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -80,6 +80,32 @@ void main() {
 
       // An empty revset is a SUCCESS with no entries, not an error.
       expect(await handle.show(revset: 'none()'), isEmpty);
+      await handle.close();
+    });
+
+    test('show_honours_an_explicit_zero_limit_and_saturates_an_over_large_one', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      // `0` is a MEANINGFUL value carried by the presence pair: a reader that
+      // collapsed it to "no limit" would return the single `@` entry instead.
+      expect(await handle.show(limit: 0), isEmpty);
+      // A positive limit at or above the set size is not an error.
+      expect(await handle.show(limit: 1), hasLength(1));
+      expect(await handle.show(limit: 5), hasLength(1));
+
+      // Above the wire field's `uint` ceiling the adapter SATURATES. Dart ints are
+      // 64-bit, so without the clamp 2^32 is written as `0` and comes back as an
+      // EMPTY result - the most misleading possible answer to "give me everything".
+      expect(
+        await handle.show(limit: 0x100000000),
+        hasLength(1),
+        reason: 'an over-large limit must mean "everything", not wrap to zero',
+      );
+
+      // The negative-limit guard is documented on this method, so it must be
+      // rejected on the CALLING side: thrown inside the worker isolate it would
+      // come back as `internal.dispatch_error`, not as an ArgumentError.
+      await expectLater(handle.show(limit: -1), throwsArgumentError);
       await handle.close();
     });
 
@@ -137,8 +163,13 @@ void main() {
 
       // One side is enough; the other defaults to `@`. Comparing `@` with itself is
       // trivially empty — which is exactly the empty-payload decode path.
-      final List<FileChange> changes = await handle.interdiff(from: status.workingCopyChangeId);
-      expect(changes, isEmpty);
+      final InterdiffView view = await handle.interdiff(from: status.workingCopyChangeId);
+      expect(view.fileChanges, isEmpty);
+      // The fast path returns `@`'s own (clean) tree, so nothing is conflicted. This
+      // is the `false` arm reaching Dart through the REAL cdylib; the `true` arm needs
+      // committed trees, which no verb reachable from Dart can write (see the scope
+      // note above), so it lives in the two Rust suites.
+      expect(view.baseHasConflicts, isFalse);
 
       await handle.close();
     });

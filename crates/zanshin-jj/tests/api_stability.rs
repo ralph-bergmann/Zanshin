@@ -9,15 +9,16 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (60 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (61 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
 // --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
 // --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
-// --- CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)). Story 9.8 adds NO
-// --- public type — both bookmark mutations reuse MutationResult/MutateError — so the count
-// --- stays 60 -------------------------------------------------------------------
+// --- InterdiffView/CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)). Story 9.8
+// --- adds NO public type — both bookmark mutations reuse MutationResult/MutateError — so the
+// --- count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView
+// --- ---------------------------------------------------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -106,6 +107,7 @@ type _GitExportFailure = zanshin_jj::GitExportFailure;
 // commit views (Story 9.6)
 type _ShowEntry = zanshin_jj::ShowEntry;
 type _EvologEntry = zanshin_jj::EvologEntry;
+type _InterdiffView = zanshin_jj::InterdiffView;
 type _CommitViewError = zanshin_jj::CommitViewError;
 
 // view (Story 9.2)
@@ -333,6 +335,19 @@ fn sample_evolog_entry() -> zanshin_jj::EvologEntry {
         change: sample_change(),
         predecessor_commit_ids: vec![zanshin_jj::CommitId(String::new())],
         operation_id: Some(zanshin_jj::OperationId(String::new())),
+    }
+}
+
+/// Names every `InterdiffView` field by its public path (Story 9.6 / follow-up F). The change
+/// list reuses the SHIPPED `FileChange`; `base_has_conflicts` is a plain `bool`, so no `jj_lib`
+/// type leaks through the flag's derivation (`MergedTree::has_conflict()`).
+fn sample_interdiff_view() -> zanshin_jj::InterdiffView {
+    zanshin_jj::InterdiffView {
+        file_changes: vec![zanshin_jj::FileChange {
+            path: std::path::PathBuf::new(),
+            kind: zanshin_jj::ChangeKind::Added,
+        }],
+        base_has_conflicts: false,
     }
 }
 
@@ -638,7 +653,7 @@ fn git_ops_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
-/// Commit views (Story 9.6): 3 new types and 3 new `Repo` methods.
+/// Commit views (Story 9.6): 4 new types and 3 new `Repo` methods.
 ///
 /// A separate test for the same reason the three above are — `api_surface_resolves` sits at
 /// clippy's `too_many_lines` ceiling. All three methods are `fn`-pointer-pinnable (none takes a
@@ -681,9 +696,14 @@ fn commit_views_surface_resolves() {
 
     _ = sample_show_entry();
     _ = sample_evolog_entry();
+    _ = sample_interdiff_view();
 
     _ = zanshin_jj::Repo::show
-        as fn(&zanshin_jj::Repo, Option<&str>) -> Result<Vec<zanshin_jj::ShowEntry>, zanshin_jj::CommitViewError>;
+        as fn(
+            &zanshin_jj::Repo,
+            Option<&str>,
+            Option<usize>,
+        ) -> Result<Vec<zanshin_jj::ShowEntry>, zanshin_jj::CommitViewError>;
     _ = zanshin_jj::Repo::evolog
         as fn(
             &zanshin_jj::Repo,
@@ -696,7 +716,7 @@ fn commit_views_surface_resolves() {
             Option<zanshin_jj::ChangeId>,
             Option<zanshin_jj::ChangeId>,
             &[String],
-        ) -> Result<Vec<zanshin_jj::FileChange>, zanshin_jj::CommitViewError>;
+        ) -> Result<zanshin_jj::InterdiffView, zanshin_jj::CommitViewError>;
 }
 
 /// Workspace reads (Story 9.7): 2 new types and 2 new `Repo` methods.

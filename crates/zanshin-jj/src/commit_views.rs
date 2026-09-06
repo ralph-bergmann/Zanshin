@@ -73,6 +73,31 @@ pub struct ShowEntry {
     pub file_changes: Vec<FileChange>,
 }
 
+/// What `jj interdiff` reports: the per-path change list, plus whether the tree it diffed FROM
+/// was conflicted (Story 9.6).
+///
+/// `file_changes` is the whole CLI-parity payload. `base_has_conflicts` is a ZANSHIN-SIDE
+/// addition the CLI has no counterpart for — it renders conflict markers in the patch TEXT,
+/// which is Epic 5's surface here — so without it a caller sees a plausible change list derived
+/// from a conflicted rebase with no way to tell.
+#[derive(Debug)]
+pub struct InterdiffView {
+    /// Per-path changes `to` makes that `from` does not, in jj-lib's own diff order. NEVER a
+    /// [`ChangeKind::Renamed`]/[`ChangeKind::Copied`] entry — see [`interdiff`].
+    pub file_changes: Vec<FileChange>,
+    /// Whether the REBASED `from` tree — the LEFT side of the diff, which exists only in memory
+    /// — is conflicted. Derived by `MergedTree::has_conflict()`, the same
+    /// `!…is_resolved()` predicate [`Change::conflict`] is built on, so the two payloads agree.
+    ///
+    /// True whatever the cause: `rebase_to_dest_parent`'s 3-way merge left the conflict, OR its
+    /// fast path (the two revisions already share parents) returned `from`'s own
+    /// already-conflicted tree. `to`'s own conflict state is NOT reported here — that is
+    /// [`Change::conflict`]'s job, reachable through [`show`] and [`crate::Repo::get_change`].
+    /// It describes the TREE, not the filtered result: a `paths` filter matching nothing still
+    /// leaves it set.
+    pub base_has_conflicts: bool,
+}
+
 /// One step of a change's evolution as `jj evolog` walks it (Story 9.6).
 ///
 /// Rows are keyed by COMMIT id rather than change id: every predecessor of a change shares its
@@ -259,6 +284,13 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 /// (never cached), then evaluated against ONE head-resolved snapshot, so a commit's metadata and
 /// its diff can never come from different operations.
 ///
+/// `limit` is a ZANSHIN-SIDE addition: `jj show` has no `-n/--limit` and streams to a pager,
+/// where this builds ONE owned list whose every entry pays a merged-parent tree diff plus a
+/// per-parent copy-record stream. `None` is therefore the CLI-parity default — unbounded, and
+/// byte-identical to the pre-`limit` output. It is `take(n)` applied in RAW REVSET order (the
+/// same order the unbounded call returns) BEFORE the per-entry work, so nothing beyond the limit
+/// is computed; `Some(0)` is an empty result, not an error.
+///
 /// # Errors
 ///
 /// - [`CommitViewError::RevsetParseError`] — `revset` is syntactically invalid; raised before
@@ -267,7 +299,11 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 /// - [`CommitViewError::Config`] — the repo's effective jj config is unreadable or malformed.
 /// - [`CommitViewError::Backend`] — `load_at_head`, evaluation, or a tree/store read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn show(repo: &crate::Repo, revset: Option<&str>) -> Result<Vec<ShowEntry>, CommitViewError> {
+pub(crate) fn show(
+    repo: &crate::Repo,
+    revset: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<ShowEntry>, CommitViewError> {
     // Parse first: a syntax error costs no `load_at_head` I/O (the `eval_revset` ordering).
     let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@")).map_err(rev)?;
 
@@ -280,8 +316,9 @@ pub(crate) fn show(repo: &crate::Repo, revset: Option<&str>) -> Result<Vec<ShowE
     let mut out = Vec::new();
     pollster::block_on(async {
         // RAW revset order (topological, children before parents) — the CLI's own order
-        // without `--reversed`, which is rendering and is not ported.
-        let mut stream = std::pin::pin!(set.stream().commits(store));
+        // without `--reversed`, which is rendering and is not ported. `take` sits on the STREAM,
+        // before the loop body, so everything expensive below is skipped past `limit`.
+        let mut stream = std::pin::pin!(set.stream().commits(store).take(limit.unwrap_or(usize::MAX)));
         while let Some(item) = stream.next().await {
             let commit = item.map_err(be)?;
             let change = change_from_commit(repo_dyn, &commit).map_err(CommitViewError::Backend)?;
@@ -375,7 +412,9 @@ pub(crate) fn evolog(
 ///
 /// The 3-way merge behind the rebase can leave conflict states in the resulting tree, and the
 /// fast path returns `from`'s own tree when the parents already match — so an interdiff between
-/// a commit and itself is trivially empty.
+/// a commit and itself is trivially empty. Either way [`InterdiffView::base_has_conflicts`]
+/// reports whether that rebased tree is conflicted; the change list is still returned, because a
+/// conflicted base is a fact about the comparison, not a refusal.
 ///
 /// # Errors
 ///
@@ -392,7 +431,7 @@ pub(crate) fn interdiff(
     from: Option<&ChangeId>,
     to: Option<&ChangeId>,
     paths: &[String],
-) -> Result<Vec<FileChange>, CommitViewError> {
+) -> Result<InterdiffView, CommitViewError> {
     // The CLI's ArgGroup refusal, BEFORE any repo read.
     if from.is_none() && to.is_none() {
         return Err(CommitViewError::InvalidInput {
@@ -412,9 +451,17 @@ pub(crate) fn interdiff(
             jj_lib::rewrite::rebase_to_dest_parent(repo_dyn, std::slice::from_ref(&from_commit), &to_commit)
                 .await
                 .map_err(be)?;
+        // Read BEFORE the diff: the flag describes the rebased TREE, so a `paths` filter that
+        // narrows the change list must not narrow it. `MergedTree::has_conflict()` is the same
+        // `!…is_resolved()` predicate `Change.conflict` uses (`commit.rs:167-169`).
+        let base_has_conflicts = from_tree.has_conflict();
         let to_tree = to_commit.tree();
         // `CopyRecords::default()` — `show_inter_diff` passes no copy records (diff_util.rs:650).
-        tree_file_changes(&from_tree, &to_tree, matcher.as_ref(), &CopyRecords::default()).await
+        let file_changes = tree_file_changes(&from_tree, &to_tree, matcher.as_ref(), &CopyRecords::default()).await?;
+        Ok(InterdiffView {
+            file_changes,
+            base_has_conflicts,
+        })
     })
 }
 

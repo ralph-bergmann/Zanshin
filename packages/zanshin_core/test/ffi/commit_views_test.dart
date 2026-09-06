@@ -16,7 +16,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_views.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin_core/src/ffi/status.dart' show FileChange, FileChangeKind;
+import 'package:zanshin_core/src/ffi/status.dart' show FileChangeKind;
 import 'package:zanshin_core/src/worker/responses.dart';
 
 /// An error envelope carrying [code].
@@ -247,10 +247,10 @@ void main() {
         ),
       ).toBytes();
 
-      final List<FileChange> changes = decodeInterdiffViewEnvelope(bytes);
+      final InterdiffView view = decodeInterdiffViewEnvelope(bytes);
 
-      expect(changes.map((c) => c.path), ['b.txt', 'gone.txt']);
-      expect(changes.map((c) => c.kind), [FileChangeKind.added, FileChangeKind.removed]);
+      expect(view.fileChanges.map((c) => c.path), ['b.txt', 'gone.txt']);
+      expect(view.fileChanges.map((c) => c.kind), [FileChangeKind.added, FileChangeKind.removed]);
     });
 
     test('an empty change list decodes to an empty list, not an error', () {
@@ -260,7 +260,30 @@ void main() {
         data: fbs.InterdiffViewObjectBuilder(fileChanges: []),
       ).toBytes();
 
-      expect(decodeInterdiffViewEnvelope(bytes), isEmpty);
+      expect(decodeInterdiffViewEnvelope(bytes).fileChanges, isEmpty);
+    });
+
+    test('baseHasConflicts decodes both arms, and an absent field is false', () {
+      for (final flag in [false, true]) {
+        final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+          ok: true,
+          dataType: fbs.PayloadTypeId.InterdiffView,
+          data: fbs.InterdiffViewObjectBuilder(fileChanges: [], baseHasConflicts: flag),
+        ).toBytes();
+
+        expect(decodeInterdiffViewEnvelope(bytes).baseHasConflicts, flag);
+      }
+
+      // A payload written before the field existed carries no slot for it. The
+      // FlatBuffers default is `false` — "nothing conflicted", i.e. exactly the
+      // pre-change meaning — never a null the model would have to represent.
+      final Uint8List legacy = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.InterdiffView,
+        data: fbs.InterdiffViewObjectBuilder(fileChanges: []),
+      ).toBytes();
+
+      expect(decodeInterdiffViewEnvelope(legacy).baseHasConflicts, isFalse);
     });
   });
 
@@ -294,6 +317,12 @@ void main() {
       // The wire field is a `uint`; a negative value could only be a caller bug, and
       // silently wrapping it would produce a nonsensical limit rather than a refusal.
       expect(() => zanshinEvolog(0, limit: -1), throwsArgumentError);
+    });
+
+    test('zanshinShow_rejects_a_negative_limit', () {
+      // Same guard, same reason: `show`'s limit rides the same `uint` field shape,
+      // and both `0` and "no limit" are already spelled without it.
+      expect(() => zanshinShow(0, limit: -1), throwsArgumentError);
     });
   });
 }

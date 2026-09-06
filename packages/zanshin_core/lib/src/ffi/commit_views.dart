@@ -18,7 +18,7 @@ import 'status.dart' show FileChange, mapFileChangeTable;
 // All three cross a FlatBuffers REQUEST buffer rather than C strings: each is a
 // composite whose revision argument must be distinguishably ABSENT (null), which
 // is what applies the CLI's own `@` default instead of one this layer invented,
-// and `evolog` additionally carries an optional scalar limit.
+// and `show` and `evolog` additionally carry an optional scalar limit.
 //
 // The two nested shapes — a `Change` and a `[FileChange]` — are decoded through
 // `change.dart`'s and `status.dart`'s shared table mappers, never a second
@@ -38,9 +38,24 @@ import 'status.dart' show FileChange, mapFileChangeTable;
 /// refuses it (`RevsetResolutionError::DivergentChangeId`), exactly as
 /// `jj show <divergent-id>` fails in the CLI, and it surfaces as
 /// `jj.revset_resolution_error`. Union the two COMMIT hexes to address both.
-Uint8List zanshinShow(int rawHandle, {String? revset}) {
+///
+/// [limit] is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it
+/// streams to a pager where this builds ONE buffer whose every entry pays a
+/// merged-parent tree diff plus a per-parent copy-record stream. It is sent as a
+/// presence-flag pair because `limit: 0` is a MEANINGFUL value (an empty result,
+/// not an error), it is applied in RAW REVSET order, and `null` is the CLI-parity
+/// default: unbounded. It SATURATES at [_maxWireLimit] and refuses a NEGATIVE
+/// value, for the reasons spelled out on [zanshinEvolog].
+Uint8List zanshinShow(int rawHandle, {String? revset, int? limit}) {
   rejectInteriorNul(revset, 'revset');
-  final Uint8List request = fbs.ShowRequestObjectBuilder(revset: revset).toBytes();
+  if (limit != null && limit < 0) {
+    throw ArgumentError.value(limit, 'limit', 'must not be negative');
+  }
+  final Uint8List request = fbs.ShowRequestObjectBuilder(
+    revset: revset,
+    limit: limit == null ? 0 : (limit > _maxWireLimit ? _maxWireLimit : limit),
+    hasLimit: limit != null,
+  ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_show(rawHandle, ptr, len));
 }
 
@@ -71,10 +86,12 @@ Uint8List zanshinEvolog(int rawHandle, {String? revset, int? limit}) {
   return callWithRequest(request, (ptr, len) => zanshin_evolog(rawHandle, ptr, len));
 }
 
-/// The largest value the `EvologRequest.limit` `uint` field can carry.
+/// The largest value the `ShowRequest.limit` / `EvologRequest.limit` `uint` fields
+/// can carry.
 ///
 /// Above this a limit is a "give me everything" request in every practical sense
-/// — no evolution has four billion versions — so it saturates rather than wraps.
+/// — no evolution and no revset has four billion entries — so it saturates rather
+/// than wraps.
 const _maxWireLimit = 0xFFFFFFFF;
 
 /// Call `zanshin_interdiff` with the raw `u64` handle and an `InterdiffRequest`
@@ -116,6 +133,30 @@ final class ShowEntry {
   /// commit it is empty. `renamed`/`copied` entries CAN appear here, unlike in
   /// [zanshinInterdiff]'s result.
   final List<FileChange> fileChanges;
+}
+
+/// What `interdiff` reports (mirrors `zanshin_jj::InterdiffView`).
+final class InterdiffView {
+  const InterdiffView({required this.fileChanges, required this.baseHasConflicts});
+
+  /// Per-path changes `to` makes that `from` does not, in jj's own diff order. No
+  /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
+  /// records, the CLI's own asymmetry with [zanshinShow].
+  final List<FileChange> fileChanges;
+
+  /// Whether the REBASED `from` tree — the LEFT side of the diff, which exists
+  /// only in memory — is conflicted. A ZANSHIN-SIDE addition: the CLI signals
+  /// this by rendering conflict markers in the patch TEXT (Epic 5's surface
+  /// here), so without it a caller sees a plausible [fileChanges] list derived
+  /// from a conflicted rebase with no way to tell.
+  ///
+  /// True whatever the cause — the 3-way merge behind the rebase left the
+  /// conflict, or its fast path (the two revisions already share parents)
+  /// returned `from`'s own already-conflicted tree. `to`'s own conflict state is
+  /// NOT reported here; that is `Change.conflict`'s job, via [zanshinShow] or
+  /// `getChange`. It describes the TREE, not the filtered result: a `paths`
+  /// filter matching nothing still leaves it set.
+  final bool baseHasConflicts;
 }
 
 /// One step of a change's evolution (mirrors `zanshin_jj::EvologEntry`).
@@ -200,23 +241,26 @@ EvologEntry _mapEvologEntry(fbs.EvologEntry e) => EvologEntry(
   operationId: e.operationId,
 );
 
-/// Decode an `InterdiffView` `Envelope` buffer into a `List<FileChange>`.
+/// Decode an `InterdiffView` `Envelope` buffer into an [InterdiffView].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.interdiff`.
 @visibleForTesting
-List<FileChange> decodeInterdiffViewEnvelope(Uint8List bytes) => _decodeInterdiffViewEnvelope(bytes);
+InterdiffView decodeInterdiffViewEnvelope(Uint8List bytes) => _decodeInterdiffViewEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<FileChange> decodeInterdiffViewEnvelopeInternal(Uint8List bytes) => _decodeInterdiffViewEnvelope(bytes);
+InterdiffView decodeInterdiffViewEnvelopeInternal(Uint8List bytes) => _decodeInterdiffViewEnvelope(bytes);
 
-List<FileChange> _decodeInterdiffViewEnvelope(Uint8List bytes) {
+InterdiffView _decodeInterdiffViewEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.InterdiffView) {
     throw ZanshinFfiException('ffi.unknown', 'expected InterdiffView payload, got ${env.dataType}');
   }
-  return payload.fileChanges?.map(mapFileChangeTable).toList() ?? const [];
+  return InterdiffView(
+    fileChanges: payload.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
+    baseHasConflicts: payload.baseHasConflicts,
+  );
 }
 
 /// Unwrap a nested `Change` table, which Rust always writes.

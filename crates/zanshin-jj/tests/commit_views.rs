@@ -283,7 +283,7 @@ fn show_defaults_to_the_working_copy_and_reuses_the_change_construction_site() {
     let (_tmp, repo) = renamed_on_git_backend();
     let before = head_op_id(&repo);
 
-    let entries = repo.show(None).expect("show succeeds");
+    let entries = repo.show(None, None).expect("show succeeds");
     assert_eq!(entries.len(), 1, "`@` is one commit");
 
     // The metadata half must be BYTE-IDENTICAL to what `get_change` reports for the same
@@ -306,7 +306,7 @@ fn show_reports_a_rename_with_its_source_path_on_the_git_backend() {
     pin_env();
     let (_tmp, repo) = renamed_on_git_backend();
 
-    let entries = repo.show(None).expect("show succeeds");
+    let entries = repo.show(None, None).expect("show succeeds");
     let changes = &entries[0].file_changes;
 
     // ONE rename entry, not an Added+Removed pair: `show` accumulates copy records over every
@@ -330,7 +330,7 @@ fn show_of_a_root_commit_reports_no_file_changes() {
     let repo = open(&fx);
     let before = head_op_id(&repo);
 
-    let entries = repo.show(Some("root()")).expect("show succeeds");
+    let entries = repo.show(Some("root()"), None).expect("show succeeds");
 
     assert_eq!(entries.len(), 1);
     assert!(
@@ -362,7 +362,9 @@ fn show_returns_children_before_parents_and_diffs_each_against_its_own_parent() 
     let repo = open(&fx);
     let before = head_op_id(&repo);
 
-    let entries = repo.show(Some(&format!("{parent}::{child}"))).expect("show succeeds");
+    let entries = repo
+        .show(Some(&format!("{parent}::{child}")), None)
+        .expect("show succeeds");
 
     assert_eq!(
         entries
@@ -389,7 +391,7 @@ fn show_reports_an_edited_file_as_modified() {
     let change = change_id_of(&fx.path, &edited);
     let repo = open(&fx);
 
-    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+    let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
     assert_eq!(
         summary(&entries[0].file_changes),
@@ -419,7 +421,7 @@ fn show_accumulates_copy_records_over_every_parent_not_just_the_first() {
     let change = change_id_of(tmp.path(), &merge);
     let repo = Repo::open(tmp.path()).expect("repo opens");
 
-    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+    let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
     assert_eq!(
         summary(&entries[0].file_changes),
@@ -457,7 +459,7 @@ fn show_reports_a_copy_whose_source_was_edited_in_the_same_commit() {
     let change = change_id_of(tmp.path(), &copied);
     let repo = Repo::open(tmp.path()).expect("repo opens");
 
-    let entries = repo.show(Some(&change.0)).expect("show succeeds");
+    let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
     let mut labels = summary(&entries[0].file_changes);
     labels.sort();
@@ -487,7 +489,7 @@ fn show_of_a_merge_diffs_against_the_merged_parent_tree() {
     let merge = change_id_of(&fx.path, &merge_hex);
     let repo = open(&fx);
 
-    let entries = repo.show(Some(&merge.0)).expect("show succeeds");
+    let entries = repo.show(Some(&merge.0), None).expect("show succeeds");
     assert_eq!(entries.len(), 1);
 
     // `Commit::parent_tree` merges ALL parents, so the diff is only what the MERGE itself
@@ -529,7 +531,7 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
     let before = head_op_id(&repo);
 
     let err = repo
-        .show(Some(&change.0))
+        .show(Some(&change.0), None)
         .expect_err("a bare divergent change-id symbol does not resolve");
     assert!(
         matches!(&err, CommitViewError::RevsetResolutionError { reason } if reason.contains("divergent")),
@@ -538,7 +540,7 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
     assert_eq!(head_op_id(&repo), before, "a refusal must not write an operation");
 
     let entries = repo
-        .show(Some(&format!("{original} | {twin}")))
+        .show(Some(&format!("{original} | {twin}")), None)
         .expect("commit hexes are ordinary revset symbols");
     assert_eq!(entries.len(), 2, "one entry per COMMIT, not per change");
     let commit_ids: Vec<_> = entries.iter().map(|e| e.change.commit_id.0.clone()).collect();
@@ -556,13 +558,70 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
     );
 }
 
+/// The Zanshin-side `limit`: honoured in RAW REVSET order, and ABSENT means unbounded.
+///
+/// The parent→child range is what makes "the FIRST n of the unbounded result" falsifiable —
+/// the two rows are not siblings, so a limit applied after a reversal, or to the wrong end of
+/// the walk, would take `parent` instead of `child`. The unbounded call is compared against
+/// itself as the oracle, so nothing here re-derives the expected order.
+#[test]
+fn show_applies_the_limit_in_raw_revset_order_and_is_unbounded_when_absent() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let parent = add_commit_with_files(&fx.path, &[], &[("a.txt", "alpha\n")], "adds a");
+    let child = add_commit_with_files(
+        &fx.path,
+        &[&parent],
+        &[("a.txt", "alpha\n"), ("b.txt", "beta\n")],
+        "adds b",
+    );
+    let range = format!("{parent}::{child}");
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    let unbounded = repo.show(Some(&range), None).expect("show succeeds");
+    assert_eq!(unbounded.len(), 2, "the range denotes both commits");
+
+    // BELOW the set size: exactly n entries, and they are the FIRST n of the unbounded result.
+    let limited = repo.show(Some(&range), Some(1)).expect("show succeeds");
+    assert_eq!(
+        limited.iter().map(|e| e.change.commit_id.0.clone()).collect::<Vec<_>>(),
+        vec![unbounded[0].change.commit_id.0.clone()],
+        "the limit takes the FIRST n of the raw revset order"
+    );
+    assert_eq!(limited[0].change.commit_id.0, child, "which is the CHILD");
+
+    // ABOVE the set size is not an error, and it is byte-for-byte the unbounded answer.
+    let over = repo
+        .show(Some(&range), Some(5))
+        .expect("a limit above the set size is fine");
+    assert_eq!(
+        over.iter().map(|e| format!("{e:?}")).collect::<Vec<_>>(),
+        unbounded.iter().map(|e| format!("{e:?}")).collect::<Vec<_>>(),
+        "a limit larger than the set changes nothing"
+    );
+
+    // `0` is a MEANINGFUL value — an empty result and a SUCCESS, exactly as `evolog(_, Some(0))`.
+    assert!(repo.show(None, Some(0)).expect("limit 0 is not an error").is_empty());
+
+    // A limit on an empty revset is still an empty success.
+    assert!(repo
+        .show(Some("none()"), Some(3))
+        .expect("an empty revset with a limit is not an error")
+        .is_empty());
+
+    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+}
+
 #[test]
 fn show_of_an_empty_revset_is_an_empty_success() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let repo = open(&fx);
 
-    let entries = repo.show(Some("none()")).expect("an empty revset is not an error");
+    let entries = repo
+        .show(Some("none()"), None)
+        .expect("an empty revset is not an error");
     assert!(entries.is_empty());
 }
 
@@ -573,14 +632,14 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
     let repo = open(&fx);
     let before = head_op_id(&repo);
 
-    let err = repo.show(Some("::(")).expect_err("a syntax error is refused");
+    let err = repo.show(Some("::("), None).expect_err("a syntax error is refused");
     assert!(
         matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
         "unexpected error: {err:?}"
     );
 
     let err = repo
-        .show(Some("nosuchbookmark"))
+        .show(Some("nosuchbookmark"), None)
         .expect_err("an unknown symbol is refused");
     assert!(
         matches!(&err, CommitViewError::RevsetResolutionError { reason } if !reason.is_empty()),
@@ -592,7 +651,7 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
     // normalizing `""` to `None` anywhere along the wire would pass the whole suite while
     // turning a cleared revset box into a silent answer about the working copy.
     let err = repo
-        .show(Some(""))
+        .show(Some(""), None)
         .expect_err("an empty revset is a VALUE, not an absence");
     assert!(
         matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
@@ -616,7 +675,9 @@ fn show_reports_a_malformed_repo_config_as_a_config_error() {
     // error in the CLI too — never a silent fall-back to the builtin aliases.
     write_repo_config(&fx.path, "revset-aliases = 42\n");
 
-    let err = repo.show(None).expect_err("a non-table revset-aliases is refused");
+    let err = repo
+        .show(None, None)
+        .expect_err("a non-table revset-aliases is refused");
     assert!(
         matches!(&err, CommitViewError::Config { reason } if reason.contains("revset-aliases")),
         "unexpected error: {err:?}"
@@ -810,7 +871,7 @@ fn interdiff_factors_out_the_parent_difference() {
     let repo = open(&p.fx);
     let before = head_op_id(&repo);
 
-    let changes = repo
+    let view = repo
         .interdiff(Some(p.from.clone()), Some(p.to.clone()), &[])
         .expect("interdiff succeeds");
 
@@ -818,9 +879,13 @@ fn interdiff_factors_out_the_parent_difference() {
     // revisions' PARENTS differ by. `interdiff` rebases `from` onto `to`'s parents first, so
     // only what `to` changes and `from` does not survives.
     assert_eq!(
-        summary(&changes),
+        summary(&view.file_changes),
         vec![("b.txt".to_owned(), "A")],
         "expected only the change `to` makes that `from` does not"
+    );
+    assert!(
+        !view.base_has_conflicts,
+        "disjoint edits rebase cleanly — the NEGATIVE pole of the flag"
     );
     assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
 }
@@ -831,10 +896,18 @@ fn interdiff_of_a_revision_against_itself_is_empty() {
     let p = interdiff_pair();
     let repo = open(&p.fx);
 
-    let changes = repo
+    let view = repo
         .interdiff(Some(p.to.clone()), Some(p.to.clone()), &[])
         .expect("interdiff succeeds");
-    assert!(changes.is_empty(), "identical trees produce no entries: {changes:?}");
+    assert!(
+        view.file_changes.is_empty(),
+        "identical trees produce no entries: {:?}",
+        view.file_changes
+    );
+    assert!(
+        !view.base_has_conflicts,
+        "the fast path returns `to`'s own clean tree, so nothing is conflicted"
+    );
 }
 
 #[test]
@@ -846,14 +919,14 @@ fn interdiff_filters_by_path_prefix() {
     let matching = repo
         .interdiff(Some(p.from.clone()), Some(p.to.clone()), &["b.txt".to_owned()])
         .expect("interdiff succeeds");
-    assert_eq!(summary(&matching), vec![("b.txt".to_owned(), "A")]);
+    assert_eq!(summary(&matching.file_changes), vec![("b.txt".to_owned(), "A")]);
 
     // An unmatched filter is a CLI *warning*, not an error — this API has no warning channel,
     // so it is simply an empty result.
     let unmatched = repo
         .interdiff(Some(p.from.clone()), Some(p.to.clone()), &["nosuchdir".to_owned()])
         .expect("an unmatched path filter is not a refusal");
-    assert!(unmatched.is_empty());
+    assert!(unmatched.file_changes.is_empty());
 }
 
 #[test]
@@ -889,7 +962,11 @@ fn interdiff_defaults_the_omitted_side_to_the_working_copy() {
     let explicit = repo
         .interdiff(Some(other_change), Some(wc), &[])
         .expect("the explicit spelling succeeds");
-    assert_eq!(summary(&defaulted), summary(&explicit), "an absent `to` is `@`");
+    assert_eq!(
+        summary(&defaulted.file_changes),
+        summary(&explicit.file_changes),
+        "an absent `to` is `@`"
+    );
 }
 
 /// Every unresolvable spelling is refused on BOTH sides, with the OFFENDING id echoed.
@@ -926,7 +1003,7 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
                 (Some(good.clone()), Some(id.clone()))
             };
             let err = match repo.interdiff(from, to, &[]) {
-                Ok(changes) => panic!("the {spelling} id must be refused as `{side}`, got {changes:?}"),
+                Ok(view) => panic!("the {spelling} id must be refused as `{side}`, got {view:?}"),
                 Err(e) => e,
             };
             assert!(
@@ -939,6 +1016,56 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     assert_eq!(head_op_id(&repo), before);
 }
 
+/// The `true` pole of `base_has_conflicts`: a rebase whose own 3-way merge cannot resolve.
+///
+/// `rebase_to_dest_parent` merges with `from.parent_tree()` as the BASE and
+/// (`to.parent_tree()`, `from.tree()`) as the two sides (`jj-lib rewrite.rs:462-489`). So the
+/// shape is four commits: two parents that already differ at one path, and one child of each
+/// that edits that same path differently. Both sides then changed the base's `f.txt`, which is
+/// the unresolvable case. The fast path (`rewrite.rs:456-460`) does not fire, because the two
+/// children have DIFFERENT parents.
+///
+/// `add_conflicted_merge_off_root` cannot stand in for this: it builds a conflicted MERGE
+/// COMMIT, i.e. a conflict that already lives in a committed tree, not one the rebase produces.
+///
+/// The call still SUCCEEDS — a conflicted base is a fact about the comparison, not a refusal —
+/// and the flag describes the TREE, so a `paths` filter that empties the change list leaves it
+/// set.
+#[test]
+fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let p1 = add_commit_with_files(&fx.path, &[], &[("f.txt", "base-left\n")], "p1");
+    let p2 = add_commit_with_files(&fx.path, &[], &[("f.txt", "base-right\n")], "p2");
+    let from_hex = add_commit_with_files(&fx.path, &[&p1], &[("f.txt", "from\n")], "from");
+    let to_hex = add_commit_with_files(&fx.path, &[&p2], &[("f.txt", "to\n")], "to");
+    let from = change_id_of(&fx.path, &from_hex);
+    let to = change_id_of(&fx.path, &to_hex);
+    let repo = open(&fx);
+    let before = head_op_id(&repo);
+
+    let view = repo
+        .interdiff(Some(from.clone()), Some(to.clone()), &[])
+        .expect("a conflicted rebase base is not a refusal");
+    assert!(
+        view.base_has_conflicts,
+        "the 3-way merge could not resolve f.txt, got {view:?}"
+    );
+
+    // The flag is about the TREE, not the filtered result: narrowing to a path that matches
+    // nothing empties `file_changes` and must leave the flag alone.
+    let filtered = repo
+        .interdiff(Some(from), Some(to), &["nosuchdir".to_owned()])
+        .expect("an unmatched path filter is not a refusal");
+    assert!(filtered.file_changes.is_empty());
+    assert!(
+        filtered.base_has_conflicts,
+        "the flag describes the rebased tree, not the filtered change list"
+    );
+
+    assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
+}
+
 #[test]
 fn interdiff_never_reports_a_rename_even_where_show_does() {
     pin_env();
@@ -946,15 +1073,15 @@ fn interdiff_never_reports_a_rename_even_where_show_does() {
     let status = repo.status().expect("status");
 
     // The SAME pair `show` reports as one Renamed entry.
-    let shown = repo.show(None).expect("show succeeds");
+    let shown = repo.show(None, None).expect("show succeeds");
     assert_eq!(summary(&shown[0].file_changes), vec![("new_name.txt".to_owned(), "R")]);
 
     // `interdiff` passes NO copy records (`show_inter_diff`'s own `CopyRecords::default()`),
     // so the rename decomposes into an Added+Removed pair. That asymmetry is the CLI's.
-    let changes = repo
+    let view = repo
         .interdiff(Some(status.parent_change_id), Some(status.working_copy_change_id), &[])
         .expect("interdiff succeeds");
-    let mut labels = summary(&changes);
+    let mut labels = summary(&view.file_changes);
     labels.sort();
     assert_eq!(
         labels,

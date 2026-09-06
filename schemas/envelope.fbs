@@ -175,8 +175,16 @@ table GitRemoteSetUrlRequest {
 /// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
 /// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
 /// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+/// `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
+/// `-n/--limit` and streams to a pager, where this builds ONE buffer whose every entry pays a
+/// merged-parent tree diff plus a per-parent copy-record stream. It is meaningful ONLY when
+/// has_limit == true (presence pair, same rule as EvologRequest.limit: flatc 25.12.19 rejects
+/// optional scalars for Dart), it is applied in RAW REVSET order, and `limit = 0` is an empty
+/// result, not an error. ABSENCE is therefore the CLI-parity default: unbounded, as `jj show` is.
 table ShowRequest {
   revset: string;
+  limit: uint;            // 0 / ignored when has_limit == false
+  has_limit: bool;
 }
 
 /// Arguments of `zanshin_evolog` (Story 9.6) — the CLI's `jj evolog`.
@@ -865,8 +873,19 @@ table EvologView {
 /// `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
 /// reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
 /// success, as is a path filter that matches nothing.
+///
+/// `base_has_conflicts` reports whether the REBASED `from` tree — the LEFT side of the diff,
+/// which exists only in memory — is conflicted. It is a ZANSHIN-SIDE addition: the CLI signals
+/// this by rendering conflict markers in the patch TEXT, which is Epic 5's surface here, so a
+/// caller would otherwise see a plausible change list derived from a conflicted rebase with no
+/// way to tell. It is true whatever the cause — the 3-way merge left the conflict, OR
+/// `rebase_to_dest_parent`'s fast path (same parents) returned `from`'s own already-conflicted
+/// tree. `to`'s own conflict state is NOT reported here; that is `Change.conflict`'s job, via
+/// `zanshin_show` / `zanshin_change`. The flag describes the TREE, not the filtered result:
+/// a `paths` filter matching nothing still leaves it set.
 table InterdiffView {
   file_changes: [FileChange];
+  base_has_conflicts: bool;
 }
 
 /// One row of `zanshin_workspace_list` (Story 9.7) — the CLI's `jj workspace list`.

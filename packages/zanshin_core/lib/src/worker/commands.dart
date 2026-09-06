@@ -646,6 +646,7 @@ final class ShowCommand extends WorkerCommand {
     required super.commandId,
     required this.handleId,
     required this.revset,
+    required this.limit,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -654,6 +655,11 @@ final class ShowCommand extends WorkerCommand {
   /// Revset EXPRESSION (not a change id — the CLI unions its revsets); `null` =
   /// `@`, the CLI's own default.
   final String? revset;
+
+  /// A ZANSHIN-SIDE cap the CLI has no counterpart for, applied in raw revset
+  /// order; `null` = no limit, which is the CLI-parity default. `0` is a
+  /// meaningful value — an empty result, not an error.
+  final int? limit;
 }
 
 /// Walk the evolution of the changes [revset] denotes, in the repo identified by

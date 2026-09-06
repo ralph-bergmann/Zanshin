@@ -39,5 +39,13 @@ test-helpers = { path = "../test-helpers", version = "0.1.0" }
 name = "graph_blueprint"
 harness = false
 
+# WHY: harness = false — same reason as above. `show_limit` is the perf WITNESS for
+# `ShowRequest.limit` (Epic 9 follow-up F): the early stop skips per-entry tree work no
+# behavioural test can observe, so timings are the evidence. It asserts nothing about
+# wall-clock. Run with `cargo bench -p zanshin-jj --bench show_limit`.
+[[bench]]
+name = "show_limit"
+harness = false
+
 [lints]
 workspace = true

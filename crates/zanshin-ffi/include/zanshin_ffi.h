@@ -83,9 +83,9 @@ typedef struct {
 
 #define ShowRequest_VT_REVSET 4
 
-#define EvologRequest_VT_LIMIT 6
+#define ShowRequest_VT_LIMIT 6
 
-#define EvologRequest_VT_HAS_LIMIT 8
+#define ShowRequest_VT_HAS_LIMIT 8
 
 #define InterdiffRequest_VT_TO 6
 
@@ -291,6 +291,8 @@ typedef struct {
 
 #define EvologEntry_VT_OPERATION_ID 8
 
+#define InterdiffView_VT_BASE_HAS_CONFLICTS 6
+
 #define WorkspaceEntry_VT_WC_COMMIT_ID 6
 
 /**
@@ -450,6 +452,13 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
  * path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
  *
+ * `limit` is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it streams to a
+ * pager where this builds ONE buffer whose every entry pays a merged-parent tree diff plus a
+ * per-parent copy-record stream. It uses the established presence-flag pair (`has_limit`)
+ * because `limit = 0` is a MEANINGFUL value (an empty result, not an error), it is applied in
+ * RAW REVSET order BEFORE that per-entry work, and ABSENCE is the CLI-parity default:
+ * unbounded, byte-identical to a buffer built before the field existed.
+ *
  * Returns a `FlatBuffers` `Envelope` carrying a `ShowView` payload on success.
  *
  * # Errors
@@ -524,6 +533,13 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * No `Renamed`/`Copied` entry is ever produced — the CLI's `show_inter_diff` passes no copy
  * records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
  * it is in-memory only, so this read writes NO operation.
+ *
+ * The payload's `base_has_conflicts` is a ZANSHIN-SIDE addition reporting whether the REBASED
+ * `from` tree — the left side of the diff — is conflicted. The CLI signals this by rendering
+ * conflict markers in the patch TEXT, which is Epic 5's surface here, so without the flag a
+ * caller sees a plausible change list derived from a conflicted rebase with no way to tell. It
+ * never turns the call into a refusal, and it describes the TREE, not the filtered result: a
+ * `paths` filter matching nothing still leaves it set.
  *
  * Returns a `FlatBuffers` `Envelope` carrying an `InterdiffView` payload on success.
  *

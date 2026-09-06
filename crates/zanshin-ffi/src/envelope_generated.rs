@@ -2534,6 +2534,12 @@ pub mod zanshin {
         /// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
         /// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
         /// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
+        /// `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
+        /// `-n/--limit` and streams to a pager, where this builds ONE buffer whose every entry pays a
+        /// merged-parent tree diff plus a per-parent copy-record stream. It is meaningful ONLY when
+        /// has_limit == true (presence pair, same rule as EvologRequest.limit: flatc 25.12.19 rejects
+        /// optional scalars for Dart), it is applied in RAW REVSET order, and `limit = 0` is an empty
+        /// result, not an error. ABSENCE is therefore the CLI-parity default: unbounded, as `jj show` is.
         pub struct ShowRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -2550,6 +2556,8 @@ pub mod zanshin {
 
         impl<'a> ShowRequest<'a> {
             pub const VT_REVSET: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_LIMIT: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2561,9 +2569,11 @@ pub mod zanshin {
                 args: &'args ShowRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ShowRequest<'bldr>> {
                 let mut builder = ShowRequestBuilder::new(_fbb);
+                builder.add_limit(args.limit);
                 if let Some(x) = args.revset {
                     builder.add_revset(x);
                 }
+                builder.add_has_limit(args.has_limit);
                 builder.finish()
             }
 
@@ -2577,6 +2587,20 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(ShowRequest::VT_REVSET, None)
                 }
             }
+            #[inline]
+            pub fn limit(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(ShowRequest::VT_LIMIT, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn has_limit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(ShowRequest::VT_HAS_LIMIT, Some(false)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ShowRequest<'_> {
@@ -2587,17 +2611,25 @@ pub mod zanshin {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revset", Self::VT_REVSET, false)?
+                    .visit_field::<u32>("limit", Self::VT_LIMIT, false)?
+                    .visit_field::<bool>("has_limit", Self::VT_HAS_LIMIT, false)?
                     .finish();
                 Ok(())
             }
         }
         pub struct ShowRequestArgs<'a> {
             pub revset: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub limit: u32,
+            pub has_limit: bool,
         }
         impl<'a> Default for ShowRequestArgs<'a> {
             #[inline]
             fn default() -> Self {
-                ShowRequestArgs { revset: None }
+                ShowRequestArgs {
+                    revset: None,
+                    limit: 0,
+                    has_limit: false,
+                }
             }
         }
 
@@ -2610,6 +2642,14 @@ pub mod zanshin {
             pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowRequest::VT_REVSET, revset);
+            }
+            #[inline]
+            pub fn add_limit(&mut self, limit: u32) {
+                self.fbb_.push_slot::<u32>(ShowRequest::VT_LIMIT, limit, 0);
+            }
+            #[inline]
+            pub fn add_has_limit(&mut self, has_limit: bool) {
+                self.fbb_.push_slot::<bool>(ShowRequest::VT_HAS_LIMIT, has_limit, false);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowRequestBuilder<'a, 'b, A> {
@@ -2630,6 +2670,8 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("ShowRequest");
                 ds.field("revset", &self.revset());
+                ds.field("limit", &self.limit());
+                ds.field("has_limit", &self.has_limit());
                 ds.finish()
             }
         }
@@ -10662,6 +10704,16 @@ pub mod zanshin {
         /// `show_inter_diff` passes `CopyRecords::default()`, and that asymmetry with `ShowEntry` is
         /// reproduced deliberately rather than corrected. Identical trees are an EMPTY list and a
         /// success, as is a path filter that matches nothing.
+        ///
+        /// `base_has_conflicts` reports whether the REBASED `from` tree — the LEFT side of the diff,
+        /// which exists only in memory — is conflicted. It is a ZANSHIN-SIDE addition: the CLI signals
+        /// this by rendering conflict markers in the patch TEXT, which is Epic 5's surface here, so a
+        /// caller would otherwise see a plausible change list derived from a conflicted rebase with no
+        /// way to tell. It is true whatever the cause — the 3-way merge left the conflict, OR
+        /// `rebase_to_dest_parent`'s fast path (same parents) returned `from`'s own already-conflicted
+        /// tree. `to`'s own conflict state is NOT reported here; that is `Change.conflict`'s job, via
+        /// `zanshin_show` / `zanshin_change`. The flag describes the TREE, not the filtered result:
+        /// a `paths` filter matching nothing still leaves it set.
         pub struct InterdiffView<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -10678,6 +10730,7 @@ pub mod zanshin {
 
         impl<'a> InterdiffView<'a> {
             pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BASE_HAS_CONFLICTS: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -10692,6 +10745,7 @@ pub mod zanshin {
                 if let Some(x) = args.file_changes {
                     builder.add_file_changes(x);
                 }
+                builder.add_base_has_conflicts(args.base_has_conflicts);
                 builder.finish()
             }
 
@@ -10708,6 +10762,17 @@ pub mod zanshin {
                     >>(InterdiffView::VT_FILE_CHANGES, None)
                 }
             }
+            #[inline]
+            pub fn base_has_conflicts(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(InterdiffView::VT_BASE_HAS_CONFLICTS, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for InterdiffView<'_> {
@@ -10720,6 +10785,7 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>,
                     >>("file_changes", Self::VT_FILE_CHANGES, false)?
+                    .visit_field::<bool>("base_has_conflicts", Self::VT_BASE_HAS_CONFLICTS, false)?
                     .finish();
                 Ok(())
             }
@@ -10728,11 +10794,15 @@ pub mod zanshin {
             pub file_changes: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>>,
             >,
+            pub base_has_conflicts: bool,
         }
         impl<'a> Default for InterdiffViewArgs<'a> {
             #[inline]
             fn default() -> Self {
-                InterdiffViewArgs { file_changes: None }
+                InterdiffViewArgs {
+                    file_changes: None,
+                    base_has_conflicts: false,
+                }
             }
         }
 
@@ -10750,6 +10820,11 @@ pub mod zanshin {
             ) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(InterdiffView::VT_FILE_CHANGES, file_changes);
+            }
+            #[inline]
+            pub fn add_base_has_conflicts(&mut self, base_has_conflicts: bool) {
+                self.fbb_
+                    .push_slot::<bool>(InterdiffView::VT_BASE_HAS_CONFLICTS, base_has_conflicts, false);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> InterdiffViewBuilder<'a, 'b, A> {
@@ -10770,6 +10845,7 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("InterdiffView");
                 ds.field("file_changes", &self.file_changes());
+                ds.field("base_has_conflicts", &self.base_has_conflicts());
                 ds.finish()
             }
         }

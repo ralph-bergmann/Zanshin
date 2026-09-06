@@ -1075,6 +1075,12 @@ class ZanshinWorker {
   /// change-id sides, a revset can therefore reach a commit by its hex. This read
   /// writes no operation.
   ///
+  /// [limit] is a ZANSHIN-SIDE cap the CLI has no counterpart for, applied in RAW
+  /// REVSET order; `null` is the CLI-parity default (unbounded) and `0` is an
+  /// empty result, not an error. A limit above the wire field's `uint` ceiling
+  /// (4294967295) SATURATES there rather than wrapping to an empty result; a
+  /// negative [limit] is an [ArgumentError].
+  ///
   /// Sends a [ShowCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<ShowView>` bytes into a `List<ShowEntry>`.
   ///
@@ -1082,9 +1088,18 @@ class ZanshinWorker {
   /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`).
   /// Completes with a [StateError] after [close]; the close-guard [StateError] is
   /// delivered synchronously by [RepoHandle.show].
-  Future<List<repo_ffi_commit_views.ShowEntry>> show(int handleId, {String? revset}) async {
+  Future<List<repo_ffi_commit_views.ShowEntry>> show(int handleId, {String? revset, int? limit}) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw is caught by the dispatch loop and comes back as
+    // `internal.dispatch_error` — not as the [ArgumentError] this method and
+    // [RepoHandle.show] both document. Rejecting on the calling side keeps the
+    // documented type and spares the round trip. The adapter keeps its own guard
+    // as the backstop for a direct caller.
+    if (limit != null && limit < 0) {
+      throw ArgumentError.value(limit, 'limit', 'must not be negative');
+    }
     final Uint8List bytes = await send(
-      ShowCommand(commandId: _correlator.allocateId(), handleId: handleId, revset: revset),
+      ShowCommand(commandId: _correlator.allocateId(), handleId: handleId, revset: revset, limit: limit),
     );
     return repo_ffi_commit_views.decodeShowViewEnvelopeInternal(bytes);
   }
@@ -1132,14 +1147,18 @@ class ZanshinWorker {
   /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
   /// records, the CLI's own asymmetry with `show`. This read writes no operation.
   ///
+  /// `InterdiffView.baseHasConflicts` reports whether the REBASED `from` tree —
+  /// the left side of the diff — is conflicted; that never turns the call into a
+  /// refusal, and it describes the TREE, not the filtered result.
+  ///
   /// Sends an [InterdiffCommand] via [send] and decodes the returned FlatBuffers
-  /// `Envelope<InterdiffView>` bytes into a `List<FileChange>`.
+  /// `Envelope<InterdiffView>` bytes into an `InterdiffView`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
   /// after [close]; the close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.interdiff].
-  Future<List<repo_ffi_status.FileChange>> interdiff(
+  Future<repo_ffi_commit_views.InterdiffView> interdiff(
     int handleId, {
     String? from,
     String? to,
@@ -1735,14 +1754,14 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case ShowCommand(:final int handleId, :final String? revset):
+        case ShowCommand(:final int handleId, :final String? revset, :final int? limit):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: ShowCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_commit_views.zanshinShow(raw, revset: revset);
+            final Uint8List bytes = repo_ffi_commit_views.zanshinShow(raw, revset: revset, limit: limit);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

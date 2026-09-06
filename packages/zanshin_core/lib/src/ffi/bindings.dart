@@ -934,6 +934,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_graph_slice(
 /// records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
 /// it is in-memory only, so this read writes NO operation.
 ///
+/// The payload's `base_has_conflicts` is a ZANSHIN-SIDE addition reporting whether the REBASED
+/// `from` tree — the left side of the diff — is conflicted. The CLI signals this by rendering
+/// conflict markers in the patch TEXT, which is Epic 5's surface here, so without the flag a
+/// caller sees a plausible change list derived from a conflicted rebase with no way to tell. It
+/// never turns the call into a refusal, and it describes the TREE, not the filtered result: a
+/// `paths` filter matching nothing still leaves it set.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying an `InterdiffView` payload on success.
 ///
 /// # Errors
@@ -1308,6 +1315,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_restore(
 /// Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
 /// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
 ///
+/// `limit` is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it streams to a
+/// pager where this builds ONE buffer whose every entry pays a merged-parent tree diff plus a
+/// per-parent copy-record stream. It uses the established presence-flag pair (`has_limit`)
+/// because `limit = 0` is a MEANINGFUL value (an empty result, not an error), it is applied in
+/// RAW REVSET order BEFORE that per-entry work, and ABSENCE is the CLI-parity default:
+/// unbounded, byte-identical to a buffer built before the field existed.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `ShowView` payload on success.
 ///
 /// # Errors
@@ -1552,10 +1566,6 @@ const int EvologEntry_VT_OPERATION_ID = 8;
 
 const int EvologEntry_VT_PREDECESSOR_COMMIT_IDS = 6;
 
-const int EvologRequest_VT_HAS_LIMIT = 8;
-
-const int EvologRequest_VT_LIMIT = 6;
-
 const int FileAnnotateRequest_VT_PATH = 6;
 
 const int FileAnnotation_VT_LINES = 4;
@@ -1662,6 +1672,8 @@ const int GraphSlice_VT_TOTAL_ROWS = 6;
 
 const int InterdiffRequest_VT_TO = 6;
 
+const int InterdiffView_VT_BASE_HAS_CONFLICTS = 6;
+
 const int LogDefaults_VT_LOG = 4;
 
 const int LogDefaults_VT_LOG_GRAPH_PRIORITIZE = 6;
@@ -1717,6 +1729,10 @@ const int SearchMatch_VT_LINE_NUMBER = 6;
 const int ShowEntry_VT_CHANGE = 4;
 
 const int ShowEntry_VT_FILE_CHANGES = 6;
+
+const int ShowRequest_VT_HAS_LIMIT = 8;
+
+const int ShowRequest_VT_LIMIT = 6;
 
 const int ShowRequest_VT_REVSET = 4;
 

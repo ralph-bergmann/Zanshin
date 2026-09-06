@@ -107,12 +107,26 @@ fn change_id_for_commit(path: &Path, commit_hex: &str) -> String {
 
 // ── Request-buffer builders ───────────────────────────────────────────────────
 
-/// A `ShowRequest` buffer. A `None` revset is left ABSENT — the wire form of "the user did not
-/// supply it", which selects the CLI's `@` default.
+/// A `ShowRequest` buffer with NO limit — the shape an older caller builds, and the one that
+/// must read as "unbounded". A `None` revset is likewise left ABSENT: the wire form of "the user
+/// did not supply it", which selects the CLI's `@` default.
 fn show_request_bytes(revset: Option<&str>) -> Vec<u8> {
+    show_request_bytes_with_limit(revset, None)
+}
+
+/// A `ShowRequest` buffer carrying the presence-flag pair, so `Some(0)` and `None` are DIFFERENT
+/// requests — the reader must not collapse them.
+fn show_request_bytes_with_limit(revset: Option<&str>, limit: Option<u32>) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let revset_off = revset.map(|s| b.create_string(s));
-    let req = fbs::ShowRequest::create(&mut b, &fbs::ShowRequestArgs { revset: revset_off });
+    let req = fbs::ShowRequest::create(
+        &mut b,
+        &fbs::ShowRequestArgs {
+            revset: revset_off,
+            limit: limit.unwrap_or(0),
+            has_limit: limit.is_some(),
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }
@@ -206,6 +220,38 @@ fn open_interdiff_scenario() -> (u64, String, String) {
     (handle, from, to)
 }
 
+/// A parent→child range, so the entry ORDER is observable across the buffer. Returns
+/// `(handle, "<parent>::<child>" revset, child commit hex)`.
+fn open_range_scenario() -> (u64, String, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let parent = add_commit_with_files(&fixture.path, &[], &[("a.txt", "alpha\n")], "adds a");
+    let child = add_commit_with_files(
+        &fixture.path,
+        &[&parent],
+        &[("a.txt", "alpha\n"), ("b.txt", "beta\n")],
+        "adds b",
+    );
+    let handle = open_handle(&fixture.path);
+    std::mem::forget(fixture);
+    (handle, format!("{parent}::{child}"), child)
+}
+
+/// Two commits whose in-memory rebase CONFLICTS: both edit `f.txt` off parents that already
+/// differ at it, so `rebase_to_dest_parent`'s 3-way merge cannot resolve. Returns
+/// `(handle, from, to)` as change ids.
+fn open_conflicting_interdiff_scenario() -> (u64, String, String) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let p1 = add_commit_with_files(&fixture.path, &[], &[("f.txt", "base-left\n")], "p1");
+    let p2 = add_commit_with_files(&fixture.path, &[], &[("f.txt", "base-right\n")], "p2");
+    let from = add_commit_with_files(&fixture.path, &[&p1], &[("f.txt", "from\n")], "from");
+    let to = add_commit_with_files(&fixture.path, &[&p2], &[("f.txt", "to\n")], "to");
+    let from = change_id_for_commit(&fixture.path, &from);
+    let to = change_id_for_commit(&fixture.path, &to);
+    let handle = open_handle(&fixture.path);
+    std::mem::forget(fixture);
+    (handle, from, to)
+}
+
 // ── zanshin_show ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -235,6 +281,45 @@ fn show_round_trip_nests_the_change_and_the_per_path_change_list() {
     assert_eq!(files.len(), 1);
     assert_eq!(files.get(0).path(), Some("a.txt"));
     assert_eq!(files.get(0).kind(), fbs::ChangeKind::Added);
+
+    close_handle(handle);
+}
+
+/// The presence pair on `ShowRequest`: an ABSENT limit is UNBOUNDED (what a buffer built before
+/// the field existed carries), an explicit `0` is an empty success, and a limit takes the FIRST
+/// n of the raw revset order.
+#[test]
+fn show_distinguishes_an_absent_limit_from_an_explicit_zero() {
+    pin_env();
+    let (handle, range, child) = open_range_scenario();
+
+    for (limit, expected) in [(None, 2), (Some(1), 1), (Some(0), 0), (Some(9), 2)] {
+        let req = show_request_bytes_with_limit(Some(&range), limit);
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_show(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token the call just returned.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(env.ok(), "limit {limit:?} must succeed");
+        let entries = env.data_as_show_view().expect("ShowView payload").entries();
+        assert_eq!(
+            entries.map_or(0, |e| e.len()),
+            expected,
+            "the presence flag must keep `limit = 0` distinct from `no limit` ({limit:?})"
+        );
+        // The one entry a limit of 1 keeps is the FIRST of the raw revset order — the CHILD.
+        if limit == Some(1) {
+            assert_eq!(
+                entries
+                    .expect("entries present")
+                    .get(0)
+                    .change()
+                    .and_then(|c| c.commit_id()),
+                Some(child.as_str()),
+                "the limit is applied in raw revset order, children before parents"
+            );
+        }
+    }
 
     close_handle(handle);
 }
@@ -348,14 +433,15 @@ fn interdiff_round_trip_factors_out_the_parent_difference_and_honours_paths() {
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "error: {:?}", env.error().and_then(|e| e.code()));
-    let files = env
-        .data_as_interdiff_view()
-        .expect("InterdiffView payload")
-        .file_changes()
-        .expect("file_changes present");
+    let view = env.data_as_interdiff_view().expect("InterdiffView payload");
+    let files = view.file_changes().expect("file_changes present");
     assert_eq!(files.len(), 1, "the parents' own difference is factored out");
     assert_eq!(files.get(0).path(), Some("b.txt"));
     assert_eq!(files.get(0).kind(), fbs::ChangeKind::Added);
+    assert!(
+        !view.base_has_conflicts(),
+        "disjoint edits rebase cleanly — the negative pole of the flag"
+    );
 
     // The `paths` field really crosses the buffer: an unmatched prefix empties the result
     // rather than being ignored (an unmatched filter is a CLI warning, never a refusal).
@@ -373,6 +459,38 @@ fn interdiff_round_trip_factors_out_the_parent_difference_and_honours_paths() {
             .map_or(1, |f| f.len()),
         0
     );
+
+    close_handle(handle);
+}
+
+/// The `true` pole of `base_has_conflicts` across the wire: the call SUCCEEDS and the flag is
+/// set, even when a `paths` filter empties the change list — it describes the rebased TREE.
+#[test]
+fn interdiff_round_trip_flags_a_conflicted_rebase_base() {
+    pin_env();
+    let (handle, from, to) = open_conflicting_interdiff_scenario();
+
+    for paths in [&[][..], &["nosuchdir"][..]] {
+        let req = interdiff_request_bytes(Some(&from), Some(&to), paths);
+        // SAFETY: handle is live; req is a valid buffer alive for the call.
+        let token = unsafe { zanshin_interdiff(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token the call just returned.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+        assert!(env.ok(), "a conflicted rebase base is not a refusal ({paths:?})");
+        let view = env.data_as_interdiff_view().expect("InterdiffView payload");
+        assert!(
+            view.base_has_conflicts(),
+            "the 3-way merge could not resolve f.txt ({paths:?})"
+        );
+        if !paths.is_empty() {
+            assert_eq!(
+                view.file_changes().map_or(1, |f| f.len()),
+                0,
+                "an unmatched filter empties the change list but not the flag"
+            );
+        }
+    }
 
     close_handle(handle);
 }

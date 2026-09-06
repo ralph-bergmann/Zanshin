@@ -2,7 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
-import '../ffi/commit_views.dart' show EvologEntry, ShowEntry;
+import '../ffi/commit_views.dart' show EvologEntry, InterdiffView, ShowEntry;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
@@ -11,7 +11,7 @@ import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/remotes.dart' show Remote;
-import '../ffi/status.dart' show FileChange, WorkingCopyStatus;
+import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/workspace.dart' show WorkspaceEntry;
 import 'isolate.dart';
 import 'responses.dart';
@@ -636,15 +636,24 @@ final class RepoHandle {
   /// There is no path filter and no textual patch: the CLI has no path argument
   /// here, and line/word-level diffing is Epic 5's.
   ///
+  /// [limit] is a ZANSHIN-SIDE cap the CLI has no counterpart for — `jj show` has
+  /// no `-n/--limit`, because it streams to a pager where this materialises one
+  /// list whose every entry pays a merged-parent tree diff. It is applied in RAW
+  /// REVSET order, the same order the unbounded call returns; `limit: 0` is an
+  /// empty list, not an error, and `null` is the CLI-parity default (unbounded).
+  /// A [limit] above the wire field's `uint` ceiling (4294967295) SATURATES
+  /// there, so an over-large limit means "everything" rather than wrapping to an
+  /// empty list; a NEGATIVE [limit] throws [ArgumentError].
+  ///
   /// This read writes no operation. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
   /// `jj.config_error`, `jj.jj_lib_error`).
-  Future<List<ShowEntry>> show({String? revset}) {
+  Future<List<ShowEntry>> show({String? revset, int? limit}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.show(_handleId, revset: revset);
+    return _worker.show(_handleId, revset: revset, limit: limit);
   }
 
   /// Walk the evolution of the changes [revset] denotes (Story 9.6) — the CLI's
@@ -708,11 +717,17 @@ final class RepoHandle {
   /// records, and that asymmetry with [show] is the CLI's own, reproduced
   /// deliberately.
   ///
+  /// `InterdiffView.baseHasConflicts` reports whether the REBASED `from` tree —
+  /// the LEFT side of the diff, which exists only in memory — is conflicted. That
+  /// is a ZANSHIN-SIDE addition: the CLI signals it by rendering conflict markers
+  /// in the patch TEXT, which is Epic 5's surface here. It never turns the call
+  /// into a refusal, and it describes the TREE, not the filtered result.
+  ///
   /// This read writes no operation — the rebase behind it is in-memory only.
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error`).
-  Future<List<FileChange>> interdiff({String? from, String? to, List<String> paths = const <String>[]}) {
+  Future<InterdiffView> interdiff({String? from, String? to, List<String> paths = const <String>[]}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }

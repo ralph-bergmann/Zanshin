@@ -977,6 +977,13 @@ impl Repo {
     /// There is no path argument and no textual patch: the CLI hardcodes `EverythingMatcher`,
     /// and line/word-level diffing is Epic 5's (`zanshin-diff`).
     ///
+    /// `limit` is a ZANSHIN-SIDE addition — the CLI has no such flag here, because `jj show`
+    /// streams to a pager where this materialises one owned list, each entry paying a
+    /// merged-parent tree diff plus a per-parent copy-record stream. It is `take(limit)` applied
+    /// in RAW REVSET order, the same order the unbounded call returns, and BEFORE that per-entry
+    /// work, so nothing past the limit is computed. `Some(0)` is an empty result, not an error,
+    /// and `None` is the CLI-parity default: unbounded, byte-identical to the pre-`limit` output.
+    ///
     /// # Errors
     ///
     /// - [`crate::CommitViewError::RevsetParseError`] — `revset` is syntactically invalid or
@@ -986,8 +993,12 @@ impl Repo {
     ///   unreadable.
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn show(&self, revset: Option<&str>) -> Result<Vec<crate::ShowEntry>, crate::CommitViewError> {
-        crate::commit_views::show(self, revset)
+    pub fn show(
+        &self,
+        revset: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<crate::ShowEntry>, crate::CommitViewError> {
+        crate::commit_views::show(self, revset, limit)
     }
 
     /// Walks the evolution of the changes `revset` denotes (Story 9.6) — the CLI's `jj evolog`.
@@ -1060,6 +1071,13 @@ impl Repo {
     /// `CopyRecords::default()`, and that asymmetry with [`Repo::show`] is reproduced
     /// deliberately, not corrected.
     ///
+    /// [`crate::InterdiffView::base_has_conflicts`] reports whether the REBASED `from` tree —
+    /// the left side of the diff, in memory only — is conflicted. That is a ZANSHIN-SIDE
+    /// addition the CLI has no counterpart for: it renders conflict markers in the patch TEXT,
+    /// which is Epic 5's surface here, so without the flag a caller sees a plausible change list
+    /// derived from a conflicted rebase with no way to tell. It never turns the call into a
+    /// refusal, and it describes the TREE, not the filtered result.
+    ///
     /// # Errors
     ///
     /// - [`crate::CommitViewError::InvalidInput`] — both `from` and `to` are absent, or a
@@ -1078,7 +1096,7 @@ impl Repo {
         from: Option<crate::ChangeId>,
         to: Option<crate::ChangeId>,
         paths: &[String],
-    ) -> Result<Vec<crate::FileChange>, crate::CommitViewError> {
+    ) -> Result<crate::InterdiffView, crate::CommitViewError> {
         crate::commit_views::interdiff(self.workspace(), from.as_ref(), to.as_ref(), paths)
     }
 
