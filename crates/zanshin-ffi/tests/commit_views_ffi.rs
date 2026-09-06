@@ -692,10 +692,15 @@ type KindCase<'a> = (&'a str, Wrapper, &'a [u8], &'a str, &'a str, u64);
 /// Every wrapper in this file refuses a buffer built for a DIFFERENT verb, and refuses an
 /// untagged one, naming both kinds in `context`.
 ///
-/// `ShowRequest` and `EvologRequest` are field-for-field identical, so the real show ↔ evolog
-/// cross-feed carries a payload; `InterdiffRequest`'s rows use a minimal tagged buffer, which
-/// every request table serialises to identically. The `handle == 0` row proves the kind rung
-/// runs BEFORE the handle lookup.
+/// The ledger names `ShowRequest`/`EvologRequest`/`InterdiffRequest`/`WorkspaceRootRequest` as
+/// the four-way collision — all four put one string in the slot after `kind` — so the cross-feeds
+/// between them carry POPULATED buffers of the real tables, which is the ledger's own
+/// demonstration case. (`WorkspaceRootRequest` is built here rather than imported: any test may
+/// construct any request table, and a populated one-string table is what verifies as all four.)
+/// A populated `ShowRequest` fed to `zanshin_interdiff` is NOT among them: its inline `limit`
+/// would be followed as `to`'s string offset and the Verifier refuses it one rung earlier — that
+/// is what the minimal tagged buffer is for. Every wrapper also gets a `handle == 0` row, which
+/// is what proves the kind rung runs BEFORE the handle lookup, and an untagged row.
 #[test]
 fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     pin_env();
@@ -703,12 +708,47 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
 
     let show_req = show_request_bytes_raw(Some("@"), 3, true);
     let evolog_req = evolog_request_bytes(Some("@"), Some(3));
+    let interdiff_req = interdiff_request_bytes(Some("@"), Some("@-"), &[]);
+    let workspace_root_req = workspace_root_request_bytes("default");
     let minimal_show = tagged_request_bytes(fbs::RequestKind::Show);
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+    let out_of_range = tagged_request_bytes(fbs::RequestKind(200));
 
-    let cases: [KindCase<'_>; 7] = [
+    let cases: [KindCase<'_>; 14] = [
         ("show", zanshin_show, &evolog_req, "Show", "Evolog", handle),
         ("evolog", zanshin_evolog, &show_req, "Evolog", "Show", handle),
+        (
+            "show/interdiff",
+            zanshin_show,
+            &interdiff_req,
+            "Show",
+            "Interdiff",
+            handle,
+        ),
+        (
+            "show/workspace_root",
+            zanshin_show,
+            &workspace_root_req,
+            "Show",
+            "WorkspaceRoot",
+            handle,
+        ),
+        (
+            "evolog/workspace_root",
+            zanshin_evolog,
+            &workspace_root_req,
+            "Evolog",
+            "WorkspaceRoot",
+            handle,
+        ),
+        (
+            "interdiff/workspace_root",
+            zanshin_interdiff,
+            &workspace_root_req,
+            "Interdiff",
+            "WorkspaceRoot",
+            handle,
+        ),
         (
             "interdiff",
             zanshin_interdiff,
@@ -727,10 +767,33 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
             "Unspecified",
             handle,
         ),
-        ("show", zanshin_show, &evolog_req, "Show", "Evolog", 0),
+        (
+            "show/out-of-range",
+            zanshin_show,
+            &out_of_range,
+            "Show",
+            "<UNKNOWN 200>",
+            handle,
+        ),
+        ("show/zero-handle", zanshin_show, &evolog_req, "Show", "Evolog", 0),
+        ("evolog/zero-handle", zanshin_evolog, &show_req, "Evolog", "Show", 0),
+        (
+            "interdiff/zero-handle",
+            zanshin_interdiff,
+            &workspace_root_req,
+            "Interdiff",
+            "WorkspaceRoot",
+            0,
+        ),
     ];
 
-    for (name, call, req, expected, got, h) in cases {
+    assert_kind_mismatches(&cases);
+    close_handle(handle);
+}
+
+/// Drive one wrong-kind table: every row must answer `ffi.invalid_argument` naming both kinds.
+fn assert_kind_mismatches(cases: &[KindCase<'_>]) {
+    for &(name, call, req, expected, got, h) in cases {
         // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
         let token = unsafe { call(h, req.as_ptr(), req.len()) };
         // SAFETY: token is fresh and non-null.
@@ -748,8 +811,24 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
             "{name}: the context names both kinds"
         );
     }
+}
 
-    close_handle(handle);
+/// A POPULATED `WorkspaceRootRequest` buffer — the fourth table of the ledger's collision.
+///
+/// It is built here, in the commit-views suite, because it is the one shape that verifies as all
+/// four colliding tables: one string in the slot after `kind`, nothing else.
+fn workspace_root_request_bytes(name: &str) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let name_off = b.create_string(name);
+    let req = fbs::WorkspaceRootRequest::create(
+        &mut b,
+        &fbs::WorkspaceRootRequestArgs {
+            kind: fbs::RequestKind::WorkspaceRoot,
+            name: Some(name_off),
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }
 
 /// A minimal request buffer carrying `kind` and nothing else.
@@ -758,7 +837,9 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
 /// interchangeability the tag exists to close — so this is at once a buffer built FOR `kind`'s
 /// verb and a buffer that verifies as every other request table. That is what isolates the kind
 /// rung: a structurally incompatible buffer is refused one rung earlier, by the Verifier.
-/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
+/// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed;
+/// `RequestKind(200)` yields an out-of-range tag, which `FlatBuffers` does NOT range-check (an
+/// enum verifies as its underlying `u8`), so it reaches the same rung and prints `<UNKNOWN 200>`.
 fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
     let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });

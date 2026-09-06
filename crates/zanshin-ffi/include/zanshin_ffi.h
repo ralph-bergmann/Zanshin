@@ -333,7 +333,8 @@ char *zanshin_ffi_version(void);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer, or its `kind`
+ *   is not `BookmarkCreate`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
  *   empty string.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
@@ -356,7 +357,9 @@ char *zanshin_ffi_version(void);
  * for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_bookmark_create(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_bookmark_create(uint64_t handle,
+                                    const uint8_t *data,
+                                    uintptr_t len);
 
 /**
  * Delete the local bookmarks matching the requested patterns, in the repo referenced by
@@ -378,7 +381,8 @@ ZanshinBuf *zanshin_bookmark_create(uint64_t handle, const uint8_t *data, uintpt
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer, or its `kind`
+ *   is not `BookmarkDelete`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
  *   parse; jj-lib's reason in `context`.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -390,7 +394,9 @@ ZanshinBuf *zanshin_bookmark_create(uint64_t handle, const uint8_t *data, uintpt
  * for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_bookmark_delete(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
+                                    const uint8_t *data,
+                                    uintptr_t len);
 
 /**
  * List local + tracked-remote bookmarks of the repo identified by `handle`.
@@ -468,7 +474,8 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer, or its `kind`
+ *   is not `Show`, i.e. the buffer was built for a different wrapper.
  * - `jj.revset_parse_error` — `revset` is syntactically invalid or names an unknown function;
  *   jj-lib's reason in `context`.
  * - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved; reason in
@@ -505,7 +512,8 @@ ZanshinBuf *zanshin_show(uint64_t handle, const uint8_t *data, uintptr_t len);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer, or its `kind`
+ *   is not `Evolog`, i.e. the buffer was built for a different wrapper.
  * - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
  * - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
  * - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
@@ -550,7 +558,8 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its `kind`
+ *   is not `Interdiff`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
  *   not a valid repo path; detail in `context`.
  * - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
@@ -564,7 +573,9 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * `fbs.InterdiffRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_interdiff(uint64_t handle,
+                              const uint8_t *data,
+                              uintptr_t len);
 
 /**
  * Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
@@ -670,7 +681,8 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its `kind`
+ *   is not `FileList`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
  *   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
  *   the CLI's `-r` default `@`.
@@ -710,7 +722,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
+ *   is not `FileShow`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
@@ -741,7 +754,8 @@ ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t le
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
+ *   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
  *   path.
@@ -755,7 +769,9 @@ ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t le
  * `fbs.FileAnnotateRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_annotate(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_annotate(uint64_t handle,
+                                  const uint8_t *data,
+                                  uintptr_t len);
 
 /**
  * Search the files of a revision for a pattern in the repo identified by `handle` — the
@@ -776,7 +792,8 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle, const uint8_t *data, uintptr_
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
+ *   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
  *   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
@@ -787,7 +804,9 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle, const uint8_t *data, uintptr_
  * `fbs.FileSearchRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_search(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_search(uint64_t handle,
+                                const uint8_t *data,
+                                uintptr_t len);
 
 /**
  * Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
@@ -872,7 +891,8 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteAddRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteAddRequest` buffer, or its `kind`
+ *   is not `GitRemoteAdd`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `name` or `url` is absent from the buffer, or `name` is the
  *   reserved `git`, contains a slash, or is not a valid gix remote name.
  * - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
@@ -886,7 +906,9 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  * borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_git_remote_add(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_git_remote_add(uint64_t handle,
+                                   const uint8_t *data,
+                                   uintptr_t len);
 
 /**
  * Remove a git remote and forget its bookmarks, in the repo referenced by `handle` — the
@@ -996,7 +1018,8 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteSetUrlRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteSetUrlRequest` buffer, or its `kind`
+ *   is not `GitRemoteSetUrl`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `name` is absent from the buffer, or is the reserved `git`,
  *   contains a slash, or is not a valid gix remote name.
  * - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
@@ -1011,7 +1034,9 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  * borrows it for the duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_git_remote_set_url(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_git_remote_set_url(uint64_t handle,
+                                       const uint8_t *data,
+                                       uintptr_t len);
 
 /**
  * Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
@@ -1358,7 +1383,9 @@ ZanshinBuf *zanshin_describe(uint64_t handle, const char *change_id, const char 
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+ *   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
+ *   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
  * - `jj.invalid_input` — the parsed `parents` list is empty.
  * - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1424,7 +1451,10 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+ *   is not `Abandon`. The two wrappers that read this ONE table carry different kinds, so a
+ *   `NewChange`-tagged buffer is refused here rather than abandoning the commits the caller
+ *   named as parents.
  * - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
  * - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
  * - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
@@ -1534,7 +1564,8 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const char *remote_name);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
+ *   is not `Restore`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
  *   is not a valid repo path; detail in `context`.
  * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
@@ -1583,7 +1614,8 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer, or its `kind`
+ *   is not `Absorb`, i.e. the buffer was built for a different wrapper.
  * - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
  *   function; jj-lib's reason in `context`.
  * - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
@@ -1680,7 +1712,8 @@ ZanshinBuf *zanshin_workspace_list(uint64_t handle);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
- * - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer, or its `kind`
+ *   is not `WorkspaceRoot`, i.e. the buffer was built for a different wrapper.
  * - `jj.workspace_not_found` — no workspace of that name is in the head view; the name in
  *   `context`.
  * - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
@@ -1700,6 +1733,8 @@ ZanshinBuf *zanshin_workspace_list(uint64_t handle);
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_workspace_root(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_workspace_root(uint64_t handle,
+                                   const uint8_t *data,
+                                   uintptr_t len);
 
 #endif  /* ZANSHIN_FFI_H */

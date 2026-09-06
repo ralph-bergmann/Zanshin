@@ -416,6 +416,18 @@ fn git_remote_add_rejects_a_null_buffer_garbage_and_a_missing_field() {
     let handle_bytes = unsafe { read_and_free(zanshin_git_remote_add(0, complete.as_ptr(), complete.len())) };
     assert_eq!(error_code(&handle_bytes), FFI_INVALID_HANDLE);
 
+    // The other half of that reordering, pinned rather than merely described: with BOTH wrong at
+    // once, the reader's required-field rung answers and the handle rung never runs. This is the
+    // one refusal whose code CHANGED for such a caller (it was `ffi.invalid_handle` before), and
+    // it is what `docs/ffi-abi.md` documents as rung 4 preceding rung 5.
+    // SAFETY: no_url outlives the call; 0 is the documented null handle.
+    let both_wrong = unsafe { read_and_free(zanshin_git_remote_add(0, no_url.as_ptr(), no_url.len())) };
+    assert_eq!(
+        error_code(&both_wrong),
+        JJ_INVALID_INPUT,
+        "an incomplete buffer answers before the handle is looked at"
+    );
+
     close_handle(handle);
 }
 
@@ -714,7 +726,7 @@ fn both_request_wrappers_refuse_a_buffer_built_for_the_other_verb() {
     let set_url_req = set_url_request_bytes(Some("origin"), Some("https://example.invalid/r.git"), None);
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
 
-    let cases: [KindCase<'_>; 5] = [
+    let cases: [KindCase<'_>; 6] = [
         (
             "remote_add",
             zanshin_git_remote_add,
@@ -753,6 +765,14 @@ fn both_request_wrappers_refuse_a_buffer_built_for_the_other_verb() {
             &set_url_req,
             "GitRemoteAdd",
             "GitRemoteSetUrl",
+            0,
+        ),
+        (
+            "remote_set_url",
+            zanshin_git_remote_set_url,
+            &add_req,
+            "GitRemoteSetUrl",
+            "GitRemoteAdd",
             0,
         ),
     ];

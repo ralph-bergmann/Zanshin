@@ -47,9 +47,9 @@ pub mod zanshin {
         ///
         /// Every request table carries this as field 0, and every wrapper refuses a buffer whose
         /// `kind` is not its own — before the handle lookup and before any other field is read.
-        /// Without it a buffer built for one verb VERIFIES as another verb's table (the tables are
-        /// structurally interchangeable), so a `BookmarkCreateRequest` fed to `zanshin_bookmark_delete`
-        /// would silently glob-delete names the caller meant literally.
+        /// Without it a buffer built for one verb VERIFIES as another verb's table — nothing in the
+        /// `FlatBuffers` layer tells them apart — so a `BookmarkCreateRequest` fed to
+        /// `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
         ///
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
@@ -59,6 +59,9 @@ pub mod zanshin {
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
         /// `Unspecified`, and is ALWAYS refused. Nothing untagged is ever silently accepted.
+        ///
+        /// Member order IS the wire value (no explicit numbers) — APPEND only, never reorder or remove:
+        /// a reordered variant re-tags every buffer the other side already builds.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct RequestKind(pub u8);

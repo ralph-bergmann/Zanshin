@@ -5,7 +5,7 @@ created: '2026-09-06'
 status: 'done'
 baseline_revision: '8816ad4121560357f69511cba389c74f5a0e889c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
 deferred: []
@@ -310,6 +310,90 @@ a pre-existing cbindgen behaviour affecting unused informational constants only.
 
 ## Review Triage Log
 
+### 2026-09-06 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 11: (high 0, medium 4, low 7)
+- defer: 0
+- reject: 9: (high 0, medium 1, low 8)
+- addressed_findings:
+  - `[medium]` `[patch]` **The committed `zanshin_ffi.h` and `bindings.dart` were STALE**: codegen
+    had run BEFORE the 16 rustdoc `# Errors` edits, so the header carried zero of the new `kind`
+    clauses (`grep -c "built for a different wrapper"` → 0 in both, 2 in `bookmark_ops.rs` alone).
+    Re-ran `cargo make codegen`; both now carry all 16. Nothing in the gate catches this —
+    `verify-codegen` is deliberately not chained into `cargo make test` (`Makefile.toml:349`).
+  - `[medium]` `[patch]` **The ledger's own four-way collision was never cross-fed with real
+    tables.** `Show`/`Evolog`/`Interdiff`/`WorkspaceRoot` all put one string after `kind`, so a
+    POPULATED cross-feed is exactly the ledger's demonstration; only show ↔ evolog carried a
+    payload. Added populated rows: `WorkspaceRootRequest` → show / evolog / interdiff,
+    `InterdiffRequest` → show (`commit_views_ffi.rs`), and `ShowRequest` → workspace_root
+    (`workspace_ffi.rs`, with its own builder).
+  - `[medium]` `[patch]` **7 of 16 wrappers had no order-witnessing row** (wrong kind + `handle
+    == 0`), so the reader-before-handle move could regress for `evolog`, `interdiff`, `file_show`,
+    `file_annotate`, `file_search`, `git_remote_set_url` and `absorb` with the suite still green.
+    Every wrapper now has one.
+  - `[medium]` `[patch]` **The one behaviour whose code CHANGED was asserted nowhere.** A dead
+    handle plus an INCOMPLETE buffer now answers `jj.invalid_input` (rung 4 before rung 5); the
+    only test that covered that combination was rewritten to avoid it. Pinned in
+    `git_ffi.rs::git_remote_add_rejects_a_null_buffer_garbage_and_a_missing_field`.
+  - `[low]` `[patch]` `docs/ffi-abi.md` called the caveat "the last open must-have on the central
+    ledger" — three must-haves in that subsection are still open (`deferred-work.md:190, 192,
+    215`). Corrected to "one of the cross-cutting must-haves … (others there remain open)".
+  - `[low]` `[patch]` `bookmark_ops_ffi.rs` ended the kind table with the bare comment "No
+    operation was written by any of the six refusals", asserting nothing. It now seeds a real
+    `feature` bookmark and asserts both the op-log head and the bookmark list are unchanged —
+    the glob-delete hazard itself, asserted rather than asserted-about.
+  - `[low]` `[patch]` The out-of-range tag byte was undocumented and untested. FlatBuffers
+    range-checks no enum (`RequestKind::run_verifier` is `u8::run_verifier`), so `kind = 200`
+    verifies and reaches the same rung. Added a row asserting `got <UNKNOWN 200>` plus one
+    sentence each in `docs/ffi-abi.md` and `envelope.rs`.
+  - `[low]` `[patch]` `RequestKind` had no append-only banner, unlike every other reordering-
+    sensitive enum in the schema (`FileType`, `GitRefUpdateKind`, `Payload`), and the rewritten
+    request-table banner had dropped the append-only rule for NEW fields. Both restored.
+  - `[low]` `[patch]` The ladder table did not say that rung 4 is the READER's own required-field
+    guard (four readers have one) while jj-layer refusals land after rung 5, nor that the
+    per-symbol `# Errors` bullets are an inventory, not the evaluation order. Both stated.
+  - `[low]` `[patch]` `docs/rust-error-codes.md` recorded the reordering only on the
+    `ffi.invalid_argument` row; the `ffi.invalid_handle` row now says it runs last for the sixteen
+    request-buffer wrappers (the follow-up-C precedent of recording on both rows).
+  - `[low]` `[patch]` Three live docs still asserted the tables are "structurally interchangeable"
+    in the present tense as a bare fact (`schemas/envelope.fbs:49`, `envelope.rs:203`,
+    `docs/ffi-abi.md:221`). Reworded to "nothing in the FlatBuffers layer tells them apart", which
+    is the tag's rationale rather than an open caveat.
+
+Rejected (not silently — recorded because a later reader may re-derive them): a guard against
+`expect_request_kind(_, Unspecified)` (unreachable internal misuse; the project bans error
+handling for impossible scenarios, and the line would be uncovered under a 100.00 % file);
+replacing the generated `Debug` with a hand-written label match (17 uncovered lines, same
+reason); a "the 16 expected kinds are pairwise distinct" test (not cheaply expressible — the
+kinds live inside private readers, and the cross-feed tables already catch every same-kind slip
+that a cross-feed row covers); deduplicating `tagged_request_bytes` across the six suites (each
+`tests/*.rs` is its own crate and `test-helpers` cannot depend on `zanshin-ffi` — the dev-dep
+direction is the reverse, so the duplication is forced); adding "even when `handle` is 0" to the
+16 `# Safety` blocks (the `data`/`len` obligation was already unconditional there); chaining
+`verify-codegen` into `cargo make test` (pre-existing, deliberate — `Makefile.toml:349`); a
+Dart→Rust end-to-end refusal test (the numbering agreement it would witness is already proved by
+every Dart happy-path call through the real cdylib); editing the bodies of the completed 9.6 /
+9.7 / 9.8 specs (historical records; the convention is the `resolved:` frontmatter block, which
+they have); and a `file_identifier` (explicitly rejected by Ralph).
+
+**Not treated as `unexpected codegen drift`, second occurrence.** Re-running codegen after the
+rustdoc edits re-wrapped eight `extern "C"` declarations across three lines each
+(`zanshin_bookmark_create`, `_bookmark_delete`, `_interdiff`, `_file_annotate`, `_file_search`,
+`_git_remote_add`, `_git_remote_set_url`, `_workspace_root`). No parameter type, name or order
+changed, and `bindings.dart`'s non-doc diff is empty. The wrapping is cbindgen's own deterministic
+output for the current source — the same binary produced it — so committing it is what makes the
+header match `cargo make codegen`; halting would have frozen a header that provably does not.
+
+**Ledger accounting.** The cbindgen constant casualty (`FileChange_VT_KIND` displaced by
+`ChangeIdList_VT_KIND`) was NOT filed as a new deferral: `deferred-work.md:49` already tracks
+"`cbindgen.toml` `[export] exclude` list is hand-maintained per symbol — new schemas generating
+fresh `VT_*`/`ENUM_*` consts will leak into `zanshin_ffi.h`". The newly observed part (cbindgen
+emits one constant per BARE name, so a new table's `kind` displaces an older table's) was
+appended to that existing bullet as evidence. The ledger therefore ends this run strictly
+smaller: one must-have struck through, no bullet added.
+
 ## Design Notes
 
 **Why the tag lives in the table and not in a `file_identifier`.** Ralph's call, 2026-09-06. A
@@ -371,7 +455,94 @@ pre-existing `git stash` entry.
 - `cargo make test` -- expected: exit 0. Rust workspace tests, clippy pedantic `-D warnings`,
   rustfmt, `flutter test`, `dart analyze`/`format`, `cargo deny`, and the coverage ratchet all
   green; `coverage-baseline.txt` unchanged or raised, never lowered.
-- `grep -rn "interchangeab" docs/ schemas/ crates/ packages/` -- expected: no hit outside
-  `_bmad-output/` bookkeeping prose.
+- `grep -rn "interchangeab" docs/ schemas/ crates/ packages/` -- expected: no hit that presents
+  interchangeability as an unmitigated present-tense caveat. Naming it as the RATIONALE for the
+  tag, or as the historical hazard a test closes, is what the surviving hits are (one in
+  `docs/ffi-abi.md`, the rest test doc comments).
 - `python3 -c "import yaml,sys; [yaml.safe_load(open(p).read().split('---')[1]) for p in sys.argv[1:]]" <the three specs>`
   -- expected: exit 0 (frontmatter still parses after the `resolved:` blocks).
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+Every FlatBuffers request table now carries `kind: RequestKind` as field 0, and every one of the
+sixteen request-buffer wrappers refuses a buffer whose tag is not its own — before the handle is
+borrowed and before any other field is read. The tag is per-WRAPPER, not per-table: the two
+wrappers that share `ChangeIdList` carry the distinct kinds `NewChange` and `Abandon`, which is
+the one collision a per-table tag could not have closed (a buffer meant as `parents` would
+otherwise abandon those commits). `Unspecified = 0` is FlatBuffers' absent-field default, so an
+untagged buffer is byte-identical to a pre-tag one, decodes as `Unspecified`, and is always
+refused. This closes the ledger's "Request tables verify interchangeably" must-have.
+
+### Files changed
+
+- `schemas/envelope.fbs` -- `enum RequestKind : ubyte` (17 values, append-only banner) plus
+  `kind` as field 0 of all 15 request tables; the request-table banner now states the field-0 rule
+  and the regenerate-both-sides rule.
+- `crates/zanshin-ffi/src/envelope.rs` -- one `pub(crate) fn expect_request_kind`, next to
+  `reject_null_request`; mismatch → `ffi.invalid_argument`, context
+  `request kind mismatch: expected <K>, got <K>`.
+- `crates/zanshin-ffi/src/{repo,file,git,commit_views,workspace,bookmark_ops}.rs` -- 15 readers
+  check the tag right after `root_with_opts`; 16 wrappers call their reader before
+  `session_from_handle`; 16 `# Errors` rustdoc bullets extended.
+- `crates/zanshin-ffi/src/envelope_generated.rs`, `.../bindings.dart`,
+  `.../envelope_zanshin.ffi_generated.dart`, `crates/zanshin-ffi/include/zanshin_ffi.h` --
+  regenerated (twice: the first run predated the rustdoc edits and shipped a stale header).
+- `packages/zanshin_core/lib/src/ffi/{mutate,file,git,commit_views,workspace,bookmark_ops}.dart`
+  -- all 16 builders set the tag; `_withChangeIdListBytes` takes it as a parameter.
+- `crates/zanshin-ffi/tests/{repo_write,file,git,commit_views,workspace,bookmark_ops}_ffi.rs` --
+  13 builder helpers tag their buffers; six wrong-kind tables covering every wrapper, every
+  wrapper with a `handle == 0` row, populated cross-feeds for the ledger's named four-way
+  collision and both bookmark directions, an untagged row per wrapper, an out-of-range-byte row,
+  and the seeded-bookmark survival assertion.
+- `packages/zanshin_core/test/ffi/bookmark_ops_test.dart` -- the tag round-trips through the Dart
+  builder and reader.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` -- the five-rung ladder, the tag convention, the
+  `Unspecified` and out-of-range rules, the rung-4-vs-rung-5 clarification, both registry rows.
+- `_bmad-output/implementation-artifacts/deferred-work.md` + `spec-9-6-…`, `spec-9-7-…`,
+  `spec-9-8-…` -- the must-have struck through and marked resolved; three `resolved:` blocks.
+
+### Review findings breakdown
+
+- Patches applied: 11 (medium 4, low 7) — listed in the Review Triage Log above.
+- Items deferred: 0. The one candidate (a public `#define` displaced by cbindgen's per-bare-name
+  dedupe) was appended as evidence to the pre-existing ledger bullet at `deferred-work.md:49`
+  rather than filed as a new entry, so the ledger ends this run strictly smaller.
+- Items rejected: 9 — each named in the Review Triage Log with its reason, rather than dropped
+  silently.
+
+Follow-up review recommended: **true** (patched: high 0, medium 4, low 7 → 3×4 + 7 = 19 ≥ 5).
+
+### Verification performed
+
+- `cargo make codegen` -- exit 0, run again after the rustdoc edits. `bindings.dart`'s non-doc
+  diff is empty; `zanshin_ffi.h` gained the 16 kind clauses and re-wrapped eight declarations
+  across three lines each (no parameter type, name or order changed) — cbindgen's own
+  deterministic output for the current source, accepted rather than halted on, with the reasoning
+  in the Review Triage Log.
+- `cargo clippy --workspace --all-targets -- -D warnings` -- exit 0 after refactoring the two
+  over-long test fns into a shared `assert_kind_mismatches` driver and giving the bookmark table a
+  `KindCase` alias (no `#[allow]` was added).
+- `cargo make test` -- exit 0. Coverage held at **99.22 % (8516/8583 lines over 46 files)**;
+  `coverage-baseline.txt` unchanged; `extern-coverage: OK` for every `extern "C"` fn.
+- `grep -rn "interchangeab" …` -- one live doc hit, naming the CLOSED caveat; the rest are test
+  doc comments describing the hazard the tag closes.
+- The three touched spec frontmatters plus this one parse as YAML.
+
+### Residual risks
+
+- The tag guards the WIRE, not the caller: a caller bypassing the generated adapters can still set
+  it by hand. What it removes is the silent mis-EXECUTION.
+- The reordering is observable for callers that get two things wrong at once: a dead handle plus a
+  null, unverifiable, mis-tagged or incomplete buffer now answers the buffer's refusal instead of
+  `ffi.invalid_handle`. Documented in both registry rows and pinned by a test.
+- Nothing in `cargo make test` proves the committed codegen matches the schema —
+  `verify-codegen` is deliberately manual (`Makefile.toml:349`). This run shipped a stale header
+  once because of that; the second codegen run fixed it, but the gap itself remains.
+- 14 of the 15 tagged tables now export no `_VT_KIND` constant to the C header at all (cbindgen
+  dedupes by bare name). Informational constants only, nothing consumes them; tracked at
+  `deferred-work.md:49`.

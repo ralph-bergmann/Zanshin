@@ -200,11 +200,13 @@ pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj
 
 /// Reject a request buffer that was built for a different wrapper.
 ///
-/// The request tables are structurally interchangeable — a buffer built for one verb VERIFIES
-/// as another verb's table — so every request table carries a `RequestKind` tag as field 0 and
-/// every reader checks it here, immediately after `root_with_opts` and BEFORE any other field
-/// is read. `RequestKind::Unspecified` is `FlatBuffers`' absent-field default, so a producer
-/// that never set the tag lands here too and is refused; nothing untagged is ever accepted.
+/// Nothing in the `FlatBuffers` layer distinguishes one request table from another — a buffer
+/// built for one verb VERIFIES as another verb's table — so every request table carries a
+/// `RequestKind` tag as field 0 and every reader checks it here, immediately after
+/// `root_with_opts` and BEFORE any other field is read. `RequestKind::Unspecified` is
+/// `FlatBuffers`' absent-field default, so a producer that never set the tag lands here too and
+/// is refused; nothing untagged is ever accepted. A byte outside the enum is refused the same
+/// way and prints as `<UNKNOWN n>` — the tag is caller-supplied data, never trusted.
 ///
 /// WHY this must precede the handle borrow: a mis-routed buffer has to be refused on its own
 /// merits, not only when the caller happens to hold a live handle. Each wrapper therefore calls

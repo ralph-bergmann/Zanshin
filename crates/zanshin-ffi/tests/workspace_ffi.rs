@@ -490,14 +490,25 @@ fn workspace_root_refuses_a_buffer_built_for_another_verb() {
 
     let foreign = tagged_request_bytes(fbs::RequestKind::BookmarkDelete);
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
+    // A POPULATED `ShowRequest` — the ledger's own four-way collision names this table beside
+    // `WorkspaceRootRequest`, and a real one carrying a revset verifies here as a `name`.
+    let show_req = show_request_bytes("@");
 
-    let cases: [KindCase<'_>; 3] = [
+    let cases: [KindCase<'_>; 4] = [
         (
             "live handle",
             zanshin_workspace_root,
             &foreign,
             "WorkspaceRoot",
             "BookmarkDelete",
+            handle,
+        ),
+        (
+            "populated ShowRequest",
+            zanshin_workspace_root,
+            &show_req,
+            "WorkspaceRoot",
+            "Show",
             handle,
         ),
         (
@@ -538,6 +549,25 @@ fn workspace_root_refuses_a_buffer_built_for_another_verb() {
     }
 
     close_handle(handle);
+}
+
+/// A POPULATED `ShowRequest` buffer, built here so this suite can cross-feed one of the four
+/// tables the ledger names as the collision (`Show`/`Evolog`/`Interdiff`/`WorkspaceRoot`, which
+/// all put one string in the slot after `kind`).
+fn show_request_bytes(revset: &str) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let revset_off = b.create_string(revset);
+    let req = fbs::ShowRequest::create(
+        &mut b,
+        &fbs::ShowRequestArgs {
+            kind: fbs::RequestKind::Show,
+            revset: Some(revset_off),
+            limit: 0,
+            has_limit: false,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
 }
 
 /// A minimal request buffer carrying `kind` and nothing else.

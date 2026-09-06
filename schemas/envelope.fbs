@@ -35,19 +35,20 @@ table FfiError {
 //
 // Field order IS the wire contract here too — a table's field ids are assigned by
 // declaration order and are baked into BOTH committed codegen sides. `kind` is
-// ALWAYS field 0 of a request table; any other change to a request table's field
-// order is an in-place WIP edit (no `id:` attribute, no `_v2` table, no in-wire
-// schema version) that MUST regenerate BOTH committed codegen sides in the SAME
-// commit — a Dart writer and a Rust reader built from different field orders would
-// silently mis-read every field after the first change.
+// ALWAYS field 0 of a request table and a NEW field is APPENDED after the existing
+// ones; any other change to a request table's field order is an in-place WIP edit
+// (no `id:` attribute, no `_v2` table, no in-wire schema version) that MUST
+// regenerate BOTH committed codegen sides in the SAME commit — a Dart writer and a
+// Rust reader built from different field orders would silently mis-read every field
+// after the first change.
 
 /// Which `extern "C"` wrapper a request buffer was built FOR.
 ///
 /// Every request table carries this as field 0, and every wrapper refuses a buffer whose
 /// `kind` is not its own — before the handle lookup and before any other field is read.
-/// Without it a buffer built for one verb VERIFIES as another verb's table (the tables are
-/// structurally interchangeable), so a `BookmarkCreateRequest` fed to `zanshin_bookmark_delete`
-/// would silently glob-delete names the caller meant literally.
+/// Without it a buffer built for one verb VERIFIES as another verb's table — nothing in the
+/// `FlatBuffers` layer tells them apart — so a `BookmarkCreateRequest` fed to
+/// `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
 ///
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
@@ -57,6 +58,9 @@ table FfiError {
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
 /// `Unspecified`, and is ALWAYS refused. Nothing untagged is ever silently accepted.
+///
+/// Member order IS the wire value (no explicit numbers) — APPEND only, never reorder or remove:
+/// a reordered variant re-tags every buffer the other side already builds.
 enum RequestKind : ubyte {
   Unspecified,
   Restore,

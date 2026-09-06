@@ -469,6 +469,9 @@ fn a_zero_handle_is_refused_by_both_wrappers() {
     }
 }
 
+/// One row of the wrong-kind table: label, wrapper, buffer, expected kind, received kind, handle.
+type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
+
 /// A buffer built for the OTHER bookmark verb is refused as a kind mismatch — in both
 /// directions, and whether or not the caller also holds a live handle.
 ///
@@ -480,45 +483,103 @@ fn a_zero_handle_is_refused_by_both_wrappers() {
 #[test]
 fn a_buffer_built_for_the_other_wrapper_is_refused_as_a_kind_mismatch() {
     pin_env();
-    let (handle, _root) = open_fixture();
+    let (handle, root) = open_fixture();
+    // Seed the bookmark the hazard would destroy: `create`'s `names` are EXACT, `delete`'s are
+    // GLOB patterns, so a create buffer reaching the delete reader would match and remove this.
+    let target = wc_commit_hex(handle);
+    set_local_bookmark(&root, "feature", &[&target]);
     let create_req = create_request_bytes(Some(&["feature"]), None);
     let delete_req = delete_request_bytes(Some(&["feature"]));
     // An UNTAGGED buffer: `FlatBuffers` writes nothing for a field equal to its default, so
     // these bytes are identical to a pre-tag buffer's and must be refused as `Unspecified`.
     let untagged = untagged_request_bytes();
 
-    let cases: [(BufWrapper, &Vec<u8>, &str, &str); 6] = [
-        (zanshin_bookmark_create, &delete_req, "BookmarkCreate", "BookmarkDelete"),
-        (zanshin_bookmark_delete, &create_req, "BookmarkDelete", "BookmarkCreate"),
-        (zanshin_bookmark_create, &untagged, "BookmarkCreate", "Unspecified"),
-        (zanshin_bookmark_delete, &untagged, "BookmarkDelete", "Unspecified"),
-        (zanshin_bookmark_create, &delete_req, "BookmarkCreate", "BookmarkDelete"),
-        (zanshin_bookmark_delete, &create_req, "BookmarkDelete", "BookmarkCreate"),
+    let before = head_op_id(handle);
+    let seeded = listed_bookmark_names(handle);
+    assert!(
+        seeded.iter().any(|n| n == "feature"),
+        "the seed must be live, or the survival assertion below is vacuous"
+    );
+
+    let cases: [KindCase<'_>; 6] = [
+        (
+            "create/delete-buffer",
+            zanshin_bookmark_create,
+            &delete_req,
+            "BookmarkCreate",
+            "BookmarkDelete",
+            handle,
+        ),
+        (
+            "delete/create-buffer",
+            zanshin_bookmark_delete,
+            &create_req,
+            "BookmarkDelete",
+            "BookmarkCreate",
+            handle,
+        ),
+        (
+            "create/untagged",
+            zanshin_bookmark_create,
+            &untagged,
+            "BookmarkCreate",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "delete/untagged",
+            zanshin_bookmark_delete,
+            &untagged,
+            "BookmarkDelete",
+            "Unspecified",
+            handle,
+        ),
+        (
+            "create/delete-buffer, zero handle",
+            zanshin_bookmark_create,
+            &delete_req,
+            "BookmarkCreate",
+            "BookmarkDelete",
+            0,
+        ),
+        (
+            "delete/create-buffer, zero handle",
+            zanshin_bookmark_delete,
+            &create_req,
+            "BookmarkDelete",
+            "BookmarkCreate",
+            0,
+        ),
     ];
 
-    for (i, (wrapper, req, expected, got)) in cases.into_iter().enumerate() {
-        // The last two rows repeat the first two with handle 0: the answer must still be the
-        // KIND refusal, not `ffi.invalid_handle`.
-        let h = if i >= 4 { 0 } else { handle };
+    for (name, wrapper, req, expected, got, h) in cases {
         // SAFETY: the handle is live (or the documented null handle); the buffer outlives the call.
         let token = unsafe { wrapper(h, req.as_ptr(), req.len()) };
         // SAFETY: fresh, non-null token.
         let bytes = unsafe { read_and_free(token) };
         let env = parse_envelope(&bytes);
-        assert!(!env.ok(), "row {i}: a wrong-kind buffer must be refused");
+        assert!(!env.ok(), "{name}: a wrong-kind buffer must be refused");
         assert_eq!(
             env.error().and_then(|e| e.code()),
             Some(FFI_INVALID_ARGUMENT),
-            "row {i}: a kind mismatch is an invalid argument, not an invalid handle"
+            "{name}: a kind mismatch is an invalid argument, not an invalid handle"
         );
         assert_eq!(
             env.error().and_then(|e| e.context()),
             Some(format!("request kind mismatch: expected {expected}, got {got}").as_str()),
-            "row {i}: the context names both kinds"
+            "{name}: the context names both kinds"
         );
     }
 
-    // No operation was written by any of the six refusals.
+    // The hazard itself, asserted rather than asserted-about: a refusal writes no operation and
+    // deletes nothing. Without the tag the create buffer fed to `zanshin_bookmark_delete` would
+    // have glob-deleted, which shows up in both of these.
+    assert_eq!(head_op_id(handle), before, "no kind refusal writes an operation");
+    assert_eq!(
+        listed_bookmark_names(handle),
+        seeded,
+        "no kind refusal touches a bookmark"
+    );
     close_handle(handle);
 }
 

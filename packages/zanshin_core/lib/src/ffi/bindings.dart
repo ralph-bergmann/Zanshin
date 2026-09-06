@@ -21,7 +21,10 @@ import 'dart:ffi' as ffi;
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+/// is not `Abandon`. The two wrappers that read this ONE table carry different kinds, so a
+/// `NewChange`-tagged buffer is refused here rather than abandoning the commits the caller
+/// named as parents.
 /// - `jj.invalid_input` — the parsed `change_ids` list is empty, or resolves the root commit.
 /// - `jj.change_not_found` — a target id is malformed, absent, only-hidden, or divergent.
 /// - `jj.immutable` — a target resolves to a non-root commit inside the repo's effective
@@ -67,7 +70,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_abandon(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `AbsorbRequest` buffer, or its `kind`
+/// is not `Absorb`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
 /// function; jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
@@ -120,7 +124,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_absorb(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkCreateRequest` buffer, or its `kind`
+/// is not `BookmarkCreate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a name is the
 /// empty string.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
@@ -168,7 +173,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_create(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkDeleteRequest` buffer, or its `kind`
+/// is not `BookmarkDelete`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
 /// parse; jj-lib's reason in `context`.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -399,7 +405,8 @@ external void zanshin_events_unregister();
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `EvologRequest` buffer, or its `kind`
+/// is not `Evolog`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
 /// - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
 /// - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
@@ -444,7 +451,8 @@ external ffi.Pointer<ffi.Char> zanshin_ffi_version();
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
+/// is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
 /// path.
@@ -478,7 +486,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_annotate(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileListRequest` buffer, or its `kind`
+/// is not `FileList`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
 /// or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
 /// the CLI's `-r` default `@`.
@@ -520,7 +529,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_list(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
+/// is not `FileSearch`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
 /// or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
@@ -556,7 +566,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_search(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
+/// is not `FileShow`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
@@ -704,7 +715,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_import(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteAddRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteAddRequest` buffer, or its `kind`
+/// is not `GitRemoteAdd`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `name` or `url` is absent from the buffer, or `name` is the
 /// reserved `git`, contains a slash, or is not a valid gix remote name.
 /// - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
@@ -836,7 +848,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_rename(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteSetUrlRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitRemoteSetUrlRequest` buffer, or its `kind`
+/// is not `GitRemoteSetUrl`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `name` is absent from the buffer, or is the reserved `git`,
 /// contains a slash, or is not a valid gix remote name.
 /// - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
@@ -950,7 +963,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_graph_slice(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `InterdiffRequest` buffer, or its `kind`
+/// is not `Interdiff`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — both `from` and `to` are absent from the buffer, or a `paths` entry is
 /// not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from` or `to` is malformed, carried by no VISIBLE commit (unknown
@@ -1045,7 +1059,9 @@ external void zanshin_logging_init();
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+/// is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
+/// `Abandon`-tagged buffer is refused here rather than treated as `parents`.
 /// - `jj.invalid_input` — the parsed `parents` list is empty.
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1284,7 +1300,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_open(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
+/// is not `Restore`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
 /// is not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
@@ -1346,7 +1363,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_restore(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ShowRequest` buffer, or its `kind`
+/// is not `Show`, i.e. the buffer was built for a different wrapper.
 /// - `jj.revset_parse_error` — `revset` is syntactically invalid or names an unknown function;
 /// jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved; reason in
@@ -1477,7 +1495,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_list(
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
-/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer, or its `kind`
+/// is not `WorkspaceRoot`, i.e. the buffer was built for a different wrapper.
 /// - `jj.workspace_not_found` — no workspace of that name is in the head view; the name in
 /// `context`.
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;

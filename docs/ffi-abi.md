@@ -154,6 +154,14 @@ call). Five distinct refusals sit at five distinct layers:
 | 4 | a required field is ABSENT from an otherwise valid table | `jj.invalid_input` | the field name |
 | 5 | `session_from_handle(handle)` — the handle is `0` or the borrow yields `None` | `ffi.invalid_handle` | **absent** |
 
+Row 4 is the *reader's* own required-field guard, which only four readers have
+(`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
+and `url`, `interdiff`'s from+to pair). Refusals raised further in — an empty
+`names` vector, an unparseable pattern — come from the jj layer and therefore
+land AFTER row 5, not at row 4. The per-symbol `# Errors` bullets in
+`zanshin_ffi.h` are an inventory, not an evaluation order; this table is the
+order.
+
 A **zero-length or garbage buffer** fails verification, so it lands on
 `ffi.invalid_argument` — never on `ffi.null_pointer`. Only a genuinely null
 `data` pointer produces `ffi.null_pointer`.
@@ -218,12 +226,12 @@ request-buffer symbols.
 
 #### The `RequestKind` tag
 
-The request tables are **structurally interchangeable**: a buffer built for one
-verb verifies as another verb's table, because none carries a `file_identifier`
-and several put one string in the same slot. Field 0 of every request table is
-therefore `kind: RequestKind`, and every reader refuses a buffer whose tag is not
-its own — row 3 of the ladder above, before any other field is read and before
-the handle is borrowed.
+Nothing in the FlatBuffers layer tells one request table from another: a buffer
+built for one verb verifies as another verb's table, because none carries a
+`file_identifier` and several put one string in the same slot. Field 0 of every
+request table is therefore `kind: RequestKind`, and every reader refuses a buffer
+whose tag is not its own — row 3 of the ladder above, before any other field is
+read and before the handle is borrowed.
 
 The tag is per-**wrapper**, not per-table. For 14 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
@@ -234,15 +242,21 @@ unrefused — a buffer meant as `parents` abandoning those commits instead.
 by a producer that never sets `kind` is **byte-identical to a pre-tag buffer**,
 decodes as `Unspecified`, and is always refused. "Legacy buffer" and "forgotten
 tag" are the same, always-refused state; nothing untagged is ever accepted as any
-verb.
+verb. The tag is caller-supplied data and is never trusted: a byte outside the
+enum verifies (FlatBuffers range-checks no enum scalar) and is refused by the
+same rung, printing as `got <UNKNOWN n>`.
+
+Member order in `RequestKind` IS the wire value — it is append-only, like the
+tables it tags.
 
 The tag guards the **wire**, not the caller: a caller bypassing the generated
 adapters can still set it by hand. What it removes is the silent
 mis-**execution** — a mis-routed buffer is now a refusal.
 
-This closes the former "request tables verify interchangeably" caveat, which was
-the last open must-have on the central ledger,
-`_bmad-output/implementation-artifacts/deferred-work.md`.
+This closes the former "request tables verify interchangeably" caveat, one of the
+cross-cutting must-haves on the central ledger,
+`_bmad-output/implementation-artifacts/deferred-work.md` (others there remain
+open).
 
 ---
 

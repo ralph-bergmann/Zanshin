@@ -1428,7 +1428,9 @@ type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
 /// that could not be closed by a per-TABLE tag: those two wrappers read the SAME `ChangeIdList`
 /// table, as `parents` and as `change_ids`, so one shared variant would have left a mis-routed
 /// buffer abandoning the commits the caller named as parents. They carry a full payload for
-/// that reason. The `handle == 0` rows prove the kind rung runs BEFORE the handle lookup.
+/// that reason. EVERY wrapper gets a `handle == 0` row, which is what proves the kind rung runs
+/// BEFORE the handle lookup for that wrapper — a table witnessing the order for only some of
+/// them would let the others silently regress.
 #[test]
 fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     pin_env();
@@ -1443,7 +1445,7 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     let restore_req = tagged_request_bytes(fbs::RequestKind::Restore);
     let absorb_req = tagged_request_bytes(fbs::RequestKind::Absorb);
 
-    let cases: [KindCase<'_>; 11] = [
+    let cases: [KindCase<'_>; 12] = [
         (
             "new_change",
             zanshin_new_change,
@@ -1490,6 +1492,7 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
         ),
         ("abandon", zanshin_abandon, &new_change_req, "Abandon", "NewChange", 0),
         ("restore", zanshin_restore, &absorb_req, "Restore", "Absorb", 0),
+        ("absorb", zanshin_absorb, &restore_req, "Absorb", "Restore", 0),
     ];
 
     for (name, call, req, expected, got, h) in cases {

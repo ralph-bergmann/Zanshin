@@ -879,8 +879,10 @@ type KindCase<'a> = (&'a str, BufWrapper, &'a [u8], &'a str, &'a str, u64);
 ///
 /// `FileListRequest` and `FileShowRequest` are field-for-field identical, so the real
 /// list ↔ show cross-feed carries a full payload; the other rows use minimal tagged buffers,
-/// which every request table serialises to identically. The `handle == 0` row proves the kind
-/// rung runs BEFORE the handle lookup: a mis-routed buffer is refused on its own merits.
+/// which every request table serialises to identically. EVERY wrapper gets a `handle == 0` row,
+/// which is what proves the kind rung runs BEFORE the handle lookup for that wrapper: a
+/// mis-routed buffer is refused on its own merits. One row per wrapper is the point — a table
+/// that witnessed the order for only some of them would let the others silently regress.
 #[test]
 fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     pin_env();
@@ -893,7 +895,7 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
     let untagged = tagged_request_bytes(fbs::RequestKind::Unspecified);
 
     // (label, wrapper, buffer, expected kind, received kind, handle)
-    let cases: [KindCase<'_>; 9] = [
+    let cases: [KindCase<'_>; 12] = [
         (
             "file_list",
             zanshin_file_list,
@@ -959,9 +961,32 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
             handle,
         ),
         ("file_list", zanshin_file_list, &show_req, "FileList", "FileShow", 0),
+        ("file_show", zanshin_file_show, &list_req, "FileShow", "FileList", 0),
+        (
+            "file_annotate",
+            zanshin_file_annotate,
+            &search_req,
+            "FileAnnotate",
+            "FileSearch",
+            0,
+        ),
+        (
+            "file_search",
+            zanshin_file_search,
+            &annotate_req,
+            "FileSearch",
+            "FileAnnotate",
+            0,
+        ),
     ];
 
-    for (name, call, req, expected, got, h) in cases {
+    assert_kind_mismatches(&cases);
+    close_handle(handle);
+}
+
+/// Drive one wrong-kind table: every row must answer `ffi.invalid_argument` naming both kinds.
+fn assert_kind_mismatches(cases: &[KindCase<'_>]) {
+    for &(name, call, req, expected, got, h) in cases {
         // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
         let token = unsafe { call(h, req.as_ptr(), req.len()) };
         // SAFETY: token is fresh and non-null.
@@ -979,8 +1004,6 @@ fn every_wrapper_refuses_a_buffer_built_for_another_verb() {
             "{name}: the context names both kinds"
         );
     }
-
-    close_handle(handle);
 }
 
 /// A minimal request buffer carrying `kind` and nothing else.
