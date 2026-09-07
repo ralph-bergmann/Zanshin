@@ -4,8 +4,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Brightness, ThemeMode;
 import 'package:inject_annotation/inject_annotation.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 

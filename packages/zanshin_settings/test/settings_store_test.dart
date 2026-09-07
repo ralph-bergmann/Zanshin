@@ -4,9 +4,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';

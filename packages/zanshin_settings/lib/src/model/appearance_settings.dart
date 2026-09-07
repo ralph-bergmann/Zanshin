@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:flutter/material.dart' show ThemeMode;
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 part 'appearance_settings.freezed.dart';
 part 'appearance_settings.g.dart';

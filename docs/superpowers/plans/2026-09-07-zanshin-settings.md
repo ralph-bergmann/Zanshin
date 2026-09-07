@@ -10,6 +10,8 @@
 
 Spec: `docs/superpowers/specs/2026-09-07-zanshin-settings-design.md` (read it first).
 
+> **Deviation recorded during execution (Task 6):** the app's Material library is `package:material_ui`, whose `ThemeMode` is a distinct type from `package:flutter/material.dart`'s. Every `import 'package:flutter/material.dart' show ThemeMode` in this plan is therefore `import 'package:material_ui/material_ui.dart' show ThemeMode` (with `Brightness`/`Color` taken from `dart:ui`), and `packages/zanshin_settings/pubspec.yaml` depends on `material_ui: ^1.1.0`. The committed code is authoritative.
+
 ## Global Constraints
 
 - Every new hand-written Dart file starts with `// SPDX-License-Identifier: MIT` on line 1. Generated files (`*.freezed.dart`, `*.g.dart`, `*.inject.dart`, `*.factory.dart`) are exempt and are **committed**.

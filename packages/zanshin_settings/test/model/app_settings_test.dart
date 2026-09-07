@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' show CheckedFromJsonException;
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 void main() {

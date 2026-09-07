@@ -39,7 +39,7 @@ exposes the store to the app's `MainComponent`.
 | Corrupt file | Log a warning, rename to `settings.json.corrupt`, start with defaults | Nothing is silently destroyed; a hand-edit typo never blocks app start. |
 | Versioning | No `version` field, no migrations | A missing key or sub-model falls back to its `@Default` (json_serializable uses the constructor default when the key is absent). WIP posture: breaking changes are allowed. |
 | File location | `getApplicationSupportDirectory()/settings.json` | Conventional macOS location (`~/Library/Application Support/<bundle-id>/`). |
-| Enum encoding | Flutter's `ThemeMode` reused; serialized by name (`"system"`) | No mapping layer in the UI; readable JSON. |
+| Enum encoding | The app's `ThemeMode` reused — from `package:material_ui`, the Material library the app builds `MaterialApp` with (its `ThemeMode` is a distinct type from `package:flutter/material.dart`'s); serialized by name (`"system"`) | No mapping layer in the UI; readable JSON. |
 | First consumer | `ZanshinAppViewModel` (`ChangeNotifier`, injected via `ViewModelFactory`) owns all theme handling; `ZanshinApp` becomes stateless | Requested by Ralph; removes `setState` theme logic from the widget. |
 
 ## Package layout

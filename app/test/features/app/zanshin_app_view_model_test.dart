@@ -2,9 +2,10 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Brightness, Color;
 
-import 'package:flutter/material.dart' show Brightness, Color, ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
