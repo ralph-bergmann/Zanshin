@@ -65,6 +65,9 @@ dependencies = [
     "test-shell-macos",
     "test-shell-macos-analyze",
     "test-shell-macos-format",
+    "test-settings",
+    "test-settings-analyze",
+    "test-settings-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
     "test-jj-adapter-hygiene",
@@ -193,6 +196,24 @@ private = true
 command = "dart"
 args = ["format", "--output=none", "--set-exit-if-changed", "."]
 cwd = "packages/zanshin_shell_macos"
+
+[tasks.test-settings]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "packages/zanshin_settings"
+
+[tasks.test-settings-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_settings"
+
+[tasks.test-settings-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_settings"
 
 [tasks.test-cargo-deny]
 private = true
