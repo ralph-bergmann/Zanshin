@@ -57,6 +57,22 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs (and every verb that calls `start_transaction`)
     severity: medium
+    resolved: >-
+      2026-09-07, spec-epic-9-followup-l-op-workspace-name, commit 98cd53f. `op_support.rs`
+      gained a fifth `cli_util` port, `start_repo_transaction(repo, workspace_name)`, which
+      reproduces the oracle's `start_transaction` + `set_workspace_name` and NOT its
+      command-arg attribute loop. All 14 call sites route through it — the seven in `mutate.rs`
+      (which also covers `bookmark_ops.rs` and `git.rs`, since all eleven of those verbs funnel
+      through `finish_or_no_op_at`), `op_log.rs::undo`, `remotes.rs::git_fetch`,
+      `repo.rs::clone_into`'s two, and `convert.rs`'s three. A creep guard inline in
+      `op_support.rs` scans the crate's own `src/` for the bare identifier `start_transaction`
+      and fails on any hit outside that file; eleven rows in
+      `crates/zanshin-jj/tests/op_workspace_name.rs` read the metadata back off the op store,
+      including two second-workspace scenarios. `crate::Operation` was deliberately NOT widened —
+      exposing the field stays Story 9.21's surface. One divergence at the same field is carried
+      forward: the `reconcile divergent operations` operation jj-lib writes from
+      `RepoLoader::load_at_head`, which hardcodes `workspace_name = None` where the CLI passes
+      `Some(name)` through `merge_operations`.
   - summary: >-
       A conversion that fails after the alias step orphans the secure-config directory it created,
       because the rollback removes only `.jj/` and with it the `config-id` back-pointer.

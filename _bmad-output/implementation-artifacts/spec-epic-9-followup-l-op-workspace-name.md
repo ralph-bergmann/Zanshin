@@ -2,13 +2,36 @@
 title: 'Epic 9 follow-up L: every Zanshin operation records `op_metadata.workspace_name`'
 type: 'bugfix'
 created: '2026-09-07'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '2e4d7794c8ee8f0855f23771bcb5da9eae208dda'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The `reconcile divergent operations` operation still records `workspace_name: None`,
+      because jj-lib's `RepoLoader::load_at_head` hardcodes it and the CLI does not use that
+      entry point.
+    evidence: |-
+      `jj-lib-0.44.0/src/repo.rs:706-729` `load_at_head` calls `merge_operations` with a literal
+      `let workspace_name = None;` (`:712`) when it finds divergent op heads, so the
+      `reconcile divergent operations` operation it writes carries no name. The CLI never calls
+      `load_at_head`: `cli/src/cli_util.rs:773-805` `resolve_operation` drives
+      `op_heads_store::resolve_op_heads` itself and passes `Some(workspace_name)` into
+      `merge_operations` (`:792-799`), so a CLI-written reconcile operation names the workspace.
+      This is the same observable field this run fixed, at the same surface, and it is a real
+      divergence — but it is not a `start_transaction` call site and not written by a Zanshin
+      verb, so the creep guard cannot see it. Closing it means replacing every
+      `workspace.repo_loader().load_at_head()` in the crate — 64 sites across 16 modules,
+      including every READ verb — with a helper that reproduces the CLI's
+      `resolve_op_heads` + `merge_operations(Some(name), …)` shape. That is the head-load path
+      (ADR-0002 territory), not the transaction path, and its own run: it needs its own guard,
+      and a witness has to fabricate divergent op heads the way
+      `crates/zanshin-jj/tests/op_log.rs:525` does.
+    location: >-
+      crates/zanshin-jj/src (every `repo_loader().load_at_head()` call site)
+    severity: medium
 ---
 
 <intent-contract>
@@ -236,6 +259,67 @@ Anchors read against the working tree at baseline `2e4d779`.
 
 ## Review Triage Log
 
+### 2026-09-07 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 14: (high 0, medium 1, low 13)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 17: (high 0, medium 0, low 17)
+- addressed_findings:
+  - `[medium]` `[patch]` The anti-requirement "never a hardcoded `default`" was witnessed at
+    exactly ONE of the routed sites. Nine of the ten rows run in a workspace literally named
+    `default` and assert `Some("default")`, so they pass unchanged against a helper that ignores
+    its argument; only `a_verb_run_in_a_second_workspace_records_that_workspace` distinguishes,
+    and it drives `describe` alone. Added
+    `the_shared_funnel_undo_and_fetch_also_record_the_second_workspace`, which runs
+    `bookmark_create` (i.e. `mutate::finish_or_no_op_at`, the skeleton all eleven bookmark and
+    git verbs funnel through), `undo` (`op_log.rs`) and `git_fetch` (`remotes.rs`, the one site
+    passing `workspace.workspace_name()` inline) through a SECOND workspace's handle. Verified by
+    substituting `WorkspaceName::DEFAULT` at `remotes.rs:260`: the ten pre-existing rows stayed
+    green and only the new one failed (`left: Some("default")`, `right: Some("second")`).
+  - `[low]` `[patch]` The helper's rustdoc called `cli_util.rs:2286-2298` "the CLI's sole
+    caller". There are two — the snapshot path at `:2099` follows it with
+    `set_is_snapshot(true)`, which is precisely why the next sentence disclaims `is_snapshot`.
+    Reworded to "the caller this port mirrors" and the second caller is now named.
+  - `[low]` `[patch]` The guard's rustdoc promised the needle "never false-positives", true only
+    of calls to the sanctioned helper. A mention in a trailing comment, a `/* … */` block or a
+    string literal is a hit. The limitation is now stated, with why over-flagging is the safe
+    direction.
+  - `[low]` `[patch]` The allow-list used `path.ends_with("op_support.rs")`, a path-suffix match
+    that would also exempt a future `git_op_support.rs` — silently, the one way this guard could
+    go quiet unnoticed. Now compares `Path::file_name()`.
+  - `[low]` `[patch]` The scan's sanity check was `sources.len() > 5`, satisfied by any directory
+    holding six `.rs` files. Now asserts `mutate.rs` and `convert.rs` are among the paths, which
+    proves it read THIS crate's `src/`.
+  - `[low]` `[patch]` The helper claimed to be "the crate's ONLY sanctioned transaction opener"
+    without saying what the guard's scope is or why `crates/test-helpers` (12 direct openers) and
+    `crates/xtask` (3) are exempt. Both are now stated, together with the reason no other
+    production crate can open one (`zanshin-jj` is the sole `jj_lib` importer).
+  - `[low]` `[patch]` The module doc's arithmetic broke: "the five pieces of rewrite
+    orchestration" over a list numbered 1-5 whose fifth item was labelled `(§6)`, with `§5`
+    explained only parenthetically and the wiring-status paragraph never extended. Rewritten as a
+    §-labelled list; transaction opening is no longer miscalled rewrite orchestration, and §6's
+    wiring status is stated.
+  - `[low]` `[patch]` `convert.rs`'s new module-doc paragraph said "all three transactions",
+    but no single conversion opens three — three is the count of transaction SITES in the file.
+    Corrected, with which site only `import_into` reaches.
+  - `[low]` `[patch]` The witness suite's module doc did not state that `bookmark_ops.rs` and
+    `git.rs` open no transaction of their own, so its eleven unlisted verbs read as coverage
+    oversights rather than as the funnel argument they are. Stated.
+  - `[low]` `[patch]` `git_workspace()`'s doc claimed "a git-backed workspace with one jj
+    commit"; the body is `Repo::init` and creates none. Corrected.
+  - `[low]` `[patch]` `head_op_workspace_name` duplicated `recent_ops`'s whole
+    `Workspace::load` + `load_at_head` block. It now delegates to `recent_ops(root, 1)`.
+  - `[low]` `[patch]` `recent_ops`'s magic `4` was unexplained. Documented as a cap, not a search
+    depth, with why 4 reaches the root for a converted repo.
+  - `[low]` `[patch]` The dead `assert_ne!(Some("default"))` in the second-workspace row could
+    never fire after the `assert_eq!(Some("second"))` above it; its message was the useful part
+    and now lives on the `assert_eq!`.
+  - `[low]` `[patch]` The guard's rustdoc said nothing about what a future INLINE `#[cfg(test)]`
+    test in `src/` should do when it needs to fabricate repo state — the one legitimate case the
+    guard would block. It now points at the sanctioned helper and `test-helpers`.
+
 ## Design Notes
 
 **Why `op_support.rs` and not `mutate.rs`.** The module exists precisely to hold "the pieces of
@@ -291,3 +375,107 @@ and nowhere else.
   or `docs/`.
 - Both bookkeeping files parse: the ledger bullet is struck through with a dated resolution, and
   follow-up K's frontmatter still loads as YAML with the new `resolved:` field.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary
+
+Every transaction `crates/zanshin-jj/src` opens now goes through one helper,
+`op_support::start_repo_transaction(repo, workspace_name)`, which reproduces the first two of
+the three statements in the CLI's `cli_util.rs::start_repo_transaction` (`:2883-2894` @ v0.44.0):
+`ReadonlyRepo::start_transaction` and `Transaction::set_workspace_name`. The third — the
+`command_args_to_transaction_attribute` loop — encodes a terminal command line that ADR-0003
+replaces with a GUI, so it is deliberately not ported, and nothing else is invented
+(`hostname`/`username`/`time` already come from jj-lib's own `create_op_metadata`). All 14
+previous call sites are routed; the name is always the one the caller's `Workspace` handle was
+opened for, never a constant. An operation Zanshin writes therefore names its workspace in
+`jj op log`/`jj op show` exactly as a CLI-written one does, where before it recorded
+`workspace_name = None`.
+
+No observable surface moved otherwise: no public signature, no `.fbs`, no `extern "C"` symbol, no
+generated header or binding, no error code, and `crate::Operation` was NOT widened to expose the
+field — that stays Story 9.21's surface.
+
+### Files changed
+
+- `crates/zanshin-jj/src/op_support.rs` -- new `§6 Transaction opening` holding the ported helper,
+  plus the creep guard: a pure `direct_transaction_openers` scanner over `(path, contents)` pairs
+  and six inline tests (real-tree scan, helper-still-defined probe, subdirectory descent, and
+  three scanner probes covering a method call, a UFCS call and comment/sanctioned-helper lines).
+  Module doc reworked so the section list and the §-numbers agree.
+- `crates/zanshin-jj/src/mutate.rs` -- seven sites routed (`describe`, `new_change`, `edit`,
+  `abandon`, `finish_or_no_op_at`, `restore`, `absorb`). `finish_or_no_op_at` is the skeleton all
+  of `bookmark_ops.rs` and `git.rs` funnel through, so those two files needed no change.
+- `crates/zanshin-jj/src/op_log.rs` -- `undo`'s site routed.
+- `crates/zanshin-jj/src/remotes.rs` -- `git_fetch`'s site routed with
+  `workspace.workspace_name()`.
+- `crates/zanshin-jj/src/repo.rs` -- `clone_into`'s two sites routed; `_workspace_init` renamed so
+  the Step-2 throwaway transaction can name its workspace too, with a `// WHY:` explaining that
+  the metadata is unobservable on a transaction that is never committed and that routing it keeps
+  the guard exception-free.
+- `crates/zanshin-jj/src/convert.rs` -- `init_git_refs` and `import_git_head` gained a
+  `workspace_name: &WorkspaceName` parameter; all three sites routed; module doc extended.
+- `crates/zanshin-jj/tests/op_workspace_name.rs` (new) -- 11 witness rows reading the metadata
+  back off the op store via jj-lib, covering every family plus two second-workspace scenarios.
+
+### Review findings breakdown
+
+- **Patches applied: 14** (high 0, medium 1, low 13). The medium one closed the real coverage
+  hole: the "never a hardcoded `default`" rule was witnessed at one site only, because every
+  other row runs in a workspace that IS called `default`. The rest were doc corrections in text
+  this run itself introduced, plus three hardenings of the guard (file-name match instead of path
+  suffix, a scan-sanity check that names real modules, scope statement).
+- **Deferred: 1** (medium) — `reconcile divergent operations` still records no workspace name,
+  because jj-lib's `RepoLoader::load_at_head` hardcodes `None` and the CLI does not use that
+  entry point. Verified against both sources; recorded in the frontmatter and in the central
+  ledger. It is the head-load path, not the transaction path: 64 call sites across 16 modules,
+  including every read verb, and a witness has to fabricate divergent op heads.
+- **Rejected: 17** (all low). Notable ones and why: `repo.rs` was said to be inconsistent for
+  spelling the helper fully-qualified — that file has zero `use crate::…` imports and 24
+  fully-qualified `crate::` references, so the diff matches its convention; `GIT_CONFIG_NOSYSTEM`
+  and the duplicated `LazyLock` env pin are instances of a harness item already in the ledger;
+  "commit the raised `coverage-baseline.txt`" does not apply because the gate held coverage
+  within epsilon and rewrote nothing; and hardening the scanner against block comments and string
+  literals was declined because over-flagging is the safe direction for a creep guard.
+- **Follow-up review recommended: true** — patched severities were high 0, medium 1, low 13, so
+  the score is 3×1 + 1×13 = 16, at or above the threshold of 5.
+
+### Verification performed
+
+- `cargo make test` -- exit 0, run unpiped and synchronously (534 s). Includes
+  `cargo test --workspace`, clippy pedantic `-D warnings`, rustfmt, `dart analyze`/`format`,
+  `cargo deny check advisories bans` and the coverage ratchet:
+  `coverage-check: OK — coverage held at 99.27% (9059/9126 lines)`, `extern-coverage: OK`, and
+  `coverage-baseline.txt` unmodified (no entry rose or fell). Run twice — once before the review
+  patches (99.25%) and once after.
+- **Matrix audit:** all 13 I/O-matrix rows are covered by tests that ran and passed —
+  the ten verb/second-workspace rows in `tests/op_workspace_name.rs` and the three guard rows in
+  `op_support.rs`'s inline tests (`no_source_file_outside_op_support_opens_a_transaction_directly`,
+  `the_scanner_reports_a_synthetic_violation`,
+  `the_scanner_ignores_comments_and_the_sanctioned_helper`).
+- **Negative probe on the witness suite:** substituting `WorkspaceName::DEFAULT` for
+  `workspace.workspace_name()` at `remotes.rs:260` left all ten pre-existing rows green and
+  failed only the new second-workspace row — the concrete demonstration that the added test earns
+  its place. Reverted immediately.
+- **ACs:** `grep -rn start_transaction crates/zanshin-jj/src` hits only `op_support.rs`;
+  `grep -rn set_workspace_name crates/` has exactly one code hit, in the helper.
+  `git diff --stat` touches nothing under `schemas/`, `crates/zanshin-ffi/`, `packages/`, `app/`
+  or `docs/`.
+
+### Residual risks
+
+- The creep guard is textual. It cannot see an operation-writing path that never spells
+  `start_transaction` — which is exactly how the deferred `reconcile divergent operations` gap
+  hides, and how a future jj-lib entry point that opens its own transaction would too.
+- `repo.rs`'s Step-2 throwaway transaction is routed but unobservable by construction (it is
+  dropped without committing), so for that one site the guard is the only enforcement.
+- `convert.rs`'s three sites and `repo.rs`'s clone CREATE the workspace they name, so `default`
+  is the only answer they can give and no second-workspace row can exist for them; their names
+  are pinned structurally (they read `Workspace::workspace_name()`) rather than behaviourally.
+- The committed fixtures under `test-fixtures/repos/` were generated by `xtask`, which opens
+  transactions directly, so their historical operations still carry `workspace_name: None`. That
+  is correct — they predate this change and regenerating fixtures is forbidden — but a reader of
+  a fixture's op log will see the mix.
