@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
@@ -59,6 +60,11 @@ void main() {
     await tester.pump();
   }
 
+  /// Target opacity of the splash overlay — the outermost `AnimatedOpacity`
+  /// (the loader's own fade-in sits inside it).
+  double splashTargetOpacity(WidgetTester tester) =>
+      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity).first).opacity;
+
   testWidgets('a fast boot swaps to the app as soon as both steps are done', (tester) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>();
@@ -75,6 +81,7 @@ void main() {
 
     expect(find.byType(AppMarker), findsOneWidget);
     expect(find.byType(ColoredBox), findsNothing);
+    expect(find.byType(LottieBuilder), findsNothing);
   });
 
   testWidgets('system mode follows the platform brightness before and after the settings are read', (
@@ -134,5 +141,75 @@ void main() {
 
     app.complete(const AppMarker());
     await pumpStep(tester);
+  });
+
+  testWidgets('the loader appears after 500 ms and stays at least 1 s before the app fades in', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await pumpBootstrap(tester, settings: settings, app: app);
+
+    await tester.pump(const Duration(milliseconds: 499));
+    expect(find.byType(LottieBuilder), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1)); // t = 500 ms
+    expect(find.byType(LottieBuilder), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 100)); // t = 600 ms
+    app.complete(const AppMarker());
+    await pumpStep(tester);
+    // The app is built under the still fully opaque splash.
+    expect(find.byType(AppMarker), findsOneWidget);
+    expect(splashTargetOpacity(tester), 1);
+
+    await tester.pump(const Duration(milliseconds: 899)); // t = 1499 ms
+    expect(splashTargetOpacity(tester), 1);
+
+    await tester.pump(const Duration(milliseconds: 1)); // t = 1500 ms: minimum over, fade starts
+    expect(splashTargetOpacity(tester), 0);
+    expect(find.byType(LottieBuilder), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 200)); // t = 1700 ms: fade at its end value
+    await tester.pump(const Duration(milliseconds: 1)); // an animation completes on the tick after its duration
+    expect(find.byType(ColoredBox), findsNothing);
+    expect(find.byType(LottieBuilder), findsNothing);
+    expect(find.byType(AppMarker), findsOneWidget);
+  });
+
+  testWidgets('a boot that outlasts the minimum show time fades out right away', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await pumpBootstrap(tester, settings: settings, app: app);
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byType(LottieBuilder), findsOneWidget);
+    expect(splashTargetOpacity(tester), 1);
+
+    app.complete(const AppMarker());
+    await pumpStep(tester);
+    expect(splashTargetOpacity(tester), 0);
+
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.byType(ColoredBox), findsNothing);
+    expect(find.byType(AppMarker), findsOneWidget);
+  });
+
+  testWidgets('disposing the bootstrap while booting cancels its timers and drops the late result', (
+    tester,
+  ) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await pumpBootstrap(tester, settings: settings, app: app);
+    await tester.pump(const Duration(milliseconds: 600)); // loader shown, minimum-show timer running
+
+    await tester.pumpWidget(const SizedBox());
+    app.complete(const AppMarker());
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.byType(AppMarker), findsNothing);
   });
 }

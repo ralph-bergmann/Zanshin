@@ -2,14 +2,37 @@
 
 import 'dart:async';
 
+import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+/// Loader animation shown while the app boots. Swap for
+/// `assets/lottie/nami_loader_transparent.json` to show the waves without the
+/// indigo tile (both files are bundled).
+const splashAnimationAsset = 'assets/lottie/nami_loader.json';
+
+/// Edge length of the loader animation in logical pixels.
+const double splashAnimationSize = 96;
+
+/// How long a boot may take before the loader appears at all.
+const splashIndicatorDelay = Duration(milliseconds: 500);
+
+/// Once shown, the loader stays at least this long so it never just blinks.
+const splashIndicatorMinShow = Duration(milliseconds: 1000);
+
+/// Fade-in of the loader when [splashIndicatorDelay] elapses.
+const splashIndicatorFadeIn = Duration(milliseconds: 150);
+
+/// Fade-out of the whole splash over the finished app.
+const splashFadeOut = Duration(milliseconds: 200);
+
 /// Root widget of the app: runs the asynchronous boot behind the first frame.
 ///
-/// Paints the app's background colour immediately and swaps to the widget
-/// [startApp] returned once both boot steps are done.
+/// Paints the app's background colour immediately, shows the loader only when
+/// [openSettings] + [startApp] take longer than [splashIndicatorDelay] (and
+/// then for at least [splashIndicatorMinShow]), and finally the widget
+/// [startApp] returned.
 class ZanshinBootstrap extends StatefulWidget {
   const ZanshinBootstrap({required this.openSettings, required this.startApp, super.key});
 
@@ -33,12 +56,29 @@ class _ZanshinBootstrapState extends State<ZanshinBootstrap> {
   /// The finished app.
   Widget? _content;
 
+  // Timing is driven by these two timers and the flags below, never by
+  // reading a clock, so the fake time of widget tests controls it fully.
+  late final Timer _delayTimer;
+  Timer? _minShowTimer;
+
+  var _indicatorVisible = false;
+  var _minShowElapsed = false;
+  var _bootFinished = false;
+  var _fadingOut = false;
   var _splashDismissed = false;
 
   @override
   void initState() {
     super.initState();
+    _delayTimer = Timer(splashIndicatorDelay, _showIndicator);
     unawaited(_boot());
+  }
+
+  @override
+  void dispose() {
+    _delayTimer.cancel();
+    _minShowTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _boot() async {
@@ -53,36 +93,86 @@ class _ZanshinBootstrapState extends State<ZanshinBootstrap> {
     }
     setState(() {
       _content = app;
-      _splashDismissed = true;
+      _bootFinished = true;
     });
+    _onBootFinished();
   }
+
+  void _showIndicator() {
+    setState(() => _indicatorVisible = true);
+    _minShowTimer = Timer(splashIndicatorMinShow, _onMinShowElapsed);
+  }
+
+  void _onMinShowElapsed() {
+    _minShowElapsed = true;
+    if (_bootFinished) {
+      _startFadeOut();
+    }
+  }
+
+  void _onBootFinished() {
+    if (!_indicatorVisible) {
+      // Fast boot: nothing was ever shown, so nothing has to fade.
+      _delayTimer.cancel();
+      setState(() => _splashDismissed = true);
+    } else if (_minShowElapsed) {
+      _startFadeOut();
+    }
+    // Otherwise _onMinShowElapsed starts the fade when the minimum is over.
+  }
+
+  void _startFadeOut() => setState(() => _fadingOut = true);
+
+  void _dismissSplash() => setState(() => _splashDismissed = true);
 
   @override
   Widget build(BuildContext context) => Directionality(
     // Stack's default alignment is directional, and no MaterialApp exists yet.
     textDirection: TextDirection.ltr,
     child: MediaQuery.fromView(
-      // Platform brightness (and later accessibility flags) without a MaterialApp.
+      // Platform brightness and accessibility flags without a MaterialApp.
       view: View.of(context),
       child: Stack(
         fit: StackFit.expand,
         children: [
           ?_content,
-          if (!_splashDismissed) IgnorePointer(child: _SplashScreen(mode: _persistedMode)),
+          if (!_splashDismissed)
+            IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _fadingOut ? 0 : 1,
+                duration: splashFadeOut,
+                onEnd: _dismissSplash,
+                child: _SplashScreen(mode: _persistedMode, showIndicator: _indicatorVisible),
+              ),
+            ),
         ],
       ),
     ),
   );
 }
 
-/// The blank splash: the colour `ZanshinApp`'s scaffold paints first.
+/// The splash: the colour `ZanshinApp`'s scaffold paints first, with the
+/// loader fading in once [showIndicator] is set.
 class _SplashScreen extends StatelessWidget {
-  const _SplashScreen({required this.mode});
+  const _SplashScreen({required this.mode, required this.showIndicator});
 
   final ThemeMode mode;
+  final bool showIndicator;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(color: _scaffoldBackground(_resolveBrightness(context, mode)));
+  Widget build(BuildContext context) => ColoredBox(
+    color: _scaffoldBackground(_resolveBrightness(context, mode)),
+    child: Center(
+      child: AnimatedOpacity(
+        opacity: showIndicator ? 1 : 0,
+        duration: splashIndicatorFadeIn,
+        // Only in the tree once needed: a fast boot never loads the asset.
+        child: showIndicator
+            ? Lottie.asset(splashAnimationAsset, width: splashAnimationSize, height: splashAnimationSize)
+            : null,
+      ),
+    ),
+  );
 }
 
 /// A persisted light/dark choice wins; `system` follows the platform.
