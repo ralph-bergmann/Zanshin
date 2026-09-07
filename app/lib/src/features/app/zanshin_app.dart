@@ -5,24 +5,28 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:inject_annotation/inject_annotation.dart';
+import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
 import '../home/home_page.dart';
+import 'zanshin_app_view_model.dart';
 
 part 'zanshin_app.factory.dart';
 
-class ZanshinApp extends StatefulWidget {
+class ZanshinApp extends StatelessWidget {
   @assistedInject
   const ZanshinApp({
     required this._homePageFactory,
+    required this._viewModelFactory,
     @assisted super.key,
   });
 
   // Temporarily unused while `home` shows the Yaru test page below.
   // ignore: unused_field
   final HomePageFactory _homePageFactory;
+  final ViewModelFactory<ZanshinAppViewModel> _viewModelFactory;
 
   // static ThemeData _buildTheme(ZanshinColors zc, Brightness brightness) {
   //   final base = brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
@@ -70,96 +74,45 @@ class ZanshinApp extends StatefulWidget {
   // );
 
   @override
-  State<ZanshinApp> createState() => _ZanshinAppState();
-}
+  Widget build(BuildContext context) => _viewModelFactory(
+    init: (vm) => vm.init(),
+    builder: (context, vm, _) {
+      void onModeChanged(ThemeMode mode) => unawaited(vm.setThemeMode(mode));
 
-class _ZanshinAppState extends State<ZanshinApp> {
-  ShellTheme? _shellTheme;
-  ThemeMode _themeMode = ThemeMode.system;
-  StreamSubscription<ShellTheme>? _subscription;
+      if (!kIsWeb && Platform.isLinux) {
+        return YaruTheme(
+          builder: (context, yaru, child) => _ExampleHome(
+            themeMode: vm.selectedMode,
+            selectedMode: vm.selectedMode,
+            onModeChanged: onModeChanged,
+            lightTheme: yaru.theme,
+            darkTheme: yaru.darkTheme,
+          ),
+        );
+      }
 
-  @override
-  void initState() {
-    super.initState();
-    if (!kIsWeb && Platform.isMacOS) {
-      unawaited(ZanshinShell.getTheme().then(_applyShellTheme));
-      _subscription = ZanshinShell.onThemeChanged.listen(_applyShellTheme);
-    }
-  }
+      final ShellTheme? shellTheme = vm.shellTheme;
+      if (shellTheme == null) {
+        // First frame before the platform answered: follow the system via
+        // Flutter's own brightness until the shell theme arrives.
+        return _ExampleHome(
+          themeMode: vm.effectiveMode,
+          selectedMode: vm.selectedMode,
+          onModeChanged: onModeChanged,
+          lightTheme: null,
+          darkTheme: null,
+        );
+      }
 
-  void _applyShellTheme(ShellTheme theme) {
-    if (!mounted) {
-      return;
-    }
-    setState(() => _shellTheme = theme);
-  }
-
-  /// Applies the user's choice and mirrors it onto the native window chrome
-  /// (blur background, traffic lights), which Flutter theming cannot reach.
-  void _setThemeMode(ThemeMode mode) {
-    setState(() => _themeMode = mode);
-    if (!kIsWeb && Platform.isMacOS) {
-      unawaited(
-        ZanshinShell.setWindowAppearance(switch (mode) {
-          ThemeMode.light => WindowAppearance.light,
-          ThemeMode.dark => WindowAppearance.dark,
-          ThemeMode.system => WindowAppearance.system,
-        }),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    unawaited(_subscription?.cancel());
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!kIsWeb && Platform.isLinux) {
-      return YaruTheme(
-        builder: (context, yaru, child) => _ExampleHome(
-          themeMode: _themeMode,
-          selectedMode: _themeMode,
-          onModeChanged: _setThemeMode,
-          lightTheme: yaru.theme,
-          darkTheme: yaru.darkTheme,
-        ),
-      );
-    }
-
-    final ShellTheme? shellTheme = _shellTheme;
-    // A forced mode wins outright; in system mode the shell channel is
-    // authoritative for day/night on macOS. The channel keeps reporting the
-    // SYSTEM value even while the window appearance is overridden (the
-    // override is per-window), so switching back to system stays correct.
-    final ThemeMode effectiveMode = switch (_themeMode) {
-      ThemeMode.system when shellTheme != null =>
-        shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
-      _ => _themeMode,
-    };
-
-    if (shellTheme == null) {
-      // First frame before the platform answered: follow the system via
-      // Flutter's own brightness until the shell theme arrives.
       return _ExampleHome(
-        themeMode: effectiveMode,
-        selectedMode: _themeMode,
-        onModeChanged: _setThemeMode,
-        lightTheme: null,
-        darkTheme: null,
+        themeMode: vm.effectiveMode,
+        selectedMode: vm.selectedMode,
+        onModeChanged: onModeChanged,
+        lightTheme: createYaruLightTheme(primaryColor: shellTheme.accentColor),
+        darkTheme: createYaruDarkTheme(primaryColor: shellTheme.accentColor),
       );
-    }
-
-    return _ExampleHome(
-      themeMode: effectiveMode,
-      selectedMode: _themeMode,
-      onModeChanged: _setThemeMode,
-      lightTheme: createYaruLightTheme(primaryColor: shellTheme.accentColor),
-      darkTheme: createYaruDarkTheme(primaryColor: shellTheme.accentColor),
-    );
-  }
+    },
+  );
 }
 
 class _ExampleHome extends StatelessWidget {
