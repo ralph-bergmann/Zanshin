@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
@@ -40,8 +41,11 @@ Future<void> main() async {
         FlutterError.presentError(details);
       };
 
+      // Resolve the settings before the graph exists so the DI chain stays
+      // synchronous (no @asynchronous provider, no Future entry points).
+      final SettingsStore settings = await SettingsStore.open();
       // ignore: specify_nonobvious_local_variable_types
-      final mainComponent = MainComponent.create();
+      final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
       // Start the worker and trigger the ProvisionListener (which wires the
       // AppLifecycleListener for graceful shutdown on macOS).
       await mainComponent.worker;
@@ -58,7 +62,7 @@ Future<void> main() async {
   );
 }
 
-@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule, WorkerLifecycleModule])
+@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule, WorkerLifecycleModule, SettingsModule])
 abstract class MainComponent {
   // ignore: specify_nonobvious_property_types
   static const create = g.MainComponent$Component.create;

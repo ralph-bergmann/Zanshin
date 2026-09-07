@@ -26,6 +26,8 @@ dependencies:
     path: ../../yaru.dart
   zanshin_core:
     path: ../packages/zanshin_core
+  zanshin_settings:
+    path: ../packages/zanshin_settings
   zanshin_shell:
     path: ../packages/zanshin_shell
 
