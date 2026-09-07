@@ -19,6 +19,7 @@ dependencies:
   # distinct type from package:flutter/material.dart's — the model must use
   # the one the UI feeds into MaterialApp.
   material_ui: ^1.1.0
+  path: ^1.9.1
   path_provider: ^2.1.6
 
 dev_dependencies:

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' show CheckedFromJsonException;
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'model/app_settings.dart';
@@ -59,7 +60,7 @@ class SettingsStore implements ValueListenable<AppSettings> {
   /// sensible to fall back to.
   static Future<SettingsStore> open() async {
     final Directory dir = await getApplicationSupportDirectory();
-    return load(File('${dir.path}/settings.json'));
+    return load(File(p.join(dir.path, 'settings.json')));
   }
 
   @override
@@ -108,7 +109,7 @@ class SettingsStore implements ValueListenable<AppSettings> {
   }
 
   Future<void> _write(AppSettings settings) async {
-    final tmp = File('${file.path}.tmp');
+    final tmp = File(p.setExtension(file.path, '.json.tmp'));
     try {
       await file.parent.create(recursive: true);
       await tmp.writeAsString('${_encoder.convert(settings.toJson())}\n', flush: true);
