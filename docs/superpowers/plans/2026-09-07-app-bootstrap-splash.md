@@ -10,6 +10,13 @@
 
 Spec: `docs/superpowers/specs/2026-09-07-app-bootstrap-splash-design.md` (read it first).
 
+> **Deviations recorded during execution (2026-09-07):**
+> - Widget tests: after completing a boot step the tests call a `pumpStep` helper (two `pump()`s) instead of one `pump()` — a `setState` that runs from a microtask only *schedules* a frame; `pump()` flushes the microtask but draws the frame on the next call.
+> - Fade assertions advance the fade duration **plus 1 ms**: an implicit animation's ticker starts at the frame the target changed in, and `_InterpolationSimulation.isDone` is strictly `>` duration, so `onEnd` fires on the first tick after the duration.
+> - Analyzer findings fixed inline: `ThemeMode _persistedMode` needs its explicit type (`specify_nonobvious_property_types`); the Stack child is the null-aware element `?_content` (`use_null_aware_elements`); `runApp(const ZanshinBootstrap(...))` (`prefer_const_constructors`, both arguments are static tear-offs).
+> - `flutter pub add` inserted `lottie` below the commented `# theme_tailor_annotation` line; moved above it so the comment stays with `material_ui`.
+> - The committed code is authoritative where it differs from the listings below.
+
 ## Global Constraints
 
 - Every new hand-written Dart file starts with `// SPDX-License-Identifier: MIT` on line 1.
