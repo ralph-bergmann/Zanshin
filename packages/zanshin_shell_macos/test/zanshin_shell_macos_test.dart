@@ -16,22 +16,20 @@ void main() {
   setUp(() {
     log.clear();
     shell = ZanshinShellMacOS();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          log.add(call);
-          if (call.method == 'getTheme') {
-            return <String, Object?>{
-              'brightness': 'dark',
-              'accentColor': 0xFFFF453A,
-            };
-          }
-          return null;
-        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      log.add(call);
+      if (call.method == 'getTheme') {
+        return <String, Object?>{
+          'brightness': 'dark',
+          'accentColor': 0xFFFF453A,
+        };
+      }
+      return null;
+    });
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
   });
 
   test('registerWith installs the macOS implementation', () {
@@ -66,8 +64,7 @@ void main() {
 
   test('onThemeChanged emits when the native side pushes a theme', () async {
     final Future<ShellTheme> future = shell.onThemeChanged.first;
-    final TestDefaultBinaryMessenger messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final TestDefaultBinaryMessenger messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     await messenger.handlePlatformMessage(
       'zanshin_shell',
       const StandardMethodCodec().encodeMethodCall(

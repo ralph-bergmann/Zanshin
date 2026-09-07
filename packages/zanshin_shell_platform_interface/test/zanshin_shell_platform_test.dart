@@ -10,8 +10,7 @@ final class _FakePlatform extends ZanshinShellPlatform {
   _FakePlatform() : super.forTesting();
 }
 
-final class _NotMockPlatform extends ZanshinShellPlatform
-    with MockPlatformInterfaceMixin {
+final class _NotMockPlatform extends ZanshinShellPlatform with MockPlatformInterfaceMixin {
   _NotMockPlatform() : super.forTesting();
 }
 

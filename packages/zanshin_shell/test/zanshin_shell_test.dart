@@ -8,12 +8,13 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
-final class RecordingPlatform extends ZanshinShellPlatform
-    with MockPlatformInterfaceMixin {
+final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInterfaceMixin {
   RecordingPlatform() : super.forTesting();
 
   final calls = <String>[];
   final themeController = StreamController<ShellTheme>.broadcast();
+
+  Future<void> close() => themeController.close();
 
   static const theme = ShellTheme(
     brightness: Brightness.dark,
@@ -52,6 +53,8 @@ void main() {
     platform = RecordingPlatform();
     ZanshinShellPlatform.instance = platform;
   });
+
+  tearDown(() => platform.close());
 
   test('ZanshinShell delegates to the platform instance', () async {
     expect(await ZanshinShell.getTheme(), RecordingPlatform.theme);

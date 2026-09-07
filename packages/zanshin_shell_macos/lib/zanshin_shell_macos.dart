@@ -19,8 +19,7 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
 
   static const _channel = MethodChannel('zanshin_shell');
 
-  final _themeChanges =
-      StreamController<ShellTheme>.broadcast();
+  final _themeChanges = StreamController<ShellTheme>.broadcast();
 
   Future<Object?> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
@@ -35,9 +34,7 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
   static ShellTheme _themeFromMap(Object? arguments) {
     final Map<String, Object?> map = (arguments! as Map).cast<String, Object?>();
     return ShellTheme(
-      brightness: map['brightness'] == 'dark'
-          ? Brightness.dark
-          : Brightness.light,
+      brightness: map['brightness'] == 'dark' ? Brightness.dark : Brightness.light,
       accentColor: Color(map['accentColor']! as int),
     );
   }
@@ -56,10 +53,8 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
       _channel.invokeMethod<void>('setWindowAppearance', appearance.name);
 
   @override
-  Future<void> startWindowDrag() =>
-      _channel.invokeMethod<void>('startWindowDrag');
+  Future<void> startWindowDrag() => _channel.invokeMethod<void>('startWindowDrag');
 
   @override
-  Future<void> performTitlebarDoubleClickAction() =>
-      _channel.invokeMethod<void>('performTitlebarDoubleClickAction');
+  Future<void> performTitlebarDoubleClickAction() => _channel.invokeMethod<void>('performTitlebarDoubleClickAction');
 }

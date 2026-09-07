@@ -45,8 +45,7 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
 
   /// Forces the window (blur background + traffic lights) to the given
   /// appearance, or back to following the system.
-  Future<void> setWindowAppearance(WindowAppearance appearance) =>
-      throw UnimplementedError();
+  Future<void> setWindowAppearance(WindowAppearance appearance) => throw UnimplementedError();
 
   /// Starts a native window drag. Must be called from within an active
   /// pointer-down gesture (the native side reuses the current mouse event).

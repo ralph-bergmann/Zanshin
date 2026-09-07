@@ -2,7 +2,10 @@
 
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show immutable;
+
 /// A snapshot of the macOS system theme relevant to Zanshin.
+@immutable
 class ShellTheme {
   const ShellTheme({required this.brightness, required this.accentColor});
 
@@ -15,16 +18,13 @@ class ShellTheme {
 
   @override
   bool operator ==(Object other) =>
-      other is ShellTheme &&
-      other.brightness == brightness &&
-      other.accentColor == accentColor;
+      other is ShellTheme && other.brightness == brightness && other.accentColor == accentColor;
 
   @override
   int get hashCode => Object.hash(brightness, accentColor);
 
   @override
-  String toString() =>
-      'ShellTheme(brightness: ${brightness.name}, accentColor: $accentColor)';
+  String toString() => 'ShellTheme(brightness: ${brightness.name}, accentColor: $accentColor)';
 }
 
 /// Appearance override for the app window.
