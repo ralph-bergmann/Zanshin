@@ -1,0 +1,23 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # WHY: `checked` turns every decoding failure (wrong type, unknown enum
+          # name, non-object sub-model) into a CheckedFromJsonException instead
+          # of a TypeError/ArgumentError, so SettingsStore.load can recover from
+          # a corrupt file without catching Errors (avoid_catching_errors).
+          # `explicit_to_json` makes toJson() emit nested maps instead of nested
+          # objects, so the on-disk shape is testable without jsonEncode.
+          checked: true
+          explicit_to_json: true
+      source_gen:combining_builder:
+        options:
+          # WHY: the repo formats at page width 120 (linter/rules.yaml) while
+          # source_gen formats the .g.dart output at 80 but, unlike freezed and
+          # inject_generator, writes no `// dart format width=80` marker — so
+          # `dart format --set-exit-if-changed` would reflow every .g.dart.
+          # The marker in the header pins the width per file (Dart >= 3.7).
+          header: |
+            // GENERATED CODE - DO NOT MODIFY BY HAND
+            // dart format width=80

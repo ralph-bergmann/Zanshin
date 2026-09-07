@@ -1,1 +1,7 @@
 include: ../../linter/flutter.yaml
+
+analyzer:
+  exclude:
+    - "**/*.freezed.dart" # freezed output
+    - "**/*.g.dart" # json_serializable output
+    - build/**
