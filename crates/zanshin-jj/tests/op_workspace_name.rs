@@ -15,6 +15,17 @@
 //! loads the workspace with `jj_lib::workspace::Workspace::load` and walks
 //! `load_at_head().operation()`.
 //!
+//! ## Why one row per FAMILY and not per verb
+//!
+//! Only five modules open a transaction. `bookmark_ops.rs` (`bookmark_create`/`delete`) and
+//! `git.rs` (`git_import`/`export`, `git_remote_add`/`remove`/`rename`/`set_url`) open none of
+//! their own: all eleven of those verbs funnel through the one skeleton
+//! `mutate::finish_or_no_op_at`. So `bookmark_create` and `git_import` below witness the same
+//! single opener as `git_remote_add` does, and the verbs not listed here — `new_change`, `edit`,
+//! `abandon`, `restore`, `absorb`, `git_export`, `bookmark_delete`, the three remaining remote
+//! verbs — reach an opener some row already pins. The creep guard in `op_support.rs` is what
+//! keeps that funnel argument true.
+//!
 //! Fixture setup shells out to plain `git` (AR-AP-1's allowed exception, as in
 //! `tests/convert.rs` and `tests/remotes_write.rs`); nothing under test does. No row touches the
 //! network — the only remote is a local bare clone.
@@ -80,23 +91,16 @@ fn make_test_settings() -> UserSettings {
 /// `None` is exactly the pre-fix state — an operation Zanshin opened without naming its
 /// workspace — so every row asserts a `Some`.
 fn head_op_workspace_name(root: &Path) -> Option<String> {
-    let workspace = Workspace::load(
-        &make_test_settings(),
-        root,
-        &default_backend_factories(),
-        &default_working_copy_factories(),
-    )
-    .expect("oracle workspace load");
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
-    repo.operation()
-        .metadata()
-        .workspace_name
-        .as_ref()
-        .map(|name| name.as_str().to_owned())
+    recent_ops(root, 1).swap_remove(0).1
 }
 
 /// `(description, workspace_name)` for the newest `limit` operations, newest first, walking the
 /// op log's FIRST parent — the rows a convert verb needs, which asserts more than one operation.
+///
+/// `limit` is a cap, not a search depth: the walk also stops at the root operation. A converted
+/// repo's whole op log is four entries (head import, refs import, `add workspace 'default'`,
+/// root), so the convert rows pass 4 and reach the root either way; the cap only keeps a row on
+/// a larger repo from walking the entire history.
 fn recent_ops(root: &Path, limit: usize) -> Vec<(String, Option<String>)> {
     let workspace = Workspace::load(
         &make_test_settings(),
@@ -172,7 +176,8 @@ fn working_copy_change(repo: &Repo) -> ChangeId {
     ids.swap_remove(0)
 }
 
-/// A git-backed workspace with one jj commit, for the rows that need a mutable repo.
+/// An empty git-backed workspace — `Repo::init` only, so its op log is `add workspace 'default'`
+/// over the root op and `@` is the initial empty change.
 fn git_workspace() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
     Repo::init(tmp.path(), Some(Backend::Git)).expect("git-backed init");
@@ -349,15 +354,61 @@ fn a_verb_run_in_a_second_workspace_records_that_workspace() {
     repo.describe(change, "described from the second workspace")
         .expect("describe succeeds");
 
-    let name = head_op_workspace_name(&second.path);
     assert_eq!(
-        name.as_deref(),
+        head_op_workspace_name(&second.path).as_deref(),
         Some("second"),
-        "the operation must name the workspace it ran in"
+        "the operation must name the workspace it ran in — a hardcoded `default`, or a name read \
+         from anywhere but the workspace handle, shows up exactly here"
     );
-    assert_ne!(
-        name.as_deref(),
-        Some("default"),
-        "reading the name from anywhere but the workspace handle shows up exactly here"
+}
+
+/// The same anti-requirement at the three OTHER openers a wrong name could hide in, because
+/// every row above runs in a workspace that is literally called `default` and so cannot tell a
+/// sourced name from a constant one.
+///
+/// The three are `mutate::finish_or_no_op_at` (the skeleton all eleven bookmark and git verbs
+/// funnel through), `op_log.rs`'s `undo`, and `remotes.rs`'s `git_fetch` — the one site that
+/// passes `workspace.workspace_name()` inline rather than a name captured earlier. Substituting
+/// `WorkspaceName::DEFAULT` at any of them compiles and leaves every `default`-named row green.
+///
+/// `convert.rs`'s three sites and `repo.rs`'s clone CREATE the workspace they name, so `default`
+/// is the only answer they can give and no second-workspace row can exist for them.
+#[test]
+fn the_shared_funnel_undo_and_fetch_also_record_the_second_workspace() {
+    pin_env();
+    let src = TempDir::new().expect("src tempdir");
+    init_git_repo_with_commit(src.path());
+    let parent = TempDir::new().expect("bare parent tempdir");
+    let bare = parent.path().join("bare.git");
+    git_cmd(
+        &[
+            "clone",
+            "--bare",
+            &src.path().to_string_lossy(),
+            &bare.to_string_lossy(),
+        ],
+        parent.path(),
     );
+
+    let tmp = git_workspace();
+    // The handle keeps the second workspace's directory alive for the test's duration.
+    let (second, _second_wc) = add_workspace(tmp.path(), "second");
+
+    // `mutate::finish_or_no_op_at`, reached here through `bookmark_ops::create`.
+    let mut repo = Repo::open(&second.path).expect("open at the SECOND workspace root");
+    repo.bookmark_create(&["feature".to_owned()], None)
+        .expect("bookmark_create succeeds");
+    assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
+
+    // `op_log.rs::undo`.
+    repo.undo().expect("undo succeeds");
+    assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
+
+    // `remotes.rs::git_fetch` — reopened first, so the backend reads the remote off disk.
+    repo.git_remote_add("origin", &bare.to_string_lossy(), None)
+        .expect("git_remote_add succeeds");
+    let mut repo = Repo::open(&second.path).expect("reopen so the backend sees the remote");
+    let noop = |_: zanshin_jj::ProgressEvent| {};
+    repo.git_fetch("origin", &noop).expect("git_fetch succeeds");
+    assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
 }

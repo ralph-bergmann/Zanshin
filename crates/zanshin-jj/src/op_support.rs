@@ -1,32 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-//! `op_support.rs` — the five pieces of rewrite orchestration every thick jj verb needs
-//! that live in jj-cli's `cli_util`, not in jj-lib (Story 9.1).
+//! `op_support.rs` — the orchestration every thick jj verb needs that lives in jj-cli's
+//! `cli_util`, not in jj-lib (Story 9.1).
 //!
 //! Ported at jj-cli **v0.44.0** parity — same preconditions, same refusals, same op-log
 //! effect (NFR-R-2) — but never its terminal UX (ADR-0003): no `$EDITOR` buffer, no
 //! `DiffEditor`/`MergeEditor` subprocess, no `Ui` prompt. Interactive selection arrives as
 //! a GUI-supplied tree id instead.
 //!
-//! The five `cli_util` ports and their prior art (§5 is not one of them — it is internal
-//! resolution plumbing shared by two verb families, with no CLI counterpart):
+//! Five sections are `cli_util` ports, each named by the CLI item it reproduces. The sixth,
+//! §5, is not a port: it is internal resolution plumbing shared by two verb families, with no
+//! CLI counterpart.
 //!
-//! 1. **Rewritability guard** (§1) — `cli_util.rs:2002` `check_rewritable` /
-//!    `:2011` `check_rewritable_expr` / `:1118` `resolve_immutable_expression`.
-//! 2. **Insert-location resolution** (§2) — `cli_util.rs:3551` `compute_commit_location` /
-//!    `:3641` `ensure_no_commit_loop`.
-//! 3. **Description combination and trailers** (§3) — `description_util.rs:299`
-//!    `try_combine_messages` / `:392` `add_trailers_with_template`.
-//! 4. **Selected-tree plumbing** (§4) — `cli_util.rs:3494` `DiffSelector`, whose
-//!    `NonInteractive` arm is jj-lib's `restore_tree`.
-//! 5. **Transaction opening** (§6) — `cli_util.rs:2883` `start_repo_transaction`, the CLI's
-//!    single door onto `ReadonlyRepo::start_transaction`. Wired into every transaction the
-//!    crate opens, so every Zanshin operation records `op_metadata.workspace_name` the way a
-//!    CLI-written one does (Epic 9 follow-up L).
+//! - **§1 Rewritability guard** — `cli_util.rs:2002` `check_rewritable` /
+//!   `:2011` `check_rewritable_expr` / `:1118` `resolve_immutable_expression`.
+//! - **§2 Insert-location resolution** — `cli_util.rs:3551` `compute_commit_location` /
+//!   `:3641` `ensure_no_commit_loop`.
+//! - **§3 Description combination and trailers** — `description_util.rs:299`
+//!   `try_combine_messages` / `:392` `add_trailers_with_template`.
+//! - **§4 Selected-tree plumbing** — `cli_util.rs:3494` `DiffSelector`, whose
+//!   `NonInteractive` arm is jj-lib's `restore_tree`.
+//! - **§6 Transaction opening** — `cli_util.rs:2883` `start_repo_transaction`, the CLI's single
+//!   door onto `ReadonlyRepo::start_transaction`. Not rewrite orchestration like the four
+//!   above, but the same kind of port: `cli_util` code jj-lib does not expose.
 //!
 //! Every item is `pub(crate)`: no `jj_lib` type may appear in a public position
-//! (`lib.rs`, FR-JJ-16). Section 1 is wired into `describe`/`edit`/`abandon` and both
-//! Story 9.3 content ops; §4's [`SelectedTree::from_paths`] is `restore`'s primitive. §2,
+//! (`lib.rs`, FR-JJ-16). §1 is wired into `describe`/`edit`/`abandon` and both
+//! Story 9.3 content ops; §4's [`SelectedTree::from_paths`] is `restore`'s primitive; §6 is
+//! wired into every transaction this crate opens, so every Zanshin operation records
+//! `op_metadata.workspace_name` the way a CLI-written one does (Epic 9 follow-up L). §2,
 //! §3 and §4's GUI-selected-tree arm ship tested-but-unwired because their consumers
 //! (squash/split/rebase/duplicate/revert) are Tier C verbs that land in later stories.
 //!
@@ -646,8 +648,14 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 
 // ── §6 Transaction opening ────────────────────────────────────────────────────────
 
-/// Opens a transaction on `repo` on behalf of `workspace_name` — the crate's ONLY
-/// sanctioned transaction opener.
+/// Opens a transaction on `repo` on behalf of `workspace_name` — the ONLY sanctioned
+/// transaction opener in `crates/zanshin-jj/src`.
+///
+/// That scope is the whole shipped surface: `zanshin-jj` is the sole production crate that
+/// imports `jj_lib` (`lib.rs`), so no other crate CAN open a transaction. The direct openers in
+/// `crates/test-helpers` and `crates/xtask` are outside it deliberately — a test fixture and a
+/// build-time fixture generator, neither part of what ships, and both writing operations no user
+/// undoes.
 ///
 /// Ports `cli/src/cli_util.rs:2883-2894` `start_repo_transaction` @ v0.44.0, through which the
 /// CLI funnels every transaction it opens. Two of its three statements are reproduced:
@@ -664,14 +672,21 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 /// not this helper's business in the CLI either.
 ///
 /// `workspace_name` must be the name of the workspace the caller's `Workspace` handle was opened
-/// for — `Workspace::workspace_name()`, exactly as the CLI's sole caller
+/// for — `Workspace::workspace_name()`, exactly as the caller this port mirrors
 /// (`cli_util.rs:2286-2298`) passes `self.workspace_name()`. Never a constant, and never derived
 /// from a path: in a repo with several workspaces the two differ, and the operation must name the
-/// one that ran it.
+/// one that ran it. `tests/op_workspace_name.rs` witnesses that from a SECOND workspace, which is
+/// the only place a constant `default` would show.
+///
+/// The CLI has a second caller, the snapshot path (`cli_util.rs:2099`), which follows it with
+/// `set_is_snapshot(true)`; Zanshin has no snapshot path yet (project decision D2 — Story 9.22),
+/// which is why nothing here touches `is_snapshot`.
 ///
 /// A guard test in this module's `tests` asserts that no other file under
 /// `crates/zanshin-jj/src` calls `start_transaction` directly, so an operation cannot regain a
-/// `workspace_name: None` by a new call site slipping in.
+/// `workspace_name: None` by a new call site slipping in. An inline `#[cfg(test)]` test that
+/// needs to fabricate repo state is bound by that guard too: open its transaction through this
+/// helper, or build the state with `test-helpers`, whose own direct openers are out of scope.
 pub(crate) fn start_repo_transaction(repo: &Arc<ReadonlyRepo>, workspace_name: &WorkspaceName) -> Transaction {
     let mut tx = repo.start_transaction();
     tx.set_workspace_name(workspace_name);
@@ -1178,8 +1193,11 @@ mod tests {
     /// never false-positives, while a method call, a UFCS
     /// `ReadonlyRepo::start_transaction(&repo)` and a plain mention all match.
     ///
-    /// Comment lines are skipped, the same rule `Makefile.toml`'s `test-jj-adapter-hygiene`
-    /// gate applies to its own source grep.
+    /// Line-leading comments are skipped, the same rule `Makefile.toml`'s
+    /// `test-jj-adapter-hygiene` gate applies to its own source grep. A mention inside a
+    /// TRAILING comment, a `/* … */` block or a string literal still counts as a hit. That
+    /// over-flagging is deliberate and the safe direction: it costs a rephrased sentence and a
+    /// loud, obvious test failure, where the opposite error would let a real opener through.
     fn direct_transaction_openers(sources: &[(String, String)]) -> Vec<String> {
         let mut hits = Vec::new();
         for (path, contents) in sources {
@@ -1216,11 +1234,15 @@ mod tests {
 
     /// The crate's own `src/`, minus `op_support.rs` — the one file allowed to open a
     /// transaction.
+    ///
+    /// Matched on the FILE NAME, not on a path suffix: `path.ends_with("op_support.rs")` would
+    /// also exempt a future `git_op_support.rs`, silently, which is the one way this guard could
+    /// go quiet without anyone noticing.
     fn crate_sources_outside_op_support() -> Vec<(String, String)> {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         read_rust_sources(&src)
             .into_iter()
-            .filter(|(path, _)| !path.ends_with("op_support.rs"))
+            .filter(|(path, _)| Path::new(path).file_name() != Some("op_support.rs".as_ref()))
             .collect()
     }
 
@@ -1230,11 +1252,16 @@ mod tests {
     #[test]
     fn no_source_file_outside_op_support_opens_a_transaction_directly() {
         let sources = crate_sources_outside_op_support();
-        assert!(
-            sources.len() > 5,
-            "the scan found only {} source files — it is not actually reading the crate",
-            sources.len()
-        );
+        // A bare count would be satisfied by any directory holding a few `.rs` files. Naming two
+        // modules that both open transactions proves the scan read THIS crate's `src/`.
+        for expected in ["mutate.rs", "convert.rs"] {
+            assert!(
+                sources
+                    .iter()
+                    .any(|(path, _)| Path::new(path).file_name() == Some(expected.as_ref())),
+                "the scan never saw {expected} — it is not reading this crate's src/"
+            );
+        }
 
         let hits = direct_transaction_openers(&sources);
         assert!(

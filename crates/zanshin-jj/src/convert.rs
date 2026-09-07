@@ -59,8 +59,10 @@
 //!    gives a fresh destination its files, so it cannot share the reset-free helper.
 //!
 //! Every operation either verb writes carries the converting workspace's name in its metadata,
-//! as the CLI's do: all three transactions are opened through
-//! [`crate::op_support::start_repo_transaction`] (Epic 9 follow-up L).
+//! the way a CLI-written one does: all three transaction sites in this module open through
+//! [`crate::op_support::start_repo_transaction`] (Epic 9 follow-up L). A single conversion
+//! writes at most two operations; the third site is the non-colocated tail of step 5, which
+//! only [`import_into`] reaches.
 //!
 //! The colocated shape is therefore steps 1-2-3-4 and the non-colocated one steps 1-4-5.
 //! [`convert_import`] runs whichever its two paths select; [`convert_colocated`] always stops
