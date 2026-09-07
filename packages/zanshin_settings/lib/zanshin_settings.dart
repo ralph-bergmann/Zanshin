@@ -6,3 +6,4 @@ library;
 
 export 'src/model/app_settings.dart';
 export 'src/model/appearance_settings.dart';
+export 'src/settings_store.dart';
