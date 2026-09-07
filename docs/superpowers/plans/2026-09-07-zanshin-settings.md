@@ -11,6 +11,8 @@
 Spec: `docs/superpowers/specs/2026-09-07-zanshin-settings-design.md` (read it first).
 
 > **Deviation recorded during execution (Task 6):** the app's Material library is `package:material_ui`, whose `ThemeMode` is a distinct type from `package:flutter/material.dart`'s. Every `import 'package:flutter/material.dart' show ThemeMode` in this plan is therefore `import 'package:material_ui/material_ui.dart' show ThemeMode` (with `Brightness`/`Color` taken from `dart:ui`), and `packages/zanshin_settings/pubspec.yaml` depends on `material_ui: ^1.1.0`. The committed code is authoritative.
+> Also (Task 7): `path_provider_foundation` 2.6 registers as a Dart plugin (`dartPluginClass`, `native_build: false`), so `app/macos/Flutter/GeneratedPluginRegistrant.swift` never changes — Task 4 Step 1's registrant note and Task 7 Step 3 are moot. `flutter build macos --debug` succeeded and the generated Dart plugin registrant calls `PathProviderFoundation.registerWith()`.
+> Task 7 Step 1: `cargo make test` fails on pre-existing analyzer/format findings in `packages/zanshin_shell` and `packages/zanshin_shell_platform_interface` (untouched by this plan); every other step of the gate, including the coverage ratchet (held at 99.27%), passed with those tasks skipped.
 
 ## Global Constraints
 

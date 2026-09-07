@@ -206,10 +206,12 @@ final ZanshinApp app = mainComponent.zanshinAppFactory.create();   // stays sync
 - No `settings` getter on `MainComponent`: consumers inject `SettingsStore`
   directly; the file is read before the component exists, i.e. before `runApp`.
 - `app/pubspec.yaml` gains `zanshin_settings: path: ../packages/zanshin_settings`.
-- `dart run build_runner build --delete-conflicting-outputs` in `app/` regenerates
-  `main.inject.dart` and `zanshin_app.factory.dart`; `flutter pub get` / a
-  macOS build refreshes `app/macos/Flutter/GeneratedPluginRegistrant.swift`
-  (path_provider_foundation registers there). Both are committed.
+- `dart run build_runner build` in `app/` regenerates `main.inject.dart` and
+  `zanshin_app.factory.dart` (both committed). `path_provider_foundation` 2.6 is
+  a Dart/FFI implementation (`dartPluginClass: PathProviderFoundation`), so it
+  registers through the generated Dart plugin registrant that `main.dart`
+  already triggers via `DartPluginRegistrant.ensureInitialized()` — the Swift
+  `GeneratedPluginRegistrant.swift` does not change.
 
 ## ZanshinAppViewModel and stateless ZanshinApp
 
@@ -340,6 +342,5 @@ fake `ZanshinShellPlatform`, same shape as `packages/zanshin_shell/test`):
 - `app/lib/src/features/app/zanshin_app_view_model.dart` (new)
 - `app/test/features/app/zanshin_app_view_model_test.dart` (new)
 - `app/pubspec.yaml` (dependency + two dev-dependencies)
-- `app/macos/Flutter/GeneratedPluginRegistrant.swift` (regenerated)
 - `Makefile.toml` (three tasks + dependency list)
 - `pubspec.lock` (workspace lock, already partially staged)
