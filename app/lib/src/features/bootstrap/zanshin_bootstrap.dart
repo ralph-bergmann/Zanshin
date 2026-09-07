@@ -183,7 +183,13 @@ class _SplashScreen extends StatelessWidget {
         duration: splashIndicatorFadeIn,
         // Only in the tree once needed: a fast boot never loads the asset.
         child: showIndicator
-            ? Lottie.asset(splashAnimationAsset, width: splashAnimationSize, height: splashAnimationSize)
+            ? Lottie.asset(
+                splashAnimationAsset,
+                width: splashAnimationSize,
+                height: splashAnimationSize,
+                // "Reduce motion": the first frame is the static logo.
+                animate: !MediaQuery.disableAnimationsOf(context),
+              )
             : null,
       ),
     ),

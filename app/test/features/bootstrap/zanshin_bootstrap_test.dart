@@ -155,6 +155,7 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1)); // t = 500 ms
     expect(find.byType(LottieBuilder), findsOneWidget);
+    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isTrue);
 
     await tester.pump(const Duration(milliseconds: 100)); // t = 600 ms
     app.complete(const AppMarker());
@@ -238,5 +239,27 @@ void main() {
             .having((r) => r.error, 'error', isA<StateError>()),
       ),
     );
+  });
+
+  testWidgets('with reduced motion the loader shows its first frame without animating', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await pumpBootstrap(tester, settings: settings, app: app);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isFalse);
+
+    app.complete(const AppMarker());
+    // Minimum show over at 1500 ms; the fade-out then runs 200 ms and
+    // completes on the tick after its duration.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.byType(LottieBuilder), findsNothing);
   });
 }
