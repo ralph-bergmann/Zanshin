@@ -67,7 +67,7 @@ void main() {
   });
 
   test('onThemeChanged forwards the platform stream', () async {
-    final future = ZanshinShell.onThemeChanged.first;
+    final Future<ShellTheme> future = ZanshinShell.onThemeChanged.first;
     platform.themeController.add(RecordingPlatform.theme);
     expect(await future, RecordingPlatform.theme);
   });

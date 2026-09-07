@@ -17,9 +17,9 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
     ZanshinShellPlatform.instance = ZanshinShellMacOS();
   }
 
-  static const MethodChannel _channel = MethodChannel('zanshin_shell');
+  static const _channel = MethodChannel('zanshin_shell');
 
-  final StreamController<ShellTheme> _themeChanges =
+  final _themeChanges =
       StreamController<ShellTheme>.broadcast();
 
   Future<Object?> _handleMethodCall(MethodCall call) async {
@@ -33,7 +33,7 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
   }
 
   static ShellTheme _themeFromMap(Object? arguments) {
-    final map = (arguments! as Map).cast<String, Object?>();
+    final Map<String, Object?> map = (arguments! as Map).cast<String, Object?>();
     return ShellTheme(
       brightness: map['brightness'] == 'dark'
           ? Brightness.dark
@@ -44,7 +44,7 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
 
   @override
   Future<ShellTheme> getTheme() async {
-    final map = await _channel.invokeMapMethod<String, Object?>('getTheme');
+    final Map<String, Object?>? map = await _channel.invokeMapMethod<String, Object?>('getTheme');
     return _themeFromMap(map);
   }
 

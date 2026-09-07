@@ -37,15 +37,15 @@ void main() {
 
   test('default methods throw UnimplementedError', () {
     final platform = _FakePlatform();
-    expect(() => platform.getTheme(), throwsUnimplementedError);
+    expect(platform.getTheme, throwsUnimplementedError);
     expect(() => platform.onThemeChanged, throwsUnimplementedError);
     expect(
       () => platform.setWindowAppearance(WindowAppearance.dark),
       throwsUnimplementedError,
     );
-    expect(() => platform.startWindowDrag(), throwsUnimplementedError);
+    expect(platform.startWindowDrag, throwsUnimplementedError);
     expect(
-      () => platform.performTitlebarDoubleClickAction(),
+      platform.performTitlebarDoubleClickAction,
       throwsUnimplementedError,
     );
   });

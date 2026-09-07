@@ -40,7 +40,7 @@ void main() {
   });
 
   test('getTheme parses brightness and accent color', () async {
-    final theme = await shell.getTheme();
+    final ShellTheme theme = await shell.getTheme();
     expect(theme.brightness, Brightness.dark);
     expect(theme.accentColor, const Color(0xFFFF453A));
     expect(log.single.method, 'getTheme');
@@ -65,8 +65,8 @@ void main() {
   );
 
   test('onThemeChanged emits when the native side pushes a theme', () async {
-    final future = shell.onThemeChanged.first;
-    final messenger =
+    final Future<ShellTheme> future = shell.onThemeChanged.first;
+    final TestDefaultBinaryMessenger messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     await messenger.handlePlatformMessage(
       'zanshin_shell',
@@ -78,7 +78,7 @@ void main() {
       ),
       (_) {},
     );
-    final theme = await future;
+    final ShellTheme theme = await future;
     expect(theme.brightness, Brightness.light);
     expect(theme.accentColor, const Color(0xFF32D74B));
   });

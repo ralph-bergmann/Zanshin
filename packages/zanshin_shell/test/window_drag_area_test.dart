@@ -22,7 +22,7 @@ void main() {
     await tester.pumpWidget(
       harness(const WindowDragArea(child: SizedBox(width: 300, height: 44))),
     );
-    final gesture = await tester.startGesture(
+    final TestGesture gesture = await tester.startGesture(
       tester.getCenter(find.byType(WindowDragArea)),
     );
     await gesture.moveBy(const Offset(30, 0));

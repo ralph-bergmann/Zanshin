@@ -13,7 +13,7 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
   @protected
   ZanshinShellPlatform.forTesting() : super(token: _token);
 
-  static final Object _token = Object();
+  static final _token = Object();
 
   static ZanshinShellPlatform? _instance;
 
@@ -22,7 +22,7 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
   /// Unset until a platform registers itself (`registerWith`); accessing it
   /// then is a wiring error, so it throws instead of returning a stub.
   static ZanshinShellPlatform get instance {
-    final instance = _instance;
+    final ZanshinShellPlatform? instance = _instance;
     if (instance == null) {
       throw StateError(
         'No ZanshinShellPlatform registered. Is the app running on a '
