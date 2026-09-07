@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:logging/logging.dart';
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
@@ -26,6 +27,8 @@ const splashIndicatorFadeIn = Duration(milliseconds: 150);
 
 /// Fade-out of the whole splash over the finished app.
 const splashFadeOut = Duration(milliseconds: 200);
+
+final _log = Logger('zanshin.bootstrap');
 
 /// Root widget of the app: runs the asynchronous boot behind the first frame.
 ///
@@ -82,20 +85,32 @@ class _ZanshinBootstrapState extends State<ZanshinBootstrap> {
   }
 
   Future<void> _boot() async {
-    final SettingsStore settings = await widget.openSettings();
-    if (!mounted) {
-      return;
+    Widget content;
+    try {
+      content = await _load();
+    } catch (error, stackTrace) {
+      // Process-level boundary: a failed boot may surface as an Error (FFI,
+      // isolate spawn), so this deliberately catches everything.
+      _log.severe('App boot failed', error, stackTrace);
+      content = _BootFailure(error: error, mode: _persistedMode);
     }
-    setState(() => _persistedMode = settings.value.appearance.themeMode);
-    final Widget app = await widget.startApp(settings);
     if (!mounted) {
       return;
     }
     setState(() {
-      _content = app;
+      _content = content;
       _bootFinished = true;
     });
     _onBootFinished();
+  }
+
+  /// Both boot steps; the persisted mode reaches the splash between them.
+  Future<Widget> _load() async {
+    final SettingsStore settings = await widget.openSettings();
+    if (mounted) {
+      setState(() => _persistedMode = settings.value.appearance.themeMode);
+    }
+    return widget.startApp(settings);
   }
 
   void _showIndicator() {
@@ -186,3 +201,34 @@ Brightness _resolveBrightness(BuildContext context, ThemeMode mode) => switch (m
 /// (independent of the accent colour, so it matches the real app theme).
 Color _scaffoldBackground(Brightness brightness) =>
     (brightness == Brightness.dark ? yaruDark : yaruLight).scaffoldBackgroundColor;
+
+/// Shown instead of the app when the boot failed: same background, a headline
+/// and the selectable error text. No retry — ⌘Q quits as usual.
+class _BootFailure extends StatelessWidget {
+  const _BootFailure({required this.error, required this.mode});
+
+  final Object error;
+  final ThemeMode mode;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    theme: yaruLight,
+    darkTheme: yaruDark,
+    themeMode: mode,
+    home: Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 12,
+            children: [
+              const Text('Zanshin could not start.'),
+              SelectableText('$error'),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
@@ -211,5 +212,31 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     expect(find.byType(AppMarker), findsNothing);
+  });
+
+  testWidgets('a failed boot shows the error page and logs at SEVERE', (tester) async {
+    final records = <LogRecord>[];
+    final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
+    addTearDown(logs.cancel);
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await pumpBootstrap(tester, settings: settings, app: app);
+
+    app.completeError(StateError('worker refused to start'));
+    await pumpStep(tester);
+
+    expect(find.text('Zanshin could not start.'), findsOneWidget);
+    expect(find.textContaining('worker refused to start'), findsOneWidget);
+    expect(find.byType(LottieBuilder), findsNothing);
+    expect(
+      records,
+      contains(
+        isA<LogRecord>()
+            .having((r) => r.level, 'level', Level.SEVERE)
+            .having((r) => r.loggerName, 'loggerName', 'zanshin.bootstrap')
+            .having((r) => r.error, 'error', isA<StateError>()),
+      ),
+    );
   });
 }
