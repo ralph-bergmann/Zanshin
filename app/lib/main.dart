@@ -14,11 +14,13 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
 import 'src/features/app/zanshin_app.dart';
+import 'src/features/bootstrap/zanshin_bootstrap.dart';
 
-Future<void> main() async {
-  // All initialization inside the same zone as runApp to avoid zone mismatch.
-  await runZonedGuarded(
-    () async {
+void main() {
+  // All initialization inside the same zone as runApp to avoid zone mismatch;
+  // the asynchronous boot runs inside ZanshinBootstrap, i.e. in this zone too.
+  runZonedGuarded(
+    () {
       WidgetsFlutterBinding.ensureInitialized();
       // The macOS engine does not invoke the generated Dart plugin registrant
       // on its own, so dartPluginClass-based plugins (zanshin_shell_macos)
@@ -41,16 +43,8 @@ Future<void> main() async {
         FlutterError.presentError(details);
       };
 
-      // Resolve the settings before the graph exists so the DI chain stays
-      // synchronous (no @asynchronous provider, no Future entry points).
-      final SettingsStore settings = await SettingsStore.open();
-      // ignore: specify_nonobvious_local_variable_types
-      final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
-      // Start the worker and trigger the ProvisionListener (which wires the
-      // AppLifecycleListener for graceful shutdown on macOS).
-      await mainComponent.worker;
-      final ZanshinApp app = mainComponent.zanshinAppFactory.create();
-      runApp(app);
+      // First frame right away; settings, DI graph and worker boot behind it.
+      runApp(const ZanshinBootstrap(openSettings: SettingsStore.open, startApp: _startApp));
     },
     (error, stackTrace) {
       developer.log(
@@ -60,6 +54,17 @@ Future<void> main() async {
       );
     },
   );
+}
+
+/// Second boot step: the DI graph over the loaded settings (resolved before
+/// the graph so the DI chain stays synchronous — no @asynchronous provider),
+/// then the worker, whose provision listener wires the AppLifecycleListener
+/// for graceful shutdown on macOS, then the app widget.
+Future<Widget> _startApp(SettingsStore settings) async {
+  // ignore: specify_nonobvious_local_variable_types
+  final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
+  await mainComponent.worker;
+  return mainComponent.zanshinAppFactory.create();
 }
 
 @Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule, WorkerLifecycleModule, SettingsModule])
