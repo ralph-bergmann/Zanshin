@@ -32,7 +32,7 @@ use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
-use crate::op_support::{check_rewritable, resolve_immutable, ResolveError, SelectedTree};
+use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
 use crate::ChangeId;
 
@@ -473,7 +473,7 @@ pub(crate) fn describe(
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let commit = resolve_commit(tx.repo(), change_id)?;
     // jj-lib's `rewrite_commit` internally asserts the target isn't the root commit
     // (`assert_ne!`) rather than returning an error — guard explicitly so a caller gets
@@ -534,7 +534,7 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let mut parent_commits = Vec::with_capacity(parents.len());
     for change_id in parents {
         parent_commits.push(resolve_commit(tx.repo(), change_id)?);
@@ -599,7 +599,7 @@ pub(crate) fn edit(
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let commit = resolve_commit(tx.repo(), change_id)?;
     guard_rewritable(&tx, immutable, std::slice::from_ref(commit.id()))?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
@@ -657,7 +657,7 @@ pub(crate) fn abandon(
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let mut commits = Vec::with_capacity(change_ids.len());
     for change_id in change_ids {
         let commit = resolve_commit(tx.repo(), change_id)?;
@@ -862,7 +862,7 @@ where
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let value = work(&mut tx)?;
     if !tx.repo().has_changes() {
         drop(tx);
@@ -965,7 +965,7 @@ pub(crate) fn restore(
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let (to_commit, from_tree, from_commits) = if from.is_some() || into.is_some() {
         let to_commit = resolve_or_wc(tx.repo(), &workspace_name, into)?;
         let from_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
@@ -1086,7 +1086,7 @@ pub(crate) fn absorb(
     let workspace_name = workspace.workspace_name().to_owned();
     let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let source_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
     let resolved_destinations = resolve_expression(tx.repo(), destinations).map_err(rev)?;
     let matcher = build_matcher(paths)?;

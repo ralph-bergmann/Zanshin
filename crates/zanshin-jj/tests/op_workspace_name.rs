@@ -1,0 +1,363 @@
+// SPDX-License-Identifier: MIT
+
+//! Witness suite for Epic 9 follow-up L: every operation a Zanshin verb writes records
+//! `op_metadata.workspace_name`, the way a `jj`-written one does.
+//!
+//! The jj CLI opens every transaction through `cli/src/cli_util.rs:2883` `start_repo_transaction`,
+//! which calls `Transaction::set_workspace_name`. The op log is on-disk state a user reads back
+//! with `jj op log`/`jj op show` and that multi-workspace repos rely on, so the metadata is
+//! required parity (NFR-R-2) — not decoration. Before this run every Zanshin operation carried
+//! `workspace_name: None`.
+//!
+//! The assertion is deliberately made against jj-lib DIRECTLY rather than through
+//! `Repo::op_log`: `crate::Operation` does not carry the field (exposing it is Story 9.21's
+//! surface), and reading the store is the same oracle `jj op show` reads. Every row therefore
+//! loads the workspace with `jj_lib::workspace::Workspace::load` and walks
+//! `load_at_head().operation()`.
+//!
+//! Fixture setup shells out to plain `git` (AR-AP-1's allowed exception, as in
+//! `tests/convert.rs` and `tests/remotes_write.rs`); nothing under test does. No row touches the
+//! network — the only remote is a local bare clone.
+
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+use std::{env, fs};
+
+use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+use jj_lib::settings::UserSettings;
+use jj_lib::workspace::Workspace;
+use tempfile::TempDir;
+use test_helpers::{add_workspace, extract_fixture};
+use zanshin_jj::{convert_colocated, convert_import, resolve_revset, Backend, ChangeId, Repo};
+
+// ── Harness ───────────────────────────────────────────────────────────────────────
+
+/// Env-var pin, same three variables and same rationale as `tests/convert.rs:27-47`.
+///
+/// `$XDG_CONFIG_HOME` gets a real, process-lifetime-LEAKED directory because this binary calls
+/// both convert verbs, and a conversion writes the repo-level `revset-aliases.'trunk()'` OUTSIDE
+/// the repo, under `$XDG_CONFIG_HOME/jj/repos/`. Without the pin a conversion of a repo with a
+/// remote HEAD would land in the developer's real `~/.config`.
+static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
+    let xdg = TempDir::new().expect("xdg tempdir").keep();
+    // SAFETY: `set_var` is sound only while no other thread reads the environment. Every test in
+    // this binary calls `pin_env()` as its FIRST statement, and the `LazyLock` blocks all of them
+    // until this initialiser returns, so no sibling has reached a `getenv` yet.
+    unsafe {
+        env::set_var("JJ_CONFIG", "");
+        env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("XDG_CONFIG_HOME", &xdg);
+    }
+    xdg
+});
+
+fn pin_env() {
+    LazyLock::force(&ENV_GUARD);
+}
+
+fn make_test_settings() -> UserSettings {
+    let mut config = StackedConfig::with_defaults();
+    config.add_layer(
+        ConfigLayer::parse(
+            ConfigSource::User,
+            r#"
+                [user]
+                name = "Zanshin"
+                email = "zanshin@localhost"
+                [operation]
+                username = "zanshin"
+                hostname = "localhost"
+            "#,
+        )
+        .expect("valid config literal"),
+    );
+    UserSettings::from_config(config).expect("valid settings")
+}
+
+/// The oracle: `workspace_name` on the newest operation of the workspace at `root`.
+///
+/// `None` is exactly the pre-fix state — an operation Zanshin opened without naming its
+/// workspace — so every row asserts a `Some`.
+fn head_op_workspace_name(root: &Path) -> Option<String> {
+    let workspace = Workspace::load(
+        &make_test_settings(),
+        root,
+        &default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .expect("oracle workspace load");
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    repo.operation()
+        .metadata()
+        .workspace_name
+        .as_ref()
+        .map(|name| name.as_str().to_owned())
+}
+
+/// `(description, workspace_name)` for the newest `limit` operations, newest first, walking the
+/// op log's FIRST parent — the rows a convert verb needs, which asserts more than one operation.
+fn recent_ops(root: &Path, limit: usize) -> Vec<(String, Option<String>)> {
+    let workspace = Workspace::load(
+        &make_test_settings(),
+        root,
+        &default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .expect("oracle workspace load");
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+
+    let mut op = repo.operation().clone();
+    let mut rows = Vec::new();
+    while rows.len() < limit {
+        let metadata = op.metadata();
+        rows.push((
+            metadata.description.clone(),
+            metadata.workspace_name.as_ref().map(|n| n.as_str().to_owned()),
+        ));
+        let Some(parent) = pollster::block_on(op.parents())
+            .expect("op parents are readable")
+            .into_iter()
+            .next()
+        else {
+            break;
+        };
+        op = parent;
+    }
+    rows
+}
+
+/// Asserts that `description` appears among `rows` and carries `expected` as its workspace name.
+fn assert_op_named(rows: &[(String, Option<String>)], description: &str, expected: &str) {
+    let row = rows
+        .iter()
+        .find(|(desc, _)| desc == description)
+        .unwrap_or_else(|| panic!("no `{description}` operation among {rows:?}"));
+    assert_eq!(
+        row.1.as_deref(),
+        Some(expected),
+        "`{description}` must record the workspace name, as the CLI's does"
+    );
+}
+
+/// Run a git command in `dir`; panics on non-zero exit.
+fn git_cmd(args: &[&str], dir: &Path) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("git command failed to spawn");
+    assert!(status.success(), "git {args:?} failed in {}", dir.display());
+}
+
+/// The backing git repository of a `Backend::Git` workspace.
+fn git_store(root: &Path) -> PathBuf {
+    root.join(".jj").join("repo").join("store").join("git")
+}
+
+/// A plain Git repo at `path` with one commit on `main`.
+fn init_git_repo_with_commit(path: &Path) {
+    git_cmd(&["init", "--initial-branch=main"], path);
+    git_cmd(&["config", "user.email", "test@zanshin.test"], path);
+    git_cmd(&["config", "user.name", "Fixture"], path);
+    fs::write(path.join("README.md"), "hello").expect("write README");
+    git_cmd(&["add", "."], path);
+    git_cmd(&["commit", "-m", "initial"], path);
+}
+
+/// The change id of `@` in the workspace at `root`, via the crate's own revset resolver.
+fn working_copy_change(repo: &Repo) -> ChangeId {
+    let mut ids = resolve_revset(repo, "@").expect("`@` resolves");
+    assert_eq!(ids.len(), 1, "`@` denotes exactly one change");
+    ids.swap_remove(0)
+}
+
+/// A git-backed workspace with one jj commit, for the rows that need a mutable repo.
+fn git_workspace() -> TempDir {
+    let tmp = TempDir::new().expect("tempdir");
+    Repo::init(tmp.path(), Some(Backend::Git)).expect("git-backed init");
+    tmp
+}
+
+// ── Mutate family ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn describe_names_the_workspace() {
+    pin_env();
+    let tmp = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    let change = working_copy_change(&repo);
+
+    repo.describe(change, "a description").expect("describe succeeds");
+
+    assert_eq!(head_op_workspace_name(tmp.path()).as_deref(), Some("default"));
+}
+
+// ── Bookmark family ───────────────────────────────────────────────────────────────
+
+#[test]
+fn bookmark_create_names_the_workspace() {
+    pin_env();
+    let tmp = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+
+    repo.bookmark_create(&["feature".to_owned()], None)
+        .expect("bookmark_create succeeds");
+
+    assert_eq!(head_op_workspace_name(tmp.path()).as_deref(), Some("default"));
+}
+
+// ── Git sync family ───────────────────────────────────────────────────────────────
+
+#[test]
+fn git_import_names_the_workspace() {
+    pin_env();
+    let tmp = git_workspace();
+    let commit = test_helpers::add_commit_off_root(tmp.path(), "a commit only jj knows");
+    git_cmd(&["update-ref", "refs/heads/feature", &commit], &git_store(tmp.path()));
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the new ref");
+    repo.git_import().expect("import succeeds");
+
+    let rows = recent_ops(tmp.path(), 1);
+    assert_op_named(&rows, "import git refs", "default");
+}
+
+// ── Remote-config family ──────────────────────────────────────────────────────────
+
+#[test]
+fn git_remote_add_names_the_workspace() {
+    pin_env();
+    let tmp = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+
+    repo.git_remote_add("origin", "file:///nowhere/bare.git", None)
+        .expect("git_remote_add succeeds");
+
+    assert_eq!(head_op_workspace_name(tmp.path()).as_deref(), Some("default"));
+}
+
+// ── Fetch (remotes.rs) ────────────────────────────────────────────────────────────
+
+#[test]
+fn git_fetch_names_the_workspace() {
+    pin_env();
+    let src = TempDir::new().expect("src tempdir");
+    init_git_repo_with_commit(src.path());
+
+    let parent = TempDir::new().expect("bare parent tempdir");
+    let bare = parent.path().join("bare.git");
+    git_cmd(
+        &[
+            "clone",
+            "--bare",
+            &src.path().to_string_lossy(),
+            &bare.to_string_lossy(),
+        ],
+        parent.path(),
+    );
+
+    let tmp = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    repo.git_remote_add("origin", &bare.to_string_lossy(), None)
+        .expect("git_remote_add succeeds");
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the remote");
+    let noop = |_: zanshin_jj::ProgressEvent| {};
+    repo.git_fetch("origin", &noop).expect("git_fetch succeeds");
+
+    let rows = recent_ops(tmp.path(), 1);
+    assert_op_named(&rows, "fetch from git remote(s) origin", "default");
+}
+
+// ── Undo (op_log.rs) ──────────────────────────────────────────────────────────────
+
+#[test]
+fn undo_names_the_workspace() {
+    pin_env();
+    let tmp = git_workspace();
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    let change = working_copy_change(&repo);
+    repo.describe(change, "a description").expect("describe succeeds");
+
+    repo.undo().expect("undo succeeds");
+
+    assert_eq!(head_op_workspace_name(tmp.path()).as_deref(), Some("default"));
+}
+
+// ── Clone (repo.rs) ───────────────────────────────────────────────────────────────
+
+#[test]
+fn clone_names_the_workspace() {
+    pin_env();
+    let src = TempDir::new().expect("src tempdir");
+    init_git_repo_with_commit(src.path());
+
+    let target = TempDir::new().expect("target tempdir");
+    let url = format!("file://{}", src.path().display());
+    Repo::clone(&url, target.path()).expect("clone from local file://");
+
+    assert_eq!(head_op_workspace_name(target.path()).as_deref(), Some("default"));
+}
+
+// ── Convert (convert.rs) ──────────────────────────────────────────────────────────
+
+/// The colocated conversion writes TWO operations and both must carry the name — the reason
+/// `init_git_refs` and `import_git_head` each grew a `workspace_name` parameter.
+#[test]
+fn convert_colocated_names_the_workspace_on_both_operations() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+
+    convert_colocated(tmp.path()).expect("conversion succeeds");
+
+    let rows = recent_ops(tmp.path(), 4);
+    assert_op_named(&rows, "import git refs", "default");
+    assert_op_named(&rows, "import git head", "default");
+}
+
+#[test]
+fn convert_import_names_the_workspace_on_both_operations() {
+    pin_env();
+    let src = TempDir::new().expect("src tempdir");
+    init_git_repo_with_commit(src.path());
+
+    let dest_parent = TempDir::new().expect("dest tempdir");
+    let dest = dest_parent.path().join("imported");
+
+    convert_import(src.path(), &dest).expect("import succeeds");
+
+    let rows = recent_ops(&dest, 4);
+    assert_op_named(&rows, "import git refs", "default");
+    assert_op_named(&rows, "import git head", "default");
+}
+
+// ── Second workspace ──────────────────────────────────────────────────────────────
+
+/// The row a hardcoded `"default"` — or a name read from the repo rather than from the
+/// workspace handle the verb was invoked through — fails, and fails nowhere else.
+#[test]
+fn a_verb_run_in_a_second_workspace_records_that_workspace() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    // The handle keeps the second workspace's directory alive for the test's duration.
+    let (second, _second_wc) = add_workspace(&fx.path, "second");
+
+    let mut repo = Repo::open(&second.path).expect("open at the SECOND workspace root");
+    let change = working_copy_change(&repo);
+    repo.describe(change, "described from the second workspace")
+        .expect("describe succeeds");
+
+    let name = head_op_workspace_name(&second.path);
+    assert_eq!(
+        name.as_deref(),
+        Some("second"),
+        "the operation must name the workspace it ran in"
+    );
+    assert_ne!(
+        name.as_deref(),
+        Some("default"),
+        "reading the name from anywhere but the workspace handle shows up exactly here"
+    );
+}

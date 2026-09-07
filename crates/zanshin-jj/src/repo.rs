@@ -1554,7 +1554,7 @@ impl Repo {
         // Step 1: Create git-backed jj workspace.
         // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see
         // `Repo::init`); making it a caller parameter is Story 9.20's scope.
-        let (_workspace_init, repo) = pollster::block_on(Workspace::init_internal_git(
+        let (workspace_init, repo) = pollster::block_on(Workspace::init_internal_git(
             settings,
             target_path,
             gix::hash::Kind::Sha1,
@@ -1570,7 +1570,11 @@ impl Repo {
         // We therefore drop this transaction without committing — its only purpose
         // is the disk side-effect. Step 3 reloads from disk to pick it up.
         {
-            let mut tx = repo.start_transaction();
+            // WHY: this transaction is dropped without committing, so its metadata is never
+            // written and the workspace name is unobservable here. It goes through the
+            // sanctioned opener anyway, for uniformity — that leaves the creep guard in
+            // `op_support` with zero exceptions to encode, at the cost of one identifier.
+            let mut tx = crate::op_support::start_repo_transaction(&repo, workspace_init.workspace_name());
             // WHY: jj 0.44 dropped `add_remote`'s trailing `fetch_tags` argument — tag selection
             // is now driven purely by the fetch refspec, and it is `fetch_expr.tag` below (not
             // `.bookmark`) that carries it: glob("*"), i.e. the same "all tags" behaviour the old
@@ -1628,7 +1632,7 @@ impl Repo {
 
         let import_stats;
         let default_branch;
-        let mut tx = fresh_repo.start_transaction();
+        let mut tx = crate::op_support::start_repo_transaction(&fresh_repo, &workspace_name);
         {
             let mut_repo = tx.repo_mut();
             let mut fetcher = GitFetch::new(mut_repo, subprocess_options, &import_options)

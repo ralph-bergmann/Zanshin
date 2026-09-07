@@ -27,7 +27,7 @@ use jj_lib::str_util::{StringExpression, StringPattern};
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
-use crate::op_support::resolve_immutable;
+use crate::op_support::{resolve_immutable, start_repo_transaction};
 use crate::ChangeId;
 
 /// One configured git remote and its fetch/push URLs (FR-JJ-9).
@@ -257,7 +257,7 @@ pub(crate) fn git_fetch(
     let remote: &RemoteName = &remote_buf;
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
 
     let subprocess_options = GitSubprocessOptions::from_settings(settings).map_err(mutate::be)?;
 

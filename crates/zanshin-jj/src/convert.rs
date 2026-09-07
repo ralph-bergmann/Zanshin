@@ -58,6 +58,10 @@
 //!    non-colocated tail, the same import paired with the `check_out` + materialisation that
 //!    gives a fresh destination its files, so it cannot share the reset-free helper.
 //!
+//! Every operation either verb writes carries the converting workspace's name in its metadata,
+//! as the CLI's do: all three transactions are opened through
+//! [`crate::op_support::start_repo_transaction`] (Epic 9 follow-up L).
+//!
 //! The colocated shape is therefore steps 1-2-3-4 and the non-colocated one steps 1-4-5.
 //! [`convert_import`] runs whichever its two paths select; [`convert_colocated`] always stops
 //! after step 4, deliberately — see [`convert_into`].
@@ -76,11 +80,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use jj_lib::git::{import_refs, GitImportOptions, GitRefKind};
-use jj_lib::ref_name::{GitRefName, RemoteName};
+use jj_lib::ref_name::{GitRefName, RemoteName, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
+use crate::op_support::start_repo_transaction;
 use crate::repo::make_settings;
 use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 
@@ -305,13 +310,17 @@ fn is_colocated(repo: &impl jj_lib::repo::Repo, workspace_root: &Path) -> bool {
 /// Leaving that map EMPTY is the one remaining gap, and it is a SEPARATE, crate-wide ledger
 /// item — `Repo::git_fetch` and `clone_into` leave it empty too (see
 /// [`crate::config::git_import_options`]).
-fn init_git_refs(repo: &Arc<ReadonlyRepo>, colocated: bool) -> Result<Arc<ReadonlyRepo>, RepoError> {
+fn init_git_refs(
+    repo: &Arc<ReadonlyRepo>,
+    workspace_name: &WorkspaceName,
+    colocated: bool,
+) -> Result<Arc<ReadonlyRepo>, RepoError> {
     let import_options = GitImportOptions {
         abandon_unreachable_commits: false,
         record_synthetic_predecessors: false,
         remote_auto_track_bookmarks: HashMap::new(),
     };
-    let mut tx = repo.start_transaction();
+    let mut tx = start_repo_transaction(repo, workspace_name);
     pollster::block_on(import_refs(tx.repo_mut(), &import_options))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     if !tx.repo().has_changes() {
@@ -349,8 +358,8 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 /// Consequence, restated in both verbs' rustdoc: after a colocated conversion the op log
 /// matches the CLI's, but `@` has not been re-parented onto the imported HEAD — it settles
 /// there on the first snapshot, exactly as 2.12's D3a already documented.
-fn import_git_head(repo: &Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>, RepoError> {
-    let mut tx = repo.start_transaction();
+fn import_git_head(repo: &Arc<ReadonlyRepo>, workspace_name: &WorkspaceName) -> Result<Arc<ReadonlyRepo>, RepoError> {
+    let mut tx = start_repo_transaction(repo, workspace_name);
     pollster::block_on(jj_lib::git::import_head(tx.repo_mut()))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     if !tx.repo().has_changes() {
@@ -432,9 +441,9 @@ fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
     //    by `detect_repo` and reaches this far, and in that shape `export_refs` and the
     //    `.gitignore` would both be wrong.
     let colocated = is_colocated(repo.as_ref(), workspace.workspace_root());
-    let repo = init_git_refs(&repo, colocated)?;
+    let repo = init_git_refs(&repo, workspace.workspace_name(), colocated)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let repo = import_git_head(&repo)?;
+    let repo = import_git_head(&repo, workspace.workspace_name())?;
     maybe_set_trunk_alias(&workspace, repo.as_ref())
 }
 
@@ -468,9 +477,13 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     //    `is_colocated` is false for the intended two-path use and true when a caller passes
     //    `workspace_path == git_repo_path` (D5), which is a colocated request jj honours.
     let colocated = is_colocated(repo.as_ref(), workspace.workspace_root());
-    let repo = init_git_refs(&repo, colocated)?;
+    let repo = init_git_refs(&repo, &workspace_name, colocated)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let repo = if colocated { import_git_head(&repo)? } else { repo };
+    let repo = if colocated {
+        import_git_head(&repo, &workspace_name)?
+    } else {
+        repo
+    };
     maybe_set_trunk_alias(&workspace, repo.as_ref())?;
     if colocated {
         return Ok(());
@@ -481,7 +494,7 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     //    Skipped when HEAD is unborn (`git_head().as_normal() == None` — e.g. a fresh
     //    `git init` with no commits), in which case `import_head` also changed nothing and no
     //    operation is written. This mirrors `clone_into` (repo.rs:~1650–1700).
-    let mut tx = repo.start_transaction();
+    let mut tx = start_repo_transaction(&repo, &workspace_name);
     pollster::block_on(jj_lib::git::import_head(tx.repo_mut()))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     let new_wc_commit = if let Some(git_head_id) = tx.repo().view().git_head().as_normal().cloned() {

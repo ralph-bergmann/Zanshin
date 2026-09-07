@@ -15,6 +15,7 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
+use crate::op_support::start_repo_transaction;
 use crate::{ChangeId, Timestamp};
 
 /// A jj operation-log id in plain forward-hex display form (e.g. `"abc123…"`).
@@ -155,7 +156,7 @@ pub(crate) fn undo(workspace: &mut Workspace) -> Result<MutationResult, MutateEr
         pollster::block_on(workspace.repo_loader().load_operation(target_parent_id)).map_err(mutate::be)?;
     let target_view = pollster::block_on(target_parent.view()).map_err(mutate::be)?;
 
-    let mut tx = readonly.start_transaction();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
     tx.repo_mut()
         .set_view(restored_view(target_view.store_view(), readonly.view().store_view()));
     let new_repo = pollster::block_on(tx.commit(format!("undo: restore to operation {}", target_parent.id().hex())))

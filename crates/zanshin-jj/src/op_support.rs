@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! `op_support.rs` — the four pieces of rewrite orchestration every thick jj verb needs
+//! `op_support.rs` — the five pieces of rewrite orchestration every thick jj verb needs
 //! that live in jj-cli's `cli_util`, not in jj-lib (Story 9.1).
 //!
 //! Ported at jj-cli **v0.44.0** parity — same preconditions, same refusals, same op-log
@@ -8,16 +8,21 @@
 //! `DiffEditor`/`MergeEditor` subprocess, no `Ui` prompt. Interactive selection arrives as
 //! a GUI-supplied tree id instead.
 //!
-//! The four sections and their prior art:
+//! The five `cli_util` ports and their prior art (§5 is not one of them — it is internal
+//! resolution plumbing shared by two verb families, with no CLI counterpart):
 //!
-//! 1. **Rewritability guard** — `cli_util.rs:2002` `check_rewritable` /
+//! 1. **Rewritability guard** (§1) — `cli_util.rs:2002` `check_rewritable` /
 //!    `:2011` `check_rewritable_expr` / `:1118` `resolve_immutable_expression`.
-//! 2. **Insert-location resolution** — `cli_util.rs:3551` `compute_commit_location` /
+//! 2. **Insert-location resolution** (§2) — `cli_util.rs:3551` `compute_commit_location` /
 //!    `:3641` `ensure_no_commit_loop`.
-//! 3. **Description combination and trailers** — `description_util.rs:299`
+//! 3. **Description combination and trailers** (§3) — `description_util.rs:299`
 //!    `try_combine_messages` / `:392` `add_trailers_with_template`.
-//! 4. **Selected-tree plumbing** — `cli_util.rs:3494` `DiffSelector`, whose
+//! 4. **Selected-tree plumbing** (§4) — `cli_util.rs:3494` `DiffSelector`, whose
 //!    `NonInteractive` arm is jj-lib's `restore_tree`.
+//! 5. **Transaction opening** (§6) — `cli_util.rs:2883` `start_repo_transaction`, the CLI's
+//!    single door onto `ReadonlyRepo::start_transaction`. Wired into every transaction the
+//!    crate opens, so every Zanshin operation records `op_metadata.workspace_name` the way a
+//!    CLI-written one does (Epic 9 follow-up L).
 //!
 //! Every item is `pub(crate)`: no `jj_lib` type may appear in a public position
 //! (`lib.rs`, FR-JJ-16). Section 1 is wired into `describe`/`edit`/`abandon` and both
@@ -39,11 +44,14 @@ use jj_lib::matchers::Matcher;
 use jj_lib::merge::{Diff, Merge};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::ref_name::WorkspaceName;
+use jj_lib::repo::ReadonlyRepo;
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{restore_tree, CommitWithSelection};
 use jj_lib::store::Store;
 use jj_lib::trailer::{parse_description_trailers, Trailer};
+use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, cfg, MutateError};
 use crate::revset::{build_aliases_map, immutable_expression, resolve_expression};
@@ -636,6 +644,40 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
     Ok(Box::new(jj_lib::matchers::PrefixMatcher::new(prefixes)))
 }
 
+// ── §6 Transaction opening ────────────────────────────────────────────────────────
+
+/// Opens a transaction on `repo` on behalf of `workspace_name` — the crate's ONLY
+/// sanctioned transaction opener.
+///
+/// Ports `cli/src/cli_util.rs:2883-2894` `start_repo_transaction` @ v0.44.0, through which the
+/// CLI funnels every transaction it opens. Two of its three statements are reproduced:
+/// `ReadonlyRepo::start_transaction` and [`Transaction::set_workspace_name`], which is what puts
+/// `workspace_name` into the operation's metadata. The op log is on-disk state a user reads with
+/// `jj op log`/`jj op show` and that multi-workspace repos rely on, so recording it is parity
+/// (NFR-R-2), not decoration.
+///
+/// The CLI's third statement — the `command_args_to_transaction_attribute` loop
+/// (`cli_util.rs:2896`) — is deliberately NOT ported: it encodes the terminal command line that
+/// ADR-0003 replaces with a GUI, so there is no argv to record. Nothing else is invented here:
+/// `hostname`/`username`/`time` already come from jj-lib's own `create_op_metadata`
+/// (`transaction.rs:176-198`) off the [`jj_lib::settings::UserSettings`], and `is_snapshot` is
+/// not this helper's business in the CLI either.
+///
+/// `workspace_name` must be the name of the workspace the caller's `Workspace` handle was opened
+/// for — `Workspace::workspace_name()`, exactly as the CLI's sole caller
+/// (`cli_util.rs:2286-2298`) passes `self.workspace_name()`. Never a constant, and never derived
+/// from a path: in a repo with several workspaces the two differ, and the operation must name the
+/// one that ran it.
+///
+/// A guard test in this module's `tests` asserts that no other file under
+/// `crates/zanshin-jj/src` calls `start_transaction` directly, so an operation cannot regain a
+/// `workspace_name: None` by a new call site slipping in.
+pub(crate) fn start_repo_transaction(repo: &Arc<ReadonlyRepo>, workspace_name: &WorkspaceName) -> Transaction {
+    let mut tx = repo.start_transaction();
+    tx.set_workspace_name(workspace_name);
+    tx
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -1122,5 +1164,151 @@ mod tests {
         let err = SelectedTree::from_tree_id(readonly.store(), &"ab".repeat(20))
             .expect_err("well-formed hex, but no such tree");
         assert!(matches!(err, MutateError::Backend(_)), "unexpected error: {err:?}");
+    }
+
+    // ── §6 transaction opening ────────────────────────────────────────────────
+
+    /// Every non-comment line mentioning the bare identifier `start_transaction`, as
+    /// `"<path>:<line>"`.
+    ///
+    /// A pure function over already-read `(path, contents)` pairs so the negative probes can
+    /// feed it a synthetic violation instead of writing one into the tree. The needle is the
+    /// BARE identifier, which is unambiguous precisely because the sanctioned opener is named
+    /// `start_repo_transaction` — that name does not contain this substring, so a call to it
+    /// never false-positives, while a method call, a UFCS
+    /// `ReadonlyRepo::start_transaction(&repo)` and a plain mention all match.
+    ///
+    /// Comment lines are skipped, the same rule `Makefile.toml`'s `test-jj-adapter-hygiene`
+    /// gate applies to its own source grep.
+    fn direct_transaction_openers(sources: &[(String, String)]) -> Vec<String> {
+        let mut hits = Vec::new();
+        for (path, contents) in sources {
+            for (index, line) in contents.lines().enumerate() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                if line.contains("start_transaction") {
+                    hits.push(format!("{path}:{}", index + 1));
+                }
+            }
+        }
+        hits
+    }
+
+    /// Reads every `*.rs` file under `dir` (recursively) as a `(path, contents)` pair.
+    ///
+    /// `crates/zanshin-jj/src` is flat today; the recursion is what keeps the guard honest the
+    /// day a module gains a subdirectory, so it is exercised deliberately by
+    /// [`the_scan_descends_into_subdirectories`] rather than left to grow stale.
+    fn read_rust_sources(dir: &Path) -> Vec<(String, String)> {
+        let mut sources = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("crate src/ is readable") {
+            let path = entry.expect("readable dir entry").path();
+            if path.is_dir() {
+                sources.extend(read_rust_sources(&path));
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let contents = std::fs::read_to_string(&path).expect("source file is UTF-8");
+                sources.push((path.display().to_string(), contents));
+            }
+        }
+        sources
+    }
+
+    /// The crate's own `src/`, minus `op_support.rs` — the one file allowed to open a
+    /// transaction.
+    fn crate_sources_outside_op_support() -> Vec<(String, String)> {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        read_rust_sources(&src)
+            .into_iter()
+            .filter(|(path, _)| !path.ends_with("op_support.rs"))
+            .collect()
+    }
+
+    /// The creep guard: an operation must never regain a `workspace_name: None` because a new
+    /// call site opened its transaction directly instead of through
+    /// [`super::start_repo_transaction`].
+    #[test]
+    fn no_source_file_outside_op_support_opens_a_transaction_directly() {
+        let sources = crate_sources_outside_op_support();
+        assert!(
+            sources.len() > 5,
+            "the scan found only {} source files — it is not actually reading the crate",
+            sources.len()
+        );
+
+        let hits = direct_transaction_openers(&sources);
+        assert!(
+            hits.is_empty(),
+            "these call sites bypass op_support::start_repo_transaction, so their operations \
+             record no workspace_name: {hits:?}"
+        );
+    }
+
+    /// The guard must also fail if the helper itself is deleted or renamed — otherwise a
+    /// refactor could satisfy "no direct openers" by having no openers at all.
+    #[test]
+    fn op_support_still_defines_the_sanctioned_opener() {
+        let helper = Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("op_support.rs");
+        let contents = std::fs::read_to_string(&helper).expect("op_support.rs is readable");
+        assert!(
+            contents.contains("fn start_repo_transaction"),
+            "the sanctioned transaction opener is gone; the creep guard now guards nothing"
+        );
+    }
+
+    /// A nested module directory is scanned too, and non-`.rs` files are left alone — the
+    /// guard must not go blind the first time this crate's `src/` stops being flat.
+    #[test]
+    fn the_scan_descends_into_subdirectories() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(tmp.path().join("top.rs"), "fn top() {}\n").expect("write top.rs");
+        std::fs::write(tmp.path().join("notes.txt"), "repo.start_transaction()\n").expect("write notes.txt");
+        let nested = tmp.path().join("nested");
+        std::fs::create_dir(&nested).expect("create nested dir");
+        std::fs::write(nested.join("deep.rs"), "let mut tx = repo.start_transaction();\n").expect("write deep.rs");
+
+        let sources = read_rust_sources(tmp.path());
+        assert_eq!(sources.len(), 2, "both .rs files, and only those: {sources:?}");
+
+        let hits = direct_transaction_openers(&sources);
+        assert_eq!(hits.len(), 1, "the nested violation must be found: {hits:?}");
+        assert!(hits[0].ends_with("deep.rs:1"), "got {}", hits[0]);
+    }
+
+    /// Negative probe: the scanner really does report a violation, at the right line.
+    #[test]
+    fn the_scanner_reports_a_synthetic_violation() {
+        let sources = vec![(
+            "fake.rs".to_owned(),
+            "let mut tx = repo.start_transaction();".to_owned(),
+        )];
+        assert_eq!(direct_transaction_openers(&sources), vec!["fake.rs:1".to_owned()]);
+    }
+
+    /// A UFCS call is caught too — the reason the needle is the bare identifier rather than
+    /// `.start_transaction(`.
+    #[test]
+    fn the_scanner_reports_a_ufcs_violation() {
+        let sources = vec![(
+            "fake.rs".to_owned(),
+            "\nlet mut tx = ReadonlyRepo::start_transaction(&repo);".to_owned(),
+        )];
+        assert_eq!(direct_transaction_openers(&sources), vec!["fake.rs:2".to_owned()]);
+    }
+
+    /// Comment lines are data, not call sites — and a call to the sanctioned helper is not a
+    /// violation, because its name does not contain the needle.
+    #[test]
+    fn the_scanner_ignores_comments_and_the_sanctioned_helper() {
+        let sources = vec![(
+            "fake.rs".to_owned(),
+            concat!(
+                "// never call repo.start_transaction() directly\n",
+                "    /// see `start_transaction` in jj-lib\n",
+                "let mut tx = start_repo_transaction(&repo, &workspace_name);\n",
+            )
+            .to_owned(),
+        )];
+        assert!(direct_transaction_openers(&sources).is_empty());
     }
 }
