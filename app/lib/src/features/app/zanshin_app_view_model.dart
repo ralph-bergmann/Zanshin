@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: MIT
+
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Brightness, ThemeMode;
+import 'package:inject_annotation/inject_annotation.dart';
+import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_shell/zanshin_shell.dart';
+
+/// Theme state for the app root: the persisted [ThemeMode] choice plus the
+/// live macOS shell theme, resolved into the mode `MaterialApp` should use.
+@inject
+class ZanshinAppViewModel extends ChangeNotifier {
+  ZanshinAppViewModel(this._settings) {
+    // Changes from anywhere (another window, another widget) reach this VM.
+    _settings.addListener(notifyListeners);
+  }
+
+  final SettingsStore _settings;
+  ShellTheme? _shellTheme;
+  StreamSubscription<ShellTheme>? _subscription;
+  var _disposed = false;
+
+  /// Last theme reported by the macOS shell; null until the platform answered.
+  ShellTheme? get shellTheme => _shellTheme;
+
+  /// The user's persisted choice (may be `system`).
+  ThemeMode get selectedMode => _settings.value.appearance.themeMode;
+
+  /// The mode `MaterialApp` should use.
+  ///
+  /// A forced mode wins outright; in system mode the shell channel is
+  /// authoritative for day/night on macOS. The channel keeps reporting the
+  /// SYSTEM value even while the window appearance is overridden (the
+  /// override is per-window), so switching back to system stays correct.
+  ThemeMode get effectiveMode {
+    final ShellTheme? shellTheme = _shellTheme;
+    return switch (selectedMode) {
+      ThemeMode.system when shellTheme != null =>
+        shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      _ => selectedMode,
+    };
+  }
+
+  /// One-shot setup for `ViewModelBuilder`'s `init`.
+  ///
+  /// On macOS: start the shell-theme query and subscription (both unawaited,
+  /// so the first frame renders immediately with Flutter's own brightness) and
+  /// mirror the persisted choice onto the window chrome once — a saved `dark`
+  /// must style the native title bar after a relaunch, not only Flutter.
+  void init() {
+    if (!_onMacOS) {
+      return;
+    }
+    unawaited(ZanshinShell.getTheme().then(_applyShellTheme));
+    _subscription = ZanshinShell.onThemeChanged.listen(_applyShellTheme);
+    _mirrorWindowAppearance(selectedMode);
+  }
+
+  /// Persists [mode] and mirrors it onto the native window chrome (blur
+  /// background, traffic lights), which Flutter theming cannot reach.
+  ///
+  /// Listeners are notified through the store; the returned future completes
+  /// when the settings file has been written.
+  Future<void> setThemeMode(ThemeMode mode) {
+    final Future<void> written = _settings.update((s) => s.copyWith.appearance(themeMode: mode));
+    _mirrorWindowAppearance(mode);
+    return written;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _settings.removeListener(notifyListeners);
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
+
+  static bool get _onMacOS => !kIsWeb && Platform.isMacOS;
+
+  void _applyShellTheme(ShellTheme theme) {
+    // A late getTheme() answer after dispose must not notify a disposed notifier.
+    if (_disposed) {
+      return;
+    }
+    _shellTheme = theme;
+    notifyListeners();
+  }
+
+  void _mirrorWindowAppearance(ThemeMode mode) {
+    if (!_onMacOS) {
+      return;
+    }
+    unawaited(
+      ZanshinShell.setWindowAppearance(switch (mode) {
+        ThemeMode.light => WindowAppearance.light,
+        ThemeMode.dark => WindowAppearance.dark,
+        ThemeMode.system => WindowAppearance.system,
+      }),
+    );
+  }
+}
