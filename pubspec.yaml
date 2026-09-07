@@ -14,4 +14,21 @@ dev_dependencies:
   melos: ^7.8.1
 
 melos:
+  ide:
+    intellij:
+      enabled: true
 
+  scripts:
+    analyze:
+      exec: dart analyze .
+
+    fix:
+      exec: dart fix --apply
+
+    format:
+      exec: dart format -l 120 .
+
+    clean:
+      run: melos run clean:flutter
+    clean:flutter:
+      run: melos exec -c 1 --fail-fast -- "flutter clean"

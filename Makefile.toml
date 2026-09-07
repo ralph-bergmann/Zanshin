@@ -582,6 +582,5 @@ args = ["clean"]
 
 [tasks.clean-flutter]
 private = true
-command = "flutter"
+command = "melos"
 args = ["clean"]
-cwd = "app"
