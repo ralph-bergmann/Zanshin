@@ -22,9 +22,9 @@ void main() {
   runZonedGuarded(
     () {
       WidgetsFlutterBinding.ensureInitialized();
-      // The macOS engine does not invoke the generated Dart plugin registrant
-      // on its own, so dartPluginClass-based plugins (zanshin_shell_macos)
-      // would never register their platform instance. Idempotent.
+      // The engine runs the generated Dart plugin registrant before `main`
+      // (runtime/dart_isolate.cc); this explicit re-run is redundant but
+      // harmless, it is idempotent.
       DartPluginRegistrant.ensureInitialized();
       SemanticsBinding.instance.ensureSemantics();
 

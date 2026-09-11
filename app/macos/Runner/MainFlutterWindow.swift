@@ -35,6 +35,15 @@ class MainFlutterWindow: NSWindow {
     override func awakeFromNib() {
         super.awakeFromNib()
 
+        // Windowing-API mode: Dart creates every window, so this nib window
+        // must not become the engine's implicit view. It stays invisible
+        // until the AppDelegate closes it (see AppDelegate.swift and
+        // WindowingBootstrap.swift).
+        if WindowingMode.isEnabled {
+            alphaValue = 0
+            return
+        }
+
         setupFlutterViewController()
         // Appearance first: the frame must be applied under the final style mask.
         // With `.fullSizeContentView` the frame equals the content size; applying a

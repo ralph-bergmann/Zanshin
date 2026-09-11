@@ -5,6 +5,7 @@ _bmad/
 
 # Dart
 .dart_tool/
+build/
 
 # IDE
 *.iml

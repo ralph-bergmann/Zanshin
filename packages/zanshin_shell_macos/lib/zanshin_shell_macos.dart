@@ -9,17 +9,18 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 /// [MethodChannel]: this side calls into Swift, and the Swift side pushes
 /// `onThemeChanged` calls back through the same channel.
 class ZanshinShellMacOS extends ZanshinShellPlatform {
-  ZanshinShellMacOS() {
-    _channel.setMethodCallHandler(_handleMethodCall);
-  }
-
   static void registerWith() {
     ZanshinShellPlatform.instance = ZanshinShellMacOS();
   }
 
   static const _channel = MethodChannel('zanshin_shell');
 
-  final _themeChanges = StreamController<ShellTheme>.broadcast();
+  /// The host→Dart handler is installed on the first listener, not in the
+  /// constructor: the engine runs the generated registrant before `main`,
+  /// where no binding (and so no binary messenger) exists yet.
+  late final _themeChanges = StreamController<ShellTheme>.broadcast(
+    onListen: () => _channel.setMethodCallHandler(_handleMethodCall),
+  );
 
   Future<Object?> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
