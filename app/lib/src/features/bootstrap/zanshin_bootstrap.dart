@@ -3,10 +3,10 @@
 import 'dart:async';
 
 import 'package:logging/logging.dart';
-import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+
+import 'boot_failure.dart';
 
 /// Loader animation shown while the app boots. Swap for
 /// `assets/lottie/nami_loader_transparent.json` to show the waves without the
@@ -16,72 +16,94 @@ const splashAnimationAsset = 'assets/lottie/nami_loader.json';
 /// Edge length of the loader animation in logical pixels.
 const double splashAnimationSize = 96;
 
-/// How long a boot may take before the loader appears at all.
+/// How long a boot may take before the splash window appears at all.
 const splashIndicatorDelay = Duration(milliseconds: 500);
 
-/// Once shown, the loader stays at least this long so it never just blinks.
+/// Once shown, the splash stays at least this long so it never just blinks.
 const splashIndicatorMinShow = Duration(milliseconds: 1000);
 
-/// Fade-in of the loader when [splashIndicatorDelay] elapses.
-const splashIndicatorFadeIn = Duration(milliseconds: 150);
-
-/// Fade-out of the whole splash over the finished app.
+/// Fade-out of the splash window once the main window is up.
 const splashFadeOut = Duration(milliseconds: 200);
 
 final _log = Logger('zanshin.bootstrap');
 
-/// Root widget of the app: runs the asynchronous boot behind the first frame.
+/// The windows [ZanshinBootSequence] drives.
 ///
-/// Paints the app's background colour immediately, shows the loader only when
-/// [openSettings] + [startApp] take longer than [splashIndicatorDelay] (and
-/// then for at least [splashIndicatorMinShow]), and finally the widget
-/// [startApp] returned.
-class ZanshinBootstrap extends StatefulWidget {
-  const ZanshinBootstrap({required this.openSettings, required this.startApp, super.key});
+/// Deliberately free of any windowing type: the real implementation is the
+/// only place that touches `runWidget` and the macOS window controllers, which
+/// a widget test cannot reach, so the sequencing is tested against a fake.
+abstract interface class BootWindowHost {
+  /// Shows the splash window. Called at most once, and only for a boot that
+  /// outlasts [splashIndicatorDelay].
+  Future<void> openSplash();
+
+  /// Opens the app's main window showing [content].
+  Future<void> openMain(Widget content);
+
+  /// Fades the splash out over [fade] and destroys it. Called only after
+  /// [openSplash], and only once.
+  Future<void> dismissSplash(Duration fade);
+}
+
+/// Runs the asynchronous boot and opens the app's windows around it.
+///
+/// The boot (`openSettings` → `startApp`) starts before any window exists and
+/// races [splashIndicatorDelay]:
+///
+/// * the boot wins — the main window is the first and only window, no splash
+///   object is ever created;
+/// * the timer wins — the splash window comes up and the main window follows
+///   at `max(boot end, delay + `[splashIndicatorMinShow]`)`, after which the
+///   splash fades out.
+///
+/// Waiting out the minimum with the *window* is what the single-window splash
+/// used to do with opacity: back then the finished app was already mounted
+/// behind an opaque splash, now it would pop up around a 320×320 card.
+///
+/// Timing is driven by [Timer]s alone, never by reading a clock, so the fake
+/// time of a widget test controls it fully.
+class ZanshinBootSequence {
+  ZanshinBootSequence({required this.host, required this.openSettings, required this.startApp});
+
+  /// The window layer this sequence drives.
+  final BootWindowHost host;
 
   /// First boot step: the persisted settings, needed by the DI graph and by
-  /// the splash colour.
+  /// the failure page's theme.
   final Future<SettingsStore> Function() openSettings;
 
   /// Second boot step: builds the DI graph over the loaded settings, starts
   /// the worker and returns the app widget.
   final Future<Widget> Function(SettingsStore settings) startApp;
 
-  @override
-  State<ZanshinBootstrap> createState() => _ZanshinBootstrapState();
-}
+  final _done = Completer<void>();
 
-class _ZanshinBootstrapState extends State<ZanshinBootstrap> {
-  /// Persisted theme choice; `system` until [ZanshinBootstrap.openSettings]
-  /// answered, which follows the platform brightness either way.
+  Timer? _delayTimer;
+
+  /// The native splash window while it is coming up; awaited before the main
+  /// window opens so the two can never cross. Already complete while there is
+  /// no splash.
+  var _splashOpening = Future<void>.value();
+
+  /// Persisted theme choice; `system` until [openSettings] answered — which
+  /// follows the platform brightness either way.
   ThemeMode _persistedMode = ThemeMode.system;
 
-  /// The finished app.
-  Widget? _content;
+  /// The finished app, or the failure page. Set before [_bootFinished], which
+  /// gates every read.
+  late Widget _content;
 
-  // Timing is driven by these two timers and the flags below, never by
-  // reading a clock, so the fake time of widget tests controls it fully.
-  late final Timer _delayTimer;
-  Timer? _minShowTimer;
-
-  var _indicatorVisible = false;
+  var _splashShown = false;
   var _minShowElapsed = false;
   var _bootFinished = false;
-  var _fadingOut = false;
-  var _splashDismissed = false;
+  var _mainOpened = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _delayTimer = Timer(splashIndicatorDelay, _showIndicator);
+  /// Starts the boot; completes once the main window is up and a splash, if
+  /// there was one, is gone.
+  Future<void> run() {
+    _delayTimer = Timer(splashIndicatorDelay, _showSplash);
     unawaited(_boot());
-  }
-
-  @override
-  void dispose() {
-    _delayTimer.cancel();
-    _minShowTimer?.cancel();
-    super.dispose();
+    return _done.future;
   }
 
   Future<void> _boot() async {
@@ -92,149 +114,58 @@ class _ZanshinBootstrapState extends State<ZanshinBootstrap> {
       // Process-level boundary: a failed boot may surface as an Error (FFI,
       // isolate spawn), so this deliberately catches everything.
       _log.severe('App boot failed', error, stackTrace);
-      content = _BootFailure(error: error, mode: _persistedMode);
+      content = BootFailure(error: error, mode: _persistedMode);
     }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _content = content;
-      _bootFinished = true;
-    });
-    _onBootFinished();
+    _content = content;
+    _bootFinished = true;
+    _openMainWhenDue();
   }
 
-  /// Both boot steps; the persisted mode reaches the splash between them.
+  /// Both boot steps; the persisted mode is known between them, in time for a
+  /// failure in the second one.
   Future<Widget> _load() async {
-    final SettingsStore settings = await widget.openSettings();
-    if (mounted) {
-      setState(() => _persistedMode = settings.value.appearance.themeMode);
-    }
-    return widget.startApp(settings);
+    final SettingsStore settings = await openSettings();
+    _persistedMode = settings.value.appearance.themeMode;
+    return startApp(settings);
   }
 
-  void _showIndicator() {
-    setState(() => _indicatorVisible = true);
-    _minShowTimer = Timer(splashIndicatorMinShow, _onMinShowElapsed);
+  /// [splashIndicatorDelay] elapsed and the boot is still running.
+  void _showSplash() {
+    _splashShown = true;
+    // Never cancelled: once the splash is up it is this timer that releases
+    // the main window.
+    Timer(splashIndicatorMinShow, _onMinShowElapsed);
+    _splashOpening = host.openSplash();
   }
 
   void _onMinShowElapsed() {
     _minShowElapsed = true;
-    if (_bootFinished) {
-      _startFadeOut();
-    }
+    _openMainWhenDue();
   }
 
-  void _onBootFinished() {
-    if (!_indicatorVisible) {
-      // Fast boot: nothing was ever shown, so nothing has to fade.
-      _delayTimer.cancel();
-      setState(() => _splashDismissed = true);
-    } else if (_minShowElapsed) {
-      _startFadeOut();
+  /// Opens the main window once the boot is done *and* a shown splash has had
+  /// its minimum. Called from both ends of that race; the later one wins.
+  void _openMainWhenDue() {
+    if (!_bootFinished || _mainOpened || (_splashShown && !_minShowElapsed)) {
+      return;
     }
-    // Otherwise _onMinShowElapsed starts the fade when the minimum is over.
+    _mainOpened = true;
+    _delayTimer?.cancel();
+    unawaited(_openMain());
   }
 
-  void _startFadeOut() => setState(() => _fadingOut = true);
+  Future<void> _openMain() async {
+    await _splashOpening;
+    await host.openMain(_content);
+    if (_splashShown) {
+      await host.dismissSplash(_splashFade);
+    }
+    _done.complete();
+  }
 
-  void _dismissSplash() => setState(() => _splashDismissed = true);
-
-  @override
-  Widget build(BuildContext context) => Directionality(
-    // Stack's default alignment is directional, and no MaterialApp exists yet.
-    textDirection: TextDirection.ltr,
-    child: MediaQuery.fromView(
-      // Platform brightness and accessibility flags without a MaterialApp.
-      view: View.of(context),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ?_content,
-          if (!_splashDismissed)
-            IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _fadingOut ? 0 : 1,
-                duration: splashFadeOut,
-                onEnd: _dismissSplash,
-                child: _SplashScreen(mode: _persistedMode, showIndicator: _indicatorVisible),
-              ),
-            ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// The splash: the colour `ZanshinApp`'s scaffold paints first, with the
-/// loader fading in once [showIndicator] is set.
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen({required this.mode, required this.showIndicator});
-
-  final ThemeMode mode;
-  final bool showIndicator;
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: _scaffoldBackground(_resolveBrightness(context, mode)),
-    child: Center(
-      child: AnimatedOpacity(
-        opacity: showIndicator ? 1 : 0,
-        duration: splashIndicatorFadeIn,
-        // Only in the tree once needed: a fast boot never loads the asset.
-        child: showIndicator
-            ? Lottie.asset(
-                splashAnimationAsset,
-                width: splashAnimationSize,
-                height: splashAnimationSize,
-                // "Reduce motion": the first frame is the static logo.
-                animate: !MediaQuery.disableAnimationsOf(context),
-              )
-            : null,
-      ),
-    ),
-  );
-}
-
-/// A persisted light/dark choice wins; `system` follows the platform.
-Brightness _resolveBrightness(BuildContext context, ThemeMode mode) => switch (mode) {
-  ThemeMode.light => Brightness.light,
-  ThemeMode.dark => Brightness.dark,
-  ThemeMode.system => MediaQuery.platformBrightnessOf(context),
-};
-
-/// The scaffold background of the yaru theme `ZanshinApp` uses for [brightness]
-/// (independent of the accent colour, so it matches the real app theme).
-Color _scaffoldBackground(Brightness brightness) =>
-    (brightness == Brightness.dark ? yaruDark : yaruLight).scaffoldBackgroundColor;
-
-/// Shown instead of the app when the boot failed: same background, a headline
-/// and the selectable error text. No retry — ⌘Q quits as usual.
-class _BootFailure extends StatelessWidget {
-  const _BootFailure({required this.error, required this.mode});
-
-  final Object error;
-  final ThemeMode mode;
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    theme: yaruLight,
-    darkTheme: yaruDark,
-    themeMode: mode,
-    home: Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 12,
-            children: [
-              const Text('Zanshin could not start.'),
-              SelectableText('$error'),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
+  /// "Reduce motion" skips the native cross-fade, the same accessibility rule
+  /// the loader animation follows.
+  static Duration get _splashFade => WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations
+      ? Duration.zero
+      : splashFadeOut;
 }

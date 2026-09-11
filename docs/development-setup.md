@@ -16,6 +16,16 @@ flutter channel main
 flutter upgrade
 ```
 
+The **windowing feature flag is mandatory**, not optional: the app creates every window
+from Dart (splash, then the main window) and its runner attaches none, so without the flag
+the app builds but comes up with no window at all. The flag is machine-global — it cannot
+be set from this repo — and it is compiled into the app, so re-run the build after
+enabling it:
+
+```sh
+flutter config --enable-windowing
+```
+
 ### FlatBuffers compiler (`flatc`)
 
 The FlatBuffers compiler generates the Rust and Dart wire-type accessors from

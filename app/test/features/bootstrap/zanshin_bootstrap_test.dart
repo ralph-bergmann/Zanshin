@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
+import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
+import 'package:zanshin/src/features/bootstrap/splash_card.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
@@ -17,6 +18,36 @@ class AppMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+/// Records the window calls the sequence makes, in order.
+///
+/// The real host is the only thing that touches `runWidget` and the macOS
+/// window controllers, none of which a widget test can reach — the interface
+/// exists so the sequencing can be tested without them.
+class FakeBootWindowHost implements BootWindowHost {
+  final calls = <String>[];
+
+  /// What [openMain] was handed.
+  Widget? content;
+
+  /// What [dismissSplash] was handed.
+  Duration? fade;
+
+  @override
+  Future<void> openSplash() async => calls.add('splash');
+
+  @override
+  Future<void> openMain(Widget content) async {
+    this.content = content;
+    calls.add('main');
+  }
+
+  @override
+  Future<void> dismissSplash(Duration fade) async {
+    this.fade = fade;
+    calls.add('dismiss');
+  }
 }
 
 void main() {
@@ -42,194 +73,106 @@ void main() {
     return store!;
   }
 
-  /// Pumps a bootstrap whose two steps complete through [settings] and [app].
-  Future<void> pumpBootstrap(
+  /// Starts a sequence whose two boot steps complete through [settings] and
+  /// [app], on an otherwise empty tree.
+  Future<FakeBootWindowHost> startSequence(
     WidgetTester tester, {
     required Completer<SettingsStore> settings,
     required Completer<Widget> app,
-  }) => tester.pumpWidget(
-    ZanshinBootstrap(openSettings: () => settings.future, startApp: (_) => app.future),
-  );
+  }) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () => settings.future,
+        startApp: (_) => app.future,
+      ).run(),
+    );
+    return host;
+  }
 
-  /// The splash background; exactly one `ColoredBox` exists while it shows.
-  Color splashColor(WidgetTester tester) => tester.widget<ColoredBox>(find.byType(ColoredBox)).color;
-
-  /// Runs the microtask of a just-completed boot step and draws the frame its
-  /// `setState` scheduled (a single pump only flushes the microtask).
-  Future<void> pumpStep(WidgetTester tester) async {
+  /// Runs the microtasks a just-completed boot step queued, without moving the
+  /// fake clock.
+  Future<void> flush(WidgetTester tester) async {
     await tester.pump();
     await tester.pump();
   }
 
-  /// Target opacity of the splash overlay — the outermost `AnimatedOpacity`
-  /// (the loader's own fade-in sits inside it).
-  double splashTargetOpacity(WidgetTester tester) =>
-      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity).first).opacity;
-
-  testWidgets('a fast boot swaps to the app as soon as both steps are done', (tester) async {
+  testWidgets('a fast boot opens the main window as the only window', (tester) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>();
     final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    expect(find.byType(ColoredBox), findsOneWidget);
-    expect(find.byType(AppMarker), findsNothing);
-
-    settings.complete(store);
-    await pumpStep(tester);
-    app.complete(const AppMarker());
-    await pumpStep(tester);
-
-    expect(find.byType(AppMarker), findsOneWidget);
-    expect(find.byType(ColoredBox), findsNothing);
-    expect(find.byType(LottieBuilder), findsNothing);
-  });
-
-  testWidgets('system mode follows the platform brightness before and after the settings are read', (
-    tester,
-  ) async {
-    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>();
-    final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
-
-    expect(splashColor(tester), yaruDark.scaffoldBackgroundColor);
+    expect(host.calls, isEmpty);
 
     settings.complete(store);
-    await pumpStep(tester);
-
-    expect(splashColor(tester), yaruDark.scaffoldBackgroundColor);
-
+    await flush(tester);
     app.complete(const AppMarker());
-    await pumpStep(tester);
+    await flush(tester);
+
+    expect(host.calls, <String>['main']);
+    expect(host.content, isA<AppMarker>());
   });
 
-  testWidgets('a persisted dark mode overrides a light platform once the settings are read', (tester) async {
-    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
-    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
-    final settings = Completer<SettingsStore>();
-    final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
-
-    expect(splashColor(tester), yaruLight.scaffoldBackgroundColor);
-
-    settings.complete(store);
-    await pumpStep(tester);
-
-    expect(splashColor(tester), yaruDark.scaffoldBackgroundColor);
-
-    app.complete(const AppMarker());
-    await pumpStep(tester);
-  });
-
-  testWidgets('a persisted light mode overrides a dark platform once the settings are read', (tester) async {
-    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    final SettingsStore store = await storeWith(tester, ThemeMode.light);
-    final settings = Completer<SettingsStore>();
-    final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
-
-    expect(splashColor(tester), yaruDark.scaffoldBackgroundColor);
-
-    settings.complete(store);
-    await pumpStep(tester);
-
-    expect(splashColor(tester), yaruLight.scaffoldBackgroundColor);
-
-    app.complete(const AppMarker());
-    await pumpStep(tester);
-  });
-
-  testWidgets('the loader appears after 500 ms and stays at least 1 s before the app fades in', (tester) async {
+  testWidgets('the splash appears after 500 ms and the main window waits out its minimum show', (tester) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
     await tester.pump(const Duration(milliseconds: 499));
-    expect(find.byType(LottieBuilder), findsNothing);
+    expect(host.calls, isEmpty);
 
     await tester.pump(const Duration(milliseconds: 1)); // t = 500 ms
-    expect(find.byType(LottieBuilder), findsOneWidget);
-    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isTrue);
+    expect(host.calls, <String>['splash']);
 
     await tester.pump(const Duration(milliseconds: 100)); // t = 600 ms
     app.complete(const AppMarker());
-    await pumpStep(tester);
-    // The app is built under the still fully opaque splash.
-    expect(find.byType(AppMarker), findsOneWidget);
-    expect(splashTargetOpacity(tester), 1);
+    await flush(tester);
+    // The boot is done, but the splash has not had its second yet.
+    expect(host.calls, <String>['splash']);
 
     await tester.pump(const Duration(milliseconds: 899)); // t = 1499 ms
-    expect(splashTargetOpacity(tester), 1);
+    expect(host.calls, <String>['splash']);
 
-    await tester.pump(const Duration(milliseconds: 1)); // t = 1500 ms: minimum over, fade starts
-    expect(splashTargetOpacity(tester), 0);
-    expect(find.byType(LottieBuilder), findsOneWidget);
-
-    await tester.pump(const Duration(milliseconds: 200)); // t = 1700 ms: fade at its end value
-    await tester.pump(const Duration(milliseconds: 1)); // an animation completes on the tick after its duration
-    expect(find.byType(ColoredBox), findsNothing);
-    expect(find.byType(LottieBuilder), findsNothing);
-    expect(find.byType(AppMarker), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1)); // t = 1500 ms
+    await flush(tester);
+    expect(host.calls, <String>['splash', 'main', 'dismiss']);
+    expect(host.content, isA<AppMarker>());
+    expect(host.fade, splashFadeOut);
   });
 
-  testWidgets('a boot that outlasts the minimum show time fades out right away', (tester) async {
+  testWidgets('a boot that outlasts the minimum show opens the main window right away', (tester) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
     await tester.pump(const Duration(seconds: 3));
-    expect(find.byType(LottieBuilder), findsOneWidget);
-    expect(splashTargetOpacity(tester), 1);
+    expect(host.calls, <String>['splash']);
 
     app.complete(const AppMarker());
-    await pumpStep(tester);
-    expect(splashTargetOpacity(tester), 0);
+    await flush(tester);
 
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.pump(const Duration(milliseconds: 1));
-    expect(find.byType(ColoredBox), findsNothing);
-    expect(find.byType(AppMarker), findsOneWidget);
+    expect(host.calls, <String>['splash', 'main', 'dismiss']);
   });
 
-  testWidgets('disposing the bootstrap while booting cancels its timers and drops the late result', (
-    tester,
-  ) async {
-    final SettingsStore store = await storeWith(tester, ThemeMode.system);
-    final settings = Completer<SettingsStore>()..complete(store);
-    final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
-    await tester.pump(const Duration(milliseconds: 600)); // loader shown, minimum-show timer running
-
-    await tester.pumpWidget(const SizedBox());
-    app.complete(const AppMarker());
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-
-    expect(find.byType(AppMarker), findsNothing);
-  });
-
-  testWidgets('a failed boot shows the error page and logs at SEVERE', (tester) async {
+  testWidgets('a boot that fails before the delay opens the main window with the failure page', (tester) async {
     final records = <LogRecord>[];
     final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
     addTearDown(logs.cancel);
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
     app.completeError(StateError('worker refused to start'));
-    await pumpStep(tester);
+    await flush(tester);
 
-    expect(find.text('Zanshin could not start.'), findsOneWidget);
-    expect(find.textContaining('worker refused to start'), findsOneWidget);
-    expect(find.byType(LottieBuilder), findsNothing);
+    expect(host.calls, <String>['main']);
+    expect(host.content, isA<BootFailure>());
     expect(
       records,
       contains(
@@ -241,7 +184,50 @@ void main() {
     );
   });
 
-  testWidgets('with reduced motion the loader shows its first frame without animating', (tester) async {
+  testWidgets('a boot that fails after the splash still honours the minimum show', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(host.calls, <String>['splash']);
+
+    app.completeError(StateError('worker refused to start'));
+    await flush(tester);
+    expect(host.calls, <String>['splash']);
+
+    await tester.pump(const Duration(milliseconds: 900)); // t = 1500 ms
+    await flush(tester);
+
+    expect(host.calls, <String>['splash', 'main', 'dismiss']);
+    expect(host.content, isA<BootFailure>());
+  });
+
+  testWidgets('the failure page follows the persisted theme mode', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+
+    app.completeError(StateError('worker refused to start'));
+    await flush(tester);
+
+    expect((host.content! as BootFailure).mode, ThemeMode.dark);
+  });
+
+  testWidgets('a failure before the settings were read falls back to the system theme', (tester) async {
+    final settings = Completer<SettingsStore>();
+    final app = Completer<Widget>();
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
+
+    settings.completeError(const FileSystemException('unreadable'));
+    await flush(tester);
+
+    expect((host.content! as BootFailure).mode, ThemeMode.system);
+  });
+
+  testWidgets('with reduced motion the splash is dismissed without a fade', (tester) async {
     tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
       disableAnimations: true,
     );
@@ -249,17 +235,34 @@ void main() {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
-    await pumpBootstrap(tester, settings: settings, app: app);
+    final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isFalse);
-
-    app.complete(const AppMarker());
-    // Minimum show over at 1500 ms; the fade-out then runs 200 ms and
-    // completes on the tick after its duration.
     await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.pump(const Duration(milliseconds: 1));
-    expect(find.byType(LottieBuilder), findsNothing);
+    app.complete(const AppMarker());
+    await flush(tester);
+
+    expect(host.calls, <String>['splash', 'main', 'dismiss']);
+    expect(host.fade, Duration.zero);
+  });
+
+  testWidgets('the splash card animates the loader, and holds its first frame with reduced motion', (tester) async {
+    await tester.pumpWidget(const SplashCard());
+    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isTrue);
+
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(const SplashCard());
+
+    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isFalse);
+  });
+
+  testWidgets('the failure page shows the headline and the error text', (tester) async {
+    await tester.pumpWidget(const BootFailure(error: 'worker refused to start', mode: ThemeMode.system));
+
+    expect(find.text('Zanshin could not start.'), findsOneWidget);
+    expect(find.textContaining('worker refused to start'), findsOneWidget);
   });
 }

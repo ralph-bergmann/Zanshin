@@ -58,8 +58,30 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
 
     /// The window hosting the Flutter view - resolved lazily because the view
     /// is not attached to a window yet when the plugin registers.
+    ///
+    /// With a view-less engine - the runner's shape since every window is
+    /// created from Dart - `registrar.view` is nil for good, and `mainWindow`
+    /// is nil until some window has become key. So fall back to the app's own
+    /// window list. `.titled` is the discriminator: the splash is borderless,
+    /// has no titlebar to drag, zoom or re-appearance, and must never answer
+    /// for the app.
     private var window: NSWindow? {
-        return view?.window ?? NSApp.mainWindow
+        if let attached = view?.window {
+            return attached
+        }
+        if let main = NSApp.mainWindow, Self.isAppWindow(main) {
+            return main
+        }
+        if let key = NSApp.keyWindow, Self.isAppWindow(key) {
+            return key
+        }
+        return NSApp.windows.first(where: Self.isAppWindow)
+    }
+
+    /// - Returns: `true` for a Flutter window that carries the app's chrome
+    private static func isAppWindow(_ window: NSWindow) -> Bool {
+        return window.contentViewController is FlutterViewController
+            && window.styleMask.contains(.titled)
     }
 
     private func currentTheme() -> [String: Any] {

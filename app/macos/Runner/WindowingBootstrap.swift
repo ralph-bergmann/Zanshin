@@ -3,37 +3,14 @@
 import Cocoa
 import FlutterMacOS
 
-/// Windowing-API mode (proof of concept, see `lib/main2.dart`).
-///
-/// Every window is created from Dart, so the runner must not attach the nib
-/// window as the engine's implicit view: the engine allows multi-view only
-/// while it has no view yet. Enabled by the `--windowing` process argument,
-/// which `flutter run` forwards from `--dart-entrypoint-args`:
-///
-///     flutter run -d macos -t lib/main2.dart --dart-entrypoint-args=--windowing
-enum WindowingMode {
-    static let isEnabled = CommandLine.arguments.contains("--windowing")
-}
-
 /// Runs the engine without a view and hosts the window channels.
+///
+/// Every window is created from Dart: the engine allows multi-view only while
+/// it has no view yet, so the runner attaches none. There is no nib window and
+/// no `MainFlutterWindow` any more; Dart's own registry ends the process with
+/// its last window.
 final class WindowingBootstrap {
-    /// Set once a Dart window has actually appeared on screen; from then on
-    /// closing the last window quits the app, as for any macOS app. Not set
-    /// at creation: AppKit runs its last-window check deferred, so the nib
-    /// window closed at launch would otherwise quit the app as soon as the
-    /// still hidden splash exists.
-    private(set) static var hasShownWindow = false
-
     private let engine = FlutterEngine(name: "zanshin", project: nil)
-    private let visibleWindows = NotificationCenter.default.addObserver(
-        forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
-    ) { note in
-        if let window = note.object as? NSWindow, window.contentViewController is FlutterViewController,
-            window.occlusionState.contains(.visible)
-        {
-            WindowingBootstrap.hasShownWindow = true
-        }
-    }
     private var splashWindowHost: SplashWindowHost?
     private var windowFrameStore: WindowFrameStore?
 

@@ -1,14 +1,18 @@
-# Windowing-API splash POC — design
+# Windowing-API app start — design
 
-**Status:** proof of concept, 2026-09-11. Lives next to the real bootstrap; `main.dart`
-is untouched.
+**Status:** shipped 2026-09-12. This is the app's only boot path: `main.dart` runs it,
+there is no second entrypoint and no flag. Started as a proof of concept on 2026-09-11
+(`lib/main2.dart` behind a `--windowing` process argument); the "What the engine actually
+does" findings below are from that POC and still hold.
+
+**Prerequisite:** `flutter config --enable-windowing` (machine-global, compiled into the
+app). Without it the app builds but comes up with no window at all.
 
 ## Goal
 
-Try Flutter's experimental desktop windowing API (`flutter config --enable-windowing`,
-master channel) for the app start: a splash window first, then the regular main window.
-Ralph's sketch: an invisible root `Window`, a modal buttonless splash on top of it for a
-few seconds, then a normal window.
+Use Flutter's desktop windowing API for the app start: a splash window while the boot is
+slow, then the real main window — both created from Dart, both carrying the app's own
+chrome. The runner owns no window any more.
 
 ## What the engine actually does on macOS
 
@@ -22,7 +26,7 @@ Read at the installed SDK (master, 3.48.0-1.0.pre-713), engine file
 | `DialogWindowController`, `parent != null` | same window, but presented as a **sheet** of the parent (`beginCriticalSheet`) |
 | `TooltipWindowController` / `PopupWindowController` | **borderless**, transparent, child window of a required parent; popups close when the parent loses key |
 
-Consequences for the sketch:
+Consequences:
 
 - **"Modal" is a sheet.** A modal dialog needs a visible parent to hang from. An invisible
   or zero-size parent has no title bar to attach a sheet to, and `Size.zero` is not
@@ -30,131 +34,162 @@ Consequences for the sketch:
 - **No borderless top-level window type.** Only tooltips and popups are borderless, and both
   need a parent window and cannot become key.
 - **Multi-view is all or nothing.** `FlutterEngine.enableMultiView` asserts that no view
-  controller exists yet. The runner's `MainFlutterWindow` attaches the implicit view in
-  `awakeFromNib`, so with the current runner the first Dart-created window crashes.
-  The upstream `examples/multiple_windows` runner has no `MainFlutterWindow.swift` at all:
-  its `AppDelegate` runs a view-less `FlutterEngine` and Dart creates every window.
+  controller exists yet, so the runner must attach none. `MainFlutterWindow.swift` and the
+  nib's window object are gone; `AppDelegate` runs a view-less `FlutterEngine` and Dart
+  creates every window — the shape of the upstream `examples/multiple_windows` runner.
 - **Escape hatch.** The macOS controllers expose the `NSWindow` pointer
   (`BaseWindowControllerMacOS.windowHandle`) so native code can customise a window the
-  engine owns.
+  engine owns. Everything native below goes through that handle.
 
 ## Design
 
-Splash first, then the start window (the project list), and a double-click on a project
-opens that project in its own window. Every window except the splash remembers its frame.
-No root window: `runWidget` needs no window at the root, the tree simply changes which
-`View`s it contains. Not modal: the API's modal dialog is a sheet on a visible parent, so the
-splash is a modeless dialog raised to the floating level instead — only while this app is
-active, since the floating level is global; inactive it drops to the normal level rather than
-hiding (`hidesOnDeactivate` raced the activation at start and left the splash invisible).
-Nothing is lost — while the splash is up there is no other window to block, and once the
-start window exists the splash only floats above it for the fade.
+```
+boot (openSettings → startApp) starts before any window, racing a 500 ms timer
+  ├─ boot wins  → runWidget(WindowManager(initialWindows: [ main ]))   ← no splash exists
+  └─ timer wins → runWidget(WindowManager(initialWindows: [ splash ]))
+                    ├─ main window opens at max(boot end, 500 ms + 1000 ms)
+                    └─ splash fades out natively, unregisters itself, is destroyed
+a destroyed window unregisters itself; the last one exits the process
+```
 
-```
-runWidget(WindowManager(initialWindows: [ splash ]))          ← the registry owns the windows
-  ├─ splash content runs the boot (faked with a delay in the POC)
-  ├─ registers the start window (remembered under `start`)    ← appears on its first frame
-  ├─ splash fades out natively, unregisters itself, is destroyed
-  └─ start window: double-click → registers `project:<path>` window; a destroyed window
-     unregisters itself, the last one exits the process
-```
+### The splash race (and why)
+
+The boot starts *before* `runWidget`, and whichever of the two — boot or timer — wins
+decides which window is handed to `runWidget`. That matters because **the first window has
+to be part of the engine's warm-up frame**: the engine only shows a window once it has
+presented a frame, and only the warm-up frame is timer-driven — every later frame waits for
+the display link of a view that does not exist yet. A window created after `runWidget` on a
+view-less engine is created but stays invisible (verified in the POC).
+
+The documented fallback — always create the splash and hold it at native `alphaValue = 0`
+on a fast boot — was **not needed**: the engine is happy to take whichever window exists at
+`runWidget` time, so a fast boot never creates a splash object at all.
+
+### Min-show semantics translate, they do not survive literally
+
+The old in-window splash (`2026-09-07-app-bootstrap-splash-design.md`, superseded) faded an
+opaque overlay off a mounted app. With two windows the main window is visible the moment it
+opens, so it opens at `max(boot end, delay + minShow)` instead — otherwise a 1000×700 window
+would pop up around the 320×320 splash for a second. Unchanged: nothing before 500 ms, at
+least 1000 ms once shown, a 200 ms fade, no splash at all on a fast boot, the failure page,
+the `SEVERE` record on `zanshin.bootstrap`, and reduced motion.
 
 ### Components
 
-- **`SplashWindowController`** (`lib/src/features/bootstrap/splash_window_controller.dart`)
-  — the custom controller. Subclasses the engine's `DialogWindowControllerMacOS`
-  (parentless, `resizable: false`) and, before the engine shows the window, asks the runner
-  over the `zanshin/splash_window` channel to strip the chrome: borderless, transparent
-  background, fixed size, centred, floating, not movable. `create()` is async because the
-  chrome must be gone before the first frame makes the window visible. `fadeOut()` animates
-  the window's alpha natively so the shadow fades with the content.
-- **`RememberedWindowController`** (`lib/src/features/bootstrap/remembered_window_controller.dart`)
-  — a regular window remembered under a key (`start`, `project:<path>`). Subclasses the
+- **`ZanshinBootSequence`** (`lib/src/features/bootstrap/zanshin_bootstrap.dart`) — the
+  sequencer: runs the two boot steps, races the timers, and drives a `BootWindowHost`
+  (`openSplash` / `openMain(Widget)` / `dismissSplash(Duration)`). The interface carries no
+  windowing type, so `flutter test` drives the whole matrix against a fake while
+  `tester.pump(Duration)` owns the clock. Timing comes from `Timer`s only, never from
+  reading a clock.
+- **`ZanshinWindowHost`** (`lib/src/features/bootstrap/boot_window_host.dart`) — the real
+  host and the only place that calls `runWidget`. Not unit-tested; covered by the runtime
+  smoke check.
+- **`AppWindows`** (`lib/src/features/window/app_windows.dart`) — the key → `WindowEntry`
+  map over the `WindowRegistry`, with `openOrActivate` (re-opening a key activates the open
+  window instead), the lifecycle delegate that unregisters a destroyed window, and the
+  exit-when-empty rule. `WindowManager` keeps its registry private, so `AppWindows` wraps
+  every window builder and captures it from the first build (`WindowRegistry.of(context)`).
+  Nothing here assumes a single window: the later project windows open through exactly
+  `openOrActivate`.
+- **`SplashWindowController`** (`lib/src/features/window/splash_window_controller.dart`) —
+  subclasses the engine's `DialogWindowControllerMacOS` (parentless, `resizable: false`)
+  and, before the engine shows the window, asks the runner over the `zanshin/splash_window`
+  channel to strip the chrome: borderless, transparent background, fixed size, centred,
+  floating, not movable. `create()` is async because the chrome must be gone before the
+  first frame makes the window visible. `fadeOut()` animates the window's alpha natively so
+  the shadow fades with the content; `Duration.zero` is what "reduce motion" passes.
+- **`RememberedWindowController`** (`lib/src/features/window/remembered_window_controller.dart`)
+  — a regular window remembered under a key (`main`, later `project:<path>`). Subclasses the
   engine's `WindowControllerMacOS`; `create()` asks the runner over `zanshin/window_frames`
-  to restore the saved frame before the first frame shows the window. The windowing API has
-  a content size but no position, hence native.
-- **`WindowFrameStore.swift`** (`macos/Runner/`) — native half of that channel. Saves
-  position, size and the display (id, offset, size) per key in the UserDefaults suite
-  `<bundle id>.window_frames` on every move and resize, exactly like the pre-windowing
-  `MainFlutterWindow.swift` did for its single window, and restores only when that display
-  is still connected (exact match, else same display id at the same x offset).
-- **`WindowingBootstrap.swift`** (`macos/Runner/`) — `WindowingMode.isEnabled` (the
-  `--windowing` process argument), a view-less `FlutterEngine` with the generated plugins,
-  `SplashWindowHost` (channel `zanshin/splash_window`: `configure`, `fadeOut`), the frame
-  store, app activation, and a hot-restart workaround (below).
-- **Activation.** `flutter run` foregrounds the app with `open <bundle>` only after attaching
-  a VM service, i.e. never in `--release` (flutter_tools `desktop_device.dart:139`,
-  `macos_device.dart:86-89`); exec'd directly the process starts inactive behind the
-  terminal. Under cooperative activation (macOS 14+) a bare `NSApp.activate()` is only
-  honoured after the frontmost app yielded, which a terminal never does; the soft-deprecated
-  `activate(ignoringOtherApps: true)` still is (Neovide #2799, Electron #40570), and is
-  issued twice because macOS 26 drops requests at random. Verified with a direct exec: the
-  app is frontmost within 2.5 s.
-- **Hot-restart workaround.** The engine's `closeAllWindows` (run on hot restart) disposes
-  each view controller and closes the window without detaching the window delegate, unlike
-  `destroyWindow`; closing the *key* window then calls `viewIdentifier` on the disposed
-  controller and the debug build dies with `NSInternalInconsistencyException`. The runner
-  detaches the delegate on `NSWindow.willCloseNotification` for Flutter windows. Worth an
-  upstream issue.
-- **`zanshin_shell_macos`** — the engine runs the generated Dart plugin registrant before
-  `main` (`runtime/dart_isolate.cc:927`), in every runner shape; the plugin installed its
-  channel handler in the constructor and asserted without a binding. The handler is now
-  installed on the first listener of `onThemeChanged`, `registerWith` is a pure instance
-  assignment like every reference plugin. `main.dart`'s explicit
-  `DartPluginRegistrant.ensureInitialized()` re-ran the registrant after the binding existed
-  and masked the failure; it is now redundant (left untouched here).
-- **Runner gate** — in windowing mode `MainFlutterWindow.awakeFromNib` attaches nothing and
-  keeps the nib window invisible; `AppDelegate` closes it, starts the engine, and stops
-  terminating on the last closed window only until a Dart window has appeared on screen
-  (AppKit runs that check deferred, so the nib window's close would otherwise quit the app
-  as soon as the still hidden splash exists); afterwards the usual macOS rule applies, and
-  Dart's registry exits with its last window as well.
-  Without the flag the runner behaves exactly as before.
-- **`main2.dart`** — the flow above on the API's own `WindowManager`/`WindowRegistry`: a
-  rounded splash card with the existing Lottie loader, the start window with a demo project
-  list (1200×800 first launch, min 900×600), project windows per double-click, and a window
-  delegate that unregisters a destroyed window and exits with the last one. Double-clicking a
-  project that is already open brings its window to the front instead of opening a second.
+  to apply the chrome and restore the saved frame before the first frame shows the window.
+  The windowing API has a content size but no position, hence native.
+- **`MainWindowChrome.swift`** (`macos/Runner/`) — the app's chrome, ported from the deleted
+  `MainFlutterWindow`: `.fullSizeContentView` style mask, transparent titlebar, hidden
+  title, clear non-opaque background, `minSize` 900×600, `isRestorable = false`, the toolbar
+  + drag-interceptor accessory, the `NSVisualEffectView`, and `TrafficLightOverlayView`.
+- **`WindowFrameStore.swift`** (`macos/Runner/`) — native half of `zanshin/window_frames`.
+  Applies the chrome (when the `chrome` argument is set), *then* the frame, then keeps
+  saving position, size and the display (id, offset, size) per key in the UserDefaults suite
+  `<bundle id>.window_frames` on every move and resize, restoring only when that display is
+  still connected (exact match, else same display id at the same x offset). The old
+  single-window `<bundle id>.app_position` suite is dead; nothing reads it and there is no
+  migration.
+- **`WindowingBootstrap.swift`** (`macos/Runner/`) — the view-less `FlutterEngine` with the
+  generated plugins, `SplashWindowHost` (channel `zanshin/splash_window`: `configure`,
+  `fadeOut`), the frame store, app activation, and the hot-restart workaround (below).
+- **`AppDelegate.swift`** — starts the engine and returns `false` from
+  `applicationShouldTerminateAfterLastWindowClosed`: AppKit runs that check deferred, so the
+  transient gap between the main window opening and the splash being destroyed would quit
+  the app. Dart's registry owns the rule instead.
+- **`zanshin_shell_macos`** — with a view-less engine `registrar.view` is nil for good and
+  `NSApp.mainWindow` is nil until a window becomes key, so the plugin resolves its window
+  from `NSApp.windows`, filtered to a `FlutterViewController` window that is `.titled` —
+  which is exactly "an app window, never the borderless splash".
 
-### The switch
+### Chrome on a window the engine owns
 
-`flutter run` on desktop passes `--dart-entrypoint-args` as process arguments, so the runner
-can read it from `CommandLine.arguments` (the global `flutter config --enable-windowing` flag
-must be on as well; it is on this machine):
+Two things had to change when the chrome moved off an `NSWindow` subclass:
 
-```bash
-flutter run -d macos -t lib/main2.dart --dart-entrypoint-args=--windowing
-```
+- **Ordering.** The chrome must be applied *before* the saved frame. With
+  `.fullSizeContentView` the frame is the content size; applying a frame under a
+  non-final style mask shaves the titlebar height off the window on every launch. Both
+  happen in the one `restore` round-trip, chrome first.
+- **The vibrancy view is a sibling now.** It used to be the window's content view, with the
+  Flutter view as its subview (`WrapperViewController`). The engine owns the
+  `contentViewController` of a window it created, so the `NSVisualEffectView`
+  (`.behindWindow`, `.active`, corner radius 20) is inserted into the frame view directly
+  *below* `window.contentView`, and re-stacked from the same notifications that re-attach
+  the traffic-light overlay (key, exit-fullscreen), because a titlebar rebuild can orphan
+  it. The Flutter view keeps drawing on top and unclipped.
 
-The same works with `--release` (verified by exec'ing the release binary directly: the app
-comes to the front on its own). One tool limitation: with `--release` the `flutter run`
-prompt does not return when the app quits — the tool only finishes on a VM-service
-disconnect or on `q` (`run_cold.dart`, `resident_runner.dart:_serviceDisconnected`), and a
-release build has no VM service. Verified: in debug the prompt returns within a second of
-the app quitting, in release it waits for `q`. `--profile` keeps the VM service, or run the
-built bundle with `open`.
+### Activation
 
-The macOS engine hands the same process arguments to Dart's `main`, so `main2.dart` detects
-a forgotten flag and renders the run command into the runner's window instead of crashing in
-the engine. (Checking `PlatformDispatcher.implicitView` does not work: the headless engine
-reports an implicit view too.)
+`flutter run` foregrounds the app with `open <bundle>` only after attaching a VM service,
+i.e. never in `--release` (flutter_tools `desktop_device.dart:139`, `macos_device.dart:86-89`);
+exec'd directly the process starts inactive behind the terminal. Under cooperative
+activation (macOS 14+) a bare `NSApp.activate()` is only honoured after the frontmost app
+yielded, which a terminal never does; the soft-deprecated `activate(ignoringOtherApps: true)`
+still is (Neovide #2799, Electron #40570), and is issued twice because macOS 26 drops
+requests at random (Apple FB21087054).
 
-## Not covered (next steps if the POC convinces)
+### Hot-restart workaround
 
-- The start and project windows are stock titled windows. The custom chrome of the real app
-  (transparent title bar, traffic-light overlay) would need the same handle-based native
-  treatment; the saved frame is done.
-- A frame is saved on move and resize only; a window without a saved frame is centred on
-  its screen, like the first launch before (the engine itself places new windows near the
-  bottom-left corner). A full-screen frame is not saved; the last normal one is restored.
-- Closing the start window while project windows are open leaves them running with no way
-  back to the project list (a Window menu is the real app's job); the last window exits.
-- Reset the remembered frames with `defaults delete de.dasralph.zanshin.window_frames`.
-- Real boot (settings, DI, worker) instead of the delay; the error page on boot failure.
-- Reduced motion: only the loader respects it, the native fade does not yet.
-- The cross-fade is timed by the Dart frame that renders the start window (`endOfFrame`), not
-  by the window actually appearing; the engine shows it a few milliseconds later, well inside
-  the 250 ms fade. A very slow first raster would let the splash fade before the window shows.
-- The splash floats only while this app is active and is a normal window otherwise; the app
-  activates itself at start, see Activation above.
-- The API is `@internal` and will break; this is not production code.
+The engine's `closeAllWindows` (run on hot restart) disposes each view controller and closes
+the window without detaching the window delegate, unlike `destroyWindow`; closing the *key*
+window then calls `viewIdentifier` on the disposed controller and the debug build dies with
+`NSInternalInconsistencyException`. The runner detaches the delegate on
+`NSWindow.willCloseNotification` for Flutter windows. Worth an upstream issue.
+
+## Verified at runtime (2026-09-12, debug build)
+
+- Fast (warm) boot: exactly one window, no splash object ever created.
+- Slow boot (temporarily delayed by 3 s): a 320×320 borderless window at
+  `NSFloatingWindowLevel`, centred; the main window then opens and the splash disappears.
+- Remembered frame: a frame seeded under `main` is restored verbatim (1000×700 at 120,140),
+  and the Flutter view measures 1000×700 — equal to the window frame, which is only true
+  with `.fullSizeContentView`, i.e. the chrome is applied before the frame.
+- Hot restart twice in a row: the app survives, the window comes back at the same frame, and
+  the stored frame does not drift.
+- `q` in `flutter run` quits cleanly, no process left behind.
+
+Not verified at runtime (no screen-recording permission in that session): the *visual*
+result of the chrome — vibrancy, rounded corners, the gray traffic-light rings and their
+hover cross-fade — and closing the last window by hand. The exit rule is unit-tested.
+
+## Still open
+
+- A Window menu, and a project-list window: closing the main window today leaves no way
+  back. `AppWindows.openOrActivate` is the seam both will use.
+- A full-screen frame is not saved; the last normal one is restored.
+- Reset the remembered frames with `defaults delete de.dasralph.zanshin.window_frames`
+  (it still holds the POC's dead `start` and `project:*` keys).
+- The cross-fade is timed by the Dart frame that renders the main window (`endOfFrame`), not
+  by the window actually appearing; the engine shows it a few milliseconds later, well
+  inside the 200 ms fade. A very slow first raster would let the splash fade before the
+  window shows.
+- The splash floats only while this app is active and is a normal window otherwise (the
+  floating level is global; `hidesOnDeactivate` raced the activation at start and left the
+  splash invisible).
+- The windowing API is `@internal` and will break; every use of it is behind
+  `invalid_use_of_internal_member` / `implementation_imports` ignores in four files.

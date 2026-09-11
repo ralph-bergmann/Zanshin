@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-// Windowing-API proof of concept (used by `lib/main2.dart` only; not wired
-// into the real boot). Design:
-// docs/superpowers/specs/2026-09-11-windowing-splash-poc-design.md
-//
 // The windowing API is experimental and only reachable through implementation
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
@@ -13,7 +9,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/src/widgets/_window_macos.dart';
 import 'package:flutter/widgets.dart';
 
-/// A window controller for a splash window: borderless (no title bar, no
+/// A window controller for the splash window: borderless (no title bar, no
 /// traffic lights), fixed size, centred on screen and floating above the
 /// app's other windows.
 ///
@@ -53,6 +49,10 @@ class SplashWindowController extends DialogWindowControllerMacOS {
 
   /// Fades the window out natively, shadow included. The window stays alive
   /// (invisible) until the caller destroys it.
+  ///
+  /// A [duration] of [Duration.zero] hides the window at once — that is what
+  /// "reduce motion" asks for, and it keeps the caller from having to know
+  /// whether a fade is wanted at all.
   Future<void> fadeOut({Duration duration = const Duration(milliseconds: 250)}) =>
       _channel.invokeMethod<void>('fadeOut', <String, Object>{
         'window': windowHandle.address,

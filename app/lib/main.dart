@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
@@ -14,18 +13,17 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
 import 'src/features/app/zanshin_app.dart';
+import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
+import 'src/features/window/app_windows.dart';
 
-void main() {
-  // All initialization inside the same zone as runApp to avoid zone mismatch;
-  // the asynchronous boot runs inside ZanshinBootstrap, i.e. in this zone too.
-  runZonedGuarded(
-    () {
+Future<void> main() async {
+  // All initialization inside the same zone as the first `runWidget` to avoid
+  // a zone mismatch; the asynchronous boot runs inside the sequence below,
+  // i.e. in this zone too.
+  await runZonedGuarded(
+    () async {
       WidgetsFlutterBinding.ensureInitialized();
-      // The engine runs the generated Dart plugin registrant before `main`
-      // (runtime/dart_isolate.cc); this explicit re-run is redundant but
-      // harmless, it is idempotent.
-      DartPluginRegistrant.ensureInitialized();
       SemanticsBinding.instance.ensureSemantics();
 
       initLogForwarding(level: .ALL);
@@ -43,8 +41,14 @@ void main() {
         FlutterError.presentError(details);
       };
 
-      // First frame right away; settings, DI graph and worker boot behind it.
-      runApp(const ZanshinBootstrap(openSettings: SettingsStore.open, startApp: _startApp));
+      // Every window is created from Dart, so nothing is on screen until the
+      // sequence opens one: the splash if the boot is slow, else the main
+      // window straight away.
+      await ZanshinBootSequence(
+        host: ZanshinWindowHost(windows: AppWindows()),
+        openSettings: SettingsStore.open,
+        startApp: _startApp,
+      ).run();
     },
     (error, stackTrace) {
       developer.log(

@@ -4,13 +4,15 @@ import Cocoa
 import FlutterMacOS
 
 /// Remembers the frame of every Dart-created window that asks for it, keyed by
-/// a stable name (`start`, `project:<path>`, ...), and puts a window back where
-/// it was when the same key comes around again.
+/// a stable name (`main`, `project:<path>`, ...), and puts a window back where
+/// it was when the same key comes around again. It is also where a window asks
+/// for the app's custom chrome, because that has to be in place before the
+/// frame is applied.
 ///
 /// Native half of the `zanshin/window_frames` channel. Persists the way the
-/// pre-windowing runner did (`MainFlutterWindow.swift`): in UserDefaults, with
-/// the display the window was on, so a frame saved on a display that is no
-/// longer connected is ignored instead of restored off screen.
+/// pre-windowing runner did: in UserDefaults, with the display the window was
+/// on, so a frame saved on a display that is no longer connected is ignored
+/// instead of restored off screen.
 final class WindowFrameStore {
     /// One window's frame on disk; the pre-windowing `WindowState`, per key.
     private struct Frame: Codable {
@@ -25,6 +27,8 @@ final class WindowFrameStore {
     private let defaults = UserDefaults(suiteName: "\(Bundle.main.bundleIdentifier!).window_frames")!
     /// Notification observers per window, removed when the window closes.
     private var observers: [ObjectIdentifier: [NSObjectProtocol]] = [:]
+    /// The custom chrome per window, kept alive for as long as the window is.
+    private var chrome: [ObjectIdentifier: MainWindowChrome] = [:]
 
     init(messenger: FlutterBinaryMessenger) {
         channel = FlutterMethodChannel(name: "zanshin/window_frames", binaryMessenger: messenger)
@@ -47,15 +51,28 @@ final class WindowFrameStore {
             return
         }
         let window = Unmanaged<NSWindow>.fromOpaque(pointer).takeUnretainedValue()
-        restore(window, key: key)
+        restore(window, key: key, chrome: args["chrome"] as? Bool ?? false)
         result(nil)
     }
 
-    /// Applies the frame saved under `key` if its display is still there —
-    /// otherwise centres the window, as the pre-windowing runner did on a
-    /// first launch — and keeps saving this window's frame under that key
-    /// from now on.
-    private func restore(_ window: NSWindow, key: String) {
+    /// Applies the app's window chrome if `chrome` is set, then the frame saved
+    /// under `key` if its display is still there — otherwise centres the
+    /// window, as the pre-windowing runner did on a first launch — and keeps
+    /// saving this window's frame under that key from now on.
+    ///
+    /// Chrome first, always: `.fullSizeContentView` redefines what a frame
+    /// means, so a saved frame applied under the old style mask would lose the
+    /// titlebar height on every launch.
+    private func restore(_ window: NSWindow, key: String, chrome wantsChrome: Bool) {
+        if wantsChrome {
+            chrome[ObjectIdentifier(window)] = MainWindowChrome(window: window)
+        }
+
+        // Centring rather than leaving the window where it is: the engine
+        // places a new window near the bottom-left corner, and `window.frame`
+        // is no fallback either - attaching the content view has collapsed the
+        // window to the view's frame by now, so keeping it would show a sliver
+        // of a window and persist that sliver on the next move or resize.
         if let frame = load(key) {
             window.setFrame(NSRect(origin: frame.position, size: frame.size), display: true)
         } else {
@@ -82,6 +99,7 @@ final class WindowFrameStore {
 
     private func forget(_ id: ObjectIdentifier) {
         observers.removeValue(forKey: id)?.forEach(NotificationCenter.default.removeObserver)
+        chrome.removeValue(forKey: id)
     }
 
     private func save(_ window: NSWindow, key: String) {

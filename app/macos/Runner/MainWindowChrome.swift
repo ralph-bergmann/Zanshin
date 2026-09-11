@@ -1,103 +1,43 @@
+// SPDX-License-Identifier: MIT
+
 import Cocoa
 import FlutterMacOS
 
-let bundleId = Bundle.main.bundleIdentifier!
-let defaults = UserDefaults(suiteName: "\(bundleId).app_position")!
+/// The app's custom window chrome, applied to a window the Flutter engine
+/// created on Dart's behalf.
+///
+/// Before the windowing API this was `MainFlutterWindow`, an `NSWindow`
+/// subclass loaded from the nib. Now Dart creates every window and the runner
+/// only gets a handle to it, so the same treatment is applied from the outside:
+/// `WindowFrameStore` builds one of these for the window that asks for chrome,
+/// *before* it restores the saved frame.
+///
+/// The ordering is load-bearing. With `.fullSizeContentView` the frame equals
+/// the content size; applying a saved frame while the titlebar still occupies
+/// its own strip would shave the titlebar height off the window on every launch.
+final class MainWindowChrome {
+    private weak var window: NSWindow?
 
-/// Represents the complete state of a window and its display configuration
-/// Used for persisting and restoring window positions across app launches
-struct WindowState: Codable {
-    /// The app window's position in screen coordinates
-    let position: CGPoint
-
-    /// The app window's dimensions
-    let size: CGSize
-
-    /// Unique identifier of the display where the window was located
-    /// This ID persists across system restarts for the same physical display
-    let displayId: CGDirectDisplayID
-
-    /// The display's position in the global coordinate space
-    /// Example: (-2560, 0) means the display is positioned to the left of the main display
-    let displayOffset: CGPoint
-
-    /// The physical dimensions of the display
-    /// Used to detect display changes even when coordinates remain the same
-    let displaySize: CGSize
-}
-
-class MainFlutterWindow: NSWindow {
     /// Click-through overlay that paints the neutral resting state of the window
     /// control buttons (close, minimize, zoom). Kept as a strong reference so the
     /// overlay can be re-attached whenever AppKit rebuilds the titlebar.
     private var trafficLightOverlay: TrafficLightOverlayView?
 
-    override func awakeFromNib() {
-        super.awakeFromNib()
+    /// The translucent background behind the Flutter view. Kept so a titlebar
+    /// rebuild can re-stack the same view instead of piling up new ones.
+    private var vibrancyView: NSVisualEffectView?
 
-        // Windowing-API mode: Dart creates every window, so this nib window
-        // must not become the engine's implicit view. It stays invisible
-        // until the AppDelegate closes it (see AppDelegate.swift and
-        // WindowingBootstrap.swift).
-        if WindowingMode.isEnabled {
-            alphaValue = 0
-            return
-        }
+    init(window: NSWindow) {
+        self.window = window
 
-        setupFlutterViewController()
-        // Appearance first: the frame must be applied under the final style mask.
-        // With `.fullSizeContentView` the frame equals the content size; applying a
-        // saved frame while the titlebar still occupies its own strip would shave
-        // the titlebar height off the window on every launch.
         setupWindowAppearance()
-        saveAndRestoreWindowFrame()
+        installVibrancyView()
         setupWindowButtons()
     }
 
-    /// Removes the notification observers when the window is deallocated
+    /// Removes the notification observers when the chrome is deallocated
     deinit {
         NotificationCenter.default.removeObserver(self)
-    }
-
-    /// Sets up the main Flutter view controller and initializes Flutter plugins.
-    /// The FlutterViewController is wrapped in a custom view controller to provide a translucent background.
-    private func setupFlutterViewController() {
-        // Create the main Flutter view controller that hosts the Flutter content
-        let flutterViewController = FlutterViewController()
-
-        // Create a wrapper view controller that provides a translucent background
-        let wrapperViewController = WrapperViewController(
-            flutterViewController: flutterViewController)
-        self.contentViewController = wrapperViewController
-
-        // Initialize Flutter plugins
-        RegisterGeneratedPlugins(registry: flutterViewController)
-    }
-
-    /// Saves and restores the window frame based on the saved window state
-    private func saveAndRestoreWindowFrame() {
-        // Attempt to restore previous window position and size
-        let windowState = loadWindowState()
-        let frameToUse =
-            windowState.map { NSRect(origin: $0.position, size: $0.size) }
-            ?? defaultFrame()
-
-        self.setFrame(frameToUse, display: true)
-
-        // Set up window position tracking
-        // These observers will save window state whenever it moves or resizes
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(windowDidMove),
-            name: NSWindow.didMoveNotification,
-            object: self
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(windowDidResize),
-            name: NSWindow.didResizeNotification,
-            object: self
-        )
     }
 
     /// Add a toolbar to move the window control buttons (close, minimize, zoom) a little bit down.
@@ -107,51 +47,93 @@ class MainFlutterWindow: NSWindow {
     /// in the toolbar area need to receive mouse events without interference from the native
     /// window dragging behavior.
     private func setupWindowAppearance() {
-        self.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        self.titlebarAppearsTransparent = true
-        self.titleVisibility = .hidden
-        self.backgroundColor = .clear
-        self.isOpaque = false
-        self.hasShadow = true
-        self.minSize = NSSize(width: 900, height: 600)
+        guard let window = self.window else { return }
 
-        // The WindowState mechanism below is the single owner of the window
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.minSize = NSSize(width: 900, height: 600)
+
+        // The WindowFrameStore below is the single owner of the window
         // geometry. AppKit's own state restoration would restore its stale frame
         // asynchronously ~300ms after launch, silently overriding both the saved
-        // WindowState and the first-launch default frame.
-        self.isRestorable = false
+        // frame and the first-launch default.
+        window.isRestorable = false
 
         // Add toolbar with custom invisible item to prevent window dragging
         let toolbar = NSToolbar(identifier: "Toolbar")
         let accessoryController = TitlebarAccessoryController()
         accessoryController.layoutAttribute = .top
-        self.addTitlebarAccessoryViewController(accessoryController)
+        window.addTitlebarAccessoryViewController(accessoryController)
 
-        self.toolbar = toolbar
+        window.toolbar = toolbar
+    }
+
+    /// Creates - or re-stacks - the translucent background the app paints on.
+    ///
+    /// Before the windowing API this view was the window's own content view: a
+    /// `WrapperViewController` owned the `NSVisualEffectView` and carried the
+    /// Flutter view as its subview. The engine owns the `contentViewController`
+    /// of a window it created itself, so the effect view becomes a *sibling*
+    /// instead - inserted into the frame view directly below the content view.
+    /// The Flutter view therefore still draws on top and unclipped, and shows
+    /// the blur wherever it paints transparent, which is what the clear window
+    /// background above is for.
+    private func installVibrancyView() {
+        guard let window = self.window,
+            let contentView = window.contentView,
+            let host = contentView.superview
+        else { return }
+
+        let effectView = vibrancyView ?? NSVisualEffectView()
+        effectView.autoresizingMask = [.width, .height]
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 20.0
+        if effectView.superview !== host {
+            host.addSubview(effectView, positioned: .below, relativeTo: contentView)
+        }
+        effectView.frame = host.bounds
+        vibrancyView = effectView
+
+        // The Flutter view has to be see-through for any of this to show.
+        (window.contentViewController as? FlutterViewController)?.backgroundColor = .clear
     }
 
     /// Installs the neutral overlay on top of the window control buttons
     /// (close, minimize, zoom) and registers the window notifications that keep
     /// the overlay attached and correctly positioned.
     private func setupWindowButtons() {
+        guard let window = self.window else { return }
+
         let center = NotificationCenter.default
         center.addObserver(
             self,
             selector: #selector(handleWindowDidBecomeKey),
             name: NSWindow.didBecomeKeyNotification,
-            object: self
+            object: window
         )
         center.addObserver(
             self,
             selector: #selector(handleWindowWillEnterFullScreen),
             name: NSWindow.willEnterFullScreenNotification,
-            object: self
+            object: window
         )
         center.addObserver(
             self,
             selector: #selector(handleWindowDidExitFullScreen),
             name: NSWindow.didExitFullScreenNotification,
-            object: self
+            object: window
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleWindowDidResize),
+            name: NSWindow.didResizeNotification,
+            object: window
         )
 
         installTrafficLightOverlay()
@@ -176,10 +158,12 @@ class MainFlutterWindow: NSWindow {
     /// buttons and only rebuilds it otherwise, so it can safely be called from
     /// several notifications without piling up overlays or tracking areas.
     private func installTrafficLightOverlay() {
+        guard let window = self.window else { return }
+
         let buttons = [
-            self.standardWindowButton(.closeButton),
-            self.standardWindowButton(.miniaturizeButton),
-            self.standardWindowButton(.zoomButton),
+            window.standardWindowButton(.closeButton),
+            window.standardWindowButton(.miniaturizeButton),
+            window.standardWindowButton(.zoomButton),
         ].compactMap { $0 }
 
         guard !buttons.isEmpty, let host = buttons[0].superview else { return }
@@ -211,7 +195,7 @@ class MainFlutterWindow: NSWindow {
         // receiving all mouse events.
         host.addSubview(overlay, positioned: .above, relativeTo: nil)
         overlay.syncGeometry()
-        overlay.setSuppressed(self.styleMask.contains(.fullScreen))
+        overlay.setSuppressed(window.styleMask.contains(.fullScreen))
         overlay.reassertState()
         trafficLightOverlay = overlay
     }
@@ -219,6 +203,7 @@ class MainFlutterWindow: NSWindow {
     /// Re-attaches the overlay when the window becomes key, because a preceding
     /// titlebar rebuild may have orphaned it
     @objc private func handleWindowDidBecomeKey(_ notification: Notification) {
+        installVibrancyView()
         installTrafficLightOverlay()
     }
 
@@ -231,107 +216,13 @@ class MainFlutterWindow: NSWindow {
     /// Re-attaches and shows the overlay after leaving fullscreen, where AppKit has
     /// rebuilt the titlebar
     @objc private func handleWindowDidExitFullScreen(_ notification: Notification) {
+        installVibrancyView()
         installTrafficLightOverlay()
         trafficLightOverlay?.setSuppressed(false)
     }
 
-    /// Saves the current window position, size, and display configuration
-    /// Called automatically when window moves or resizes
-    ///
-    /// Always reads from `self`. `NSApplication.shared.mainWindow` may point at a
-    /// different window - or at no window at all - by the time this is called, which
-    /// used to persist a foreign frame or silently skip the save.
-    private func saveWindowState() {
-        guard let screen = self.screen else {
-            return
-        }
-
-        let state = WindowState(
-            position: self.frame.origin,
-            size: self.frame.size,
-            displayId: screen.deviceDescription[
-                NSDeviceDescriptionKey("NSScreenNumber")] as! CGDirectDisplayID,
-            displayOffset: screen.frame.origin,
-            displaySize: screen.frame.size
-        )
-
-        if let encoded = try? JSONEncoder().encode(state) {
-            defaults.set(encoded, forKey: "WindowState")
-        }
-    }
-
-    /// Attempts to restore the window state from previous session
-    /// Uses multiple fallback strategies to handle different display configurations
-    private func loadWindowState() -> WindowState? {
-        guard let data = defaults.data(forKey: "WindowState"),
-            let state = try? JSONDecoder().decode(WindowState.self, from: data)
-        else {
-            return nil
-        }
-
-        // Strategy 1: Look for exact display match (position and size)
-        if NSScreen.screens.contains(where: { screen in
-            screen.frame.origin == state.displayOffset
-                && screen.frame.size == state.displaySize
-        }) {
-            return state
-        }
-
-        // Strategy 2: Match display ID and X coordinate
-        // Useful when display is moved up or down but not left or right
-        if NSScreen.screens.contains(where: { screen in
-            let screenId =
-                screen.deviceDescription[
-                    NSDeviceDescriptionKey("NSScreenNumber")]
-                as! CGDirectDisplayID
-            return screenId == state.displayId
-                && screen.frame.origin.x == state.displayOffset.x
-        }) {
-            return state
-        }
-
-        // Strategy 3: No matching display found, use default window frame
-        return nil
-    }
-
-    /// Window size used when no usable window state has been saved yet
-    private static let defaultWindowSize = NSSize(width: 1280, height: 800)
-
-    /// The fallback frame for the first launch (or when no saved display matches):
-    /// the default size, centered on the primary screen - the one carrying the
-    /// menu bar at the global origin, which `NSScreen.screens` lists first.
-    ///
-    /// `self.frame` cannot serve as this fallback: attaching the content view
-    /// controller has already collapsed the window to the wrapper view's zero
-    /// frame by the time this runs, so restoring it would show a sliver of a
-    /// window - and persist that sliver on the next move or resize.
-    private func defaultFrame() -> NSRect {
-        guard let screen = NSScreen.screens.first else {
-            return NSRect(origin: self.frame.origin, size: Self.defaultWindowSize)
-        }
-
-        // `visibleFrame` excludes the menu bar and the Dock, so the window is
-        // centered in - and fits inside - the actually usable area.
-        let visible = screen.visibleFrame
-        let size = NSSize(
-            width: min(Self.defaultWindowSize.width, visible.width),
-            height: min(Self.defaultWindowSize.height, visible.height)
-        )
-        let origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: visible.midY - size.height / 2
-        )
-        return NSRect(origin: origin, size: size)
-    }
-
-    // Window movement event handler
-    @objc func windowDidMove(_ notification: Notification) {
-        saveWindowState()
-    }
-
     // Window resize event handler
-    @objc func windowDidResize(_ notification: Notification) {
-        saveWindowState()
+    @objc private func handleWindowDidResize(_ notification: Notification) {
         trafficLightOverlay?.syncGeometry()
     }
 }
@@ -715,51 +606,6 @@ final class TrafficLightOverlayView: NSView {
     }
 }
 
-/// Wrapper view controller that provides a translucent background effect
-/// and hosts the Flutter view controller
-class WrapperViewController: NSViewController {
-    private var _flutterViewController: FlutterViewController? = nil
-    public var flutterViewController: FlutterViewController {
-        return _flutterViewController!
-    }
-
-    public init(flutterViewController: FlutterViewController? = nil) {
-        self._flutterViewController =
-            flutterViewController ?? FlutterViewController()
-
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required public init?(coder: NSCoder) {
-        fatalError()
-    }
-
-    override public func loadView() {
-        let newVisualEffectView = NSVisualEffectView()
-        newVisualEffectView.autoresizingMask = [.width, .height]
-        newVisualEffectView.blendingMode = .behindWindow
-        newVisualEffectView.state = .active
-        newVisualEffectView.wantsLayer = true
-//        newVisualEffectView.layer?.borderWidth = 2.0
-//        newVisualEffectView.layer?.borderColor = NSColor(red: 24 / 255, green: 23 / 255, blue: 36 / 255, alpha: 1.0).cgColor
-        newVisualEffectView.layer?.cornerRadius = 20.0
-        self.view = newVisualEffectView
-    }
-
-    /// Sets up the Flutter view controller within the wrapper
-    override public func viewDidLoad() {
-        super.viewDidLoad()
-
-        self.addChild(flutterViewController)
-
-        flutterViewController.view.frame = self.view.bounds
-        flutterViewController.view.autoresizingMask = [.width, .height]
-        flutterViewController.backgroundColor = .clear
-
-        self.view.addSubview(flutterViewController.view)
-    }
-}
-
 /// Custom titlebar accessory controller that creates a full-width interactive area
 /// in the window's titlebar. This prevents window dragging in specific regions while
 /// maintaining a clean, invisible appearance. We need this because Flutter UI elements
@@ -774,8 +620,6 @@ class TitlebarAccessoryController: NSTitlebarAccessoryViewController {
 class DragInterceptorView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        // self.wantsLayer = true
-        // self.layer?.backgroundColor = NSColor.blue.cgColor
     }
 
     required init?(coder: NSCoder) {

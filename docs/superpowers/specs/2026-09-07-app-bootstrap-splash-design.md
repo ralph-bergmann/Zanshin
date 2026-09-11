@@ -1,7 +1,18 @@
 # App bootstrap widget with delayed splash — Design
 
 **Date:** 2026-09-07
-**Status:** implemented 2026-09-07 (plan: `docs/superpowers/plans/2026-09-07-app-bootstrap-splash.md`)
+**Status:** **superseded 2026-09-12** by
+`docs/superpowers/specs/2026-09-11-windowing-splash-poc-design.md`. The splash is a
+separate window now, not an overlay inside the app's window: `ZanshinBootstrap` and its
+`_SplashScreen` are gone, and the boot is driven by `ZanshinBootSequence` against a window
+host. What carried over unchanged: the two injected boot steps, the 500 ms delay / 1000 ms
+minimum show / 200 ms fade, the failure page, the `SEVERE` record on `zanshin.bootstrap`,
+the Lottie loader and its reduced-motion rule. What did not: the brightness resolution (the
+splash card is always dark now, being a floating card rather than the app's own surface),
+the indicator fade-in, and the "app mounted behind an opaque splash" transition — the main
+window simply opens once the minimum is over. Read below for the original rationale only.
+
+Originally implemented 2026-09-07 (plan: `docs/superpowers/plans/2026-09-07-app-bootstrap-splash.md`)
 **Scope:** `app/lib/main.dart` and a new bootstrap widget in `app/`; the Lottie
 loader asset and the `lottie` dependency. No change to `packages/*`, the DI
 graph, or `ZanshinApp`.

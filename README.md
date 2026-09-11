@@ -50,6 +50,10 @@ rustup install 1.95.0
 flutter channel main
 flutter upgrade
 
+# Mandatory: the app creates every window from Dart, so without this flag it
+# builds but comes up with no window. Machine-global, compiled into the app.
+flutter config --enable-windowing
+
 # cargo-make (used by Story 1.4+ build/test entry points):
 cargo install cargo-make
 

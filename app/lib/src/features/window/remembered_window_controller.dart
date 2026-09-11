@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-// Windowing-API proof of concept (used by `lib/main2.dart` only; not wired
-// into the real boot). Design:
-// docs/superpowers/specs/2026-09-11-windowing-splash-poc-design.md
-//
 // The windowing API is experimental and only reachable through implementation
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
@@ -34,9 +30,17 @@ class RememberedWindowController extends WindowControllerMacOS {
 
   /// Creates the native window (still hidden) and restores its frame; without
   /// a saved frame the runner centres it, like the first launch used to.
+  ///
+  /// With [chrome] the runner also applies the app's custom window chrome —
+  /// transparent full-size-content titlebar, vibrancy background, traffic-light
+  /// overlay. It happens in this same round-trip and *before* the frame,
+  /// because `.fullSizeContentView` redefines what a frame means: applying one
+  /// under the old style mask would shave the titlebar height off the window on
+  /// every launch.
   static Future<RememberedWindowController> create({
     required String key,
     required Size size,
+    required bool chrome,
     BoxConstraints? constraints,
     String? title,
     WindowControllerDelegate? delegate,
@@ -51,11 +55,12 @@ class RememberedWindowController extends WindowControllerMacOS {
     await _channel.invokeMethod<void>('restore', <String, Object>{
       'window': controller.windowHandle.address,
       'key': key,
+      'chrome': chrome,
     });
     return controller;
   }
 
-  /// Identifies the remembered frame, e.g. `start` or `project:<path>`.
+  /// Identifies the remembered frame, e.g. `main` or `project:<path>`.
   final String key;
 
   static const _channel = MethodChannel('zanshin/window_frames');
