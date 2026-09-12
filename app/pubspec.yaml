@@ -51,7 +51,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/svg/
-    - assets/images/grain_128.png
     - assets/lottie/nami_loader.json
     - assets/lottie/nami_loader_transparent.json
   fonts:

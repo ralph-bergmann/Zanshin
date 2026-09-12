@@ -8,13 +8,6 @@ import 'package:flutter/widgets.dart';
 
 import 'splash_card.dart';
 
-// Every number in this file comes from the committed design sources, all of
-// them under `_bmad-output/implementation-artifacts/design/`:
-//   * `assets/zanshin-splash.svg`        — coordinates
-//   * `assets/SPLASH-SPEC.md`            — colour tokens
-//   * `Zanshin Splash Screen v2.html`    — grain and animation
-// The card is a fixed 560 x 320 artifact; nothing here scales with a theme.
-
 // ---------------------------------------------------------------- colours
 
 const _indigoTop = Color(0xFF1D2540);
@@ -38,29 +31,26 @@ const _dividerWhite = Color(0x14FFFFFF);
 /// `#FFFFFF` @ 7 % — the progress rail.
 const _railWhite = Color(0x12FFFFFF);
 
-/// Layer alpha of the grain: HTML layer `.5` x rect `.32`.
-const _grainAlpha = Color(0x29FFFFFF);
-
 // ------------------------------------------------------------------ text
 
 /// The version part of the footer's version line.
 const splashVersionStyle = TextStyle(
   fontFamily: 'JetBrainsMono',
-  fontSize: 12,
+  fontSize: 13,
   color: Color(0xFFE7DCC4),
 );
 
 /// The `· Build <n>` part of the footer's version line.
 const splashBuildStyle = TextStyle(
   fontFamily: 'JetBrainsMono',
-  fontSize: 12,
+  fontSize: 13,
   color: Color(0xFF8792B4),
 );
 
 /// The boot status line, bottom right.
 const splashStatusStyle = TextStyle(
   fontFamily: 'Inter',
-  fontSize: 11.5,
+  fontSize: 13,
   color: Color(0xFF98A3C2),
 );
 
@@ -74,7 +64,7 @@ const _kanjiStyle = TextStyle(
 
 const _watermarkStyle = TextStyle(
   fontFamily: 'ShipporiMincho',
-  fontSize: 118,
+  fontSize: 144,
   fontWeight: FontWeight.w600,
   height: 1,
   color: Color(0x0AF4CF80), // gold @ 4 %
@@ -82,7 +72,7 @@ const _watermarkStyle = TextStyle(
 
 const _taglineStyle = TextStyle(
   fontFamily: 'Inter',
-  fontSize: 11.5,
+  fontSize: 13,
   fontWeight: FontWeight.w500,
   fontVariations: <FontVariation>[FontVariation.weight(500)],
   letterSpacing: 1.96,
@@ -95,35 +85,35 @@ const _taglineStyle = TextStyle(
 const double _padX = 36;
 
 /// Shared alphabetic baseline of the version and status lines.
-const double _footerBaseline = 276;
+const double _footerBaseline = 370;
 
 /// Right edge of the status line and of the divider.
-const double _statusRight = 524;
+const double _statusRight = 584;
 
-const double _dividerY = 253;
+const double _dividerY = 337;
 
 /// Centre of the status dot, `_dotGap` left of the status box: the HTML's
 /// `gap: 8` plus the dot's 3 px radius.
 const double _dotGap = 11;
-const double _dotY = 272;
+const double _dotY = 366;
 const double _dotRadius = 3;
 const double _dotRingRadius = 6;
 const _dotRingAlpha = 0.16;
 
-const double _kanjiBaseline = 141;
+const double _kanjiBaseline = 181;
 const double _lockupGap = 20;
-const double _taglineBaseline = 177;
+const double _taglineBaseline = 217;
 const _taglineText = 'JUJUTSU CLIENT';
 const _kanjiText = '残心';
 
-const double _wordmarkTop = 104;
 const _wordmarkScale = 0.38;
 const double _wordmarkWidth = 562 * _wordmarkScale;
 const double _wordmarkHeight = 100 * _wordmarkScale;
 const double _wordmarkStroke = 7.37 * _wordmarkScale;
+const double _wordmarkTop = _kanjiBaseline - _wordmarkHeight;
 
-const double _watermarkCentre = 497;
-const _watermarkBaselines = <double>[128, 246];
+const double _watermarkCentre = 517;
+const _watermarkBaselines = <double>[148, 296];
 
 /// The ornament reuses the app icon's wave paths at 124 % card width.
 const _ornamentScale = 3.045;
@@ -159,7 +149,6 @@ class SplashCardBody extends SlottedMultiChildRenderObjectWidget<SplashSlot, Ren
   const SplashCardBody({
     required this.vsync,
     required this.animate,
-    required this.grain,
     required this.version,
     required this.status,
     super.key,
@@ -170,9 +159,6 @@ class SplashCardBody extends SlottedMultiChildRenderObjectWidget<SplashSlot, Ren
 
   /// False under "reduce motion": no ticker runs and nothing repaints.
   final bool animate;
-
-  /// The grain tile, or null while it is still being decoded.
-  final ui.Image? grain;
 
   /// Occupies [SplashSlot.version].
   final Widget version;
@@ -190,22 +176,18 @@ class SplashCardBody extends SlottedMultiChildRenderObjectWidget<SplashSlot, Ren
   };
 
   @override
-  SplashCardRenderBox createRenderObject(BuildContext context) =>
-      SplashCardRenderBox(vsync: vsync, animate: animate, grain: grain);
+  SplashCardRenderBox createRenderObject(BuildContext context) => SplashCardRenderBox(vsync: vsync, animate: animate);
 
   @override
   void updateRenderObject(BuildContext context, SplashCardRenderBox renderObject) {
-    renderObject
-      ..animate = animate
-      ..grain = grain;
+    renderObject.animate = animate;
   }
 }
 
 /// Paints the splash card and places the two footer texts on its baseline.
 class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMixin<SplashSlot, RenderBox> {
-  SplashCardRenderBox({required TickerProvider vsync, required bool animate, required ui.Image? grain}) {
+  SplashCardRenderBox({required TickerProvider vsync, required bool animate}) {
     _animate = animate;
-    _grain = grain;
     _ticker = vsync.createTicker(_onTick);
   }
 
@@ -221,7 +203,6 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
   List<ui.Gradient>? _background;
   Size? _backgroundSize;
   List<Path>? _ornament;
-  ui.ImageShader? _grainShader;
   ui.Shader? _runnerShader;
   double? _runnerShaderWidth;
   late Path _wordmark;
@@ -241,20 +222,6 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     }
     _animate = value;
     _syncTicker();
-    markNeedsPaint();
-  }
-
-  /// The grain tile, or null while it is still being decoded.
-  ui.Image? get grain => _grain;
-  ui.Image? _grain;
-
-  set grain(ui.Image? value) {
-    if (_grain == value) {
-      return;
-    }
-    _grain = value;
-    _grainShader?.dispose();
-    _grainShader = null;
     markNeedsPaint();
   }
 
@@ -283,8 +250,6 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
       painter.dispose();
     }
     _disposeBackground();
-    _grainShader?.dispose();
-    _grainShader = null;
     _runnerShader?.dispose();
     _runnerShader = null;
     _wordmarkShader?.dispose();
@@ -371,7 +336,6 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     _paintBackground(canvas, rect);
     _paintTopEdge(canvas, rect);
     _paintOrnament(canvas);
-    _paintGrain(canvas, rect);
     _paintWatermark(canvas);
     _paintLockup(canvas);
     _paintFooter(canvas);
@@ -486,31 +450,6 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
         ..quadraticBezierTo(88, 138, 154, 178)
         ..quadraticBezierTo(220, 218, 234, 178),
     ].map((path) => path.transform(transform.storage)).toList();
-  }
-
-  // ------------------------------------------------------------------ grain
-
-  void _paintGrain(Canvas canvas, Rect rect) {
-    final ui.Image? image = _grain;
-    if (image == null) {
-      // The card never waits for the tile; it just paints one layer fewer.
-      return;
-    }
-    final ui.ImageShader shader = _grainShader ??= ui.ImageShader(
-      image,
-      TileMode.repeated,
-      TileMode.repeated,
-      Matrix4.identity().storage,
-    );
-    canvas
-      ..saveLayer(
-        rect,
-        Paint()
-          ..blendMode = BlendMode.softLight
-          ..color = _grainAlpha,
-      )
-      ..drawRect(rect, Paint()..shader = shader)
-      ..restore();
   }
 
   // -------------------------------------------------------------- lettering

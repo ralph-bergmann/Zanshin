@@ -456,14 +456,6 @@ void main() {
     );
   });
 
-  testWidgets('the card paints before the grain tile is decoded', (tester) async {
-    await _pumpCard(tester, status: 'lade Settings…', version: null);
-
-    expect(tester.widget<SplashCardBody>(find.byType(SplashCardBody)).grain, isNull);
-    expect(tester.takeException(), isNull);
-    expect(tester.getSize(find.byType(SplashCardBody)), splashWindowSize);
-  });
-
   testWidgets('the splash card runs a ticker, and schedules nothing at all with reduced motion', (tester) async {
     await _pumpCard(tester, status: 'lade Settings…', version: null);
     expect(SchedulerBinding.instance.transientCallbackCount, 1);
