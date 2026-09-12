@@ -82,13 +82,18 @@ final class MainWindowChrome {
     /// The Flutter view therefore still draws on top and unclipped, and shows
     /// the blur wherever it paints transparent, which is what the clear window
     /// background above is for.
+    ///
+    /// It has to be an `EventTransparentEffectView`, not a plain
+    /// `NSVisualEffectView`: a view stacked below the content view is where
+    /// AppKit forwards the content view's unhandled mouse events to, ahead of
+    /// the content view controller - see that class for the full story.
     private func installVibrancyView() {
         guard let window = self.window,
             let contentView = window.contentView,
             let host = contentView.superview
         else { return }
 
-        let effectView = vibrancyView ?? NSVisualEffectView()
+        let effectView = vibrancyView ?? EventTransparentEffectView()
         effectView.autoresizingMask = [.width, .height]
         effectView.blendingMode = .behindWindow
         effectView.state = .active
@@ -632,5 +637,34 @@ class DragInterceptorView: NSView {
 
     override var mouseDownCanMoveWindow: Bool {
         return false
+    }
+}
+
+/// The vibrancy background behind the Flutter view, invisible to hit-testing.
+///
+/// AppKit's default mouse-event forwarding - `NSResponder`'s `mouseDown(with:)`
+/// and its siblings - does not hand an event the content view left unhandled
+/// straight to the content view's next responder. It first hit-tests for a
+/// view stacked *beneath* the content view and, when it finds one, forwards
+/// the event to that view instead. Flutter's content view (the engine's
+/// `FlutterViewWrapper`) leaves every mouse event unhandled on purpose: its
+/// `FlutterViewController`, the next responder, is what turns them into
+/// pointer events. A plain `NSVisualEffectView` below the content view was
+/// therefore where every click ended up; it passed the event up its own chain
+/// (theme frame, window) and the Flutter side never saw a single pointer
+/// event - no button, no checkbox, nothing reacted.
+///
+/// Returning `nil` from `hitTest(_:)` takes this view out of that lookup, so
+/// the forwarding falls back to the next responder and the click reaches the
+/// `FlutterViewController` again. Hit-testing is all the blur needs to opt
+/// out of: it never handles events itself.
+///
+/// Verified with an in-process `sendEvent` probe (macOS 26, 2026-09-12): with
+/// the plain view the responder hops were wrapper -> effect view -> theme
+/// frame -> window; with this view they are wrapper -> view controller ->
+/// engine -> Dart.
+final class EventTransparentEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
     }
 }

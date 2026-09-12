@@ -142,6 +142,12 @@ Two things had to change when the chrome moved off an `NSWindow` subclass:
   *below* `window.contentView`, and re-stacked from the same notifications that re-attach
   the traffic-light overlay (key, exit-fullscreen), because a titlebar rebuild can orphan
   it. The Flutter view keeps drawing on top and unclipped.
+- **The sibling must be invisible to hit-testing** (`EventTransparentEffectView`,
+  `hitTest` → `nil`). AppKit's default mouse-event forwarding hands an event the content
+  view leaves unhandled to a view *beneath* it before it tries the content view's next
+  responder. Flutter's `FlutterViewWrapper` handles no mouse event itself — its
+  `FlutterViewController` does — so a plain `NSVisualEffectView` below it swallowed every
+  click and nothing in the window reacted (found 2026-09-12, after the promotion).
 
 ### Activation
 
