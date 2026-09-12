@@ -3,13 +3,14 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
-import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
 import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card.dart';
+import 'package:zanshin/src/features/bootstrap/splash_card_render.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
@@ -40,8 +41,19 @@ class FakeBootWindowHost implements BootWindowHost {
   /// What [dismissSplash] was handed.
   Duration? fade;
 
+  /// The listenables the splash card would have been built with.
+  ValueListenable<String>? status;
+  ValueListenable<SplashVersion?>? version;
+
   @override
-  Future<void> openSplash() async => calls.add('splash');
+  Future<void> openSplash({
+    required ValueListenable<String> status,
+    required ValueListenable<SplashVersion?> version,
+  }) async {
+    this.status = status;
+    this.version = version;
+    calls.add('splash');
+  }
 
   @override
   Future<void> openMain(Widget content) async {
@@ -57,6 +69,48 @@ class FakeBootWindowHost implements BootWindowHost {
     this.fade = fade;
     calls.add('dismiss');
   }
+}
+
+/// One fake-clock tick, for the timing tests' off-by-one edges.
+const _tick = Duration(milliseconds: 1);
+
+// The design grid the footer is asserted against; see `SPLASH-SPEC.md` § 1.
+const double _cardPadding = 36;
+const double _statusRight = 524;
+const double _footerBaseline = 276;
+
+/// Where a line carrying [span] has to start so that its alphabetic baseline
+/// lands on the footer baseline.
+double _topForBaseline(InlineSpan span) {
+  final painter = TextPainter(text: span, textDirection: TextDirection.ltr)..layout();
+  final double top = _footerBaseline - painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+  painter.dispose();
+  return top;
+}
+
+String _statusText(WidgetTester tester) =>
+    (tester.widget<RichText>(find.byKey(splashStatusKey)).text as TextSpan).text ?? '';
+
+/// Pumps a [SplashCard] on a surface the size of the card, so the assertions
+/// can be written in the design's own coordinates.
+Future<void> _pumpCard(WidgetTester tester, {required String status, required SplashVersion? version}) {
+  final statusNotifier = ValueNotifier<String>(status);
+  addTearDown(statusNotifier.dispose);
+  final versionNotifier = ValueNotifier<SplashVersion?>(version);
+  addTearDown(versionNotifier.dispose);
+  return _pumpCardWith(tester, status: statusNotifier, version: versionNotifier);
+}
+
+Future<void> _pumpCardWith(
+  WidgetTester tester, {
+  required ValueListenable<String> status,
+  required ValueListenable<SplashVersion?> version,
+}) async {
+  tester.view
+    ..physicalSize = splashWindowSize
+    ..devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(SplashCard(status: status, version: version));
 }
 
 void main() {
@@ -125,28 +179,30 @@ void main() {
     expect(host.content, isA<AppMarker>());
   });
 
-  testWidgets('the splash appears after 500 ms and the main window waits out its minimum show', (tester) async {
+  testWidgets('the splash appears after the indicator delay and the main window waits out its minimum show', (
+    tester,
+  ) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>()..complete(store);
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    await tester.pump(const Duration(milliseconds: 499));
+    await tester.pump(splashIndicatorDelay - _tick);
     expect(host.calls, isEmpty);
 
-    await tester.pump(const Duration(milliseconds: 1)); // t = 500 ms
+    await tester.pump(_tick); // t = delay
     expect(host.calls, <String>['splash']);
 
-    await tester.pump(const Duration(milliseconds: 100)); // t = 600 ms
+    await tester.pump(const Duration(milliseconds: 100));
     app.complete(const AppMarker());
     await flush(tester);
-    // The boot is done, but the splash has not had its second yet.
+    // The boot is done, but the splash has not had its minimum yet.
     expect(host.calls, <String>['splash']);
 
-    await tester.pump(const Duration(milliseconds: 899)); // t = 1499 ms
+    await tester.pump(splashIndicatorMinShow - const Duration(milliseconds: 101));
     expect(host.calls, <String>['splash']);
 
-    await tester.pump(const Duration(milliseconds: 1)); // t = 1500 ms
+    await tester.pump(_tick); // t = delay + minShow
     await flush(tester);
     expect(host.calls, <String>['splash', 'main', 'dismiss']);
     expect(host.content, isA<AppMarker>());
@@ -159,7 +215,7 @@ void main() {
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
     expect(host.calls, <String>['splash']);
 
     app.complete(const AppMarker());
@@ -199,14 +255,14 @@ void main() {
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(splashIndicatorDelay + const Duration(milliseconds: 100));
     expect(host.calls, <String>['splash']);
 
     app.completeError(StateError('worker refused to start'));
     await flush(tester);
     expect(host.calls, <String>['splash']);
 
-    await tester.pump(const Duration(milliseconds: 900)); // t = 1500 ms
+    await tester.pump(splashIndicatorMinShow - const Duration(milliseconds: 100));
     await flush(tester);
 
     expect(host.calls, <String>['splash', 'main', 'dismiss']);
@@ -246,7 +302,7 @@ void main() {
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
     app.complete(const AppMarker());
     await flush(tester);
 
@@ -289,29 +345,84 @@ void main() {
     );
   });
 
-  testWidgets('the splash card stays dark under a light platform brightness', (tester) async {
-    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
-    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+  testWidgets('the boot steps show up in the splash status line, and a failure leaves the last one standing', (
+    tester,
+  ) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>();
+    final app = Completer<Widget>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    final sequence = ZanshinBootSequence(
+      host: host,
+      openSettings: () => settings.future,
+      startApp: (_) => app.future,
+    );
+    final seen = <String>[];
+    sequence.status.addListener(() => seen.add(sequence.status.value));
 
-    await tester.pumpWidget(const SplashCard());
+    unawaited(sequence.run());
+    settings.complete(store);
+    await flush(tester);
+    app.completeError(StateError('worker refused to start'));
+    await flush(tester);
 
-    final decoration = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first).decoration as BoxDecoration;
-    expect(decoration.color, yaruDark.scaffoldBackgroundColor);
-    expect(decoration.color, isNot(yaruLight.scaffoldBackgroundColor));
+    expect(seen, <String>['lade Settings…', 'starte App…']);
+    expect(sequence.status.value, 'starte App…');
   });
 
-  testWidgets('the splash card animates the loader, and holds its first frame with reduced motion', (tester) async {
-    await tester.pumpWidget(const SplashCard());
-    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isTrue);
+  testWidgets('the splash card lays its footer out on the design grid', (tester) async {
+    await _pumpCard(tester, status: 'lade Settings…', version: (version: '2026.9.1', build: '1'));
+
+    expect(tester.getSize(find.byType(SplashCardBody)), splashWindowSize);
+    expect(tester.getTopLeft(find.byKey(splashVersionKey)).dx, _cardPadding);
+    expect(tester.getTopRight(find.byKey(splashStatusKey)).dx, _statusRight);
+    expect(
+      tester.getTopLeft(find.byKey(splashVersionKey)).dy,
+      closeTo(_topForBaseline(const TextSpan(text: '2026.9.1 · Build 1', style: splashVersionStyle)), 0.01),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(splashStatusKey)).dy,
+      closeTo(_topForBaseline(const TextSpan(text: 'lade Settings…', style: splashStatusStyle)), 0.01),
+    );
+  });
+
+  testWidgets('the status line follows its listenable and stays right-aligned', (tester) async {
+    final status = ValueNotifier<String>('lade Settings…');
+    addTearDown(status.dispose);
+    final version = ValueNotifier<SplashVersion?>(null);
+    addTearDown(version.dispose);
+    await _pumpCardWith(tester, status: status, version: version);
+
+    status.value = 'starte App…';
+    await tester.pump();
+
+    expect(_statusText(tester), 'starte App…');
+    expect(tester.getTopRight(find.byKey(splashStatusKey)).dx, _statusRight);
+  });
+
+  testWidgets('an empty status and an unknown version still paint the card', (tester) async {
+    await _pumpCard(tester, status: '', version: null);
+
+    expect(tester.takeException(), isNull);
+    expect(_statusText(tester), isEmpty);
+    expect(tester.getSize(find.byKey(splashStatusKey)).width, 0);
+    expect(tester.getTopRight(find.byKey(splashStatusKey)).dx, _statusRight);
+    expect(tester.getSize(find.byKey(splashVersionKey)).width, 0);
+  });
+
+  testWidgets('the splash card runs a ticker, and schedules nothing at all with reduced motion', (tester) async {
+    await _pumpCard(tester, status: 'lade Settings…', version: null);
+    expect(SchedulerBinding.instance.transientCallbackCount, 1);
 
     tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
       disableAnimations: true,
     );
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(const SplashCard());
+    await _pumpCard(tester, status: 'lade Settings…', version: null);
 
-    expect(tester.widget<LottieBuilder>(find.byType(LottieBuilder)).animate, isFalse);
+    expect(SchedulerBinding.instance.transientCallbackCount, 0);
   });
 
   testWidgets('the failure page shows the headline and the error text', (tester) async {

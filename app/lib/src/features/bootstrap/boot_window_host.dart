@@ -4,6 +4,7 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 
@@ -38,9 +39,15 @@ class ZanshinWindowHost implements BootWindowHost {
   var _presented = false;
 
   @override
-  Future<void> openSplash() async {
+  Future<void> openSplash({
+    required ValueListenable<String> status,
+    required ValueListenable<SplashVersion?> version,
+  }) async {
     final SplashWindowController splash = await SplashWindowController.create(size: splashWindowSize);
-    final entry = WindowEntry(controller: splash, builder: windows.capture((_) => const SplashCard()));
+    final entry = WindowEntry(
+      controller: splash,
+      builder: windows.capture((_) => SplashCard(status: status, version: version)),
+    );
     _splash = splash;
     _splashEntry = entry;
     _present(entry);

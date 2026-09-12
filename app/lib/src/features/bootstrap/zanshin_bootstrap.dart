@@ -2,25 +2,22 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'boot_failure.dart';
 
-/// Loader animation shown while the app boots. Swap for
-/// `assets/lottie/nami_loader_transparent.json` to show the waves without the
-/// indigo tile (both files are bundled).
-const splashAnimationAsset = 'assets/lottie/nami_loader.json';
-
-/// Edge length of the loader animation in logical pixels.
-const double splashAnimationSize = 96;
+/// The app's version and build number, as the splash's footer shows them.
+typedef SplashVersion = ({String version, String build});
 
 /// How long a boot may take before the splash window appears at all.
 const splashIndicatorDelay = Duration(milliseconds: 200);
 
 /// Once shown, the splash stays at least this long so it never just blinks.
-const splashIndicatorMinShow = Duration(milliseconds: 1500);
+const splashIndicatorMinShow = Duration(seconds: 5);
 
 /// Fade-out of the splash window once the main window is up.
 const splashFadeOut = Duration(milliseconds: 200);
@@ -33,9 +30,13 @@ final _log = Logger('zanshin.bootstrap');
 /// only place that touches `runWidget` and the macOS window controllers, which
 /// a widget test cannot reach, so the sequencing is tested against a fake.
 abstract interface class BootWindowHost {
-  /// Shows the splash window. Called at most once, and only for a boot that
-  /// outlasts [splashIndicatorDelay].
-  Future<void> openSplash();
+  /// Shows the splash window, whose card follows [status] and [version] for as
+  /// long as it is up. Called at most once, and only for a boot that outlasts
+  /// [splashIndicatorDelay].
+  Future<void> openSplash({
+    required ValueListenable<String> status,
+    required ValueListenable<SplashVersion?> version,
+  });
 
   /// Opens the app's main window showing [content].
   Future<void> openMain(Widget content);
@@ -58,7 +59,7 @@ abstract interface class BootWindowHost {
 ///
 /// Waiting out the minimum with the *window* is what the single-window splash
 /// used to do with opacity: back then the finished app was already mounted
-/// behind an opaque splash, now it would pop up around a 320×320 card.
+/// behind an opaque splash, now it would pop up around a 560×320 card.
 ///
 /// Timing is driven by [Timer]s alone, never by reading a clock, so the fake
 /// time of a widget test controls it fully.
@@ -77,6 +78,13 @@ class ZanshinBootSequence {
   final Future<Widget> Function(SettingsStore settings) startApp;
 
   final _done = Completer<void>();
+
+  /// What the boot is doing right now, for the splash's status line. Never
+  /// disposed: the sequence outlives every splash it feeds.
+  final _status = ValueNotifier<String>('');
+
+  /// The app's version and build for the splash's footer; null until read.
+  final _version = ValueNotifier<SplashVersion?>(null);
 
   Timer? _delayTimer;
 
@@ -97,6 +105,18 @@ class ZanshinBootSequence {
   var _minShowElapsed = false;
   var _bootFinished = false;
   var _mainOpened = false;
+
+  /// What the boot is doing right now; the splash's status line.
+  ValueListenable<String> get status => _status;
+
+  /// The app's version and build, or null while they are unknown.
+  ValueListenable<SplashVersion?> get version => _version;
+
+  /// Records a boot step: to the log, and to the splash's status line.
+  void log(String message) {
+    _log.info(message);
+    _status.value = message;
+  }
 
   /// Starts the boot; completes once the main window is up and a splash, if
   /// there was one, is gone.
@@ -124,8 +144,10 @@ class ZanshinBootSequence {
   /// Both boot steps; the persisted mode is known between them, in time for a
   /// failure in the second one.
   Future<Widget> _load() async {
+    log('lade Settings…');
     final SettingsStore settings = await openSettings();
     _persistedMode = settings.value.appearance.themeMode;
+    log('starte App…');
     return startApp(settings);
   }
 
@@ -135,7 +157,20 @@ class ZanshinBootSequence {
     // Never cancelled: once the splash is up it is this timer that releases
     // the main window.
     Timer(splashIndicatorMinShow, _onMinShowElapsed);
-    _splashOpening = host.openSplash();
+    unawaited(_readVersion());
+    _splashOpening = host.openSplash(status: status, version: version);
+  }
+
+  /// The splash's version line, read only once a splash is actually coming up.
+  /// Guarded: without the platform channel (a widget test) the footer just
+  /// stays empty, and the boot goes on.
+  Future<void> _readVersion() async {
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      _version.value = (version: info.version, build: info.buildNumber);
+    } catch (error, stackTrace) {
+      _log.warning('The app version could not be read', error, stackTrace);
+    }
   }
 
   void _onMinShowElapsed() {
