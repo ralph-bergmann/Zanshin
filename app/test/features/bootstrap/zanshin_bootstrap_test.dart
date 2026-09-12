@@ -78,6 +78,9 @@ const _tick = Duration(milliseconds: 1);
 const double _cardPadding = 36;
 const double _statusRight = 524;
 const double _footerBaseline = 276;
+const double _dotGap = 11;
+const double _dotY = 272;
+const _litDot = Color(0xFFF4CF80);
 
 /// Where a line carrying [span] has to start so that its alphabetic baseline
 /// lands on the footer baseline.
@@ -207,6 +210,9 @@ void main() {
     expect(host.calls, <String>['splash', 'main', 'dismiss']);
     expect(host.content, isA<AppMarker>());
     expect(host.fade, splashFadeOut);
+    // No package-info platform channel in a widget test: the footer stays
+    // empty and the boot runs to its end regardless.
+    expect(host.version!.value, isNull);
   });
 
   testWidgets('a boot that outlasts the minimum show opens the main window right away', (tester) async {
@@ -409,6 +415,21 @@ void main() {
     expect(tester.getSize(find.byKey(splashStatusKey)).width, 0);
     expect(tester.getTopRight(find.byKey(splashStatusKey)).dx, _statusRight);
     expect(tester.getSize(find.byKey(splashVersionKey)).width, 0);
+    // The dot hangs off the status box, so a zero-width one still places it.
+    expect(
+      find.byType(SplashCardBody),
+      paints
+        ..circle(x: _statusRight - _dotGap, y: _dotY, radius: 6)
+        ..circle(x: _statusRight - _dotGap, y: _dotY, radius: 3),
+    );
+  });
+
+  testWidgets('the card paints before the grain tile is decoded', (tester) async {
+    await _pumpCard(tester, status: 'lade Settings…', version: null);
+
+    expect(tester.widget<SplashCardBody>(find.byType(SplashCardBody)).grain, isNull);
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(SplashCardBody)), splashWindowSize);
   });
 
   testWidgets('the splash card runs a ticker, and schedules nothing at all with reduced motion', (tester) async {
@@ -423,6 +444,13 @@ void main() {
     await _pumpCard(tester, status: 'lade Settings…', version: null);
 
     expect(SchedulerBinding.instance.transientCallbackCount, 0);
+    // Frozen means lit: the dot keeps the full opacity its pulse peaks at.
+    expect(
+      find.byType(SplashCardBody),
+      paints
+        ..circle(radius: 6)
+        ..circle(radius: 3, color: _litDot),
+    );
   });
 
   testWidgets('the failure page shows the headline and the error text', (tester) async {
