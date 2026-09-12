@@ -42,23 +42,30 @@ final class WindowFrameStore {
             result(FlutterMethodNotImplemented)
             return
         }
+        // `chrome` is parsed as strictly as the rest: defaulting a missing or
+        // mistyped flag to `false` would silently hand back a stock titled
+        // window - no custom chrome, and `isRestorable` left on, which lets
+        // AppKit's state restoration override the frame restored just below.
         guard let args = call.arguments as? [String: Any],
             let handle = args["window"] as? Int,
             let key = args["key"] as? String,
+            let wantsChrome = args["chrome"] as? Bool,
             let pointer = UnsafeRawPointer(bitPattern: handle)
         else {
-            result(FlutterError(code: "bad-args", message: "expected a window handle and a key", details: nil))
+            result(
+                FlutterError(
+                    code: "bad-args", message: "expected a window handle, a key and a chrome flag", details: nil))
             return
         }
         let window = Unmanaged<NSWindow>.fromOpaque(pointer).takeUnretainedValue()
-        restore(window, key: key, chrome: args["chrome"] as? Bool ?? false)
+        restore(window, key: key, chrome: wantsChrome)
         result(nil)
     }
 
     /// Applies the app's window chrome if `chrome` is set, then the frame saved
-    /// under `key` if its display is still there — otherwise centres the
-    /// window, as the pre-windowing runner did on a first launch — and keeps
-    /// saving this window's frame under that key from now on.
+    /// under `key` if its display is still there — otherwise places the window
+    /// for a first launch (see `placeForFirstLaunch`) — and keeps saving this
+    /// window's frame under that key from now on.
     ///
     /// Chrome first, always: `.fullSizeContentView` redefines what a frame
     /// means, so a saved frame applied under the old style mask would lose the
@@ -68,15 +75,10 @@ final class WindowFrameStore {
             chrome[ObjectIdentifier(window)] = MainWindowChrome(window: window)
         }
 
-        // Centring rather than leaving the window where it is: the engine
-        // places a new window near the bottom-left corner, and `window.frame`
-        // is no fallback either - attaching the content view has collapsed the
-        // window to the view's frame by now, so keeping it would show a sliver
-        // of a window and persist that sliver on the next move or resize.
         if let frame = load(key) {
             window.setFrame(NSRect(origin: frame.position, size: frame.size), display: true)
         } else {
-            window.center()
+            placeForFirstLaunch(window)
         }
 
         let center = NotificationCenter.default
@@ -95,6 +97,34 @@ final class WindowFrameStore {
                 self?.forget(id)
             })
         observers[id] = tokens
+    }
+
+    /// Places a window that has no remembered frame: its requested size,
+    /// clamped to the screen's usable area, centred in that area.
+    ///
+    /// Not `window.center()` - that neither clamps the size nor keeps the
+    /// window clear of the menu bar, so on a display smaller than the
+    /// requested size it lands partly off screen. The pre-windowing runner's
+    /// `defaultFrame()` clamped and centred, and the frame saved on the first
+    /// move would otherwise persist the off-screen placement.
+    private func placeForFirstLaunch(_ window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first else {
+            window.center()
+            return
+        }
+
+        // `visibleFrame` excludes the menu bar and the Dock, so the window is
+        // centered in - and fits inside - the actually usable area.
+        let visible = screen.visibleFrame
+        let size = NSSize(
+            width: min(window.frame.width, visible.width),
+            height: min(window.frame.height, visible.height)
+        )
+        let origin = NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.midY - size.height / 2
+        )
+        window.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
     private func forget(_ id: ObjectIdentifier) {

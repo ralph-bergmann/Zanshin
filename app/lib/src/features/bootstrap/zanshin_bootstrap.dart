@@ -155,12 +155,22 @@ class ZanshinBootSequence {
   }
 
   Future<void> _openMain() async {
-    await _splashOpening;
-    await host.openMain(_content);
-    if (_splashShown) {
-      await host.dismissSplash(_splashFade);
+    try {
+      await _splashOpening;
+      await host.openMain(_content);
+      if (_splashShown) {
+        await host.dismissSplash(_splashFade);
+      }
+    } catch (error, stackTrace) {
+      // Same blanket catch as _boot, and for a harder reason: `main` awaits
+      // [run], and AppKit no longer quits on the last closed window, so a host
+      // that threw would leave the process alive with no window and no way out.
+      _log.severe('Opening the app window failed', error, stackTrace);
+    } finally {
+      if (!_done.isCompleted) {
+        _done.complete();
+      }
     }
-    _done.complete();
   }
 
   /// "Reduce motion" skips the native cross-fade, the same accessibility rule

@@ -5,12 +5,68 @@ created: '2026-09-12'
 status: 'done'
 baseline_revision: '0a11a1795b032c3e1eb0beb3617e305f8b37e9c0'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/docs/superpowers/specs/2026-09-11-windowing-splash-poc-design.md'
   - '{project-root}/docs/superpowers/specs/2026-09-07-app-bootstrap-splash-design.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      Closing the last window exits via AppExitType.required, which skips
+      AppLifecycleListener.onExitRequested and therefore the worker's graceful
+      ZanshinWorker.close(); only Cmd-Q still shuts the worker down cleanly.
+    evidence: |-
+      ServicesBinding.exitApplication documents that a `required` exit "exits
+      immediately without querying the application" (Flutter SDK
+      packages/flutter/lib/src/services/binding.dart:502-507), so the
+      System.requestAppExit round-trip that drives onExitRequested never runs.
+      Before this change AppKit terminated on the last closed window and that
+      path did reach the hook. The mechanism is an explicit owner decision in
+      the intent ("the registry lifecycle exits via
+      ServicesBinding.instance.exitApplication(AppExitType.required)"), so
+      choosing cancelable instead — or closing the worker before exiting — is
+      Ralph's call, not the implementer's. Practical harm is low (the OS
+      reclaims the FFI handles at process exit and jj holds no lock outside a
+      transaction); the inconsistency between the two quit paths is the real
+      cost.
+    location: >-
+      app/lib/src/features/window/app_windows.dart:40
+    severity: medium
+  - summary: >-
+      AppWindows.openOrActivate is not re-entrant: two concurrent calls for the
+      same key both miss the pre-await lookup and create two windows.
+    evidence: |-
+      The `_entries[key]` check at app_windows.dart:120 happens before the
+      `await create(...)`, and nothing records the in-flight creation, so a
+      double-click that fires the helper twice would open two native windows
+      for one key and leave the first unreachable. No production caller exists
+      yet — ZanshinWindowHost uses create + register directly — so this cannot
+      bite until the planned project-list window lands, which is the story that
+      should fix it (a pending-futures map keyed the same way).
+    location: >-
+      app/lib/src/features/window/app_windows.dart:113
+    severity: low
+  - summary: >-
+      The intent's mandated visual check of the ported chrome, and closing the
+      last window by hand, could not be performed from an unattended seat.
+    evidence: |-
+      Intent decision 5 says "Verify visually that the result matches today's
+      look". screencapture has no screen-recording permission here, and the
+      VM-service inspector screenshot documented in
+      project-verify-macos-ui-without-screen-permission renders the Flutter
+      widget tree, not the AppKit layers the chrome is made of (vibrancy,
+      corner radius, the gray traffic-light rings and their hover cross-fade),
+      so it cannot answer this question even in principle. Structural evidence
+      was obtained instead: a CGWindowList probe of the launched debug bundle
+      shows one on-screen window at 1200x800, origin (264,142), alpha 1.0,
+      layer 0 — and a CG height equal to the requested *content* height only
+      holds under .fullSizeContentView, so the chrome demonstrably ran.
+      Likewise the exit-when-empty rule is unit-tested against an injected exit
+      and `q`-quit was exercised, but clicking the last window's close button
+      was not.
+    location: >-
+      app/macos/Runner/MainWindowChrome.swift
+    severity: medium
 ---
 
 <intent-contract>
@@ -146,6 +202,24 @@ Read-only evidence:
 
 ## Review Triage Log
 
+### 2026-09-12 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 3, low 6)
+- defer: 3: (high 0, medium 2, low 1)
+- reject: 14
+- addressed_findings:
+  - `[medium]` `[patch]` `ZanshinBootSequence._openMain` had no error handling, so a throwing host left `_done` uncompleted, `main()`'s `await run()` hanging and — with AppKit's last-window quit now disabled — a live process with no window. Wrapped in try/catch/finally: SEVERE on `zanshin.bootstrap`, `_done` completed in `finally`.
+  - `[medium]` `[patch]` `AppWindows.register` was `_registry?.register(entry)` and `unregister` returned before the exit check when unattached — both dangerous branches failed silently, so a dropped `capture(...)` would create an unrendered window and disable the exit rule while the whole suite stayed green. Both now go through an `_attached` getter that throws a `StateError` naming `capture()`/`attach()`.
+  - `[medium]` `[patch]` `WindowFrameStore` parsed the new channel argument as `args["chrome"] as? Bool ?? false`, so a missing or mistyped key silently produced a stock titled window with `isRestorable` left on (which lets AppKit override the restored frame). Now parsed strictly in the existing `guard`, returning `bad-args`.
+  - `[low]` `[patch]` `AppWindows.create` overwrote `_entries[key]`, orphaning a live window. Now refuses a key that is already open.
+  - `[low]` `[patch]` First-launch placement used `window.center()`, which neither clamps to `visibleFrame` nor centres in it, unlike the deleted `MainFlutterWindow.defaultFrame()` — and a comment claimed parity with it. Added `placeForFirstLaunch` (clamp + centre in the usable area) and corrected the comment.
+  - `[low]` `[patch]` A build without the machine-global `flutter config --enable-windowing` showed nothing but an obscure `UnsupportedError`. `main()` now logs one SEVERE line naming the fix; control flow unchanged.
+  - `[low]` `[patch]` `worker_lifecycle_module.dart` still claimed `onExitRequested` fires on macOS window-close. Corrected to ⌘Q only, citing `AppExitType.required`.
+  - `[low]` `[patch]` Owner decision 3 (splash is always dark) was untested after four brightness tests were deleted, and the new guards were untested. Added tests: `SplashCard` stays `yaruDark` under a light platform brightness; a throwing host still completes `run()` and logs SEVERE; duplicate-key refusal; `register`/`unregister` throwing while unattached.
+  - `[low]` `[patch]` Missing blank line before `**Scope:**` in the superseded design doc made two paragraphs render as one.
+
 ## Design Notes
 
 **Splash race (chosen design, per the intent's recommendation).** The boot (`openSettings` → `startApp`) starts *before* `runWidget`, racing a `Timer(splashIndicatorDelay)`. Boot wins → create the main `RememberedWindowController` and `runWidget` with it as the only initial window; no splash object ever exists. Timer wins → create the `SplashWindowController` and `runWidget` with it. Either way the first window is part of the warm-up frame. The documented fallback (always create the splash, hold it at native `alphaValue = 0`) is only for an engine constraint that blocks this; record whichever was used in the design doc.
@@ -170,3 +244,50 @@ Read-only evidence:
 **Manual checks (if no CLI):**
 - Runtime smoke: launch `app/build/macos/Build/Products/Debug/zanshin.app` (or `flutter run -d macos --profile` with a bounded timeout) and confirm a main window appears with the custom chrome, that it quits cleanly, and — in a debug run — that hot restart survives. Use the CGWindowList probe / VM-service screenshot from `project-verify-macos-ui-without-screen-permission` (no screen-recording permission needed). Report precisely which runtime checks ran and which could not.
 - Confirm the splash path by temporarily slowing the boot (or by observing a cold first launch); confirm a warm launch shows no splash at all.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change.** The windowing-API POC is now the app's only boot path. `main.dart` runs the real boot (settings → DI graph → worker → `zanshinAppFactory.create()`) inside a timer-driven `ZanshinBootSequence` that races `splashIndicatorDelay`: either the boot wins and the main window is the first and only window, or the timer wins and a borderless splash window comes up, with the main window following at `max(boot end, delay + splashIndicatorMinShow)` and a native cross-fade. The runner always starts a view-less `FlutterEngine`; `MainFlutterWindow.swift`, the nib window, the `mainFlutterWindow` outlet and the `--windowing` flag are gone, and the main window's custom chrome is re-applied natively to the Dart-created window from the `zanshin/window_frames` handler, before the saved frame.
+
+**Files changed**
+
+- `app/lib/main.dart` — single entrypoint; keeps the zone, log forwarding, `FlutterError.onError` and semantics, drops `DartPluginRegistrant.ensureInitialized()` and `runApp`, warns when the windowing feature flag is off.
+- `app/lib/main2.dart` — deleted.
+- `app/lib/src/features/bootstrap/zanshin_bootstrap.dart` — the timing constants, the `BootWindowHost` interface and `ZanshinBootSequence`.
+- `app/lib/src/features/bootstrap/boot_window_host.dart` — the real host; the only caller of `runWidget`.
+- `app/lib/src/features/bootstrap/splash_card.dart`, `boot_failure.dart` — the fixed dark splash card and the now-public failure page.
+- `app/lib/src/features/window/app_windows.dart` — keyed multi-window API: open-or-activate, the lifecycle delegate, the exit-when-empty rule.
+- `app/lib/src/features/window/remembered_window_controller.dart`, `splash_window_controller.dart` — promoted out of `bootstrap/`; the remembered controller now asks for the chrome.
+- `app/lib/src/app/worker_lifecycle_module.dart` — comment corrected: only ⌘Q reaches `onExitRequested`.
+- `app/macos/Runner/MainWindowChrome.swift` — the ported chrome (rename of `MainFlutterWindow.swift`), applied to an engine-created `NSWindow`; the `NSVisualEffectView` is inserted behind `window.contentView` and re-stacked on key/exit-fullscreen instead of being the content view.
+- `app/macos/Runner/WindowFrameStore.swift` — builds the chrome before the frame; strict argument parsing; first-launch placement clamped to `visibleFrame`.
+- `app/macos/Runner/WindowingBootstrap.swift`, `AppDelegate.swift` — no `WindowingMode`, no occlusion observer; `applicationShouldTerminateAfterLastWindowClosed` returns `false`; hot-restart workaround and double activation kept.
+- `app/macos/Runner/Base.lproj/MainMenu.xib`, `app/macos/Runner.xcodeproj/project.pbxproj` — nib window and outlet removed; Swift file entries updated in all four places.
+- `packages/zanshin_shell_macos/.../ZanshinShellPlugin.swift` — window lookup filtered to a titled Flutter window, never the borderless splash.
+- `app/test/features/bootstrap/zanshin_bootstrap_test.dart`, `app/test/features/window/app_windows_test.dart` — rewritten and new.
+- `README.md`, `docs/development-setup.md` — `flutter config --enable-windowing` documented as a hard prerequisite.
+- `docs/superpowers/specs/2026-09-11-windowing-splash-poc-design.md` — rewritten as the shipped design; `2026-09-07-app-bootstrap-splash-design.md` marked superseded.
+
+**Review findings.** 9 patches applied (0 high, 3 medium, 6 low), 3 items deferred, 14 rejected as noise. No intent gaps and no spec defects — no repair loopback was needed.
+
+**Follow-up review recommendation:** `true`. Patched counts: high 0, medium 3, low 6 → score `3×3 + 6 = 15`, at or above the threshold of 5.
+
+**Verification performed** (all re-run by the reviewer after the patches, not taken on the implementer's report):
+
+- `cargo make test` — exit 0. 27 Flutter tests in `app/`, 322 Rust tests, `dart analyze` clean, `dart format` 0 changed, `cargo deny` advisories+bans ok, coverage held at 99.27% (9059/9126) with `coverage-baseline.txt` unchanged.
+- `flutter build macos --debug` from `app/` — exit 0, `zanshin.app` built. The only proof that the Swift sources and `project.pbxproj` agree after the deletions and the addition.
+- `git grep` for `--windowing` / `WindowingMode` / `main2.dart` / `app_position` / `MainFlutterWindow` — no live code hits; only historical prose in the design and plan docs plus two comments naming what was replaced.
+- Runtime smoke (CGWindowList probe against the launched debug bundle) — exactly one on-screen window, 1200×800 at origin (264,142), alpha 1.0, layer 0; the process terminated cleanly. The CG height equalling the *requested content* height is positive evidence that `.fullSizeContentView` was applied, i.e. the chrome ran. The implementer additionally exercised the slow-boot splash, a seeded remembered frame, and two hot restarts.
+- Every row of the I/O & Edge-Case Matrix is covered by a test that ran and passed.
+
+**Residual risks**
+
+- The chrome's *appearance* — vibrancy, corner radius, the gray traffic-light rings and their hover cross-fade — is unverified. `screencapture` has no screen-recording permission here, and the VM-service inspector screenshot renders the Flutter tree rather than the AppKit layers, so this cannot be answered from an unattended seat. Intent decision 5 asks for it explicitly: worth one look from Ralph.
+- Closing the last window by hand was never exercised; the exit rule is unit-tested against an injected exit and `q`-quit was verified.
+- The vibrancy view lives in AppKit's private frame view (`contentView.superview`). It is re-stacked on key and exit-fullscreen, but an unanticipated AppKit rebuild would lose the blur silently rather than crash.
+- The first-launch clamp only ran on a display large enough not to clamp.
+- `ZanshinShellPlugin` still resolves "the" window heuristically and takes no window argument; once project windows exist, shell calls could target the wrong one.
+- The stale POC keys (`start`, `project:*`) in `<bundle id>.window_frames` and the old `<bundle id>.app_position` suite are left on disk; nothing reads them.

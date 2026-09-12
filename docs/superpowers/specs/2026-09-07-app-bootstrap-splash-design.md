@@ -13,6 +13,7 @@ the indicator fade-in, and the "app mounted behind an opaque splash" transition 
 window simply opens once the minimum is over. Read below for the original rationale only.
 
 Originally implemented 2026-09-07 (plan: `docs/superpowers/plans/2026-09-07-app-bootstrap-splash.md`)
+
 **Scope:** `app/lib/main.dart` and a new bootstrap widget in `app/`; the Lottie
 loader asset and the `lottie` dependency. No change to `packages/*`, the DI
 graph, or `ZanshinApp`.

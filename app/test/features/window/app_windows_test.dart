@@ -121,4 +121,28 @@ void main() {
 
     expect(registry.windows, <WindowEntry>[entry]);
   });
+
+  testWidgets('create refuses a key that is already open', (tester) async {
+    final (WindowRegistry _, AppWindows windows, _) = newWindows();
+    await windows.openOrActivate(key: 'main', title: 'Zanshin', builder: _nothing);
+
+    await expectLater(
+      windows.create(key: 'main', title: 'Zanshin', builder: _nothing),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  testWidgets('register and unregister fail loudly while no registry is captured', (tester) async {
+    // No attach(): a dropped capture() must not silently leave a native window
+    // unrendered, nor silently skip the exit-when-empty rule.
+    final windows = AppWindows(createController: fakeController, exitProcess: () async {});
+    final WindowEntry entry = await windows.create(key: 'main', title: 'Zanshin', builder: _nothing);
+
+    expect(() => windows.register(entry), throwsA(isA<StateError>()));
+    expect(() => windows.unregister(entry), throwsA(isA<StateError>()));
+
+    // Tidy up the stand-in controller; its destroy path needs a registry.
+    windows.attach(WindowRegistry());
+    entry.controller.destroy();
+  });
 }

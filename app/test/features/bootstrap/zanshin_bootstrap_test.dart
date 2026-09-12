@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:yaru/yaru.dart';
 import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
@@ -26,6 +27,11 @@ class AppMarker extends StatelessWidget {
 /// window controllers, none of which a widget test can reach — the interface
 /// exists so the sequencing can be tested without them.
 class FakeBootWindowHost implements BootWindowHost {
+  FakeBootWindowHost({this.failOnOpenMain = false});
+
+  /// Stands in for a window layer that cannot open a window at all.
+  final bool failOnOpenMain;
+
   final calls = <String>[];
 
   /// What [openMain] was handed.
@@ -41,6 +47,9 @@ class FakeBootWindowHost implements BootWindowHost {
   Future<void> openMain(Widget content) async {
     this.content = content;
     calls.add('main');
+    if (failOnOpenMain) {
+      throw StateError('the engine refused the window');
+    }
   }
 
   @override
@@ -243,6 +252,52 @@ void main() {
 
     expect(host.calls, <String>['splash', 'main', 'dismiss']);
     expect(host.fade, Duration.zero);
+  });
+
+  testWidgets('a host that cannot open a window logs at SEVERE and still finishes the boot', (tester) async {
+    final records = <LogRecord>[];
+    final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
+    addTearDown(logs.cancel);
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final app = Completer<Widget>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost(failOnOpenMain: true);
+    var finished = false;
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () async => store,
+        startApp: (_) => app.future,
+      ).run().then((_) => finished = true),
+    );
+
+    app.complete(const AppMarker());
+    await flush(tester);
+
+    // `main` awaits run(); a host error must not leave it hanging with no
+    // window and — AppKit no longer quitting on the last one — no way out.
+    expect(host.calls, <String>['main']);
+    expect(finished, isTrue);
+    expect(
+      records,
+      contains(
+        isA<LogRecord>()
+            .having((r) => r.level, 'level', Level.SEVERE)
+            .having((r) => r.loggerName, 'loggerName', 'zanshin.bootstrap')
+            .having((r) => r.error, 'error', isA<StateError>()),
+      ),
+    );
+  });
+
+  testWidgets('the splash card stays dark under a light platform brightness', (tester) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+    await tester.pumpWidget(const SplashCard());
+
+    final decoration = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first).decoration as BoxDecoration;
+    expect(decoration.color, yaruDark.scaffoldBackgroundColor);
+    expect(decoration.color, isNot(yaruLight.scaffoldBackgroundColor));
   });
 
   testWidgets('the splash card animates the loader, and holds its first frame with reduced motion', (tester) async {

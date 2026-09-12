@@ -181,6 +181,16 @@ hover cross-fade — and closing the last window by hand. The exit rule is unit-
 
 - A Window menu, and a project-list window: closing the main window today leaves no way
   back. `AppWindows.openOrActivate` is the seam both will use.
+- **Closing the last window skips the worker's graceful shutdown.** The registry exits with
+  `AppExitType.required`, which the framework documents as exiting immediately without
+  querying the application, so `AppLifecycleListener.onExitRequested` — and with it
+  `ZanshinWorker.close()` — does not run. ⌘Q still goes through `onExitRequested` and shuts
+  the worker down cleanly. Deliberate for now (the OS reclaims the process either way);
+  revisit if the worker ever holds state that must be flushed.
+- **`openOrActivate` is not re-entrant per key.** Two concurrent calls for the same key can
+  both miss the lookup before the first one's `await` resolves and end up creating two
+  native windows. No caller does this today (the main window is opened once, from the boot
+  sequence); the project-list window will need a per-key in-flight guard.
 - A full-screen frame is not saved; the last normal one is restored.
 - Reset the remembered frames with `defaults delete de.dasralph.zanshin.window_frames`
   (it still holds the POC's dead `start` and `project:*` keys).

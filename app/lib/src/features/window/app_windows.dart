@@ -91,6 +91,11 @@ class AppWindows {
     Size size = defaultWindowSize,
     BoxConstraints constraints = defaultWindowConstraints,
   }) async {
+    if (_entries.containsKey(key)) {
+      // Overwriting would leave the open window registered but unreachable:
+      // no longer activatable, and its key freed for a second native window.
+      throw StateError('A window for "$key" is already open; use openOrActivate.');
+    }
     final lifecycle = _WindowLifecycle(this);
     final WindowController controller = await createController(
       key: key,
@@ -125,7 +130,7 @@ class AppWindows {
   }
 
   /// Adds [entry] to the registry, which renders its window.
-  void register(WindowEntry entry) => _registry?.register(entry);
+  void register(WindowEntry entry) => _attached.register(entry);
 
   /// Removes [entry] from the registry; once no window is left the process
   /// ends, because in this runner shape AppKit no longer does it.
@@ -134,14 +139,27 @@ class AppWindows {
   /// through the same exit rule.
   void unregister(WindowEntry entry) {
     _entries.removeWhere((_, open) => identical(open, entry));
-    final WindowRegistry? registry = _registry;
-    if (registry == null) {
-      return;
-    }
-    registry.unregister(entry);
+    final WindowRegistry registry = _attached..unregister(entry);
     if (registry.windows.isEmpty) {
       unawaited(exitProcess());
     }
+  }
+
+  /// The captured registry, or a loud failure.
+  ///
+  /// Both callers are on the dangerous side of the seam: without a registry a
+  /// created window would never be rendered, and the exit-when-empty rule
+  /// would never fire — the app would sit there with no window and no way to
+  /// quit. Better to blow up than to do nothing.
+  WindowRegistry get _attached {
+    final WindowRegistry? registry = _registry;
+    if (registry == null) {
+      throw StateError(
+        'No WindowRegistry attached. The first window built must pass through '
+        'capture() (or attach() must be called) before windows are registered.',
+      );
+    }
+    return registry;
   }
 }
 

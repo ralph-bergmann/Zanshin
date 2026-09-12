@@ -26,10 +26,13 @@ class WorkerLifecycleModule {
 
 /// Hooks [ZanshinWorker.close] into the Flutter app-lifecycle on macOS.
 ///
-/// `onExitRequested` fires when the system asks the app to quit (macOS
-/// window-close / Cmd-Q). Calling [ZanshinWorker.close] gives the worker a
-/// chance to release FFI handles before the process exits. On other platforms
-/// this is best-effort — the OS reclaims process resources anyway.
+/// `onExitRequested` fires when the system *asks* the app to quit — on macOS
+/// that is ⌘Q. Closing the last window does not reach it: the window registry
+/// exits with `AppExitType.required`, which the framework documents as exiting
+/// immediately without querying the application. Calling [ZanshinWorker.close]
+/// gives the worker a chance to release FFI handles before the process exits.
+/// On other platforms this is best-effort — the OS reclaims process resources
+/// anyway.
 class _WorkerLifecycleListener implements ProvisionListener<ZanshinWorker> {
   @override
   void onProvision(ZanshinWorker instance) {
