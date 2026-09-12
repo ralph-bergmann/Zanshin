@@ -3,12 +3,15 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/semantics.dart';
+
 // ignore: implementation_imports, invalid_use_of_internal_member
 import 'package:flutter/src/foundation/_features.dart' show isWindowingEnabled;
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
+import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
@@ -27,7 +30,11 @@ Future<void> main() async {
   // i.e. in this zone too.
   await runZonedGuarded(
     () async {
-      WidgetsFlutterBinding.ensureInitialized();
+      if (kDebugMode) {
+        MarionetteBinding.ensureInitialized();
+      } else {
+        WidgetsFlutterBinding.ensureInitialized();
+      }
       SemanticsBinding.instance.ensureSemantics();
 
       initLogForwarding(level: .ALL);
