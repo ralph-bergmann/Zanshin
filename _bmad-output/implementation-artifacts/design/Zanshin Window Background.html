@@ -1,0 +1,144 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zanshin — Fensterhintergrund Day/Night</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Inter",system-ui,sans-serif;background:#16171c;color:#d7d8de;padding:40px 28px 72px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:44px}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em;color:#f2f2f5}
+h2{font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#7c7f8a;margin-bottom:16px}
+p.lead{font-size:14px;color:#a2a5b0;max-width:70ch;text-wrap:pretty}
+.desk{padding:34px;border-radius:16px;display:grid;gap:18px}
+.desk.day{background:#cbc7c2}
+.desk.night{background:#08090d}
+.row{display:flex;gap:18px;flex-wrap:wrap;align-items:stretch}
+
+/* ---- Fenster-Mock ---- */
+.win{flex:1 1 420px;min-width:0;border-radius:11px;overflow:hidden;display:flex;flex-direction:column;min-height:286px}
+.win.zan{--edge:rgba(255,255,255,.10);--line:rgba(255,255,255,.07);--ink:#e7e9f2;--dim:#98a0bb;
+  background:radial-gradient(115% 85% at 10% -12%,rgba(96,120,178,.24),rgba(96,120,178,0) 62%),linear-gradient(165deg,#1a2038,#12162a 68%,#0e1224);
+  box-shadow:0 0 0 1px rgba(255,255,255,.09),0 18px 44px -14px rgba(0,0,0,.75)}
+.desk.day .win.zan{--edge:rgba(48,38,28,.10);--line:rgba(58,46,34,.09);--ink:#2c2a33;--dim:#736c66;
+  background:radial-gradient(115% 85% at 10% -12%,rgba(220,168,91,.20),rgba(220,168,91,0) 62%),linear-gradient(165deg,#f7f4f0,#f0ece7 68%,#e8e3dd);
+  box-shadow:0 0 0 1px rgba(58,46,34,.14),0 14px 34px -12px rgba(48,38,28,.32)}
+.win.neighbor{flex:0 0 236px;--ink:#e4e4e7;--dim:#8b8b93;--line:rgba(255,255,255,.07);background:#0d0d0f;box-shadow:0 0 0 1px rgba(255,255,255,.07),0 18px 44px -14px rgba(0,0,0,.7)}
+.desk.day .win.neighbor{--ink:#24242a;--dim:#71717a;--line:rgba(0,0,0,.07);background:#fafafa;box-shadow:0 0 0 1px rgba(0,0,0,.10),0 14px 34px -12px rgba(24,30,56,.28)}
+.tb{height:38px;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}
+.tb b{font-weight:500;color:var(--ink)}
+.tb .lights{display:flex;gap:6px;margin-left:auto}
+.tb .lights i{width:9px;height:9px;border-radius:50%;background:currentColor;opacity:.35}
+.body{flex:1;display:flex;min-height:0}
+.side{width:132px;border-right:1px solid var(--line);padding:12px 10px;display:grid;gap:7px;align-content:start}
+.side.tint{background:rgba(255,255,255,.03)}
+.desk.day .side.tint{background:rgba(255,253,250,.58)}
+.side span{font-size:11.5px;color:var(--dim);padding:5px 7px;border-radius:6px}
+.side span.on{color:var(--ink);background:rgba(120,140,200,.16)}
+.desk.day .side span.on{background:rgba(200,150,80,.20)}
+.main{flex:1;padding:14px;display:grid;gap:10px;align-content:start;min-width:0}
+.card{border-radius:8px;padding:11px 12px;background:rgba(255,255,255,.045);border:1px solid var(--line);display:grid;gap:7px}
+.desk.day .card{background:rgba(255,253,250,.72);border-color:rgba(58,46,34,.10)}
+.card .t{font-size:12px;color:var(--ink);font-weight:500}
+.card .m{font:10.5px "JetBrains Mono",monospace;color:var(--dim)}
+.skel{height:6px;border-radius:3px;background:var(--dim);opacity:.28}
+.skel.s{width:52%}.skel.m{width:74%}
+.gold{width:5px;height:5px;border-radius:50%;background:#dca85b;box-shadow:0 0 0 3px rgba(220,168,91,.18);display:inline-block;margin-right:6px;vertical-align:middle}
+.tag{font:10px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:#8a8d99}
+.desk.day .tag{color:#57504a}
+
+/* ---- Tokens & Code ---- */
+.tokens{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}
+.tok{border:1px solid rgba(255,255,255,.09);border-radius:10px;overflow:hidden;background:#1c1d23}
+.tok .sw{height:64px}
+.tok .lb{padding:9px 11px;display:grid;gap:2px}
+.tok .lb b{font-size:12px;font-weight:500;color:#e7e8ed}
+.tok .lb code{font:10.5px "JetBrains Mono",monospace;color:#8a8d99}
+pre{background:#1c1d23;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:16px 18px;overflow:auto;font:12px/1.65 "JetBrains Mono",monospace;color:#c8cad3}
+pre .c{color:#7b7e8a}pre .k{color:#a8b6dd}pre .n{color:#dca85b}
+ul{display:grid;gap:8px;padding-left:18px;font-size:13.5px;color:#a2a5b0;max-width:78ch}
+ul b{color:#e2e3e9;font-weight:500}
+a{color:#dca85b}a:hover{color:#f4cf80}
+</style></head><body>
+<div class="wrap">
+
+<header style="display:grid;gap:10px">
+<h1>Fensterhintergrund — Day &amp; Night</h1>
+<p class="lead">Zwei Shader pro Fenster, statisch, kein Blur: ein diagonaler <b>LinearGradient</b> (Indigo-Achse aus dem Splash bei Night, warmes Papier bei Day) plus ein sehr flacher <b>RadialGradient</b> oben links. Beides einmal hinter dem Content, als <code>const</code> Decoration — Rendering-Kosten praktisch null. Der Hintergrund trägt genug Ton, dass die Fensterkante gegen Nachbarfenster und Desktop sichtbar bleibt.</p>
+</header>
+
+<section>
+<h2>Night</h2>
+<div class="desk night"><div class="row">
+<div class="win zan"><div class="tb"><b>Zanshin</b><span>—  zanshin/main</span><span class="lights"><i></i><i></i><i></i></span></div>
+<div class="body"><div class="side tint"><span class="on">Änderungen</span><span>Historie</span><span>Branches</span><span>Konflikte</span></div>
+<div class="main"><div class="card"><div class="t"><span class="gold"></span>ktrzqnvw  feat: rail spacing</div><div class="m">2 files · +48 −12</div><div class="skel m"></div><div class="skel s"></div></div>
+<div class="card"><div class="t">mpxlszou  fix: theme token</div><div class="m">1 file · +6 −6</div><div class="skel s"></div></div></div></div></div>
+<div class="win neighbor"><div class="tb"><b>Terminal</b><span class="lights"><i></i><i></i><i></i></span></div><div class="body"><div class="main"><div class="skel m"></div><div class="skel s"></div><div class="skel m"></div><div class="skel s"></div></div></div></div>
+</div><div class="tag">Nachbarfenster in Yaru-Standardgrau — Kante liest sich klar</div></div>
+</section>
+
+<section>
+<h2>Day</h2>
+<div class="desk day"><div class="row">
+<div class="win zan"><div class="tb"><b>Zanshin</b><span>—  zanshin/main</span><span class="lights"><i></i><i></i><i></i></span></div>
+<div class="body"><div class="side tint"><span class="on">Änderungen</span><span>Historie</span><span>Branches</span><span>Konflikte</span></div>
+<div class="main"><div class="card"><div class="t"><span class="gold"></span>ktrzqnvw  feat: rail spacing</div><div class="m">2 files · +48 −12</div><div class="skel m"></div><div class="skel s"></div></div>
+<div class="card"><div class="t">mpxlszou  fix: theme token</div><div class="m">1 file · +6 −6</div><div class="skel s"></div></div></div></div></div>
+<div class="win neighbor"><div class="tb"><b>Terminal</b><span class="lights"><i></i><i></i><i></i></span></div><div class="body"><div class="main"><div class="skel m"></div><div class="skel s"></div><div class="skel m"></div><div class="skel s"></div></div></div></div>
+</div><div class="tag">Warmes Papier mit Gold-Anflug oben links — eigener Ton, kein Farbknall</div></div>
+</section>
+
+<section>
+<h2>Tokens</h2>
+<div class="tokens">
+<div class="tok"><div class="sw" style="background:linear-gradient(165deg,#1a2038,#12162a 68%,#0e1224)"></div><div class="lb"><b>night.canvas</b><code>#1A2038 → #12162A → #0E1224</code></div></div>
+<div class="tok"><div class="sw" style="background:radial-gradient(115% 85% at 10% -12%,rgba(96,120,178,.24),rgba(96,120,178,0) 62%),#12162a"></div><div class="lb"><b>night.glow</b><code>60 78 B2 @ 24% → 0%</code></div></div>
+<div class="tok"><div class="sw" style="background:linear-gradient(165deg,#f7f4f0,#f0ece7 68%,#e8e3dd)"></div><div class="lb"><b>day.canvas</b><code>#F7F4F0 → #F0ECE7 → #E8E3DD</code></div></div>
+<div class="tok"><div class="sw" style="background:radial-gradient(115% 85% at 10% -12%,rgba(220,168,91,.20),rgba(220,168,91,0) 62%),#f0ece7"></div><div class="lb"><b>day.glow</b><code>DC A8 5B @ 20% → 0%</code></div></div>
+<div class="tok"><div class="sw" style="background:#dca85b"></div><div class="lb"><b>accent.gold</b><code>#DCA85B</code></div></div>
+</div>
+</section>
+
+<section>
+<h2>Flutter</h2>
+<pre><span class="c">// Einmal ganz unten im Fenster-Scaffold. Beide Gradients sind const-Decorations,
+// Flutter cached den Shader; ein RepaintBoundary hält den Layer statisch.</span>
+
+<span class="k">class</span> ZanshinCanvas <span class="k">extends</span> StatelessWidget {
+  <span class="k">final</span> Widget child; <span class="k">final</span> <span class="k">bool</span> dark;
+  <span class="k">const</span> ZanshinCanvas({<span class="k">super</span>.key, <span class="k">required</span> <span class="k">this</span>.child, <span class="k">required</span> <span class="k">this</span>.dark});
+
+  <span class="k">static</span> <span class="k">const</span> _nightBase = BoxDecoration(gradient: LinearGradient(
+    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    colors: [Color(<span class="n">0xFF1A2038</span>), Color(<span class="n">0xFF12162A</span>), Color(<span class="n">0xFF0E1224</span>)],
+    stops: [<span class="n">0</span>, <span class="n">.68</span>, <span class="n">1</span>]));
+  <span class="k">static</span> <span class="k">const</span> _dayBase = BoxDecoration(gradient: LinearGradient(
+    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    colors: [Color(<span class="n">0xFFF7F4F0</span>), Color(<span class="n">0xFFF0ECE7</span>), Color(<span class="n">0xFFE8E3DD</span>)],
+    stops: [<span class="n">0</span>, <span class="n">.68</span>, <span class="n">1</span>]));
+
+  <span class="k">static</span> BoxDecoration _glow(Color c) => BoxDecoration(gradient: RadialGradient(
+    center: <span class="k">const</span> Alignment(<span class="n">-.8</span>, <span class="n">-1.15</span>), radius: <span class="n">1.35</span>,
+    colors: [c, c.withOpacity(<span class="n">0</span>)], stops: <span class="k">const</span> [<span class="n">0</span>, <span class="n">.62</span>]));
+
+  @<span class="k">override</span>
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: DecoratedBox(
+      decoration: dark ? _nightBase : _dayBase,
+      child: DecoratedBox(
+        decoration: _glow(dark
+          ? <span class="k">const</span> Color(<span class="n">0x3D6078B2</span>)   <span class="c">// 24 %</span>
+          : <span class="k">const</span> Color(<span class="n">0x33DCA85B</span>)), <span class="c">// 20 %, warm</span>
+        child: child)));
+}</pre>
+</section>
+
+<section>
+<h2>Regeln</h2>
+<ul>
+<li><b>Nur das Fenster-Canvas</b> bekommt den Gradient. Sidebar, Karten, Dialoge liegen als halbtransparentes Weiß bzw. Weiß-auf-Dunkel darüber (<code>white @ 3 %</code> night, <code>warmweiß #FFFDFA @ 58–72 %</code> day) — reines Alpha-Blending, kein <code>BackdropFilter</code>.</li>
+<li><b>Fensterkante:</b> 1 px Hairline (<code>white @ 9 %</code> / <code>#3A2E22 @ 14 %</code>) plus ein weicher Drop-Shadow. Zusammen mit dem Indigo-Ton endet das Zanshin-Fenster sichtbar, egal welches Yaru-Programm daneben liegt.</li>
+<li><b>Kein Noise, kein Blur, keine Animation</b> im Hintergrund — der Gold-Akzent bleibt Statusfarbe (aktueller Change, Fortschritt), nicht Dekor.</li>
+<li>Yaru-Widgets weiter unverändert nutzen; nur <code>scaffoldBackgroundColor</code> auf <code>transparent</code> setzen und das Canvas darunter legen.</li>
+</ul>
+</section>
+
+</div></body></html>

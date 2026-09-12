@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Zanshin · App Icon Studies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+JP:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0a0b0e;
+  --surface: #14161c;
+  --surface-2: #1c1f27;
+  --border: #262a35;
+  --text: #ececef;
+  --text-dim: #80869a;
+  --text-soft: #b3b7c5;
+  --accent: #d4a653;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--text); }
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 64px 72px 96px;
+  min-height: 100vh;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* ============== HEADER ============== */
+header { max-width: 760px; margin-bottom: 72px; }
+.title-row {
+  display: flex; align-items: baseline; gap: 18px;
+  margin-bottom: 14px;
+}
+.title-row h1 {
+  font-size: 32px; font-weight: 600; letter-spacing: -0.025em;
+}
+.title-row .kanji {
+  font-family: "Noto Serif JP", serif;
+  font-weight: 400;
+  font-size: 38px;
+  color: var(--accent);
+  line-height: 1;
+}
+.title-row .pron {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  align-self: center;
+}
+.intro {
+  color: var(--text-soft);
+  line-height: 1.62;
+  font-size: 14.5px;
+  max-width: 640px;
+}
+.intro em {
+  font-style: normal;
+  color: var(--text);
+}
+
+/* ============== COMPARISON STRIP ============== */
+.strip {
+  display: flex;
+  gap: 32px;
+  padding: 36px 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  margin-bottom: 56px;
+  align-items: center;
+  justify-content: space-between;
+}
+.strip-label {
+  flex: 0 0 auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  max-width: 100px;
+  line-height: 1.5;
+}
+.strip-icons {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+.strip-icons .item {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.strip-icons .item svg {
+  width: 120px; height: 120px;
+  border-radius: 27px;
+  box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+}
+.strip-icons .item .num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+}
+
+/* ============== GRID ============== */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  max-width: 1240px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 0;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.card-hero {
+  padding: 44px 36px 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255,255,255,0.025), transparent 70%),
+    var(--surface);
+  position: relative;
+  min-height: 320px;
+}
+.card-hero svg.hero {
+  width: 224px; height: 224px;
+  border-radius: 50px;
+  box-shadow:
+    0 32px 80px -24px rgba(0,0,0,0.65),
+    0 0 0 1px rgba(255,255,255,0.05);
+}
+.card-hero .num-tag {
+  position: absolute;
+  top: 24px; left: 28px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+}
+.card-hero .kanji-tag {
+  position: absolute;
+  top: 22px; right: 28px;
+  font-family: "Noto Serif JP", serif;
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--accent);
+  opacity: 0.85;
+  line-height: 1;
+}
+
+.card-meta {
+  padding: 28px 36px 24px;
+  border-top: 1px solid var(--border);
+}
+.card-meta h2 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin-bottom: 10px;
+}
+.card-meta h2 .ja {
+  font-family: "Noto Serif JP", serif;
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 15px;
+  margin-left: 8px;
+}
+.card-meta p {
+  color: var(--text-soft);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.card-sizes {
+  padding: 20px 36px 28px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+}
+.card-sizes .size-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.card-sizes .size-cell svg {
+  box-shadow: 0 4px 10px -3px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+}
+.card-sizes .size-cell span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+.sz96 { width: 88px; height: 88px; border-radius: 20px; }
+.sz56 { width: 56px; height: 56px; border-radius: 13px; }
+.sz32 { width: 32px; height: 32px; border-radius: 7.5px; }
+.sz16 { width: 18px; height: 18px; border-radius: 4.5px; }
+
+/* ============== FOOTER NOTE ============== */
+.foot {
+  max-width: 760px;
+  margin-top: 64px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.foot strong { color: var(--text-soft); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<!-- =========== SVG SYMBOLS (defined once, reused at sizes) =========== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+
+  <!-- ─────────── 01 · ENSO ─────────── -->
+  <symbol id="ic-enso" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="enso-paper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f5ecd6"/>
+        <stop offset="1" stop-color="#e6d7b2"/>
+      </linearGradient>
+      <radialGradient id="enso-vignette" cx="0.5" cy="0.45" r="0.7">
+        <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#7a623a" stop-opacity="0.2"/>
+      </radialGradient>
+    </defs>
+    <rect width="256" height="256" rx="58" fill="url(#enso-paper)"/>
+    <rect width="256" height="256" rx="58" fill="url(#enso-vignette)"/>
+    <!-- Brush stroke arc: center (128,128), r=78, gap at top spanning ~50° -->
+    <!-- Start (right of gap): angle 75° math → (148, 53) -->
+    <!-- End (left of gap):    angle 115° math → (95, 57)  -->
+    <!-- Ink-blot at brush start (gives it a calligraphic "heavy start") -->
+    <circle cx="148" cy="53" r="13" fill="#1a1413"/>
+    <!-- The arc — clockwise long way around -->
+    <path d="M 148 53 A 78 78 0 1 1 95 57"
+          stroke="#1a1413" stroke-width="15" stroke-linecap="round" fill="none"/>
+    <!-- Vermilion seal-dot in the gap (the "lingering moment") -->
+    <circle cx="124" cy="44" r="9.5" fill="#bf2c2a"/>
+    <circle cx="124" cy="44" r="9.5" fill="#000" opacity="0.15"/>
+  </symbol>
+
+  <!-- ─────────── 04 · NAMI · INDIGO (fallback option) ─────────── -->
+  <symbol id="ic-kokoro" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="koko-bg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1d2540"/>
+        <stop offset="1" stop-color="#131831"/>
+      </linearGradient>
+      <radialGradient id="koko-glow" cx="0.5" cy="0.6" r="0.7">
+        <stop offset="0" stop-color="#dca85b" stop-opacity="0.1"/>
+        <stop offset="1" stop-color="#dca85b" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <rect width="256" height="256" rx="58" fill="url(#koko-bg)"/>
+    <rect width="256" height="256" rx="58" fill="url(#koko-glow)"/>
+
+    <!-- Three layered sumi-e waves in warm gold on indigo -->
+    <path d="M 28 92 Q 72 60, 116 92 T 196 92 Q 218 84, 228 90"
+          stroke="#f4cf80" stroke-width="9" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 24 134 Q 76 100, 132 134 T 212 134 Q 226 130, 234 134"
+          stroke="#dca85b" stroke-width="11" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 22 178 Q 88 138, 154 178 T 234 178"
+          stroke="#b58346" stroke-width="13" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- ─────────── 02 · ENSO · BOLD BRUSH ─────────── -->
+  <symbol id="ic-trace" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="ensoh-paper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f5ecd6"/>
+        <stop offset="1" stop-color="#e6d7b2"/>
+      </linearGradient>
+      <radialGradient id="ensoh-vig" cx="0.5" cy="0.45" r="0.7">
+        <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#7a623a" stop-opacity="0.2"/>
+      </radialGradient>
+    </defs>
+    <rect width="256" height="256" rx="58" fill="url(#ensoh-paper)"/>
+    <rect width="256" height="256" rx="58" fill="url(#ensoh-vig)"/>
+
+    <!-- Heavy ink blot at brush start -->
+    <ellipse cx="148" cy="53" rx="13" ry="10" fill="#1a1413" transform="rotate(60 148 53)"/>
+
+    <!-- Multi-segment brush with width taper 22 → 4 (heavy ink load, fading as brush moves) -->
+    <path d="M 148 53 A 78 78 0 0 1 196 89"   stroke="#1a1413" stroke-width="22" stroke-linecap="round" fill="none"/>
+    <path d="M 196 89 A 78 78 0 0 1 203 148"  stroke="#1a1413" stroke-width="19" stroke-linecap="round" fill="none"/>
+    <path d="M 203 148 A 78 78 0 0 1 167 196" stroke="#1a1413" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <path d="M 167 196 A 78 78 0 0 1 89 196"  stroke="#1a1413" stroke-width="13" stroke-linecap="round" fill="none"/>
+    <path d="M 89 196 A 78 78 0 0 1 50 128"   stroke="#1a1413" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M 50 128 A 78 78 0 0 1 61 89"    stroke="#1a1413" stroke-width="7"  stroke-linecap="round" fill="none"/>
+    <path d="M 61 89 A 78 78 0 0 1 108 53"    stroke="#1a1413" stroke-width="4"  stroke-linecap="round" fill="none"/>
+
+    <!-- Vermilion seal-dot in the gap -->
+    <circle cx="124" cy="44" r="9.5" fill="#bf2c2a"/>
+    <circle cx="124" cy="44" r="9.5" fill="#000" opacity="0.15"/>
+  </symbol>
+
+  <!-- ─────────── 03 · ENSO · DRY BRUSH ─────────── -->
+  <symbol id="ic-knot" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="ensod-paper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f5ecd6"/>
+        <stop offset="1" stop-color="#e6d7b2"/>
+      </linearGradient>
+      <radialGradient id="ensod-vig" cx="0.5" cy="0.45" r="0.7">
+        <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#7a623a" stop-opacity="0.2"/>
+      </radialGradient>
+    </defs>
+    <rect width="256" height="256" rx="58" fill="url(#ensod-paper)"/>
+    <rect width="256" height="256" rx="58" fill="url(#ensod-vig)"/>
+
+    <!-- Smaller ink load at start -->
+    <ellipse cx="148" cy="53" rx="10" ry="8" fill="#1a1413" transform="rotate(60 148 53)"/>
+
+    <!-- Slimmer brush, more pronounced fade — width 14 → 2, then dry-brush wisps -->
+    <path d="M 148 53 A 78 78 0 0 1 196 89"   stroke="#1a1413" stroke-width="14" stroke-linecap="round" fill="none"/>
+    <path d="M 196 89 A 78 78 0 0 1 203 148"  stroke="#1a1413" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M 203 148 A 78 78 0 0 1 167 196" stroke="#1a1413" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M 167 196 A 78 78 0 0 1 89 196"  stroke="#1a1413" stroke-width="8"  stroke-linecap="round" fill="none"/>
+    <path d="M 89 196 A 78 78 0 0 1 50 128"   stroke="#1a1413" stroke-width="6"  stroke-linecap="round" fill="none"/>
+    <path d="M 50 128 A 78 78 0 0 1 61 89"    stroke="#1a1413" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0.85"/>
+    <path d="M 61 89 A 78 78 0 0 1 92 60"     stroke="#1a1413" stroke-width="2"  stroke-linecap="round" fill="none" opacity="0.6"/>
+
+    <!-- Dry-brush ink fragments where the brush has run dry near the tail -->
+    <ellipse cx="98"  cy="57" rx="2"   ry="0.9" fill="#1a1413" transform="rotate(115 98 57)" opacity="0.7"/>
+    <ellipse cx="108" cy="53" rx="1.6" ry="0.7" fill="#1a1413" transform="rotate(108 108 53)" opacity="0.5"/>
+    <circle  cx="103" cy="55" r="0.9" fill="#1a1413" opacity="0.6"/>
+    <ellipse cx="116" cy="51" rx="1.3" ry="0.6" fill="#1a1413" transform="rotate(102 116 51)" opacity="0.4"/>
+    <circle  cx="112" cy="52" r="0.6" fill="#1a1413" opacity="0.3"/>
+    <circle  cx="121" cy="50" r="0.5" fill="#1a1413" opacity="0.25"/>
+
+    <!-- Vermilion seal-dot in the gap -->
+    <circle cx="124" cy="44" r="9.5" fill="#bf2c2a"/>
+    <circle cx="124" cy="44" r="9.5" fill="#000" opacity="0.15"/>
+  </symbol>
+
+</svg>
+
+
+<!-- =========== PAGE CONTENT =========== -->
+
+<header>
+  <div class="title-row">
+    <h1>Zanshin · App Icon Studies</h1>
+    <span class="kanji">残心</span>
+    <span class="pron">/ zan·shin /</span>
+  </div>
+  <p class="intro">
+    <em>Zanshin</em> is the heightened awareness that lingers after an action — the archer who holds form
+    after the arrow flies. The enso is painted in a single breath, its imperfection the whole point.
+    Three takes on that gesture (clean, bold, dry-brushed) plus Nami · Indigo on standby in slot 4.
+  </p>
+</header>
+
+<!-- Side-by-side comparison at 120px -->
+<div class="strip">
+  <div class="strip-label">Comparison<br/>@ 120<small style="text-transform:none">px</small></div>
+  <div class="strip-icons">
+    <div class="item"><svg viewBox="0 0 256 256"><use href="#ic-enso"/></svg><span class="num">01 · Clean</span></div>
+    <div class="item"><svg viewBox="0 0 256 256"><use href="#ic-trace"/></svg><span class="num">02 · Bold Brush</span></div>
+    <div class="item"><svg viewBox="0 0 256 256"><use href="#ic-knot"/></svg><span class="num">03 · Dry Brush</span></div>
+    <div class="item"><svg viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg><span class="num">04 · Nami · Indigo</span></div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ============ 01 CLEAN ============ -->
+  <div class="card" data-screen-label="01 Clean">
+    <div class="card-hero">
+      <span class="num-tag">01 · CLEAN</span>
+      <span class="kanji-tag">円相</span>
+      <svg class="hero" viewBox="0 0 256 256"><use href="#ic-enso"/></svg>
+    </div>
+    <div class="card-meta">
+      <h2>Clean <span class="ja">· your pick, for reference</span></h2>
+      <p>
+        The version you chose. Uniform brush weight, geometric arc, single vermilion seal-dot.
+        Clean and graphic — think contemporary identity, not calligraphy.
+      </p>
+    </div>
+    <div class="card-sizes">
+      <div class="size-cell"><svg class="sz96" viewBox="0 0 256 256"><use href="#ic-enso"/></svg><span>96</span></div>
+      <div class="size-cell"><svg class="sz56" viewBox="0 0 256 256"><use href="#ic-enso"/></svg><span>56</span></div>
+      <div class="size-cell"><svg class="sz32" viewBox="0 0 256 256"><use href="#ic-enso"/></svg><span>32</span></div>
+      <div class="size-cell"><svg class="sz16" viewBox="0 0 256 256"><use href="#ic-enso"/></svg><span>16</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 02 BOLD BRUSH ============ -->
+  <div class="card" data-screen-label="02 Bold Brush">
+    <div class="card-hero">
+      <span class="num-tag">02 · BOLD BRUSH</span>
+      <span class="kanji-tag">大筆</span>
+      <svg class="hero" viewBox="0 0 256 256"><use href="#ic-trace"/></svg>
+    </div>
+    <div class="card-meta">
+      <h2>Bold Brush <span class="ja">大筆 · heavy ink, single breath</span></h2>
+      <p>
+        Brush loaded heavily and pulled all the way around: thick at the start, fading as the
+        ink runs out. Same vermilion seal-dot as the clean version sits in the gap.
+      </p>
+    </div>
+    <div class="card-sizes">
+      <div class="size-cell"><svg class="sz96" viewBox="0 0 256 256"><use href="#ic-trace"/></svg><span>96</span></div>
+      <div class="size-cell"><svg class="sz56" viewBox="0 0 256 256"><use href="#ic-trace"/></svg><span>56</span></div>
+      <div class="size-cell"><svg class="sz32" viewBox="0 0 256 256"><use href="#ic-trace"/></svg><span>32</span></div>
+      <div class="size-cell"><svg class="sz16" viewBox="0 0 256 256"><use href="#ic-trace"/></svg><span>16</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 03 DRY BRUSH ============ -->
+  <div class="card" data-screen-label="03 Dry Brush">
+    <div class="card-hero">
+      <span class="num-tag">03 · DRY BRUSH</span>
+      <span class="kanji-tag">枯筆</span>
+      <svg class="hero" viewBox="0 0 256 256"><use href="#ic-knot"/></svg>
+    </div>
+    <div class="card-meta">
+      <h2>Dry Brush <span class="ja">枯筆 · the brush runs out</span></h2>
+      <p>
+        Slimmer body, more dramatic fade. The brush goes dry near the end and leaves a trail
+        of stray ink dots before lifting off the paper. Most painterly of the bunch.
+      </p>
+    </div>
+    <div class="card-sizes">
+      <div class="size-cell"><svg class="sz96" viewBox="0 0 256 256"><use href="#ic-knot"/></svg><span>96</span></div>
+      <div class="size-cell"><svg class="sz56" viewBox="0 0 256 256"><use href="#ic-knot"/></svg><span>56</span></div>
+      <div class="size-cell"><svg class="sz32" viewBox="0 0 256 256"><use href="#ic-knot"/></svg><span>32</span></div>
+      <div class="size-cell"><svg class="sz16" viewBox="0 0 256 256"><use href="#ic-knot"/></svg><span>16</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 04 NAMI · INDIGO (fallback) ============ -->
+  <div class="card" data-screen-label="04 Nami Indigo">
+    <div class="card-hero">
+      <span class="num-tag">04 · NAMI · INDIGO</span>
+      <span class="kanji-tag">波</span>
+      <svg class="hero" viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg>
+    </div>
+    <div class="card-meta">
+      <h2>Nami · Indigo <span class="ja">· in case you change your mind</span></h2>
+      <p>
+        Kept here in case the enso family stops feeling right. Three layered sumi-e waves in
+        warm gold on indigo — oldest layer broadest at the bottom, newest crisp on top.
+      </p>
+    </div>
+    <div class="card-sizes">
+      <div class="size-cell"><svg class="sz96" viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg><span>96</span></div>
+      <div class="size-cell"><svg class="sz56" viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg><span>56</span></div>
+      <div class="size-cell"><svg class="sz32" viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg><span>32</span></div>
+      <div class="size-cell"><svg class="sz16" viewBox="0 0 256 256"><use href="#ic-kokoro"/></svg><span>16</span></div>
+    </div>
+  </div>
+
+</div>
+
+<p class="foot">
+  <strong>Three brush variants of Enso —</strong> Clean, Bold, Dry. All wearing the same red
+  seal-dot in the gap. 04 is Nami · Indigo kept on standby as a fallback. Happy to push any
+  variant further — wider brush, more or less tilt, different gap position, anything.
+</p>
+
+</body>
+</html>

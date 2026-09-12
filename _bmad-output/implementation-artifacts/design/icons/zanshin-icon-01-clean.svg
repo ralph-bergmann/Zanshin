@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024">
+  <defs>
+    <linearGradient id="enso-paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5ecd6"></stop>
+      <stop offset="1" stop-color="#e6d7b2"></stop>
+    </linearGradient>
+    <radialGradient id="enso-vignette" cx="0.5" cy="0.45" r="0.7">
+      <stop offset="0.6" stop-color="#000000" stop-opacity="0"></stop>
+      <stop offset="1" stop-color="#7a623a" stop-opacity="0.2"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#enso-paper)"></rect>
+  <rect width="256" height="256" rx="58" fill="url(#enso-vignette)"></rect>
+  <circle cx="148" cy="53" r="13" fill="#1a1413"></circle>
+  <path d="M 148 53 A 78 78 0 1 1 95 57" stroke="#1a1413" stroke-width="15" stroke-linecap="round" fill="none"></path>
+  <circle cx="124" cy="44" r="9.5" fill="#bf2c2a"></circle>
+  <circle cx="124" cy="44" r="9.5" fill="#000000" opacity="0.15"></circle>
+</svg>

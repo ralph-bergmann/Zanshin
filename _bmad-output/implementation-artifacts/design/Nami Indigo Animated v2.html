@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Nami · Indigo — Loading Animation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+JP:wght@400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#0a0b0e;--surface:#14161c;--surface-2:#1c1f27;--border:#262a35;--text:#ececef;--text-dim:#80869a;--text-soft:#b3b7c5;--accent:#d4a653}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text)}
+body{font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;padding:56px 56px 88px;min-height:100vh}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(212,166,83,.35)}
+a:hover{color:#e8c07a;border-bottom-color:#e8c07a}
+header{max-width:720px;margin-bottom:44px}
+.title-row{display:flex;align-items:baseline;gap:16px;margin-bottom:12px}
+h1{font-size:29px;font-weight:600;letter-spacing:-.025em}
+.kanji{font-family:"Noto Serif JP",serif;font-size:34px;color:var(--accent);line-height:1}
+.pron{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;align-self:center}
+.intro{color:var(--text-soft);line-height:1.62;font-size:14.5px;max-width:640px;text-wrap:pretty}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;max-width:1180px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:18px}
+.stage{padding:48px 40px 40px;display:flex;flex-direction:column;align-items:center;gap:32px;background:radial-gradient(circle at 50% 36%,rgba(255,255,255,.03),transparent 70%),var(--surface)}
+.hero-wrap{border-radius:72px;box-shadow:0 34px 80px -24px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.05);overflow:hidden;line-height:0}
+.sizes{display:flex;align-items:flex-end;gap:26px;width:100%;justify-content:center;padding-top:32px;border-top:1px solid var(--border)}
+.size-cell{display:flex;flex-direction:column;align-items:center;gap:9px}
+.size-cell .frame{overflow:hidden;line-height:0;box-shadow:0 4px 12px -3px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.04)}
+.size-cell span{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:var(--text-dim);letter-spacing:.08em}
+.ctrl{padding:24px 24px 26px}
+.ctrl h3{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);font-weight:500;margin-bottom:16px}
+.seg{display:flex;gap:6px;margin-bottom:22px}
+.seg button{flex:1;padding:9px 4px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-soft);font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.seg button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:rgba(212,166,83,.08)}
+.row{margin-bottom:17px}
+.row label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-soft);margin-bottom:7px}
+.row label b{font-family:"JetBrains Mono",monospace;font-weight:400;color:var(--text);font-size:11.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;accent-color:var(--accent);width:100%;height:3px;background:var(--border);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 0 4px rgba(212,166,83,.12)}
+.btn{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.hint{font-size:11.5px;color:var(--text-dim);line-height:1.55;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.deliver{max-width:1180px;margin-top:32px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.deliver .panel{padding:22px 24px 24px}
+.deliver h4{font-size:14px;font-weight:600;margin-bottom:8px}
+.deliver p{font-size:12.5px;color:var(--text-soft);line-height:1.6}
+.deliver code{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--accent);background:var(--surface-2);padding:1px 5px;border-radius:4px;word-break:break-all}
+.tag{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);border:1px solid var(--border);padding:3px 7px;border-radius:99px;margin-bottom:12px}
+.strip{display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap;padding-top:28px;border-top:1px solid var(--border);width:100%}
+.strip .cell{display:flex;flex-direction:column;align-items:center;gap:9px}
+.strip .cell .frame{border-radius:14px;overflow:hidden;line-height:0;background:#0e1120}
+.strip .cell span{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:var(--text-dim);letter-spacing:.08em}
+@media(max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}body{padding:40px 24px 64px}}
+</style>
+</head>
+<body>
+<header>
+<div class="title-row"><h1>Nami · Indigo — Ladeanimation</h1><span class="kanji">波</span><span class="pron">/ na·mi · wave /</span></div>
+<p class="intro">Jetzt animiert der Loader die exakten Pfade des App-Logos — links der natürliche Schwung, rechts der kleine Knick am Auslauf. Ein Schwung läuft einmal von links nach rechts durch und hebt die Linien dort an, wo er vorbeikommt; danach kurze Pause. Im Ruhezustand steht Pixel für Pixel das statische Logo.</p>
+</header>
+
+<div class="layout">
+  <div class="panel stage">
+    <div class="hero-wrap" id="hero"></div>
+    <div class="sizes" id="sizes"></div>
+    <div class="strip">
+      <div class="cell"><div class="frame" id="lot-a" style="width:104px;height:104px"></div><span>nami_loader</span></div>
+      <div class="cell"><div class="frame" id="lot-b" style="width:104px;height:104px"></div><span>transparent</span></div>
+      <div class="cell"><div class="frame" id="lot-c" style="width:104px;height:104px"></div><span>pulse</span></div>
+    </div>
+  </div>
+
+  <div class="panel ctrl">
+    <h3>Bewegung</h3>
+    <div class="seg" id="mode">
+      <button data-mode="sweep" aria-pressed="true">Sweep</button>
+      <button data-mode="pulse" aria-pressed="false">Pulse</button>
+    </div>
+    <div class="row"><label>Hub <b id="v-h">20.5</b></label><input type="range" id="h" min="0" max="24" step="0.5" value="20.5"/></div>
+    <div class="row"><label>Breite des Schwungs <b id="v-sig">40</b></label><input type="range" id="sig" min="20" max="110" step="2" value="40"/></div>
+    <div class="row"><label>Durchlauf <b id="v-sweep">1.3s</b></label><input type="range" id="sweep" min="0.4" max="2.4" step="0.05" value="1.3"/></div>
+    <div class="row"><label>Pause <b id="v-pause">0.55s</b></label><input type="range" id="pause" min="0" max="1.6" step="0.05" value="0.55"/></div>
+    <button class="btn" id="playpause">Pause</button>
+    <p class="hint">Sweep: ein wandernder Schwung hebt die Linien an der Stelle an, an der er vorbeikommt. Pulse: die ganze Wellenform atmet gleichzeitig auf und ab.</p>
+  </div>
+</div>
+
+<div class="deliver">
+  <div class="panel"><span class="tag">Lottie · fertig</span><h4>Direkt in Flutter laden</h4><p><code>lottie/nami_loader.json</code> (mit Indigo-Hintergrund) und <code>lottie/nami_loader_transparent.json</code> (nur die Wellen). 30 fps, nahtloser Loop, alle Frames gebacken — keine Nacharbeit nötig.</p></div>
+  <div class="panel"><span class="tag">Lottie · Variante</span><h4>Pulse-Version</h4><p><code>lottie/nami_loader_pulse.json</code> — dieselbe Datei mit der Pulse-Bewegung, falls die dir lieber ist.</p></div>
+  <div class="panel"><span class="tag">Flutter</span><h4>Ohne Asset</h4><p><code>rive/nami_wave.dart</code> ist auf die neue Bewegung aktualisiert: <code>NamiIndigoIcon(size: 96)</code>, reiner CustomPainter.</p></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+<script>
+window.addEventListener("load",function(){
+  if(!window.lottie)return;
+  [["lot-a","lottie/nami_loader.json"],["lot-b","lottie/nami_loader_transparent.json"],["lot-c","lottie/nami_loader_pulse.json"]].forEach(function(cfg){
+    lottie.loadAnimation({container:document.getElementById(cfg[0]),renderer:"svg",loop:true,autoplay:true,path:cfg[1]});
+  });
+});
+</script>
+<script>
+/* Exakte Pfade des App-Logos, als quadratische Bezier-Segmente aufgeloest
+   (T-Kommandos zu expliziten Kontrollpunkten gespiegelt). */
+const LINES=[
+ {y:92, w:9,  c:"#f4cf80", per:10, start:[28,92],
+  segs:[[[72,60],[116,92]],[[160,124],[196,92]],[[218,84],[228,90]]]},
+ {y:134,w:11, c:"#dca85b", per:10, start:[24,134],
+  segs:[[[76,100],[132,134]],[[188,168],[212,134]],[[226,130],[234,134]]]},
+ {y:178,w:13, c:"#b58346", per:15, start:[22,178],
+  segs:[[[88,138],[154,178]],[[220,218],[234,178]]]}
+];
+const X0=22,X1=234;
+const T={mode:"sweep",h:20.5,sig:40,sweep:1.3,pause:0.55};
+let uid=0,paused=false,t0=performance.now(),clock=0;
+
+function basePoints(line){
+  if(line._pts)return line._pts;
+  const pts=[[line.start[0],line.start[1]]];
+  let p0=line.start;
+  line.segs.forEach(function(seg){
+    const c=seg[0],p1=seg[1];
+    for(let i=1;i<=line.per;i++){
+      const t=i/line.per, m=1-t;
+      pts.push([
+        m*m*p0[0]+2*m*t*c[0]+t*t*p1[0],
+        m*m*p0[1]+2*m*t*c[1]+t*t*p1[1]
+      ]);
+    }
+    p0=p1;
+  });
+  line._pts=pts;
+  return pts;
+}
+function phase(t){
+  const total=T.sweep+T.pause, tc=((t%total)+total)%total;
+  return tc<T.sweep?tc/T.sweep:-1; // -1 = Ruhe
+}
+function pathFor(line,p){
+  const pts=basePoints(line);
+  let cx=0,u,amt=0;
+  if(p>=0){
+    if(T.mode==="pulse"){amt=(0.5-0.5*Math.cos(p*Math.PI*2))*(T.h/11);}
+    else{
+      const ease=0.5-0.5*Math.cos(p*Math.PI);
+      const a=X0-T.sig*1.7,b=X1+T.sig*1.7;
+      cx=a+ease*(b-a);
+    }
+  }
+  let d="";
+  for(let i=0;i<pts.length;i++){
+    const x=pts[i][0];let y=pts[i][1];
+    if(p>=0){
+      if(T.mode==="pulse"){y=line.y+(y-line.y)*(1+amt);}
+      else{u=(x-cx)/T.sig;y-=T.h*Math.exp(-u*u);}
+    }
+    d+=(i?"L ":"M ")+x.toFixed(1)+" "+y.toFixed(2)+" ";
+  }
+  return d;
+}
+
+function makeIcon(px,radiusVb,bg){
+  const id="nami"+(uid++);
+  const el=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  el.setAttribute("viewBox","0 0 256 256");el.setAttribute("width",px);el.setAttribute("height",px);
+  el.innerHTML=
+   '<defs><linearGradient id="'+id+'-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2540"/><stop offset="1" stop-color="#131831"/></linearGradient>'+
+   '<radialGradient id="'+id+'-glow" cx="0.5" cy="0.6" r="0.7"><stop offset="0" stop-color="#dca85b" stop-opacity="0.1"/><stop offset="1" stop-color="#dca85b" stop-opacity="0"/></radialGradient></defs>'+
+   (bg?'<rect width="256" height="256" rx="'+radiusVb+'" fill="url(#'+id+'-bg)"/><rect width="256" height="256" rx="'+radiusVb+'" fill="url(#'+id+'-glow)"/>':'')+
+   LINES.map(function(l,i){return '<path data-w="'+i+'" d="'+pathFor(l,-1)+'" fill="none" stroke="'+l.c+'" stroke-width="'+l.w+'" stroke-linecap="round" stroke-linejoin="round"/>'}).join("");
+  return el;
+}
+
+const icons=[];
+function reg(el){icons.push(el);return el}
+document.getElementById("hero").appendChild(reg(makeIcon(320,58,true)));
+[[88,20],[56,13],[32,7.5],[18,4.5]].forEach(function(s){
+  const cell=document.createElement("div");cell.className="size-cell";
+  const frame=document.createElement("div");frame.className="frame";
+  frame.style.borderRadius=s[1]+"px";
+  frame.appendChild(reg(makeIcon(s[0],s[1]*256/s[0],true)));
+  const lab=document.createElement("span");lab.textContent=s[0];
+  cell.appendChild(frame);cell.appendChild(lab);
+  document.getElementById("sizes").appendChild(cell);
+});
+
+function render(p){
+  const ds=LINES.map(function(l){return pathFor(l,p)});
+  icons.forEach(function(el){
+    el.querySelectorAll("path[data-w]").forEach(function(pt){pt.setAttribute("d",ds[+pt.dataset.w])});
+  });
+}
+function tick(now){
+  if(!paused)clock+=(now-t0)/1000;
+  t0=now;
+  render(phase(clock));
+  requestAnimationFrame(tick);
+}
+render(-1);
+requestAnimationFrame(tick);
+
+document.querySelectorAll("#mode button").forEach(function(b){
+  b.addEventListener("click",function(){
+    T.mode=b.dataset.mode;
+    document.querySelectorAll("#mode button").forEach(function(o){o.setAttribute("aria-pressed",String(o===b))});
+  });
+});
+[["h",""],["sig",""],["sweep","s"],["pause","s"]].forEach(function(cfg){
+  const k=cfg[0],suffix=cfg[1];
+  const inp=document.getElementById(k),out=document.getElementById("v-"+k);
+  inp.addEventListener("input",function(){T[k]=+inp.value;out.textContent=(+inp.value)+suffix});
+});
+document.getElementById("playpause").addEventListener("click",function(){paused=!paused;this.textContent=paused?"Play":"Pause"});
+</script>
+</body>
+</html>

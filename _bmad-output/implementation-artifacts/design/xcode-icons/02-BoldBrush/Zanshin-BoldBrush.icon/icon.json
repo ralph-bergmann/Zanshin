@@ -1,0 +1,43 @@
+{
+  "fill": {
+    "linear-gradient": {
+      "angle": 90,
+      "stops": [
+        {
+          "position": 0,
+          "color": "#f5ecd6"
+        },
+        {
+          "position": 1,
+          "color": "#e6d7b2"
+        }
+      ]
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Stroke.svg",
+          "fill": {
+            "solid": "#1a1413"
+          },
+          "name": "Stroke"
+        },
+        {
+          "image-name": "Seal.svg",
+          "fill": {
+            "solid": "#bf2c2a"
+          },
+          "name": "Seal"
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

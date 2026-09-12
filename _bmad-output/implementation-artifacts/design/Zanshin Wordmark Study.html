@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Zanshin — Monoline Wortmarke</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Jost:wght@200;300&family=Josefin+Sans:wght@100;200&family=Shippori+Mincho:wght@500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0e1124;color:#e6e8f2;font-family:"Inter",system-ui,sans-serif;padding:56px 40px 90px}
+.wrap{max-width:900px;margin:0 auto;display:grid;gap:44px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.lead{font-size:13.5px;line-height:1.65;color:#a3abc9;max-width:66ch;text-wrap:pretty}
+.lead b{color:#f4cf80;font-weight:500}
+section{display:grid;gap:16px}
+h2{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#7c86a8}
+.card{background:linear-gradient(150deg,#171c36,#12162c);border:1px solid rgba(244,207,128,.10);border-radius:12px;padding:34px 32px;display:grid;gap:10px;place-items:center}
+.card.dark{background:#07080f}
+.card.light{background:#f2f2f4;border-color:rgba(0,0,0,.08)}
+.cap{font:10.5px/1 "JetBrains Mono",monospace;color:#6f7899;letter-spacing:.05em}
+.card.light .cap{color:#8b8b93}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+.fonts{display:grid;gap:12px}
+.frow{display:flex;align-items:center;justify-content:space-between;gap:24px;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:18px 22px;background:rgba(255,255,255,.02)}
+.frow .spec{font-size:34px;color:#f0e6d0;white-space:nowrap}
+.frow .meta{font:11px/1.5 "JetBrains Mono",monospace;color:#7c86a8;text-align:right;flex:none}
+.f1{font-family:"Jost";font-weight:200;letter-spacing:.34em}
+.f2{font-family:"Josefin Sans";font-weight:100;letter-spacing:.34em}
+.f3{font-family:"Inter";font-weight:200;letter-spacing:.34em}
+.lock{display:flex;align-items:center;gap:20px}
+.lock .kanji{font-family:"Shippori Mincho",serif;font-size:40px;color:#f4cf80}
+.rule{height:1px;background:rgba(255,255,255,.08)}
+a{color:#dca85b}a:hover{color:#f4cf80}
+</style></head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>Wortmarke im SKEBULA-Stil</h1>
+    <p class="lead" style="margin-top:12px">Das Vorbild ist <b>kein reiner Font-Satz</b>. Grundlage ist eine ultradünne geometrische Sans (Futura-/Century-Gothic-Familie: monolineare Striche, exakt kreisrunde Bögen, weite Sperrung), aber zwei Buchstaben sind bewusst umgezeichnet: das <b>A hat keinen Querbalken</b> und das <b>E keinen vertikalen Stamm</b> — es sind nur drei Balken. Solche stammlosen Formen liefert keine Standardschrift; das ist eine Custom-Zeichnung bzw. ein modifizierter Font. Ich habe die Marke deshalb als Strichpfade nachgebaut, mit derselben Logik: konstante Strichstärke, spitzes A ohne Querbalken, sehr weite Sperrung.</p>
+  </div>
+
+  <section>
+    <h2>Zanshin, nachgezeichnet</h2>
+    <div class="card"><div id="a1"></div><div class="cap">cap 54 · track 34 · stroke 4.6</div></div>
+    <div class="grid2">
+      <div class="card dark"><div id="a2"></div><div class="cap">auf Nachtgrund</div></div>
+      <div class="card light"><div id="a3"></div><div class="cap">auf Taggrund</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div id="a4"></div><div class="cap">enger · track 18</div></div>
+      <div class="card"><div id="a5"></div><div class="cap">kleine Anwendung · cap 22</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Kontrollprobe: dasselbe Verfahren auf SKEBULA</h2>
+    <div class="card"><div id="a6"></div><div class="cap">Vergleich zum Original — E stammlos, A ohne Querbalken</div></div>
+  </section>
+
+  <section>
+    <h2>Lock-up mit Kanji</h2>
+    <div class="card"><div class="lock"><span class="kanji">残心</span><span id="a7"></span></div><div class="cap">残心 · Zanshin</div></div>
+  </section>
+
+  <section>
+    <h2>Font-Alternativen, wenn es echter Text sein soll</h2>
+    <div class="fonts">
+      <div class="frow"><span class="spec f1">ZANSHIN</span><span class="meta">Jost 200<br>am nächsten dran</span></div>
+      <div class="frow"><span class="spec f2">ZANSHIN</span><span class="meta">Josefin Sans 100<br>geometrisch, kleiner</span></div>
+      <div class="frow"><span class="spec f3">ZANSHIN</span><span class="meta">Inter 200<br>neutral, kein Geo-Look</span></div>
+    </div>
+    <p class="lead">Keine davon bringt das stammlose E oder das querbalkenlose A mit — für die echte Logo-Anmutung bleibt die Strichzeichnung (die oben) die richtige Wahl. Zurück zum <a href="Zanshin Splash Screen v2.html">Splash Screen</a>, dort ist sie umschaltbar.</p>
+  </section>
+</div>
+<script src="wordmark.js"></script>
+<script>
+const G=["#fff6e4","#f4cf80","#d9a755"];
+document.getElementById("a1").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:54,track:34,sw:4.6,gradient:G});
+document.getElementById("a2").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:44,track:34,sw:4.6,stroke:"#f2f3f7"});
+document.getElementById("a3").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:44,track:34,sw:4.6,stroke:"#26304d"});
+document.getElementById("a4").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:40,track:18,sw:4.6,gradient:G});
+document.getElementById("a5").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:22,track:30,sw:6,gradient:G});
+document.getElementById("a6").innerHTML=ZanshinWordmark.svg("SKEBULA",{cap:44,track:34,sw:4.2,stroke:"#e9e9ec"});
+document.getElementById("a7").innerHTML=ZanshinWordmark.svg("ZANSHIN",{cap:30,track:30,swPx:2.7,gradient:G});
+</script>
+</body></html>

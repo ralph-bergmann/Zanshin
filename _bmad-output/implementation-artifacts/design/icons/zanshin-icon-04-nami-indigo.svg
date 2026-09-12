@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024">
+  <defs>
+    <linearGradient id="koko-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2540"></stop>
+      <stop offset="1" stop-color="#131831"></stop>
+    </linearGradient>
+    <radialGradient id="koko-glow" cx="0.5" cy="0.6" r="0.7">
+      <stop offset="0" stop-color="#dca85b" stop-opacity="0.1"></stop>
+      <stop offset="1" stop-color="#dca85b" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#koko-bg)"></rect>
+  <rect width="256" height="256" rx="58" fill="url(#koko-glow)"></rect>
+  <path d="M 28 92 Q 72 60, 116 92 T 196 92 Q 218 84, 228 90" stroke="#f4cf80" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+  <path d="M 24 134 Q 76 100, 132 134 T 212 134 Q 226 130, 234 134" stroke="#dca85b" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+  <path d="M 22 178 Q 88 138, 154 178 T 234 178" stroke="#b58346" stroke-width="13" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
