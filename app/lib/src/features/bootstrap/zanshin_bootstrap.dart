@@ -17,10 +17,10 @@ const splashAnimationAsset = 'assets/lottie/nami_loader.json';
 const double splashAnimationSize = 96;
 
 /// How long a boot may take before the splash window appears at all.
-const splashIndicatorDelay = Duration(milliseconds: 500);
+const splashIndicatorDelay = Duration(milliseconds: 200);
 
 /// Once shown, the splash stays at least this long so it never just blinks.
-const splashIndicatorMinShow = Duration(milliseconds: 1000);
+const splashIndicatorMinShow = Duration(milliseconds: 1500);
 
 /// Fade-out of the splash window once the main window is up.
 const splashFadeOut = Duration(milliseconds: 200);
