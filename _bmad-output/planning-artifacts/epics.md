@@ -43,6 +43,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 - **FR-JJ-11** (P1, 0.2): Bookmark ops: create, move, delete, track, untrack, forget.
 - **FR-JJ-12** (P0): Conflict ops: report conflict files in a change; call `jj resolve` after external edit.
 - **FR-JJ-13** (P0): Remote ops: `git fetch` and `git push` with progress callbacks.
+- **FR-JJ-13c** (P1, 0.2): Remote-change poll — `git ls-remote`-style ref advertisement diffed against the view's `<name>@<remote>` targets; read-only, no objects downloaded, no op-log entry. Powers a "something new on `origin`" indicator (Story 9.24).
 - **FR-JJ-14a** (P0): Op-log op: `undo`.
 - **FR-JJ-14b** (P2): Op-log ops: `op restore`, op-diff.
 - **FR-JJ-15** (P1): Settings access: read/write `user.email`, `user.name`, signing key config, defaults.
@@ -255,6 +256,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 | FR-JJ-11 | 6 | bookmark CRUD (P1 — story marked deferred 0.2) |
 | FR-JJ-12 | 6 | conflict ops + jj resolve |
 | FR-JJ-13 | 6 | git fetch/push with progress (mutating) |
+| FR-JJ-13c | 9 | remote-change poll: `git ls-remote` diff vs view, read-only, no op-log (Story 9.24, P1) |
 | FR-JJ-14a | 6 | op-log undo (P0) |
 | FR-JJ-14b | 6 | op restore + op-diff (P2 — story marked deferred) |
 | FR-JJ-15 | 6 | settings read/write (P1) |
@@ -470,7 +472,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **Backed by:** ADR-0003 + the jj-0.42 feasibility map (`research/technical-jj-operation-api-cli-vs-lib-surface-research-2026-06-27.md`) — the authoritative per-operation breakdown (backing jj-lib helper, thickness, typed-API sketch). 69 operations mapped + adversarially verified.
 
-**FRs covered:** FR-JJ-10b, FR-JJ-10c, FR-JJ-11, FR-JJ-12 (conflict ops), FR-JJ-13b (push), FR-JJ-14b, FR-JJ-15 — plus the new operation-support layer (Story 9.1) and `eval_revset` read primitive (Story 9.2).
+**FRs covered:** FR-JJ-10b, FR-JJ-10c, FR-JJ-11, FR-JJ-12 (conflict ops), FR-JJ-13b (push), FR-JJ-13c (remote-change poll, Story 9.24), FR-JJ-14b, FR-JJ-15 — plus the new operation-support layer (Story 9.1) and `eval_revset` read primitive (Story 9.2).
 
 **Additional requirements anchored here:** AR-AP-1 + AR-AP-2 re-asserted per verb; the transaction boundary stays Rust-side (ADR-0003); each verb's `.fbs` edited in place (no `_v2`, WIP).
 
@@ -5598,6 +5600,9 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 ### Story 9.23: `workspace add`, `workspace update-stale` [M]
 `Workspace::init_workspace_with_existing_repo` + sparse mutation; `WorkingCopyFreshness::check_stale` + `create_and_check_out_recovery_commit`.
+
+### Story 9.24: Remote-change poll — `git ls-remote` diff against the view — *FR-JJ-13c* [R]
+*(Added 2026-09-12, Ralph.)* A read-only `Repo::remote_changes(remote)` that fetches only the remote's **ref advertisement** (bookmark/tag name → commit id, no pack transfer) and diffs it against the last-known `<name>@<remote>` targets in the current view (`View::remote_bookmarks` / remote tags). Typed result per remote: moved (old id → new id), new upstream, deleted upstream; empty = nothing new. **No transaction, no op-log entry, working copy and bookmarks untouched** — this is what distinguishes it from 6.4a's `git fetch`, which (jj semantics, `import_refs` → `merge_local_bookmark`) also moves *tracked local* bookmarks. jj-lib has **no public ls-remote helper** (only a `pub(crate)` `git remote show` spawn for the default branch), so the transport is ours: spawn `git ls-remote --heads --tags <remote>` via the same subprocess route jj-lib uses for `fetch`/`push` (auth = the user's git: ssh-agent, credential helpers, `.ssh/config` — for free), honouring the same `git.executable-path` setting; gix `Remote::connect(Fetch).ref_map()` is the in-process alternative if the subprocess route proves awkward. No `git fetch --dry-run` — that still downloads objects. **Non-goal:** a commit count ("5 new commits") — impossible without the objects; the UI shows "`main`, `feature-x` changed on `origin`" and offers the real fetch. Surface through the usual chain (`.fbs` → `zanshin-jj` → `extern "C"` → `WorkerCommand`; MCP optional). The **poll timer, interval setting and indicator are UI-side** (Ralph's scope); the backend is one-shot. Cheap (Tier A); needs a real remote fixture in tests (the checked-in fixtures carry no remote bookmarks — construct in-test, as 2.9/6.4a do).
 
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
