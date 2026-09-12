@@ -4,8 +4,13 @@
 ///
 /// The design's grain is an SVG `feTurbulence` field. Dart cannot compute that
 /// per frame, so the card paints a committed tile instead, repeated over the
-/// whole card and blended in soft-light at 16 %. The noise is seeded, so
-/// re-running this writes byte-identical output.
+/// whole card and blended in soft-light at 16 %. The tile is *not* that field:
+/// it is uniform per-pixel white noise, a deliberate simplification of the
+/// design's band-limited fractal noise, which at `baseFrequency 0.9` is close
+/// to per-pixel anyway and indistinguishable at 16 % soft-light.
+///
+/// The noise is seeded, so the same Dart SDK reproduces the same tile —
+/// `dart:math`'s `Random` sequence is only stable within one SDK version.
 ///
 /// Run from `app/`: `dart run tool/gen_grain_tile.dart`.
 library;

@@ -16,7 +16,9 @@ typedef SplashVersion = ({String version, String build});
 /// How long a boot may take before the splash window appears at all.
 const splashIndicatorDelay = Duration(milliseconds: 200);
 
-/// Once shown, the splash stays at least this long so it never just blinks.
+/// Once shown, the splash stays at least this long. Well past the point where
+/// it would only blink: it is held long enough to be looked at while the card
+/// is being worked on.
 const splashIndicatorMinShow = Duration(seconds: 5);
 
 /// Fade-out of the splash window once the main window is up.

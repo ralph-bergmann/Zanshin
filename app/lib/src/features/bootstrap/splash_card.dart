@@ -103,6 +103,11 @@ class _SplashCardState extends State<SplashCard> with SingleTickerProviderStateM
           builder: (context, value, child) => RichText(
             key: splashVersionKey,
             textDirection: TextDirection.ltr,
+            // Both footer lines sit on one baseline on a fixed grid; an
+            // over-long one ellipsises rather than wrapping off it.
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             text: value == null
                 ? const TextSpan(text: '', style: splashVersionStyle)
                 : TextSpan(
@@ -119,6 +124,9 @@ class _SplashCardState extends State<SplashCard> with SingleTickerProviderStateM
           builder: (context, value, child) => RichText(
             key: splashStatusKey,
             textDirection: TextDirection.ltr,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             text: TextSpan(text: value, style: splashStatusStyle),
           ),
         ),

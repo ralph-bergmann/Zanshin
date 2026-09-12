@@ -2,16 +2,42 @@
 title: 'Rebuild the splash window content from the Zanshin design'
 type: 'feature'
 created: '2026-09-12'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '6969807afcb56b4ee4abe57d3569c222a4e5950b'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/design/assets/SPLASH-SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/design/assets/zanshin-splash.svg'
   - '{project-root}/_bmad-output/implementation-artifacts/design/Zanshin Splash Screen v2.html'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The painted splash card carries no semantics and ignores the system text size.
+    evidence: |-
+      The kanji lock-up, the ZANSHIN wordmark and the tagline are canvas paint with no
+      Semantics node, so a screen reader gets no app identity from the splash; the status
+      line has no `liveRegion: true`, so its changes are never announced; both footer
+      lines are RichText at a fixed 11.5/12 px, i.e. TextScaler.noScaling. The previous
+      Lottie card had no semantics either — nothing regressed — but this is the first
+      splash carrying text worth announcing, and the card's fixed 560x320 grid means
+      honouring text scaling is a design decision, not a mechanical change.
+    location: >-
+      app/lib/src/features/bootstrap/splash_card.dart
+    severity: medium
+  - summary: >-
+      Nothing regression-tests the painted design; the only pixel check is a one-time screenshot.
+    evidence: |-
+      About 600 of splash_card_render.dart's 678 lines (gradients, light edge, ornament,
+      grain, watermark, lock-up, wordmark, tagline, divider, rail, runner, border) carry
+      no assertion. The design was verified once by eye against zanshin-splash.svg and
+      that capture is committed as evidence, not as a gate, so a mistranscribed constant
+      ships green from here on. The repo has no golden-test infrastructure, and goldens
+      over three custom fonts plus a soft-light blend are the fragile kind — standing
+      them up is a project-level decision.
+    location: >-
+      app/lib/src/features/bootstrap/splash_card_render.dart
+    severity: medium
 ---
 
 <intent-contract>
@@ -171,6 +197,39 @@ version from `package_info_plus`.
 
 ## Review Triage Log
 
+### 2026-09-12 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 0, medium 2, low 8)
+- defer: 2: (high 0, medium 2, low 0)
+- reject: 24: (high 0, medium 6, low 18)
+- addressed_findings:
+  - `[medium]` `[patch]` The dot-placement assertion used an empty status, where `_statusLeft`
+    equals its initialiser — deleting the layout line kept the test green. Added a dot
+    assertion with a non-empty status, measured from the status text's own width.
+  - `[medium]` `[patch]` `set animate` was never exercised: both reduce-motion measurements
+    remounted the card, so the mid-life accessibility path went through `createRenderObject`.
+    Added an in-place toggle case.
+  - `[low]` `[patch]` `splashIndicatorMinShow`'s doc comment still justified the old value
+    ("so it never just blinks"); it now says the 5 s hold is the deliberate dev setting.
+  - `[low]` `[patch]` Both footer lines could wrap off the design's baseline grid; they now
+    carry `maxLines: 1` / `softWrap: false` / ellipsis, matching the HTML's `white-space: nowrap`.
+  - `[low]` `[patch]` The render box disposed its `TextPainter`s but leaked every cached
+    `ui.Shader` (four background gradients, grain, runner, wordmark); they are disposed now,
+    including the ones dropped on cache invalidation.
+  - `[low]` `[patch]` The grain generator's doc implied it reproduces `feTurbulence` and
+    promised byte-identical reruns; it now states the white-noise simplification and scopes
+    reproducibility to a given Dart SDK.
+  - `[low]` `[patch]` The render file cited the design sources by unresolvable names; the
+    repo-relative `_bmad-output/implementation-artifacts/design/…` paths replace them.
+  - `[low]` `[patch]` The deleted "stays dark under a light platform brightness" test left the
+    always-dark invariant unverified; restored against the painted card.
+  - `[low]` `[patch]` The version line's display format (two spans, `#E7DCC4` + `#8792B4`) was
+    unasserted; the footer-grid test now checks both spans.
+  - `[low]` `[patch]` The committed `grain_128.png` was unverifiable and could drift from its
+    generator; a new test pins its bytes against `grainTilePng()` and decodes it at 128×128.
+
 ## Design Notes
 
 **Slot layout.** Two slots (`version`, `status`), children are `RenderBox`es with
@@ -217,3 +276,73 @@ FLUTTER_ROOT=$SDK_PATH/flutter; export PATH=$FLUTTER_ROOT/bin:$CARGO_HOME/bin:$P
   afterwards), read the PNG and compare it against `zanshin-splash.svg` element by element;
   fix deviations, then commit the screenshot next to the design assets and kill the
   `flutter run` process.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**What was implemented.** The splash window now shows the designed 560×320 card instead of the
+320×320 Lottie placeholder. One slotted `RenderBox` paints the whole design in a single pass —
+four stacked gradients (the three radials as true ellipses via `ui.Gradient.radial` plus a scale
+matrix), the 1-px top light edge, the wave ornament, the grain tile in a soft-light layer at
+0.16, the vertical kanji watermark, the 残心 + ZANSHIN lock-up (kanji measured with a
+`TextPainter`, the group centred, the wordmark stroked from the spec's unit paths under a gold
+shader), the tagline, the footer divider, the status dot, the progress rail with its animated
+runner, and the inner gold hairline. Only the two footer texts are widgets, in the render box's
+`version` and `status` slots, placed on the design's baseline grid (x = 36 / right edge x = 524,
+alphabetic baseline y = 276). One `Ticker` drives the runner (2.1 s, `Cubic(.65,.05,.35,.95)`)
+and the dot's pulse (1.85 s, `easeInOut`); under "reduce motion" no ticker starts and no frame is
+scheduled. `ZanshinBootSequence` gained the two listenables that feed the card — a German status
+line per boot step and the version from `package_info_plus` — and holds the splash for 5 s so the
+card can be looked at during development.
+
+**Files changed**
+- `app/lib/src/features/bootstrap/splash_card_render.dart` — new: design tokens, the slotted
+  widget and the render box that paints the card and owns the ticker.
+- `app/lib/src/features/bootstrap/splash_card.dart` — the card's public widget: 560×320 / radius
+  14, the ticker provider, the grain image, and the two `ValueListenableBuilder` slot children.
+- `app/lib/src/features/bootstrap/zanshin_bootstrap.dart` — `status`/`version` listenables,
+  `log()`, the guarded `PackageInfo` read, the widened `openSplash`, 5 s minimum show; Lottie
+  constants dropped.
+- `app/lib/src/features/bootstrap/boot_window_host.dart` — forwards both listenables into the card.
+- `app/tool/gen_grain_tile.dart` + `app/assets/images/grain_128.png` — new: the committed grain
+  tile and the dependency-free generator that writes it.
+- `app/pubspec.yaml`, `pubspec.lock`, `app/macos/Flutter/GeneratedPluginRegistrant.swift` —
+  `version: 2026.9.1+1`, `package_info_plus`, the three font families, the grain asset.
+- `app/test/features/bootstrap/zanshin_bootstrap_test.dart` — timing tests expressed through the
+  constants (they were red since `047fee7`), plus the card's layout, status, version, dot,
+  reduce-motion and brightness cases.
+- `app/test/features/bootstrap/splash_grain_tile_test.dart` — new: the committed tile matches its
+  generator and decodes at 128×128 through the bundle.
+- `_bmad-output/implementation-artifacts/design/splash-flutter-screenshot.png` — the capture the
+  design was checked against.
+
+**Review findings.** 36 findings over four layers, deduplicated: 10 patched (2 medium, 8 low),
+2 deferred (both medium, mirrored into `deferred-work.md`), 24 rejected. No intent gap and no
+spec repair loop. The patches closed a vacuous dot assertion, an untested `set animate` path, the
+deleted always-dark test, the unasserted version format, an unverifiable committed binary, leaked
+shader handles, wrapping footer lines, and three stale or overstated comments.
+
+**Follow-up review recommendation:** `true` — patched findings 0 high, 2 medium, 8 low, score
+3 × 2 + 1 × 8 = 14 ≥ 5.
+
+**Verification.** `cargo make test` run unpiped to completion twice (before and after the review
+patches): green both times — 35 app widget tests, all other Dart suites, `dart analyze
+--fatal-infos --fatal-warnings` and `dart format` clean, Rust tests pass, coverage ratchet held at
+99.27 % (9059/9126) with the baseline unchanged. Every row of the I/O matrix is covered by a test
+that ran and passed. Visually, the running app's splash was captured through the VM service's
+inspector screenshot extension (`screencapture` has no screen-recording permission and marionette
+errored) and compared against `zanshin-splash.svg`: the lock-up, tagline, divider, footer, dot and
+runner all land on the design's coordinates, and sampled pixels match the design's colours exactly
+(runner `#F4CF80`, divider `#FFFFFF` @ 8 %).
+
+**Residual risks.**
+- The painted design has no regression test; a mistranscribed constant would ship green (deferred
+  above, with the screenshot as the current evidence).
+- `splash_grain_tile_test.dart`'s byte-equality assertion goes red on a Dart SDK bump that changes
+  `Random`'s sequence; the test names the fix (re-run the generator, commit the tile).
+- `_readVersion`'s mapping from `PackageInfo` into the `SplashVersion` record is exercised only
+  through its failure path (no package-info channel in a widget test); a transposition of the two
+  fields would only show on a real run.
+- The 5 s minimum show is a deliberate development setting, not a shipping value.

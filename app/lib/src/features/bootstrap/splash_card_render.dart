@@ -8,10 +8,12 @@ import 'package:flutter/widgets.dart';
 
 import 'splash_card.dart';
 
-// Every number in this file comes from the design sources next to the story:
-// `design/assets/zanshin-splash.svg` for coordinates, `SPLASH-SPEC.md` for the
-// colour tokens, `Zanshin Splash Screen v2.html` for grain and animation. The
-// card is a fixed 560 x 320 artifact; nothing here scales with a theme.
+// Every number in this file comes from the committed design sources, all of
+// them under `_bmad-output/implementation-artifacts/design/`:
+//   * `assets/zanshin-splash.svg`        — coordinates
+//   * `assets/SPLASH-SPEC.md`            — colour tokens
+//   * `Zanshin Splash Screen v2.html`    — grain and animation
+// The card is a fixed 560 x 320 artifact; nothing here scales with a theme.
 
 // ---------------------------------------------------------------- colours
 
@@ -251,6 +253,7 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
       return;
     }
     _grain = value;
+    _grainShader?.dispose();
     _grainShader = null;
     markNeedsPaint();
   }
@@ -279,7 +282,21 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     for (final TextPainter painter in _watermark ?? const <TextPainter>[]) {
       painter.dispose();
     }
+    _disposeBackground();
+    _grainShader?.dispose();
+    _grainShader = null;
+    _runnerShader?.dispose();
+    _runnerShader = null;
+    _wordmarkShader?.dispose();
+    _wordmarkShader = null;
     super.dispose();
+  }
+
+  void _disposeBackground() {
+    for (final ui.Gradient gradient in _background ?? const <ui.Gradient>[]) {
+      gradient.dispose();
+    }
+    _background = null;
   }
 
   void _syncTicker() {
@@ -380,6 +397,7 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     if (cached != null && _backgroundSize == rect.size) {
       return cached;
     }
+    _disposeBackground();
     final double w = rect.width;
     final double h = rect.height;
     _backgroundSize = rect.size;
@@ -553,6 +571,7 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     }
     _wordmarkLeft = left;
     _wordmark = _wordmarkUnitPath().transform(_affine(_wordmarkScale, _wordmarkScale, left, _wordmarkTop).storage);
+    _wordmarkShader?.dispose();
     _wordmarkShader = ui.Gradient.linear(
       Offset(left, _wordmarkTop),
       Offset(left + 0.4 * _wordmarkWidth, _wordmarkTop + _wordmarkHeight),
@@ -650,6 +669,7 @@ class SplashCardRenderBox extends RenderBox with SlottedContainerRenderObjectMix
     if (cached != null && _runnerShaderWidth == width) {
       return cached;
     }
+    cached?.dispose();
     _runnerShaderWidth = width;
     return _runnerShader = ui.Gradient.linear(
       Offset.zero,

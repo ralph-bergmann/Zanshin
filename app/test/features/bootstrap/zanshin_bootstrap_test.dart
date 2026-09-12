@@ -81,15 +81,26 @@ const double _footerBaseline = 276;
 const double _dotGap = 11;
 const double _dotY = 272;
 const _litDot = Color(0xFFF4CF80);
+const _divider = Color(0x14FFFFFF);
 
 /// Where a line carrying [span] has to start so that its alphabetic baseline
 /// lands on the footer baseline.
 double _topForBaseline(InlineSpan span) {
-  final painter = TextPainter(text: span, textDirection: TextDirection.ltr)..layout();
+  final TextPainter painter = _laidOut(span);
   final double top = _footerBaseline - painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
   painter.dispose();
   return top;
 }
+
+/// How wide [span] comes out — the status box's width, and with it the dot.
+double _widthOf(InlineSpan span) {
+  final TextPainter painter = _laidOut(span);
+  final double width = painter.width;
+  painter.dispose();
+  return width;
+}
+
+TextPainter _laidOut(InlineSpan span) => TextPainter(text: span, textDirection: TextDirection.ltr)..layout();
 
 String _statusText(WidgetTester tester) =>
     (tester.widget<RichText>(find.byKey(splashStatusKey)).text as TextSpan).text ?? '';
@@ -391,6 +402,27 @@ void main() {
       tester.getTopLeft(find.byKey(splashStatusKey)).dy,
       closeTo(_topForBaseline(const TextSpan(text: 'lade Settings…', style: splashStatusStyle)), 0.01),
     );
+
+    // The dot hangs off the left edge of the status box, wherever that lands.
+    final double statusLeft = _statusRight - _widthOf(const TextSpan(text: 'lade Settings…', style: splashStatusStyle));
+    expect(
+      find.byType(SplashCardBody),
+      paints
+        ..circle(x: statusLeft - _dotGap, y: _dotY, radius: 6)
+        ..circle(x: statusLeft - _dotGap, y: _dotY, radius: 3),
+    );
+
+    // The version line is two spans: the version, then the dimmer build.
+    final versionSpan = tester.widget<RichText>(find.byKey(splashVersionKey)).text as TextSpan;
+    expect(versionSpan.style, splashVersionStyle);
+    expect(versionSpan.style?.color, const Color(0xFFE7DCC4));
+    expect(versionSpan.style?.fontFamily, 'JetBrainsMono');
+    expect(versionSpan.style?.fontSize, 12);
+    final List<InlineSpan> parts = versionSpan.children!;
+    expect((parts[0] as TextSpan).text, '2026.9.1');
+    expect((parts[0] as TextSpan).style, isNull);
+    expect((parts[1] as TextSpan).text, ' · Build 1');
+    expect((parts[1] as TextSpan).style?.color, const Color(0xFF8792B4));
   });
 
   testWidgets('the status line follows its listenable and stays right-aligned', (tester) async {
@@ -448,6 +480,47 @@ void main() {
     expect(
       find.byType(SplashCardBody),
       paints
+        ..circle(radius: 6)
+        ..circle(radius: 3, color: _litDot),
+    );
+  });
+
+  testWidgets('reduced motion switched on under a card that is already up stops its ticker', (tester) async {
+    await _pumpCard(tester, status: 'lade Settings…', version: null);
+    expect(SchedulerBinding.instance.transientCallbackCount, 1);
+
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.pump();
+
+    // Reaches the mounted render box through `set animate`, not a fresh one.
+    expect(SchedulerBinding.instance.transientCallbackCount, 0);
+    expect(
+      find.byType(SplashCardBody),
+      paints
+        ..circle(radius: 6)
+        ..circle(radius: 3, color: _litDot),
+    );
+  });
+
+  testWidgets('the splash card stays dark under a light platform brightness', (tester) async {
+    tester.platformDispatcher
+      ..platformBrightnessTestValue = Brightness.light
+      // Pins the dot's pulse, so its colour is the design's, not a phase of it.
+      ..accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
+    await _pumpCard(tester, status: 'lade Settings…', version: null);
+
+    // The card brings its own ground and never reads a theme: the design's
+    // colours reach the canvas whatever the desktop is set to.
+    expect(
+      find.byType(SplashCardBody),
+      paints
+        ..line(color: _divider)
         ..circle(radius: 6)
         ..circle(radius: 3, color: _litDot),
     );
