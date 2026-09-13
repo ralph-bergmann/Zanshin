@@ -265,6 +265,50 @@ void main() {
       expect(send(FolderDragEntered(viewId: viewId, position: const Offset(10, 10), paths: const ['/a'])), isFalse);
       expect(tester.takeException(), isA<StateError>());
     });
+
+    testWidgets('a throwing onDrop is reported and rejects', (tester) async {
+      final int viewId = tester.view.viewId;
+      await tester.pumpWidget(
+        harness(FolderDropTarget(onDrop: (_) => throw StateError('boom'), child: const SizedBox.expand())),
+      );
+      send(FolderDragEntered(viewId: viewId, position: const Offset(10, 10), paths: const ['/a']));
+      expect(send(FolderDropped(viewId: viewId, position: const Offset(10, 10), paths: const ['/a'])), isFalse);
+      expect(tester.takeException(), isA<StateError>());
+    });
+
+    testWidgets('a target moved to another parent mid-drag keeps its visit', (tester) async {
+      final int viewId = tester.view.viewId;
+      final GlobalKey key = GlobalKey();
+      Widget subject(Widget child) => harness(
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(width: 100, height: 100, child: child),
+        ),
+      );
+
+      await tester.pumpWidget(
+        subject(
+          KeyedSubtree(
+            key: key,
+            child: _RecordingTarget(name: 'moved', log: log),
+          ),
+        ),
+      );
+      send(FolderDragEntered(viewId: viewId, position: const Offset(10, 10), paths: const ['/a']));
+      await tester.pumpWidget(
+        subject(
+          Padding(
+            padding: EdgeInsets.zero,
+            child: KeyedSubtree(
+              key: key,
+              child: _RecordingTarget(name: 'moved', log: log),
+            ),
+          ),
+        ),
+      );
+      send(FolderDragUpdated(viewId: viewId, position: const Offset(500, 500)));
+      expect(log, ['moved:update Offset(10.0, 10.0)', 'moved:exit']);
+    });
   });
 }
 

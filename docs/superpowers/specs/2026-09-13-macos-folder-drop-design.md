@@ -252,7 +252,7 @@ Contract:
 - Session per view: the dragged paths (from `dragEntered`) and the current target. Updates for
   a view without a session, and positions without a hit, answer `false` and call nothing.
   `dropped` carries its own paths and is evaluated even without a session.
-- A `RenderFolderDropTarget` that detaches mid-session is forgotten silently — no callbacks
+- A `RenderFolderDropTarget` that is disposed mid-session is forgotten silently — no callbacks
   into a disposed widget.
 
 ## Demo: `app/lib/main3.dart`

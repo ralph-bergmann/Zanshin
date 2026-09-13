@@ -138,8 +138,7 @@ class FolderDropDispatcher {
       _call('onDragExit', () => target.widget.onDragExit?.call());
       return false;
     }
-    _call('onDrop', () => target.widget.onDrop(details));
-    return true;
+    return _call('onDrop', () => target.widget.onDrop(details));
   }
 
   /// Ends the visit of the session's current target, if there is one.
@@ -170,10 +169,12 @@ class FolderDropDispatcher {
     return null;
   }
 
-  /// Runs a target callback and reports what it throws.
-  void _call(String callback, VoidCallback body) {
+  /// Runs a target callback and reports what it throws; returns whether it
+  /// completed without throwing.
+  bool _call(String callback, VoidCallback body) {
     try {
       body();
+      return true;
     } catch (error, stack) {
       FlutterError.reportError(
         FlutterErrorDetails(
@@ -183,6 +184,7 @@ class FolderDropDispatcher {
           context: ErrorDescription('while calling FolderDropTarget.$callback'),
         ),
       );
+      return false;
     }
   }
 

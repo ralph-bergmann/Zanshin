@@ -110,8 +110,8 @@ class RenderFolderDropTarget extends RenderProxyBoxWithHitTestBehavior {
   FolderDropTarget widget;
 
   @override
-  void detach() {
+  void dispose() {
     FolderDropDispatcher.instance.forget(this);
-    super.detach();
+    super.dispose();
   }
 }
