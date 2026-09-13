@@ -443,7 +443,8 @@ not run.
 
 Open question from testing: `main3.dart` skips folders that are already in the tree. That is
 demo behavior (the plugin and `tree_drop.dart` deliver every dropped folder), and it was
-confusing while testing; whether the project overview keeps it is still open.
+confusing while testing; whether the project overview keeps it is still open. The demo can
+switch it with the constant `_skipListedFolders` at the top of `main3.dart`.
 
 ## Out of scope
 

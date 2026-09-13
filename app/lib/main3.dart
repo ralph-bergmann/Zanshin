@@ -31,6 +31,10 @@ const double _rowExtent = 32;
 /// Horizontal indent per tree level.
 const double _indent = 20;
 
+/// Whether a drop skips folders that are already in the tree. With `false`
+/// the same folder can be added any number of times.
+const _skipListedFolders = true;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final windows = _DemoWindows(AppWindows());
@@ -298,12 +302,13 @@ class _FolderTreePageState extends State<_FolderTreePage> {
     canHaveChildren: entry.content is _Group,
   );
 
-  /// Adds the dropped folders at [point], skipping those already in the tree.
+  /// Adds the dropped folders at [point]; with [_skipListedFolders], folders
+  /// already in the tree are skipped.
   void _insert(List<String> paths, TreeInsertionPoint<_Entry> point) {
     final Set<String> listed = _projectPaths(_tree).toSet();
     final List<String> added = [
       for (final path in paths)
-        if (listed.add(path)) path,
+        if (!_skipListedFolders || listed.add(path)) path,
     ];
     final TreeSliverNode<_Entry>? parent = point.parent;
     setState(() {
