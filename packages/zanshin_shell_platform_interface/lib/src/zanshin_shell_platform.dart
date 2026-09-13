@@ -3,6 +3,7 @@
 import 'package:meta/meta.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+import 'folder_drag_event.dart';
 import 'shell_theme.dart';
 
 /// The interface that platform implementations of zanshin_shell must extend.
@@ -54,4 +55,16 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
   /// Performs the system titlebar double-click action (zoom/minimize/none,
   /// per the user's "double-click a window's title bar to" setting).
   Future<void> performTitlebarDoubleClickAction() => throw UnimplementedError();
+
+  /// Routes the folder drags of every Flutter view to [handler]; `null` stops
+  /// routing them. Drags only arrive for views enabled with
+  /// [enableFolderDrops].
+  void setFolderDragHandler(FolderDragHandler? handler) => throw UnimplementedError();
+
+  /// Starts accepting folder drags on the Flutter view [viewId]; idempotent.
+  Future<void> enableFolderDrops(int viewId) => throw UnimplementedError();
+
+  /// Stops accepting folder drags on the Flutter view [viewId]; a no-op when
+  /// they are not enabled.
+  Future<void> disableFolderDrops(int viewId) => throw UnimplementedError();
 }

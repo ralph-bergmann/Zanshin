@@ -47,6 +47,9 @@ void main() {
       platform.performTitlebarDoubleClickAction,
       throwsUnimplementedError,
     );
+    expect(() => platform.setFolderDragHandler(null), throwsUnimplementedError);
+    expect(() => platform.enableFolderDrops(1), throwsUnimplementedError);
+    expect(() => platform.disableFolderDrops(1), throwsUnimplementedError);
   });
 
   test('instance setter verifies the token', () {
