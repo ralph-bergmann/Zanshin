@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.name             = 'zanshin_shell_macos'
   s.version          = '0.1.0'
   s.summary          = 'macOS implementation of the zanshin_shell plugin.'
-  s.description      = 'macOS shell integration (system theme, window drag) for Zanshin.'
+  s.description      = 'macOS shell integration (system theme, window drag, folder drops) for Zanshin.'
   s.homepage         = 'https://example.com/zanshin'
   s.license          = { :type => 'MIT' }
   s.author           = { 'Zanshin' => 'ralph@dasralph.de' }
