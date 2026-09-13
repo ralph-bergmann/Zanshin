@@ -44,6 +44,31 @@ final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInte
   Future<void> performTitlebarDoubleClickAction() async {
     calls.add('performTitlebarDoubleClickAction');
   }
+
+  /// The folder drag handler the dispatcher installed, if any.
+  FolderDragHandler? folderDragHandler;
+
+  /// When set, [enableFolderDrops] fails with this error.
+  Object? enableError;
+
+  @override
+  void setFolderDragHandler(FolderDragHandler? handler) {
+    calls.add('setFolderDragHandler:${handler == null ? 'null' : 'set'}');
+    folderDragHandler = handler;
+  }
+
+  @override
+  Future<void> enableFolderDrops(int viewId) async {
+    calls.add('enableFolderDrops:$viewId');
+    if (enableError case final Object error) {
+      throw error;
+    }
+  }
+
+  @override
+  Future<void> disableFolderDrops(int viewId) async {
+    calls.add('disableFolderDrops:$viewId');
+  }
 }
 
 void main() {

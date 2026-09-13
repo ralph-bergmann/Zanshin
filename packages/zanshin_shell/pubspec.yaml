@@ -1,5 +1,5 @@
 name: zanshin_shell
-description: macOS shell integration for Zanshin - system theme (day/night + accent color) and native window dragging.
+description: macOS shell integration for Zanshin - system theme (day/night + accent color), native window dragging and folder drops.
 version: 0.1.0
 publish_to: 'none'
 
