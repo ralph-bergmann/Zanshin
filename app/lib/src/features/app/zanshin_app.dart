@@ -108,8 +108,14 @@ class ZanshinApp extends StatelessWidget {
         themeMode: vm.effectiveMode,
         selectedMode: vm.selectedMode,
         onModeChanged: onModeChanged,
-        lightTheme: createYaruLightTheme(primaryColor: shellTheme.accentColor),
-        darkTheme: createYaruDarkTheme(primaryColor: shellTheme.accentColor),
+        lightTheme: createYaruLightTheme(
+          primaryColor: shellTheme.accentColor,
+          lightBaseColor: const Color(0xFFF0ECE7),
+        ),
+        darkTheme: createYaruDarkTheme(
+          primaryColor: shellTheme.accentColor,
+          darkBaseColor: const Color(0xFF12162A),
+        ),
       );
     },
   );
