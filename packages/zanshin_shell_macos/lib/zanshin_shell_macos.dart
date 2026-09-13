@@ -5,9 +5,10 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
-/// macOS implementation of [ZanshinShellPlatform] over a single bidirectional
-/// [MethodChannel]: this side calls into Swift, and the Swift side pushes
-/// `onThemeChanged` calls back through the same channel.
+/// macOS implementation of [ZanshinShellPlatform] over two [MethodChannel]s:
+/// `zanshin_shell` (theme + window commands; also carries the Swift side's
+/// `onThemeChanged` calls back to Dart) and `zanshin_shell/folder_drop`
+/// (folder drags).
 class ZanshinShellMacOS extends ZanshinShellPlatform {
   static void registerWith() {
     ZanshinShellPlatform.instance = ZanshinShellMacOS();

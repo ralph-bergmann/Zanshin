@@ -11,12 +11,13 @@ enum FolderPasteboard {
     /// `.xcodeproj`, ...) as files, so they do not count as folders here
     /// either. An item that cannot be resolved - a broken alias or symlink -
     /// is skipped. The resolved path is returned, because an alias file is no
-    /// folder anyone could open.
+    /// folder anyone could open. Repeated resolved paths are dropped, keeping
+    /// the first occurrence.
     static func folderPaths(on pasteboard: NSPasteboard) -> [String] {
         let urls =
             pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return urls.compactMap { url in
-            guard let resolved = try? URL(resolvingAliasFileAt: url),
+        let paths: [String] = urls.compactMap { url in
+            guard let resolved = try? URL(resolvingAliasFileAt: url, options: [.withoutUI, .withoutMounting]),
                 let values = try? resolved.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),
                 values.isDirectory == true,
                 values.isPackage != true
@@ -25,5 +26,7 @@ enum FolderPasteboard {
             }
             return resolved.path
         }
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 }

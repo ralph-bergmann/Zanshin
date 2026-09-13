@@ -105,9 +105,11 @@ the host in `register(with:)`.
   `convert(sender.draggingLocation, from: nil)` yields Flutter logical pixels.
 - `registerForDraggedTypes([.fileURL])`.
 - **Reading the folders** (once, on enter): `readObjects(forClasses: [NSURL.self], options:
-  [.urlReadingFileURLsOnly: true])`, then per URL `URL(resolvingAliasFileAt:)` (an item that
-  fails to resolve is skipped), then keep it if `isDirectory && !isPackage`, and deliver its
-  `path`. No folder left → the view ignores the whole session and answers `[]`.
+  [.urlReadingFileURLsOnly: true])`, then per URL `URL(resolvingAliasFileAt:options:)` with
+  `options: [.withoutUI, .withoutMounting]` (an item that fails to resolve, or that would need
+  to mount a volume, is skipped), then keep it if `isDirectory && !isPackage`, and deliver its
+  `path`; repeated resolved paths are dropped, keeping the first occurrence. No folder left →
+  the view ignores the whole session and answers `[]`.
 - **Session state:** a generation number, the paths, the last answer (`accepted`, initially
   `false`), one request in flight, and the latest pending position.
   - `draggingEntered` sends `dragEntered`; `draggingUpdated` sends `dragUpdated`. While a
@@ -140,6 +142,10 @@ the host in `register(with:)`.
 `x` and `y` are logical pixels with the origin at the top left of the Flutter view. `paths` is
 a list of absolute paths and never empty.
 
+`performDragOperation` returns `true` from the cached answer, so a drop that Dart rejects at
+the exact drop position still shows Finder's success animation (Dart calls `onDragExit`, not
+`onDrop`), and a drop released before the first answer arrived is refused.
+
 ## Dart side
 
 ### `zanshin_shell_platform_interface`
@@ -163,7 +169,10 @@ typedef FolderDragHandler = bool Function(FolderDragEvent event);
 ```
 
 `ZanshinShellPlatform` gains three members with the usual `throw UnimplementedError()`
-defaults. Every existing fake `extends` the class, so they all keep compiling.
+defaults. Every existing fake `extends` the class, so they all keep compiling; however, a
+widget test that mounts a `FolderDropTarget` needs a fake overriding all three new members —
+the defaults throw `UnimplementedError`, and a missing platform throws `StateError`, into the
+build (wiring errors throw by design).
 
 ```dart
 void setFolderDragHandler(FolderDragHandler? handler);
@@ -235,8 +244,9 @@ Contract:
   exactly one `onDragExit` or `onDrop`. A drag that returns to a target starts a new visit.
 - An exception thrown by a callback is reported through `FlutterError.reportError` and counts
   as a rejection.
-- Hover state is the target's own business: Flutter is expected to receive no pointer events
-  during a Finder drag (to be confirmed in the POC), so `MouseRegion` cannot provide it.
+- Hover state is the target's own business: Flutter does receive hover events during a Finder
+  drag, but only sporadically and with a late exit (POC results, assumption 4), so hover state
+  must come from the `FolderDropTarget` callbacks, never from `MouseRegion`.
 
 ### `FolderDropDispatcher` (internal)
 
@@ -297,7 +307,7 @@ reported.
 - **inside:** the row gets an accent tint.
 - **end of list:** the empty area gets a tint and an "add to the end" hint.
 - **Status bar:** the live drag state ("2 folders · before 'Zanshin'") and the result of the
-  last drop ("added 2 to 'Work' · 1 already listed").
+  last drop ("Added 2 to 'Work' · 1 already listed").
 
 ### `app/lib/src/features/projects/tree_drop.dart`
 

@@ -10,7 +10,10 @@ import 'folder_drop_dispatcher.dart';
 class FolderDragDetails {
   const FolderDragDetails({required this.paths, required this.localPosition, required this.globalPosition});
 
-  /// The absolute paths of the dragged folders; never empty.
+  /// The absolute paths of the dragged folders; never empty. Finder aliases and symlinks are resolved, packages
+  /// (`.app`, `.xcodeproj`, …) are left out, and each path appears once. Paths are not canonicalized (a symlinked
+  /// parent directory stays as dragged), and they are read when the drag enters, so check that they still exist
+  /// before using them.
   final List<String> paths;
 
   /// The pointer position in the target's coordinate space.
