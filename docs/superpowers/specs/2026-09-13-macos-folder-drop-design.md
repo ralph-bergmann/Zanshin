@@ -1,6 +1,6 @@
 # macOS folder drops — design
 
-**Status:** design approved 2026-09-13; not implemented yet.
+**Status:** POC implemented and verified 2026-09-14; plugin code production-ready.
 **POC entrypoint:** `app/lib/main3.dart` (`flutter run -d macos -t lib/main3.dart` from `app/`).
 **Reusable code:** the `zanshin_shell` plugin family, written to production standard so the
 project overview can adopt it unchanged.
@@ -424,6 +424,26 @@ package).
 4. Flutter receives no pointer hover events during a Finder drag.
 5. The drop view's frame equals the `FlutterView`'s: both autoresize from the wrapper, and no
    app window is sized to its content.
+
+## POC results
+
+Verified 2026-09-14 by Ralph with real Finder drags against `lib/main3.dart`, using the
+checklist from Task 8 of `docs/superpowers/plans/2026-09-13-macos-folder-drop.md`.
+
+| # | Assumption | Result | Evidence |
+|---|---|---|---|
+| 1 | `_hitTest:dragTypes:` finds a view whose `hitTest(_:)` returns `nil` | confirmed | Rows 2–8: drops land on the rows and zones under the cursor, while clicks, scrolling and window dragging keep working (row 1). |
+| 2 | The drag lookup reaches the drop view in the top titlebar strip | not tested | No target sits in the strip; row 9 only shows that the header, which has no target, gives no badge. |
+| 3 | `draggingEnded(_:)` reaches the destination after a refused or cancelled drop | confirmed in effect | Rows 9 and 15: no hover state is left behind after a refused drop or Esc. Which AppKit callback delivered the exit was not traced. |
+| 4 | Flutter receives no pointer hover events during a Finder drag | refuted | Row 16: the **New window** button did react to hover during a drag, but only sometimes, and its hover state cleared late after the pointer left. Hover events arrive, but unreliably, so drop feedback must come from the `FolderDropTarget` callbacks, never from `MouseRegion`. |
+| 5 | The drop view's frame equals the `FlutterView`'s | confirmed | Rows 2–8: the placement follows the row zones under the cursor. |
+
+Rows 1–15 behaved as expected, including a second window (row 14). Row 17 (hot restart) was
+not run.
+
+Open question from testing: `main3.dart` skips folders that are already in the tree. That is
+demo behavior (the plugin and `tree_drop.dart` deliver every dropped folder), and it was
+confusing while testing; whether the project overview keeps it is still open.
 
 ## Out of scope
 
