@@ -2,7 +2,6 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:logging/logging.dart';
 
 import 'splash_card_render.dart';
 import 'zanshin_bootstrap.dart';
@@ -19,8 +18,6 @@ const splashVersionKey = Key('splash.version');
 
 /// Identifies the boot status line.
 const splashStatusKey = Key('splash.status');
-
-final _log = Logger('zanshin.bootstrap');
 
 /// The splash window's content: the designed card.
 ///
