@@ -118,5 +118,6 @@ development_status:
   9-21-operation-log-surface-log-show-diff-abandon-redo: backlog  # [M/R] op_walk::walk_ancestors/resolve_op_with_repo/reparent_range + RepoLoader::merge_operations; typed op entries + cross-op diff; redo stack semantics (beyond 6-2 undo)
   9-22-file-track-untrack-locked-wc: backlog  # [M] LockedWorkingCopy::snapshot/reset + SnapshotOptions; multi-phase reset/resnapshot
   9-23-workspace-add-update-stale: backlog  # [M] Workspace::init_workspace_with_existing_repo + sparse; WorkingCopyFreshness::check_stale + create_and_check_out_recovery_commit
+  9-25-log-revset-input-presets-apply-save-completion: backlog  # [R/M] NEEDS REFINEMENT (added 2026-09-16, Ralph). Backend for a user-chosen log revset: revsets.log repo-config write (jj config set --repo parity), structured RevsetError (pest span + NoSuchFunction candidates), in-process revset completion candidates ported from cli/src/complete.rs @v0.44.0 (bookmarks/tags/workspaces/change ids/aliases; builtin fn names open). No live validation; Apply = evaluate via graphSlice, Save = persist. See epics.md Story 9.25.
   # MCP exposure (cross-cut Epic 7): each verb optionally gets an MCP tool (extends 7-4 beyond describe/new); per ADR-0003 OQs decide every-verb-vs-reads+core-subset, and raw eval_revset vs named views only.
   epic-9-retrospective: optional
