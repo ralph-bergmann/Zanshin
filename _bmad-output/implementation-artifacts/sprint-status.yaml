@@ -28,7 +28,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-15
-last_updated: 2026-08-24
+last_updated: 2026-09-17
 project: Zanshin
 project_key: NOKEY
 tracking_system: file-system
@@ -116,7 +116,12 @@ development_status:
   9-19-bookmark-thick-move-advance-rename-list-filters: backlog  # [M/R] supersedes deferred 6-9 part. --from revset membership, dynamic revset w/ injected to, tracking-state transfer; typed filtered rows (replace CLI template matrix)
   9-20-git-push-clone-init: backlog  # [M] FR-JJ-13b push. git::push_refs (+ safety/classification), Workspace::init_*_git + GitFetch; network + multi-tx fs setup; progress via 6-4a callback pattern
   9-21-operation-log-surface-log-show-diff-abandon-redo: backlog  # [M/R] op_walk::walk_ancestors/resolve_op_with_repo/reparent_range + RepoLoader::merge_operations; typed op entries + cross-op diff; redo stack semantics (beyond 6-2 undo)
-  9-22-file-track-untrack-locked-wc: backlog  # [M] LockedWorkingCopy::snapshot/reset + SnapshotOptions; multi-phase reset/resnapshot
+
+  9-27-effective-user-settings-config-stack: ready-for-dev  # [M] added 2026-09-17 (Ralph); spec authored same day (spec-9-27-effective-user-settings-config-stack.md, spec status draft -> bmad-build step-02). Repo::open/init/clone/convert build UserSettings from the CLI's full config stack (Default -> System -> EnvBase[whoami] -> User -> Repo -> Workspace -> EnvOverrides[JJ_*]) instead of repo.rs::make_settings' hardcoded Zanshin/zanshin@localhost stub; Workspace::load split loader -> stack -> settings -> load; re-derive on stack change; MutationResult.identity_missing where the CLI warns; tests pin JJ_USER/JJ_EMAIL/JJ_OP_* in ENV_GUARD. PREREQUISITE OF 9-26; no .gitconfig fallback (jj reads identity from its own config only).
+  9-22-file-track-untrack-locked-wc: ready-for-dev  # [M] spec authored 2026-09-17 (spec-9-22-file-track-untrack-locked-wc.md, spec status draft -> bmad-build step-02). LockedWorkingCopy::snapshot/reset + SnapshotOptions from effective snapshot.* config; multi-phase reset/resnapshot; both verbs commit unconditionally like the CLI; builds the locked-WC primitives 9-26 drives
+  9-26-implicit-snapshot-colocated-git-import: ready-for-dev  # [M] added 2026-09-17 (Ralph); spec authored same day (spec-9-26-implicit-snapshot-colocated-git-import.md, spec status draft -> bmad-build step-02). Reverses D2: port cli_util snapshot_impl (import git head -> snapshot working copy -> import git refs, colocated, under git_import_export.lock) as the precondition of every verb the CLI runs via workspace_helper; explicit `util snapshot` verb; SnapshotStats + import facts in payloads; jj-lib watchman feature. DEPENDS ON 9-22 and 9-27.
+  9-28-config-surface-list-get-set-unset-path-edit: ready-for-dev  # [M/R] added 2026-09-17 (Ralph); spec authored same day (spec-9-28-config-surface-list-get-set-unset-path-edit.md, spec status draft -> bmad-build step-02). jj config list/get/path/set/unset/edit @ v0.44.0 for --user/--repo/--workspace: resolved_config_values port, CLI file selection (existing layers else default new file; ambiguous -> candidates + explicit path), parse_value_or_bare_string, ConfigFile set/delete refusals, working-copy-author fact, edit = validated file read/write; no op written; reload via 9-27; existing private repo-config writers move onto the same helper family. DEPENDS ON 9-27. Backend for SourceTree-style repo + global settings (UI is Ralph's).
+
   9-23-workspace-add-update-stale: backlog  # [M] Workspace::init_workspace_with_existing_repo + sparse; WorkingCopyFreshness::check_stale + create_and_check_out_recovery_commit
   9-25-log-revset-input-presets-apply-save-completion: backlog  # [R/M] NEEDS REFINEMENT (added 2026-09-16, Ralph). Backend for a user-chosen log revset: revsets.log repo-config write (jj config set --repo parity), structured RevsetError (pest span + NoSuchFunction candidates), in-process revset completion candidates ported from cli/src/complete.rs @v0.44.0 (bookmarks/tags/workspaces/change ids/aliases; builtin fn names open). No live validation; Apply = evaluate via graphSlice, Save = persist. See epics.md Story 9.25.
   # MCP exposure (cross-cut Epic 7): each verb optionally gets an MCP tool (extends 7-4 beyond describe/new); per ADR-0003 OQs decide every-verb-vs-reads+core-subset, and raw eval_revset vs named views only.
