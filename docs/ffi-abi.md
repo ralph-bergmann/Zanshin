@@ -210,10 +210,11 @@ required fields (row 4 there also refuses `ConfigScope::Unspecified` where a sco
 is required, and `zanshin_config_list`'s scope-plus-`include_defaults` conflict)
 come the verb's own codes.
 
-Row 4 is the *reader's* own required-field guard, which only five readers have
-(`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
+Row 4 is the *reader's* own required-field guard, which among the handle-taking
+readers only five have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
 and `url`, `git remote set-url`'s `name`, `interdiff`'s `from.id` / `to.id` — the
-`id` inside a present `RevisionRef` union arm). `interdiff`'s "at least one of from or to" refusal is
+`id` inside a present `RevisionRef` union arm), plus the `zanshin_config_*` readers
+above (`name`, `value`, `path`, `text`, a required scope). `interdiff`'s "at least one of from or to" refusal is
 *not* row 4: an absent side is a legal value there, and the pair is judged by the
 jj layer after row 5. Refusals raised further in — an empty `names` vector, an
 unparseable pattern, a malformed commit-id prefix — likewise come from the jj

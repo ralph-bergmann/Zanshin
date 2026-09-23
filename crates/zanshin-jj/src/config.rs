@@ -31,7 +31,10 @@
 //! - the general config surface of Story 9.28 (`config_cmd.rs`: `jj config set` / `unset` /
 //!   `edit` / `path` for the user, repo and workspace scope), which selects its file with the
 //!   CLI's `edit_config_file` rule — the existing files of the scope, else the CLI's new-file
-//!   default ([`user_config_candidates`]' first entry, or the create-forced secure file);
+//!   default ([`user_config_candidates`]' first entry, or the create-forced secure file).
+//!   One exception to the shared save: `edit`'s write half (`config_file_write`) stores the
+//!   validated text VERBATIM with `fs::write`, as the user's own editor does in the CLI — not
+//!   through a [`save_config_file`] round trip, so a change to that helper does not reach it;
 //! - [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`], called by
 //!   [`crate::Repo::git_remote_remove`] / [`crate::Repo::git_remote_rename`] — the two remote
 //!   verbs whose CLI counterparts rewrite the repo-level file
@@ -114,7 +117,7 @@ use jj_lib::config::{
 use jj_lib::git_backend::{GitBackendInitError, GitBackendLoadError};
 use jj_lib::ref_name::RemoteRefSymbolBuf;
 use jj_lib::repo::StoreLoadError;
-use jj_lib::secure_config::SecureConfig;
+use jj_lib::secure_config::{self, SecureConfig};
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::{Workspace, WorkspaceInitError, WorkspaceLoadError, WorkspaceLoader};
 use rand_chacha::rand_core::SeedableRng as _;
@@ -634,6 +637,28 @@ impl SecureLayer {
             self.legacy_file_name,
             self.root_config_dir.as_deref(),
         )
+    }
+
+    /// True iff the secure directory of `config_file` records ANOTHER, still existing
+    /// repo/workspace dir than this layer's — a COPIED repo, which shares its original's id file
+    /// and whose config `SecureConfig`'s next load forks (`handle_metadata_path`). Compared on
+    /// canonical paths, so the same dir reached through a symlink is not a copy; a recorded dir
+    /// that is gone (a MOVED repo: same file after the re-point) or an unreadable record is
+    /// `false`. Side-effect-free.
+    pub(crate) fn records_another_dir(&self, config_file: &Path) -> bool {
+        let recorded = config_file
+            .parent()
+            .and_then(|dir| secure_config::read_metadata(dir).ok())
+            .and_then(|metadata| {
+                secure_config::metadata_path(&metadata)
+                    .ok()
+                    .flatten()
+                    .map(Path::to_owned)
+            });
+        match (recorded.map(std::fs::canonicalize), std::fs::canonicalize(&self.dir)) {
+            (Some(Ok(recorded)), Ok(dir)) => recorded != dir,
+            _ => false,
+        }
     }
 
     /// The file this layer's WRITERS address, CREATING the secure directory, `metadata.binpb`
@@ -1443,7 +1468,7 @@ mod tests {
         git_import_options, is_valid_config_id, load_repo_config_file, load_with, platform_config_dir,
         remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path, set_trunk_alias,
         settings_from, snapshot_auto_track, snapshot_max_new_file_size, stamp, system_config_paths, user_config_paths,
-        user_email, ConfigEnv, WorkspacePaths, BUILTIN_CONFIG_TOML,
+        user_email, ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -1734,6 +1759,31 @@ mod tests {
             Some(PathBuf::from("/cfg/jj/repos/0123456789abcdef0123/config.toml")),
             "the legacy file is neither read nor migrated"
         );
+    }
+
+    /// A copied repo's layer sees ANOTHER existing dir recorded; its own dir, a moved (gone)
+    /// original and a dir without metadata do not count.
+    #[test]
+    fn records_another_dir_spots_only_a_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (original, copy) = (tmp.path().join("a"), tmp.path().join("b"));
+        std::fs::create_dir(&original).unwrap();
+        std::fs::create_dir(&copy).unwrap();
+        let root = tmp.path().join("repos");
+        let layer = |dir: &Path| SecureLayer::repo_at(dir.to_owned(), Some(root.clone()));
+        let file = layer(&original).create_path(Some(7)).unwrap().expect("created");
+
+        assert!(!layer(&original).records_another_dir(&file), "its own record");
+        assert!(
+            layer(&copy).records_another_dir(&file),
+            "a copy of an existing original"
+        );
+        assert!(
+            !layer(&copy).records_another_dir(&tmp.path().join("nowhere").join("config.toml")),
+            "no metadata"
+        );
+        std::fs::remove_dir_all(&original).unwrap();
+        assert!(!layer(&copy).records_another_dir(&file), "a moved original");
     }
 
     #[test]

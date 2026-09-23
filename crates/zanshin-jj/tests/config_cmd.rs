@@ -257,6 +257,86 @@ fn a_failing_identity_snapshot_is_skipped_but_reported() {
     assert!(set.precondition.is_some(), "the partial report rides the outcome");
 }
 
+/// Recursive copy of a directory tree (files and directories only — a fresh `.jj` holds no
+/// symlinks), standing in for a user's `cp -R` of a repo.
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+/// A COPIED repo shares its original's `config-id`. The CLI (`SecureConfig`'s copy detection)
+/// and `config_file_read` fork the copy's config before editing it, so `config_file_write`
+/// through the copy must never accept — and overwrite — the ORIGINAL repo's file.
+#[test]
+fn file_write_through_a_copied_repo_never_reaches_the_original_config() {
+    let (_tmp, root) = workspace(None);
+    let original = config_file_read(Some(&root), ConfigScope::Repo, None)
+        .expect("read")
+        .path;
+    let copy_tmp = TempDir::new().unwrap();
+    copy_tree(&root, &copy_tmp.path().join("copy"));
+    let copy = fs::canonicalize(copy_tmp.path().join("copy")).unwrap();
+    let before = fs::read_to_string(&original).unwrap();
+
+    assert!(matches!(
+        config_file_write(Some(&copy), &original, "a = 1\n"),
+        Err(ConfigCmdError::AmbiguousFile { .. })
+    ));
+    assert_eq!(
+        fs::read_to_string(&original).unwrap(),
+        before,
+        "the original is untouched"
+    );
+
+    let forked = config_file_read(Some(&copy), ConfigScope::Repo, None)
+        .expect("read")
+        .path;
+    assert_ne!(forked, original, "the copy got its own config, as in the CLI");
+    config_file_write(Some(&copy), &forked, "a = 1\n").expect("the copy's own file");
+    config_file_write(Some(&root), &original, "b = 1\n").expect("the original from its own root");
+    assert_eq!(fs::read_to_string(&forked).unwrap(), "a = 1\n");
+}
+
+/// A secondary workspace (its `.jj/repo` is a FILE pointing at the repo) reaches the SAME repo
+/// config as the primary, and its own workspace config.
+#[test]
+fn a_secondary_workspace_shares_the_repo_config() {
+    let (_tmp, root) = workspace(None);
+    let (second, _wc) = test_helpers::add_workspace(&root, "second");
+    let second_root = fs::canonicalize(&second.path).unwrap();
+    assert!(second_root.join(".jj").join("repo").is_file());
+
+    let repo_file = config_path(Some(&second_root), ConfigScope::Repo).expect("path");
+    assert_eq!(
+        repo_file,
+        config_path(Some(&root), ConfigScope::Repo).unwrap(),
+        "one repo config"
+    );
+    assert!(root.join(".jj").join("repo").join("config-id").exists());
+    assert_ne!(
+        config_path(Some(&second_root), ConfigScope::Workspace).unwrap(),
+        config_path(Some(&root), ConfigScope::Workspace).unwrap(),
+        "each workspace has its own"
+    );
+
+    config_set(Some(&second_root), ConfigScope::Repo, "revsets.log", "@", None)
+        .result
+        .expect("set");
+    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "@");
+    let read = config_file_read(Some(&second_root), ConfigScope::Repo, None).expect("read");
+    assert_eq!(read.path, repo_file[0]);
+    config_file_write(Some(&second_root), &read.path, "[revsets]\nlog = 'root()'\n").expect("write");
+    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "root()");
+}
+
 #[test]
 fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     let (tmp, root) = workspace(None);

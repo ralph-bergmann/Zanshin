@@ -116,6 +116,10 @@ fn fields(kind: fbs::RequestKind, root: Option<&str>) -> Fields<'_> {
 }
 
 fn list_req(f: &Fields<'_>, include_defaults: bool) -> Vec<u8> {
+    list_req_with(f, include_defaults, true)
+}
+
+fn list_req_with(f: &Fields<'_>, include_defaults: bool, include_overridden: bool) -> Vec<u8> {
     let mut b = FlatBufferBuilder::new();
     let workspace_root = f.root.map(|s| b.create_string(s));
     let name = f.name.map(|s| b.create_string(s));
@@ -127,7 +131,7 @@ fn list_req(f: &Fields<'_>, include_defaults: bool) -> Vec<u8> {
             name,
             scope: f.scope,
             include_defaults,
-            include_overridden: true,
+            include_overridden,
         },
     );
     b.finish(r, None);
@@ -582,4 +586,111 @@ fn list_without_a_scope_and_the_workspace_scope_are_accepted() {
     assert!(paths
         .get(0)
         .starts_with(xdg().join("jj").join("workspaces").to_str().unwrap()));
+}
+
+/// The optional `path` of `set` / `unset` / `file_read` reaches the file selection: a path that
+/// is not a candidate is `jj.config_ambiguous_file` with nothing written, the candidate itself
+/// is accepted — the GUI's answer to that refusal.
+#[test]
+fn the_optional_path_reaches_the_file_selection() {
+    use fbs::RequestKind as K;
+    let (_tmp, root) = workspace();
+    let at = |kind| fields(kind, Some(root.as_str()));
+    let path_bytes = call(zanshin_config_path, Some(&path_req(&at(K::ConfigPath))));
+    let file = ok(&path_bytes)
+        .data_as_config_path_result()
+        .unwrap()
+        .paths()
+        .unwrap()
+        .get(0)
+        .to_owned();
+
+    let set = |path| {
+        set_req(&Fields {
+            name: Some("revsets.log"),
+            value: Some("@"),
+            path: Some(path),
+            ..at(K::ConfigSet)
+        })
+    };
+    let unset = |path| {
+        unset_req(&Fields {
+            name: Some("revsets.log"),
+            path: Some(path),
+            ..at(K::ConfigUnset)
+        })
+    };
+    let read = |path| {
+        file_read_req(&Fields {
+            path: Some(path),
+            ..at(K::ConfigFileRead)
+        })
+    };
+    for (f, stray) in [
+        (zanshin_config_set as Wrapper, set("/stray.toml")),
+        (zanshin_config_unset, unset("/stray.toml")),
+        (zanshin_config_file_read, read("/stray.toml")),
+    ] {
+        let bytes = call(f, Some(&stray));
+        assert_eq!(error_code(&bytes), JJ_CONFIG_AMBIGUOUS_FILE);
+        let context = envelope(&bytes).error().unwrap().context().unwrap().to_owned();
+        assert_eq!(context, file, "the candidate the GUI can choose");
+    }
+    assert!(!Path::new(&file).exists(), "nothing written");
+
+    let set_bytes = call(zanshin_config_set, Some(&set(file.as_str())));
+    assert_eq!(
+        ok(&set_bytes).data_as_config_set_result().unwrap().path(),
+        Some(file.as_str())
+    );
+    let read_bytes = call(zanshin_config_file_read, Some(&read(file.as_str())));
+    let text = ok(&read_bytes).data_as_config_file_text().unwrap();
+    assert!(text.text().unwrap().contains("revsets"), "{:?}", text.text());
+    let unset_bytes = call(zanshin_config_unset, Some(&unset(file.as_str())));
+    assert_eq!(
+        ok(&unset_bytes).data_as_config_unset_result().unwrap().path(),
+        Some(file.as_str())
+    );
+}
+
+/// `list`'s `name` prefix and `include_overridden = false` cross the wire: only the prefix's
+/// keys, and a value shadowed by `JJ_EMAIL` (`EnvOverrides`) only on request.
+#[test]
+fn the_list_filters_cross_the_wire() {
+    use fbs::RequestKind as K;
+    let (_tmp, root) = workspace();
+    let at = |kind| fields(kind, Some(root.as_str()));
+    for (name, value) in [("revsets.log", "@"), ("user.email", "shadowed@example.com")] {
+        let set = set_req(&Fields {
+            name: Some(name),
+            value: Some(value),
+            ..at(K::ConfigSet)
+        });
+        ok(&call(zanshin_config_set, Some(&set)));
+    }
+    let names = |bytes: &[u8]| -> Vec<String> {
+        ok(bytes)
+            .data_as_config_list_result()
+            .unwrap()
+            .entries()
+            .unwrap()
+            .iter()
+            .map(|e| e.name().unwrap().to_owned())
+            .collect()
+    };
+
+    let prefixed = list_req_with(
+        &Fields {
+            name: Some("revsets"),
+            ..at(K::ConfigList)
+        },
+        false,
+        false,
+    );
+    assert_eq!(names(&call(zanshin_config_list, Some(&prefixed))), ["revsets.log"]);
+
+    let effective = list_req_with(&at(K::ConfigList), false, false);
+    assert!(!names(&call(zanshin_config_list, Some(&effective))).contains(&"user.email".to_owned()));
+    let all = list_req_with(&at(K::ConfigList), false, true);
+    assert!(names(&call(zanshin_config_list, Some(&all))).contains(&"user.email".to_owned()));
 }

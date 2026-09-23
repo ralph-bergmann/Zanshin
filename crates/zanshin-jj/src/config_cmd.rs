@@ -255,7 +255,8 @@ pub enum ConfigCmdError {
         reason: String,
     },
     /// More than one file could be written and none was chosen, or the chosen path is not one
-    /// of the candidates; nothing was written.
+    /// of the candidates; no config file was written (at repo/workspace scope the secure
+    /// directory and id file may have been created first, as the CLI creates them).
     #[error("choose one of the config files: {}", display_paths(.candidates))]
     AmbiguousFile {
         /// The files that could be written.
@@ -853,7 +854,8 @@ fn file_read_with(
 /// Every file [`config_file_read`] can currently return for some scope of `ws`, with its
 /// source — its selection, side-effect-free: the existing user files, or the CLI's new-file
 /// default only when there are none; the repo and workspace SECURE files, only when their id
-/// file exists (never the legacy fallback, which the CLI would migrate).
+/// file exists (never the legacy fallback, which the CLI would migrate) and their secure dir
+/// records this repo/workspace (never a COPIED repo's original, which the CLI forks first).
 ///
 /// # Errors
 ///
@@ -866,7 +868,8 @@ fn writable_files(env: &ConfigEnv, ws: Option<&WorkspaceDirs>) -> Result<Vec<(Pa
     let mut files: Vec<(PathBuf, ConfigSource)> = user.into_iter().map(|p| (p, ConfigSource::User)).collect();
     for layer in ws.into_iter().flat_map(|ws| config::secure_layers(env, ws.paths())) {
         if layer.has_id_file() {
-            files.extend(layer.resolved_path()?.map(|p| (p, layer.source)));
+            let path = layer.resolved_path()?.filter(|p| !layer.records_another_dir(p));
+            files.extend(path.map(|p| (p, layer.source)));
         }
     }
     Ok(files)
