@@ -5,7 +5,7 @@ created: '2026-09-17'
 status: 'done'
 baseline_revision: 'fc362ce28c0244d1d242a17b86ac377eb4f44b53'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [oversized]
@@ -188,6 +188,45 @@ All `../jj` anchors are `git -C ../jj show v0.44.0:<path>`; jj-lib anchors are t
   - `[low]` `[reject]` IA-g — path parsing accepts absolute in-workspace paths (beyond "repo-relative") — that is the CLI's own parse of a bare path argument (cwd = workspace root) and is what makes the matrix row `nope/` pass; documented, and the older verbs' gap is deferred (`deferred[1]`).
   - `[false]` `[reject]` IA-h — `base_ignores` reads `XDG_CONFIG_HOME` from the process env, not 9.27's `ConfigEnv` — the CLI reads it with `std::env::var` too (`cli_util.rs:1660-1667`).
 
+### 2026-09-24 — Review pass (follow-up, `followup_pass = true`)
+Review diff = this story's own range `fc362ce..5702724` (the four codegen outputs omitted; `schemas/envelope.fbs` included); every finding verified against HEAD `84a4df8`, which carries Stories 9.26/9.28 and the 9.27 follow-up on top.
+- verdicts: 34 findings — high 0, medium 2, low 15, false 17, maybe-false 0
+- findings:
+  - `[false]` `[reject]` BH1 — `lock_working_copy` conflates the CLI's stale/sibling-op freshness cases with `ConcurrentWorkingCopy` — at HEAD every verb first runs 9.26's pre-verb snapshot, which calls `WorkingCopyFreshness::check_stale` (`snapshot.rs:678-685`) and refuses `Stale`/`SiblingOperation` as `PreconditionError::StaleWorkingCopy` with its own cause before `lock_working_copy` is reached; witnessed by `a_rewritten_but_unchecked_out_at_is_a_stale_working_copy`.
+  - `[false]` `[reject]` BH2 — `file_track` never parses `snapshot.auto-track`, so it succeeds where the CLI fails — `Repo::file_track` calls `self.precondition()` first (`repo.rs:1669`), whose `Knobs::read` parses it via `wc_ops::auto_tracking_matcher` (`snapshot.rs:290`) and refuses before the verb.
+  - `[false]` `[reject]` BH3 — nothing guards the "check_out verb commits, then goes stale" hazard after `file_track` — 9.26's pre-verb snapshot moves the tracked path into `@` before the next verb (`working_copy_verbs_after_track_snapshot_the_tracked_path_into_at_first`); the hazard no longer occurs.
+  - `[false]` `[reject]` BH4 — `commit_with_locked_wc` is advertised as reusable by 9.26 and hardcodes `identity_missing: None` — the HEAD module doc (`mutate.rs:16-22`) names it the raw-transaction shape `file track`/`file untrack` use, and those are its only two callers (`wc_ops.rs:409,523`); the WHY comment at `:1185-1187` scopes `None` to them.
+  - `[low]` `[reject]` BH5 — `base_ignores` re-opens git per call (cost on every verb since 9.26) while `update_intent_to_add`/`export_refs` use the cached repo — a gix open is milliseconds against a snapshot that walks the tree; the two cached-repo calls read no excludes config, so no mixed-config harm can be named; the fix (a stamp-keyed cache) adds state.
+  - `[low]` `[reject]` BH6 — `jj.path_not_ignored` joins the offending paths with `\n`, a legal filename character — a newline in a tracked filename is rare in everyday use; the Rust variant already carries a `Vec<String>`, and a structured wire list would be new public surface.
+  - `[false]` `[reject]` BH7 — sprint-status says `done` while the spec says `in-review` — both said `done` at `5702724`; `in-review` is this follow-up pass's own marker, reset to `done` at finalize.
+  - `[low]` `[reject]` BH8 — the accepted path forms (absolute in-workspace, `./`, trailing `/`, `""` refused) are documented only in Rust rustdoc, not in `envelope.fbs`/Dart docs, and no seam test passes such a form — the wire docs are accurate for the repo-relative form a GUI supplies (the extra forms are a superset); the FFI reader passes strings through verbatim and the Rust suite pins the parse; an `envelope.fbs` doc edit forces regenerating four files.
+  - `[low]` `[patch]` BH9a — `UntrackResult.snapshot_stats` was only ever asserted empty — added `untrack_reports_what_the_post_reset_snapshot_left_untracked` (a too-large new file surfaces as `FileTooLarge{20,10}` from the post-reset snapshot).
+  - `[low]` `[reject]` BH9b — `NoWorkingCopy` witnessed for `file_track` only — `file_untrack` takes the identical precondition + `lock_working_copy` path, whose `NoWorkingCopy` arm has its own unit test (`mutate.rs:1560`); a duplicate row adds no coverage.
+  - `[low]` `[reject]` BH9c — no FFI-wrapper witness for `jj.config_error`/`jj.no_working_copy` on the two symbols — the mapping is the shared, unit-tested `map_mutate_err`; since 9.26 a config error reaches these verbs as a `Precondition` code anyway.
+  - `[false]` `[reject]` BH9d — the `base_ignores` tests only work because the first `tracked_after_track` records nothing (swap → `ConcurrentWorkingCopy`) — at HEAD the second call's pre-verb snapshot moves the first tracked path into `@` first, so the order no longer matters.
+  - `[false]` `[reject]` BH10 — the Dart worker test reads the developer's real `~/.config/git/ignore` because `test-core`/`coverage` do not pin `XDG_CONFIG_HOME` — they do at HEAD (`Makefile.toml:136,524`, Story 9.28); the "pinned by `[tasks.test-flutter]`" header is the shared header of all eight worker suites.
+  - `[false]` `[reject]` BH11a — `convert.rs`/`file.rs` docs still claim "Zanshin never snapshots" (D2) — no such text remains at HEAD (9.26 reworded both).
+  - `[low]` `[patch]` BH11b — rustdoc/markdown lines left unwrapped — re-wrapped `repo.rs` (`file_track` rustdoc) and the `docs/ffi-abi.md` "Rows are grouped by noun" paragraph; the `convert.rs:76` line is already wrapped at HEAD.
+  - `[false]` `[reject]` BH12a — `saturate`/`prefix_matcher` are needless wrappers — no caller diverges and no rule breaks; one definition each, `saturate` with its unit test.
+  - `[false]` `[reject]` BH12b — the generic `build_aliases_map` lives in `revset.rs` — the spec's Code Map directed generalising it in place so both alias tables share one port; no named harm.
+  - `[false]` `[reject]` BH12c — the revset-alias `tracing::warn!` texts were rewritten — log text only, now carrying `table = …`; nothing consumes the message text.
+  - `[low]` `[reject]` EC1 — carried: `commit_with_locked_wc` can return `Err` after the op is committed (`finish`, post-commit `@` re-read) — same claim as BH5/EC4 of the first pass, code unchanged (`mutate.rs:1171-1177`); the CLI's own `finish` order.
+  - `[low]` `[reject]` EC2 — a colocated untrack whose `export_refs` or `tx.commit` fails after `update_intent_to_add` leaves the git index rewritten with no op — the CLI has the identical order (`export_working_copy_changes_to_git` before `tx.commit` in `untrack.rs`, `cli_util.rs:2650-2661`); restoring the index would be rollback machinery the CLI lacks, for a failure that needs a broken git store.
+  - `[false]` `[reject]` EC3 — `file_track` on a dirty WC makes later `check_out` verbs commit then fail — the first pass's deferred EC2; resolved at HEAD by 9.26 (see BH3).
+  - `[false]` `[reject]` EC4 — missing `check_stale` in `lock_working_copy` — same refutation as BH1.
+  - `[false]` `[reject]` EC5 — `file_track` does not parse `snapshot.auto-track` — same refutation as BH2.
+  - `[low]` `[reject]` EC6 — claim: task (c) says `identity_missing(new_repo.settings())`, the code hardcodes `None` — deliberate CLI-parity change logged as the first pass's BH7; the fix would be an edit of this spec.
+  - `[medium]` `[patch]` VG1 — `auto_track_resolves_fileset_aliases` passes whether or not aliases are expanded, and the non-table `[fileset-aliases]` refusal is unwitnessed — added `auto_track_alias_expansion_decides_the_untrack_refusal` (`everything = 'all()'` → `PathsNotIgnored`) and `a_non_table_fileset_aliases_is_a_config_error`; mutation-checked: both fail with the alias table name swapped.
+  - `[medium]` `[patch]` VG2 — the `<home>/.config/git/ignore` fallback (the branch a Finder/Dock-launched app runs) never ran in a test — new binary `tests/file_track_home_git_ignore.rs` with `XDG_CONFIG_HOME=""` and a tempdir `HOME`; mutation-checked: fails with the fallback returning `None`.
+  - `[false]` `[reject]` IA-a — carried: "`a.txt` in `@` tree" witnessed on the WC-state tree — first pass IA-a; code unchanged, GH #8298 reading.
+  - `[false]` `[reject]` IA-b — after `track`, `check_out` verbs commit then go stale (stated only in rustdoc/deferred-work) — resolved at HEAD by 9.26 (see BH3).
+  - `[low]` `[reject]` IA-c — carried: a second path convention (`parse_paths`) beside `build_matcher` — first pass IA-g; code unchanged.
+  - `[low]` `[reject]` IA-d — carried: the concurrent-edit row is witnessed with a pre-call edit — first pass IA-e; code unchanged.
+  - `[low]` `[reject]` IA-e — the wrong-typed-knob row's `jj.config_error` is tested only at the Rust layer — same as BH9c.
+  - `[low]` `[patch]` IA-f — carried: export failures flattened into `UntrackResult`, failing case witnessed only in Rust — first pass IA-f/VG3; not re-patched.
+  - `[low]` `[patch]` IA-g — carried: `identity_missing` always `None` — first pass BH7/VG1; not re-patched.
+  - `[false]` `[reject]` IA-h — the Ask-First items were decided with no record of anyone being asked — Design Notes "Ask-First decisions (2026-09-23, Ralph delegated them to the spec's own proposals)" records it (the spec is not part of the reviewed diff).
+
 ## Design Notes
 
 **Ask-First decisions (2026-09-23, Ralph delegated them to the spec's own proposals — resolved, not intent gaps):**
@@ -244,3 +283,22 @@ Blocking condition: none
 **Verification.** `cargo make codegen` (generated files regenerated and committed). Gate steps run one by one with `cargo make --allow-private <task>`: test-cargo, test-clippy, test-fmt, test-dart-analyze, test-dart-format, test-core (342 tests), test-core-analyze, test-core-format, every test-shell*/test-settings* step, test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene, coverage — all PASS; test-flutter FAILS only on the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests (red since `677dbf5`, UI scope). Coverage overall 99.27 %, no regression. Manual CLI check with the installed jj 0.45.1: with `auto-track = none()`, `jj file track a.txt` writes `track paths`, `@` read with `--ignore-working-copy` stays empty, and the next command writes `snapshot working copy` containing `a.txt` — the reading the tests pin.
 
 **Residual risks.** Until Story 9.26 lands, a `file_track` on a dirty or newly-tracked working copy leaves the working-copy state ahead of `@`: the next track/untrack refuses, and every `check_out`-based verb commits and then fails with a stale working copy (recoverable only with `jj workspace update-stale` until Story 9.23). Do not wire `fileTrack` into the UI before 9.26.
+
+### Follow-up review pass (2026-09-24)
+
+Status: done. Blocking condition: none. Requested by Ralph (2026-09-23) because the first pass cross-checked only one of its patches.
+
+**Scope.** Review diff = this story's own commits `fc362ce..5702724` (c79d619 + 5702724); every finding classified against HEAD `84a4df8` (Stories 9.26, 9.28 and the 9.27 follow-up stacked on top). The first pass's patched paths (empty-path refusal, fresh-gix `base_ignores`, `identity_missing = None`, unmatched-paths ordering, hazard docs, `include_ignored` bridge tests) and the locked-WC primitives (`mutate::lock_working_copy` / `commit_with_locked_wc`, `wc_ops.rs`) were re-read at HEAD: no defect found in them. The freshness gap (BH1/EC4) and the post-track hazard (BH3/EC3/IA-b, the first pass's deferral) are closed at HEAD by 9.26's pre-verb snapshot (`snapshot.rs:678`).
+
+**Change (tests and docs only, no production behaviour).**
+- `crates/zanshin-jj/tests/file_track_untrack.rs` — three rows: fileset-alias expansion decides the untrack refusal; a non-table `[fileset-aliases]` is a config error; untrack's `snapshot_stats` carries the post-reset snapshot's `FileTooLarge`.
+- `crates/zanshin-jj/tests/file_track_home_git_ignore.rs` (new binary) — an empty `$XDG_CONFIG_HOME` falls back to `<home>/.config/git/ignore`.
+- `crates/zanshin-jj/src/repo.rs`, `docs/ffi-abi.md` — re-wrapped overlong doc lines.
+
+**Findings breakdown (34).** Patched: 4 entries — medium 2 (VG1 alias-expansion witnesses, VG2 home-fallback witness), low 2 (BH9a untrack stats witness, BH11b doc wrapping); both medium patches mutation-checked. Deferred: none. Rejected: 17 false (BH1-4, BH7, BH9d, BH10, BH11a, BH12a-c, EC3-5, IA-a, IA-b, IA-h — mostly closed at HEAD by 9.26/9.28 or no named harm); 11 low (BH5 per-call gix open, BH6 `\n`-joined context, BH8 wire-doc path forms, BH9b/BH9c/IA-e duplicate witnesses, EC1 carried post-commit `Err`, EC2 colocated export before commit = CLI order, EC6 spec-text claim, IA-c/IA-d carried); IA-f/IA-g carried from the first pass's patches, not re-patched.
+
+**Follow-up review recommendation:** `false` — follow-up pass, no `high` patched (medium 2, low 2).
+
+**Verification.** `cargo make --allow-private <task>` for every `[tasks.test]` dependency, in order: test-cargo PASS, test-clippy PASS, test-fmt PASS, test-flutter FAIL (only the 3 known pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests, UI scope), test-dart-analyze PASS, test-dart-format PASS, test-core PASS, test-core-analyze PASS, test-core-format PASS, test-shell/-analyze/-format PASS, test-shell-pi/-analyze/-format PASS, test-shell-macos/-analyze/-format PASS, test-settings/-analyze/-format PASS, test-cargo-deny PASS, test-cargo-hygiene PASS, test-jj-adapter-hygiene PASS, coverage PASS (99.38 %, held; baseline unchanged). `pubspec.lock` drift reverted.
+
+**Residual risks.** The deferral `deferred[0]` (WC state leads `@` after `file_track`) is resolved at HEAD by Story 9.26 (`fadbbfc`); `deferred[1]` (`build_matcher` path normalisation for the older verbs) stands.

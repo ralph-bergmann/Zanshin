@@ -1630,8 +1630,9 @@ impl Repo {
     /// parses a bare path argument with the working directory at the WORKSPACE ROOT: a trailing
     /// `/`, `./` and `//` normalise, an absolute path inside the workspace is accepted, and a
     /// path escaping the workspace is refused. The fileset DSL is terminal input language and
-    /// is not parsed. At least one is required (the CLI's `required = true`). `include_ignored` tracks matching files even when they are
-    /// ignored or larger than `snapshot.max-new-file-size` — the CLI's `--include-ignored`.
+    /// is not parsed. At least one is required (the CLI's `required = true`). `include_ignored`
+    /// tracks matching files even when they are ignored or larger than
+    /// `snapshot.max-new-file-size` — the CLI's `--include-ignored`.
     ///
     /// The working copy is locked and snapshotted with the effective `snapshot.*` config and
     /// the CLI's ignore chain; the operation `track paths` is written UNCONDITIONALLY, even when

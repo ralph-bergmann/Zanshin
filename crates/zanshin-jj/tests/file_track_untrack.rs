@@ -823,6 +823,62 @@ fn auto_track_resolves_fileset_aliases() {
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "c.log"]));
 }
 
+/// The alias is EXPANDED, not read as a bare path: `everything` resolves to `all()`, so the
+/// post-reset snapshot would re-add the unignored `d.txt` and the untrack refuses. Unexpanded,
+/// `everything` would be a cwd-prefix pattern matching nothing and the untrack would succeed.
+#[test]
+fn auto_track_alias_expansion_decides_the_untrack_refusal() {
+    let fx = untrack_fx("snapshot.auto-track = \"everything\"\n[fileset-aliases]\n'everything' = 'all()'\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    let err = repo
+        .file_untrack(&strings(&["d.txt"]))
+        .expect_err("the expanded alias auto-tracks d.txt");
+
+    assert!(
+        matches!(&err, MutateError::PathsNotIgnored { paths } if *paths == strings(&["d.txt"])),
+        "{err:?}"
+    );
+}
+
+/// A `[fileset-aliases]` that is not a table is a hard config error (the CLI's
+/// `load_aliases_map` table level), never a silent fall back to no aliases.
+#[test]
+fn a_non_table_fileset_aliases_is_a_config_error() {
+    let fx = git_fx("fileset-aliases = 42\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let before = head_op_id(&mut repo);
+
+    let err = repo.file_untrack(&strings(&["a.txt"])).expect_err("bad aliases table");
+
+    assert!(
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+            if reason.contains("fileset-aliases")),
+        "{err:?}"
+    );
+    assert_eq!(head_op_id(&mut repo), before);
+}
+
+/// `UntrackResult::snapshot_stats` carries what the post-reset snapshot left untracked — the
+/// CLI's `print_snapshot_stats(&stats)` after `untrack`.
+#[test]
+fn untrack_reports_what_the_post_reset_snapshot_left_untracked() {
+    let fx = untrack_fx("snapshot.max-new-file-size = 10\n");
+    write(&fx.root, "big.bin", "0123456789abcdefghij");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    let result = repo.file_untrack(&strings(&["c.log"])).expect("untrack");
+
+    assert_eq!(
+        result.snapshot_stats.untracked,
+        vec![untracked(
+            "big.bin",
+            UntrackedReason::FileTooLarge { size: 20, max_size: 10 }
+        )]
+    );
+    assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "d.txt"]));
+}
+
 // ── Refusals at the lock ─────────────────────────────────────────────────────────
 
 /// `@` rewritten in the op log without a checkout: the recorded working-copy tree is no longer

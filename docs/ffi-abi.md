@@ -363,8 +363,8 @@ symbol to learn why. `internal.panic` is documented once under *Envelope format*
 and is deliberately absent from every row.
 
 Rows are grouped by noun: repository lifecycle, repo-state reads, commit views,
-file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking and snapshot, git sync, config
-(Story 9.28), and infrastructure. `—` means "not applicable": no request table, no success payload,
+file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking
+and snapshot, git sync, config (Story 9.28), and infrastructure. `—` means "not applicable": no request table, no success payload,
 or no `# Errors` block.
 
 | Symbol | Args | Request table | Success payload | Error codes | Story |
