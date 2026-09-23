@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::config::StackedConfig;
+use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::RepoPathUiConverter;
@@ -198,7 +199,7 @@ pub(crate) struct RevsetConfig {
 ///   not a string.
 pub(crate) fn revset_config(config: &StackedConfig) -> Result<RevsetConfig, ConfigError> {
     Ok(RevsetConfig {
-        aliases_map: build_aliases_map(config)?,
+        aliases_map: build_aliases_map(config, "revset-aliases")?,
         user_email: crate::config::user_email(config)?,
     })
 }
@@ -319,8 +320,14 @@ pub(crate) fn evaluate_revset<'r>(
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
 
-/// Builds the `RevsetAliasesMap` from every `[revset-aliases]` table in `config`, lowest
-/// layer first — Zanshin's builtin defaults, then the user, repo and workspace layers.
+/// Builds an alias map from every `[<table_name>]` table in `config`, lowest layer first —
+/// Zanshin's builtin defaults, then the user, repo and workspace layers.
+///
+/// ONE port for every alias language, generic over jj-lib's declaration parser exactly like
+/// the CLI's own `load_aliases_map`: `revset-aliases` builds the `RevsetAliasesMap` the revset
+/// parser expands, and `fileset-aliases` (Story 9.22, the CLI's `load_fileset_aliases`,
+/// `cli/src/cli_util.rs:3407-3413`) builds the `FilesetAliasesMap` `snapshot.auto-track` is
+/// parsed with.
 ///
 /// Mirrors the CLI's `load_aliases_map` (`cli/src/config.rs:930-981`): insertion is keyed
 /// by (name, arity), so a user's `trunk()` REPLACES the builtin while a user's `trunk(x)`
@@ -329,7 +336,7 @@ pub(crate) fn evaluate_revset<'r>(
 ///
 /// The CLI's two failure levels are mirrored exactly, and they differ:
 ///
-/// - **The TABLE level is a hard error.** A layer whose `revset-aliases` is not a table at
+/// - **The TABLE level is a hard error.** A layer whose `<table_name>` is not a table at
 ///   all aborts the load (`cli/src/config.rs:943-953` returns `ConfigGetError::Type`).
 ///   Skipping it would silently fall back to the builtin aliases — the one behaviour this
 ///   story exists to prevent.
@@ -342,18 +349,25 @@ pub(crate) fn evaluate_revset<'r>(
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — a config layer's `revset-aliases` key is not a table.
-pub(crate) fn build_aliases_map(config: &StackedConfig) -> Result<RevsetAliasesMap, ConfigError> {
-    let mut map = RevsetAliasesMap::new();
+/// - [`ConfigError::Load`] — a config layer's `<table_name>` key is not a table.
+pub(crate) fn build_aliases_map<P>(
+    config: &StackedConfig,
+    table_name: &'static str,
+) -> Result<AliasesMap<P, String>, ConfigError>
+where
+    P: AliasDeclarationParser + Default,
+    P::Error: std::fmt::Display,
+{
+    let mut map = AliasesMap::<P, String>::new();
     for layer in config.layers() {
-        let table = match layer.look_up_table("revset-aliases") {
+        let table = match layer.look_up_table(table_name) {
             Ok(Some(table)) => table,
             Ok(None) => continue,
             Err(item) => {
                 let path = layer.path.as_deref().unwrap_or(Path::new("<builtin>"));
                 return Err(ConfigError::Load {
                     reason: format!(
-                        "{}: revset-aliases: Expected a table, but is {}",
+                        "{}: {table_name}: Expected a table, but is {}",
                         path.display(),
                         item.type_name()
                     ),
@@ -373,14 +387,15 @@ pub(crate) fn build_aliases_map(config: &StackedConfig) -> Result<RevsetAliasesM
             let Some(definition) = definition else {
                 let found = item.type_name();
                 tracing::warn!(
+                    table = table_name,
                     alias = decl,
                     found,
-                    "revset alias is neither a string nor a table with a `definition` string key; skipped"
+                    "alias is neither a string nor a table with a `definition` string key; skipped"
                 );
                 continue;
             };
             if let Err(e) = map.insert(decl, definition, doc) {
-                tracing::warn!(alias = decl, error = %e, "failed to load revset alias; skipped");
+                tracing::warn!(table = table_name, alias = decl, error = %e, "failed to load alias; skipped");
             }
         }
     }

@@ -15,7 +15,9 @@
 //!
 //! Neither verb snapshots the working copy (D2 — `status.rs:84`, `revset.rs:61-62`): both
 //! read the last-snapshotted `@`, where the CLI's `workspace_helper` would have snapshotted
-//! on-disk edits first. `LockedWorkingCopy::{snapshot,reset}` is Story 9.22's scope.
+//! on-disk edits first. The locked-working-copy lifecycle — [`lock_working_copy`] and
+//! [`commit_with_locked_wc`] (Story 9.22) — is the shared primitive `file track`/`file untrack`
+//! use today and Story 9.26's per-verb snapshot will drive in front of the other verbs.
 
 use std::sync::Arc;
 
@@ -31,7 +33,8 @@ use jj_lib::revset::{ResolvedRevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
 use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
-use jj_lib::workspace::Workspace;
+use jj_lib::working_copy::LockedWorkingCopy;
+use jj_lib::workspace::{LockedWorkspace, Workspace};
 
 use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
@@ -84,7 +87,9 @@ pub struct MutationResult {
     /// `Some` only when this call COMMITTED an operation and `user.name` and/or `user.email`
     /// is empty: the CLI's warning lives in `finish_transaction`, which it skips when nothing
     /// changed, so every no-op result (see [`MutationResult::new_op_id`]) carries `None`. A
-    /// verb that always commits (e.g. [`crate::Repo::git_fetch`]) reports it every time. An
+    /// verb that always commits (e.g. [`crate::Repo::git_fetch`]) reports it every time.
+    /// [`crate::Repo::file_track`] and [`crate::Repo::file_untrack`] never report it: the CLI
+    /// commits their raw transaction and never reaches `finish_transaction`. An
     /// empty identity is never refused and never replaced by a placeholder — commits are
     /// created with it, exactly as the CLI creates them.
     pub identity_missing: Option<IdentityMissing>,
@@ -280,6 +285,31 @@ pub enum MutateError {
     BookmarkTrackedRemoteExists {
         /// The bookmark name whose tracked remote bookmarks block the create.
         name: String,
+    },
+    /// A verb that must lock the working copy found no working-copy commit for this
+    /// workspace in the head view (Story 9.22) — the CLI's "Nothing checked out in this
+    /// workspace" (`cli/src/cli_util.rs:1486-1490` @ v0.44.0). Nothing is locked or written.
+    #[error("nothing checked out in this workspace")]
+    NoWorkingCopy,
+    /// The working copy's recorded tree differs from `@`'s tree in the head view (Story 9.22):
+    /// either `@` was rewritten without a checkout, or — until Story 9.26's per-verb snapshot —
+    /// the working-copy state is AHEAD of `@` because an earlier [`crate::Repo::file_track`]
+    /// recorded paths the next snapshot has not yet moved into `@`. The CLI's check behind
+    /// "Concurrent working copy operation. Try again." (`cli_util.rs:1501-1505`). Nothing is
+    /// written.
+    #[error("concurrent working copy operation")]
+    ConcurrentWorkingCopy,
+    /// [`crate::Repo::file_untrack`] matched paths that are NOT ignored, so the next snapshot
+    /// would add them straight back (Story 9.22) — the CLI's `'<path>' is not ignored.` /
+    /// `'<path>' and N other files are not ignored.` (`untrack.rs:84-104`).
+    ///
+    /// Names EVERY offender, in jj-lib's tree order; the CLI's message names the first and
+    /// counts the rest, which is `paths[0]` and `paths.len() - 1` here. No operation is written
+    /// and the working-copy state is left exactly as it was.
+    #[error("paths are not ignored: {}", paths.join(", "))]
+    PathsNotIgnored {
+        /// Repo-relative paths (jj's internal `/`-separated form) that would be re-added.
+        paths: Vec<String>,
     },
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes
     /// the public API (FR-JJ-16).
@@ -939,6 +969,105 @@ where
         repo: new_repo,
         committed: true,
     })
+}
+
+// ── Locked working copy (Story 9.22) ─────────────────────────────────────────────
+//
+// The working-copy lifecycle the CLI runs whenever a verb reads or rewrites the ON-DISK state
+// rather than only the view: lock → `snapshot`/`reset` → commit → `finish(op_id)`. Unlike
+// `sync_working_copy` (which goes through `Workspace::check_out` and rewrites FILES),
+// `snapshot` and `reset` never touch a file: they update the recorded working-copy STATE, which
+// `finish` persists together with the operation id it now corresponds to.
+
+/// Locks the working copy of `workspace` and returns it with `@` as `repo` sees it — the port of
+/// `WorkspaceCommandHelper::start_working_copy_mutation` (`cli/src/cli_util.rs:1482-1507` @
+/// v0.44.0).
+///
+/// `repo` must be the head-resolved repo the caller's transaction starts from, so `@` and the
+/// transaction describe one view. The concurrency check is the CLI's: if the tree the working
+/// copy last recorded is not `@`'s tree, `@` was rewritten by an operation nobody checked out,
+/// and snapshotting on top of it would mix two states.
+///
+/// Dropping the returned [`LockedWorkspace`] WITHOUT `finish` releases the lock and discards
+/// every in-memory `snapshot`/`reset`, leaving the on-disk state byte-identical.
+///
+/// # Errors
+///
+/// - [`MutateError::NoWorkingCopy`] — `repo`'s view has no `@` for this workspace.
+/// - [`MutateError::ConcurrentWorkingCopy`] — the recorded working-copy tree is not `@`'s.
+/// - [`MutateError::Backend`] — the commit could not be read or the lock not taken.
+pub(crate) fn lock_working_copy<'w>(
+    workspace: &'w mut Workspace,
+    repo: &ReadonlyRepo,
+) -> Result<(LockedWorkspace<'w>, Commit), MutateError> {
+    let wc_id = repo
+        .view()
+        .get_wc_commit_id(workspace.workspace_name())
+        .ok_or(MutateError::NoWorkingCopy)?
+        .clone();
+    let wc_commit = repo.store().get_commit(&wc_id).map_err(be)?;
+    let mut locked_ws = pollster::block_on(workspace.start_working_copy_mutation()).map_err(be)?;
+    if wc_commit.tree().tree_ids_and_labels() != locked_ws.locked_wc().old_tree().tree_ids_and_labels() {
+        return Err(MutateError::ConcurrentWorkingCopy);
+    }
+    Ok((locked_ws, wc_commit))
+}
+
+/// Runs `work` against a transaction AND the locked working copy, then commits `description`
+/// UNCONDITIONALLY and finishes the working copy at the new operation (Story 9.22).
+///
+/// The shape of `cmd_file_track`/`cmd_file_untrack` @ v0.44.0: both commit the raw
+/// `Transaction` (`start_transaction().into_inner()` … `tx.commit(..)`), which BYPASSES
+/// `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard — so, unlike
+/// [`finish_or_no_op`], an operation is written even when the view did not change. Order is the
+/// CLI's: the transaction opens FIRST (through [`start_repo_transaction`], so it records the
+/// workspace name), then the lock; `work` runs; `tx.commit`; `locked_ws.finish(op_id)`.
+///
+/// On an `Err` from `work` the lock and the transaction are dropped WITHOUT `finish`: no
+/// operation, and the working-copy state on disk is exactly what it was.
+///
+/// No `check_out` follows: `work` has already left the working-copy state where it belongs
+/// (a snapshot records the files as they are; a `reset` points the state at the new `@`
+/// without touching a file). That is the difference to [`sync_working_copy`]. The returned
+/// [`MutationResult`] reads `@` from the committed view; its id vectors are empty.
+///
+/// # Errors
+///
+/// - Anything [`lock_working_copy`] or `work` returns.
+/// - [`MutateError::Backend`] — the commit or the working-copy `finish` failed.
+pub(crate) fn commit_with_locked_wc<T, F>(
+    workspace: &mut Workspace,
+    readonly: &Arc<ReadonlyRepo>,
+    description: &str,
+    work: F,
+) -> Result<(T, MutationResult), MutateError>
+where
+    F: FnOnce(&mut Transaction, &mut dyn LockedWorkingCopy, &Commit) -> Result<T, MutateError>,
+{
+    let workspace_name = workspace.workspace_name().to_owned();
+    let mut tx = start_repo_transaction(readonly, &workspace_name);
+    let (mut locked_ws, wc_commit) = lock_working_copy(workspace, readonly)?;
+    let value = work(&mut tx, locked_ws.locked_wc(), &wc_commit)?;
+    let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
+    pollster::block_on(locked_ws.finish(new_repo.op_id().clone())).map_err(be)?;
+    let new_wc_id = new_repo
+        .view()
+        .get_wc_commit_id(&workspace_name)
+        .ok_or(MutateError::NoWorkingCopy)?;
+    let new_wc = new_repo.store().get_commit(new_wc_id).map_err(be)?;
+    Ok((
+        value,
+        MutationResult {
+            new_op_id: crate::OperationId(new_repo.op_id().hex()),
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: ChangeId(new_wc.change_id().reverse_hex()),
+            // WHY `None`: `track`/`untrack` commit the raw transaction and never reach
+            // `finish_transaction`, the only place the CLI prints "Name and email not
+            // configured" (`cli/src/cli_util.rs:2387-2415` @ v0.44.0).
+            identity_missing: None,
+        },
+    ))
 }
 
 /// Gives the paths matching `paths` in the destination commit the content they have in the

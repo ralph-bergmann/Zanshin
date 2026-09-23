@@ -231,7 +231,10 @@ fn map_import_err(e: GitImportError) -> MutateError {
 /// Maps a [`GitExportError`] onto this crate's taxonomy — same split as
 /// [`map_import_err`], and exhaustive for the same reason. A FAILED REF is not an error at
 /// all; see [`GitExportResult`].
-fn map_export_err(e: GitExportError) -> MutateError {
+///
+/// `pub(crate)` since Story 9.22: `file untrack`'s colocated export runs the same
+/// `export_refs` and must classify its failures identically.
+pub(crate) fn map_export_err(e: GitExportError) -> MutateError {
     match e {
         GitExportError::UnexpectedBackend(_) => MutateError::NotAGitRepo,
         other @ GitExportError::Git(_) => MutateError::Backend(flatten_chain(&other)),
@@ -365,8 +368,9 @@ pub(crate) fn git_import(
 
 // ── git export ───────────────────────────────────────────────────────────────────
 
-/// Projects jj-lib's `(symbol, reason)` export failures into the owned shape.
-fn project_failures(
+/// Projects jj-lib's `(symbol, reason)` export failures into the owned shape. `pub(crate)`
+/// since Story 9.22, whose `file untrack` reports its colocated export's failures the same way.
+pub(crate) fn project_failures(
     failures: &[(jj_lib::ref_name::RemoteRefSymbolBuf, jj_lib::git::FailedRefExportReason)],
 ) -> Vec<GitExportFailure> {
     failures

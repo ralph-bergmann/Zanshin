@@ -33,7 +33,7 @@ by contract (two compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 47
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 49
 exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -100,7 +100,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Sixteen of the 47 exported symbols take their arguments as a **FlatBuffers
+Eighteen of the 49 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. The signature is always the same three-parameter shape:
 
@@ -139,7 +139,7 @@ answer to `ffi.null_pointer`, which is a different refusal.
 
 ### Reading the buffer (Rust side) — the refusal ladder
 
-All sixteen wrappers share one reader shape (worked example:
+All eighteen wrappers share one reader shape (worked example:
 `crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
@@ -178,7 +178,7 @@ A **zero-length or garbage buffer** fails verification, so it lands on
 `data` pointer produces `ffi.null_pointer`.
 
 **The whole request buffer is judged before the handle is borrowed.** Every one
-of the sixteen wrappers calls its reader BEFORE `session_from_handle`, so rows 1
+of the eighteen wrappers calls its reader BEFORE `session_from_handle`, so rows 1
 through 4 all precede row 5. That order is deliberate: a buffer built for the
 wrong verb has to be refused on its own merits, not only when the caller happens
 to hold a live handle. The only callers that see a different answer than they
@@ -190,7 +190,7 @@ bytes readable at `data`; the reader builds its slice with
 `std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
 larger than the allocation is an out-of-bounds read — undefined behaviour, not a
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
-repeated in every one of the sixteen symbols' `# Safety` blocks.
+repeated in every one of the eighteen symbols' `# Safety` blocks.
 
 Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
@@ -223,7 +223,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **15** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **17** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -232,7 +232,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 15 tables + 1 shared reuse = the 16
+one caller, and no table is orphaned. 17 tables + 1 shared reuse = the 18
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -250,7 +250,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 14 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 16 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -295,7 +295,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **47** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **49** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -307,7 +307,7 @@ symbol to learn why. `internal.panic` is documented once under *Envelope format*
 and is deliberately absent from every row.
 
 Rows are grouped by noun: repository lifecycle, repo-state reads, commit views,
-file reads, refs and workspaces, change mutations, bookmarks, git sync, and
+file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking, git sync, and
 infrastructure. `—` means "not applicable": no request table, no success payload,
 or no `# Errors` block.
 
@@ -344,6 +344,8 @@ or no `# Errors` block.
 | `zanshin_undo` | `(uint64_t handle)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.22 |
+| `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |

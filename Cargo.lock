@@ -3246,6 +3246,7 @@ name = "zanshin-jj"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "etcetera",
  "futures",
  "getrandom 0.4.2",
  "gix",

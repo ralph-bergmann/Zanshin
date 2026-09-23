@@ -814,3 +814,73 @@ fn bookmark_ops_surface_resolves() {
     _ = zanshin_jj::Repo::bookmark_delete
         as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
+
+/// Names every `SnapshotStats` / `UntrackedPath` field and BOTH `UntrackedReason` variants by
+/// their public paths (Story 9.22) — the one stats shape `file track`, `file untrack` and Story
+/// 9.26's per-verb snapshot share.
+fn sample_snapshot_stats() -> zanshin_jj::SnapshotStats {
+    zanshin_jj::SnapshotStats {
+        untracked: vec![
+            zanshin_jj::UntrackedPath {
+                path: String::new(),
+                reason: zanshin_jj::UntrackedReason::FileTooLarge { size: 0, max_size: 0 },
+            },
+            zanshin_jj::UntrackedPath {
+                path: String::new(),
+                reason: zanshin_jj::UntrackedReason::FileNotAutoTracked,
+            },
+        ],
+        invalid_utf8_paths: vec![String::new()],
+    }
+}
+
+/// Names every `TrackResult` field (Story 9.22); the nested `MutationResult` is the contract.
+fn sample_track_result() -> zanshin_jj::TrackResult {
+    zanshin_jj::TrackResult {
+        mutation: sample_mutation_result(),
+        num_rebased: 0,
+        snapshot_stats: sample_snapshot_stats(),
+    }
+}
+
+/// Names every `UntrackResult` field (Story 9.22), reusing the shipped `GitExportFailure`.
+fn sample_untrack_result() -> zanshin_jj::UntrackResult {
+    zanshin_jj::UntrackResult {
+        mutation: sample_mutation_result(),
+        num_rebased: 0,
+        unmatched_paths: vec![String::new()],
+        snapshot_stats: sample_snapshot_stats(),
+        failed_bookmarks: vec![zanshin_jj::GitExportFailure {
+            name: String::new(),
+            remote: String::new(),
+            reason: String::new(),
+        }],
+        failed_tags: vec![],
+    }
+}
+
+/// The Story 9.22 surface: both verbs' exact signatures, both result shapes, and the three new
+/// `MutateError` variants — constructed AND `Display`-asserted, since an unexercised `thiserror`
+/// arm is an uncovered line in `mutate.rs`.
+#[test]
+fn file_track_surface_resolves() {
+    _ = sample_track_result();
+    _ = sample_untrack_result();
+    assert_eq!(
+        zanshin_jj::MutateError::NoWorkingCopy.to_string(),
+        "nothing checked out in this workspace"
+    );
+    assert_eq!(
+        zanshin_jj::MutateError::ConcurrentWorkingCopy.to_string(),
+        "concurrent working copy operation"
+    );
+    let not_ignored = zanshin_jj::MutateError::PathsNotIgnored {
+        paths: vec!["a.txt".to_owned(), "b.txt".to_owned()],
+    };
+    assert_eq!(not_ignored.to_string(), "paths are not ignored: a.txt, b.txt");
+
+    _ = zanshin_jj::Repo::file_track
+        as fn(&mut zanshin_jj::Repo, &[String], bool) -> Result<zanshin_jj::TrackResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::file_untrack
+        as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::UntrackResult, zanshin_jj::MutateError>;
+}

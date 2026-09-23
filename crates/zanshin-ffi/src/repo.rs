@@ -24,10 +24,11 @@ use zanshin_jj::{
 use crate::envelope::{
     catch, expect_request_kind, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle,
     reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
-    JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
-    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG,
-    JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND,
+    JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT,
+    JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND,
+    JJ_PATH_NOT_IGNORED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -97,7 +98,9 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 ///
 /// `pub(crate)` since Story 9.5: `git.rs`'s six wrappers return the same [`MutateError`]
 /// taxonomy, and a second mapper would be a second, desyncable spelling of one mapping.
-/// `bookmark_ops.rs`'s two (Story 9.8) reuse it for the same reason.
+/// `bookmark_ops.rs`'s two (Story 9.8) reuse it for the same reason, as do `file_ops.rs`'s two
+/// (Story 9.22), whose three new variants map to the new `jj.concurrent_working_copy` and
+/// `jj.path_not_ignored` and to the registered `jj.no_working_copy`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::ChangeNotFound { id } => FfiErrorObj {
@@ -157,6 +160,18 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::BookmarkTrackedRemoteExists { name } => FfiErrorObj {
             code: JJ_BOOKMARK_TRACKED_REMOTE_EXISTS.to_owned(),
             context: Some(name),
+        },
+        MutateError::NoWorkingCopy => FfiErrorObj {
+            code: JJ_NO_WORKING_COPY.to_owned(),
+            context: None,
+        },
+        MutateError::ConcurrentWorkingCopy => FfiErrorObj {
+            code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
+            context: None,
+        },
+        MutateError::PathsNotIgnored { paths } => FfiErrorObj {
+            code: JJ_PATH_NOT_IGNORED.to_owned(),
+            context: Some(paths.join("\n")),
         },
         MutateError::Backend(reason) => FfiErrorObj {
             code: JJ_JJ_LIB_ERROR.to_owned(),
@@ -690,7 +705,7 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// — when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark —
 /// writes `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE
 /// `.jj/` under `<config_dir>/jj/repos/`. Unlike the CLI, the head import does not
-/// re-parent `@` onto the imported HEAD (that working-copy half is Story 9.22's).
+/// re-parent `@` onto the imported HEAD (that working-copy half is Story 9.26's).
 ///
 /// `.git/` is written to exactly once, by the CLI's own colocated `export_refs` step inside
 /// the refs operation: jj exports back the refs it has just imported, so no user-visible ref
@@ -1317,6 +1332,29 @@ mod tests {
         });
         assert_eq!(e.code, JJ_REVSET_RESOLUTION_ERROR);
         assert_eq!(e.context.unwrap(), "no such bookmark");
+    }
+
+    #[test]
+    fn map_mutate_err_no_working_copy_maps_to_jj_no_working_copy() {
+        let e = map_mutate_err(MutateError::NoWorkingCopy);
+        assert_eq!(e.code, JJ_NO_WORKING_COPY);
+        assert!(e.context.is_none());
+    }
+
+    #[test]
+    fn map_mutate_err_concurrent_working_copy_maps_to_jj_concurrent_working_copy() {
+        let e = map_mutate_err(MutateError::ConcurrentWorkingCopy);
+        assert_eq!(e.code, JJ_CONCURRENT_WORKING_COPY);
+        assert!(e.context.is_none());
+    }
+
+    #[test]
+    fn map_mutate_err_paths_not_ignored_joins_every_offender_by_newline() {
+        let e = map_mutate_err(MutateError::PathsNotIgnored {
+            paths: vec!["d.txt".to_owned(), "target/file2".to_owned()],
+        });
+        assert_eq!(e.code, JJ_PATH_NOT_IGNORED);
+        assert_eq!(e.context.unwrap(), "d.txt\ntarget/file2");
     }
 
     #[test]

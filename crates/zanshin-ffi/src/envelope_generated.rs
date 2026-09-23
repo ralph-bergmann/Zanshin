@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 16;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 18;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 17] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 19] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -41,6 +41,8 @@ pub mod zanshin {
             RequestKind::WorkspaceRoot,
             RequestKind::BookmarkCreate,
             RequestKind::BookmarkDelete,
+            RequestKind::FileTrack,
+            RequestKind::FileUntrack,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -54,7 +56,7 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+        /// named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -84,9 +86,11 @@ pub mod zanshin {
             pub const WorkspaceRoot: Self = Self(14);
             pub const BookmarkCreate: Self = Self(15);
             pub const BookmarkDelete: Self = Self(16);
+            pub const FileTrack: Self = Self(17);
+            pub const FileUntrack: Self = Self(18);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 16;
+            pub const ENUM_MAX: u8 = 18;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -105,6 +109,8 @@ pub mod zanshin {
                 Self::WorkspaceRoot,
                 Self::BookmarkCreate,
                 Self::BookmarkDelete,
+                Self::FileTrack,
+                Self::FileUntrack,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -126,6 +132,8 @@ pub mod zanshin {
                     Self::WorkspaceRoot => Some("WorkspaceRoot"),
                     Self::BookmarkCreate => Some("BookmarkCreate"),
                     Self::BookmarkDelete => Some("BookmarkDelete"),
+                    Self::FileTrack => Some("FileTrack"),
+                    Self::FileUntrack => Some("FileUntrack"),
                     _ => None,
                 }
             }
@@ -1064,18 +1072,116 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_UNTRACKED_REASON: u8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 25;
+        pub const ENUM_MAX_UNTRACKED_REASON: u8 = 2;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 26] = [
+        pub const ENUM_VALUES_UNTRACKED_REASON: [UntrackedReason; 3] = [
+            UntrackedReason::NONE,
+            UntrackedReason::FileTooLarge,
+            UntrackedReason::FileNotAutoTracked,
+        ];
+
+        /// Why a new file stayed untracked after a snapshot (Story 9.22) — jj-lib's `UntrackedReason`.
+        /// Member order IS the wire discriminant (no explicit numbers) — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct UntrackedReason(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl UntrackedReason {
+            pub const NONE: Self = Self(0);
+            pub const FileTooLarge: Self = Self(1);
+            pub const FileNotAutoTracked: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NONE, Self::FileTooLarge, Self::FileNotAutoTracked];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NONE => Some("NONE"),
+                    Self::FileTooLarge => Some("FileTooLarge"),
+                    Self::FileNotAutoTracked => Some("FileNotAutoTracked"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for UntrackedReason {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for UntrackedReason {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for UntrackedReason {
+            type Output = UntrackedReason;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for UntrackedReason {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for UntrackedReason {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for UntrackedReason {}
+        pub struct UntrackedReasonUnionTableOffset {}
+
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 27;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 28] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1102,6 +1208,8 @@ pub mod zanshin {
             Payload::InterdiffView,
             Payload::WorkspaceList,
             Payload::WorkspaceRoot,
+            Payload::TrackResult,
+            Payload::UntrackResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1135,9 +1243,11 @@ pub mod zanshin {
             pub const InterdiffView: Self = Self(23);
             pub const WorkspaceList: Self = Self(24);
             pub const WorkspaceRoot: Self = Self(25);
+            pub const TrackResult: Self = Self(26);
+            pub const UntrackResult: Self = Self(27);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 25;
+            pub const ENUM_MAX: u8 = 27;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1165,6 +1275,8 @@ pub mod zanshin {
                 Self::InterdiffView,
                 Self::WorkspaceList,
                 Self::WorkspaceRoot,
+                Self::TrackResult,
+                Self::UntrackResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1195,6 +1307,8 @@ pub mod zanshin {
                     Self::InterdiffView => Some("InterdiffView"),
                     Self::WorkspaceList => Some("WorkspaceList"),
                     Self::WorkspaceRoot => Some("WorkspaceRoot"),
+                    Self::TrackResult => Some("TrackResult"),
+                    Self::UntrackResult => Some("UntrackResult"),
                     _ => None,
                 }
             }
@@ -4351,6 +4465,299 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("BookmarkDeleteRequest");
                 ds.field("kind", &self.kind());
                 ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
+        pub enum FileTrackRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+        ///
+        /// `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
+        /// language and is not parsed (ADR-0003). An EMPTY or ABSENT vector is refused with
+        /// `jj.invalid_input` (clap's `required = true`). `include_ignored` is the CLI's
+        /// `--include-ignored`: track matching files even when ignored or over
+        /// `snapshot.max-new-file-size`.
+        pub struct FileTrackRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileTrackRequest<'a> {
+            type Inner = FileTrackRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileTrackRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INCLUDE_IGNORED: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileTrackRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileTrackRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileTrackRequest<'bldr>> {
+                let mut builder = FileTrackRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                builder.add_include_ignored(args.include_ignored);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileTrackRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileTrackRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn include_ignored(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FileTrackRequest::VT_INCLUDE_IGNORED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileTrackRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<bool>("include_ignored", Self::VT_INCLUDE_IGNORED, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileTrackRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub include_ignored: bool,
+        }
+        impl<'a> Default for FileTrackRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileTrackRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    paths: None,
+                    include_ignored: false,
+                }
+            }
+        }
+
+        pub struct FileTrackRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileTrackRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileTrackRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileTrackRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_include_ignored(&mut self, include_ignored: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileTrackRequest::VT_INCLUDE_IGNORED, include_ignored, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileTrackRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileTrackRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileTrackRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileTrackRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileTrackRequest");
+                ds.field("kind", &self.kind());
+                ds.field("paths", &self.paths());
+                ds.field("include_ignored", &self.include_ignored());
+                ds.finish()
+            }
+        }
+        pub enum FileUntrackRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`. `paths`
+        /// exactly as in FileTrackRequest; every matched path must already be ignored.
+        pub struct FileUntrackRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileUntrackRequest<'a> {
+            type Inner = FileUntrackRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileUntrackRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileUntrackRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileUntrackRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileUntrackRequest<'bldr>> {
+                let mut builder = FileUntrackRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileUntrackRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileUntrackRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileUntrackRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileUntrackRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for FileUntrackRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileUntrackRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct FileUntrackRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileUntrackRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileUntrackRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileUntrackRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileUntrackRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileUntrackRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileUntrackRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileUntrackRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileUntrackRequest");
+                ds.field("kind", &self.kind());
+                ds.field("paths", &self.paths());
                 ds.finish()
             }
         }
@@ -12367,6 +12774,992 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum FileTooLargeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `UntrackedReason` arm: the file is larger than the effective `snapshot.max-new-file-size`
+        /// (Story 9.22). Both sizes are in bytes.
+        pub struct FileTooLarge<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileTooLarge<'a> {
+            type Inner = FileTooLarge<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileTooLarge<'a> {
+            pub const VT_SIZE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MAX_SIZE: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileTooLarge { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileTooLargeArgs,
+            ) -> ::flatbuffers::WIPOffset<FileTooLarge<'bldr>> {
+                let mut builder = FileTooLargeBuilder::new(_fbb);
+                builder.add_max_size(args.max_size);
+                builder.add_size(args.size);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn size(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(FileTooLarge::VT_SIZE, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn max_size(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(FileTooLarge::VT_MAX_SIZE, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileTooLarge<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("size", Self::VT_SIZE, false)?
+                    .visit_field::<u64>("max_size", Self::VT_MAX_SIZE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileTooLargeArgs {
+            pub size: u64,
+            pub max_size: u64,
+        }
+        impl<'a> Default for FileTooLargeArgs {
+            #[inline]
+            fn default() -> Self {
+                FileTooLargeArgs { size: 0, max_size: 0 }
+            }
+        }
+
+        pub struct FileTooLargeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileTooLargeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_size(&mut self, size: u64) {
+                self.fbb_.push_slot::<u64>(FileTooLarge::VT_SIZE, size, 0);
+            }
+            #[inline]
+            pub fn add_max_size(&mut self, max_size: u64) {
+                self.fbb_.push_slot::<u64>(FileTooLarge::VT_MAX_SIZE, max_size, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileTooLargeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileTooLargeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileTooLarge<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileTooLarge<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileTooLarge");
+                ds.field("size", &self.size());
+                ds.field("max_size", &self.max_size());
+                ds.finish()
+            }
+        }
+        pub enum FileNotAutoTrackedOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `UntrackedReason` arm: the file does not match the snapshot's start-tracking fileset —
+        /// `snapshot.auto-track`, or the paths a `zanshin_file_track` named (Story 9.22). No fields:
+        /// the arm IS the fact.
+        pub struct FileNotAutoTracked<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileNotAutoTracked<'a> {
+            type Inner = FileNotAutoTracked<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileNotAutoTracked<'a> {
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileNotAutoTracked { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                _args: &'args FileNotAutoTrackedArgs,
+            ) -> ::flatbuffers::WIPOffset<FileNotAutoTracked<'bldr>> {
+                let mut builder = FileNotAutoTrackedBuilder::new(_fbb);
+                builder.finish()
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileNotAutoTracked<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?.finish();
+                Ok(())
+            }
+        }
+        pub struct FileNotAutoTrackedArgs {}
+        impl<'a> Default for FileNotAutoTrackedArgs {
+            #[inline]
+            fn default() -> Self {
+                FileNotAutoTrackedArgs {}
+            }
+        }
+
+        pub struct FileNotAutoTrackedBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileNotAutoTrackedBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileNotAutoTrackedBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileNotAutoTrackedBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileNotAutoTracked<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileNotAutoTracked<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileNotAutoTracked");
+                ds.finish()
+            }
+        }
+        pub enum UntrackedPathOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One new file a snapshot left untracked, and why (Story 9.22).
+        pub struct UntrackedPath<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for UntrackedPath<'a> {
+            type Inner = UntrackedPath<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> UntrackedPath<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REASON_TYPE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                UntrackedPath { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args UntrackedPathArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<UntrackedPath<'bldr>> {
+                let mut builder = UntrackedPathBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_reason_type(args.reason_type);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(UntrackedPath::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn reason_type(&self) -> UntrackedReason {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<UntrackedReason>(UntrackedPath::VT_REASON_TYPE, Some(UntrackedReason::NONE))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<::flatbuffers::Table<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(UntrackedPath::VT_REASON, None)
+                }
+            }
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn reason_as_file_too_large(&self) -> Option<FileTooLarge<'a>> {
+                if self.reason_type() == UntrackedReason::FileTooLarge {
+                    self.reason().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileTooLarge::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn reason_as_file_not_auto_tracked(&self) -> Option<FileNotAutoTracked<'a>> {
+                if self.reason_type() == UntrackedReason::FileNotAutoTracked {
+                    self.reason().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FileNotAutoTracked::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for UntrackedPath<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_union::<UntrackedReason, _>(
+                        "reason_type",
+                        Self::VT_REASON_TYPE,
+                        "reason",
+                        Self::VT_REASON,
+                        false,
+                        |key, v, pos| match key {
+                            UntrackedReason::FileTooLarge => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileTooLarge>>(
+                                    "UntrackedReason::FileTooLarge",
+                                    pos,
+                                ),
+                            UntrackedReason::FileNotAutoTracked => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileNotAutoTracked>>(
+                                    "UntrackedReason::FileNotAutoTracked",
+                                    pos,
+                                ),
+                            _ => Ok(()),
+                        },
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct UntrackedPathArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reason_type: UntrackedReason,
+            pub reason: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
+        }
+        impl<'a> Default for UntrackedPathArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                UntrackedPathArgs {
+                    path: None,
+                    reason_type: UntrackedReason::NONE,
+                    reason: None,
+                }
+            }
+        }
+
+        pub struct UntrackedPathBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> UntrackedPathBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(UntrackedPath::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_reason_type(&mut self, reason_type: UntrackedReason) {
+                self.fbb_.push_slot::<UntrackedReason>(
+                    UntrackedPath::VT_REASON_TYPE,
+                    reason_type,
+                    UntrackedReason::NONE,
+                );
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(UntrackedPath::VT_REASON, reason);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> UntrackedPathBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                UntrackedPathBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<UntrackedPath<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for UntrackedPath<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("UntrackedPath");
+                ds.field("path", &self.path());
+                ds.field("reason_type", &self.reason_type());
+                match self.reason_type() {
+                    UntrackedReason::FileTooLarge => {
+                        if let Some(x) = self.reason_as_file_too_large() {
+                            ds.field("reason", &x)
+                        } else {
+                            ds.field("reason", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    UntrackedReason::FileNotAutoTracked => {
+                        if let Some(x) = self.reason_as_file_not_auto_tracked() {
+                            ds.field("reason", &x)
+                        } else {
+                            ds.field("reason", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    _ => {
+                        let x: Option<()> = None;
+                        ds.field("reason", &x)
+                    }
+                };
+                ds.finish()
+            }
+        }
+        pub enum SnapshotStatsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
+        /// warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+        /// `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
+        /// `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
+        pub struct SnapshotStats<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SnapshotStats<'a> {
+            type Inner = SnapshotStats<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SnapshotStats<'a> {
+            pub const VT_UNTRACKED: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INVALID_UTF8_PATHS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SnapshotStats { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SnapshotStatsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SnapshotStats<'bldr>> {
+                let mut builder = SnapshotStatsBuilder::new(_fbb);
+                if let Some(x) = args.invalid_utf8_paths {
+                    builder.add_invalid_utf8_paths(x);
+                }
+                if let Some(x) = args.untracked {
+                    builder.add_untracked(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn untracked(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<UntrackedPath<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<UntrackedPath>>,
+                    >>(SnapshotStats::VT_UNTRACKED, None)
+                }
+            }
+            #[inline]
+            pub fn invalid_utf8_paths(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SnapshotStats::VT_INVALID_UTF8_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SnapshotStats<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<UntrackedPath>>>>("untracked", Self::VT_UNTRACKED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("invalid_utf8_paths", Self::VT_INVALID_UTF8_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SnapshotStatsArgs<'a> {
+            pub untracked: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<UntrackedPath<'a>>>>,
+            >,
+            pub invalid_utf8_paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for SnapshotStatsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SnapshotStatsArgs {
+                    untracked: None,
+                    invalid_utf8_paths: None,
+                }
+            }
+        }
+
+        pub struct SnapshotStatsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SnapshotStatsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_untracked(
+                &mut self,
+                untracked: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<UntrackedPath<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SnapshotStats::VT_UNTRACKED, untracked);
+            }
+            #[inline]
+            pub fn add_invalid_utf8_paths(
+                &mut self,
+                invalid_utf8_paths: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotStats::VT_INVALID_UTF8_PATHS,
+                    invalid_utf8_paths,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SnapshotStatsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SnapshotStatsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SnapshotStats<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SnapshotStats<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SnapshotStats");
+                ds.field("untracked", &self.untracked());
+                ds.field("invalid_utf8_paths", &self.invalid_utf8_paths());
+                ds.finish()
+            }
+        }
+        pub enum TrackResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+        ///
+        /// An operation (`track paths`) is ALWAYS written, even when nothing matched: the CLI commits
+        /// unconditionally. `mutation.working_copy_change_id` is the PRE-call `@`: like the CLI, the
+        /// verb records the tracked paths only in the working-copy STATE, and the NEXT snapshot moves
+        /// them into `@` and rebases its children (jj's GH #8298) — which is also why `num_rebased` is
+        /// 0 today. It saturates at 4294967295, as `AbsorbResult`'s does.
+        pub struct TrackResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TrackResult<'a> {
+            type Inner = TrackResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TrackResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NUM_REBASED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SNAPSHOT_STATS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TrackResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TrackResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TrackResult<'bldr>> {
+                let mut builder = TrackResultBuilder::new(_fbb);
+                if let Some(x) = args.snapshot_stats {
+                    builder.add_snapshot_stats(x);
+                }
+                builder.add_num_rebased(args.num_rebased);
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(TrackResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn num_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(TrackResult::VT_NUM_REBASED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn snapshot_stats(&self) -> Option<SnapshotStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(TrackResult::VT_SNAPSHOT_STATS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TrackResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<u32>("num_rebased", Self::VT_NUM_REBASED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(
+                        "snapshot_stats",
+                        Self::VT_SNAPSHOT_STATS,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TrackResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub num_rebased: u32,
+            pub snapshot_stats: Option<::flatbuffers::WIPOffset<SnapshotStats<'a>>>,
+        }
+        impl<'a> Default for TrackResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TrackResultArgs {
+                    mutation: None,
+                    num_rebased: 0,
+                    snapshot_stats: None,
+                }
+            }
+        }
+
+        pub struct TrackResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TrackResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(TrackResult::VT_MUTATION, mutation);
+            }
+            #[inline]
+            pub fn add_num_rebased(&mut self, num_rebased: u32) {
+                self.fbb_.push_slot::<u32>(TrackResult::VT_NUM_REBASED, num_rebased, 0);
+            }
+            #[inline]
+            pub fn add_snapshot_stats(&mut self, snapshot_stats: ::flatbuffers::WIPOffset<SnapshotStats<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<SnapshotStats>>(
+                    TrackResult::VT_SNAPSHOT_STATS,
+                    snapshot_stats,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TrackResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TrackResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TrackResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TrackResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TrackResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("num_rebased", &self.num_rebased());
+                ds.field("snapshot_stats", &self.snapshot_stats());
+                ds.finish()
+            }
+        }
+        pub enum UntrackResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`.
+        ///
+        /// An operation (`untrack paths`) is ALWAYS written; `@` is rewritten without the matched
+        /// entries (same change id) and `num_rebased` counts its rebased descendants (saturating).
+        /// `unmatched_paths` are the requested paths with no entry in the pre-call `@` — the CLI's
+        /// "No matching entries for paths" warning — in request order. `snapshot_stats` is the
+        /// post-reset snapshot's. `failed_bookmarks` / `failed_tags` are the colocated git export's
+        /// per-ref failures (never an error envelope); both are empty outside a colocated workspace.
+        pub struct UntrackResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for UntrackResult<'a> {
+            type Inner = UntrackResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> UntrackResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NUM_REBASED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_UNMATCHED_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SNAPSHOT_STATS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_FAILED_BOOKMARKS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_FAILED_TAGS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                UntrackResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args UntrackResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<UntrackResult<'bldr>> {
+                let mut builder = UntrackResultBuilder::new(_fbb);
+                if let Some(x) = args.failed_tags {
+                    builder.add_failed_tags(x);
+                }
+                if let Some(x) = args.failed_bookmarks {
+                    builder.add_failed_bookmarks(x);
+                }
+                if let Some(x) = args.snapshot_stats {
+                    builder.add_snapshot_stats(x);
+                }
+                if let Some(x) = args.unmatched_paths {
+                    builder.add_unmatched_paths(x);
+                }
+                builder.add_num_rebased(args.num_rebased);
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(UntrackResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn num_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(UntrackResult::VT_NUM_REBASED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn unmatched_paths(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(UntrackResult::VT_UNMATCHED_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn snapshot_stats(&self) -> Option<SnapshotStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(UntrackResult::VT_SNAPSHOT_STATS, None)
+                }
+            }
+            #[inline]
+            pub fn failed_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(UntrackResult::VT_FAILED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn failed_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(UntrackResult::VT_FAILED_TAGS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for UntrackResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>("mutation", Self::VT_MUTATION, false)?
+     .visit_field::<u32>("num_rebased", Self::VT_NUM_REBASED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("unmatched_paths", Self::VT_UNMATCHED_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<SnapshotStats>>("snapshot_stats", Self::VT_SNAPSHOT_STATS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>>>("failed_bookmarks", Self::VT_FAILED_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>>>("failed_tags", Self::VT_FAILED_TAGS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct UntrackResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub num_rebased: u32,
+            pub unmatched_paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub snapshot_stats: Option<::flatbuffers::WIPOffset<SnapshotStats<'a>>>,
+            pub failed_bookmarks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+            pub failed_tags: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for UntrackResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                UntrackResultArgs {
+                    mutation: None,
+                    num_rebased: 0,
+                    unmatched_paths: None,
+                    snapshot_stats: None,
+                    failed_bookmarks: None,
+                    failed_tags: None,
+                }
+            }
+        }
+
+        pub struct UntrackResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> UntrackResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(UntrackResult::VT_MUTATION, mutation);
+            }
+            #[inline]
+            pub fn add_num_rebased(&mut self, num_rebased: u32) {
+                self.fbb_
+                    .push_slot::<u32>(UntrackResult::VT_NUM_REBASED, num_rebased, 0);
+            }
+            #[inline]
+            pub fn add_unmatched_paths(
+                &mut self,
+                unmatched_paths: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    UntrackResult::VT_UNMATCHED_PATHS,
+                    unmatched_paths,
+                );
+            }
+            #[inline]
+            pub fn add_snapshot_stats(&mut self, snapshot_stats: ::flatbuffers::WIPOffset<SnapshotStats<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<SnapshotStats>>(
+                    UntrackResult::VT_SNAPSHOT_STATS,
+                    snapshot_stats,
+                );
+            }
+            #[inline]
+            pub fn add_failed_bookmarks(
+                &mut self,
+                failed_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    UntrackResult::VT_FAILED_BOOKMARKS,
+                    failed_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_failed_tags(
+                &mut self,
+                failed_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(UntrackResult::VT_FAILED_TAGS, failed_tags);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> UntrackResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                UntrackResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<UntrackResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for UntrackResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("UntrackResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("num_rebased", &self.num_rebased());
+                ds.field("unmatched_paths", &self.unmatched_paths());
+                ds.field("snapshot_stats", &self.snapshot_stats());
+                ds.field("failed_bookmarks", &self.failed_bookmarks());
+                ds.field("failed_tags", &self.failed_tags());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -12834,6 +14227,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_track_result(&self) -> Option<TrackResult<'a>> {
+                if self.data_type() == Payload::TrackResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { TrackResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_untrack_result(&self) -> Option<UntrackResult<'a>> {
+                if self.data_type() == Payload::UntrackResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { UntrackResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -12964,6 +14387,16 @@ pub mod zanshin {
                             Payload::WorkspaceRoot => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRoot>>(
                                     "Payload::WorkspaceRoot",
+                                    pos,
+                                ),
+                            Payload::TrackResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<TrackResult>>(
+                                    "Payload::TrackResult",
+                                    pos,
+                                ),
+                            Payload::UntrackResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<UntrackResult>>(
+                                    "Payload::UntrackResult",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -13207,6 +14640,20 @@ pub mod zanshin {
                     }
                     Payload::WorkspaceRoot => {
                         if let Some(x) = self.data_as_workspace_root() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::TrackResult => {
+                        if let Some(x) = self.data_as_track_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::UntrackResult => {
+                        if let Some(x) = self.data_as_untrack_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

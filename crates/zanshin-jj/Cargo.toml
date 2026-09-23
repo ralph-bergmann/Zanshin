@@ -11,6 +11,7 @@ rust-version.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
+etcetera = { workspace = true }  # WHY: one call site — `wc_ops.rs`'s `base_ignores` port needs the home dir exactly where the CLI (and jj-lib's own `expand_home_path`) takes it from
 futures = { workspace = true }
 getrandom = { workspace = true }  # WHY: one call site — `config.rs::create_repo_config_file` seeds a `ChaCha20Rng` without `rand::make_rng()`'s panic
 gix = { workspace = true }

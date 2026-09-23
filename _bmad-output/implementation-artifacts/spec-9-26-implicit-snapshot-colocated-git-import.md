@@ -74,7 +74,8 @@ Colocated workspace unless stated. "op" = one entry in `jj op log`.
 ## Code Map
 
 - `crates/zanshin-jj/src/repo.rs` -- `Repo { workspace, settings }`, `open` (settings from Story 9.27), every public verb = a call site of the precondition
-- `crates/zanshin-jj/src/mutate.rs` -- `finish_or_no_op{,_at}`, `capture_old_wc`, `sync_working_copy`; the lock has to wrap the colocated export in the finish path; Story 9.22's lock-scoped helper lives here
+- `crates/zanshin-jj/src/mutate.rs` -- `finish_or_no_op{,_at}`, `capture_old_wc`, `sync_working_copy`; the lock has to wrap the colocated export in the finish path; Story 9.22's lock-scoped helper lives here (`lock_working_copy`, `commit_with_locked_wc`)
+- `crates/zanshin-jj/src/wc_ops.rs` (added by Story 9.22, 2026-09-23) -- `snapshot_options`, `base_ignores`, `auto_tracking_matcher`, `project_stats`, `SnapshotStats`, `merge_track_stats`. HANDOFF: `Repo::file_track` / `Repo::file_untrack` are CLI `workspace_helper_with_stats` / `workspace_helper` verbs, so the precondition runs in front of them too (before `lock_working_copy`); `file_track` must pass the precondition's `SnapshotStats` into `merge_track_stats` in place of today's `SnapshotStats::default()` (`print_track_snapshot_stats`). Until this lands, a `file_track` leaves the working-copy state AHEAD of `@` and every later `check_out`-based verb commits and then fails stale (deferred-work.md, "Surfaced 2026-09-23 while implementing Story 9.22").
 - `crates/zanshin-jj/src/op_support.rs` -- `start_repo_transaction` (add the `set_is_snapshot(true)` caller), `resolve_immutable`
 - `crates/zanshin-jj/src/git.rs` -- `git_import` (the `import_head` → `import_refs` pair to reuse), `git_export`, `project_*` helpers, the divergence note at `:46-54`
 - `crates/zanshin-jj/src/convert.rs` -- `import_git_head` (gains `reset`), `is_colocated` (promote to the shared helper = CLI `is_colocated_git_workspace`, `cli/src/git_util.rs:62`)

@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -84,7 +84,9 @@ enum RequestKind : ubyte {
   Interdiff,
   WorkspaceRoot,
   BookmarkCreate,
-  BookmarkDelete
+  BookmarkDelete,
+  FileTrack,
+  FileUntrack
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -367,6 +369,26 @@ table BookmarkDeleteRequest {
   names: [string];
 }
 
+/// Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+///
+/// `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
+/// language and is not parsed (ADR-0003). An EMPTY or ABSENT vector is refused with
+/// `jj.invalid_input` (clap's `required = true`). `include_ignored` is the CLI's
+/// `--include-ignored`: track matching files even when ignored or over
+/// `snapshot.max-new-file-size`.
+table FileTrackRequest {
+  kind: RequestKind;
+  paths: [string];
+  include_ignored: bool;
+}
+
+/// Arguments of `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`. `paths`
+/// exactly as in FileTrackRequest; every matched path must already be ignored.
+table FileUntrackRequest {
+  kind: RequestKind;
+  paths: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -390,6 +412,8 @@ table BookmarkDeleteRequest {
 //                union is unchanged: which bookmarks are gone is answered by re-reading
 //                zanshin_bookmarks, and "did anything happen at all" is already in the
 //                contract as the pre-call-head new_op_id)
+//   Story 9-22 : TrackResult ✓, UntrackResult ✓ (both nest the shipped MutationResult and one
+//                shared SnapshotStats; UntrackResult reuses GitExportFailure)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1035,6 +1059,70 @@ table WorkspaceRoot {
   root: string;
 }
 
+/// `UntrackedReason` arm: the file is larger than the effective `snapshot.max-new-file-size`
+/// (Story 9.22). Both sizes are in bytes.
+table FileTooLarge {
+  size: ulong;
+  max_size: ulong;
+}
+
+/// `UntrackedReason` arm: the file does not match the snapshot's start-tracking fileset —
+/// `snapshot.auto-track`, or the paths a `zanshin_file_track` named (Story 9.22). No fields:
+/// the arm IS the fact.
+table FileNotAutoTracked {}
+
+/// Why a new file stayed untracked after a snapshot (Story 9.22) — jj-lib's `UntrackedReason`.
+/// Member order IS the wire discriminant (no explicit numbers) — APPEND only.
+union UntrackedReason {
+  FileTooLarge,
+  FileNotAutoTracked
+}
+
+/// One new file a snapshot left untracked, and why (Story 9.22).
+table UntrackedPath {
+  path: string;                 // repo-relative, jj's internal `/`-separated form
+  reason: UntrackedReason;      // two vtable slots: reason_type + reason
+}
+
+/// What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
+/// warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+/// `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
+/// `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
+table SnapshotStats {
+  untracked: [UntrackedPath];   // jj-lib's (path) order
+  invalid_utf8_paths: [string];
+}
+
+/// Outcome of a successful `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+///
+/// An operation (`track paths`) is ALWAYS written, even when nothing matched: the CLI commits
+/// unconditionally. `mutation.working_copy_change_id` is the PRE-call `@`: like the CLI, the
+/// verb records the tracked paths only in the working-copy STATE, and the NEXT snapshot moves
+/// them into `@` and rebases its children (jj's GH #8298) — which is also why `num_rebased` is
+/// 0 today. It saturates at 4294967295, as `AbsorbResult`'s does.
+table TrackResult {
+  mutation: MutationResult;
+  num_rebased: uint;
+  snapshot_stats: SnapshotStats;
+}
+
+/// Outcome of a successful `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`.
+///
+/// An operation (`untrack paths`) is ALWAYS written; `@` is rewritten without the matched
+/// entries (same change id) and `num_rebased` counts its rebased descendants (saturating).
+/// `unmatched_paths` are the requested paths with no entry in the pre-call `@` — the CLI's
+/// "No matching entries for paths" warning — in request order. `snapshot_stats` is the
+/// post-reset snapshot's. `failed_bookmarks` / `failed_tags` are the colocated git export's
+/// per-ref failures (never an error envelope); both are empty outside a colocated workspace.
+table UntrackResult {
+  mutation: MutationResult;
+  num_rebased: uint;
+  unmatched_paths: [string];
+  snapshot_stats: SnapshotStats;
+  failed_bookmarks: [GitExportFailure];
+  failed_tags: [GitExportFailure];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -1062,6 +1150,8 @@ union Payload {
   InterdiffView,
   WorkspaceList,
   WorkspaceRoot,
+  TrackResult,
+  UntrackResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

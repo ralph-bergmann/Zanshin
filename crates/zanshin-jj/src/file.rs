@@ -8,7 +8,9 @@
 //! even on a refusal — unlike the CLI, whose `workspace_helper` snapshots the working copy
 //! first and can therefore write an op from a read. Zanshin never snapshots (D2 —
 //! `status.rs:84`, `revset.rs:61-62`), so an omitted `revision` is the LAST-SNAPSHOTTED `@`;
-//! `LockedWorkingCopy::{snapshot,reset}` is Story 9.22's scope.
+//! the locked-working-copy primitives exist since Story 9.22
+//! (`mutate::lock_working_copy`, `wc_ops::snapshot_options`), and the per-verb snapshot that
+//! drives them in front of these reads is Story 9.26's.
 //!
 //! CLI parity is at tag **v0.44.0** (`cli/src/commands/file/{list,show,annotate,search}.rs`)
 //! for the observable behavior — defaults, refusals, skip rules, pattern parsing — never for

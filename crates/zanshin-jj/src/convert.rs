@@ -73,8 +73,8 @@
 //! below never deletes or rewrites `.git/`.
 //!
 //! Two deliberate departures, both documented at their site: the colocated head import omits
-//! the working-copy reset the CLI pairs it with (Story 9.22 owns the locked-working-copy
-//! lifecycle; project decision D2 — Zanshin never snapshots), and a failed conversion rolls
+//! the working-copy reset the CLI pairs it with (Story 9.26 drives the locked-working-copy
+//! lifecycle Story 9.22 built; project decision D2 — Zanshin never snapshots), and a failed conversion rolls
 //! back further than the CLI does, which never undoes a partial `jj git init`.
 
 use std::collections::HashMap;
@@ -111,7 +111,7 @@ use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 ///
 /// Two deliberate departures from the CLI:
 ///
-/// - The head import omits the working-copy `reset` the CLI pairs with it (Story 9.22 /
+/// - The head import omits the working-copy `reset` the CLI pairs with it (Story 9.26 /
 ///   decision D2), so `@` is not re-parented onto the imported HEAD; it settles there on the
 ///   first colocated snapshot (D3a).
 /// - A failure rolls back further than the CLI, which leaves a partially converted repo in
@@ -189,7 +189,7 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 ///
 /// Passing `workspace_path == git_repo_path` (D5) is a colocated request and takes the
 /// colocated shape instead — including its `.jj/.gitignore`, and its head import without the
-/// CLI's paired working-copy reset (Story 9.22 / decision D2).
+/// CLI's paired working-copy reset (Story 9.26 / decision D2).
 ///
 /// A failure rolls back further than the CLI, which leaves a partially initialised repo in
 /// place: the destination (or just its `.jj/`, when the directory already existed) is
@@ -357,9 +357,10 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 /// Ports three of the four things `cli_util.rs::import_git_head` (`:1352-1416` @ v0.44.0)
 /// does — [`jj_lib::git::import_head`], the early return that writes NO operation when it
 /// changed nothing, and the `import git head` commit. The fourth, `check_out` +
-/// `locked_wc().reset(&wc_commit)`, is deliberately left out: it needs
-/// `start_working_copy_mutation`, the locked-working-copy lifecycle **Story 9.22** owns, and
-/// reversing project decision D2 (Zanshin never snapshots) is not this port's call.
+/// `locked_wc().reset(&wc_commit)`, is deliberately left out: it needs the locked-working-copy
+/// lifecycle — built by **Story 9.22** as `mutate::lock_working_copy` — and wiring it into
+/// the per-command import/snapshot sequence, reversing project decision D2 (Zanshin never
+/// snapshots), is Story 9.26's call, not this port's.
 ///
 /// Consequence, restated in both verbs' rustdoc: after a colocated conversion the op log
 /// matches the CLI's, but `@` has not been re-parented onto the imported HEAD — it settles

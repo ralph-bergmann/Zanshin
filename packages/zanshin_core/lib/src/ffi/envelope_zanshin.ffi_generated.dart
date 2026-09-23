@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 14 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -43,7 +43,9 @@ enum RequestKind {
   Interdiff(13),
   WorkspaceRoot(14),
   BookmarkCreate(15),
-  BookmarkDelete(16);
+  BookmarkDelete(16),
+  FileTrack(17),
+  FileUntrack(18);
 
   final int value;
   const RequestKind(this.value);
@@ -84,6 +86,10 @@ enum RequestKind {
         return RequestKind.BookmarkCreate;
       case 16:
         return RequestKind.BookmarkDelete;
+      case 17:
+        return RequestKind.FileTrack;
+      case 18:
+        return RequestKind.FileUntrack;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -92,7 +98,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 16;
+  static const int maxValue = 18;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -492,6 +498,48 @@ class _GitRefUpdateKindReader extends fb.Reader<GitRefUpdateKind> {
       GitRefUpdateKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  Why a new file stayed untracked after a snapshot (Story 9.22) — jj-lib's `UntrackedReason`.
+///  Member order IS the wire discriminant (no explicit numbers) — APPEND only.
+enum UntrackedReasonTypeId {
+  NONE(0),
+  FileTooLarge(1),
+  FileNotAutoTracked(2);
+
+  final int value;
+  const UntrackedReasonTypeId(this.value);
+
+  factory UntrackedReasonTypeId.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return UntrackedReasonTypeId.NONE;
+      case 1:
+        return UntrackedReasonTypeId.FileTooLarge;
+      case 2:
+        return UntrackedReasonTypeId.FileNotAutoTracked;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static UntrackedReasonTypeId? _createOrNull(int? value) =>
+      value == null ? null : UntrackedReasonTypeId.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<UntrackedReasonTypeId> reader = _UntrackedReasonTypeIdReader();
+}
+
+class _UntrackedReasonTypeIdReader extends fb.Reader<UntrackedReasonTypeId> {
+  const _UntrackedReasonTypeIdReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  UntrackedReasonTypeId read(fb.BufferContext bc, int offset) =>
+      UntrackedReasonTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -518,7 +566,9 @@ enum PayloadTypeId {
   EvologView(22),
   InterdiffView(23),
   WorkspaceList(24),
-  WorkspaceRoot(25);
+  WorkspaceRoot(25),
+  TrackResult(26),
+  UntrackResult(27);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -577,6 +627,10 @@ enum PayloadTypeId {
         return PayloadTypeId.WorkspaceList;
       case 25:
         return PayloadTypeId.WorkspaceRoot;
+      case 26:
+        return PayloadTypeId.TrackResult;
+      case 27:
+        return PayloadTypeId.UntrackResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -585,7 +639,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 25;
+  static const int maxValue = 27;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2486,6 +2540,187 @@ class BookmarkDeleteRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+///
+///  `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
+///  language and is not parsed (ADR-0003). An EMPTY or ABSENT vector is refused with
+///  `jj.invalid_input` (clap's `required = true`). `include_ignored` is the CLI's
+///  `--include-ignored`: track matching files even when ignored or over
+///  `snapshot.max-new-file-size`.
+class FileTrackRequest {
+  FileTrackRequest._(this._bc, this._bcOffset);
+  factory FileTrackRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileTrackRequest> reader = _FileTrackRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  bool get includeIgnored => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'FileTrackRequest{kind: ${kind}, paths: ${paths}, includeIgnored: ${includeIgnored}}';
+  }
+}
+
+class _FileTrackRequestReader extends fb.TableReader<FileTrackRequest> {
+  const _FileTrackRequestReader();
+
+  @override
+  FileTrackRequest createObject(fb.BufferContext bc, int offset) => FileTrackRequest._(bc, offset);
+}
+
+class FileTrackRequestBuilder {
+  FileTrackRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIncludeIgnored(bool? includeIgnored) {
+    fbBuilder.addBool(2, includeIgnored);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileTrackRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _paths;
+  final bool? _includeIgnored;
+
+  FileTrackRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? paths,
+    bool? includeIgnored,
+  }) : _kind = kind,
+       _paths = paths,
+       _includeIgnored = includeIgnored;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, pathsOffset);
+    fbBuilder.addBool(2, _includeIgnored);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`. `paths`
+///  exactly as in FileTrackRequest; every matched path must already be ignored.
+class FileUntrackRequest {
+  FileUntrackRequest._(this._bc, this._bcOffset);
+  factory FileUntrackRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileUntrackRequest> reader = _FileUntrackRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FileUntrackRequest{kind: ${kind}, paths: ${paths}}';
+  }
+}
+
+class _FileUntrackRequestReader extends fb.TableReader<FileUntrackRequest> {
+  const _FileUntrackRequestReader();
+
+  @override
+  FileUntrackRequest createObject(fb.BufferContext bc, int offset) => FileUntrackRequest._(bc, offset);
+}
+
+class FileUntrackRequestBuilder {
+  FileUntrackRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileUntrackRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _paths;
+
+  FileUntrackRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? paths,
+  }) : _kind = kind,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, pathsOffset);
     return fbBuilder.endTable();
   }
 
@@ -7415,6 +7650,571 @@ class WorkspaceRootObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  `UntrackedReason` arm: the file is larger than the effective `snapshot.max-new-file-size`
+///  (Story 9.22). Both sizes are in bytes.
+class FileTooLarge {
+  FileTooLarge._(this._bc, this._bcOffset);
+  factory FileTooLarge(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileTooLarge> reader = _FileTooLargeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get size => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get maxSize => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
+
+  @override
+  String toString() {
+    return 'FileTooLarge{size: ${size}, maxSize: ${maxSize}}';
+  }
+}
+
+class _FileTooLargeReader extends fb.TableReader<FileTooLarge> {
+  const _FileTooLargeReader();
+
+  @override
+  FileTooLarge createObject(fb.BufferContext bc, int offset) => FileTooLarge._(bc, offset);
+}
+
+class FileTooLargeBuilder {
+  FileTooLargeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addSize(int? size) {
+    fbBuilder.addUint64(0, size);
+    return fbBuilder.offset;
+  }
+
+  int addMaxSize(int? maxSize) {
+    fbBuilder.addUint64(1, maxSize);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileTooLargeObjectBuilder extends fb.ObjectBuilder {
+  final int? _size;
+  final int? _maxSize;
+
+  FileTooLargeObjectBuilder({
+    int? size,
+    int? maxSize,
+  }) : _size = size,
+       _maxSize = maxSize;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(2);
+    fbBuilder.addUint64(0, _size);
+    fbBuilder.addUint64(1, _maxSize);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `UntrackedReason` arm: the file does not match the snapshot's start-tracking fileset —
+///  `snapshot.auto-track`, or the paths a `zanshin_file_track` named (Story 9.22). No fields:
+///  the arm IS the fact.
+class FileNotAutoTracked {
+  FileNotAutoTracked._(this._bc, this._bcOffset);
+  factory FileNotAutoTracked(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileNotAutoTracked> reader = _FileNotAutoTrackedReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  @override
+  String toString() {
+    return 'FileNotAutoTracked{}';
+  }
+}
+
+class _FileNotAutoTrackedReader extends fb.TableReader<FileNotAutoTracked> {
+  const _FileNotAutoTrackedReader();
+
+  @override
+  FileNotAutoTracked createObject(fb.BufferContext bc, int offset) => FileNotAutoTracked._(bc, offset);
+}
+
+class FileNotAutoTrackedObjectBuilder extends fb.ObjectBuilder {
+  FileNotAutoTrackedObjectBuilder();
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(0);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One new file a snapshot left untracked, and why (Story 9.22).
+class UntrackedPath {
+  UntrackedPath._(this._bc, this._bcOffset);
+  factory UntrackedPath(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<UntrackedPath> reader = _UntrackedPathReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  UntrackedReasonTypeId? get reasonType =>
+      UntrackedReasonTypeId._createOrNull(const fb.Uint8Reader().vTableGetNullable(_bc, _bcOffset, 6));
+  dynamic get reason {
+    switch (reasonType?.value) {
+      case 1:
+        return FileTooLarge.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      case 2:
+        return FileNotAutoTracked.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      default:
+        return null;
+    }
+  }
+
+  @override
+  String toString() {
+    return 'UntrackedPath{path: ${path}, reasonType: ${reasonType}, reason: ${reason}}';
+  }
+}
+
+class _UntrackedPathReader extends fb.TableReader<UntrackedPath> {
+  const _UntrackedPathReader();
+
+  @override
+  UntrackedPath createObject(fb.BufferContext bc, int offset) => UntrackedPath._(bc, offset);
+}
+
+class UntrackedPathBuilder {
+  UntrackedPathBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReasonType(UntrackedReasonTypeId? reasonType) {
+    fbBuilder.addUint8(1, reasonType?.value);
+    return fbBuilder.offset;
+  }
+
+  int addReasonOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class UntrackedPathObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final UntrackedReasonTypeId? _reasonType;
+  final dynamic _reason;
+
+  UntrackedPathObjectBuilder({
+    String? path,
+    UntrackedReasonTypeId? reasonType,
+    dynamic reason,
+  }) : _path = path,
+       _reasonType = reasonType,
+       _reason = reason;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? reasonOffset = _reason?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addUint8(1, _reasonType?.value);
+    fbBuilder.addOffset(2, reasonOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
+///  warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+///  `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
+///  `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
+class SnapshotStats {
+  SnapshotStats._(this._bc, this._bcOffset);
+  factory SnapshotStats(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SnapshotStats> reader = _SnapshotStatsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<UntrackedPath>? get untracked =>
+      const fb.ListReader<UntrackedPath>(UntrackedPath.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get invalidUtf8Paths =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'SnapshotStats{untracked: ${untracked}, invalidUtf8Paths: ${invalidUtf8Paths}}';
+  }
+}
+
+class _SnapshotStatsReader extends fb.TableReader<SnapshotStats> {
+  const _SnapshotStatsReader();
+
+  @override
+  SnapshotStats createObject(fb.BufferContext bc, int offset) => SnapshotStats._(bc, offset);
+}
+
+class SnapshotStatsBuilder {
+  SnapshotStatsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addUntrackedOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInvalidUtf8PathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SnapshotStatsObjectBuilder extends fb.ObjectBuilder {
+  final List<UntrackedPathObjectBuilder>? _untracked;
+  final List<String>? _invalidUtf8Paths;
+
+  SnapshotStatsObjectBuilder({
+    List<UntrackedPathObjectBuilder>? untracked,
+    List<String>? invalidUtf8Paths,
+  }) : _untracked = untracked,
+       _invalidUtf8Paths = invalidUtf8Paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? untrackedOffset = _untracked == null
+        ? null
+        : fbBuilder.writeList(_untracked!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? invalidUtf8PathsOffset = _invalidUtf8Paths == null
+        ? null
+        : fbBuilder.writeList(_invalidUtf8Paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, untrackedOffset);
+    fbBuilder.addOffset(1, invalidUtf8PathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
+///
+///  An operation (`track paths`) is ALWAYS written, even when nothing matched: the CLI commits
+///  unconditionally. `mutation.working_copy_change_id` is the PRE-call `@`: like the CLI, the
+///  verb records the tracked paths only in the working-copy STATE, and the NEXT snapshot moves
+///  them into `@` and rebases its children (jj's GH #8298) — which is also why `num_rebased` is
+///  0 today. It saturates at 4294967295, as `AbsorbResult`'s does.
+class TrackResult {
+  TrackResult._(this._bc, this._bcOffset);
+  factory TrackResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<TrackResult> reader = _TrackResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  int get numRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  SnapshotStats? get snapshotStats => SnapshotStats.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'TrackResult{mutation: ${mutation}, numRebased: ${numRebased}, snapshotStats: ${snapshotStats}}';
+  }
+}
+
+class _TrackResultReader extends fb.TableReader<TrackResult> {
+  const _TrackResultReader();
+
+  @override
+  TrackResult createObject(fb.BufferContext bc, int offset) => TrackResult._(bc, offset);
+}
+
+class TrackResultBuilder {
+  TrackResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumRebased(int? numRebased) {
+    fbBuilder.addUint32(1, numRebased);
+    return fbBuilder.offset;
+  }
+
+  int addSnapshotStatsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TrackResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final int? _numRebased;
+  final SnapshotStatsObjectBuilder? _snapshotStats;
+
+  TrackResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    int? numRebased,
+    SnapshotStatsObjectBuilder? snapshotStats,
+  }) : _mutation = mutation,
+       _numRebased = numRebased,
+       _snapshotStats = snapshotStats;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addUint32(1, _numRebased);
+    fbBuilder.addOffset(2, snapshotStatsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_file_untrack` (Story 9.22) — the CLI's `jj file untrack`.
+///
+///  An operation (`untrack paths`) is ALWAYS written; `@` is rewritten without the matched
+///  entries (same change id) and `num_rebased` counts its rebased descendants (saturating).
+///  `unmatched_paths` are the requested paths with no entry in the pre-call `@` — the CLI's
+///  "No matching entries for paths" warning — in request order. `snapshot_stats` is the
+///  post-reset snapshot's. `failed_bookmarks` / `failed_tags` are the colocated git export's
+///  per-ref failures (never an error envelope); both are empty outside a colocated workspace.
+class UntrackResult {
+  UntrackResult._(this._bc, this._bcOffset);
+  factory UntrackResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<UntrackResult> reader = _UntrackResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  int get numRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  List<String>? get unmatchedPaths =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  SnapshotStats? get snapshotStats => SnapshotStats.reader.vTableGetNullable(_bc, _bcOffset, 10);
+  List<GitExportFailure>? get failedBookmarks =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  List<GitExportFailure>? get failedTags =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'UntrackResult{mutation: ${mutation}, numRebased: ${numRebased}, unmatchedPaths: ${unmatchedPaths}, snapshotStats: ${snapshotStats}, failedBookmarks: ${failedBookmarks}, failedTags: ${failedTags}}';
+  }
+}
+
+class _UntrackResultReader extends fb.TableReader<UntrackResult> {
+  const _UntrackResultReader();
+
+  @override
+  UntrackResult createObject(fb.BufferContext bc, int offset) => UntrackResult._(bc, offset);
+}
+
+class UntrackResultBuilder {
+  UntrackResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumRebased(int? numRebased) {
+    fbBuilder.addUint32(1, numRebased);
+    return fbBuilder.offset;
+  }
+
+  int addUnmatchedPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSnapshotStatsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedTagsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class UntrackResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final int? _numRebased;
+  final List<String>? _unmatchedPaths;
+  final SnapshotStatsObjectBuilder? _snapshotStats;
+  final List<GitExportFailureObjectBuilder>? _failedBookmarks;
+  final List<GitExportFailureObjectBuilder>? _failedTags;
+
+  UntrackResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    int? numRebased,
+    List<String>? unmatchedPaths,
+    SnapshotStatsObjectBuilder? snapshotStats,
+    List<GitExportFailureObjectBuilder>? failedBookmarks,
+    List<GitExportFailureObjectBuilder>? failedTags,
+  }) : _mutation = mutation,
+       _numRebased = numRebased,
+       _unmatchedPaths = unmatchedPaths,
+       _snapshotStats = snapshotStats,
+       _failedBookmarks = failedBookmarks,
+       _failedTags = failedTags;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? unmatchedPathsOffset = _unmatchedPaths == null
+        ? null
+        : fbBuilder.writeList(_unmatchedPaths!.map(fbBuilder.writeString).toList());
+    final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
+    final int? failedBookmarksOffset = _failedBookmarks == null
+        ? null
+        : fbBuilder.writeList(_failedBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? failedTagsOffset = _failedTags == null
+        ? null
+        : fbBuilder.writeList(_failedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addUint32(1, _numRebased);
+    fbBuilder.addOffset(2, unmatchedPathsOffset);
+    fbBuilder.addOffset(3, snapshotStatsOffset);
+    fbBuilder.addOffset(4, failedBookmarksOffset);
+    fbBuilder.addOffset(5, failedTagsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -7494,6 +8294,10 @@ class Envelope {
         return WorkspaceList.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 25:
         return WorkspaceRoot.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 26:
+        return TrackResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 27:
+        return UntrackResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

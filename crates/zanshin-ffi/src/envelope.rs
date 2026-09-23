@@ -34,8 +34,21 @@ pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
 /// AR-P-4: emitted by `repo.rs` and the read wrappers (`status.rs`, `change.rs`, `op_log.rs`,
 /// `bookmarks.rs`, `remotes.rs`, `graph.rs`) for unclassified jj-lib errors; detail in `context`.
 pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
-/// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@).
+/// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@), and —
+/// since Story 9.22 — by `file_ops.rs`'s two wrappers when the working copy they must lock has
+/// no `@` in the head view (the CLI's "Nothing checked out in this workspace"); no `context`.
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
+/// AR-P-4: emitted by `file_ops.rs::zanshin_file_track`/`_untrack` when the working copy's
+/// recorded tree differs from `@`'s tree — `@` rewritten without a checkout, or, until Story
+/// 9.26, the working-copy state AHEAD of `@` after a `zanshin_file_track` until the next
+/// snapshot; no `context` (Story 9.22). The CLI's "Concurrent working copy operation" check;
+/// its own code because the condition is specific to the working copy.
+pub const JJ_CONCURRENT_WORKING_COPY: &str = "jj.concurrent_working_copy";
+/// AR-P-4: emitted by `file_ops.rs::zanshin_file_untrack` when matched paths are NOT ignored, so
+/// the next snapshot would add them straight back; EVERY offending path in `context`, joined
+/// by `\n`, in jj-lib's tree order (Story 9.22). No operation is written. Its own code because
+/// the remedy is specific: ignore the paths first, then retry.
+pub const JJ_PATH_NOT_IGNORED: &str = "jj.path_not_ignored";
 /// AR-P-4: emitted by `change.rs` when no change exists for the given id.
 pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
 /// AR-P-4: emitted by `file.rs::zanshin_file_annotate` when the path exists in the target

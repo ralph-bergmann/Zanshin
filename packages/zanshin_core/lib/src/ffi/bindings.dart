@@ -591,6 +591,98 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_show(
   int len,
 );
 
+/// Start tracking the working-copy paths matching the requested prefixes, in the repo
+/// referenced by `handle` — the CLI's `jj file track [--include-ignored] <paths>`.
+///
+/// The arguments cross as a `FileTrackRequest` `FlatBuffers` request buffer. `paths` are
+/// repo-relative PREFIXES (the fileset DSL is not parsed); `include_ignored` is the CLI's
+/// `--include-ignored`. The working copy is locked and snapshotted with the repo's EFFECTIVE
+/// `snapshot.*` config, and the operation `track paths` is written UNCONDITIONALLY — even when
+/// nothing matched — exactly as the CLI commits it.
+///
+/// `@` is NOT changed: like the CLI, the verb records the tracked paths only in the
+/// working-copy state, and the NEXT snapshot moves them into `@` (jj's GH #8298). Returns a
+/// `FlatBuffers` `Envelope` carrying a `TrackResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileTrackRequest` buffer, or its `kind`
+/// is not `FileTrack`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `paths` is empty (or absent from the buffer), or an entry is the empty
+/// string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
+/// root); refused before the working copy is locked.
+/// - `jj.config_error` — the repo's effective jj config no longer reads, or
+/// `snapshot.max-new-file-size` has the wrong type (the key in `context`); nothing is written.
+/// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+/// - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
+/// rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
+/// the next snapshot); no `context`, nothing is written.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+/// closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero handle is
+/// undefined behaviour; the Dart worker's Model-A handle table (Story 3.9) makes a stale
+/// handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileTrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_file_track(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Stop tracking the working-copy paths matching the requested prefixes, in the repo referenced
+/// by `handle` — the CLI's `jj file untrack <paths>`.
+///
+/// The arguments cross as a `FileUntrackRequest` `FlatBuffers` request buffer; `paths` as for
+/// `zanshin_file_track`. The matched entries are removed from `@` (a rewrite: same change id,
+/// descendants rebased) and the working-copy state is reset WITHOUT touching a file — the files
+/// stay on disk — and the operation `untrack paths` is written unconditionally. In a COLOCATED
+/// workspace the git index's intent-to-add entries are updated and jj's refs exported in the
+/// same operation; per-ref export failures ride `UntrackResult.failed_bookmarks`/`failed_tags`,
+/// never an error envelope. Requested paths with no entry in `@` ride
+/// `UntrackResult.unmatched_paths`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying an `UntrackResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileUntrackRequest` buffer, or its `kind`
+/// is not `FileUntrack`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `paths` is empty (or absent from the buffer), or an entry is the empty
+/// string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
+/// root); refused before the working copy is locked.
+/// - `jj.config_error` — the repo's effective jj config no longer reads, `snapshot.auto-track` is
+/// not a valid fileset, or `snapshot.max-new-file-size` has the wrong type; nothing is written.
+/// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+/// - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
+/// rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
+/// the next snapshot); no `context`, nothing is written.
+/// - `jj.path_not_ignored` — matched paths are not ignored, so the next snapshot would re-add
+/// them; every offending path in `context`, joined by `\n`. No operation is written and the
+/// working-copy state is unchanged.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_file_track`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileUntrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_file_untrack(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Write jj's bookmarks and tags back to the backing git repo, in the repo referenced by
 /// `handle` — the CLI's `jj git export`.
 ///
@@ -1231,7 +1323,7 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 /// — when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark —
 /// writes `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE
 /// `.jj/` under `<config_dir>/jj/repos/`. Unlike the CLI, the head import does not
-/// re-parent `@` onto the imported HEAD (that working-copy half is Story 9.22's).
+/// re-parent `@` onto the imported HEAD (that working-copy half is Story 9.26's).
 ///
 /// `.git/` is written to exactly once, by the CLI's own colocated `export_refs` step inside
 /// the refs operation: jj exports back the refs it has just imported, so no user-visible ref
@@ -1654,9 +1746,11 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 16;
+const int ENUM_MAX_REQUEST_KIND = 18;
 
 const int ENUM_MAX_REVISION_REF = 2;
+
+const int ENUM_MAX_UNTRACKED_REASON = 2;
 
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
@@ -1677,6 +1771,8 @@ const int ENUM_MIN_REPO_KIND = 0;
 const int ENUM_MIN_REQUEST_KIND = 0;
 
 const int ENUM_MIN_REVISION_REF = 0;
+
+const int ENUM_MIN_UNTRACKED_REASON = 0;
 
 const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 
@@ -1707,6 +1803,12 @@ const int FileSearchRequest_VT_NAME_ONLY = 12;
 const int FileSearchRequest_VT_PATTERN = 8;
 
 const int FileSearch_VT_MATCHES = 4;
+
+const int FileTooLarge_VT_MAX_SIZE = 6;
+
+const int FileTooLarge_VT_SIZE = 4;
+
+const int FileTrackRequest_VT_INCLUDE_IGNORED = 8;
 
 const int GitExportResult_VT_FAILED_BOOKMARKS = 6;
 
@@ -1868,11 +1970,21 @@ const int Signature_VT_TZ_OFFSET_MINUTES = 10;
 
 const int SkippedPath_VT_REASON = 6;
 
+const int SnapshotStats_VT_INVALID_UTF8_PATHS = 6;
+
+const int SnapshotStats_VT_UNTRACKED = 4;
+
 const int Status_VT_FILES = 4;
 
 const int Status_VT_PARENT_CHANGE_ID = 8;
 
 const int Status_VT_WORKING_COPY_CHANGE_ID = 6;
+
+const int TrackResult_VT_SNAPSHOT_STATS = 8;
+
+const int UntrackResult_VT_UNMATCHED_PATHS = 8;
+
+const int UntrackedPath_VT_REASON_TYPE = 6;
 
 const int WatcherEvent_VT_MESSAGE = 10;
 

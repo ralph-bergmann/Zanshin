@@ -1424,7 +1424,7 @@ impl Repo {
     ///
     /// The working copy is NOT snapshotted first (D2): `@` is the last-snapshotted
     /// working-copy commit, where the CLI's `workspace_helper` would have picked up
-    /// on-disk edits. Snapshotting is Story 9.22's scope.
+    /// on-disk edits. Snapshotting before a verb is Story 9.26's scope.
     ///
     /// # Errors
     ///
@@ -1535,6 +1535,114 @@ impl Repo {
         let destinations =
             crate::revset::parse_revset(self, destinations.unwrap_or("mutable()")).map_err(crate::mutate::rev)?;
         crate::mutate::absorb(self.workspace_mut(), &immutable, from.as_ref(), &destinations, paths)
+    }
+
+    /// Starts tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
+    /// `jj file track [--include-ignored] <paths>`.
+    ///
+    /// `paths` are interpreted as PREFIXES, as for [`Repo::restore`], but parsed the way the CLI
+    /// parses a bare path argument with the working directory at the WORKSPACE ROOT: a trailing
+    /// `/`, `./` and `//` normalise, an absolute path inside the workspace is accepted, and a
+    /// path escaping the workspace is refused. The fileset DSL is terminal input language and
+    /// is not parsed. At least one is required (the CLI's `required = true`). `include_ignored` tracks matching files even when they are
+    /// ignored or larger than `snapshot.max-new-file-size` — the CLI's `--include-ignored`.
+    ///
+    /// The working copy is locked and snapshotted with the effective `snapshot.*` config and
+    /// the CLI's ignore chain; the operation `track paths` is written UNCONDITIONALLY, even when
+    /// nothing matched, exactly as the CLI commits it.
+    ///
+    /// **`@` does not change (GH #8298).** Like the CLI, the verb discards the snapshot's tree:
+    /// the newly tracked paths live in the working-copy STATE, and the NEXT snapshot moves them
+    /// into `@` and rebases `@`'s descendants. For a CLI user that is the next `jj` command;
+    /// for Zanshin it is Story 9.26's per-verb snapshot. So
+    /// [`crate::TrackResult::num_rebased`] is `0` today, and
+    /// [`crate::TrackResult::snapshot_stats`] reports the files the snapshot left untracked
+    /// (too large, or — with no pre-verb snapshot yet — any other new file, as
+    /// `FileNotAutoTracked`); jj-lib never reports IGNORED files there.
+    ///
+    /// **Until Story 9.26 the working-copy state then leads `@`.** After a `file_track` that
+    /// recorded ANYTHING — a new path, or any unsnapshotted edit (the track snapshot records
+    /// ALL on-disk changes into the working-copy state) — the state's tree no longer equals
+    /// `@`'s. Two consequences the CLI never sees, because its next command snapshots first:
+    ///
+    /// - the NEXT `file_track`/`file_untrack` refuses with
+    ///   [`crate::MutateError::ConcurrentWorkingCopy`];
+    /// - every verb that moves `@` through `Workspace::check_out` (`describe`, `new_change`,
+    ///   `edit`, `abandon`, `restore`, `absorb`, `undo`, …) COMMITS its operation and then fails
+    ///   with [`crate::MutateError::Backend`] (jj-lib's `ConcurrentCheckout`), leaving the
+    ///   working copy stale.
+    ///
+    /// Story 9.26's per-verb snapshot closes the gap.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty, or an entry is the empty
+    ///   string or escapes the workspace. Refused before the working copy is locked.
+    /// - [`crate::MutateError::Config`] — the effective config no longer reads, or
+    ///   `snapshot.max-new-file-size` has the wrong type. Refused before the lock.
+    /// - [`crate::MutateError::NoWorkingCopy`] — this workspace has no `@` in the head view.
+    /// - [`crate::MutateError::ConcurrentWorkingCopy`] — the working copy's recorded tree
+    ///   differs from `@`'s (`@` rewritten without a checkout, or the state ahead of `@` after a
+    ///   `file_track` until the next snapshot); nothing is written.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure (lock, snapshot, an
+    ///   unreadable ignore file, commit).
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn file_track(
+        &mut self,
+        paths: &[String],
+        include_ignored: bool,
+    ) -> Result<crate::TrackResult, crate::MutateError> {
+        self.refresh_settings()?;
+        // WHY: loaded while `self` is still shared, before `workspace_mut()` — the same borrow
+        // split `git_import` uses.
+        let config = crate::config::load(self).map_err(crate::mutate::cfg)?;
+        crate::wc_ops::file_track(self.workspace_mut(), &config, paths, include_ignored)
+    }
+
+    /// Stops tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
+    /// `jj file untrack <paths>`.
+    ///
+    /// `paths` behave as for [`Repo::file_track`] (at least one required). The matched entries
+    /// are removed from `@` (a rewrite: same change id, descendants rebased), the working-copy
+    /// state is `reset` to the new `@` WITHOUT touching a file — the files stay on disk — and
+    /// the operation `untrack paths` is written unconditionally.
+    ///
+    /// Each matched path must already be IGNORED (a `.gitignore`, the git `info/exclude`, the
+    /// global excludes file), or fall outside a sparse checkout; otherwise the next snapshot
+    /// would add it straight back, so the verb refuses — see
+    /// [`crate::MutateError::PathsNotIgnored`]. A concurrent edit to some OTHER file between the
+    /// `reset` and the check is not mixed in: the state is reset again, as in the CLI.
+    ///
+    /// In a COLOCATED workspace the change is also exported to git in the same operation: the
+    /// git index drops the paths' intent-to-add entries and jj's refs are exported (a
+    /// bookmark on `@` follows the rewrite). Refs that could not be exported are reported in
+    /// [`crate::UntrackResult::failed_bookmarks`] / `failed_tags`, never as an error.
+    ///
+    /// A path that matched nothing in `@` is reported in
+    /// [`crate::UntrackResult::unmatched_paths`] (the CLI's warning), not refused.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty, or an entry is the empty
+    ///   string or escapes the workspace. Refused before the working copy is locked.
+    /// - [`crate::MutateError::Config`] — the effective config no longer reads,
+    ///   `snapshot.auto-track` is not a string or not a valid fileset, a `[fileset-aliases]`
+    ///   layer is not a table, or `snapshot.max-new-file-size` has the wrong type. Refused
+    ///   before the lock.
+    /// - [`crate::MutateError::NoWorkingCopy`] — this workspace has no `@` in the head view.
+    /// - [`crate::MutateError::ConcurrentWorkingCopy`] — the working copy's recorded tree
+    ///   differs from `@`'s (`@` rewritten without a checkout, or the state ahead of `@` after a
+    ///   `file_track` until the next snapshot); nothing is written.
+    /// - [`crate::MutateError::PathsNotIgnored`] — matched paths are not ignored; every one is
+    ///   named, no operation is written and the working-copy state is unchanged.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure (lock, snapshot, reset,
+    ///   an unreadable ignore file, the git index update, commit).
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn file_untrack(&mut self, paths: &[String]) -> Result<crate::UntrackResult, crate::MutateError> {
+        self.refresh_settings()?;
+        // WHY: see `file_track`.
+        let config = crate::config::load(self).map_err(crate::mutate::cfg)?;
+        crate::wc_ops::file_untrack(self.workspace_mut(), &config, paths)
     }
 
     /// Opens an existing jj workspace rooted at `path`.

@@ -4,6 +4,7 @@ import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
+import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
     show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
@@ -868,6 +869,59 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.bookmarkDelete(_handleId, names);
+  }
+
+  /// Start tracking the working-copy paths matching [paths] (Story 9.22) — the
+  /// CLI's `jj file track [--include-ignored]`.
+  ///
+  /// [paths] are repo-relative PREFIXES; an empty list is refused with
+  /// `jj.invalid_input`. [includeIgnored] tracks matching files even when they
+  /// are ignored or larger than `snapshot.max-new-file-size`.
+  ///
+  /// An operation (`track paths`) is ALWAYS written, even when nothing matched.
+  /// Like the CLI, `@` does NOT change: the tracked paths live in the working-copy
+  /// state until the next snapshot moves them into `@` (jj's GH #8298). Until
+  /// Story 9.26's per-verb snapshot lands, a `fileTrack` that recorded ANYTHING
+  /// (a new path, or any unsnapshotted edit — the track snapshot records all
+  /// on-disk changes into the working-copy state) leaves that state ahead of `@`:
+  /// the NEXT `fileTrack`/`fileUntrack` refuses with
+  /// `jj.concurrent_working_copy`, and every verb that moves `@` through a
+  /// checkout (`describe`, `newChange`, `edit`, `abandon`, `restore`, `absorb`,
+  /// `undo`, …) COMMITS its operation and then fails with `jj.jj_lib_error`
+  /// (jj-lib's `ConcurrentCheckout`), leaving the working copy stale.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ArgumentError] if a path contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`,
+  /// `jj.concurrent_working_copy`, `jj.jj_lib_error`).
+  Future<TrackResult> fileTrack(List<String> paths, {bool includeIgnored = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileTrack(_handleId, paths, includeIgnored: includeIgnored);
+  }
+
+  /// Stop tracking the working-copy paths matching [paths] (Story 9.22) — the
+  /// CLI's `jj file untrack`.
+  ///
+  /// The matched entries are removed from `@` and the files stay on disk; an
+  /// operation (`untrack paths`) is always written. Every matched path must
+  /// already be ignored — otherwise the call refuses with `jj.path_not_ignored`
+  /// (each offender on its own line of the exception's context) and writes
+  /// nothing. In a colocated workspace the git index and refs are updated in the
+  /// same operation; per-ref export failures ride the result.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ArgumentError] if a path contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`,
+  /// `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.jj_lib_error`).
+  Future<UntrackResult> fileUntrack(List<String> paths) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileUntrack(_handleId, paths);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

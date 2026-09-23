@@ -679,8 +679,10 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 /// the only place a constant `default` would show.
 ///
 /// The CLI has a second caller, the snapshot path (`cli_util.rs:2099`), which follows it with
-/// `set_is_snapshot(true)`; Zanshin has no snapshot path yet (project decision D2 — Story 9.22),
-/// which is why nothing here touches `is_snapshot`.
+/// `set_is_snapshot(true)`; Zanshin has no snapshot OPERATION yet (project decision D2 — Story
+/// 9.22 built the locked-working-copy primitives, whose `file track`/`untrack` operations are not
+/// snapshots; the per-verb snapshot is Story 9.26's), which is why nothing here touches
+/// `is_snapshot`.
 ///
 /// A guard test in this module's `tests` asserts that no other file under
 /// `crates/zanshin-jj/src` calls `start_transaction` directly, so an operation cannot regain a

@@ -132,8 +132,9 @@ fn build_ref_updates<'a>(
     b.create_vector(&offsets)
 }
 
-/// Build the `[GitExportFailure]` vector into `b` and return its offset.
-fn build_export_failures<'a>(
+/// Build the `[GitExportFailure]` vector into `b` and return its offset. `pub(crate)` since
+/// Story 9.22, whose `UntrackResult` carries the same colocated-export failures.
+pub(crate) fn build_export_failures<'a>(
     b: &mut FlatBufferBuilder<'a>,
     failures: &[GitExportFailure],
 ) -> flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::GitExportFailure<'a>>>> {

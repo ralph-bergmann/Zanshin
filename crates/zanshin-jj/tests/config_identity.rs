@@ -302,6 +302,13 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
         no_op.identity_missing, None,
         "a call that commits nothing reports nothing"
     );
+    // `file track` / `file untrack` ALWAYS commit, yet report nothing: the CLI commits their raw
+    // transaction and never reaches `finish_transaction`, where its warning lives (Story 9.22).
+    let nothing = ["no-such-path".to_owned()];
+    let tracked = repo.file_track(&nothing, false).expect("file_track commits");
+    assert_eq!(tracked.mutation.identity_missing, None, "file_track");
+    let untracked = repo.file_untrack(&nothing).expect("file_untrack commits");
+    assert_eq!(untracked.mutation.identity_missing, None, "file_untrack");
 
     // JJ_USER / JJ_EMAIL (EnvOverrides) beat every file.
     set_jj_config(user_file);

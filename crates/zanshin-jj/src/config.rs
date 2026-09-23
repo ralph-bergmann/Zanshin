@@ -131,7 +131,10 @@ use crate::Repo;
 /// table are verbatim from `cli/src/config/revsets.toml` at v0.44.0;
 /// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:44` and
 /// `ui.conflict-marker-style` from `cli/src/config/misc.toml:45` (Story 9.4 — the style
-/// `file show` materializes a conflicted file with).
+/// `file show` materializes a conflicted file with); `snapshot.max-new-file-size` and
+/// `snapshot.auto-track` are verbatim from `cli/src/config/misc.toml:60-61` (Story 9.22 — the
+/// snapshot options `file track`/`file untrack` build; jj-lib's own `config/misc.toml` has
+/// neither, so without them the keys would be missing, not defaulted).
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -153,6 +156,10 @@ log-graph-prioritize = "present(@)"
 [ui]
 log-synthetic-elided-nodes = true
 conflict-marker-style = "diff"
+
+[snapshot]
+max-new-file-size = "1MiB"
+auto-track = "all()"
 
 [revset-aliases]
 # trunk() can be overridden as '<bookmark>@<remote>'.
@@ -903,6 +910,36 @@ pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::
     })
 }
 
+/// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).
+///
+/// Mirrors `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1618-1623` @
+/// v0.44.0): the value is a `HumanByteSize` — a plain integer or a `"<number><unit>"` string —
+/// and `0` means UNLIMITED (`u64::MAX`), which is how a user switches the size gate off.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is neither a non-negative integer nor a parseable size
+///   string (the key is named), or is missing from every layer (impossible while the builtin
+///   layer is present).
+pub(crate) fn snapshot_max_new_file_size(config: &StackedConfig) -> Result<u64, ConfigError> {
+    let jj_lib::settings::HumanByteSize(size) = config
+        .get_value_with("snapshot.max-new-file-size", jj_lib::settings::HumanByteSize::try_from)
+        .map_err(|e| value_error(&e))?;
+    Ok(if size == 0 { u64::MAX } else { size })
+}
+
+/// Reads the effective `snapshot.auto-track` fileset TEXT out of a loaded stack (Story 9.22) —
+/// the CLI's `settings().get_string("snapshot.auto-track")` (`cli/src/cli_util.rs:1606`).
+/// Parsing it is the caller's job; a parse failure is a config fault there too.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named), or is missing from
+///   every layer (impossible while the builtin layer is present).
+pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("snapshot.auto-track").map_err(|e| value_error(&e))
+}
+
 // ── The three repo-config WRITERS ─────────────────────────────────────────────────
 //
 // `remove_remote_from_repo_config` / `rename_remote_in_repo_config` are ported verbatim from
@@ -1193,8 +1230,9 @@ mod tests {
     use super::{
         add_secure_layer, create_repo_config_file, env_base_layer, env_overrides_layer, fingerprint_with,
         is_valid_config_id, load_repo_config_file, load_with, platform_config_dir, remove_remote_from_repo_config,
-        rename_remote_in_repo_config, secure_config_path, set_trunk_alias, settings_from, stamp, system_config_paths,
-        user_config_paths, user_email, ConfigEnv, WorkspacePaths, BUILTIN_CONFIG_TOML,
+        rename_remote_in_repo_config, secure_config_path, set_trunk_alias, settings_from, snapshot_auto_track,
+        snapshot_max_new_file_size, stamp, system_config_paths, user_config_paths, user_email, ConfigEnv,
+        WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -1242,6 +1280,47 @@ mod tests {
     fn builtin_config_layer_is_valid_toml() {
         let layer = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML);
         assert!(layer.is_ok(), "the builtin layer must parse: {layer:?}");
+    }
+
+    // ── snapshot.* readers (Story 9.22) ───────────────────────────────────────
+
+    /// The builtin stack with `toml` layered on top as the user layer.
+    fn stack_with(toml: &str) -> StackedConfig {
+        let mut config = load_with(&bare_env(), None).expect("the bare stack loads");
+        config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("valid test TOML"));
+        config
+    }
+
+    #[test]
+    fn snapshot_knobs_default_to_the_cli_builtins() {
+        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert_eq!(snapshot_max_new_file_size(&config).expect("builtin size"), 1024 * 1024);
+        assert_eq!(snapshot_auto_track(&config).expect("builtin fileset"), "all()");
+    }
+
+    #[test]
+    fn snapshot_max_new_file_size_reads_integers_and_unit_strings() {
+        let plain = stack_with("snapshot.max-new-file-size = 10");
+        assert_eq!(snapshot_max_new_file_size(&plain).expect("an integer"), 10);
+        let unit = stack_with("snapshot.max-new-file-size = \"2KiB\"");
+        assert_eq!(snapshot_max_new_file_size(&unit).expect("a unit string"), 2048);
+    }
+
+    /// `0` is the CLI's "no limit" (`cli_util.rs:1621-1623`), not "refuse every new file".
+    #[test]
+    fn snapshot_max_new_file_size_zero_means_unlimited() {
+        let config = stack_with("snapshot.max-new-file-size = 0");
+        assert_eq!(snapshot_max_new_file_size(&config).expect("zero"), u64::MAX);
+    }
+
+    #[test]
+    fn wrong_typed_snapshot_knobs_refuse_naming_the_key() {
+        let size = stack_with("snapshot.max-new-file-size = \"lots\"");
+        let super::ConfigError::Load { reason } = snapshot_max_new_file_size(&size).expect_err("not a size");
+        assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
+        let track = stack_with("snapshot.auto-track = 1");
+        let super::ConfigError::Load { reason } = snapshot_auto_track(&track).expect_err("not a string");
+        assert!(reason.contains("snapshot.auto-track"), "{reason}");
     }
 
     // ── Platform config dir ───────────────────────────────────────────────────

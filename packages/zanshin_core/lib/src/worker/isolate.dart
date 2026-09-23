@@ -25,6 +25,7 @@ import '../ffi/events.dart'
         registerEventSink,
         unregisterEventSink;
 import '../ffi/file.dart' as repo_ffi_file;
+import '../ffi/file_ops.dart' as repo_ffi_file_ops;
 import '../ffi/git.dart' as repo_ffi_git;
 import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
@@ -1308,6 +1309,62 @@ class ZanshinWorker {
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
+
+  /// Start tracking the working-copy paths matching [paths], in the repo
+  /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
+  ///
+  /// [paths] are repo-relative PREFIXES; [includeIgnored] is the CLI's
+  /// `--include-ignored`. An operation (`track paths`) is ALWAYS written; `@` is
+  /// unchanged until the next snapshot (jj's GH #8298).
+  ///
+  /// Sends a [FileTrackCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<TrackResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if any path contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.concurrent_working_copy`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.fileTrack].
+  Future<repo_ffi_file_ops.TrackResult> fileTrack(
+    int handleId,
+    List<String> paths, {
+    bool includeIgnored = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(paths, 'paths');
+    final Uint8List bytes = await send(
+      FileTrackCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        paths: paths,
+        includeIgnored: includeIgnored,
+      ),
+    );
+    return repo_ffi_file_ops.decodeTrackResultEnvelopeInternal(bytes);
+  }
+
+  /// Stop tracking the working-copy paths matching [paths], in the repo
+  /// identified by [handleId] (Story 9.22) — the CLI's `jj file untrack`.
+  ///
+  /// Every matched path must already be ignored; otherwise the call refuses with
+  /// `jj.path_not_ignored` (every offender in the exception's context, one per
+  /// line) and writes nothing.
+  ///
+  /// Sends a [FileUntrackCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<UntrackResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if any path contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors. Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.fileUntrack].
+  Future<repo_ffi_file_ops.UntrackResult> fileUntrack(int handleId, List<String> paths) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(paths, 'paths');
+    final Uint8List bytes = await send(
+      FileUntrackCommand(commandId: _correlator.allocateId(), handleId: handleId, paths: paths),
+    );
+    return repo_ffi_file_ops.decodeUntrackResultEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1836,6 +1893,28 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkDelete(raw, names);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileTrackCommand(:final int handleId, :final List<String> paths, :final bool includeIgnored):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileTrackCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file_ops.zanshinFileTrack(raw, paths, includeIgnored: includeIgnored);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileUntrackCommand(:final int handleId, :final List<String> paths):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileUntrackCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file_ops.zanshinFileUntrack(raw, paths);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

@@ -812,6 +812,52 @@ final class BookmarkDeleteCommand extends WorkerCommand {
   final List<String> names;
 }
 
+/// Start tracking the working-copy paths matching [paths], in the repo
+/// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinFileTrack(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<TrackResult>` bytes.
+final class FileTrackCommand extends WorkerCommand {
+  const FileTrackCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.paths,
+    required this.includeIgnored,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Repo-relative PREFIXES; an empty list is refused (`jj.invalid_input`).
+  final List<String> paths;
+
+  /// The CLI's `--include-ignored`: track matching files even when ignored or
+  /// larger than `snapshot.max-new-file-size`.
+  final bool includeIgnored;
+}
+
+/// Stop tracking the working-copy paths matching [paths], in the repo
+/// identified by [handleId] (Story 9.22) — the CLI's `jj file untrack`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinFileUntrack(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<UntrackResult>` bytes.
+final class FileUntrackCommand extends WorkerCommand {
+  const FileUntrackCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  final int handleId;
+
+  /// Repo-relative PREFIXES, each of which must already be ignored; an empty
+  /// list is refused (`jj.invalid_input`).
+  final List<String> paths;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each
