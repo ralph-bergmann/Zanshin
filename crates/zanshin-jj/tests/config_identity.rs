@@ -30,7 +30,9 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture, FixtureHandle};
-use zanshin_jj::{convert_colocated, resolve_revset, Backend, ChangeId, IdentityMissing, MutateError, Repo, RepoError};
+use zanshin_jj::{
+    convert_colocated, convert_import, resolve_revset, Backend, ChangeId, IdentityMissing, MutateError, Repo, RepoError,
+};
 
 /// Sets (or, for `None`, removes) one process environment variable.
 fn set_env(name: &str, value: Option<&str>) {
@@ -401,14 +403,53 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
 }
 
 /// Creation refuses a broken stack BEFORE writing; a wrong-typed `git.*` key the git backend
-/// reads while creating is a config fault too (init AND conversion); a created repo is
-/// re-opened with its full stack. Leaves `JJ_CONFIG` on `user_file`.
+/// reads while creating is a config fault too (init AND both conversions); creation resolves
+/// the stack for the NEW workspace's paths, so a `--when.repositories` scope applies to what
+/// it writes (the CLI's `settings_for_new_workspace`); a created repo is re-opened with its
+/// full stack. Leaves `JJ_CONFIG` on `user_file`.
 fn creation_paths(tmp: &Path, user_file: &Path) {
     let fresh = tmp.join("fresh");
     fs::create_dir_all(&fresh).unwrap();
+    set_jj_config(&config_file(tmp, "wrong-type-init.toml", "[user]\nname = 1\n"));
     let err = Repo::init(&fresh, None).expect_err("init must refuse a broken stack");
-    assert!(matches!(&err, RepoError::Config { .. }), "unexpected error: {err:?}");
+    assert!(
+        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+        "unexpected error: {err:?}"
+    );
     assert!(!fresh.join(".jj").exists(), "a refused init writes nothing");
+
+    // A per-directory identity: the scope matches only the NEW workspace's own paths.
+    let scoped_root = fs::canonicalize(tmp).unwrap().join("scoped");
+    set_jj_config(&config_file(
+        tmp,
+        "scoped-repos.toml",
+        &format!(
+            "[user]\nname = \"Creator\"\nemail = \"unscoped@example.com\"\n\n[[--scope]]\n--when.repositories = [{:?}]\n[--scope.user]\nemail = \"scoped@example.com\"\n",
+            scoped_root.to_str().expect("utf-8 temp path")
+        ),
+    ));
+    let scoped_init = scoped_root.join("init");
+    fs::create_dir_all(&scoped_init).unwrap();
+    Repo::init(&scoped_init, None).expect("init with a scoped stack");
+    assert_eq!(
+        author(&scoped_init),
+        pair("Creator", "scoped@example.com"),
+        "init's working-copy commit is signed with the scope of its own path"
+    );
+    let scoped_git = scoped_root.join("git");
+    fs::create_dir_all(&scoped_git).unwrap();
+    let status = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&scoped_git)
+        .status()
+        .expect("git init spawns");
+    assert!(status.success());
+    convert_colocated(&scoped_git).expect("conversion with a scoped stack");
+    assert_eq!(
+        author(&scoped_git),
+        pair("Creator", "scoped@example.com"),
+        "the conversion's working-copy commit is signed with the scope of its own path"
+    );
 
     set_jj_config(&config_file(
         tmp,
@@ -437,6 +478,16 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     assert!(
         !git_repo.path().join(".jj").exists(),
         "the failed conversion rolled back"
+    );
+    let import_dest = tmp.join("import-dest");
+    let err = convert_import(git_repo.path(), &import_dest).expect_err("a wrong-typed git key must refuse the import");
+    assert!(
+        matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        "unexpected error: {err:?}"
+    );
+    assert!(
+        !import_dest.exists(),
+        "the destination created for the import is rolled back"
     );
 
     set_jj_config(user_file);

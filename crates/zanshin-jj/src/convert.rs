@@ -121,9 +121,10 @@ use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 ///   resolved to an absolute path (the same answer the not-found case gives).
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error during
 ///   conversion; the partially-created `.jj/` is rolled back.
-/// - [`RepoError::Config`] — the user-level jj config stack the workspace would be created
-///   with cannot be read; refused before anything is written. The converted workspace is then
-///   opened as by [`Repo::open`], whose errors apply too.
+/// - [`RepoError::Config`] — the jj config stack the workspace would be created with (resolved
+///   for its own paths, as the CLI's `settings_for_new_workspace`) cannot be read; refused
+///   before anything is written. The converted workspace is then opened as by [`Repo::open`],
+///   whose errors apply too.
 pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
@@ -132,7 +133,6 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    let settings = config::user_settings_for_new_workspace()?;
     // WHY canonicalize: `convert_into` reaches jj-lib's `init_with_factories`, which records the
     // new workspace's root in the store RELATIVE to the RAW path it was handed. `relative_path`
     // counts those `..` segments lexically, while every read finishes its join with
@@ -143,6 +143,8 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     // case. The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
     // spelling in the payload.
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
+    // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
+    let settings = config::user_settings_for_new_workspace(&root)?;
     match convert_into(&settings, &root) {
         Ok(()) => Repo::open(&root),
         Err(e) => {
@@ -199,7 +201,9 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
 ///   `workspace_path` cannot be created or resolved; the partially-created destination is
 ///   rolled back.
-/// - [`RepoError::Config`] — as for [`convert_colocated`].
+/// - [`RepoError::Config`] — as for [`convert_colocated`], except that the stack is resolved
+///   once the destination exists (the CLI's order), so a destination created for the call is
+///   rolled back with it.
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
@@ -232,9 +236,8 @@ pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Rep
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    let settings = config::user_settings_for_new_workspace()?;
     let created_dir = !workspace_path.exists();
-    match import_into(&settings, git_repo_path, workspace_path) {
+    match import_into(git_repo_path, workspace_path) {
         Ok(()) => Repo::open(workspace_path),
         Err(e) => {
             if created_dir {
@@ -432,7 +435,7 @@ fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
 /// Ports `do_init`'s `GitInitMode::External` branch (jj CLI @ v0.44.0), non-colocated in the
 /// intended two-path use. Creates and populates the jj workspace at `workspace_path`. On
 /// `Err`, the caller rolls back the destination.
-fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoError> {
+fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
     // canonicalize has to follow the directory creation. It has to happen at all because
@@ -440,12 +443,16 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
     // every read joins onto the canonical `Workspace::repo_path()` — see `Repo::open`.
     let workspace_path =
         std::fs::canonicalize(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    // The settings are resolved for the canonical destination, AFTER it exists — the CLI's
+    // order (`create_or_reuse_dir` → canonicalize → `settings_for_new_workspace`); a config
+    // fault here is rolled back with the directory.
+    let settings = config::user_settings_for_new_workspace(&workspace_path)?;
 
     let resolved = resolve_git_repo_path(git_repo_path);
 
     // Open the existing repo as the backing store (gix::open — non-destructive).
     let (mut workspace, repo) = pollster::block_on(jj_lib::workspace::Workspace::init_external_git(
-        settings,
+        &settings,
         &workspace_path,
         &resolved,
     ))

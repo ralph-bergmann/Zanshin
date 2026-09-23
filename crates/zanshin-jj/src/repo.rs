@@ -1766,29 +1766,31 @@ impl Repo {
     /// # Errors
     ///
     /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
-    /// `path` cannot be resolved (it must already exist); `reason` then names it.
-    /// [`RepoError::Config`] if the user-level jj config stack cannot be read — refused BEFORE
-    /// anything is written. Once created, the workspace is re-opened as by [`Repo::open`], so
-    /// that call's errors apply too.
+    /// `path` cannot be resolved (it must already exist); `reason` then names it. Returns
+    /// [`RepoError::Config`] if the jj config stack the workspace would be created with cannot
+    /// be read — refused BEFORE anything is written. Once created, the workspace is re-opened
+    /// as by [`Repo::open`], so that call's errors apply too.
     ///
-    /// The workspace is CREATED with the settings of the stack up to the user level (no repo or
-    /// workspace layer exists yet); the returned handle then carries the full stack — what the
-    /// CLI's next invocation would use.
+    /// The workspace is CREATED with the stack resolved for its own paths, as the CLI's
+    /// `settings_for_new_workspace` does (no repo or workspace config file exists yet, but
+    /// `--when.repositories` / `--when.workspaces` scopes already apply); the returned handle
+    /// then carries the full stack — what the CLI's next invocation would use.
     ///
     /// `path` must already exist — this verb has never created it (jj-lib's `create_jj_dir` uses
     /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
     /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
-        let settings = crate::config::user_settings_for_new_workspace()?;
         // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
         // `init_with_factories`, recording the new root relative to the RAW path it was handed
         // while `Workspace::repo_path()` — the base every read joins onto — is canonical. A
         // symlinked caller path (macOS `/var/folders/…`) therefore yields a workspace that
         // cannot resolve its own root. Doing it after the call would be too late. See
-        // `Repo::open` for the full note.
+        // `Repo::open` for the full note. The settings are resolved for that canonical root,
+        // as the CLI resolves them for its canonicalized destination.
         let root = std::fs::canonicalize(path).map_err(|e| RepoError::InitFailed {
             reason: format!("{}: {e}", path.display()),
         })?;
+        let settings = crate::config::user_settings_for_new_workspace(&root)?;
         let (_workspace, _repo) = match backend {
             // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
             // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
@@ -1822,24 +1824,25 @@ impl Repo {
     /// Returns [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
     /// registration, fetch, or import fails.
     ///
-    /// Returns [`RepoError::Config`] when the effective jj config cannot be read — the
-    /// user-level stack the workspace is created with (refused BEFORE anything is written), or
+    /// Returns [`RepoError::Config`] when the effective jj config cannot be read — the stack
+    /// the workspace is created with (refused BEFORE anything is written), or
     /// the new workspace's stack the clone's import options are built from, including a
     /// non-boolean `git.abandon-unreachable-commits` (FR-JJ-17). `reason` names the offending
     /// KEY for a wrong-typed value, the offending FILE PATH for a config file that is
     /// unreadable or not valid TOML. A config fault after the workspace was created rolls the
     /// `.jj/` back like any other clone failure.
     ///
-    /// Like [`Repo::init`], the clone runs with the user-level settings and the returned handle
-    /// is re-opened as by [`Repo::open`] — that call's errors apply too.
+    /// Like [`Repo::init`], the clone runs with the stack resolved for the new workspace's
+    /// paths and the returned handle is re-opened as by [`Repo::open`] — that call's errors
+    /// apply too.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
-        let settings = crate::config::user_settings_for_new_workspace()?;
         // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
         // `Repo::init`, so a symlinked target would record a workspace-store entry the clone's
         // own reads cannot resolve. See `Repo::open` for the full note.
         let target_path = std::fs::canonicalize(target_path).map_err(|e| RepoError::CloneFailed {
             reason: format!("{}: {e}", target_path.display()),
         })?;
+        let settings = crate::config::user_settings_for_new_workspace(&target_path)?;
 
         // The re-open runs INSIDE the rolled-back result: any failure after creation rolls `.jj/` back.
         Self::clone_into(&settings, url, &target_path)

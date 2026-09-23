@@ -67,7 +67,9 @@ pub fn extract_fixture(name: &str) -> Result<FixtureHandle, Box<dyn std::error::
 
 /// The environment every test binary pins so no developer config leaks in: no user/system
 /// config (`JJ_CONFIG=""`), no global git config, and a fixed identity + operation metadata
-/// through jj's own `EnvOverrides` variables — exactly what jj's own test harness does.
+/// through jj's own `EnvOverrides` variables — the identity half of what jj's own test harness
+/// pins (it also fixes `JJ_TIMESTAMP`, `JJ_OP_TIMESTAMP`, `JJ_RANDOMNESS_SEED` and
+/// `JJ_TZ_OFFSET_MINS`, which this suite leaves to the process environment).
 pub const TEST_ENV: [(&str, &str); 6] = [
     ("JJ_CONFIG", ""),
     ("GIT_CONFIG_GLOBAL", ""),

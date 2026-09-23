@@ -60,6 +60,13 @@ deferred:
     location: >-
       pubspec.lock
     severity: low
+  - summary: >-
+      Clone, init and both converts never report identity_missing, although the CLI warns after the creation transactions it finishes (git clone's fetch, git init's head import).
+    evidence: |-
+      The CLI warning sits in finish_transaction, reached by jj git clone via tx.finish(ui, "fetch from git remote into empty repo") (cli/src/commands/git/clone.rs:457 @ v0.44.0, also :314/:352) and by jj git init on an existing Git repo via tx.finish(ui, "import git head") (init.rs:268). zanshin_repo_clone/_init/_convert return only a RepoHandle, so a GUI clone with an empty identity (the typical first action on a new machine) writes its ops and @ commit with the empty identity and the UI learns it only on the first later mutation. Fix needs a decision: new identity_missing surface on the handle-producing results (FFI + Dart), or the UI calls Story 9.28's config_get user.name/user.email after creation. Follow-up review 2026-09-23 (BH + ECH).
+    location: >-
+      crates/zanshin-jj/src/repo.rs::Repo::clone, crates/zanshin-jj/src/repo.rs::Repo::init, crates/zanshin-jj/src/convert.rs::convert_colocated
+    severity: medium
 ---
 
 <intent-contract>
@@ -212,6 +219,45 @@ Oracle: `git -C ../jj show v0.44.0:<path>` (CLI), `~/.cargo/registry/src/*/jj-li
   - `[low]` `[reject]` IA: clone/convert jj.config_error, the wrong-type row and the mutation-wrapper emitters not exercised at the FFI surface — same as the BH FFI row: one shared mapper per error type, unit-tested, with Rust-level witnesses.
   - `[low]` `[patch]` IA: Dart nested decodes untested — same group as the BH Dart row; patched.
 
+### 2026-09-23 — Review pass (follow-up; diff = a3d4d91 + fc362ce only, every finding verified against HEAD after 9.22/9.26/9.28)
+- verdicts: 35 findings — high 1, medium 3, low 22, false 9, maybe-false 0
+- findings:
+  - `[medium]` `[defer]` BH: clone/init/convert never report identity_missing although the CLI warns after clone's fetch tx.finish and git init's head-import tx.finish — verified (clone.rs:457/:314/:352, init.rs:268 @ v0.44.0); the fix needs new surface on the handle-producing results or a UI-side config_get, a product decision → deferred (frontmatter + deferred-work.md "Surfaced 2026-09-23 — Story 9.27 follow-up review").
+  - `[low]` `[reject]` BH: reload_workspace bypasses load_effective (pre-write settings, stale fingerprint, Backend mapping) — carried: same claim as the first pass's reload_workspace row and the code still reads so (repo.rs:890-900); its settings are unchanged from the last successful load, so no new config fault can surface there.
+  - `[false]` `[reject]` BH: nothing enforces refresh-first, a new verb may forget it — at HEAD every verb enters through Repo::precondition, which runs refresh_settings first (repo.rs:226-229, Story 9.26 fadbbfc), and config_identity.rs's 16-verb phase matches MutateError::Precondition(Config), so a verb bypassing the gate fails it.
+  - `[low]` `[reject]` BH: load_effective takes two ConfigEnv snapshots — carried (first pass's from_env-per-verb row); the consistency part is not a defect: the fingerprint is taken first, so a change between the snapshots costs one redundant reload, never a missed one.
+  - `[low]` `[reject]` BH: reordered tests now fail inside the pre-verb refresh, so the verbs' own git.*/guard config reads are untested — at HEAD the verbs read ctx.config loaded by precondition (git.rs:327, remotes.rs:260); their map_err arms are defensive (jj-lib reads git.* while loading, before them) and unreachable in practice; adding fault-only-the-verb-reads fixtures is more than a direct correction.
+  - `[low]` `[reject]` BH: the four identity pins are hand-copied into ~40 ENV_GUARDs — carried (first pass's ENV_GUARD row).
+  - `[low]` `[patch]` BH: TEST_ENV's doc claims "exactly what jj's own test harness does" while jj also pins JJ_TIMESTAMP/JJ_OP_TIMESTAMP/JJ_RANDOMNESS_SEED/JJ_TZ_OFFSET_MINS — patched: crates/test-helpers/src/lib.rs doc now says it is the identity half and names what is left to the environment.
+  - `[low]` `[reject]` BH: the fingerprint compares only mtime+len — carried (first pass's mtime-granularity rows).
+  - `[low]` `[patch]` BH: clone/convert config_error untested at FFI, clone pre-write refusal untested, convert_import config fault + rollback untested — FFI part carried (shared map_repo_err, unit-tested); clone pre-write shares init's witnessed first line; convert_import part patched with VG3's row (config_identity.rs creation_paths).
+  - `[low]` `[patch]` BH: config_identity.rs phases depend on leftover global state (init's broken-stack refusal worked only because JJ_CONFIG still pointed at wrong-type.toml) — patched: creation_paths now sets its own wrong-typed file and asserts the key; the identity phases are documented as one sequential walk (single-test-binary rule).
+  - `[low]` `[patch]` BH: hand-offs to other stories live only in deferred-work.md — at HEAD 9.26 and 9.28 already resolved theirs (deferred-work.md stamps); patched: the init .jj/ rollback hand-off is mirrored into sprint-status.yaml's 9-20 row. describe's no-change op stays in the carried medium deferral.
+  - `[low]` `[patch]` BH: Repo::init's # Errors doc has a verb-less sentence — patched ("Returns [`RepoError::Config`] …").
+  - `[low]` `[patch]` ECH: convert_colocated/convert_import re-open outside the rollback; a repo-scoped fault invisible to creation leaves .jj/ — grouped with the ECH creation-scope row (same root cause: creation resolved with no repo/workspace path); the root-cause patch makes creation see the same scopes, so the fault now refuses before any write; the residual trigger (stack edited between creation and re-open) is a race.
+  - `[low]` `[patch]` ECH: Repo::init re-open failure leaves a fresh .jj/ on a --when.repositories-scoped fault — not carried (the first pass's init row assumed only a stack change could trigger it); same group and patch as above.
+  - `[low]` `[reject]` ECH: an unknown signing.backend (SignInitError::UnknownBackend) maps to jj.jj_lib_error, not jj.config_error — real but both refuse with jj-lib's message naming the backend; typo-only, and the fix adds a match arm plus a test to keep config.rs at 100%.
+  - `[low]` `[reject]` ECH: fingerprint misses a same-length edit within one mtime tick — carried.
+  - `[high]` `[patch]` ECH: creation settings resolve with repo_path/workspace_path None, while the CLI's settings_for_new_workspace (cli_util.rs:372-388 @ v0.44.0, used by git init :236 and git clone :332) resolves for <root>/.jj/repo and <root> — verified: a --when.repositories per-directory identity (the documented work/personal pattern) is ignored for init's @ commit, the clone's @ commit and a conversion's snapshot commits; jj-lib keeps the author email when @ is later rewritten (commit_builder.rs:237-255), so the user's first real commit is pushed with the wrong email — a CLI-vs-Zanshin difference on disk. Patched (adaptation 3, local): config::user_settings_for_new_workspace(workspace_root) resolves with the new workspace's paths (secure layers find no file yet, as the CLI's reload); init/clone/convert_colocated derive it after canonicalizing their root, convert_import after creating + canonicalizing the destination (the CLI's order; a fault there rolls the created dir back); docs (repo.rs, convert.rs, ffi-abi.md, rust-error-codes.md) updated; witness config_identity.rs creation_paths: a --when.repositories-scoped email signs init's and convert_colocated's @ commit (mutation-checked: fails with the old None resolution).
+  - `[medium]` `[defer]` ECH: clone/convert return no identity_missing fact where the CLI warns — same group as the BH identity row; deferred.
+  - `[false]` `[reject]` VG: every_mutating_verb_refreshes_first cannot tell a missing refresh from 7 verbs' own config reads — at HEAD (fadbbfc) the refresh lives once in Repo::precondition, which identity_follows_the_user_stack witnesses (a dropped refresh keeps the old author), and a verb bypassing precondition returns MutateError::Config instead of the asserted MutateError::Precondition(Config).
+  - `[false]` `[reject]` VG: identity_missing unasserted for edit/abandon/restore/absorb/undo/git_fetch literals — at HEAD (fadbbfc) there are no per-verb literals: every committed result goes through mutate.rs::mutation_result (identity_missing(finish.repo.settings()), mutate.rs:698), witnessed via new_change, bookmark_create and describe.
+  - `[low]` `[patch]` VG: convert_import's creation_error → RepoError::Config mapping is untested — patched: creation_paths asserts convert_import with a wrong-typed git.abandon-unreachable-commits refuses as Config naming the key and removes the destination it created.
+  - `[low]` `[reject]` VG: the non-UTF-8 JJ_CONFIG read has no test — a non-UTF-8 JJ_CONFIG is practically never set, and a safe test needs from_env split into an injectable constructor (a refactor, not a direct correction).
+  - `[low]` `[reject]` VG (other): fingerprint mtime+len — carried.
+  - `[false]` `[reject]` IA: the oracle is a jj-lib store read, not the jj binary, and an external `jj config set` is simulated by fs::write — the store is exactly what jj log / jj op log read, and jj config set writes the same file the fingerprint stats; no bad outcome.
+  - `[low]` `[reject]` IA: Dart identityMissing is only decoded from hand-built buffers, no worker round-trip — the Rust envelope side is witnessed end-to-end (repo_config_ffi.rs) on the same schema the Dart decoder is tested against; a round-trip adds no new failure mode worth the harness.
+  - `[medium]` `[defer]` IA: git_fetch/describe report identity_missing after a no-change call — carried (first pass's deferral; mutate.rs:575 still commits without has_changes).
+  - `[false]` `[reject]` IA: read verbs do not refresh (A2 reading) — at HEAD every read verb runs Repo::precondition → refresh_settings (repo.rs:290-408, fadbbfc); the first pass's deferral is stamped resolved in deferred-work.md.
+  - `[false]` `[reject]` IA: Watchman asserted at settings level, not TreeState — carried.
+  - `[low]` `[reject]` IA: wrong-typed load-time keys now refuse the open and reordered tests only reach the refresh — same group as the BH reordered-tests row; the open refusal is CLI parity and 9.28 (fe54820) made the config verbs handle-less.
+  - `[low]` `[reject]` IA: scoped-table non-match covered only with no hostname, not a different one — the matcher is jj-lib's own (config_resolver.rs matches_hostname); Zanshin only supplies whoami::hostname(), witnessed by the matching case.
+  - `[low]` `[reject]` IA: "re-opened with the full stack" witnessed for init only — clone and both converts end in the same explicit Repo::open call; a per-verb witness adds nothing a reviewer cannot read.
+  - `[low]` `[defer]` IA: init leaves .jj/ on a git-backend config fault — carried (first pass's 9.20 deferral; now also mirrored into sprint-status 9-20).
+  - `[false]` `[reject]` IA: changes beyond the intent's surface (JJ_RANDOMNESS_SEED seeds config-id, no system layer with JJ_CONFIG set, var vs var_os, clone fault code, required Dart ctor param) — each is CLI parity (config.rs:411-417, resolve_system, cli/src/config.rs:386) or intent-mandated (clone is a named emitter); nothing in app/ constructs MutationResult.
+  - `[false]` `[reject]` IA: test_settings() is not a full stack — it only signs the test oracle's own loads, with the same EnvOverrides values Zanshin reads; no test compares against a full-stack value through it.
+  - `[false]` `[reject]` IA: Makefile pins reach flutter/dart/coverage runs beyond the intent's surface — the intent requires machine-independent gates, and those runs load the cdylib through the same stack.
+
 ## Design Notes
 
 **Ask-First decisions (Ralph, 2026-09-23)** — resolved, not intent gaps:
@@ -272,3 +318,26 @@ Blocking condition: none
 **Verification.** Gate run step by step with `cargo make --allow-private <task>` after the patches: test-cargo, test-clippy, test-fmt, test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene, test-dart-analyze, test-dart-format, test-core(+analyze/format), test-shell(+analyze/format), test-shell-pi(+analyze/format), test-shell-macos(+analyze/format), test-settings(+analyze/format) all PASS; coverage PASS (overall 99.30%, `repo.rs` 97.08, `config.rs`/`convert.rs`/`revset.rs`/`envelope.rs`/ffi `repo.rs` 100, `mutate.rs` ≥ 97.91, every extern covered); test-flutter FAIL only on the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests, proven red at the baseline with all changes stashed. `cargo make codegen` outputs committed.
 
 **Residual risks.** Read verbs use settings from the last open/mutation for jj-lib-internal keys until 9.26; a repo with a wrong-typed load-time key cannot be opened until fixed (CLI parity); Zanshin launched from Finder sees launchd's environment.
+
+### Follow-up review pass — 2026-09-23
+
+Status: done. Blocking condition: none. Review diff = this story's own range (`677dbf5..fc362ce`, generated files and this spec excluded); every finding verified against HEAD after Stories 9.22/9.26/9.28, no committed code reverted.
+
+**Summary of the change in this pass.** Creation paths now resolve the config stack for the NEW workspace's paths, exactly like the CLI's `settings_for_new_workspace` (`cli/src/cli_util.rs:372-388` @ v0.44.0): `config::user_settings_for_new_workspace(workspace_root)` builds the stack with `<root>/.jj/repo` + `<root>` (the secure layers find no file yet, as the CLI's reload finds none), so a `--when.repositories` / `--when.workspaces` per-directory identity signs init's and clone's `@` commit and a conversion's snapshot commits. `init`/`clone`/`convert_colocated` derive it right after canonicalizing their root (still before any write); `convert_import` after creating and canonicalizing the destination (the CLI's order; a fault rolls the created directory back).
+
+**Files changed.**
+- `crates/zanshin-jj/src/config.rs` — `user_settings_for_new_workspace(workspace_root)`; `load_with` doc (None = no workspace, Story 9.28's handle-less verbs).
+- `crates/zanshin-jj/src/repo.rs` — init/clone derive creation settings after canonicalize; `init` `# Errors` sentence fixed; docs.
+- `crates/zanshin-jj/src/convert.rs` — both conversions resolve for the destination; `import_into` derives the settings itself; docs.
+- `crates/zanshin-jj/tests/config_identity.rs` — `creation_paths`: explicit wrong-typed init stack naming `user.name`; `--when.repositories`-scoped email on init's and `convert_colocated`'s `@` commit (mutation-checked: fails with the old resolution); `convert_import` wrong-typed git key → `Config` + destination rolled back.
+- `crates/test-helpers/src/lib.rs` — `TEST_ENV` doc no longer claims to match jj's harness exactly.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — creation-stack wording.
+- `_bmad-output/implementation-artifacts/{sprint-status.yaml,deferred-work.md}` — 9-20 hand-off note, 9-27 follow-up note, dated deferral section.
+
+**Review findings.** 35 (high 1, medium 3, low 22, false 9). Patched: 1 high entry (creation scope resolution; its two low re-open rows grouped under it), 5 low entries (TEST_ENV doc, convert_import config-fault witness, explicit phase state in `creation_paths`, 9-20 hand-off in sprint-status, `init` doc sentence). Deferred: 1 new medium (clone/init/convert report no `identity_missing` where the CLI warns — needs an FFI-surface or UI decision); 2 carried (no-change fetch/describe op, init `.jj/` rollback → 9.20). Rejected: every `false` and `low`-reject row in the triage log above with its reason (9 false — 3 of them disproved by 9.26's `precondition` gate and `mutation_result` funnel; carried rejects for `reload_workspace`, env snapshots, ENV_GUARD copies, mtime granularity).
+
+**Follow-up review recommended: true.** Patched by verdict: high 1, low 5. Unverified risk: the new creation-path resolution changes the order of `convert_import` (settings now derived after the destination is created, so a user-level config fault creates and removes the directory instead of refusing before any write) and `init`/`clone` (a missing path AND a broken stack now report the path error first) — the witnesses cover the scoped identity and the git-key fault, not those two orderings.
+
+**Verification.** `cargo make --allow-private <task>` one by one after the patches: test-cargo PASS, test-clippy PASS, test-fmt PASS (after `cargo fmt`), test-flutter FAIL (only the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests), test-dart-analyze, test-dart-format, test-core(+analyze/format), test-shell(+analyze/format), test-shell-pi(+analyze/format), test-shell-macos(+analyze/format), test-settings(+analyze/format), test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene all PASS; coverage PASS (overall 99.38%, no baseline change). `pubspec.lock` drift reverted.
+
+**Residual risks.** Clone/init/convert still give the UI no identity fact (deferred); no-change fetch/describe still write an op (carried).
