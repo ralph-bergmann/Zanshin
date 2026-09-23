@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 18;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 27;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 19] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 28] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -43,6 +43,15 @@ pub mod zanshin {
             RequestKind::BookmarkDelete,
             RequestKind::FileTrack,
             RequestKind::FileUntrack,
+            RequestKind::ConfigList,
+            RequestKind::ConfigGet,
+            RequestKind::ConfigPath,
+            RequestKind::ConfigSet,
+            RequestKind::ConfigUnset,
+            RequestKind::ConfigFileRead,
+            RequestKind::ConfigFileWrite,
+            RequestKind::ConfigGcList,
+            RequestKind::ConfigGcDelete,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -56,7 +65,7 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
+        /// named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -88,9 +97,18 @@ pub mod zanshin {
             pub const BookmarkDelete: Self = Self(16);
             pub const FileTrack: Self = Self(17);
             pub const FileUntrack: Self = Self(18);
+            pub const ConfigList: Self = Self(19);
+            pub const ConfigGet: Self = Self(20);
+            pub const ConfigPath: Self = Self(21);
+            pub const ConfigSet: Self = Self(22);
+            pub const ConfigUnset: Self = Self(23);
+            pub const ConfigFileRead: Self = Self(24);
+            pub const ConfigFileWrite: Self = Self(25);
+            pub const ConfigGcList: Self = Self(26);
+            pub const ConfigGcDelete: Self = Self(27);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 18;
+            pub const ENUM_MAX: u8 = 27;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -111,6 +129,15 @@ pub mod zanshin {
                 Self::BookmarkDelete,
                 Self::FileTrack,
                 Self::FileUntrack,
+                Self::ConfigList,
+                Self::ConfigGet,
+                Self::ConfigPath,
+                Self::ConfigSet,
+                Self::ConfigUnset,
+                Self::ConfigFileRead,
+                Self::ConfigFileWrite,
+                Self::ConfigGcList,
+                Self::ConfigGcDelete,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -134,6 +161,15 @@ pub mod zanshin {
                     Self::BookmarkDelete => Some("BookmarkDelete"),
                     Self::FileTrack => Some("FileTrack"),
                     Self::FileUntrack => Some("FileUntrack"),
+                    Self::ConfigList => Some("ConfigList"),
+                    Self::ConfigGet => Some("ConfigGet"),
+                    Self::ConfigPath => Some("ConfigPath"),
+                    Self::ConfigSet => Some("ConfigSet"),
+                    Self::ConfigUnset => Some("ConfigUnset"),
+                    Self::ConfigFileRead => Some("ConfigFileRead"),
+                    Self::ConfigFileWrite => Some("ConfigFileWrite"),
+                    Self::ConfigGcList => Some("ConfigGcList"),
+                    Self::ConfigGcDelete => Some("ConfigGcDelete"),
                     _ => None,
                 }
             }
@@ -288,6 +324,106 @@ pub mod zanshin {
         impl ::flatbuffers::SimpleToVerifyInSlice for RevisionRef {}
         pub struct RevisionRefUnionTableOffset {}
 
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_CONFIG_SCOPE: i8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_CONFIG_SCOPE: i8 = 3;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_CONFIG_SCOPE: [ConfigScope; 4] = [
+            ConfigScope::Unspecified,
+            ConfigScope::User,
+            ConfigScope::Repo,
+            ConfigScope::Workspace,
+        ];
+
+        /// The CLI's `--user` / `--repo` / `--workspace`. `Unspecified = 0` is the absent-field default
+        /// and is refused (`jj.invalid_input`) wherever a scope is required.
+        /// Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ConfigScope(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl ConfigScope {
+            pub const Unspecified: Self = Self(0);
+            pub const User: Self = Self(1);
+            pub const Repo: Self = Self(2);
+            pub const Workspace: Self = Self(3);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 3;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Unspecified, Self::User, Self::Repo, Self::Workspace];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::User => Some("User"),
+                    Self::Repo => Some("Repo"),
+                    Self::Workspace => Some("Workspace"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ConfigScope {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigScope {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ConfigScope {
+            type Output = ConfigScope;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ConfigScope {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ConfigScope {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ConfigScope {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -1170,18 +1306,134 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        pub const ENUM_MIN_CONFIG_VALUE_SOURCE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 27;
+        pub const ENUM_MAX_CONFIG_VALUE_SOURCE: i8 = 6;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 28] = [
+        pub const ENUM_VALUES_CONFIG_VALUE_SOURCE: [ConfigValueSource; 7] = [
+            ConfigValueSource::Default,
+            ConfigValueSource::System,
+            ConfigValueSource::EnvBase,
+            ConfigValueSource::User,
+            ConfigValueSource::Repo,
+            ConfigValueSource::Workspace,
+            ConfigValueSource::EnvOverrides,
+        ];
+
+        /// Which layer a listed value comes from — jj-lib's `ConfigSource` (Zanshin has no
+        /// command-line layer). Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ConfigValueSource(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl ConfigValueSource {
+            pub const Default: Self = Self(0);
+            pub const System: Self = Self(1);
+            pub const EnvBase: Self = Self(2);
+            pub const User: Self = Self(3);
+            pub const Repo: Self = Self(4);
+            pub const Workspace: Self = Self(5);
+            pub const EnvOverrides: Self = Self(6);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 6;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::Default,
+                Self::System,
+                Self::EnvBase,
+                Self::User,
+                Self::Repo,
+                Self::Workspace,
+                Self::EnvOverrides,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Default => Some("Default"),
+                    Self::System => Some("System"),
+                    Self::EnvBase => Some("EnvBase"),
+                    Self::User => Some("User"),
+                    Self::Repo => Some("Repo"),
+                    Self::Workspace => Some("Workspace"),
+                    Self::EnvOverrides => Some("EnvOverrides"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ConfigValueSource {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigValueSource {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ConfigValueSource {
+            type Output = ConfigValueSource;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ConfigValueSource {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ConfigValueSource {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ConfigValueSource {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PAYLOAD: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PAYLOAD: u8 = 35;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 36] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1210,6 +1462,14 @@ pub mod zanshin {
             Payload::WorkspaceRoot,
             Payload::TrackResult,
             Payload::UntrackResult,
+            Payload::ConfigListResult,
+            Payload::ConfigGetResult,
+            Payload::ConfigPathResult,
+            Payload::ConfigSetResult,
+            Payload::ConfigUnsetResult,
+            Payload::ConfigFileText,
+            Payload::ConfigGcList,
+            Payload::ConfigGcResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1245,9 +1505,17 @@ pub mod zanshin {
             pub const WorkspaceRoot: Self = Self(25);
             pub const TrackResult: Self = Self(26);
             pub const UntrackResult: Self = Self(27);
+            pub const ConfigListResult: Self = Self(28);
+            pub const ConfigGetResult: Self = Self(29);
+            pub const ConfigPathResult: Self = Self(30);
+            pub const ConfigSetResult: Self = Self(31);
+            pub const ConfigUnsetResult: Self = Self(32);
+            pub const ConfigFileText: Self = Self(33);
+            pub const ConfigGcList: Self = Self(34);
+            pub const ConfigGcResult: Self = Self(35);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 27;
+            pub const ENUM_MAX: u8 = 35;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1277,6 +1545,14 @@ pub mod zanshin {
                 Self::WorkspaceRoot,
                 Self::TrackResult,
                 Self::UntrackResult,
+                Self::ConfigListResult,
+                Self::ConfigGetResult,
+                Self::ConfigPathResult,
+                Self::ConfigSetResult,
+                Self::ConfigUnsetResult,
+                Self::ConfigFileText,
+                Self::ConfigGcList,
+                Self::ConfigGcResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1309,6 +1585,14 @@ pub mod zanshin {
                     Self::WorkspaceRoot => Some("WorkspaceRoot"),
                     Self::TrackResult => Some("TrackResult"),
                     Self::UntrackResult => Some("UntrackResult"),
+                    Self::ConfigListResult => Some("ConfigListResult"),
+                    Self::ConfigGetResult => Some("ConfigGetResult"),
+                    Self::ConfigPathResult => Some("ConfigPathResult"),
+                    Self::ConfigSetResult => Some("ConfigSetResult"),
+                    Self::ConfigUnsetResult => Some("ConfigUnsetResult"),
+                    Self::ConfigFileText => Some("ConfigFileText"),
+                    Self::ConfigGcList => Some("ConfigGcList"),
+                    Self::ConfigGcResult => Some("ConfigGcResult"),
                     _ => None,
                 }
             }
@@ -4758,6 +5042,1577 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("FileUntrackRequest");
                 ds.field("kind", &self.kind());
                 ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum ConfigListRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_list` — `jj config list [NAME] [--user|--repo|--workspace]
+        /// [--include-defaults] [--include-overridden]`. `name` ABSENT lists everything; `scope`
+        /// `Unspecified` means no scope flag. A scope together with `include_defaults` is refused with
+        /// `jj.invalid_input` (clap's conflict).
+        pub struct ConfigListRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigListRequest<'a> {
+            type Inner = ConfigListRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigListRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SCOPE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_INCLUDE_DEFAULTS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_INCLUDE_OVERRIDDEN: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigListRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigListRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigListRequest<'bldr>> {
+                let mut builder = ConfigListRequestBuilder::new(_fbb);
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_include_overridden(args.include_overridden);
+                builder.add_include_defaults(args.include_defaults);
+                builder.add_scope(args.scope);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigListRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigListRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigListRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn scope(&self) -> ConfigScope {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigScope>(ConfigListRequest::VT_SCOPE, Some(ConfigScope::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn include_defaults(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ConfigListRequest::VT_INCLUDE_DEFAULTS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn include_overridden(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ConfigListRequest::VT_INCLUDE_OVERRIDDEN, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigListRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<ConfigScope>("scope", Self::VT_SCOPE, false)?
+                    .visit_field::<bool>("include_defaults", Self::VT_INCLUDE_DEFAULTS, false)?
+                    .visit_field::<bool>("include_overridden", Self::VT_INCLUDE_OVERRIDDEN, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigListRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub scope: ConfigScope,
+            pub include_defaults: bool,
+            pub include_overridden: bool,
+        }
+        impl<'a> Default for ConfigListRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigListRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    name: None,
+                    scope: ConfigScope::Unspecified,
+                    include_defaults: false,
+                    include_overridden: false,
+                }
+            }
+        }
+
+        pub struct ConfigListRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigListRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigListRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigListRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigListRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_scope(&mut self, scope: ConfigScope) {
+                self.fbb_
+                    .push_slot::<ConfigScope>(ConfigListRequest::VT_SCOPE, scope, ConfigScope::Unspecified);
+            }
+            #[inline]
+            pub fn add_include_defaults(&mut self, include_defaults: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ConfigListRequest::VT_INCLUDE_DEFAULTS, include_defaults, false);
+            }
+            #[inline]
+            pub fn add_include_overridden(&mut self, include_overridden: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ConfigListRequest::VT_INCLUDE_OVERRIDDEN, include_overridden, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigListRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigListRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigListRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigListRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigListRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("name", &self.name());
+                ds.field("scope", &self.scope());
+                ds.field("include_defaults", &self.include_defaults());
+                ds.field("include_overridden", &self.include_overridden());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_get` — `jj config get NAME`; `name` is required.
+        pub struct ConfigGetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGetRequest<'a> {
+            type Inner = ConfigGetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGetRequest<'bldr>> {
+                let mut builder = ConfigGetRequestBuilder::new(_fbb);
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigGetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigGetRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigGetRequest::VT_NAME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigGetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    name: None,
+                }
+            }
+        }
+
+        pub struct ConfigGetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigGetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigGetRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGetRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("name", &self.name());
+                ds.finish()
+            }
+        }
+        pub enum ConfigPathRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_path` — `jj config path --user|--repo|--workspace`.
+        pub struct ConfigPathRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigPathRequest<'a> {
+            type Inner = ConfigPathRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigPathRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SCOPE: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigPathRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigPathRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigPathRequest<'bldr>> {
+                let mut builder = ConfigPathRequestBuilder::new(_fbb);
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_scope(args.scope);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigPathRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigPathRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn scope(&self) -> ConfigScope {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigScope>(ConfigPathRequest::VT_SCOPE, Some(ConfigScope::Unspecified))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigPathRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<ConfigScope>("scope", Self::VT_SCOPE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigPathRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub scope: ConfigScope,
+        }
+        impl<'a> Default for ConfigPathRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigPathRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    scope: ConfigScope::Unspecified,
+                }
+            }
+        }
+
+        pub struct ConfigPathRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigPathRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigPathRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigPathRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_scope(&mut self, scope: ConfigScope) {
+                self.fbb_
+                    .push_slot::<ConfigScope>(ConfigPathRequest::VT_SCOPE, scope, ConfigScope::Unspecified);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigPathRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigPathRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigPathRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigPathRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigPathRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("scope", &self.scope());
+                ds.finish()
+            }
+        }
+        pub enum ConfigSetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_set` — `jj config set --user|--repo|--workspace NAME VALUE`.
+        /// `value` is TOML text (a bare string when it does not look like TOML); `name` and `value` are
+        /// required. `path` ABSENT lets the verb pick the scope's single file; with several candidates
+        /// (the CLI's prompt) it must name one of them.
+        pub struct ConfigSetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigSetRequest<'a> {
+            type Inner = ConfigSetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigSetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SCOPE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigSetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigSetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigSetRequest<'bldr>> {
+                let mut builder = ConfigSetRequestBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_scope(args.scope);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigSetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigSetRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn scope(&self) -> ConfigScope {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigScope>(ConfigSetRequest::VT_SCOPE, Some(ConfigScope::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigSetRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn value(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigSetRequest::VT_VALUE, None)
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigSetRequest::VT_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigSetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<ConfigScope>("scope", Self::VT_SCOPE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigSetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub scope: ConfigScope,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigSetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigSetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    scope: ConfigScope::Unspecified,
+                    name: None,
+                    value: None,
+                    path: None,
+                }
+            }
+        }
+
+        pub struct ConfigSetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigSetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigSetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigSetRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_scope(&mut self, scope: ConfigScope) {
+                self.fbb_
+                    .push_slot::<ConfigScope>(ConfigSetRequest::VT_SCOPE, scope, ConfigScope::Unspecified);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigSetRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigSetRequest::VT_VALUE, value);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigSetRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigSetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigSetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigSetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigSetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigSetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("scope", &self.scope());
+                ds.field("name", &self.name());
+                ds.field("value", &self.value());
+                ds.field("path", &self.path());
+                ds.finish()
+            }
+        }
+        pub enum ConfigUnsetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_unset` — `jj config unset --user|--repo|--workspace NAME`;
+        /// `path` as in ConfigSetRequest.
+        pub struct ConfigUnsetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigUnsetRequest<'a> {
+            type Inner = ConfigUnsetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigUnsetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SCOPE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigUnsetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigUnsetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigUnsetRequest<'bldr>> {
+                let mut builder = ConfigUnsetRequestBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_scope(args.scope);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigUnsetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigUnsetRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn scope(&self) -> ConfigScope {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigScope>(ConfigUnsetRequest::VT_SCOPE, Some(ConfigScope::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigUnsetRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigUnsetRequest::VT_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigUnsetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<ConfigScope>("scope", Self::VT_SCOPE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigUnsetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub scope: ConfigScope,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigUnsetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigUnsetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    scope: ConfigScope::Unspecified,
+                    name: None,
+                    path: None,
+                }
+            }
+        }
+
+        pub struct ConfigUnsetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigUnsetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigUnsetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigUnsetRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_scope(&mut self, scope: ConfigScope) {
+                self.fbb_
+                    .push_slot::<ConfigScope>(ConfigUnsetRequest::VT_SCOPE, scope, ConfigScope::Unspecified);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigUnsetRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigUnsetRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigUnsetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigUnsetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigUnsetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigUnsetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigUnsetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("scope", &self.scope());
+                ds.field("name", &self.name());
+                ds.field("path", &self.path());
+                ds.finish()
+            }
+        }
+        pub enum ConfigFileReadRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_file_read` — `jj config edit`, editor half 1; `path` as in
+        /// ConfigSetRequest.
+        pub struct ConfigFileReadRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigFileReadRequest<'a> {
+            type Inner = ConfigFileReadRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigFileReadRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SCOPE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigFileReadRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigFileReadRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigFileReadRequest<'bldr>> {
+                let mut builder = ConfigFileReadRequestBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_scope(args.scope);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigFileReadRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileReadRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn scope(&self) -> ConfigScope {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigScope>(ConfigFileReadRequest::VT_SCOPE, Some(ConfigScope::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileReadRequest::VT_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigFileReadRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<ConfigScope>("scope", Self::VT_SCOPE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigFileReadRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub scope: ConfigScope,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigFileReadRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigFileReadRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    scope: ConfigScope::Unspecified,
+                    path: None,
+                }
+            }
+        }
+
+        pub struct ConfigFileReadRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigFileReadRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigFileReadRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigFileReadRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_scope(&mut self, scope: ConfigScope) {
+                self.fbb_
+                    .push_slot::<ConfigScope>(ConfigFileReadRequest::VT_SCOPE, scope, ConfigScope::Unspecified);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigFileReadRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ConfigFileReadRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigFileReadRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigFileReadRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigFileReadRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigFileReadRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("scope", &self.scope());
+                ds.field("path", &self.path());
+                ds.finish()
+            }
+        }
+        pub enum ConfigFileWriteRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_file_write` — `jj config edit`, editor half 2. `path` (a file
+        /// `zanshin_config_file_read` can return) and `text` are required.
+        pub struct ConfigFileWriteRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigFileWriteRequest<'a> {
+            type Inner = ConfigFileWriteRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigFileWriteRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TEXT: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigFileWriteRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigFileWriteRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigFileWriteRequest<'bldr>> {
+                let mut builder = ConfigFileWriteRequestBuilder::new(_fbb);
+                if let Some(x) = args.text {
+                    builder.add_text(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigFileWriteRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileWriteRequest::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileWriteRequest::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileWriteRequest::VT_TEXT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigFileWriteRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigFileWriteRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigFileWriteRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigFileWriteRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    workspace_root: None,
+                    path: None,
+                    text: None,
+                }
+            }
+        }
+
+        pub struct ConfigFileWriteRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigFileWriteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigFileWriteRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigFileWriteRequest::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigFileWriteRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigFileWriteRequest::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ConfigFileWriteRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigFileWriteRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigFileWriteRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigFileWriteRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigFileWriteRequest");
+                ds.field("kind", &self.kind());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("path", &self.path());
+                ds.field("text", &self.text());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGcListRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_gc_list` — `jj config gc`, half 1 (no arguments; the tag only).
+        pub struct ConfigGcListRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcListRequest<'a> {
+            type Inner = ConfigGcListRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGcListRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGcListRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGcListRequestArgs,
+            ) -> ::flatbuffers::WIPOffset<ConfigGcListRequest<'bldr>> {
+                let mut builder = ConfigGcListRequestBuilder::new(_fbb);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigGcListRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGcListRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGcListRequestArgs {
+            pub kind: RequestKind,
+        }
+        impl<'a> Default for ConfigGcListRequestArgs {
+            #[inline]
+            fn default() -> Self {
+                ConfigGcListRequestArgs {
+                    kind: RequestKind::Unspecified,
+                }
+            }
+        }
+
+        pub struct ConfigGcListRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGcListRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigGcListRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGcListRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGcListRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGcListRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGcListRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGcListRequest");
+                ds.field("kind", &self.kind());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGcDeleteRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_config_gc_delete` — `jj config gc`, half 2: the config directories to
+        /// delete (normally a subset of `zanshin_config_gc_list`'s answer).
+        pub struct ConfigGcDeleteRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcDeleteRequest<'a> {
+            type Inner = ConfigGcDeleteRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGcDeleteRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CONFIG_DIRS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGcDeleteRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGcDeleteRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGcDeleteRequest<'bldr>> {
+                let mut builder = ConfigGcDeleteRequestBuilder::new(_fbb);
+                if let Some(x) = args.config_dirs {
+                    builder.add_config_dirs(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ConfigGcDeleteRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn config_dirs(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ConfigGcDeleteRequest::VT_CONFIG_DIRS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGcDeleteRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("config_dirs", Self::VT_CONFIG_DIRS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGcDeleteRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub config_dirs:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for ConfigGcDeleteRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGcDeleteRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    config_dirs: None,
+                }
+            }
+        }
+
+        pub struct ConfigGcDeleteRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGcDeleteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ConfigGcDeleteRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_config_dirs(
+                &mut self,
+                config_dirs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ConfigGcDeleteRequest::VT_CONFIG_DIRS,
+                    config_dirs,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ConfigGcDeleteRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGcDeleteRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGcDeleteRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGcDeleteRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGcDeleteRequest");
+                ds.field("kind", &self.kind());
+                ds.field("config_dirs", &self.config_dirs());
                 ds.finish()
             }
         }
@@ -14367,6 +16222,1543 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum ConfigEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One row of `zanshin_config_list` — the CLI's `AnnotatedValue`. `name` is dotted, `value` TOML
+        /// text (strings stay quoted), `path` ABSENT for the default and environment layers,
+        /// `overridden` true when a higher layer shadows it.
+        pub struct ConfigEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigEntry<'a> {
+            type Inner = ConfigEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigEntry<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 10;
+            pub const VT_OVERRIDDEN: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigEntry<'bldr>> {
+                let mut builder = ConfigEntryBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_overridden(args.overridden);
+                builder.add_source(args.source);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigEntry::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn value(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigEntry::VT_VALUE, None)
+                }
+            }
+            #[inline]
+            pub fn source(&self) -> ConfigValueSource {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ConfigValueSource>(ConfigEntry::VT_SOURCE, Some(ConfigValueSource::Default))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigEntry::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn overridden(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(ConfigEntry::VT_OVERRIDDEN, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+                    .visit_field::<ConfigValueSource>("source", Self::VT_SOURCE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<bool>("overridden", Self::VT_OVERRIDDEN, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigEntryArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub source: ConfigValueSource,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub overridden: bool,
+        }
+        impl<'a> Default for ConfigEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigEntryArgs {
+                    name: None,
+                    value: None,
+                    source: ConfigValueSource::Default,
+                    path: None,
+                    overridden: false,
+                }
+            }
+        }
+
+        pub struct ConfigEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigEntry::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigEntry::VT_VALUE, value);
+            }
+            #[inline]
+            pub fn add_source(&mut self, source: ConfigValueSource) {
+                self.fbb_
+                    .push_slot::<ConfigValueSource>(ConfigEntry::VT_SOURCE, source, ConfigValueSource::Default);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigEntry::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_overridden(&mut self, overridden: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ConfigEntry::VT_OVERRIDDEN, overridden, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigEntry");
+                ds.field("name", &self.name());
+                ds.field("value", &self.value());
+                ds.field("source", &self.source());
+                ds.field("path", &self.path());
+                ds.field("overridden", &self.overridden());
+                ds.finish()
+            }
+        }
+        pub enum ConfigListResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_list`'s answer, lowest layer first; empty is a result, not an error.
+        pub struct ConfigListResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigListResult<'a> {
+            type Inner = ConfigListResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigListResult<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigListResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigListResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigListResult<'bldr>> {
+                let mut builder = ConfigListResultBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigEntry<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigEntry>>,
+                    >>(ConfigListResult::VT_ENTRIES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigListResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ConfigEntry>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigListResultArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigEntry<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ConfigListResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigListResultArgs { entries: None }
+            }
+        }
+
+        pub struct ConfigListResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigListResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ConfigEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigListResult::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigListResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigListResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigListResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigListResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigListResult");
+                ds.field("entries", &self.entries());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGetResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_get`'s answer: a string unquoted, anything else TOML text.
+        pub struct ConfigGetResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGetResult<'a> {
+            type Inner = ConfigGetResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGetResult<'a> {
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGetResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGetResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGetResult<'bldr>> {
+                let mut builder = ConfigGetResultBuilder::new(_fbb);
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn value(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigGetResult::VT_VALUE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGetResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGetResultArgs<'a> {
+            pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigGetResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGetResultArgs { value: None }
+            }
+        }
+
+        pub struct ConfigGetResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGetResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGetResult::VT_VALUE, value);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGetResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGetResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGetResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGetResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGetResult");
+                ds.field("value", &self.value());
+                ds.finish()
+            }
+        }
+        pub enum ConfigPathResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_path`'s answer: user → every candidate in the CLI's order, existing or not;
+        /// repo / workspace → the one secure file (its directory now exists).
+        pub struct ConfigPathResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigPathResult<'a> {
+            type Inner = ConfigPathResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigPathResult<'a> {
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigPathResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigPathResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigPathResult<'bldr>> {
+                let mut builder = ConfigPathResultBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ConfigPathResult::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigPathResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigPathResultArgs<'a> {
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for ConfigPathResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigPathResultArgs { paths: None }
+            }
+        }
+
+        pub struct ConfigPathResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigPathResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigPathResult::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigPathResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigPathResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigPathResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigPathResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigPathResult");
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum WorkingCopyAuthorOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `@`'s author (both CURRENT fields) when a `user.name` / `user.email` write differs from it —
+        /// the CLI's "only impacts future commits … use `jj metaedit --update-author`" warning.
+        pub struct WorkingCopyAuthor<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkingCopyAuthor<'a> {
+            type Inner = WorkingCopyAuthor<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkingCopyAuthor<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EMAIL: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkingCopyAuthor { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkingCopyAuthorArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkingCopyAuthor<'bldr>> {
+                let mut builder = WorkingCopyAuthorBuilder::new(_fbb);
+                if let Some(x) = args.email {
+                    builder.add_email(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkingCopyAuthor::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn email(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkingCopyAuthor::VT_EMAIL, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkingCopyAuthor<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("email", Self::VT_EMAIL, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkingCopyAuthorArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub email: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WorkingCopyAuthorArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkingCopyAuthorArgs {
+                    name: None,
+                    email: None,
+                }
+            }
+        }
+
+        pub struct WorkingCopyAuthorBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkingCopyAuthorBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkingCopyAuthor::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_email(&mut self, email: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkingCopyAuthor::VT_EMAIL, email);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkingCopyAuthorBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkingCopyAuthorBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkingCopyAuthor<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkingCopyAuthor<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkingCopyAuthor");
+                ds.field("name", &self.name());
+                ds.field("email", &self.email());
+                ds.finish()
+            }
+        }
+        pub enum ConfigSetResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_set`'s answer: the file written, and — ABSENT unless it differs —
+        /// the working-copy author fact.
+        pub struct ConfigSetResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigSetResult<'a> {
+            type Inner = ConfigSetResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigSetResult<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKING_COPY_AUTHOR: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigSetResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigSetResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigSetResult<'bldr>> {
+                let mut builder = ConfigSetResultBuilder::new(_fbb);
+                if let Some(x) = args.working_copy_author {
+                    builder.add_working_copy_author(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigSetResult::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn working_copy_author(&self) -> Option<WorkingCopyAuthor<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<WorkingCopyAuthor>>(
+                        ConfigSetResult::VT_WORKING_COPY_AUTHOR,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigSetResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<WorkingCopyAuthor>>(
+                        "working_copy_author",
+                        Self::VT_WORKING_COPY_AUTHOR,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigSetResultArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub working_copy_author: Option<::flatbuffers::WIPOffset<WorkingCopyAuthor<'a>>>,
+        }
+        impl<'a> Default for ConfigSetResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigSetResultArgs {
+                    path: None,
+                    working_copy_author: None,
+                }
+            }
+        }
+
+        pub struct ConfigSetResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigSetResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigSetResult::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_working_copy_author(
+                &mut self,
+                working_copy_author: ::flatbuffers::WIPOffset<WorkingCopyAuthor<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<WorkingCopyAuthor>>(
+                        ConfigSetResult::VT_WORKING_COPY_AUTHOR,
+                        working_copy_author,
+                    );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigSetResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigSetResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigSetResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigSetResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigSetResult");
+                ds.field("path", &self.path());
+                ds.field("working_copy_author", &self.working_copy_author());
+                ds.finish()
+            }
+        }
+        pub enum ConfigUnsetResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_unset`'s answer: the file written.
+        pub struct ConfigUnsetResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigUnsetResult<'a> {
+            type Inner = ConfigUnsetResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigUnsetResult<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigUnsetResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigUnsetResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigUnsetResult<'bldr>> {
+                let mut builder = ConfigUnsetResultBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigUnsetResult::VT_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigUnsetResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigUnsetResultArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigUnsetResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigUnsetResultArgs { path: None }
+            }
+        }
+
+        pub struct ConfigUnsetResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigUnsetResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigUnsetResult::VT_PATH, path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigUnsetResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigUnsetResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigUnsetResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigUnsetResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigUnsetResult");
+                ds.field("path", &self.path());
+                ds.finish()
+            }
+        }
+        pub enum ConfigFileTextOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_file_read`'s answer: the file and its exact text.
+        pub struct ConfigFileText<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigFileText<'a> {
+            type Inner = ConfigFileText<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigFileText<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigFileText { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigFileTextArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigFileText<'bldr>> {
+                let mut builder = ConfigFileTextBuilder::new(_fbb);
+                if let Some(x) = args.text {
+                    builder.add_text(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileText::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigFileText::VT_TEXT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigFileText<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigFileTextArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigFileTextArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigFileTextArgs { path: None, text: None }
+            }
+        }
+
+        pub struct ConfigFileTextBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigFileTextBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigFileText::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigFileText::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigFileTextBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigFileTextBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigFileText<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigFileText<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigFileText");
+                ds.field("path", &self.path());
+                ds.field("text", &self.text());
+                ds.finish()
+            }
+        }
+        pub enum MissingRepoConfigOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A repo config directory whose recorded repo no longer exists.
+        pub struct MissingRepoConfig<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MissingRepoConfig<'a> {
+            type Inner = MissingRepoConfig<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MissingRepoConfig<'a> {
+            pub const VT_CONFIG_DIR: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REPO_PATH: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MissingRepoConfig { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MissingRepoConfigArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MissingRepoConfig<'bldr>> {
+                let mut builder = MissingRepoConfigBuilder::new(_fbb);
+                if let Some(x) = args.repo_path {
+                    builder.add_repo_path(x);
+                }
+                if let Some(x) = args.config_dir {
+                    builder.add_config_dir(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn config_dir(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MissingRepoConfig::VT_CONFIG_DIR, None)
+                }
+            }
+            #[inline]
+            pub fn repo_path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MissingRepoConfig::VT_REPO_PATH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MissingRepoConfig<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("config_dir", Self::VT_CONFIG_DIR, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("repo_path", Self::VT_REPO_PATH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MissingRepoConfigArgs<'a> {
+            pub config_dir: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub repo_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for MissingRepoConfigArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MissingRepoConfigArgs {
+                    config_dir: None,
+                    repo_path: None,
+                }
+            }
+        }
+
+        pub struct MissingRepoConfigBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MissingRepoConfigBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_config_dir(&mut self, config_dir: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MissingRepoConfig::VT_CONFIG_DIR, config_dir);
+            }
+            #[inline]
+            pub fn add_repo_path(&mut self, repo_path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MissingRepoConfig::VT_REPO_PATH, repo_path);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MissingRepoConfigBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MissingRepoConfigBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MissingRepoConfig<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MissingRepoConfig<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MissingRepoConfig");
+                ds.field("config_dir", &self.config_dir());
+                ds.field("repo_path", &self.repo_path());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGcListOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_gc_list`'s answer, sorted by directory.
+        pub struct ConfigGcList<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcList<'a> {
+            type Inner = ConfigGcList<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGcList<'a> {
+            pub const VT_MISSING: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGcList { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGcListArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGcList<'bldr>> {
+                let mut builder = ConfigGcListBuilder::new(_fbb);
+                if let Some(x) = args.missing {
+                    builder.add_missing(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn missing(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MissingRepoConfig<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MissingRepoConfig>>,
+                    >>(ConfigGcList::VT_MISSING, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGcList<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<MissingRepoConfig>>,
+                    >>("missing", Self::VT_MISSING, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGcListArgs<'a> {
+            pub missing: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MissingRepoConfig<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for ConfigGcListArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGcListArgs { missing: None }
+            }
+        }
+
+        pub struct ConfigGcListBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGcListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_missing(
+                &mut self,
+                missing: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<MissingRepoConfig<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGcList::VT_MISSING, missing);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGcListBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGcListBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGcList<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGcList<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGcList");
+                ds.field("missing", &self.missing());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGcFailureOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A requested directory `zanshin_config_gc_delete` did not delete, and why.
+        pub struct ConfigGcFailure<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcFailure<'a> {
+            type Inner = ConfigGcFailure<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGcFailure<'a> {
+            pub const VT_CONFIG_DIR: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGcFailure { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGcFailureArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGcFailure<'bldr>> {
+                let mut builder = ConfigGcFailureBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.config_dir {
+                    builder.add_config_dir(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn config_dir(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigGcFailure::VT_CONFIG_DIR, None)
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConfigGcFailure::VT_REASON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGcFailure<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("config_dir", Self::VT_CONFIG_DIR, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGcFailureArgs<'a> {
+            pub config_dir: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ConfigGcFailureArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGcFailureArgs {
+                    config_dir: None,
+                    reason: None,
+                }
+            }
+        }
+
+        pub struct ConfigGcFailureBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGcFailureBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_config_dir(&mut self, config_dir: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGcFailure::VT_CONFIG_DIR, config_dir);
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGcFailure::VT_REASON, reason);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGcFailureBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGcFailureBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGcFailure<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGcFailure<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGcFailure");
+                ds.field("config_dir", &self.config_dir());
+                ds.field("reason", &self.reason());
+                ds.finish()
+            }
+        }
+        pub enum ConfigGcResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
+        /// requested directory (not a missing repo config, or its removal failed) in `failed`.
+        pub struct ConfigGcResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConfigGcResult<'a> {
+            type Inner = ConfigGcResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConfigGcResult<'a> {
+            pub const VT_DELETED: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FAILED: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConfigGcResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConfigGcResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConfigGcResult<'bldr>> {
+                let mut builder = ConfigGcResultBuilder::new(_fbb);
+                if let Some(x) = args.failed {
+                    builder.add_failed(x);
+                }
+                if let Some(x) = args.deleted {
+                    builder.add_deleted(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn deleted(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ConfigGcResult::VT_DELETED, None)
+                }
+            }
+            #[inline]
+            pub fn failed(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigGcFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigGcFailure>>,
+                    >>(ConfigGcResult::VT_FAILED, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConfigGcResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("deleted", Self::VT_DELETED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ConfigGcFailure>>>>("failed", Self::VT_FAILED, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ConfigGcResultArgs<'a> {
+            pub deleted:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub failed: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConfigGcFailure<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for ConfigGcResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConfigGcResultArgs {
+                    deleted: None,
+                    failed: None,
+                }
+            }
+        }
+
+        pub struct ConfigGcResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConfigGcResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_deleted(
+                &mut self,
+                deleted: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGcResult::VT_DELETED, deleted);
+            }
+            #[inline]
+            pub fn add_failed(
+                &mut self,
+                failed: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ConfigGcFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConfigGcResult::VT_FAILED, failed);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConfigGcResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConfigGcResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConfigGcResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConfigGcResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConfigGcResult");
+                ds.field("deleted", &self.deleted());
+                ds.field("failed", &self.failed());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -14386,7 +17778,9 @@ pub mod zanshin {
         /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
         /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
         /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
-        /// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+        /// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every
+        /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
+        /// its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
         /// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
         pub struct Envelope<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
@@ -14885,6 +18279,126 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_list_result(&self) -> Option<ConfigListResult<'a>> {
+                if self.data_type() == Payload::ConfigListResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigListResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_get_result(&self) -> Option<ConfigGetResult<'a>> {
+                if self.data_type() == Payload::ConfigGetResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigGetResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_path_result(&self) -> Option<ConfigPathResult<'a>> {
+                if self.data_type() == Payload::ConfigPathResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigPathResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_set_result(&self) -> Option<ConfigSetResult<'a>> {
+                if self.data_type() == Payload::ConfigSetResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigSetResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_unset_result(&self) -> Option<ConfigUnsetResult<'a>> {
+                if self.data_type() == Payload::ConfigUnsetResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigUnsetResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_file_text(&self) -> Option<ConfigFileText<'a>> {
+                if self.data_type() == Payload::ConfigFileText {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigFileText::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_gc_list(&self) -> Option<ConfigGcList<'a>> {
+                if self.data_type() == Payload::ConfigGcList {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigGcList::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_config_gc_result(&self) -> Option<ConfigGcResult<'a>> {
+                if self.data_type() == Payload::ConfigGcResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ConfigGcResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -15025,6 +18539,46 @@ pub mod zanshin {
                             Payload::UntrackResult => v
                                 .verify_union_variant::<::flatbuffers::ForwardsUOffset<UntrackResult>>(
                                     "Payload::UntrackResult",
+                                    pos,
+                                ),
+                            Payload::ConfigListResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigListResult>>(
+                                    "Payload::ConfigListResult",
+                                    pos,
+                                ),
+                            Payload::ConfigGetResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGetResult>>(
+                                    "Payload::ConfigGetResult",
+                                    pos,
+                                ),
+                            Payload::ConfigPathResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigPathResult>>(
+                                    "Payload::ConfigPathResult",
+                                    pos,
+                                ),
+                            Payload::ConfigSetResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigSetResult>>(
+                                    "Payload::ConfigSetResult",
+                                    pos,
+                                ),
+                            Payload::ConfigUnsetResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigUnsetResult>>(
+                                    "Payload::ConfigUnsetResult",
+                                    pos,
+                                ),
+                            Payload::ConfigFileText => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigFileText>>(
+                                    "Payload::ConfigFileText",
+                                    pos,
+                                ),
+                            Payload::ConfigGcList => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcList>>(
+                                    "Payload::ConfigGcList",
+                                    pos,
+                                ),
+                            Payload::ConfigGcResult => v
+                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcResult>>(
+                                    "Payload::ConfigGcResult",
                                     pos,
                                 ),
                             _ => Ok(()),
@@ -15296,6 +18850,62 @@ pub mod zanshin {
                     }
                     Payload::UntrackResult => {
                         if let Some(x) = self.data_as_untrack_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigListResult => {
+                        if let Some(x) = self.data_as_config_list_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigGetResult => {
+                        if let Some(x) = self.data_as_config_get_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigPathResult => {
+                        if let Some(x) = self.data_as_config_path_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigSetResult => {
+                        if let Some(x) = self.data_as_config_set_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigUnsetResult => {
+                        if let Some(x) = self.data_as_config_unset_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigFileText => {
+                        if let Some(x) = self.data_as_config_file_text() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigGcList => {
+                        if let Some(x) = self.data_as_config_gc_list() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ConfigGcResult => {
+                        if let Some(x) = self.data_as_config_gc_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

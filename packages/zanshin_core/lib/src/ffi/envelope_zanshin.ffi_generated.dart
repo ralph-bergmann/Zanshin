@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -45,7 +45,16 @@ enum RequestKind {
   BookmarkCreate(15),
   BookmarkDelete(16),
   FileTrack(17),
-  FileUntrack(18);
+  FileUntrack(18),
+  ConfigList(19),
+  ConfigGet(20),
+  ConfigPath(21),
+  ConfigSet(22),
+  ConfigUnset(23),
+  ConfigFileRead(24),
+  ConfigFileWrite(25),
+  ConfigGcList(26),
+  ConfigGcDelete(27);
 
   final int value;
   const RequestKind(this.value);
@@ -90,6 +99,24 @@ enum RequestKind {
         return RequestKind.FileTrack;
       case 18:
         return RequestKind.FileUntrack;
+      case 19:
+        return RequestKind.ConfigList;
+      case 20:
+        return RequestKind.ConfigGet;
+      case 21:
+        return RequestKind.ConfigPath;
+      case 22:
+        return RequestKind.ConfigSet;
+      case 23:
+        return RequestKind.ConfigUnset;
+      case 24:
+        return RequestKind.ConfigFileRead;
+      case 25:
+        return RequestKind.ConfigFileWrite;
+      case 26:
+        return RequestKind.ConfigGcList;
+      case 27:
+        return RequestKind.ConfigGcDelete;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -98,7 +125,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 18;
+  static const int maxValue = 27;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -155,6 +182,50 @@ class _RevisionRefTypeIdReader extends fb.Reader<RevisionRefTypeId> {
   @override
   RevisionRefTypeId read(fb.BufferContext bc, int offset) =>
       RevisionRefTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The CLI's `--user` / `--repo` / `--workspace`. `Unspecified = 0` is the absent-field default
+///  and is refused (`jj.invalid_input`) wherever a scope is required.
+///  Member order IS the wire value — APPEND only.
+enum ConfigScope {
+  Unspecified(0),
+  User(1),
+  Repo(2),
+  Workspace(3);
+
+  final int value;
+  const ConfigScope(this.value);
+
+  factory ConfigScope.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ConfigScope.Unspecified;
+      case 1:
+        return ConfigScope.User;
+      case 2:
+        return ConfigScope.Repo;
+      case 3:
+        return ConfigScope.Workspace;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ConfigScope? _createOrNull(int? value) => value == null ? null : ConfigScope.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 3;
+  static const fb.Reader<ConfigScope> reader = _ConfigScopeReader();
+}
+
+class _ConfigScopeReader extends fb.Reader<ConfigScope> {
+  const _ConfigScopeReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ConfigScope read(fb.BufferContext bc, int offset) => ConfigScope.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
 ///  How a working-copy file changed between @- and @.
@@ -540,6 +611,59 @@ class _UntrackedReasonTypeIdReader extends fb.Reader<UntrackedReasonTypeId> {
       UntrackedReasonTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  Which layer a listed value comes from — jj-lib's `ConfigSource` (Zanshin has no
+///  command-line layer). Member order IS the wire value — APPEND only.
+enum ConfigValueSource {
+  Default(0),
+  System(1),
+  EnvBase(2),
+  User(3),
+  Repo(4),
+  Workspace(5),
+  EnvOverrides(6);
+
+  final int value;
+  const ConfigValueSource(this.value);
+
+  factory ConfigValueSource.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ConfigValueSource.Default;
+      case 1:
+        return ConfigValueSource.System;
+      case 2:
+        return ConfigValueSource.EnvBase;
+      case 3:
+        return ConfigValueSource.User;
+      case 4:
+        return ConfigValueSource.Repo;
+      case 5:
+        return ConfigValueSource.Workspace;
+      case 6:
+        return ConfigValueSource.EnvOverrides;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ConfigValueSource? _createOrNull(int? value) => value == null ? null : ConfigValueSource.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 6;
+  static const fb.Reader<ConfigValueSource> reader = _ConfigValueSourceReader();
+}
+
+class _ConfigValueSourceReader extends fb.Reader<ConfigValueSource> {
+  const _ConfigValueSourceReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ConfigValueSource read(fb.BufferContext bc, int offset) =>
+      ConfigValueSource.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
 enum PayloadTypeId {
   NONE(0),
   RepoHandle(1),
@@ -568,7 +692,15 @@ enum PayloadTypeId {
   WorkspaceList(24),
   WorkspaceRoot(25),
   TrackResult(26),
-  UntrackResult(27);
+  UntrackResult(27),
+  ConfigListResult(28),
+  ConfigGetResult(29),
+  ConfigPathResult(30),
+  ConfigSetResult(31),
+  ConfigUnsetResult(32),
+  ConfigFileText(33),
+  ConfigGcList(34),
+  ConfigGcResult(35);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -631,6 +763,22 @@ enum PayloadTypeId {
         return PayloadTypeId.TrackResult;
       case 27:
         return PayloadTypeId.UntrackResult;
+      case 28:
+        return PayloadTypeId.ConfigListResult;
+      case 29:
+        return PayloadTypeId.ConfigGetResult;
+      case 30:
+        return PayloadTypeId.ConfigPathResult;
+      case 31:
+        return PayloadTypeId.ConfigSetResult;
+      case 32:
+        return PayloadTypeId.ConfigUnsetResult;
+      case 33:
+        return PayloadTypeId.ConfigFileText;
+      case 34:
+        return PayloadTypeId.ConfigGcList;
+      case 35:
+        return PayloadTypeId.ConfigGcResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -639,7 +787,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 27;
+  static const int maxValue = 35;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2721,6 +2869,925 @@ class FileUntrackRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_list` — `jj config list [NAME] [--user|--repo|--workspace]
+///  [--include-defaults] [--include-overridden]`. `name` ABSENT lists everything; `scope`
+///  `Unspecified` means no scope flag. A scope together with `include_defaults` is refused with
+///  `jj.invalid_input` (clap's conflict).
+class ConfigListRequest {
+  ConfigListRequest._(this._bc, this._bcOffset);
+  factory ConfigListRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigListRequest> reader = _ConfigListRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  ConfigScope get scope => ConfigScope.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 10, 0));
+  bool get includeDefaults => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get includeOverridden => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+
+  @override
+  String toString() {
+    return 'ConfigListRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, name: ${name}, scope: ${scope}, includeDefaults: ${includeDefaults}, includeOverridden: ${includeOverridden}}';
+  }
+}
+
+class _ConfigListRequestReader extends fb.TableReader<ConfigListRequest> {
+  const _ConfigListRequestReader();
+
+  @override
+  ConfigListRequest createObject(fb.BufferContext bc, int offset) => ConfigListRequest._(bc, offset);
+}
+
+class ConfigListRequestBuilder {
+  ConfigListRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addScope(ConfigScope? scope) {
+    fbBuilder.addInt8(3, scope?.value);
+    return fbBuilder.offset;
+  }
+
+  int addIncludeDefaults(bool? includeDefaults) {
+    fbBuilder.addBool(4, includeDefaults);
+    return fbBuilder.offset;
+  }
+
+  int addIncludeOverridden(bool? includeOverridden) {
+    fbBuilder.addBool(5, includeOverridden);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigListRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final String? _name;
+  final ConfigScope? _scope;
+  final bool? _includeDefaults;
+  final bool? _includeOverridden;
+
+  ConfigListRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    String? name,
+    ConfigScope? scope,
+    bool? includeDefaults,
+    bool? includeOverridden,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _name = name,
+       _scope = scope,
+       _includeDefaults = includeDefaults,
+       _includeOverridden = includeOverridden;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addOffset(2, nameOffset);
+    fbBuilder.addInt8(3, _scope?.value);
+    fbBuilder.addBool(4, _includeDefaults);
+    fbBuilder.addBool(5, _includeOverridden);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_get` — `jj config get NAME`; `name` is required.
+class ConfigGetRequest {
+  ConfigGetRequest._(this._bc, this._bcOffset);
+  factory ConfigGetRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGetRequest> reader = _ConfigGetRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'ConfigGetRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, name: ${name}}';
+  }
+}
+
+class _ConfigGetRequestReader extends fb.TableReader<ConfigGetRequest> {
+  const _ConfigGetRequestReader();
+
+  @override
+  ConfigGetRequest createObject(fb.BufferContext bc, int offset) => ConfigGetRequest._(bc, offset);
+}
+
+class ConfigGetRequestBuilder {
+  ConfigGetRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGetRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final String? _name;
+
+  ConfigGetRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    String? name,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _name = name;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addOffset(2, nameOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_path` — `jj config path --user|--repo|--workspace`.
+class ConfigPathRequest {
+  ConfigPathRequest._(this._bc, this._bcOffset);
+  factory ConfigPathRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigPathRequest> reader = _ConfigPathRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigScope get scope => ConfigScope.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+
+  @override
+  String toString() {
+    return 'ConfigPathRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, scope: ${scope}}';
+  }
+}
+
+class _ConfigPathRequestReader extends fb.TableReader<ConfigPathRequest> {
+  const _ConfigPathRequestReader();
+
+  @override
+  ConfigPathRequest createObject(fb.BufferContext bc, int offset) => ConfigPathRequest._(bc, offset);
+}
+
+class ConfigPathRequestBuilder {
+  ConfigPathRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addScope(ConfigScope? scope) {
+    fbBuilder.addInt8(2, scope?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigPathRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final ConfigScope? _scope;
+
+  ConfigPathRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    ConfigScope? scope,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _scope = scope;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addInt8(2, _scope?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_set` — `jj config set --user|--repo|--workspace NAME VALUE`.
+///  `value` is TOML text (a bare string when it does not look like TOML); `name` and `value` are
+///  required. `path` ABSENT lets the verb pick the scope's single file; with several candidates
+///  (the CLI's prompt) it must name one of them.
+class ConfigSetRequest {
+  ConfigSetRequest._(this._bc, this._bcOffset);
+  factory ConfigSetRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigSetRequest> reader = _ConfigSetRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigScope get scope => ConfigScope.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  String? get value => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'ConfigSetRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, scope: ${scope}, name: ${name}, value: ${value}, path: ${path}}';
+  }
+}
+
+class _ConfigSetRequestReader extends fb.TableReader<ConfigSetRequest> {
+  const _ConfigSetRequestReader();
+
+  @override
+  ConfigSetRequest createObject(fb.BufferContext bc, int offset) => ConfigSetRequest._(bc, offset);
+}
+
+class ConfigSetRequestBuilder {
+  ConfigSetRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addScope(ConfigScope? scope) {
+    fbBuilder.addInt8(2, scope?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addValueOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigSetRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final ConfigScope? _scope;
+  final String? _name;
+  final String? _value;
+  final String? _path;
+
+  ConfigSetRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    ConfigScope? scope,
+    String? name,
+    String? value,
+    String? path,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _scope = scope,
+       _name = name,
+       _value = value,
+       _path = path;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? valueOffset = _value == null ? null : fbBuilder.writeString(_value!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addInt8(2, _scope?.value);
+    fbBuilder.addOffset(3, nameOffset);
+    fbBuilder.addOffset(4, valueOffset);
+    fbBuilder.addOffset(5, pathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_unset` — `jj config unset --user|--repo|--workspace NAME`;
+///  `path` as in ConfigSetRequest.
+class ConfigUnsetRequest {
+  ConfigUnsetRequest._(this._bc, this._bcOffset);
+  factory ConfigUnsetRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigUnsetRequest> reader = _ConfigUnsetRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigScope get scope => ConfigScope.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'ConfigUnsetRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, scope: ${scope}, name: ${name}, path: ${path}}';
+  }
+}
+
+class _ConfigUnsetRequestReader extends fb.TableReader<ConfigUnsetRequest> {
+  const _ConfigUnsetRequestReader();
+
+  @override
+  ConfigUnsetRequest createObject(fb.BufferContext bc, int offset) => ConfigUnsetRequest._(bc, offset);
+}
+
+class ConfigUnsetRequestBuilder {
+  ConfigUnsetRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addScope(ConfigScope? scope) {
+    fbBuilder.addInt8(2, scope?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigUnsetRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final ConfigScope? _scope;
+  final String? _name;
+  final String? _path;
+
+  ConfigUnsetRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    ConfigScope? scope,
+    String? name,
+    String? path,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _scope = scope,
+       _name = name,
+       _path = path;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addInt8(2, _scope?.value);
+    fbBuilder.addOffset(3, nameOffset);
+    fbBuilder.addOffset(4, pathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_file_read` — `jj config edit`, editor half 1; `path` as in
+///  ConfigSetRequest.
+class ConfigFileReadRequest {
+  ConfigFileReadRequest._(this._bc, this._bcOffset);
+  factory ConfigFileReadRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigFileReadRequest> reader = _ConfigFileReadRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigScope get scope => ConfigScope.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'ConfigFileReadRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, scope: ${scope}, path: ${path}}';
+  }
+}
+
+class _ConfigFileReadRequestReader extends fb.TableReader<ConfigFileReadRequest> {
+  const _ConfigFileReadRequestReader();
+
+  @override
+  ConfigFileReadRequest createObject(fb.BufferContext bc, int offset) => ConfigFileReadRequest._(bc, offset);
+}
+
+class ConfigFileReadRequestBuilder {
+  ConfigFileReadRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addScope(ConfigScope? scope) {
+    fbBuilder.addInt8(2, scope?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigFileReadRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final ConfigScope? _scope;
+  final String? _path;
+
+  ConfigFileReadRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    ConfigScope? scope,
+    String? path,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _scope = scope,
+       _path = path;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addInt8(2, _scope?.value);
+    fbBuilder.addOffset(3, pathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_file_write` — `jj config edit`, editor half 2. `path` (a file
+///  `zanshin_config_file_read` can return) and `text` are required.
+class ConfigFileWriteRequest {
+  ConfigFileWriteRequest._(this._bc, this._bcOffset);
+  factory ConfigFileWriteRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigFileWriteRequest> reader = _ConfigFileWriteRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'ConfigFileWriteRequest{kind: ${kind}, workspaceRoot: ${workspaceRoot}, path: ${path}, text: ${text}}';
+  }
+}
+
+class _ConfigFileWriteRequestReader extends fb.TableReader<ConfigFileWriteRequest> {
+  const _ConfigFileWriteRequestReader();
+
+  @override
+  ConfigFileWriteRequest createObject(fb.BufferContext bc, int offset) => ConfigFileWriteRequest._(bc, offset);
+}
+
+class ConfigFileWriteRequestBuilder {
+  ConfigFileWriteRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTextOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigFileWriteRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _workspaceRoot;
+  final String? _path;
+  final String? _text;
+
+  ConfigFileWriteRequestObjectBuilder({
+    RequestKind? kind,
+    String? workspaceRoot,
+    String? path,
+    String? text,
+  }) : _kind = kind,
+       _workspaceRoot = workspaceRoot,
+       _path = path,
+       _text = text;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, workspaceRootOffset);
+    fbBuilder.addOffset(2, pathOffset);
+    fbBuilder.addOffset(3, textOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_gc_list` — `jj config gc`, half 1 (no arguments; the tag only).
+class ConfigGcListRequest {
+  ConfigGcListRequest._(this._bc, this._bcOffset);
+  factory ConfigGcListRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGcListRequest> reader = _ConfigGcListRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+
+  @override
+  String toString() {
+    return 'ConfigGcListRequest{kind: ${kind}}';
+  }
+}
+
+class _ConfigGcListRequestReader extends fb.TableReader<ConfigGcListRequest> {
+  const _ConfigGcListRequestReader();
+
+  @override
+  ConfigGcListRequest createObject(fb.BufferContext bc, int offset) => ConfigGcListRequest._(bc, offset);
+}
+
+class ConfigGcListRequestBuilder {
+  ConfigGcListRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGcListRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+
+  ConfigGcListRequestObjectBuilder({
+    RequestKind? kind,
+  }) : _kind = kind;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(1);
+    fbBuilder.addUint8(0, _kind?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_config_gc_delete` — `jj config gc`, half 2: the config directories to
+///  delete (normally a subset of `zanshin_config_gc_list`'s answer).
+class ConfigGcDeleteRequest {
+  ConfigGcDeleteRequest._(this._bc, this._bcOffset);
+  factory ConfigGcDeleteRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGcDeleteRequest> reader = _ConfigGcDeleteRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get configDirs => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ConfigGcDeleteRequest{kind: ${kind}, configDirs: ${configDirs}}';
+  }
+}
+
+class _ConfigGcDeleteRequestReader extends fb.TableReader<ConfigGcDeleteRequest> {
+  const _ConfigGcDeleteRequestReader();
+
+  @override
+  ConfigGcDeleteRequest createObject(fb.BufferContext bc, int offset) => ConfigGcDeleteRequest._(bc, offset);
+}
+
+class ConfigGcDeleteRequestBuilder {
+  ConfigGcDeleteRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addConfigDirsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGcDeleteRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _configDirs;
+
+  ConfigGcDeleteRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? configDirs,
+  }) : _kind = kind,
+       _configDirs = configDirs;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? configDirsOffset = _configDirs == null
+        ? null
+        : fbBuilder.writeList(_configDirs!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, configDirsOffset);
     return fbBuilder.endTable();
   }
 
@@ -8533,6 +9600,995 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One row of `zanshin_config_list` — the CLI's `AnnotatedValue`. `name` is dotted, `value` TOML
+///  text (strings stay quoted), `path` ABSENT for the default and environment layers,
+///  `overridden` true when a higher layer shadows it.
+class ConfigEntry {
+  ConfigEntry._(this._bc, this._bcOffset);
+  factory ConfigEntry(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigEntry> reader = _ConfigEntryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get value => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  ConfigValueSource get source => ConfigValueSource.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get overridden => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'ConfigEntry{name: ${name}, value: ${value}, source: ${source}, path: ${path}, overridden: ${overridden}}';
+  }
+}
+
+class _ConfigEntryReader extends fb.TableReader<ConfigEntry> {
+  const _ConfigEntryReader();
+
+  @override
+  ConfigEntry createObject(fb.BufferContext bc, int offset) => ConfigEntry._(bc, offset);
+}
+
+class ConfigEntryBuilder {
+  ConfigEntryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addValueOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSource(ConfigValueSource? source) {
+    fbBuilder.addInt8(2, source?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOverridden(bool? overridden) {
+    fbBuilder.addBool(4, overridden);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigEntryObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _value;
+  final ConfigValueSource? _source;
+  final String? _path;
+  final bool? _overridden;
+
+  ConfigEntryObjectBuilder({
+    String? name,
+    String? value,
+    ConfigValueSource? source,
+    String? path,
+    bool? overridden,
+  }) : _name = name,
+       _value = value,
+       _source = source,
+       _path = path,
+       _overridden = overridden;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? valueOffset = _value == null ? null : fbBuilder.writeString(_value!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, valueOffset);
+    fbBuilder.addInt8(2, _source?.value);
+    fbBuilder.addOffset(3, pathOffset);
+    fbBuilder.addBool(4, _overridden);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_list`'s answer, lowest layer first; empty is a result, not an error.
+class ConfigListResult {
+  ConfigListResult._(this._bc, this._bcOffset);
+  factory ConfigListResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigListResult> reader = _ConfigListResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<ConfigEntry>? get entries =>
+      const fb.ListReader<ConfigEntry>(ConfigEntry.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConfigListResult{entries: ${entries}}';
+  }
+}
+
+class _ConfigListResultReader extends fb.TableReader<ConfigListResult> {
+  const _ConfigListResultReader();
+
+  @override
+  ConfigListResult createObject(fb.BufferContext bc, int offset) => ConfigListResult._(bc, offset);
+}
+
+class ConfigListResultBuilder {
+  ConfigListResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigListResultObjectBuilder extends fb.ObjectBuilder {
+  final List<ConfigEntryObjectBuilder>? _entries;
+
+  ConfigListResultObjectBuilder({
+    List<ConfigEntryObjectBuilder>? entries,
+  }) : _entries = entries;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, entriesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_get`'s answer: a string unquoted, anything else TOML text.
+class ConfigGetResult {
+  ConfigGetResult._(this._bc, this._bcOffset);
+  factory ConfigGetResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGetResult> reader = _ConfigGetResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get value => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConfigGetResult{value: ${value}}';
+  }
+}
+
+class _ConfigGetResultReader extends fb.TableReader<ConfigGetResult> {
+  const _ConfigGetResultReader();
+
+  @override
+  ConfigGetResult createObject(fb.BufferContext bc, int offset) => ConfigGetResult._(bc, offset);
+}
+
+class ConfigGetResultBuilder {
+  ConfigGetResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addValueOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGetResultObjectBuilder extends fb.ObjectBuilder {
+  final String? _value;
+
+  ConfigGetResultObjectBuilder({
+    String? value,
+  }) : _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? valueOffset = _value == null ? null : fbBuilder.writeString(_value!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, valueOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_path`'s answer: user → every candidate in the CLI's order, existing or not;
+///  repo / workspace → the one secure file (its directory now exists).
+class ConfigPathResult {
+  ConfigPathResult._(this._bc, this._bcOffset);
+  factory ConfigPathResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigPathResult> reader = _ConfigPathResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConfigPathResult{paths: ${paths}}';
+  }
+}
+
+class _ConfigPathResultReader extends fb.TableReader<ConfigPathResult> {
+  const _ConfigPathResultReader();
+
+  @override
+  ConfigPathResult createObject(fb.BufferContext bc, int offset) => ConfigPathResult._(bc, offset);
+}
+
+class ConfigPathResultBuilder {
+  ConfigPathResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigPathResultObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _paths;
+
+  ConfigPathResultObjectBuilder({
+    List<String>? paths,
+  }) : _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `@`'s author (both CURRENT fields) when a `user.name` / `user.email` write differs from it —
+///  the CLI's "only impacts future commits … use `jj metaedit --update-author`" warning.
+class WorkingCopyAuthor {
+  WorkingCopyAuthor._(this._bc, this._bcOffset);
+  factory WorkingCopyAuthor(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkingCopyAuthor> reader = _WorkingCopyAuthorReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get email => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'WorkingCopyAuthor{name: ${name}, email: ${email}}';
+  }
+}
+
+class _WorkingCopyAuthorReader extends fb.TableReader<WorkingCopyAuthor> {
+  const _WorkingCopyAuthorReader();
+
+  @override
+  WorkingCopyAuthor createObject(fb.BufferContext bc, int offset) => WorkingCopyAuthor._(bc, offset);
+}
+
+class WorkingCopyAuthorBuilder {
+  WorkingCopyAuthorBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEmailOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkingCopyAuthorObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _email;
+
+  WorkingCopyAuthorObjectBuilder({
+    String? name,
+    String? email,
+  }) : _name = name,
+       _email = email;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? emailOffset = _email == null ? null : fbBuilder.writeString(_email!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, emailOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_set`'s answer: the file written, and — ABSENT unless it differs —
+///  the working-copy author fact.
+class ConfigSetResult {
+  ConfigSetResult._(this._bc, this._bcOffset);
+  factory ConfigSetResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigSetResult> reader = _ConfigSetResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  WorkingCopyAuthor? get workingCopyAuthor => WorkingCopyAuthor.reader.vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ConfigSetResult{path: ${path}, workingCopyAuthor: ${workingCopyAuthor}}';
+  }
+}
+
+class _ConfigSetResultReader extends fb.TableReader<ConfigSetResult> {
+  const _ConfigSetResultReader();
+
+  @override
+  ConfigSetResult createObject(fb.BufferContext bc, int offset) => ConfigSetResult._(bc, offset);
+}
+
+class ConfigSetResultBuilder {
+  ConfigSetResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopyAuthorOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigSetResultObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final WorkingCopyAuthorObjectBuilder? _workingCopyAuthor;
+
+  ConfigSetResultObjectBuilder({
+    String? path,
+    WorkingCopyAuthorObjectBuilder? workingCopyAuthor,
+  }) : _path = path,
+       _workingCopyAuthor = workingCopyAuthor;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? workingCopyAuthorOffset = _workingCopyAuthor?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addOffset(1, workingCopyAuthorOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_unset`'s answer: the file written.
+class ConfigUnsetResult {
+  ConfigUnsetResult._(this._bc, this._bcOffset);
+  factory ConfigUnsetResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigUnsetResult> reader = _ConfigUnsetResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConfigUnsetResult{path: ${path}}';
+  }
+}
+
+class _ConfigUnsetResultReader extends fb.TableReader<ConfigUnsetResult> {
+  const _ConfigUnsetResultReader();
+
+  @override
+  ConfigUnsetResult createObject(fb.BufferContext bc, int offset) => ConfigUnsetResult._(bc, offset);
+}
+
+class ConfigUnsetResultBuilder {
+  ConfigUnsetResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigUnsetResultObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+
+  ConfigUnsetResultObjectBuilder({
+    String? path,
+  }) : _path = path;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, pathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_file_read`'s answer: the file and its exact text.
+class ConfigFileText {
+  ConfigFileText._(this._bc, this._bcOffset);
+  factory ConfigFileText(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigFileText> reader = _ConfigFileTextReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ConfigFileText{path: ${path}, text: ${text}}';
+  }
+}
+
+class _ConfigFileTextReader extends fb.TableReader<ConfigFileText> {
+  const _ConfigFileTextReader();
+
+  @override
+  ConfigFileText createObject(fb.BufferContext bc, int offset) => ConfigFileText._(bc, offset);
+}
+
+class ConfigFileTextBuilder {
+  ConfigFileTextBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTextOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigFileTextObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final String? _text;
+
+  ConfigFileTextObjectBuilder({
+    String? path,
+    String? text,
+  }) : _path = path,
+       _text = text;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? textOffset = _text == null ? null : fbBuilder.writeString(_text!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addOffset(1, textOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A repo config directory whose recorded repo no longer exists.
+class MissingRepoConfig {
+  MissingRepoConfig._(this._bc, this._bcOffset);
+  factory MissingRepoConfig(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MissingRepoConfig> reader = _MissingRepoConfigReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get configDir => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get repoPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'MissingRepoConfig{configDir: ${configDir}, repoPath: ${repoPath}}';
+  }
+}
+
+class _MissingRepoConfigReader extends fb.TableReader<MissingRepoConfig> {
+  const _MissingRepoConfigReader();
+
+  @override
+  MissingRepoConfig createObject(fb.BufferContext bc, int offset) => MissingRepoConfig._(bc, offset);
+}
+
+class MissingRepoConfigBuilder {
+  MissingRepoConfigBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addConfigDirOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRepoPathOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MissingRepoConfigObjectBuilder extends fb.ObjectBuilder {
+  final String? _configDir;
+  final String? _repoPath;
+
+  MissingRepoConfigObjectBuilder({
+    String? configDir,
+    String? repoPath,
+  }) : _configDir = configDir,
+       _repoPath = repoPath;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? configDirOffset = _configDir == null ? null : fbBuilder.writeString(_configDir!);
+    final int? repoPathOffset = _repoPath == null ? null : fbBuilder.writeString(_repoPath!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, configDirOffset);
+    fbBuilder.addOffset(1, repoPathOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_gc_list`'s answer, sorted by directory.
+class ConfigGcList {
+  ConfigGcList._(this._bc, this._bcOffset);
+  factory ConfigGcList(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGcList> reader = _ConfigGcListReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<MissingRepoConfig>? get missing =>
+      const fb.ListReader<MissingRepoConfig>(MissingRepoConfig.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'ConfigGcList{missing: ${missing}}';
+  }
+}
+
+class _ConfigGcListReader extends fb.TableReader<ConfigGcList> {
+  const _ConfigGcListReader();
+
+  @override
+  ConfigGcList createObject(fb.BufferContext bc, int offset) => ConfigGcList._(bc, offset);
+}
+
+class ConfigGcListBuilder {
+  ConfigGcListBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addMissingOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGcListObjectBuilder extends fb.ObjectBuilder {
+  final List<MissingRepoConfigObjectBuilder>? _missing;
+
+  ConfigGcListObjectBuilder({
+    List<MissingRepoConfigObjectBuilder>? missing,
+  }) : _missing = missing;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? missingOffset = _missing == null
+        ? null
+        : fbBuilder.writeList(_missing!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, missingOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A requested directory `zanshin_config_gc_delete` did not delete, and why.
+class ConfigGcFailure {
+  ConfigGcFailure._(this._bc, this._bcOffset);
+  factory ConfigGcFailure(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGcFailure> reader = _ConfigGcFailureReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get configDir => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get reason => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ConfigGcFailure{configDir: ${configDir}, reason: ${reason}}';
+  }
+}
+
+class _ConfigGcFailureReader extends fb.TableReader<ConfigGcFailure> {
+  const _ConfigGcFailureReader();
+
+  @override
+  ConfigGcFailure createObject(fb.BufferContext bc, int offset) => ConfigGcFailure._(bc, offset);
+}
+
+class ConfigGcFailureBuilder {
+  ConfigGcFailureBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addConfigDirOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReasonOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGcFailureObjectBuilder extends fb.ObjectBuilder {
+  final String? _configDir;
+  final String? _reason;
+
+  ConfigGcFailureObjectBuilder({
+    String? configDir,
+    String? reason,
+  }) : _configDir = configDir,
+       _reason = reason;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? configDirOffset = _configDir == null ? null : fbBuilder.writeString(_configDir!);
+    final int? reasonOffset = _reason == null ? null : fbBuilder.writeString(_reason!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, configDirOffset);
+    fbBuilder.addOffset(1, reasonOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
+///  requested directory (not a missing repo config, or its removal failed) in `failed`.
+class ConfigGcResult {
+  ConfigGcResult._(this._bc, this._bcOffset);
+  factory ConfigGcResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ConfigGcResult> reader = _ConfigGcResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get deleted => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  List<ConfigGcFailure>? get failed =>
+      const fb.ListReader<ConfigGcFailure>(ConfigGcFailure.reader).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ConfigGcResult{deleted: ${deleted}, failed: ${failed}}';
+  }
+}
+
+class _ConfigGcResultReader extends fb.TableReader<ConfigGcResult> {
+  const _ConfigGcResultReader();
+
+  @override
+  ConfigGcResult createObject(fb.BufferContext bc, int offset) => ConfigGcResult._(bc, offset);
+}
+
+class ConfigGcResultBuilder {
+  ConfigGcResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addDeletedOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _deleted;
+  final List<ConfigGcFailureObjectBuilder>? _failed;
+
+  ConfigGcResultObjectBuilder({
+    List<String>? deleted,
+    List<ConfigGcFailureObjectBuilder>? failed,
+  }) : _deleted = deleted,
+       _failed = failed;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? deletedOffset = _deleted == null
+        ? null
+        : fbBuilder.writeList(_deleted!.map(fbBuilder.writeString).toList());
+    final int? failedOffset = _failed == null
+        ? null
+        : fbBuilder.writeList(_failed!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, deletedOffset);
+    fbBuilder.addOffset(1, failedOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -8549,7 +10605,9 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
 ///  envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 ///  before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 ///  validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
-///  detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+///  detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every
+///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
+///  its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
 ///  `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 class Envelope {
   Envelope._(this._bc, this._bcOffset);
@@ -8623,6 +10681,22 @@ class Envelope {
         return TrackResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 27:
         return UntrackResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 28:
+        return ConfigListResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 29:
+        return ConfigGetResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 30:
+        return ConfigPathResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 31:
+        return ConfigSetResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 32:
+        return ConfigUnsetResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 33:
+        return ConfigFileText.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 34:
+        return ConfigGcList.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 35:
+        return ConfigGcResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

@@ -33,6 +33,7 @@ pub(crate) mod change;
 pub(crate) mod commit_meta;
 pub(crate) mod commit_views;
 pub(crate) mod config;
+pub(crate) mod config_cmd;
 pub(crate) mod convert;
 pub(crate) mod detect;
 pub(crate) mod file;
@@ -55,6 +56,12 @@ pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timest
 pub use commit_meta::{CommitMeta, CommitRef};
 pub use commit_views::{CommitViewError, EvologEntry, InterdiffView, RevisionRef, ShowEntry};
 pub use config::{ConfigError, LogDefaults};
+pub use config_cmd::{
+    config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
+    config_set, config_unset, ConfigCmdError, ConfigEntry, ConfigFileText, ConfigGcFailure, ConfigGcResult,
+    ConfigListQuery, ConfigScope, ConfigSetOutcome, ConfigSetResult, ConfigValueSource, MissingRepoConfig,
+    WorkingCopyAuthor,
+};
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
+import '../ffi/config.dart' show ConfigScope;
 
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
 ///
@@ -915,6 +916,163 @@ final class SnapshotCommand extends WorkerCommand implements HandleScopedCommand
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
+}
+
+// ── The config surface (Story 9.28) ─────────────────────────────────────────
+//
+// Nine HANDLE-FREE commands (like [DetectRepoCommand]): the workspace root rides
+// the command (`null` = no workspace), so a config that makes `openRepo` fail can
+// still be listed and repaired. Each worker arm calls its `zanshinConfig*`
+// adapter and replies with a `BufferResult` carrying the envelope bytes.
+
+/// `jj config list` — see `ZanshinWorker.configList`.
+final class ConfigListCommand extends WorkerCommand {
+  const ConfigListCommand({
+    required super.commandId,
+    required this.workspaceRoot,
+    required this.name,
+    required this.scope,
+    required this.includeDefaults,
+    required this.includeOverridden,
+  });
+
+  /// The workspace root (the CLI's `-R`); `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// Only values under this dotted prefix; `null` = everything.
+  final String? name;
+
+  /// Only values of this scope; `null` = no scope flag.
+  final ConfigScope? scope;
+
+  /// The CLI's `--include-defaults`.
+  final bool includeDefaults;
+
+  /// The CLI's `--include-overridden`.
+  final bool includeOverridden;
+}
+
+/// `jj config get NAME` — see `ZanshinWorker.configGet`.
+final class ConfigGetCommand extends WorkerCommand {
+  const ConfigGetCommand({required super.commandId, required this.workspaceRoot, required this.name});
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The dotted config name.
+  final String name;
+}
+
+/// `jj config path` — see `ZanshinWorker.configPath`.
+final class ConfigPathCommand extends WorkerCommand {
+  const ConfigPathCommand({required super.commandId, required this.workspaceRoot, required this.scope});
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The scope.
+  final ConfigScope scope;
+}
+
+/// `jj config set` — see `ZanshinWorker.configSet`.
+final class ConfigSetCommand extends WorkerCommand {
+  const ConfigSetCommand({
+    required super.commandId,
+    required this.workspaceRoot,
+    required this.scope,
+    required this.name,
+    required this.value,
+    required this.path,
+  });
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The scope.
+  final ConfigScope scope;
+
+  /// The dotted config name.
+  final String name;
+
+  /// The value as TOML text (a bare string when it does not look like TOML).
+  final String value;
+
+  /// The file to write when the scope has several; `null` = the single one.
+  final String? path;
+}
+
+/// `jj config unset` — see `ZanshinWorker.configUnset`.
+final class ConfigUnsetCommand extends WorkerCommand {
+  const ConfigUnsetCommand({
+    required super.commandId,
+    required this.workspaceRoot,
+    required this.scope,
+    required this.name,
+    required this.path,
+  });
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The scope.
+  final ConfigScope scope;
+
+  /// The dotted config name.
+  final String name;
+
+  /// The file to write when the scope has several; `null` = the single one.
+  final String? path;
+}
+
+/// `jj config edit`, half 1 — see `ZanshinWorker.configFileRead`.
+final class ConfigFileReadCommand extends WorkerCommand {
+  const ConfigFileReadCommand({
+    required super.commandId,
+    required this.workspaceRoot,
+    required this.scope,
+    required this.path,
+  });
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The scope.
+  final ConfigScope scope;
+
+  /// The file when the scope has several; `null` = the single one.
+  final String? path;
+}
+
+/// `jj config edit`, half 2 — see `ZanshinWorker.configFileWrite`.
+final class ConfigFileWriteCommand extends WorkerCommand {
+  const ConfigFileWriteCommand({
+    required super.commandId,
+    required this.workspaceRoot,
+    required this.path,
+    required this.text,
+  });
+
+  /// The workspace root; `null` = no workspace.
+  final String? workspaceRoot;
+
+  /// The file, as `configFileRead` returned it.
+  final String path;
+
+  /// The new text; refused (nothing written) unless it is valid TOML.
+  final String text;
+}
+
+/// `jj config gc`, half 1 — see `ZanshinWorker.configGcList`.
+final class ConfigGcListCommand extends WorkerCommand {
+  const ConfigGcListCommand({required super.commandId});
+}
+
+/// `jj config gc`, half 2 — see `ZanshinWorker.configGcDelete`.
+final class ConfigGcDeleteCommand extends WorkerCommand {
+  const ConfigGcDeleteCommand({required super.commandId, required this.configDirs});
+
+  /// The config directories to delete.
+  final List<String> configDirs;
 }
 
 /// Request a graceful worker shutdown (Story 3.6).

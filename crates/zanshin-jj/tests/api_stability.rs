@@ -989,3 +989,91 @@ fn snapshot_precondition_surface_resolves() {
     _ = zanshin_jj::Repo::log_defaults
         as fn(&zanshin_jj::Repo) -> Result<zanshin_jj::LogDefaults, zanshin_jj::ConfigError>;
 }
+
+/// Story 9.28: the config surface — nine free functions (no `Repo` handle), their types, and the
+/// `Display` of every `ConfigCmdError` arm.
+#[test]
+fn story_9_28_surface_resolves() {
+    use std::path::{Path, PathBuf};
+    use zanshin_jj::{ConfigCmdError as E, ConfigScope, ConfigValueSource};
+
+    _ = zanshin_jj::config_list
+        as fn(Option<&Path>, &zanshin_jj::ConfigListQuery) -> Result<Vec<zanshin_jj::ConfigEntry>, E>;
+    _ = zanshin_jj::config_get as fn(Option<&Path>, &str) -> Result<String, E>;
+    _ = zanshin_jj::config_path as fn(Option<&Path>, ConfigScope) -> Result<Vec<PathBuf>, E>;
+    _ = zanshin_jj::config_set
+        as fn(Option<&Path>, ConfigScope, &str, &str, Option<&Path>) -> zanshin_jj::ConfigSetOutcome;
+    _ = zanshin_jj::config_unset as fn(Option<&Path>, ConfigScope, &str, Option<&Path>) -> Result<PathBuf, E>;
+    _ = zanshin_jj::config_file_read
+        as fn(Option<&Path>, ConfigScope, Option<&Path>) -> Result<zanshin_jj::ConfigFileText, E>;
+    _ = zanshin_jj::config_file_write as fn(Option<&Path>, &Path, &str) -> Result<(), E>;
+    _ = zanshin_jj::config_gc_list as fn() -> Result<Vec<zanshin_jj::MissingRepoConfig>, E>;
+    _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> Result<zanshin_jj::ConfigGcResult, E>;
+
+    _ = zanshin_jj::ConfigEntry {
+        name: String::new(),
+        value: String::new(),
+        source: ConfigValueSource::EnvOverrides,
+        path: None,
+        overridden: false,
+    };
+    _ = zanshin_jj::ConfigListQuery {
+        name: None,
+        scope: Some(ConfigScope::Workspace),
+        include_defaults: false,
+        include_overridden: true,
+    };
+    _ = zanshin_jj::ConfigSetOutcome {
+        result: Ok(zanshin_jj::ConfigSetResult {
+            path: PathBuf::new(),
+            working_copy_author: Some(zanshin_jj::WorkingCopyAuthor {
+                name: String::new(),
+                email: String::new(),
+            }),
+        }),
+        precondition: None,
+    };
+    _ = zanshin_jj::ConfigFileText {
+        path: PathBuf::new(),
+        text: String::new(),
+    };
+    _ = zanshin_jj::MissingRepoConfig {
+        config_dir: PathBuf::new(),
+        repo_path: PathBuf::new(),
+    };
+    _ = zanshin_jj::ConfigGcResult {
+        deleted: Vec::new(),
+        failed: vec![zanshin_jj::ConfigGcFailure {
+            config_dir: PathBuf::new(),
+            reason: String::new(),
+        }],
+    };
+    for (err, text) in [
+        (E::Config { reason: "r".into() }, "config error: r"),
+        (E::PathNotFound { path: "/p".into() }, "path not found: /p"),
+        (E::NotARepo { path: "/p".into() }, "not a jj repository: /p"),
+        (E::NotFound { reason: "n".into() }, "n"),
+        (E::WouldOverwrite { reason: "o".into() }, "o"),
+        (E::WouldDeleteTable { reason: "d".into() }, "d"),
+        (
+            E::AmbiguousFile {
+                candidates: vec!["/a".into(), "/b".into()],
+            },
+            "choose one of the config files: /a, /b",
+        ),
+        (
+            E::Parse {
+                message: "m".into(),
+                span: Some(1..2),
+            },
+            "m",
+        ),
+        (E::NoConfigPath { reason: "x".into() }, "x"),
+    ] {
+        assert_eq!(err.to_string(), text);
+    }
+    assert_eq!(
+        E::from(zanshin_jj::ConfigError::Load { reason: "c".into() }).to_string(),
+        "config error: c"
+    );
+}

@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 16 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -86,7 +86,16 @@ enum RequestKind : ubyte {
   BookmarkCreate,
   BookmarkDelete,
   FileTrack,
-  FileUntrack
+  FileUntrack,
+  ConfigList,
+  ConfigGet,
+  ConfigPath,
+  ConfigSet,
+  ConfigUnset,
+  ConfigFileRead,
+  ConfigFileWrite,
+  ConfigGcList,
+  ConfigGcDelete
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -389,6 +398,99 @@ table FileUntrackRequest {
   paths: [string];
 }
 
+// ── The config surface (Story 9.28) — the CLI's `jj config` group ───────────────
+//
+// Nine HANDLE-LESS wrappers: every input, the workspace root included, lives in the request
+// table. `workspace_root` ABSENT is the wire form of "no workspace" (the CLI run outside a repo,
+// no `-R`); present, it is the CLI's `-R <path>` — the workspace ROOT, never walked up. A
+// `Repo` handle is deliberately not used: a stack only the workspace LOAD refuses (a
+// wrong-typed `git.*` key) must not block the config verbs, which are how it gets repaired.
+
+/// The CLI's `--user` / `--repo` / `--workspace`. `Unspecified = 0` is the absent-field default
+/// and is refused (`jj.invalid_input`) wherever a scope is required.
+/// Member order IS the wire value — APPEND only.
+enum ConfigScope : byte { Unspecified, User, Repo, Workspace }
+
+/// Arguments of `zanshin_config_list` — `jj config list [NAME] [--user|--repo|--workspace]
+/// [--include-defaults] [--include-overridden]`. `name` ABSENT lists everything; `scope`
+/// `Unspecified` means no scope flag. A scope together with `include_defaults` is refused with
+/// `jj.invalid_input` (clap's conflict).
+table ConfigListRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  name: string;
+  scope: ConfigScope;
+  include_defaults: bool;
+  include_overridden: bool;
+}
+
+/// Arguments of `zanshin_config_get` — `jj config get NAME`; `name` is required.
+table ConfigGetRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  name: string;
+}
+
+/// Arguments of `zanshin_config_path` — `jj config path --user|--repo|--workspace`.
+table ConfigPathRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  scope: ConfigScope;
+}
+
+/// Arguments of `zanshin_config_set` — `jj config set --user|--repo|--workspace NAME VALUE`.
+/// `value` is TOML text (a bare string when it does not look like TOML); `name` and `value` are
+/// required. `path` ABSENT lets the verb pick the scope's single file; with several candidates
+/// (the CLI's prompt) it must name one of them.
+table ConfigSetRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  scope: ConfigScope;
+  name: string;
+  value: string;
+  path: string;
+}
+
+/// Arguments of `zanshin_config_unset` — `jj config unset --user|--repo|--workspace NAME`;
+/// `path` as in ConfigSetRequest.
+table ConfigUnsetRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  scope: ConfigScope;
+  name: string;
+  path: string;
+}
+
+/// Arguments of `zanshin_config_file_read` — `jj config edit`, editor half 1; `path` as in
+/// ConfigSetRequest.
+table ConfigFileReadRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  scope: ConfigScope;
+  path: string;
+}
+
+/// Arguments of `zanshin_config_file_write` — `jj config edit`, editor half 2. `path` (a file
+/// `zanshin_config_file_read` can return) and `text` are required.
+table ConfigFileWriteRequest {
+  kind: RequestKind;
+  workspace_root: string;
+  path: string;
+  text: string;
+}
+
+/// Arguments of `zanshin_config_gc_list` — `jj config gc`, half 1 (no arguments; the tag only).
+table ConfigGcListRequest {
+  kind: RequestKind;
+}
+
+/// Arguments of `zanshin_config_gc_delete` — `jj config gc`, half 2: the config directories to
+/// delete (normally a subset of `zanshin_config_gc_list`'s answer).
+table ConfigGcDeleteRequest {
+  kind: RequestKind;
+  config_dirs: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -414,6 +516,9 @@ table FileUntrackRequest {
 //                contract as the pre-call-head new_op_id)
 //   Story 9-22 : TrackResult ✓, UntrackResult ✓ (both nest the shipped MutationResult and one
 //                shared SnapshotStats; UntrackResult reuses GitExportFailure)
+//   Story 9-28 : ConfigListResult ✓, ConfigGetResult ✓, ConfigPathResult ✓, ConfigSetResult ✓,
+//                ConfigUnsetResult ✓, ConfigFileText ✓, ConfigGcList ✓, ConfigGcResult ✓
+//                (`zanshin_config_file_write` answers ok with no payload)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1170,6 +1275,88 @@ table Precondition {
   finish: FinishFacts;
 }
 
+// ── Config surface payloads (Story 9.28) ─────────────────────────────────────
+
+/// Which layer a listed value comes from — jj-lib's `ConfigSource` (Zanshin has no
+/// command-line layer). Member order IS the wire value — APPEND only.
+enum ConfigValueSource : byte { Default, System, EnvBase, User, Repo, Workspace, EnvOverrides }
+
+/// One row of `zanshin_config_list` — the CLI's `AnnotatedValue`. `name` is dotted, `value` TOML
+/// text (strings stay quoted), `path` ABSENT for the default and environment layers,
+/// `overridden` true when a higher layer shadows it.
+table ConfigEntry {
+  name: string;
+  value: string;
+  source: ConfigValueSource;
+  path: string;
+  overridden: bool;
+}
+
+/// `zanshin_config_list`'s answer, lowest layer first; empty is a result, not an error.
+table ConfigListResult {
+  entries: [ConfigEntry];
+}
+
+/// `zanshin_config_get`'s answer: a string unquoted, anything else TOML text.
+table ConfigGetResult {
+  value: string;
+}
+
+/// `zanshin_config_path`'s answer: user → every candidate in the CLI's order, existing or not;
+/// repo / workspace → the one secure file (its directory now exists).
+table ConfigPathResult {
+  paths: [string];
+}
+
+/// `@`'s author (both CURRENT fields) when a `user.name` / `user.email` write differs from it —
+/// the CLI's "only impacts future commits … use `jj metaedit --update-author`" warning.
+table WorkingCopyAuthor {
+  name: string;
+  email: string;
+}
+
+/// `zanshin_config_set`'s answer: the file written, and — ABSENT unless it differs —
+/// the working-copy author fact.
+table ConfigSetResult {
+  path: string;
+  working_copy_author: WorkingCopyAuthor;
+}
+
+/// `zanshin_config_unset`'s answer: the file written.
+table ConfigUnsetResult {
+  path: string;
+}
+
+/// `zanshin_config_file_read`'s answer: the file and its exact text.
+table ConfigFileText {
+  path: string;
+  text: string;
+}
+
+/// A repo config directory whose recorded repo no longer exists.
+table MissingRepoConfig {
+  config_dir: string;
+  repo_path: string;
+}
+
+/// `zanshin_config_gc_list`'s answer, sorted by directory.
+table ConfigGcList {
+  missing: [MissingRepoConfig];
+}
+
+/// A requested directory `zanshin_config_gc_delete` did not delete, and why.
+table ConfigGcFailure {
+  config_dir: string;
+  reason: string;
+}
+
+/// `zanshin_config_gc_delete`'s answer: `deleted` in the sorted missing order; every other
+/// requested directory (not a missing repo config, or its removal failed) in `failed`.
+table ConfigGcResult {
+  deleted: [string];
+  failed: [ConfigGcFailure];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -1199,6 +1386,14 @@ union Payload {
   WorkspaceRoot,
   TrackResult,
   UntrackResult,
+  ConfigListResult,
+  ConfigGetResult,
+  ConfigPathResult,
+  ConfigSetResult,
+  ConfigUnsetResult,
+  ConfigFileText,
+  ConfigGcList,
+  ConfigGcResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
@@ -1219,7 +1414,9 @@ union Payload {
 /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
-/// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+/// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every
+/// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
+/// its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
 /// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 table Envelope {
   ok: bool;

@@ -14,11 +14,15 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 18
+#define ENUM_MAX_REQUEST_KIND 27
 
 #define ENUM_MIN_REVISION_REF 0
 
 #define ENUM_MAX_REVISION_REF 2
+
+#define ENUM_MIN_CONFIG_SCOPE 0
+
+#define ENUM_MAX_CONFIG_SCOPE 3
 
 #define ENUM_MIN_CHANGE_KIND 0
 
@@ -55,6 +59,10 @@
 #define ENUM_MIN_UNTRACKED_REASON 0
 
 #define ENUM_MAX_UNTRACKED_REASON 2
+
+#define ENUM_MIN_CONFIG_VALUE_SOURCE 0
+
+#define ENUM_MAX_CONFIG_VALUE_SOURCE 6
 
 /**
  * Opaque ownership token for a `FlatBuffers` buffer returned across the FFI
@@ -112,6 +120,20 @@ typedef struct {
 #define BookmarkCreateRequest_VT_NAMES 6
 
 #define FileTrackRequest_VT_INCLUDE_IGNORED 8
+
+#define ConfigListRequest_VT_WORKSPACE_ROOT 6
+
+#define ConfigListRequest_VT_SCOPE 10
+
+#define ConfigListRequest_VT_INCLUDE_DEFAULTS 12
+
+#define ConfigListRequest_VT_INCLUDE_OVERRIDDEN 14
+
+#define ConfigSetRequest_VT_VALUE 12
+
+#define ConfigFileWriteRequest_VT_TEXT 10
+
+#define ConfigGcDeleteRequest_VT_CONFIG_DIRS 6
 
 #define RepoHandle_VT_SESSION_ID 6
 
@@ -356,6 +378,22 @@ typedef struct {
 #define Precondition_VT_GIT_REFS_REBASED 20
 
 #define Precondition_VT_JJCONFLICT_FILES_PRESENT 22
+
+#define ConfigEntry_VT_SOURCE 8
+
+#define ConfigEntry_VT_OVERRIDDEN 12
+
+#define ConfigSetResult_VT_WORKING_COPY_AUTHOR 6
+
+#define MissingRepoConfig_VT_CONFIG_DIR 4
+
+#define MissingRepoConfig_VT_REPO_PATH 6
+
+#define ConfigGcList_VT_MISSING 4
+
+#define ConfigGcResult_VT_DELETED 4
+
+#define ConfigGcResult_VT_FAILED 6
 
 #define Envelope_VT_PRECONDITION 12
 
@@ -666,6 +704,213 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * List the values of the effective jj config stack with their sources — the CLI's `jj config
+ * list [NAME] [--user|--repo|--workspace] [--include-defaults] [--include-overridden]`.
+ *
+ * The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
+ * (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
+ * `ConfigListResult` (lowest layer first; empty is a result). Writes nothing.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigListRequest`, or its `kind` is
+ *   not `ConfigList`.
+ * - `jj.invalid_input` — a `scope` together with `include_defaults` (the CLI's flag conflict).
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the stack does not load (a file unreadable or not TOML, a malformed id
+ *   file, a wrong-typed start-up key); the path or key in `context`.
+ * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
+ *
+ * # Safety
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart; Rust only borrows it for the call. The returned token must be freed exactly once via
+ * `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_config_list(const uint8_t *data, uintptr_t len);
+
+/**
+ * Read one value of the effective jj config stack — the CLI's `jj config get NAME`: a string
+ * unquoted, any other value (a table merged into an inline table included) as TOML text.
+ *
+ * The arguments cross as a `ConfigGetRequest` buffer. Returns an `Envelope` carrying a
+ * `ConfigGetResult`. Writes nothing.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigGetRequest`, or its `kind` is not
+ *   `ConfigGet`.
+ * - `jj.invalid_input` — `name` is absent.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the stack does not load; the path or key in `context`.
+ * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
+ * - `jj.config_not_found` — no layer sets `name` ("Value not found for <name>").
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_get(const uint8_t *data, uintptr_t len);
+
+/**
+ * The config file paths of a scope — the CLI's `jj config path --user|--repo|--workspace`.
+ *
+ * User: every candidate in the CLI's order, existing or not, creating nothing. Repo /
+ * workspace: the secure file, CREATING its config directory, `metadata.binpb` and id file when
+ * missing (the CLI's documented side effect; the `config.toml` itself is not created). The
+ * arguments cross as a `ConfigPathRequest` buffer; returns a `ConfigPathResult`.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigPathRequest`, or its `kind` is
+ *   not `ConfigPath`.
+ * - `jj.invalid_input` — `scope` is `Unspecified`.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the stack does not load, or the secure directory could not be created.
+ * - `jj.config_path_not_found` — no path can be determined ("No user config path found", …).
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_path(const uint8_t *data, uintptr_t len);
+
+/**
+ * Set a config value in a file of a scope — the CLI's `jj config set --user|--repo|--workspace
+ * NAME VALUE`.
+ *
+ * `value` is TOML text, a bare string when it does not look like TOML. The file is the scope's
+ * single existing file (or the CLI's new-file default); with several, `path` must name one
+ * (the CLI's prompt). Comments and formatting survive; the config write itself writes no
+ * operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
+ * first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
+ * dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition`, and
+ * `ConfigSetResult.working_copy_author` is present iff `@`'s author differs from the new value.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigSetRequest`, or its `kind` is not
+ *   `ConfigSet`.
+ * - `jj.invalid_input` — `scope` is `Unspecified`, or `name` / `value` is absent.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the stack does not load, or the file could not be read or written.
+ * - `jj.config_parse_error` — `name` or `value` is not valid TOML; span and message in `context`.
+ * - `jj.config_path_not_found` — no file of the scope can be determined.
+ * - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`; the
+ *   candidates in `context`, one per line. Nothing written.
+ * - `jj.config_would_overwrite` — the value would replace a whole table, or a non-table parent.
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_set(const uint8_t *data, uintptr_t len);
+
+/**
+ * Remove a config value from a file of a scope — the CLI's `jj config unset
+ * --user|--repo|--workspace NAME`. File selection and `path` as `zanshin_config_set`; returns
+ * a `ConfigUnsetResult` naming the file. No operation is written.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigUnsetRequest`, or its `kind` is
+ *   not `ConfigUnset`.
+ * - `jj.invalid_input` — `scope` is `Unspecified`, or `name` is absent.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the stack does not load, or the file could not be read or written.
+ * - `jj.config_parse_error` — `name` is not a TOML dotted key.
+ * - `jj.config_path_not_found` — no file of the scope can be determined.
+ * - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+ * - `jj.config_would_delete_table` — `name` is a whole table.
+ * - `jj.config_not_found` — the file does not hold `name` (`"<name>" doesn't exist`).
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_unset(const uint8_t *data, uintptr_t len);
+
+/**
+ * `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
+ * file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Runs no
+ * start-up stack, so a broken config can be read and repaired. The arguments cross as a
+ * `ConfigFileReadRequest` buffer; returns a `ConfigFileText`.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigFileReadRequest`, or its `kind`
+ *   is not `ConfigFileRead`.
+ * - `jj.invalid_input` — `scope` is `Unspecified`.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_error` — the file could not be created or read, or is not UTF-8.
+ * - `jj.config_path_not_found` — no file of the scope can be determined.
+ * - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_file_read(const uint8_t *data, uintptr_t len);
+
+/**
+ * `jj config edit`, editor half 2: replace a config file's text — only a file
+ * `zanshin_config_file_read` can return for some scope of this root, and only after `text`
+ * parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
+ * `Envelope` with no payload.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigFileWriteRequest`, or its `kind`
+ *   is not `ConfigFileWrite`.
+ * - `jj.invalid_input` — `path` or `text` is absent.
+ * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
+ * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
+ * - `jj.config_ambiguous_file` — `path` is not such a file; the allowed files in `context`.
+ * - `jj.config_parse_error` — `text` is not valid TOML; span and message in `context`, the file
+ *   untouched.
+ * - `jj.config_error` — the write failed.
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_file_write(const uint8_t *data, uintptr_t len);
+
+/**
+ * `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
+ * recorded repo no longer exists, sorted — the CLI's list before its yes/no prompt. The
+ * request is a `ConfigGcListRequest` (the tag only); returns a `ConfigGcList`. Writes nothing.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigGcListRequest`, or its `kind` is
+ *   not `ConfigGcList`.
+ * - `jj.config_error` — the stack does not load, or the root cannot be read.
+ * - `jj.config_path_not_found` — "No config directory found".
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_gc_list(const uint8_t *data, uintptr_t len);
+
+/**
+ * `jj config gc`, half 2: delete the requested directories that are still missing repo config
+ * directories; any other request, and every per-directory failure, rides
+ * `ConfigGcResult.failed` (the CLI warns and continues). The arguments cross as a
+ * `ConfigGcDeleteRequest` buffer.
+ *
+ * # Errors
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ConfigGcDeleteRequest`, or its `kind`
+ *   is not `ConfigGcDelete`.
+ * - `jj.config_error` — the stack does not load, or the root cannot be read.
+ * - `jj.config_path_not_found` — "No config directory found".
+ *
+ * # Safety
+ * As `zanshin_config_list`.
+ */
+ZanshinBuf *zanshin_config_gc_delete(const uint8_t *data, uintptr_t len);
 
 /**
  * Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location

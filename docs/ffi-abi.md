@@ -33,7 +33,7 @@ by contract (two compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 50
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 59
 exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -84,11 +84,17 @@ outcome and rebased counts, the `.jjconflict` warning, and the Git HEAD
 reset / ref export facts as `finish`). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, convert, detect, close, `zanshin_log_defaults`,
-`zanshin_workspace_root`, the infrastructure symbols, async events) and whenever
+`zanshin_workspace_root`, the infrastructure symbols, async events, and every
+`zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation).
 A failed pre-verb snapshot is `jj.stale_working_copy`, `jj.config_error` or
 `jj.jj_lib_error`; every such symbol's row names all three.
+
+`zanshin_config_set` (Story 9.28) is handle-less but runs the snapshot for
+`user.name` / `user.email` with a workspace root — the CLI's `check_wc_author`,
+whose failure it skips silently. Its envelope, ok or error, carries
+`precondition` exactly when that snapshot ran.
 
 Every mutation whose CLI verb ends in `tx.finish` (all but `zanshin_file_track` /
 `_untrack`, which the CLI commits through the locked working copy) likewise runs the
@@ -97,7 +103,7 @@ colocated workspace it resets Git HEAD to `@`'s parent and exports the refs, and
 if `@` became immutable it creates a new `@` on top. Those facts ride
 `MutationResult.finish` (absent when all are at their default).
 
-`Payload` has **27** members. Two of them — `WatcherEvent` and `Progress` — are
+`Payload` has **35** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
 `zanshin_events_register` callback (see *Async events* below). Union member order
 is the wire discriminant, so the union is **append-only**.
@@ -132,13 +138,26 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Eighteen of the 50 exported symbols take their arguments as a **FlatBuffers
+Twenty-seven of the 59 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. The signature is always the same three-parameter shape:
+strings. Eighteen use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
 ```
+
+The nine `zanshin_config_*` symbols (Story 9.28) use the **handle-less
+two-parameter shape**, every input — the workspace root included — inside the
+request table (`workspace_root` absent = no workspace, the CLI run without `-R`):
+
+```c
+ZanshinBuf* zanshin_config_<verb>(const uint8_t* data, uintptr_t len);
+```
+
+They are handle-less on purpose: a stack only the workspace LOAD refuses (a
+wrong-typed `git.*` key) makes `zanshin_repo_open` fail, and the config verbs are
+how the user repairs it — exactly as the CLI's config commands never load the
+workspace.
 
 This section is the whole convention. The per-symbol rustdoc in
 `crates/zanshin-ffi/include/zanshin_ffi.h` does not repeat it.
@@ -171,7 +190,7 @@ answer to `ffi.null_pointer`, which is a different refusal.
 
 ### Reading the buffer (Rust side) — the refusal ladder
 
-All eighteen wrappers share one reader shape (worked example:
+All twenty-seven wrappers share one reader shape (worked example:
 `crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
@@ -185,6 +204,11 @@ call). Five distinct refusals sit at five distinct layers:
 | 3 | `expect_request_kind(req.kind(), …)` — the buffer was built for THIS wrapper | `ffi.invalid_argument` | `request kind mismatch: expected <K>, got <K>` |
 | 4 | a required field is ABSENT from an otherwise valid table | `jj.invalid_input` | the field name |
 | 5 | `session_from_handle(handle)` — the handle is `0` or the borrow yields `None` | `ffi.invalid_handle` | **absent** |
+
+The two-parameter `zanshin_config_*` shape has rows 1–4 and **no row 5**: after the
+required fields (row 4 there also refuses `ConfigScope::Unspecified` where a scope
+is required, and `zanshin_config_list`'s scope-plus-`include_defaults` conflict)
+come the verb's own codes.
 
 Row 4 is the *reader's* own required-field guard, which only five readers have
 (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
@@ -210,7 +234,7 @@ A **zero-length or garbage buffer** fails verification, so it lands on
 `data` pointer produces `ffi.null_pointer`.
 
 **The whole request buffer is judged before the handle is borrowed.** Every one
-of the eighteen wrappers calls its reader BEFORE `session_from_handle`, so rows 1
+of the eighteen handle-scoped wrappers calls its reader BEFORE `session_from_handle`, so rows 1
 through 4 all precede row 5. That order is deliberate: a buffer built for the
 wrong verb has to be refused on its own merits, not only when the caller happens
 to hold a live handle. The only callers that see a different answer than they
@@ -222,7 +246,7 @@ bytes readable at `data`; the reader builds its slice with
 `std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
 larger than the allocation is an out-of-bounds read — undefined behaviour, not a
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
-repeated in every one of the eighteen symbols' `# Safety` blocks.
+repeated in every one of the twenty-seven symbols' `# Safety` blocks.
 
 Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
@@ -255,7 +279,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **17** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **26** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -264,7 +288,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 17 tables + 1 shared reuse = the 18
+one caller, and no table is orphaned. 26 tables + 1 shared reuse = the 27
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -282,7 +306,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 16 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 25 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -327,7 +351,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **50** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **59** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -339,8 +363,8 @@ symbol to learn why. `internal.panic` is documented once under *Envelope format*
 and is deliberately absent from every row.
 
 Rows are grouped by noun: repository lifecycle, repo-state reads, commit views,
-file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking and snapshot, git sync, and
-infrastructure. `—` means "not applicable": no request table, no success payload,
+file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking and snapshot, git sync, config
+(Story 9.28), and infrastructure. `—` means "not applicable": no request table, no success payload,
 or no `# Errors` block.
 
 | Symbol | Args | Request table | Success payload | Error codes | Story |
@@ -386,6 +410,15 @@ or no `# Errors` block.
 | `zanshin_git_remote_remove` | `(uint64_t handle, const char *name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_rename` | `(uint64_t handle, const char *old_name, const char *new_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_set_url` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteSetUrlRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_config_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigListRequest` | `ConfigListResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error` | 9.28 |
+| `zanshin_config_get` | `(const uint8_t *data, uintptr_t len)` | `ConfigGetRequest` | `ConfigGetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_not_found` | 9.28 |
+| `zanshin_config_path` | `(const uint8_t *data, uintptr_t len)` | `ConfigPathRequest` | `ConfigPathResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
+| `zanshin_config_set` | `(const uint8_t *data, uintptr_t len)` | `ConfigSetRequest` | `ConfigSetResult` (+ `precondition` iff the identity check snapshotted) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_overwrite` | 9.28 |
+| `zanshin_config_unset` | `(const uint8_t *data, uintptr_t len)` | `ConfigUnsetRequest` | `ConfigUnsetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_delete_table`, `jj.config_not_found` | 9.28 |
+| `zanshin_config_file_read` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileReadRequest` | `ConfigFileText` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file` | 9.28 |
+| `zanshin_config_file_write` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileWriteRequest` | — (no-payload success) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_ambiguous_file`, `jj.config_parse_error`, `jj.config_error` | 9.28 |
+| `zanshin_config_gc_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcListRequest` | `ConfigGcList` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
+| `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
 | `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |

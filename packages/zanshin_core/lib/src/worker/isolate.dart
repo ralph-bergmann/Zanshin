@@ -12,6 +12,7 @@ import '../ffi/bookmark_ops.dart' as repo_ffi_bookmark_ops;
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
+import '../ffi/config.dart' as repo_ffi_config;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/events.dart'
@@ -1410,6 +1411,158 @@ class ZanshinWorker {
     final Uint8List bytes = await send(SnapshotCommand(commandId: _correlator.allocateId(), handleId: handleId));
     return repo_ffi_precondition.decodeSnapshotEnvelopeInternal(bytes);
   }
+
+  // ── The config surface (Story 9.28) ────────────────────────────────────────
+  //
+  // Handle-free, like [detect]: [workspaceRoot] is the CLI's `-R` (`null` = no
+  // workspace), so a config that makes [openRepo] fail can still be listed and
+  // repaired through these. Every method throws [ArgumentError] for a string
+  // argument with an interior NUL (U+0000) and [ZanshinFfiException] for an FFI
+  // error (`jj.config_*`, `jj.path_not_found`, `jj.repo_not_found`, …; see
+  // `docs/ffi-abi.md`).
+
+  /// `jj config list [NAME] [--user|--repo|--workspace] [--include-defaults]
+  /// [--include-overridden]` — every value of the effective stack with its
+  /// source, lowest layer first. A [scope] together with [includeDefaults] is
+  /// refused (`jj.invalid_input`).
+  Future<List<repo_ffi_config.ConfigEntry>> configList({
+    String? workspaceRoot,
+    String? name,
+    repo_ffi_config.ConfigScope? scope,
+    bool includeDefaults = false,
+    bool includeOverridden = false,
+  }) async {
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    rejectInteriorNul(name, 'name');
+    final Uint8List bytes = await send(
+      ConfigListCommand(
+        commandId: _correlator.allocateId(),
+        workspaceRoot: workspaceRoot,
+        name: name,
+        scope: scope,
+        includeDefaults: includeDefaults,
+        includeOverridden: includeOverridden,
+      ),
+    );
+    return repo_ffi_config.decodeConfigListEnvelopeInternal(bytes);
+  }
+
+  /// `jj config get NAME` — a string unquoted, anything else as TOML text.
+  Future<String> configGet(String name, {String? workspaceRoot}) async {
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    rejectInteriorNul(name, 'name');
+    final Uint8List bytes = await send(
+      ConfigGetCommand(commandId: _correlator.allocateId(), workspaceRoot: workspaceRoot, name: name),
+    );
+    return repo_ffi_config.decodeConfigGetEnvelopeInternal(bytes);
+  }
+
+  /// `jj config path --user|--repo|--workspace`. Repo / workspace scope CREATES
+  /// the secure config directory and id file when missing (the CLI's side effect).
+  Future<List<String>> configPath(repo_ffi_config.ConfigScope scope, {String? workspaceRoot}) async {
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    final Uint8List bytes = await send(
+      ConfigPathCommand(commandId: _correlator.allocateId(), workspaceRoot: workspaceRoot, scope: scope),
+    );
+    return repo_ffi_config.decodeConfigPathEnvelopeInternal(bytes);
+  }
+
+  /// `jj config set --<scope> NAME VALUE`. [value] is TOML text (a bare string
+  /// when it does not look like TOML); with several candidate files, [path] must
+  /// name one (`jj.config_ambiguous_file` lists them). The config write itself
+  /// writes no operation; only the `user.name`/`user.email` check's snapshot may
+  /// (a dirty `@`), exactly as the CLI's `check_wc_author`.
+  Future<repo_ffi_config.ConfigSetResult> configSet(
+    repo_ffi_config.ConfigScope scope,
+    String name,
+    String value, {
+    String? workspaceRoot,
+    String? path,
+  }) async {
+    rejectInteriorNuls([name, value], 'name/value');
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    rejectInteriorNul(path, 'path');
+    final Uint8List bytes = await send(
+      ConfigSetCommand(
+        commandId: _correlator.allocateId(),
+        workspaceRoot: workspaceRoot,
+        scope: scope,
+        name: name,
+        value: value,
+        path: path,
+      ),
+    );
+    return repo_ffi_config.decodeConfigSetEnvelopeInternal(bytes);
+  }
+
+  /// `jj config unset --<scope> NAME`; returns the file written.
+  Future<String> configUnset(
+    repo_ffi_config.ConfigScope scope,
+    String name, {
+    String? workspaceRoot,
+    String? path,
+  }) async {
+    rejectInteriorNul(name, 'name');
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    rejectInteriorNul(path, 'path');
+    final Uint8List bytes = await send(
+      ConfigUnsetCommand(
+        commandId: _correlator.allocateId(),
+        workspaceRoot: workspaceRoot,
+        scope: scope,
+        name: name,
+        path: path,
+      ),
+    );
+    return repo_ffi_config.decodeConfigUnsetEnvelopeInternal(bytes);
+  }
+
+  /// `jj config edit`, editor half 1: the file and its exact text, creating an
+  /// absent file first (as the CLI does before starting the editor).
+  Future<repo_ffi_config.ConfigFileText> configFileRead(
+    repo_ffi_config.ConfigScope scope, {
+    String? workspaceRoot,
+    String? path,
+  }) async {
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    rejectInteriorNul(path, 'path');
+    final Uint8List bytes = await send(
+      ConfigFileReadCommand(
+        commandId: _correlator.allocateId(),
+        workspaceRoot: workspaceRoot,
+        scope: scope,
+        path: path,
+      ),
+    );
+    return repo_ffi_config.decodeConfigFileTextEnvelopeInternal(bytes);
+  }
+
+  /// `jj config edit`, editor half 2: replaces the file's text — refused with
+  /// `jj.config_parse_error` (nothing written) unless [text] is valid TOML.
+  Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+    rejectInteriorNuls([path, text], 'path/text');
+    rejectInteriorNul(workspaceRoot, 'workspaceRoot');
+    final Uint8List bytes = await send(
+      ConfigFileWriteCommand(commandId: _correlator.allocateId(), workspaceRoot: workspaceRoot, path: path, text: text),
+    );
+    repo_ffi_config.decodeConfigFileWriteEnvelopeInternal(bytes);
+  }
+
+  /// `jj config gc`, half 1: the repo config directories whose repo is gone.
+  Future<List<repo_ffi_config.MissingRepoConfig>> configGcList() async {
+    final Uint8List bytes = await send(ConfigGcListCommand(commandId: _correlator.allocateId()));
+    return repo_ffi_config.decodeConfigGcListEnvelopeInternal(bytes);
+  }
+
+  /// `jj config gc`, half 2: deletes those of [configDirs] that are still missing
+  /// repo config directories; everything else rides `failed`.
+  Future<repo_ffi_config.ConfigGcResult> configGcDelete(List<String> configDirs) async {
+    rejectInteriorNuls(configDirs, 'configDirs');
+    final Uint8List bytes = await send(
+      ConfigGcDeleteCommand(commandId: _correlator.allocateId(), configDirs: configDirs),
+    );
+    return repo_ffi_config.decodeConfigGcResultEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -1973,6 +2126,84 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List bytes = repo_ffi_precondition.zanshinSnapshot(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
+
+        case ConfigListCommand(
+          :final String? workspaceRoot,
+          :final String? name,
+          :final repo_ffi_config.ConfigScope? scope,
+          :final bool includeDefaults,
+          :final bool includeOverridden,
+        ):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigList(
+            workspaceRoot: workspaceRoot,
+            name: name,
+            scope: scope,
+            includeDefaults: includeDefaults,
+            includeOverridden: includeOverridden,
+          );
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigGetCommand(:final String? workspaceRoot, :final String name):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigGet(name, workspaceRoot: workspaceRoot);
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigPathCommand(:final String? workspaceRoot, :final repo_ffi_config.ConfigScope scope):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigPath(scope, workspaceRoot: workspaceRoot);
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigSetCommand(
+          :final String? workspaceRoot,
+          :final repo_ffi_config.ConfigScope scope,
+          :final String name,
+          :final String value,
+          :final String? path,
+        ):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigSet(
+            scope,
+            name,
+            value,
+            workspaceRoot: workspaceRoot,
+            path: path,
+          );
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigUnsetCommand(
+          :final String? workspaceRoot,
+          :final repo_ffi_config.ConfigScope scope,
+          :final String name,
+          :final String? path,
+        ):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigUnset(
+            scope,
+            name,
+            workspaceRoot: workspaceRoot,
+            path: path,
+          );
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigFileReadCommand(
+          :final String? workspaceRoot,
+          :final repo_ffi_config.ConfigScope scope,
+          :final String? path,
+        ):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigFileRead(
+            scope,
+            workspaceRoot: workspaceRoot,
+            path: path,
+          );
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigFileWriteCommand(:final String? workspaceRoot, :final String path, :final String text):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigFileWrite(path, text, workspaceRoot: workspaceRoot);
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigGcListCommand():
+          final Uint8List bytes = repo_ffi_config.zanshinConfigGcList();
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case ConfigGcDeleteCommand(:final List<String> configDirs):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigGcDelete(configDirs);
+          responseSP.send((commandId, BufferResult(bytes)));
 
         case ShutdownCommand():
           // Close every repo left open: each join()s its Rust dispatch thread

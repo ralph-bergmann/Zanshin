@@ -22,42 +22,39 @@
 //! Every READ path here is side-effect-free: no directory is created, no file is written,
 //! no `config-id` is generated, nothing is migrated. That stance is unchanged.
 //!
-//! Everything that DOES write belongs to the writer family below — the three writers named
-//! in the next two paragraphs plus [`create_repo_config_file`], the create-mode resolver the
-//! third of them is paired with, which is also the only path here that creates a directory
-//! and writes `metadata.binpb` and `.jj/repo/config-id`. Between them they serve exactly
-//! three crate verbs (`git remote remove`, `git remote rename`, and the conversion the two
-//! convert entry points share); nothing else in this module touches the disk.
+//! Everything that DOES write belongs to ONE writer family, built from the same helpers:
+//! [`load_config_file`] / [`save_config_file`] (`ConfigFile::load_or_empty` / `save`, a
+//! `toml_edit` round trip that keeps comments and formatting) and one create-mode secure
+//! resolver, [`SecureLayer::create_path`] (`SecureConfig::load_config` — the only path here that
+//! creates a directory and writes `metadata.binpb` and an id file). Its members:
 //!
-//! What changed (Epic 9 follow-up J) is that this module now also holds the crate's only
-//! config WRITERS, [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`],
-//! called by [`crate::Repo::git_remote_remove`] / [`crate::Repo::git_remote_rename`] — the
-//! two verbs whose CLI counterparts rewrite the repo-level file
-//! (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0). They make exactly the CLI's two edits
-//! and NEVER create a file: the path is resolved by the same [`secure_config_path`] the read
-//! side uses and filtered by existence ([`existing_repo_config_file`]), so read and write
-//! address the same file by construction. No general config-write API exists, and none of
-//! the other verbs — `git remote add`/`set-url` included — writes config at all.
+//! - the general config surface of Story 9.28 (`config_cmd.rs`: `jj config set` / `unset` /
+//!   `edit` / `path` for the user, repo and workspace scope), which selects its file with the
+//!   CLI's `edit_config_file` rule — the existing files of the scope, else the CLI's new-file
+//!   default ([`user_config_candidates`]' first entry, or the create-forced secure file);
+//! - [`remove_remote_from_repo_config`] and [`rename_remote_in_repo_config`], called by
+//!   [`crate::Repo::git_remote_remove`] / [`crate::Repo::git_remote_rename`] — the two remote
+//!   verbs whose CLI counterparts rewrite the repo-level file
+//!   (`cli/src/commands/git/mod.rs:195-262` @ v0.44.0). They make exactly the CLI's two edits
+//!   and NEVER create a file: the CLI resolves theirs through `existing_repo_config_file`, which
+//!   yields nothing when no repo layer was loaded, so the path here is the READ side's
+//!   [`SecureLayer::resolved_path`] filtered by existence ([`existing_repo_config_file`]) and
+//!   read and write address the same file by construction. `git remote add`/`set-url` write
+//!   no config at all;
+//! - [`set_trunk_alias`], called by `convert.rs` for the `trunk()` alias `jj git init`'s
+//!   External branch writes (`write_repo_presets`, `cli/src/commands/git/mod.rs:156-193` @
+//!   v0.44.0). It MAY create the repo-level file, because its CLI counterpart resolves through
+//!   the create-FORCING `repo_config_path` ([`new_repo_config_file`] here): `jj git init`
+//!   legitimately brings the repo layer into being, whereas `jj git remote remove` on a repo
+//!   that has no repo config must leave the user with no repo config.
 //!
-//! Those two writers take an ALREADY-LOADED [`ConfigFile`], never a path: the CLI's
+//! The remote writers take an ALREADY-LOADED [`ConfigFile`], never a path: the CLI's
 //! `existing_repo_config_file` wraps a layer its process loaded at start-up, so a repo config
 //! that cannot be read or parsed makes the CLI fail before it mutates anything. Loading here
 //! too — in [`existing_repo_config_file`], before the caller opens its transaction — is what
 //! reproduces that end state.
 //!
-//! Epic 9 follow-up K added the family's third member, [`set_trunk_alias`], called by
-//! `convert.rs` for the `trunk()` alias `jj git init`'s External branch writes. It is the
-//! FIRST writer here that may CREATE the repo-level file, because its CLI counterpart
-//! (`write_repo_presets`, `cli/src/commands/git/mod.rs:156-193` @ v0.44.0) resolves the path
-//! through `ConfigEnv::repo_config_path(ui)` — the create-FORCING spelling — where
-//! remove/rename go through `existing_repo_config_file`, which yields nothing when no file
-//! was loaded. Creation is therefore correct HERE and wrong there: `jj git init` legitimately
-//! brings the repo layer into being, whereas `jj git remote remove` on a repo that has no
-//! repo config must leave the user with no repo config. The create mode lives in its own
-//! resolver ([`create_repo_config_file`], and its `&Workspace` wrapper
-//! [`new_repo_config_file`]) so the two modes can never be reached by accident.
-//!
-//! # WHY: by hand for READS, `SecureConfig` for the one CREATE
+//! # WHY: by hand for READS, `SecureConfig` for the CREATES
 //!
 //! The CLI reaches the repo/workspace layer through `SecureConfig`, whose
 //! `maybe_load_config` WRITES: it creates directories, writes `metadata.binpb`, can
@@ -69,10 +66,10 @@
 //! given up is the CLI's migration and its terminal warning, and Zanshin has no terminal (it
 //! replaces the CLI's UX — NFR-R-2).
 //!
-//! [`create_repo_config_file`] is the one place that calls `SecureConfig::load_config`
-//! directly, and it does so deliberately: it runs only from a conversion that is ALREADY
-//! writing the repo into being, where the CLI itself creates the config directory, and
-//! calling jj-lib reproduces that layout exactly — the `<root>/<id>/` directory, the
+//! [`SecureLayer::create_path`] is the one place that calls `SecureConfig::load_config`, and it
+//! does so deliberately: it runs only from a WRITE the CLI performs through the same
+//! create-forcing call (a conversion writing the repo into being, a `config set`/`unset`/`edit`/
+//! `path` at repo or workspace scope), and calling jj-lib reproduces that layout exactly — the `<root>/<id>/` directory, the
 //! `metadata.binpb`, and the atomic `.jj/repo/config-id` write — without re-implementing
 //! `config-id` generation. Writing the legacy `.jj/repo/config.toml` instead would be read
 //! correctly by both tools but would leave the CLI to MIGRATE it on its next run (a new
@@ -99,9 +96,10 @@
 //!
 //! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
 //! and `migrate` — its rule list is empty at the pin. `resolve` runs with `command: None`
-//! (a state the CLI itself produces before a subcommand is known), so `--when.commands`
-//! scopes never match; `--when.hostnames` scopes match against `whoami::hostname()`, exactly
-//! as in the CLI.
+//! (a state the CLI itself produces before a subcommand is known) for every verb except the
+//! config verbs, which pass their CLI command name (`"config set"`, …) through
+//! [`resolve_raw`], so `--when.commands` scopes match there as in the CLI; `--when.hostnames`
+//! scopes match against `whoami::hostname()`, exactly as in the CLI.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -260,30 +258,30 @@ fn value_error(err: &ConfigGetError) -> ConfigError {
 
 /// Process-level inputs of the layer stack, snapshotted once per [`load`].
 ///
-/// Split out so [`load_with`] and the path-selection helpers are testable without
-/// touching the process environment.
-struct ConfigEnv {
+/// Split out so [`load_with`], the path-selection helpers and the config verbs
+/// (`config_cmd.rs`, Story 9.28) are testable without touching the process environment.
+pub(crate) struct ConfigEnv {
     /// The platform config dir (`<config_dir>`), e.g. `~/.config`.
-    config_dir: Option<PathBuf>,
+    pub(crate) config_dir: Option<PathBuf>,
     /// Canonicalized `$HOME`.
-    home_dir: Option<PathBuf>,
+    pub(crate) home_dir: Option<PathBuf>,
     /// `JJ_CONFIG` — `Some` even when empty, which is how the CLI disables discovery.
-    jj_config: Option<OsString>,
+    pub(crate) jj_config: Option<OsString>,
     /// Environment snapshot for `--when.env` scope resolution and the two env layers.
-    environment: HashMap<String, String>,
+    pub(crate) environment: HashMap<String, String>,
     /// The system config dir, `/etc` on Unix (`cli/src/config.rs:377-381`).
-    system_config_dir: Option<PathBuf>,
+    pub(crate) system_config_dir: Option<PathBuf>,
     /// `whoami::hostname()` — the `EnvBase` `operation.hostname` and the `--when.hostnames`
     /// resolution context.
-    hostname: Option<String>,
+    pub(crate) hostname: Option<String>,
     /// `whoami::username()`, falling back to `$USER` — the `EnvBase` `operation.username`.
-    username: Option<String>,
+    pub(crate) username: Option<String>,
 }
 
 impl ConfigEnv {
     /// Snapshots the environment the way `ConfigEnv::from_environment`
     /// (`cli/src/config.rs:366-419` @ v0.44.0) does.
-    fn from_env() -> Self {
+    pub(crate) fn from_env() -> Self {
         let home_dir = std::env::var_os("HOME").map(PathBuf::from).map(|d| {
             // WHY: the CLI canonicalizes $HOME (dunce::canonicalize, == std::fs::canonicalize
             // on Unix) because it may be a symlink and `--when.repositories` compares paths.
@@ -311,13 +309,13 @@ impl ConfigEnv {
     }
 
     /// `<config_dir>/jj` — the root the secure per-repo/per-workspace config dirs hang off.
-    fn root_config_dir(&self) -> Option<PathBuf> {
+    pub(crate) fn root_config_dir(&self) -> Option<PathBuf> {
         self.config_dir.as_ref().map(|d| d.join("jj"))
     }
 
     /// `JJ_RANDOMNESS_SEED` as the CLI's config-id RNG reads it: a `u64`, ignored when it
     /// does not parse (`cli/src/config.rs:411-417`).
-    fn randomness_seed(&self) -> Option<u64> {
+    pub(crate) fn randomness_seed(&self) -> Option<u64> {
         self.environment.get("JJ_RANDOMNESS_SEED").and_then(|s| s.parse().ok())
     }
 
@@ -428,6 +426,63 @@ fn env_user_config_paths(env: &ConfigEnv) -> Vec<PathBuf> {
     )
 }
 
+/// The user-config paths EXACTLY as the CLI lists them for `jj config path --user` and picks
+/// the new-file default from — `UnresolvedConfigEnv::resolve_user` (`cli/src/config.rs:289-332`
+/// @ v0.44.0), existence checks included (Story 9.28).
+///
+/// Differs from [`user_config_paths`] only for NON-existent discovery candidates: `~/.jjconfig.toml`
+/// is listed only when it exists (or no `<config_dir>` is known), `<config_dir>/jj/config.toml`
+/// always ("the default config created if there's no user config"), `conf.d` only when it
+/// exists. `JJ_CONFIG` entries are listed as given, existing or not. For every EXISTING path
+/// the two lists agree, so the read side is unaffected.
+pub(crate) fn user_config_candidates(env: &ConfigEnv) -> Vec<PathBuf> {
+    if env.jj_config.is_some() {
+        return env_user_config_paths(env);
+    }
+    let home = env.home_dir.as_ref().map(|h| h.join(".jjconfig.toml"));
+    let platform = env.config_dir.as_ref().map(|d| d.join("jj").join("config.toml"));
+    let conf_d = env.config_dir.as_ref().map(|d| d.join("jj").join("conf.d"));
+    let mut paths: Vec<PathBuf> = home.filter(|p| p.exists() || platform.is_none()).into_iter().collect();
+    paths.extend(platform);
+    paths.extend(conf_d.filter(|p| p.exists()));
+    paths
+}
+
+/// The existing user config FILES, expanded exactly as [`add_path_layers`] loads them: an
+/// existing file is itself, an existing directory its sorted `*.toml` files (Story 9.28).
+///
+/// This is the file list behind the CLI's `user_config_files` — one per raw `User` layer — but
+/// enumerated WITHOUT parsing, so a broken file is still a candidate the GUI can open and
+/// repair (`jj config edit`'s role). An unreadable directory contributes nothing here; the
+/// stack load names it.
+pub(crate) fn user_edit_candidates(env: &ConfigEnv) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for path in env_user_config_paths(env).into_iter().filter(|p| p.exists()) {
+        if path.is_dir() {
+            let mut entries: Vec<PathBuf> = std::fs::read_dir(&path)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|p| p.is_file() && p.extension() == Some(OsStr::new("toml")))
+                .collect();
+            entries.sort_unstable();
+            files.extend(entries);
+        } else {
+            files.push(path);
+        }
+    }
+    files
+}
+
+/// `std::fs::create_dir_all`, but every directory it creates is `0700` — the CLI's own
+/// `create_dir_all` (`cli/src/config.rs:262-273` @ v0.44.0), used for a new user config
+/// file's parent.
+pub(crate) fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt as _;
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(path)
+}
+
 /// Adds the EXISTING candidates of `paths` as `source` layers, directories expanded like the
 /// CLI's `reload_system_config` / `reload_user_config` (`cli/src/config.rs:428-438`,
 /// `:516-526`).
@@ -528,41 +583,106 @@ fn add_secure_layer(
 /// The repo (`.jj/repo`, already resolved through a secondary workspace's FILE indirection)
 /// and the workspace root a stack is built for.
 #[derive(Clone, Copy)]
-struct WorkspacePaths<'a> {
-    repo_path: &'a Path,
-    workspace_root: &'a Path,
+pub(crate) struct WorkspacePaths<'a> {
+    pub(crate) repo_path: &'a Path,
+    pub(crate) workspace_root: &'a Path,
 }
 
 /// One secure (repo or workspace) layer: where its id file lives and which
 /// `<config_dir>/jj/<kind>` root the id is joined onto.
-struct SecureLayer {
-    source: ConfigSource,
+pub(crate) struct SecureLayer {
+    pub(crate) source: ConfigSource,
     /// The directory holding the id file: `.jj/repo` for the repo, `.jj` for the workspace.
     dir: PathBuf,
     id_file_name: &'static str,
     legacy_file_name: &'static str,
     root_config_dir: Option<PathBuf>,
+    /// `SecureConfig::new_repo` or `new_workspace` — the create-mode resolver's constructor.
+    new_secure: fn(PathBuf) -> SecureConfig,
+}
+
+impl SecureLayer {
+    /// The repo layer of the repo dir `repo_dir`, whose ids join onto `repos_root`
+    /// (`<config_dir>/jj/repos`).
+    fn repo_at(repo_dir: PathBuf, repos_root: Option<PathBuf>) -> Self {
+        Self {
+            source: ConfigSource::Repo,
+            dir: repo_dir,
+            id_file_name: "config-id",
+            legacy_file_name: "config.toml",
+            root_config_dir: repos_root,
+            new_secure: SecureConfig::new_repo,
+        }
+    }
+
+    /// True iff this layer's id file (`config-id` / `workspace-config-id`) exists — i.e. the
+    /// secure file is selected, not the legacy fallback.
+    pub(crate) fn has_id_file(&self) -> bool {
+        self.dir.join(self.id_file_name).exists()
+    }
+
+    /// The file this layer READS, resolved side-effect-free ([`secure_config_path`]); it may
+    /// not exist.
+    ///
+    /// # Errors
+    ///
+    /// - [`ConfigError::Load`] — the id file is unreadable or malformed.
+    pub(crate) fn resolved_path(&self) -> Result<Option<PathBuf>, ConfigError> {
+        secure_config_path(
+            &self.dir,
+            self.id_file_name,
+            self.legacy_file_name,
+            self.root_config_dir.as_deref(),
+        )
+    }
+
+    /// The file this layer's WRITERS address, CREATING the secure directory, `metadata.binpb`
+    /// and the id file when missing and migrating a legacy file — `SecureConfig::load_config`,
+    /// the CLI's create-forcing `repo_config_path` / `workspace_config_path`
+    /// (`cli/src/config.rs:545-549`, `:616-625` @ v0.44.0). The `config.toml` itself is NOT
+    /// created. `Ok(None)` iff no `<config_dir>` is known — then nothing is written.
+    ///
+    /// `SecureConfig`'s `&mut ChaCha20Rng` is seeded as the CLI seeds it
+    /// (`cli/src/config.rs:411-417`): from `randomness_seed` (`JJ_RANDOMNESS_SEED`) when set,
+    /// else from the OS RNG — drawn here by hand, because `rand::make_rng()`, what the CLI
+    /// passes, `expect`s on OS-RNG failure and nothing reachable from FFI may panic.
+    ///
+    /// # Errors
+    ///
+    /// - [`ConfigError::Load`] — the OS RNG failed, or the secure-config directory / id file
+    ///   could not be read, created or written.
+    pub(crate) fn create_path(&self, randomness_seed: Option<u64>) -> Result<Option<PathBuf>, ConfigError> {
+        let Some(root) = self.root_config_dir.as_deref() else {
+            return Ok(None);
+        };
+        let mut rng = if let Some(seed) = randomness_seed {
+            ChaCha20Rng::seed_from_u64(seed)
+        } else {
+            let mut seed = [0_u8; 32];
+            getrandom::fill(&mut seed).map_err(write_error)?;
+            ChaCha20Rng::from_seed(seed)
+        };
+        let loaded = (self.new_secure)(self.dir.clone())
+            .load_config(&mut rng, root)
+            .map_err(write_error)?;
+        Ok(loaded.config_file)
+    }
 }
 
 /// The repo and workspace secure layers, in ascending precedence — the ONE description both
 /// [`load_with`] and [`fingerprint_with`] walk, so the fingerprint can never miss a file the
-/// stack reads.
-fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [SecureLayer; 2] {
+/// stack reads — and the config verbs write (Story 9.28).
+pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [SecureLayer; 2] {
     let root = env.root_config_dir();
     [
-        SecureLayer {
-            source: ConfigSource::Repo,
-            dir: paths.repo_path.to_owned(),
-            id_file_name: "config-id",
-            legacy_file_name: "config.toml",
-            root_config_dir: root.as_ref().map(|r| r.join("repos")),
-        },
+        SecureLayer::repo_at(paths.repo_path.to_owned(), root.as_ref().map(|r| r.join("repos"))),
         SecureLayer {
             source: ConfigSource::Workspace,
             dir: paths.workspace_root.join(".jj"),
             id_file_name: "workspace-config-id",
             legacy_file_name: "workspace-config.toml",
             root_config_dir: root.as_ref().map(|r| r.join("workspaces")),
+            new_secure: SecureConfig::new_workspace,
         },
     ]
 }
@@ -576,6 +696,17 @@ fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [SecureLayer; 2]
 /// the user level and resolves with no repo/workspace path — the state the CLI is in before
 /// it has a workspace.
 fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
+    resolve_raw(env, workspace, &load_raw(env, workspace)?, None)
+}
+
+/// The UNRESOLVED ("raw") stack [`load_with`] resolves — one layer per file, `--when` /
+/// `[[--scope]]` blocks still in place: the CLI's `RawConfig`. Side-effect-free.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a file is unreadable or not valid TOML, or a `config-id` is
+///   malformed; the path is named.
+pub(crate) fn load_raw(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
     let mut config = StackedConfig::with_defaults();
     let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
         .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
@@ -599,18 +730,35 @@ fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<S
         )?;
     }
     config.add_layer(env_overrides_layer(env)?);
+    Ok(config)
+}
 
-    // Flatten `--when` / `[[--scope]]` blocks. Skipping this would leave scoped tables
-    // unflattened (their values silently missing) and keep layers the CLI drops.
+/// Flattens `--when` / `[[--scope]]` blocks of a [`load_raw`] stack — the CLI's
+/// `resolve_config` (`cli/src/config.rs:669-679` @ v0.44.0). Skipping this would leave scoped
+/// tables unflattened (their values silently missing) and keep layers the CLI drops.
+///
+/// `command` is the CLI's command name (`"config set"`, …) for `--when.commands`; every verb
+/// but the config verbs (Story 9.28) passes `None`, a state the CLI itself produces before a
+/// subcommand is known.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a `--when` condition has the wrong type.
+pub(crate) fn resolve_raw(
+    env: &ConfigEnv,
+    workspace: Option<WorkspacePaths<'_>>,
+    raw: &StackedConfig,
+    command: Option<&str>,
+) -> Result<StackedConfig, ConfigError> {
     let context = ConfigResolutionContext {
         home_dir: env.home_dir.as_deref(),
         repo_path: workspace.map(|paths| paths.repo_path),
         workspace_path: workspace.map(|paths| paths.workspace_root),
-        command: None,
+        command,
         hostname: env.hostname.as_deref().unwrap_or(""),
         environment: &env.environment,
     };
-    resolve(&config, &context).map_err(|e| value_error(&e))
+    resolve(raw, &context).map_err(|e| value_error(&e))
 }
 
 /// Loads `repo`'s effective jj config stack. Re-read on every call — never cached.
@@ -628,7 +776,7 @@ pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
 /// `UserSettings::from_config` reads `user.*`, `operation.*`, `debug.*` and `signing.*`
 /// eagerly, so a wrong-typed value there refuses HERE — naming the key — exactly where the
 /// CLI fails at start-up.
-fn settings_from(config: StackedConfig) -> Result<UserSettings, ConfigError> {
+pub(crate) fn settings_from(config: StackedConfig) -> Result<UserSettings, ConfigError> {
     UserSettings::from_config(config).map_err(|e| value_error(&e))
 }
 
@@ -1010,6 +1158,28 @@ fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load { reason: describe(&err) }
 }
 
+/// Loads the config file at `path` for editing — `ConfigFile::load_or_empty`: an absent file is
+/// an empty document (jj-lib's schema header), never an error. The ONE load every writer of the
+/// family uses (the three below and the Story 9.28 config verbs).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file exists but could not be read or is not valid TOML; the
+///   path is named.
+pub(crate) fn load_config_file(source: ConfigSource, path: &Path) -> Result<ConfigFile, ConfigError> {
+    ConfigFile::load_or_empty(source, path).map_err(|e| file_error(path, &e))
+}
+
+/// Writes `file` back — `ConfigFile::save`, a `toml_edit` round trip that keeps comments and
+/// formatting. The ONE save every writer of the family uses.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the file could not be written; the io reason names it.
+pub(crate) fn save_config_file(file: &ConfigFile) -> Result<(), ConfigError> {
+    file.save().map_err(write_error)
+}
+
 /// Loads the repo-level config file at `path`, iff `path` is `Some` AND exists on disk.
 ///
 /// The `.exists()` filter and the load are ONE step on purpose. `ConfigFile::load_or_empty`
@@ -1028,8 +1198,7 @@ fn load_repo_config_file(path: Option<&Path>) -> Result<Option<ConfigFile>, Conf
     let Some(path) = path.filter(|p| p.exists()) else {
         return Ok(None);
     };
-    let file = ConfigFile::load_or_empty(ConfigSource::Repo, path).map_err(|e| file_error(path, &e))?;
-    Ok(Some(file))
+    Ok(Some(load_config_file(ConfigSource::Repo, path)?))
 }
 
 /// The repo-level config file this workspace READS, loaded, if it exists on disk.
@@ -1054,22 +1223,17 @@ fn load_repo_config_file(path: Option<&Path>) -> Result<Option<ConfigFile>, Conf
 ///   characters or could not be read; or the config file itself is unreadable or not valid
 ///   TOML.
 pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<ConfigFile>, ConfigError> {
-    let env = ConfigEnv::from_env();
-    let root = env.root_config_dir();
-    let path = secure_config_path(
-        // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
-        workspace.repo_path(),
-        "config-id",
-        "config.toml",
-        root.as_ref().map(|r| r.join("repos")).as_deref(),
-    )?;
+    let root = ConfigEnv::from_env().root_config_dir();
+    // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
+    let path = SecureLayer::repo_at(workspace.repo_path().to_owned(), root.map(|r| r.join("repos"))).resolved_path()?;
     load_repo_config_file(path.as_deref())
 }
 
 /// The repo-level config file, CREATING it (and its `config-id`) when none exists yet.
 ///
-/// The create-mode counterpart of [`load_repo_config_file`], and the crate's only call into
-/// `jj_lib::secure_config`. `repo_dir` is `.jj/repo`; `root_config_dir` is
+/// The create-mode counterpart of [`load_repo_config_file`], resolved through the family's one
+/// create-mode resolver, [`SecureLayer::create_path`] — which the Story 9.28 config verbs use
+/// for the repo AND the workspace layer. `repo_dir` is `.jj/repo`; `root_config_dir` is
 /// `<config_dir>/jj/repos`, the very directory [`secure_config_path`] joins the id onto, so
 /// the file this creates is the file every later READ resolves. `None` for the root — no
 /// `$HOME` and no absolute `$XDG_CONFIG_HOME` — yields `Ok(None)` and writes nothing at all,
@@ -1078,11 +1242,8 @@ pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<
 /// the repo layer. Read and write therefore stay consistent even on such a machine.
 ///
 /// `SecureConfig::load_config` does the whole CLI-side layout: it generates the id, creates
-/// `<root>/<id>/`, writes `metadata.binpb`, and writes `.jj/repo/config-id` atomically. Its
-/// `&mut ChaCha20Rng` is seeded as the CLI seeds it (`cli/src/config.rs:411-417`): from
-/// `randomness_seed` (`JJ_RANDOMNESS_SEED`) when set, else from the OS RNG — drawn here by
-/// hand, because `rand::make_rng()`, what the CLI passes, `expect`s on OS-RNG failure and
-/// nothing reachable from FFI may panic.
+/// `<root>/<id>/`, writes `metadata.binpb`, and writes `.jj/repo/config-id` atomically; the RNG
+/// is seeded as [`SecureLayer::create_path`] describes.
 ///
 /// Split from [`new_repo_config_file`] so it can be unit-tested against plain temp dirs
 /// without standing up a [`Workspace`], exactly as [`load_repo_config_file`] is.
@@ -1096,25 +1257,12 @@ fn create_repo_config_file(
     root_config_dir: Option<&Path>,
     randomness_seed: Option<u64>,
 ) -> Result<Option<ConfigFile>, ConfigError> {
-    let Some(root) = root_config_dir else {
-        return Ok(None);
-    };
-    let mut rng = if let Some(seed) = randomness_seed {
-        ChaCha20Rng::seed_from_u64(seed)
-    } else {
-        let mut seed = [0_u8; 32];
-        getrandom::fill(&mut seed).map_err(write_error)?;
-        ChaCha20Rng::from_seed(seed)
-    };
-    let loaded = SecureConfig::new_repo(repo_dir.to_owned())
-        .load_config(&mut rng, root)
-        .map_err(write_error)?;
-    // `load_config` generates the file when none exists, so `config_file` is always `Some`
-    // here. Mapping rather than matching — the shape the CLI's own `new_repo_config_file`
+    // `load_config` generates the file when none exists, so the path is `Some` whenever a root
+    // is known. Mapping rather than matching — the shape the CLI's own `new_repo_config_file`
     // uses — keeps the impossible `None` from becoming a branch no test could execute.
-    loaded
-        .config_file
-        .map(|path| ConfigFile::load_or_empty(ConfigSource::Repo, &path).map_err(|e| file_error(&path, &e)))
+    SecureLayer::repo_at(repo_dir.to_owned(), root_config_dir.map(Path::to_owned))
+        .create_path(randomness_seed)?
+        .map(|path| load_config_file(ConfigSource::Repo, &path))
         .transpose()
 }
 
@@ -1158,7 +1306,7 @@ pub(crate) fn set_trunk_alias(file: Option<ConfigFile>, symbol: &str) -> Result<
         return Ok(());
     };
     file.set_value(TRUNK_CONFIG_NAME, symbol).map_err(write_error)?;
-    file.save().map_err(write_error)
+    save_config_file(&file)
 }
 
 /// The `trunk()` alias's value as `(bookmark, remote)`, iff it is a PLAIN remote symbol.
@@ -1223,7 +1371,7 @@ pub(crate) fn remove_remote_from_repo_config(file: Option<ConfigFile>, remote: &
     // Saved unconditionally, as the CLI does: `toml_edit` round-trips the document
     // byte-for-byte, so a no-edit save changes only the file's mtime, and auditing when a
     // save is "needed" would be more code for less parity.
-    file.save().map_err(write_error)
+    save_config_file(&file)
 }
 
 /// Re-points `old`'s repo-config presets at `new` — the CLI's
@@ -1264,7 +1412,7 @@ pub(crate) fn rename_remote_in_repo_config(file: Option<ConfigFile>, old: &str, 
         }
     }
 
-    file.save().map_err(write_error)
+    save_config_file(&file)
 }
 
 #[cfg(test)]
@@ -1439,6 +1587,76 @@ mod tests {
             ],
             "ascending precedence: legacy home file, platform file, conf.d"
         );
+    }
+
+    /// The CLI's `resolve_user` list (Story 9.28): `~/.jjconfig.toml` only when it exists or no
+    /// config dir is known, the platform file always, `conf.d` only when it exists; `JJ_CONFIG`
+    /// entries as given. The existing-file expansion follows `load_dir`'s rule.
+    #[test]
+    fn user_config_candidates_and_edit_candidates_follow_the_cli() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let cfg = tmp.path().join("cfg");
+        let env = ConfigEnv {
+            config_dir: Some(cfg.clone()),
+            home_dir: Some(home.clone()),
+            jj_config: None,
+            ..bare_env()
+        };
+        let platform = cfg.join("jj").join("config.toml");
+        assert_eq!(super::user_config_candidates(&env), std::slice::from_ref(&platform));
+        assert!(super::user_edit_candidates(&env).is_empty());
+
+        std::fs::create_dir_all(cfg.join("jj").join("conf.d").join("sub.toml")).unwrap();
+        std::fs::write(cfg.join("jj").join("conf.d").join("b.toml"), "").unwrap();
+        std::fs::write(cfg.join("jj").join("conf.d").join("a.toml"), "").unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".jjconfig.toml"), "").unwrap();
+        let conf_d = cfg.join("jj").join("conf.d");
+        assert_eq!(
+            super::user_config_candidates(&env),
+            [home.join(".jjconfig.toml"), platform, conf_d.clone()]
+        );
+        assert_eq!(
+            super::user_edit_candidates(&env),
+            [
+                home.join(".jjconfig.toml"),
+                conf_d.join("a.toml"),
+                conf_d.join("b.toml")
+            ],
+            "a directory named *.toml is not a file"
+        );
+
+        let no_cfg = ConfigEnv {
+            config_dir: None,
+            home_dir: Some(tmp.path().join("nohome")),
+            jj_config: None,
+            ..bare_env()
+        };
+        assert_eq!(
+            super::user_config_candidates(&no_cfg),
+            [tmp.path().join("nohome").join(".jjconfig.toml")],
+            "without a config dir the home file is listed even when absent"
+        );
+        let pinned = ConfigEnv {
+            jj_config: Some(OsString::from("/a.toml:/b")),
+            ..bare_env()
+        };
+        assert_eq!(
+            super::user_config_candidates(&pinned),
+            [PathBuf::from("/a.toml"), PathBuf::from("/b")]
+        );
+    }
+
+    #[test]
+    fn create_private_dir_all_creates_0700_dirs() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("a").join("b");
+        super::create_private_dir_all(&dir).unwrap();
+        for d in [tmp.path().join("a"), dir] {
+            assert_eq!(std::fs::metadata(d).unwrap().permissions().mode() & 0o777, 0o700);
+        }
     }
 
     #[test]

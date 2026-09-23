@@ -7,6 +7,17 @@
 library;
 
 export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
+export 'src/ffi/config.dart'
+    show
+        ConfigEntry,
+        ConfigFileText,
+        ConfigGcFailure,
+        ConfigGcResult,
+        ConfigScope,
+        ConfigSetResult,
+        ConfigValueSource,
+        MissingRepoConfig,
+        WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;

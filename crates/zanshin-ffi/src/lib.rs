@@ -33,6 +33,7 @@ pub mod bookmark_ops;
 pub mod bookmarks;
 pub mod change;
 pub mod commit_views;
+pub mod config;
 pub mod diagnostics;
 pub mod events;
 pub mod ffi_strings;

@@ -157,6 +157,31 @@ pub const JJ_REVSET_RESOLUTION_ERROR: &str = "jj.revset_resolution_error";
 /// cannot be read — a malformed/unreadable config file, a bad `config-id`, or a
 /// wrong-typed config value; the offending file path or config key in `context`.
 pub const JJ_CONFIG_ERROR: &str = "jj.config_error";
+/// AR-P-4: emitted by `config.rs::zanshin_config_get` when no layer sets the name ("Value not
+/// found for <name>") and by `zanshin_config_unset` when the file does not hold it (`"<name>"
+/// doesn't exist`); the CLI's message in `context` (Story 9.28).
+pub const JJ_CONFIG_NOT_FOUND: &str = "jj.config_not_found";
+/// AR-P-4: emitted by `config.rs::zanshin_config_set` when the write would overwrite a whole
+/// table, or a non-table value with a parent table; jj-lib's reason in `context`, nothing
+/// written (Story 9.28).
+pub const JJ_CONFIG_WOULD_OVERWRITE: &str = "jj.config_would_overwrite";
+/// AR-P-4: emitted by `config.rs::zanshin_config_unset` when the name is a whole table; jj-lib's
+/// reason in `context`, nothing written (Story 9.28). Its own code because the remedy differs:
+/// unset the table's values, or edit the file.
+pub const JJ_CONFIG_WOULD_DELETE_TABLE: &str = "jj.config_would_delete_table";
+/// AR-P-4: emitted by `config.rs`'s `set` / `unset` / `file_read` / `file_write` wrappers when
+/// more than one file could be written and no `path` chose one, or the given `path` is not one
+/// of the candidates — the CLI's file prompt; the candidate paths in `context`, one per line,
+/// nothing written (Story 9.28).
+pub const JJ_CONFIG_AMBIGUOUS_FILE: &str = "jj.config_ambiguous_file";
+/// AR-P-4: emitted by `config.rs` when a config name, a `set` value or `file_write` text is not
+/// valid TOML; `context` is `"<start>..<end>\n<message>"` when the parser reports a byte span,
+/// else the message (Story 9.28). Nothing is written.
+pub const JJ_CONFIG_PARSE_ERROR: &str = "jj.config_parse_error";
+/// AR-P-4: emitted by `config.rs` when no file of the requested scope can be determined — the
+/// CLI's "No user/repo/workspace config path found[ to edit]" and `gc`'s "No config directory
+/// found"; the message in `context` (Story 9.28).
+pub const JJ_CONFIG_PATH_NOT_FOUND: &str = "jj.config_path_not_found";
 /// AR-P-4: emitted by `graph.rs` when the exhausted revset graph stream left a dangling
 /// non-`Missing` edge (upstream stream contract violation); the dangling target in `context`.
 pub const GRAPH_DANGLING_EDGE: &str = "graph.dangling_edge";
