@@ -56,7 +56,7 @@ use jj_lib::trailer::{parse_description_trailers, Trailer};
 use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, cfg, MutateError};
-use crate::revset::{build_aliases_map, immutable_expression, resolve_expression};
+use crate::revset::{immutable_expression, resolve_expression, revset_config};
 use crate::Repo;
 
 // ── §1 Rewritability guard ────────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ use crate::Repo;
 ///   backend bucket, and never a silent fall-back to the builtin set.
 pub(crate) fn immutable_user_expression(repo: &Repo) -> Result<Arc<UserRevsetExpression>, MutateError> {
     let config = crate::config::load(repo).map_err(cfg)?;
-    let aliases = build_aliases_map(&config).map_err(cfg)?;
-    immutable_expression(repo, &aliases).map_err(cfg)
+    let parse_config = revset_config(&config).map_err(cfg)?;
+    immutable_expression(repo, &parse_config).map_err(cfg)
 }
 
 /// Resolves the immutable expression's symbols against `repo`.
@@ -696,7 +696,7 @@ pub(crate) fn start_repo_transaction(repo: &Arc<ReadonlyRepo>, workspace_name: &
 #[cfg(test)]
 mod tests {
     use std::path::Path;
-    use std::sync::{Arc, LazyLock};
+    use std::sync::Arc;
 
     use jj_lib::backend::CommitId;
     use jj_lib::matchers::{EverythingMatcher, NothingMatcher};
@@ -714,15 +714,10 @@ mod tests {
     };
     use crate::{MutateError, Repo};
 
-    // Same env pin as `tests/mutate.rs`: the guard must see the fixture's own config, not
+    // The lib test binary's shared env pin: the guard must see the fixture's own config, not
     // the developer's `~/.jjconfig.toml` (which may override `immutable_heads()`).
-    static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
-        std::env::set_var("JJ_CONFIG", "");
-        std::env::set_var("GIT_CONFIG_GLOBAL", "");
-    });
-
     fn pin_env() {
-        LazyLock::force(&ENV_GUARD);
+        test_helpers::pin_test_env();
     }
 
     /// Opens the fixture and returns the head-resolved repo plus its immutable set.

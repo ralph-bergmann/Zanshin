@@ -3,12 +3,19 @@
 //! The repo's effective jj config — the one layer stack every revset parse and the
 //! `jj log` defaults are read from (Story 4.9).
 //!
-//! [`load`] rebuilds, per operation, the `StackedConfig` the jj CLI would have at v0.42.0
-//! for this workspace: Zanshin's builtin default layer ([`BUILTIN_CONFIG_TOML`]), then the
-//! user config (`JJ_CONFIG` or platform discovery), then the repo layer, then the workspace
-//! layer, finally flattened through `jj_lib::config::resolve`. Nothing is cached — config
-//! files change externally and the op-heads watcher does not cover them, so ADR-0002's
-//! re-resolve-per-operation rule extends to config.
+//! [`load`] rebuilds, per operation, the `StackedConfig` the jj CLI would have at v0.44.0
+//! for this workspace, in the CLI's own order (`cli/src/config.rs:713-730`): jj-lib's
+//! defaults plus Zanshin's builtin default layer ([`BUILTIN_CONFIG_TOML`]), the system
+//! config (`/etc/jj`), the `EnvBase` layer, the user config (`JJ_CONFIG` or platform
+//! discovery), the repo layer, the workspace layer, the `EnvOverrides` layer, finally flattened
+//! through `jj_lib::config::resolve`. Nothing is cached — config files change externally and
+//! the op-heads watcher does not cover them, so ADR-0002's re-resolve-per-operation rule
+//! extends to config.
+//!
+//! The SAME stack is what a workspace is opened with (Story 9.27): [`user_settings_for`]
+//! builds the `UserSettings` jj-lib signs commits and operations with from it, and
+//! [`stack_fingerprint`] lets [`crate::Repo`] re-derive them when a file of the stack or
+//! the environment changed — the CLI derives its settings per invocation.
 //!
 //! # Reading never writes; only the writer family does
 //!
@@ -78,30 +85,40 @@
 //! it, the CLI and Zanshin can read different files. Rewriting the user's config store
 //! from a read path is the worse trade — a GUI drawing a graph must not mutate layout.
 //!
-//! # Deliberately absent layers
+//! # The environment layers, and what is still absent
 //!
-//! No `--config`/`--config-file` command-line layer (Zanshin has no CLI args) and no
-//! `ConfigSource::EnvBase` / `EnvOverrides` layers: at the pin those can only set
-//! `operation.*`, `user.*`, `debug.*`, `ui.color`, `ui.editor` and `ui.pager`
-//! (`cli/src/config.rs` @ v0.42.0), never `[revset-aliases]`, `revsets.*` or
-//! `ui.log-synthetic-elided-nodes`, so their absence is unobservable here. `migrate` is
-//! skipped too — its rule list is empty at the pin.
+//! The `EnvBase` and `EnvOverrides` layers are ported key for key from the CLI's
+//! `env_base_layer` / `env_overrides_layer` (`cli/src/config.rs:736-819` @ v0.44.0):
+//! `operation.hostname`/`operation.username` from `whoami` (the CLI's own crate, `$USER` as
+//! the username fallback), `NO_COLOR` → `ui.color`, `VISUAL`/`EDITOR` → `ui.editor`, and the
+//! `JJ_USER`, `JJ_EMAIL`, `JJ_TIMESTAMP`, `JJ_RANDOMNESS_SEED`, `JJ_OP_TIMESTAMP`,
+//! `JJ_OP_HOSTNAME`, `JJ_OP_USERNAME`, `JJ_EDITOR` and `JJ_PAGER` overrides. The `ui.*` keys
+//! have no consumer here; they are carried for layer parity, so the stack a future config
+//! listing shows is the CLI's. jj reads identity from this stack ONLY — there is no
+//! `.gitconfig` fallback to port.
 //!
-//! Consequence worth recording: `resolve` runs with `command: None` and `hostname: ""`
-//! (both states the CLI itself produces), so `--when.commands` and `--when.hostnames`
-//! scopes never match in Zanshin.
+//! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
+//! and `migrate` — its rule list is empty at the pin. `resolve` runs with `command: None`
+//! (a state the CLI itself produces before a subcommand is known), so `--when.commands`
+//! scopes never match; `--when.hostnames` scopes match against `whoami::hostname()`, exactly
+//! as in the CLI.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
+use jj_lib::backend::{BackendInitError, BackendLoadError};
 use jj_lib::config::{
     resolve, ConfigFile, ConfigGetError, ConfigGetResultExt as _, ConfigLayer, ConfigLoadError,
-    ConfigResolutionContext, ConfigSource, StackedConfig,
+    ConfigResolutionContext, ConfigSource, ConfigValue, StackedConfig,
 };
+use jj_lib::git_backend::{GitBackendInitError, GitBackendLoadError};
 use jj_lib::ref_name::RemoteRefSymbolBuf;
+use jj_lib::repo::StoreLoadError;
 use jj_lib::secure_config::SecureConfig;
-use jj_lib::workspace::Workspace;
+use jj_lib::settings::UserSettings;
+use jj_lib::workspace::{Workspace, WorkspaceInitError, WorkspaceLoadError, WorkspaceLoader};
 use rand_chacha::rand_core::SeedableRng as _;
 use rand_chacha::ChaCha20Rng;
 
@@ -244,13 +261,20 @@ struct ConfigEnv {
     home_dir: Option<PathBuf>,
     /// `JJ_CONFIG` — `Some` even when empty, which is how the CLI disables discovery.
     jj_config: Option<OsString>,
-    /// Environment snapshot for `--when.env` scope resolution.
+    /// Environment snapshot for `--when.env` scope resolution and the two env layers.
     environment: HashMap<String, String>,
+    /// The system config dir, `/etc` on Unix (`cli/src/config.rs:377-381`).
+    system_config_dir: Option<PathBuf>,
+    /// `whoami::hostname()` — the `EnvBase` `operation.hostname` and the `--when.hostnames`
+    /// resolution context.
+    hostname: Option<String>,
+    /// `whoami::username()`, falling back to `$USER` — the `EnvBase` `operation.username`.
+    username: Option<String>,
 }
 
 impl ConfigEnv {
     /// Snapshots the environment the way `ConfigEnv::from_environment`
-    /// (`cli/src/config.rs:351-396`) does.
+    /// (`cli/src/config.rs:366-419` @ v0.44.0) does.
     fn from_env() -> Self {
         let home_dir = std::env::var_os("HOME").map(PathBuf::from).map(|d| {
             // WHY: the CLI canonicalizes $HOME (dunce::canonicalize, == std::fs::canonicalize
@@ -258,14 +282,22 @@ impl ConfigEnv {
             std::fs::canonicalize(&d).unwrap_or(d)
         });
         let xdg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+        // WHY: vars_os + filter_map, not vars() — vars() PANICS on a non-Unicode
+        // variable, and nothing reachable from FFI may panic.
+        let environment: HashMap<String, String> = std::env::vars_os()
+            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+            .collect();
         Self {
             config_dir: platform_config_dir(xdg.as_deref(), home_dir.as_deref()),
-            jj_config: std::env::var_os("JJ_CONFIG"),
-            // WHY: vars_os + filter_map, not vars() — vars() PANICS on a non-Unicode
-            // variable, and nothing reachable from FFI may panic.
-            environment: std::env::vars_os()
-                .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
-                .collect(),
+            // WHY `var`, not `var_os`: the CLI reads `env::var("JJ_CONFIG").ok()` (`cli/src/config.rs:386`
+            // @ v0.44.0), so a non-UTF-8 value counts as UNSET there (system layer + discovery on).
+            jj_config: std::env::var("JJ_CONFIG").ok().map(OsString::from),
+            system_config_dir: Some(PathBuf::from("/etc")),
+            hostname: whoami::hostname().ok(),
+            // WHY the `$USER` fallback: the CLI's own (`env_base_layer`), for libcs whose
+            // `getpwuid()` does not fully support nsswitch.
+            username: whoami::username().ok().or_else(|| environment.get("USER").cloned()),
+            environment,
             home_dir,
         }
     }
@@ -273,6 +305,17 @@ impl ConfigEnv {
     /// `<config_dir>/jj` — the root the secure per-repo/per-workspace config dirs hang off.
     fn root_config_dir(&self) -> Option<PathBuf> {
         self.config_dir.as_ref().map(|d| d.join("jj"))
+    }
+
+    /// `JJ_RANDOMNESS_SEED` as the CLI's config-id RNG reads it: a `u64`, ignored when it
+    /// does not parse (`cli/src/config.rs:411-417`).
+    fn randomness_seed(&self) -> Option<u64> {
+        self.environment.get("JJ_RANDOMNESS_SEED").and_then(|s| s.parse().ok())
+    }
+
+    /// One environment variable, as a config value.
+    fn var(&self, name: &str) -> Option<ConfigValue> {
+        self.environment.get(name).map(|v| ConfigValue::from(v.as_str()))
     }
 }
 
@@ -357,23 +400,103 @@ fn secure_config_path(
     }
 }
 
-/// Adds the existing user-config layers, directories expanded like the CLI's
-/// `reload_user_config` (`cli/src/config.rs:471-481`).
-fn add_user_layers(config: &mut StackedConfig, env: &ConfigEnv) -> Result<(), ConfigError> {
-    let paths = user_config_paths(
+/// Candidate system-config paths, mirroring `UnresolvedConfigEnv::resolve_system`
+/// (`cli/src/config.rs:334-345` @ v0.44.0): `<system>/jj/config.toml` then `<system>/jj/conf.d`
+/// — and NOTHING when `JJ_CONFIG` is set, empty included, which is how the test suite (and a
+/// user) opts out of every file outside the repo.
+fn system_config_paths(system_config_dir: Option<&Path>, jj_config: Option<&OsStr>) -> Vec<PathBuf> {
+    match (system_config_dir, jj_config) {
+        (Some(dir), None) => vec![dir.join("jj").join("config.toml"), dir.join("jj").join("conf.d")],
+        _ => Vec::new(),
+    }
+}
+
+/// The user-config candidates of `env`, in ascending precedence.
+fn env_user_config_paths(env: &ConfigEnv) -> Vec<PathBuf> {
+    user_config_paths(
         env.jj_config.as_deref(),
         env.config_dir.as_deref(),
         env.home_dir.as_deref(),
-    );
+    )
+}
+
+/// Adds the EXISTING candidates of `paths` as `source` layers, directories expanded like the
+/// CLI's `reload_system_config` / `reload_user_config` (`cli/src/config.rs:428-438`,
+/// `:516-526`).
+fn add_path_layers(config: &mut StackedConfig, source: ConfigSource, paths: &[PathBuf]) -> Result<(), ConfigError> {
     for path in paths.iter().filter(|p| p.exists()) {
         if path.is_dir() {
-            config.load_dir(ConfigSource::User, path)
+            config.load_dir(source, path)
         } else {
-            config.load_file(ConfigSource::User, path)
+            config.load_file(source, path)
         }
         .map_err(|e| file_error(path, &e))?;
     }
     Ok(())
+}
+
+const OP_HOSTNAME: &str = "operation.hostname";
+const OP_USERNAME: &str = "operation.username";
+
+/// Builds one environment layer from `(name, value)` pairs, skipping the absent values.
+///
+/// `set_value` only fails when a middle node of `name` is a non-table, which a fresh layer
+/// holding only these distinct dotted keys cannot contain — so the `?` below never fires. It
+/// goes through [`write_error`] for the reason given there.
+fn env_layer(
+    source: ConfigSource,
+    entries: Vec<(&'static str, Option<ConfigValue>)>,
+) -> Result<ConfigLayer, ConfigError> {
+    let mut layer = ConfigLayer::empty(source);
+    for (name, value) in entries.into_iter().filter_map(|(name, value)| Some((name, value?))) {
+        layer.set_value(name, value).map_err(write_error)?;
+    }
+    Ok(layer)
+}
+
+/// The CLI's `env_base_layer` (`cli/src/config.rs:736-765` @ v0.44.0): values config files
+/// override.
+///
+/// `NO_COLOR` counts only when non-empty ("User-level configuration files … should override
+/// `$NO_COLOR`", <https://no-color.org/>), `VISUAL` wins over `EDITOR`, and `$PAGER` is
+/// deliberately NOT read — all three exactly as there.
+fn env_base_layer(env: &ConfigEnv) -> Result<ConfigLayer, ConfigError> {
+    let no_color = env.environment.get("NO_COLOR").filter(|v| !v.is_empty());
+    env_layer(
+        ConfigSource::EnvBase,
+        vec![
+            (OP_HOSTNAME, env.hostname.as_deref().map(ConfigValue::from)),
+            (OP_USERNAME, env.username.as_deref().map(ConfigValue::from)),
+            ("ui.color", no_color.map(|_| ConfigValue::from("never"))),
+            ("ui.editor", env.var("VISUAL").or_else(|| env.var("EDITOR"))),
+        ],
+    )
+}
+
+/// The CLI's `env_overrides_layer` (`cli/src/config.rs:789-819` @ v0.44.0): values that
+/// override every config file.
+///
+/// `JJ_RANDOMNESS_SEED` is written as an `i64` and dropped when it does not parse as one,
+/// exactly as there.
+fn env_overrides_layer(env: &ConfigEnv) -> Result<ConfigLayer, ConfigError> {
+    let seed = env
+        .environment
+        .get("JJ_RANDOMNESS_SEED")
+        .and_then(|s| s.parse::<i64>().ok());
+    env_layer(
+        ConfigSource::EnvOverrides,
+        vec![
+            ("user.name", env.var("JJ_USER")),
+            ("user.email", env.var("JJ_EMAIL")),
+            ("debug.commit-timestamp", env.var("JJ_TIMESTAMP")),
+            ("debug.randomness-seed", seed.map(ConfigValue::from)),
+            ("debug.operation-timestamp", env.var("JJ_OP_TIMESTAMP")),
+            (OP_HOSTNAME, env.var("JJ_OP_HOSTNAME")),
+            (OP_USERNAME, env.var("JJ_OP_USERNAME")),
+            ("ui.editor", env.var("JJ_EDITOR")),
+            ("ui.pager", env.var("JJ_PAGER")),
+        ],
+    )
 }
 
 /// Adds one secure-config layer (repo or workspace) if its file exists.
@@ -394,41 +517,89 @@ fn add_secure_layer(
     Ok(())
 }
 
-/// Builds the resolved layer stack for one workspace from an explicit environment.
-fn load_with(env: &ConfigEnv, repo_path: &Path, workspace_root: &Path) -> Result<StackedConfig, ConfigError> {
+/// The repo (`.jj/repo`, already resolved through a secondary workspace's FILE indirection)
+/// and the workspace root a stack is built for.
+#[derive(Clone, Copy)]
+struct WorkspacePaths<'a> {
+    repo_path: &'a Path,
+    workspace_root: &'a Path,
+}
+
+/// One secure (repo or workspace) layer: where its id file lives and which
+/// `<config_dir>/jj/<kind>` root the id is joined onto.
+struct SecureLayer {
+    source: ConfigSource,
+    /// The directory holding the id file: `.jj/repo` for the repo, `.jj` for the workspace.
+    dir: PathBuf,
+    id_file_name: &'static str,
+    legacy_file_name: &'static str,
+    root_config_dir: Option<PathBuf>,
+}
+
+/// The repo and workspace secure layers, in ascending precedence — the ONE description both
+/// [`load_with`] and [`fingerprint_with`] walk, so the fingerprint can never miss a file the
+/// stack reads.
+fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [SecureLayer; 2] {
+    let root = env.root_config_dir();
+    [
+        SecureLayer {
+            source: ConfigSource::Repo,
+            dir: paths.repo_path.to_owned(),
+            id_file_name: "config-id",
+            legacy_file_name: "config.toml",
+            root_config_dir: root.as_ref().map(|r| r.join("repos")),
+        },
+        SecureLayer {
+            source: ConfigSource::Workspace,
+            dir: paths.workspace_root.join(".jj"),
+            id_file_name: "workspace-config-id",
+            legacy_file_name: "workspace-config.toml",
+            root_config_dir: root.as_ref().map(|r| r.join("workspaces")),
+        },
+    ]
+}
+
+/// Builds the resolved layer stack from an explicit environment, in the CLI's order
+/// (`cli/src/config.rs:713-730` @ v0.44.0): Default → System → `EnvBase` → User → Repo →
+/// Workspace → `EnvOverrides`.
+///
+/// `workspace` is `None` on a CREATION path (`init`, `clone`, a conversion into a new
+/// directory): nothing exists yet to hold a repo or workspace layer, so the stack stops at
+/// the user level and resolves with no repo/workspace path — the state the CLI is in before
+/// it has a workspace.
+fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
     let mut config = StackedConfig::with_defaults();
     let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
         .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
     config.add_layer(builtin);
 
-    add_user_layers(&mut config, env)?;
-
-    let root = env.root_config_dir();
-    add_secure_layer(
+    add_path_layers(
         &mut config,
-        ConfigSource::Repo,
-        repo_path,
-        "config-id",
-        "config.toml",
-        root.as_ref().map(|r| r.join("repos")).as_deref(),
+        ConfigSource::System,
+        &system_config_paths(env.system_config_dir.as_deref(), env.jj_config.as_deref()),
     )?;
-    add_secure_layer(
-        &mut config,
-        ConfigSource::Workspace,
-        &workspace_root.join(".jj"),
-        "workspace-config-id",
-        "workspace-config.toml",
-        root.as_ref().map(|r| r.join("workspaces")).as_deref(),
-    )?;
+    config.add_layer(env_base_layer(env)?);
+    add_path_layers(&mut config, ConfigSource::User, &env_user_config_paths(env))?;
+    for layer in workspace.map(|paths| secure_layers(env, paths)).into_iter().flatten() {
+        add_secure_layer(
+            &mut config,
+            layer.source,
+            &layer.dir,
+            layer.id_file_name,
+            layer.legacy_file_name,
+            layer.root_config_dir.as_deref(),
+        )?;
+    }
+    config.add_layer(env_overrides_layer(env)?);
 
     // Flatten `--when` / `[[--scope]]` blocks. Skipping this would leave scoped tables
     // unflattened (their values silently missing) and keep layers the CLI drops.
     let context = ConfigResolutionContext {
         home_dir: env.home_dir.as_deref(),
-        repo_path: Some(repo_path),
-        workspace_path: Some(workspace_root),
+        repo_path: workspace.map(|paths| paths.repo_path),
+        workspace_path: workspace.map(|paths| paths.workspace_root),
         command: None,
-        hostname: "",
+        hostname: env.hostname.as_deref().unwrap_or(""),
         environment: &env.environment,
     };
     resolve(&config, &context).map_err(|e| value_error(&e))
@@ -444,6 +615,190 @@ pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
     load_for_workspace(repo.workspace())
 }
 
+/// Turns a resolved stack into the `UserSettings` jj-lib signs commits and operations with.
+///
+/// `UserSettings::from_config` reads `user.*`, `operation.*`, `debug.*` and `signing.*`
+/// eagerly, so a wrong-typed value there refuses HERE — naming the key — exactly where the
+/// CLI fails at start-up.
+fn settings_from(config: StackedConfig) -> Result<UserSettings, ConfigError> {
+    UserSettings::from_config(config).map_err(|e| value_error(&e))
+}
+
+/// The `UserSettings` an EXISTING workspace is opened with: its full effective stack.
+///
+/// Takes the loader, not a `Workspace`, because the settings must exist BEFORE the workspace
+/// is loaded — this is `Workspace::load`'s own body split in two (`workspace.rs:410-419`), and
+/// `loader.repo_path()` has already followed a secondary workspace's `.jj/repo` FILE.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a stack file is unreadable or not valid TOML, a `config-id` is
+///   malformed, or a value has the wrong type; the path or key is named.
+pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSettings, ConfigError> {
+    let paths = WorkspacePaths {
+        repo_path: loader.repo_path(),
+        workspace_root: loader.workspace_root(),
+    };
+    settings_from(load_with(&ConfigEnv::from_env(), Some(paths))?)
+}
+
+/// The `UserSettings` a workspace is CREATED with (`init`, `clone`, conversions): the stack
+/// up to the user level, since no repo or workspace layer exists yet.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — as [`user_settings_for`].
+pub(crate) fn user_settings_for_new_workspace() -> Result<UserSettings, ConfigError> {
+    settings_from(load_with(&ConfigEnv::from_env(), None)?)
+}
+
+/// The first `ConfigGetError` down `err`'s `source()` chain, as a [`ConfigError`].
+///
+/// jj-lib reads several keys itself from the settings a workspace is loaded or created with —
+/// the working copy's `ui.conflict-marker-style`, `working-copy.*` and `fsmonitor.*`
+/// (`TreeStateSettings::try_from_user_settings`) among them — and keeps a wrong-typed value's
+/// `ConfigGetError` as a `#[source]` behind its own error.
+fn config_get_error(err: &(dyn std::error::Error + 'static)) -> Option<ConfigError> {
+    std::iter::successors(Some(err), |e| e.source())
+        .find_map(|e| e.downcast_ref::<ConfigGetError>())
+        .map(value_error)
+}
+
+/// The config fault behind a failed workspace LOAD, if that is what it was.
+///
+/// A wrong-typed value in any layer of the stack fails the load exactly where the CLI fails
+/// too, because jj-lib reads it from the settings the workspace is loaded WITH. Most readers
+/// keep the `ConfigGetError` in the source chain ([`config_get_error`]); the git backend
+/// (`GitSettings::from_settings`: `git.abandon-unreachable-commits` and its siblings) wraps
+/// it TRANSPARENTLY (`StoreLoadError::Backend` → `BackendLoadError` →
+/// `GitBackendLoadError::Config`), which hides it from the chain, so that one is dug out by
+/// type. Either way the result is the same `ConfigError` — naming the key — as a fault
+/// [`settings_from`] catches.
+pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError> {
+    let git = match err {
+        WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner))) => {
+            match inner.downcast_ref::<GitBackendLoadError>() {
+                Some(GitBackendLoadError::Config(e)) => Some(e),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    git.map(value_error).or_else(|| config_get_error(err))
+}
+
+/// The config fault behind a failed workspace CREATION, if that is what it was — the
+/// creation-side twin of [`load_config_fault`]: every `GitBackend::init_*` reads the same
+/// `git.*` keys, transparently wrapped as `GitBackendInitError::Config`.
+pub(crate) fn init_config_fault(err: &WorkspaceInitError) -> Option<ConfigError> {
+    let git = match err {
+        WorkspaceInitError::Backend(BackendInitError(inner)) => match inner.downcast_ref::<GitBackendInitError>() {
+            Some(GitBackendInitError::Config(e)) => Some(e),
+            _ => None,
+        },
+        _ => None,
+    };
+    git.map(value_error).or_else(|| config_get_error(err))
+}
+
+/// The effective `user.email` of a loaded stack — the `mine()` revset's input.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string.
+pub(crate) fn user_email(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("user.email").map_err(|e| value_error(&e))
+}
+
+// ── Stack fingerprint ─────────────────────────────────────────────────────────────
+
+/// One file of the stack as the fingerprint sees it: its path, and — when it exists — its
+/// modification time and length.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileStamp {
+    path: PathBuf,
+    meta: Option<(Option<SystemTime>, u64)>,
+}
+
+fn stamp(path: &Path) -> FileStamp {
+    FileStamp {
+        path: path.to_owned(),
+        meta: std::fs::metadata(path).ok().map(|m| (m.modified().ok(), m.len())),
+    }
+}
+
+/// Stamps one system/user candidate: the path itself, plus — for a directory — every `*.toml`
+/// entry `load_dir` would read. A directory's own mtime changes when an entry is added or
+/// removed, but NOT when an entry is edited, so the entries are stamped individually.
+fn stamp_candidate(path: &Path, out: &mut Vec<FileStamp>) {
+    out.push(stamp(path));
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(path)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|p| p.extension() == Some(OsStr::new("toml")))
+        .collect();
+    entries.sort_unstable();
+    out.extend(entries.iter().map(|p| stamp(p)));
+}
+
+/// What the effective stack of one workspace was derived from.
+///
+/// Equal fingerprints mean the stack cannot have changed: every file it reads or could read
+/// (existing or not) with its mtime and length, the id files that select the secure layers,
+/// and the environment inputs — the whole environment (it feeds both env layers and
+/// `--when.environments` scopes) plus the `whoami` values. Cheap: a handful of `stat`s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StackFingerprint {
+    files: Vec<FileStamp>,
+    environment: HashMap<String, String>,
+    hostname: Option<String>,
+    username: Option<String>,
+}
+
+/// [`stack_fingerprint`] over an explicit environment.
+fn fingerprint_with(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> Result<StackFingerprint, ConfigError> {
+    let mut files = Vec::new();
+    let system = system_config_paths(env.system_config_dir.as_deref(), env.jj_config.as_deref());
+    for path in system.iter().chain(&env_user_config_paths(env)) {
+        stamp_candidate(path, &mut files);
+    }
+    for layer in secure_layers(env, paths) {
+        files.push(stamp(&layer.dir.join(layer.id_file_name)));
+        let resolved = secure_config_path(
+            &layer.dir,
+            layer.id_file_name,
+            layer.legacy_file_name,
+            layer.root_config_dir.as_deref(),
+        )?;
+        files.extend(resolved.as_deref().map(stamp));
+    }
+    Ok(StackFingerprint {
+        files,
+        environment: env.environment.clone(),
+        hostname: env.hostname.clone(),
+        username: env.username.clone(),
+    })
+}
+
+/// Fingerprints the effective stack of the workspace at `workspace_root` (whose repo lives at
+/// `repo_path`) — [`crate::Repo`]'s trigger to re-derive its settings.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a `config-id` is malformed or unreadable, the same fault the
+///   stack itself would refuse with.
+pub(crate) fn stack_fingerprint(repo_path: &Path, workspace_root: &Path) -> Result<StackFingerprint, ConfigError> {
+    fingerprint_with(
+        &ConfigEnv::from_env(),
+        WorkspacePaths {
+            repo_path,
+            workspace_root,
+        },
+    )
+}
+
 /// Loads `workspace`'s effective jj config stack, for a caller that has no [`Repo`] yet.
 ///
 /// [`load`] is the usual entry point; this exists because `Repo::clone_into` must read the
@@ -457,11 +812,11 @@ pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
 pub(crate) fn load_for_workspace(workspace: &Workspace) -> Result<StackedConfig, ConfigError> {
     // `repo_path()` is jj-lib's already-resolved `.jj/repo` — it follows the FILE
     // indirection a secondary workspace uses.
-    load_with(
-        &ConfigEnv::from_env(),
-        workspace.repo_path(),
-        workspace.workspace_root(),
-    )
+    let paths = WorkspacePaths {
+        repo_path: workspace.repo_path(),
+        workspace_root: workspace.workspace_root(),
+    };
+    load_with(&ConfigEnv::from_env(), Some(paths))
 }
 
 /// Reads the four effective `jj log` defaults out of a loaded stack.
@@ -643,8 +998,10 @@ pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<
 ///
 /// `SecureConfig::load_config` does the whole CLI-side layout: it generates the id, creates
 /// `<root>/<id>/`, writes `metadata.binpb`, and writes `.jj/repo/config-id` atomically. Its
-/// `&mut ChaCha20Rng` is seeded here by hand — `rand::make_rng()`, what the CLI passes,
-/// `expect`s on OS-RNG failure, and nothing reachable from FFI may panic.
+/// `&mut ChaCha20Rng` is seeded as the CLI seeds it (`cli/src/config.rs:411-417`): from
+/// `randomness_seed` (`JJ_RANDOMNESS_SEED`) when set, else from the OS RNG — drawn here by
+/// hand, because `rand::make_rng()`, what the CLI passes, `expect`s on OS-RNG failure and
+/// nothing reachable from FFI may panic.
 ///
 /// Split from [`new_repo_config_file`] so it can be unit-tested against plain temp dirs
 /// without standing up a [`Workspace`], exactly as [`load_repo_config_file`] is.
@@ -653,13 +1010,21 @@ pub(crate) fn existing_repo_config_file(workspace: &Workspace) -> Result<Option<
 ///
 /// - [`ConfigError::Load`] — the OS RNG failed, the secure-config directory could not be
 ///   created or written, or an already-present config file is unreadable / not valid TOML.
-fn create_repo_config_file(repo_dir: &Path, root_config_dir: Option<&Path>) -> Result<Option<ConfigFile>, ConfigError> {
+fn create_repo_config_file(
+    repo_dir: &Path,
+    root_config_dir: Option<&Path>,
+    randomness_seed: Option<u64>,
+) -> Result<Option<ConfigFile>, ConfigError> {
     let Some(root) = root_config_dir else {
         return Ok(None);
     };
-    let mut seed = [0_u8; 32];
-    getrandom::fill(&mut seed).map_err(write_error)?;
-    let mut rng = ChaCha20Rng::from_seed(seed);
+    let mut rng = if let Some(seed) = randomness_seed {
+        ChaCha20Rng::seed_from_u64(seed)
+    } else {
+        let mut seed = [0_u8; 32];
+        getrandom::fill(&mut seed).map_err(write_error)?;
+        ChaCha20Rng::from_seed(seed)
+    };
     let loaded = SecureConfig::new_repo(repo_dir.to_owned())
         .load_config(&mut rng, root)
         .map_err(write_error)?;
@@ -690,6 +1055,7 @@ pub(crate) fn new_repo_config_file(workspace: &Workspace) -> Result<Option<Confi
         // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
         workspace.repo_path(),
         root.as_ref().map(|r| r.join("repos")).as_deref(),
+        env.randomness_seed(),
     )
 }
 
@@ -825,13 +1191,52 @@ mod tests {
     use std::ffi::OsString;
 
     use super::{
-        add_secure_layer, create_repo_config_file, is_valid_config_id, load_repo_config_file, load_with,
-        platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
-        set_trunk_alias, user_config_paths, ConfigEnv, BUILTIN_CONFIG_TOML,
+        add_secure_layer, create_repo_config_file, env_base_layer, env_overrides_layer, fingerprint_with,
+        is_valid_config_id, load_repo_config_file, load_with, platform_config_dir, remove_remote_from_repo_config,
+        rename_remote_in_repo_config, secure_config_path, set_trunk_alias, settings_from, stamp, system_config_paths,
+        user_config_paths, user_email, ConfigEnv, WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+
+    /// A snapshot with NOTHING in it: no config dir, no home, `JJ_CONFIG=""` (user discovery
+    /// and the system layer both off — exactly as the suite pins it), an empty environment and
+    /// no `whoami` values. Tests switch on only what they exercise.
+    fn bare_env() -> ConfigEnv {
+        ConfigEnv {
+            config_dir: None,
+            home_dir: None,
+            jj_config: Some(OsString::new()),
+            environment: HashMap::new(),
+            system_config_dir: None,
+            hostname: None,
+            username: None,
+        }
+    }
+
+    fn env_with(vars: &[(&str, &str)]) -> ConfigEnv {
+        ConfigEnv {
+            environment: vars.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+            ..bare_env()
+        }
+    }
+
+    fn paths<'a>(repo_path: &'a Path, workspace_root: &'a Path) -> WorkspacePaths<'a> {
+        WorkspacePaths {
+            repo_path,
+            workspace_root,
+        }
+    }
+
+    /// The string value of `name` in a single layer, if any.
+    fn layer_str(layer: &ConfigLayer, name: &'static str) -> Option<String> {
+        layer
+            .look_up_item(name)
+            .ok()
+            .flatten()
+            .and_then(|item| item.as_str().map(ToOwned::to_owned))
+    }
 
     #[test]
     fn builtin_config_layer_is_valid_toml() {
@@ -1077,12 +1482,9 @@ mod tests {
 
         let env = ConfigEnv {
             config_dir: Some(cfg.path().to_owned()),
-            home_dir: None,
-            // Set-but-empty: user discovery disabled, exactly as the suite pins it.
-            jj_config: Some(OsString::new()),
-            environment: HashMap::new(),
+            ..bare_env()
         };
-        let config = load_with(&env, &repo_path, repo_root.path()).expect("the stack must load");
+        let config = load_with(&env, Some(paths(&repo_path, repo_root.path()))).expect("the stack must load");
 
         assert_eq!(
             config.get::<String>("revsets.log").unwrap(),
@@ -1094,6 +1496,383 @@ mod tests {
             "repo",
             "a key only the repo layer sets still comes through"
         );
+    }
+
+    // ── System + environment layers (Story 9.27) ──────────────────────────────
+
+    #[test]
+    fn system_config_paths_are_the_clis_and_only_without_jj_config() {
+        assert_eq!(
+            system_config_paths(Some(Path::new("/etc")), None),
+            vec![PathBuf::from("/etc/jj/config.toml"), PathBuf::from("/etc/jj/conf.d")]
+        );
+        assert!(
+            system_config_paths(Some(Path::new("/etc")), Some(&OsString::new())).is_empty(),
+            "JJ_CONFIG — even empty — turns the system layer off, as in the CLI"
+        );
+        assert!(system_config_paths(None, None).is_empty());
+    }
+
+    /// System file AND `conf.d` both load, and a user file overrides them — the System layer
+    /// sits below User.
+    #[test]
+    fn load_with_reads_the_system_layer_below_the_user_layer() {
+        let sys = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(sys.path().join("jj").join("conf.d")).unwrap();
+        std::fs::write(sys.path().join("jj").join("config.toml"), "[user]\nname = \"system\"\n").unwrap();
+        std::fs::write(
+            sys.path().join("jj").join("conf.d").join("a.toml"),
+            "[user]\nemail = \"system@example.com\"\n",
+        )
+        .unwrap();
+        std::fs::write(home.path().join(".jjconfig.toml"), "[user]\nname = \"user\"\n").unwrap();
+
+        let env = ConfigEnv {
+            jj_config: None,
+            home_dir: Some(home.path().to_owned()),
+            system_config_dir: Some(sys.path().to_owned()),
+            ..bare_env()
+        };
+        let config = load_with(&env, None).expect("the stack must load");
+        assert_eq!(config.get::<String>("user.name").unwrap(), "user", "User beats System");
+        assert_eq!(
+            config.get::<String>("user.email").unwrap(),
+            "system@example.com",
+            "conf.d is read like the CLI's load_dir"
+        );
+    }
+
+    #[test]
+    fn a_broken_system_file_is_a_config_error_naming_it() {
+        let sys = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(sys.path().join("jj")).unwrap();
+        std::fs::write(sys.path().join("jj").join("config.toml"), "not = = toml\n").unwrap();
+        let env = ConfigEnv {
+            jj_config: None,
+            system_config_dir: Some(sys.path().to_owned()),
+            ..bare_env()
+        };
+        let err = load_with(&env, None).expect_err("invalid TOML must refuse");
+        assert!(err.to_string().contains("config.toml"), "got: {err}");
+    }
+
+    #[test]
+    fn env_base_layer_carries_whoami_no_color_and_visual_over_editor() {
+        let env = ConfigEnv {
+            hostname: Some("box".to_owned()),
+            username: Some("alice".to_owned()),
+            ..env_with(&[
+                ("NO_COLOR", "1"),
+                ("VISUAL", "vis"),
+                ("EDITOR", "ed"),
+                ("PAGER", "less"),
+            ])
+        };
+        let layer = env_base_layer(&env).expect("the layer builds");
+        assert_eq!(layer.source, ConfigSource::EnvBase);
+        assert_eq!(layer_str(&layer, "operation.hostname").as_deref(), Some("box"));
+        assert_eq!(layer_str(&layer, "operation.username").as_deref(), Some("alice"));
+        assert_eq!(layer_str(&layer, "ui.color").as_deref(), Some("never"));
+        assert_eq!(layer_str(&layer, "ui.editor").as_deref(), Some("vis"), "VISUAL wins");
+        assert_eq!(layer_str(&layer, "ui.pager"), None, "$PAGER is deliberately not read");
+    }
+
+    #[test]
+    fn env_base_layer_ignores_an_empty_no_color_and_falls_back_to_editor() {
+        let layer = env_base_layer(&env_with(&[("NO_COLOR", ""), ("EDITOR", "ed")])).expect("the layer builds");
+        assert_eq!(layer_str(&layer, "ui.color"), None);
+        assert_eq!(layer_str(&layer, "ui.editor").as_deref(), Some("ed"));
+        assert_eq!(layer_str(&layer, "operation.hostname"), None, "no whoami value, no key");
+        assert!(env_base_layer(&bare_env()).expect("empty builds").is_empty());
+    }
+
+    #[test]
+    fn env_overrides_layer_maps_every_jj_variable() {
+        let env = env_with(&[
+            ("JJ_USER", "Jo"),
+            ("JJ_EMAIL", "jo@example.com"),
+            ("JJ_TIMESTAMP", "2001-02-03T04:05:06+07:00"),
+            ("JJ_RANDOMNESS_SEED", "42"),
+            ("JJ_OP_TIMESTAMP", "2001-02-03T04:05:07+07:00"),
+            ("JJ_OP_HOSTNAME", "host"),
+            ("JJ_OP_USERNAME", "op-user"),
+            ("JJ_EDITOR", "jj-ed"),
+            ("JJ_PAGER", "jj-pager"),
+        ]);
+        let layer = env_overrides_layer(&env).expect("the layer builds");
+        assert_eq!(layer.source, ConfigSource::EnvOverrides);
+        for (name, want) in [
+            ("user.name", "Jo"),
+            ("user.email", "jo@example.com"),
+            ("debug.commit-timestamp", "2001-02-03T04:05:06+07:00"),
+            ("debug.operation-timestamp", "2001-02-03T04:05:07+07:00"),
+            ("operation.hostname", "host"),
+            ("operation.username", "op-user"),
+            ("ui.editor", "jj-ed"),
+            ("ui.pager", "jj-pager"),
+        ] {
+            assert_eq!(layer_str(&layer, name).as_deref(), Some(want), "{name}");
+        }
+        let seed = layer
+            .look_up_item("debug.randomness-seed")
+            .ok()
+            .flatten()
+            .and_then(jj_lib::config::ConfigItem::as_integer);
+        assert_eq!(seed, Some(42), "the seed is an INTEGER, as the CLI writes it");
+    }
+
+    #[test]
+    fn an_unparseable_randomness_seed_is_dropped_by_both_readers() {
+        let env = env_with(&[("JJ_RANDOMNESS_SEED", "not-a-number")]);
+        let layer = env_overrides_layer(&env).expect("the layer builds");
+        assert!(layer.is_empty());
+        assert_eq!(env.randomness_seed(), None);
+        assert_eq!(env_with(&[("JJ_RANDOMNESS_SEED", "7")]).randomness_seed(), Some(7));
+    }
+
+    /// The whole precedence chain in one stack: `EnvBase` < User < Repo < `EnvOverrides`, and
+    /// the repo layer only exists when a workspace is given.
+    #[test]
+    fn load_with_orders_env_layers_around_the_file_layers() {
+        let repo_root = tempfile::tempdir().unwrap();
+        let cfg = tempfile::tempdir().unwrap();
+        let user_file = cfg.path().join("user.toml");
+        let repo_path = repo_root.path().join(".jj").join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::write(&user_file, "[operation]\nhostname = \"from-user-file\"\n").unwrap();
+        // Legacy repo file (no config-id): read through the `<config_dir>` fallback.
+        std::fs::write(
+            repo_path.join("config.toml"),
+            "[user]\nemail = \"repo@example.com\"\nname = \"Repo\"\n",
+        )
+        .unwrap();
+
+        let env = ConfigEnv {
+            config_dir: Some(cfg.path().to_owned()),
+            jj_config: Some(user_file.into_os_string()),
+            hostname: Some("from-whoami".to_owned()),
+            username: Some("whoami-user".to_owned()),
+            ..env_with(&[("JJ_EMAIL", "env@example.com")])
+        };
+        let with_repo = load_with(&env, Some(paths(&repo_path, repo_root.path()))).expect("the stack must load");
+        assert_eq!(
+            with_repo.get::<String>("operation.hostname").unwrap(),
+            "from-user-file",
+            "User beats EnvBase"
+        );
+        assert_eq!(with_repo.get::<String>("operation.username").unwrap(), "whoami-user");
+        assert_eq!(
+            with_repo.get::<String>("user.name").unwrap(),
+            "Repo",
+            "the repo layer applies"
+        );
+        assert_eq!(
+            with_repo.get::<String>("user.email").unwrap(),
+            "env@example.com",
+            "EnvOverrides beat the repo layer"
+        );
+
+        let without = load_with(&env, None).expect("the creation stack must load");
+        assert_eq!(
+            without.get::<String>("user.name").unwrap(),
+            "",
+            "no workspace, no repo layer"
+        );
+    }
+
+    #[test]
+    fn a_hostnames_scope_matches_the_whoami_hostname() {
+        let cfg = tempfile::tempdir().unwrap();
+        let user_file = cfg.path().join("user.toml");
+        std::fs::write(
+            &user_file,
+            "[[--scope]]\n--when.hostnames = [\"box\"]\n[--scope.user]\nname = \"scoped\"\n",
+        )
+        .unwrap();
+        let env = |hostname: Option<&str>| ConfigEnv {
+            jj_config: Some(user_file.clone().into_os_string()),
+            hostname: hostname.map(ToOwned::to_owned),
+            ..bare_env()
+        };
+        let on_box = load_with(&env(Some("box")), None).expect("loads");
+        assert_eq!(on_box.get::<String>("user.name").unwrap(), "scoped");
+        let unknown = load_with(&env(None), None).expect("loads");
+        assert_eq!(
+            unknown.get::<String>("user.name").unwrap(),
+            "",
+            "no hostname resolves as \"\""
+        );
+    }
+
+    #[test]
+    fn a_wrong_typed_identity_refuses_the_settings_naming_the_key() {
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(ConfigLayer::parse(ConfigSource::User, "[user]\nname = 1\n").unwrap());
+        let err = settings_from(config).expect_err("a non-string user.name must refuse");
+        assert!(err.to_string().contains("user.name"), "got: {err}");
+
+        let settings = settings_from(StackedConfig::with_defaults()).expect("jj-lib defaults are valid");
+        assert_eq!(
+            settings.user_name(),
+            "",
+            "the empty identity is jj-lib's default, not an error"
+        );
+    }
+
+    /// Only the git backend's own config read is a config fault; every other load failure —
+    /// another variant, another backend error — stays an ordinary load failure.
+    #[test]
+    fn load_config_fault_digs_out_only_the_git_backends_config_read() {
+        use jj_lib::backend::BackendLoadError;
+        use jj_lib::config::ConfigGetError;
+        use jj_lib::git_backend::GitBackendLoadError;
+        use jj_lib::repo::StoreLoadError;
+        use jj_lib::working_copy::WorkingCopyStateError;
+        use jj_lib::workspace::WorkspaceLoadError;
+
+        let backend = |inner: Box<dyn std::error::Error + Send + Sync>| {
+            WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner)))
+        };
+        let config = GitBackendLoadError::Config(ConfigGetError::NotFound {
+            name: "git.abandon-unreachable-commits".to_owned(),
+        });
+        let fault = super::load_config_fault(&backend(Box::new(config))).expect("a config fault");
+        assert!(
+            fault.to_string().contains("git.abandon-unreachable-commits"),
+            "got: {fault}"
+        );
+
+        assert!(super::load_config_fault(&backend(Box::new(std::io::Error::other("x")))).is_none());
+        assert!(super::load_config_fault(&WorkspaceLoadError::NoWorkspaceHere(PathBuf::from("/x"))).is_none());
+
+        // The working copy keeps its `ConfigGetError` as a `#[source]`: found down the chain.
+        let wc = WorkspaceLoadError::WorkingCopyState(WorkingCopyStateError {
+            message: "Failed to read the tree state settings".to_owned(),
+            err: Box::new(ConfigGetError::NotFound {
+                name: "ui.conflict-marker-style".to_owned(),
+            }),
+        });
+        let fault = super::load_config_fault(&wc).expect("a config fault down the chain");
+        assert!(fault.to_string().contains("ui.conflict-marker-style"), "got: {fault}");
+    }
+
+    #[test]
+    fn init_config_fault_digs_out_the_git_backends_and_the_chains_config_reads() {
+        use jj_lib::backend::BackendInitError;
+        use jj_lib::config::ConfigGetError;
+        use jj_lib::git_backend::GitBackendInitError;
+        use jj_lib::working_copy::WorkingCopyStateError;
+        use jj_lib::workspace::WorkspaceInitError;
+
+        let not_found = |name: &str| ConfigGetError::NotFound { name: name.to_owned() };
+        let backend =
+            |inner: Box<dyn std::error::Error + Send + Sync>| WorkspaceInitError::Backend(BackendInitError(inner));
+        let git = backend(Box::new(GitBackendInitError::Config(not_found("git.x"))));
+        assert!(super::init_config_fault(&git)
+            .expect("git fault")
+            .to_string()
+            .contains("git.x"));
+        assert!(super::init_config_fault(&backend(Box::new(std::io::Error::other("x")))).is_none());
+        assert!(super::init_config_fault(&WorkspaceInitError::DestinationExists(PathBuf::from("/x"))).is_none());
+
+        let wc = WorkspaceInitError::WorkingCopyState(WorkingCopyStateError {
+            message: "Failed to read the tree state settings".to_owned(),
+            err: Box::new(not_found("working-copy.exec-bit-change")),
+        });
+        assert!(super::init_config_fault(&wc)
+            .expect("a config fault down the chain")
+            .to_string()
+            .contains("working-copy.exec-bit-change"));
+    }
+
+    #[test]
+    fn user_email_reads_the_stack_and_refuses_a_wrong_type() {
+        assert_eq!(user_email(&StackedConfig::with_defaults()).unwrap(), "");
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(ConfigLayer::parse(ConfigSource::User, "[user]\nemail = 1\n").unwrap());
+        let err = user_email(&config).expect_err("a non-string user.email must refuse");
+        assert!(err.to_string().contains("user.email"), "got: {err}");
+    }
+
+    // ── Stack fingerprint ─────────────────────────────────────────────────────
+
+    #[test]
+    fn stamp_records_absence_and_presence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("f.toml");
+        assert_eq!(stamp(&path).meta, None);
+        std::fs::write(&path, "x").unwrap();
+        assert_eq!(stamp(&path).meta.map(|(_, len)| len), Some(1));
+    }
+
+    /// Every input the fingerprint is documented to cover changes it: a system `conf.d`
+    /// entry edited in place, a user file, the resolved repo file, the id file, the
+    /// environment and the `whoami` values. An untouched stack fingerprints equal.
+    #[test]
+    fn the_fingerprint_changes_with_every_input_of_the_stack() {
+        let sys = tempfile::tempdir().unwrap();
+        let cfg = tempfile::tempdir().unwrap();
+        let repo_root = tempfile::tempdir().unwrap();
+        let repo_path = repo_root.path().join(".jj").join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        let conf_d = sys.path().join("jj").join("conf.d");
+        std::fs::create_dir_all(&conf_d).unwrap();
+        std::fs::write(conf_d.join("a.toml"), "").unwrap();
+        std::fs::write(conf_d.join("ignored.txt"), "").unwrap();
+
+        let env = ConfigEnv {
+            config_dir: Some(cfg.path().to_owned()),
+            jj_config: None,
+            system_config_dir: Some(sys.path().to_owned()),
+            ..bare_env()
+        };
+        let ws = paths(&repo_path, repo_root.path());
+        let base = fingerprint_with(&env, ws).expect("fingerprints");
+        assert_eq!(
+            base,
+            fingerprint_with(&env, ws).expect("fingerprints"),
+            "stable when nothing changed"
+        );
+
+        let changed = |edit: &dyn Fn()| {
+            let before = fingerprint_with(&env, ws).expect("fingerprints");
+            edit();
+            assert_ne!(before, fingerprint_with(&env, ws).expect("fingerprints"));
+        };
+        changed(&|| std::fs::write(conf_d.join("a.toml"), "[user]\nname = \"x\"\n").unwrap());
+        changed(&|| std::fs::write(conf_d.join("b.toml"), "").unwrap());
+        changed(&|| {
+            std::fs::create_dir_all(cfg.path().join("jj")).unwrap();
+            std::fs::write(cfg.path().join("jj").join("config.toml"), "").unwrap();
+        });
+        changed(&|| std::fs::write(repo_path.join("config.toml"), "").unwrap());
+        changed(&|| std::fs::write(repo_path.join("config-id"), "0123456789abcdef0123").unwrap());
+
+        assert_ne!(base, fingerprint_with(&env_with(&[("JJ_USER", "x")]), ws).unwrap());
+        let whoami = ConfigEnv {
+            hostname: Some("h".to_owned()),
+            ..bare_env()
+        };
+        assert_ne!(
+            fingerprint_with(&bare_env(), ws).unwrap(),
+            fingerprint_with(&whoami, ws).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_malformed_config_id_fails_the_fingerprint_like_the_stack() {
+        let cfg = tempfile::tempdir().unwrap();
+        let repo_root = tempfile::tempdir().unwrap();
+        let repo_path = repo_root.path().join(".jj").join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::write(repo_path.join("config-id"), "nope").unwrap();
+        let env = ConfigEnv {
+            config_dir: Some(cfg.path().to_owned()),
+            ..bare_env()
+        };
+        let err = fingerprint_with(&env, paths(&repo_path, repo_root.path())).expect_err("must refuse");
+        assert!(err.to_string().contains("config-id"), "got: {err}");
     }
 
     // ── Repo-config writers (Epic 9 follow-up J) ──────────────────────────────
@@ -1345,7 +2124,8 @@ fetch-tags = \"none\"
     #[test]
     fn create_without_a_config_dir_writes_nothing_and_the_writer_is_a_no_op() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let file = create_repo_config_file(repo_dir.path(), None).expect("an unknown <config_dir> is not an error");
+        let file =
+            create_repo_config_file(repo_dir.path(), None, None).expect("an unknown <config_dir> is not an error");
         assert!(file.is_none(), "no <config_dir> means no file to write");
         set_trunk_alias(file, "main@origin").expect("the writer must succeed with nothing to write");
         assert!(
@@ -1361,7 +2141,7 @@ fetch-tags = \"none\"
         let repo_dir = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
 
-        let file = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("the create must succeed");
+        let file = create_repo_config_file(repo_dir.path(), Some(root.path()), None).expect("the create must succeed");
         let path = file.as_ref().expect("a config file must be created").path().to_owned();
 
         let id = std::fs::read_to_string(repo_dir.path().join("config-id")).expect("config-id must be written");
@@ -1383,18 +2163,34 @@ fetch-tags = \"none\"
         );
     }
 
+    /// `JJ_RANDOMNESS_SEED` makes the generated `config-id` deterministic, as it does in the
+    /// CLI: two repos created with the same seed get the same id.
+    #[test]
+    fn a_randomness_seed_makes_the_config_id_deterministic() {
+        let ids: Vec<String> = (0..2)
+            .map(|_| {
+                let repo_dir = tempfile::tempdir().unwrap();
+                let root = tempfile::tempdir().unwrap();
+                create_repo_config_file(repo_dir.path(), Some(root.path()), Some(42)).expect("the create must succeed");
+                std::fs::read_to_string(repo_dir.path().join("config-id")).expect("config-id")
+            })
+            .collect();
+        assert!(is_valid_config_id(&ids[0]));
+        assert_eq!(ids[0], ids[1]);
+    }
+
     /// A second call re-uses the id the first one wrote and EDITS the existing file rather
     /// than replacing it — the same `load_or_empty` guarantee the CLI relies on.
     #[test]
     fn create_reuses_an_existing_config_id_and_preserves_the_file() {
         let repo_dir = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
-        let first = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("first create");
+        let first = create_repo_config_file(repo_dir.path(), Some(root.path()), None).expect("first create");
         let path = first.as_ref().expect("file").path().to_owned();
         set_trunk_alias(first, "main@origin").expect("first write");
         let id = std::fs::read_to_string(repo_dir.path().join("config-id")).expect("config-id");
 
-        let second = create_repo_config_file(repo_dir.path(), Some(root.path())).expect("second create");
+        let second = create_repo_config_file(repo_dir.path(), Some(root.path()), None).expect("second create");
         assert_eq!(second.as_ref().expect("file").path(), path, "the id must be re-used");
         set_trunk_alias(second, "master@upstream").expect("second write");
 
@@ -1416,7 +2212,7 @@ fetch-tags = \"none\"
         let blocker = tmp.path().join("not-a-dir");
         std::fs::write(&blocker, "regular file").unwrap();
 
-        let err = create_repo_config_file(repo_dir.path(), Some(&blocker.join("repos")))
+        let err = create_repo_config_file(repo_dir.path(), Some(&blocker.join("repos")), None)
             .expect_err("an uncreatable secure-config root must refuse");
         assert!(
             err.to_string().contains("repos"),
@@ -1439,7 +2235,7 @@ fetch-tags = \"none\"
         std::fs::create_dir_all(root.path().join(id)).unwrap();
         std::fs::write(root.path().join(id).join("config.toml"), "not = = toml\n").unwrap();
 
-        let err = create_repo_config_file(repo_dir.path(), Some(root.path()))
+        let err = create_repo_config_file(repo_dir.path(), Some(root.path()), None)
             .expect_err("invalid TOML must refuse before anything is written");
         let reason = err.to_string();
         assert!(

@@ -19,11 +19,9 @@ use std::path::Path;
 use std::sync::LazyLock;
 use std::{env, fs};
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::Repo as _;
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use test_helpers::{extract_fixture, set_tag};
 use zanshin_jj::{ChangeId, MutateError, Repo};
@@ -31,29 +29,14 @@ use zanshin_jj::{ChangeId, MutateError, Repo};
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
     env::set_var("GIT_CONFIG_GLOBAL", "");
+    env::set_var("JJ_USER", "Zanshin");
+    env::set_var("JJ_EMAIL", "zanshin@localhost");
+    env::set_var("JJ_OP_HOSTNAME", "localhost");
+    env::set_var("JJ_OP_USERNAME", "zanshin");
 });
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
-}
-
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
 }
 
 /// `tiny-3-commits`' `Commit 1 -> Commit 2 -> Commit 3` chain, discovered by description
@@ -69,7 +52,7 @@ struct Layout {
 }
 
 fn oracle_layout(workspace_root: &Path) -> Layout {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -261,11 +244,12 @@ fn a_malformed_repo_config_makes_describe_fail_with_config_not_backend() {
     // The rewriting verbs read the effective config to build the guard's set, so a broken
     // config now reaches them — as the same fault the READ side reports (`RevsetError::
     // Config` / `jj.config_error`), never the unclassified backend bucket, and never a
-    // silent fall-back to the builtin immutable set.
-    write_repo_config(&fx.path, "not = = toml");
-
+    // silent fall-back to the builtin immutable set. Opened FIRST: since Story 9.27 a broken
+    // stack refuses `Repo::open` itself (the CLI fails at start-up), so the verb-side refusal
+    // is the one an already-open handle meets.
     let mut repo = Repo::open(&fx.path).unwrap();
     let before_op = head_op_id(&repo);
+    write_repo_config(&fx.path, "not = = toml");
     let err = repo
         .describe(ChangeId(layout.commit1_change_id), "nope")
         .expect_err("a malformed config must not be silently ignored");

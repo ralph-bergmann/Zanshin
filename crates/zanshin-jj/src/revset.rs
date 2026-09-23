@@ -137,8 +137,8 @@ pub(crate) fn eval_revset(
     // 1. Effective config ONCE per walk (never cached — Story 4.9), then parse against the
     //    alias map it feeds. Parsing needs no loaded operation.
     let config = crate::config::load(repo)?;
-    let aliases = build_aliases_map(&config)?;
-    let parsed = parse_revset_with(repo, &aliases, revset)?;
+    let parse_config = revset_config(&config)?;
+    let parsed = parse_revset_with(repo, &parse_config, revset)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors `resolve_revset` above).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
@@ -179,20 +179,40 @@ pub(crate) fn eval_revset(
 /// - [`RevsetError::Config`] — the repo's jj config is malformed or unreadable.
 pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let config = crate::config::load(repo)?;
-    let aliases_map = build_aliases_map(&config)?;
-    parse_revset_with(repo, &aliases_map, expr)
+    let parse_config = revset_config(&config)?;
+    parse_revset_with(repo, &parse_config, expr)
 }
 
-/// Parses `expr` in this workspace's revset context (`aliases_map`'s aliases, the
-/// workspace name for `@`, the user email, a `git`-default ignored remote). Pure parsing —
-/// no symbol is resolved yet, so the result is independent of any loaded operation.
+/// The config-derived inputs of a revset parse, read off ONE effective stack: the alias map
+/// and `mine()`'s `user.email`.
+pub(crate) struct RevsetConfig {
+    aliases_map: RevsetAliasesMap,
+    user_email: String,
+}
+
+/// Reads [`RevsetConfig`] out of a loaded stack.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a layer's `revset-aliases` is not a table, or `user.email` is
+///   not a string.
+pub(crate) fn revset_config(config: &StackedConfig) -> Result<RevsetConfig, ConfigError> {
+    Ok(RevsetConfig {
+        aliases_map: build_aliases_map(config)?,
+        user_email: crate::config::user_email(config)?,
+    })
+}
+
+/// Parses `expr` in this workspace's revset context (`parse_config`'s aliases and user email,
+/// the workspace name for `@`, a `git`-default ignored remote). Pure parsing — no symbol is
+/// resolved yet, so the result is independent of any loaded operation.
 ///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
 pub(crate) fn parse_revset_with(
     repo: &Repo,
-    aliases_map: &RevsetAliasesMap,
+    parse_config: &RevsetConfig,
     expr: &str,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let workspace = repo.workspace();
@@ -200,7 +220,9 @@ pub(crate) fn parse_revset_with(
     // Parse context — every borrowed local is declared before `context` so it outlives it.
     let fileset_aliases = FilesetAliasesMap::new();
     let extensions = RevsetExtensions::default();
-    let user_email: &str = repo.settings().user_email();
+    // `mine()`'s input comes from the per-call effective config, like the aliases: the CLI
+    // reads it per invocation, so an external `jj config set user.email` is seen at once.
+    let user_email: &str = &parse_config.user_email;
     let date_ctx: jj_lib::time_util::DatePatternContext = chrono::Local::now().into();
     let path_converter = RepoPathUiConverter::Fs {
         cwd: workspace.workspace_root().to_owned(),
@@ -241,7 +263,7 @@ pub(crate) fn parse_revset_with(
     // change 1 is SILENT — same input, different valid answer — which is why only it carries a
     // regression test.
     let context = RevsetParseContext {
-        aliases_map,
+        aliases_map: &parse_config.aliases_map,
         local_variables: HashMap::new(),
         user_email,
         date_pattern_context: date_ctx,
@@ -378,8 +400,8 @@ pub(crate) fn build_aliases_map(config: &StackedConfig) -> Result<RevsetAliasesM
 /// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
 pub(crate) fn immutable_expression(
     repo: &Repo,
-    aliases_map: &RevsetAliasesMap,
+    parse_config: &RevsetConfig,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    let heads = parse_revset_with(repo, aliases_map, "immutable_heads()")?;
+    let heads = parse_revset_with(repo, parse_config, "immutable_heads()")?;
     Ok(heads.union(&RevsetExpression::root()).ancestors())
 }

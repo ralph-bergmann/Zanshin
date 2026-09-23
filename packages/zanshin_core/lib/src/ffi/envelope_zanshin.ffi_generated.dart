@@ -5013,9 +5013,15 @@ class MutationResult {
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get workingCopyChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
+  ///  Which identity fields were empty when this call committed an operation — the jj CLI's
+  ///  "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
+  ///  configured and on every call that committed nothing; the UI turns a present value into
+  ///  the "set your identity" prompt. Never a refusal.
+  IdentityMissing? get identityMissing => IdentityMissing.reader.vTableGetNullable(_bc, _bcOffset, 12);
+
   @override
   String toString() {
-    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}}';
+    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, identityMissing: ${identityMissing}}';
   }
 }
 
@@ -5032,7 +5038,7 @@ class MutationResultBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addNewOpIdOffset(int? offset) {
@@ -5055,6 +5061,11 @@ class MutationResultBuilder {
     return fbBuilder.offset;
   }
 
+  int addIdentityMissingOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -5065,16 +5076,19 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _newChangeIds;
   final List<String>? _abandonedChangeIds;
   final String? _workingCopyChangeId;
+  final IdentityMissingObjectBuilder? _identityMissing;
 
   MutationResultObjectBuilder({
     String? newOpId,
     List<String>? newChangeIds,
     List<String>? abandonedChangeIds,
     String? workingCopyChangeId,
+    IdentityMissingObjectBuilder? identityMissing,
   }) : _newOpId = newOpId,
        _newChangeIds = newChangeIds,
        _abandonedChangeIds = abandonedChangeIds,
-       _workingCopyChangeId = workingCopyChangeId;
+       _workingCopyChangeId = workingCopyChangeId,
+       _identityMissing = identityMissing;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -5089,11 +5103,94 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
     final int? workingCopyChangeIdOffset = _workingCopyChangeId == null
         ? null
         : fbBuilder.writeString(_workingCopyChangeId!);
-    fbBuilder.startTable(4);
+    final int? identityMissingOffset = _identityMissing?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
     fbBuilder.addOffset(0, newOpIdOffset);
     fbBuilder.addOffset(1, newChangeIdsOffset);
     fbBuilder.addOffset(2, abandonedChangeIdsOffset);
     fbBuilder.addOffset(3, workingCopyChangeIdOffset);
+    fbBuilder.addOffset(4, identityMissingOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
+class IdentityMissing {
+  IdentityMissing._(this._bc, this._bcOffset);
+  factory IdentityMissing(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<IdentityMissing> reader = _IdentityMissingReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  bool get name => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
+  bool get email => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+
+  @override
+  String toString() {
+    return 'IdentityMissing{name: ${name}, email: ${email}}';
+  }
+}
+
+class _IdentityMissingReader extends fb.TableReader<IdentityMissing> {
+  const _IdentityMissingReader();
+
+  @override
+  IdentityMissing createObject(fb.BufferContext bc, int offset) => IdentityMissing._(bc, offset);
+}
+
+class IdentityMissingBuilder {
+  IdentityMissingBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addName(bool? name) {
+    fbBuilder.addBool(0, name);
+    return fbBuilder.offset;
+  }
+
+  int addEmail(bool? email) {
+    fbBuilder.addBool(1, email);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class IdentityMissingObjectBuilder extends fb.ObjectBuilder {
+  final bool? _name;
+  final bool? _email;
+
+  IdentityMissingObjectBuilder({
+    bool? name,
+    bool? email,
+  }) : _name = name,
+       _email = email;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(2);
+    fbBuilder.addBool(0, _name);
+    fbBuilder.addBool(1, _email);
     return fbBuilder.endTable();
   }
 

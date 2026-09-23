@@ -7,10 +7,8 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use jj_lib::backend::CommitId;
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::default_working_copy_factories;
 use jj_lib::repo::Repo as _;
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use test_helpers::{add_commit_off_root, extract_fixture, set_local_bookmark};
 use zanshin_jj::{resolve_revset, Change, Repo, RevsetError};
@@ -20,6 +18,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -27,29 +29,10 @@ fn pin_env() {
     LazyLock::force(&ENV_GUARD);
 }
 
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
-}
-
 /// Returns `(working_copy_change_id, parent_change_id)` in reverse-hex form,
 /// computed directly via jj-lib — an independent oracle for AC-2.
 fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -77,7 +60,7 @@ fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
 /// Returns the set of distinct change ids (reverse-hex) reachable from local
 /// bookmark targets — an independent oracle for AC-4.
 fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -98,7 +81,7 @@ fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
 
 /// The change id (reverse-hex) of the commit whose hex commit id is `commit_hex`.
 fn change_id_of(workspace_root: &Path, commit_hex: &str) -> String {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -432,7 +415,7 @@ fn revset_large_fixture_fully_materialized() {
 /// `commit_change_ids()` yields the same change id twice, so this is what makes
 /// `resolve_revset`'s dedup branch actually do work (AC-10).
 fn make_divergent_change(workspace_root: &Path) -> String {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -487,7 +470,7 @@ fn make_divergent_change(workspace_root: &Path) -> String {
 ///
 /// TEST SETUP ONLY — drives the `@`-with-no-working-copy resolution path.
 fn remove_working_copy(workspace_root: &Path) {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,

@@ -691,6 +691,17 @@ table MutationResult {
   new_change_ids: [string];
   abandoned_change_ids: [string];
   working_copy_change_id: string;
+  /// Which identity fields were empty when this call committed an operation — the jj CLI's
+  /// "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
+  /// configured and on every call that committed nothing; the UI turns a present value into
+  /// the "set your identity" prompt. Never a refusal.
+  identity_missing: IdentityMissing;
+}
+
+/// `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
+table IdentityMissing {
+  name: bool;
+  email: bool;
 }
 
 /// One path an operation could not process, with the verbatim reason.

@@ -175,6 +175,7 @@ pub(crate) fn undo(workspace: &mut Workspace) -> Result<MutationResult, MutateEr
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: mutate::identity_missing(new_repo.settings()),
     })
 }
 

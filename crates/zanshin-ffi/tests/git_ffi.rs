@@ -40,6 +40,10 @@ use zanshin_jj::Repo;
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
     env::set_var("GIT_CONFIG_GLOBAL", "");
+    env::set_var("JJ_USER", "Zanshin");
+    env::set_var("JJ_EMAIL", "zanshin@localhost");
+    env::set_var("JJ_OP_HOSTNAME", "localhost");
+    env::set_var("JJ_OP_USERNAME", "zanshin");
 });
 
 fn pin_env() {
@@ -256,14 +260,15 @@ fn git_import_with_a_non_boolean_config_value_returns_jj_config_error() {
     pin_env();
     let tmp = tempfile::TempDir::new().unwrap();
     let handle = init_handle(tmp.path(), 1);
-    close_handle(handle);
+    // The handle stays OPEN across the write: since Story 9.27 the stack is what the workspace
+    // is loaded with and the git backend reads this key itself, so a fresh `zanshin_repo_open`
+    // would already refuse with the same code; an open handle meets it at the pre-verb refresh.
     fs::write(
         tmp.path().join(".jj").join("repo").join("config.toml"),
         "[git]\nabandon-unreachable-commits = \"yes\"\n",
     )
     .expect("repo config must be writable");
 
-    let handle = init_handle_by_open(tmp.path());
     // SAFETY: handle is live for the duration of the call.
     let bytes = unsafe { read_and_free(zanshin_git_import(handle)) };
 

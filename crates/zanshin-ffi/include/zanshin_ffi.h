@@ -243,6 +243,8 @@ typedef struct {
 
 #define MutationResult_VT_ABANDONED_CHANGE_IDS 8
 
+#define MutationResult_VT_IDENTITY_MISSING 12
+
 #define SkippedPath_VT_REASON 6
 
 #define AbsorbResult_VT_MUTATION 4
@@ -352,6 +354,8 @@ char *zanshin_ffi_version(void);
  * - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
  * - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
  *   a tracked remote bookmark; the name in `context`.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -393,6 +397,8 @@ ZanshinBuf *zanshin_bookmark_create(uint64_t handle,
  *   is not `BookmarkDelete`, i.e. the buffer was built for a different wrapper.
  * - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
  *   parse; jj-lib's reason in `context`.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -873,6 +879,8 @@ ZanshinBuf *zanshin_git_import(uint64_t handle);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -911,6 +919,8 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  *   reserved `git`, contains a slash, or is not a valid gix remote name.
  * - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1061,6 +1071,8 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  * - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
  *   remote; the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1234,6 +1246,10 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  * # Errors
  * - `jj.path_not_found` — `path` does not exist on disk.
  * - `jj.repo_not_found` — `path` exists but is not a jj repo.
+ * - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
+ *   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
+ *   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value. `context`
+ *   names the path or key. Nothing is opened.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -1259,6 +1275,9 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  * - `ffi.invalid_argument` — `backend` is not `0` or `1`.
  * - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
  * - `jj.jj_lib_error` — init failed (e.g. repo already exists).
+ * - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
+ *   be read (refused before anything is written), or the created workspace's own stack
+ *   cannot when it is re-opened. `context` names the path or key.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
  *   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
  *   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
@@ -1280,11 +1299,12 @@ ZanshinBuf *zanshin_repo_init(const char *path, int32_t backend);
  *
  * # Errors
  * - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
- * - `jj.jj_lib_error` — clone failed; detail in `context`. This also covers a config
- *   fault: the clone reads `git.abandon-unreachable-commits` from the effective config, so
- *   an unreadable config or a non-boolean value fails the clone under this code. `context`
- *   names the offending KEY for a wrong-typed value, and the offending FILE PATH for a
- *   config file that is unreadable or not valid TOML.
+ * - `jj.jj_lib_error` — clone failed; detail in `context`.
+ * - `jj.config_error` — the effective jj config cannot be read: the user-level stack the
+ *   workspace is created with (refused before anything is written), or the new workspace's
+ *   stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
+ *   value refuses here too. `context` names the offending KEY for a wrong-typed value, and
+ *   the offending FILE PATH for a config file that is unreadable or not valid TOML.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
  *   no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
  *   has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
@@ -1374,6 +1394,9 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
  * - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
  *   conversion; detail in `context`.
+ * - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
+ *   be read (refused before anything is written), or the converted workspace's own stack
+ *   cannot when it is opened. `context` names the path or key.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -1439,6 +1462,8 @@ ZanshinBuf *zanshin_describe(uint64_t handle, const char *change_id, const char 
  *   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
  * - `jj.invalid_input` — the parsed `parents` list is empty.
  * - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1540,6 +1565,8 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  *   restore to).
  * - `jj.invalid_input` — the head operation has more than one parent (a
  *   divergent-write merge op).
+ * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety

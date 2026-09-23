@@ -58,7 +58,7 @@ pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
-pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
+pub use mutate::{AbsorbResult, IdentityMissing, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};

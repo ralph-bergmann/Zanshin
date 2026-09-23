@@ -19,6 +19,7 @@ pollster = { workspace = true }
 rand_chacha = { workspace = true }  # WHY: one call site — `config.rs::create_repo_config_file` hands `SecureConfig::load_config` the `ChaCha20Rng` it takes by concrete type
 thiserror = { workspace = true }
 tracing = { workspace = true }
+whoami = { workspace = true }  # WHY: `config.rs`'s EnvBase layer + resolution-context hostname, exactly as the CLI's `ConfigEnv::from_environment`
 
 [dev-dependencies]
 # WHY the `testing` feature, DEV-only: `jj_lib::secret_backend::SecretBackend` is gated

@@ -119,9 +119,12 @@ stops it early (`Ok(Break)`), exhaustion yields `Ok(Continue)`. Parse /
 resolution / jj-lib failures of either expression surface as `RevsetError`.
 Aliases are resolved from the repo's effective jj config, builtin defaults
 included (Story 4.9): `config.rs` rebuilds the CLI's layer stack per operation —
-Zanshin's builtin default layer, then the user config (`JJ_CONFIG` or platform
-discovery), the repo layer and the workspace layer — and every parse site feeds
-from it. So `DEFAULT_LOG_REVSET` (the CLI's `revsets.log` default and the
+Zanshin's builtin default layer, the system config, the `EnvBase` layer, the user
+config (`JJ_CONFIG` or platform discovery), the repo layer, the workspace layer
+and the `EnvOverrides` layer — and every parse site feeds from it. Since Story
+9.27 the same stack is what `Repo` opens the workspace with (commit author,
+operation user/host, working-copy knobs), re-derived before every mutation when
+it changed. So `DEFAULT_LOG_REVSET` (the CLI's `revsets.log` default and the
 pre-fill for `revset` / `short_prefixes`) parses out of the box, while a user's
 `[revset-aliases]` override of `trunk()` or `immutable_heads()`, or a
 brand-new `wip()`, resolves exactly as it does in their CLI. `Repo::log_defaults()`

@@ -21,7 +21,6 @@ use jj_lib::default_backend_factories::{default_backend_factories, default_worki
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RemoteRefState;
 use jj_lib::repo::Repo as _;
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_commit_off_root, add_divergent_twin, extract_fixture, set_local_bookmark, set_remote_bookmark};
@@ -30,6 +29,10 @@ use zanshin_jj::{BookmarkKind, ChangeId, MutateError, MutationResult, Repo};
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
     env::set_var("GIT_CONFIG_GLOBAL", "");
+    env::set_var("JJ_USER", "Zanshin");
+    env::set_var("JJ_EMAIL", "zanshin@localhost");
+    env::set_var("JJ_OP_HOSTNAME", "localhost");
+    env::set_var("JJ_OP_USERNAME", "zanshin");
 });
 
 /// A syntactically valid reverse-hex change id (the alphabet is `k`-`z`) that no commit in the
@@ -41,29 +44,10 @@ fn pin_env() {
     LazyLock::force(&ENV_GUARD);
 }
 
-fn make_test_settings() -> UserSettings {
-    let mut config = jj_lib::config::StackedConfig::with_defaults();
-    config.add_layer(
-        jj_lib::config::ConfigLayer::parse(
-            jj_lib::config::ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
-}
-
 /// Open the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
     Workspace::load(
-        &make_test_settings(),
+        &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),

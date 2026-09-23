@@ -165,6 +165,10 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         working_copy_change_id: zanshin_jj::ChangeId(String::new()),
+        identity_missing: Some(zanshin_jj::IdentityMissing {
+            name: true,
+            email: false,
+        }),
     }
 }
 
@@ -398,6 +402,7 @@ fn api_surface_resolves() {
 
     // Error variants — each is Backend(String) / JjLibError(String): no jj_lib type.
     _ = zanshin_jj::RepoError::Backend(String::new());
+    _ = zanshin_jj::RepoError::Config { reason: String::new() };
     _ = zanshin_jj::StatusError::Backend(String::new());
     _ = zanshin_jj::ChangeError::Backend(String::new());
     _ = zanshin_jj::OpLogError::Backend(String::new());

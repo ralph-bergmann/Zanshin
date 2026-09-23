@@ -20,7 +20,7 @@ use jj_lib::repo::Repo as _;
 use jj_lib::revset::{RevsetExtensions, UserRevsetExpression};
 
 use crate::commit_meta::LogMetaIndex;
-use crate::revset::{build_aliases_map, evaluate_revset, immutable_expression, parse_revset_with};
+use crate::revset::{evaluate_revset, immutable_expression, parse_revset_with, revset_config};
 use crate::{CommitId, CommitMeta, Repo, RevsetError};
 
 /// The jj CLI's default `revsets.log-graph-prioritize` (`cli/src/config/revsets.toml` at
@@ -167,13 +167,13 @@ pub(crate) fn walk_graph(
     //    everything against the ONE alias map it feeds. Parsing needs no loaded operation,
     //    so a syntax error costs no `load_at_head` I/O.
     let config = crate::config::load(repo)?;
-    let aliases = build_aliases_map(&config)?;
-    let log = parse_revset_with(repo, &aliases, revset)?;
-    let prio = parse_revset_with(repo, &aliases, prioritize)?.intersection(&log);
+    let parse_config = revset_config(&config)?;
+    let log = parse_revset_with(repo, &parse_config, revset)?;
+    let prio = parse_revset_with(repo, &parse_config, prioritize)?.intersection(&log);
     let short = (!short_prefixes.is_empty())
-        .then(|| parse_revset_with(repo, &aliases, short_prefixes))
+        .then(|| parse_revset_with(repo, &parse_config, short_prefixes))
         .transpose()?;
-    let immutable = immutable_expression(repo, &aliases)?;
+    let immutable = immutable_expression(repo, &parse_config)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;

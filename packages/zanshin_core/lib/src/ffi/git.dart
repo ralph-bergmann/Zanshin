@@ -9,7 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal;
+import 'mutate.dart' show MutationResult, decodeIdentityMissingInternal, decodeMutationResultEnvelopeInternal;
 import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.5's six `jj git` sync + remote-config
@@ -321,6 +321,7 @@ MutationResult _mutation(fbs.MutationResult? m) => MutationResult(
   newChangeIds: m?.newChangeIds?.toList() ?? const [],
   abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
   workingCopyChangeId: m?.workingCopyChangeId ?? '',
+  identityMissing: decodeIdentityMissingInternal(m?.identityMissing),
 );
 
 List<GitRefUpdate> _refUpdates(List<fbs.GitRefUpdate>? raw) =>

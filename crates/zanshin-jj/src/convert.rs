@@ -88,7 +88,7 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
 use crate::op_support::start_repo_transaction;
-use crate::repo::make_settings;
+use crate::repo::creation_error;
 use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 
 /// Converts the Git repository at `path` into a colocated jj workspace (FR-JJ-18a).
@@ -126,6 +126,9 @@ use crate::{config, detect_repo, Repo, RepoError, RepoKind};
 ///   resolved to an absolute path (the same answer the not-found case gives).
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error during
 ///   conversion; the partially-created `.jj/` is rolled back.
+/// - [`RepoError::Config`] — the user-level jj config stack the workspace would be created
+///   with cannot be read; refused before anything is written. The converted workspace is then
+///   opened as by [`Repo::open`], whose errors apply too.
 pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
@@ -134,7 +137,7 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    let settings = make_settings()?;
+    let settings = config::user_settings_for_new_workspace()?;
     // WHY canonicalize: `convert_into` reaches jj-lib's `init_with_factories`, which records the
     // new workspace's root in the store RELATIVE to the RAW path it was handed. `relative_path`
     // counts those `..` segments lexically, while every read finishes its join with
@@ -202,6 +205,7 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
 ///   `workspace_path` cannot be created or resolved; the partially-created destination is
 ///   rolled back.
+/// - [`RepoError::Config`] — as for [`convert_colocated`].
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
@@ -234,7 +238,7 @@ pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Rep
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    let settings = make_settings()?;
+    let settings = config::user_settings_for_new_workspace()?;
     let created_dir = !workspace_path.exists();
     match import_into(&settings, git_repo_path, workspace_path) {
         Ok(()) => Repo::open(workspace_path),
@@ -433,7 +437,7 @@ fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
         path,
         &git_repo_path,
     ))
-    .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
 
     // 2. The CLI's four External-arm steps, in its order. NO working-copy writes anywhere
     //    (no check_out, no snapshot, no `@`-reparent — D3/D3a): `@` settles onto HEAD on the
@@ -470,7 +474,7 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
         &workspace_path,
         &resolved,
     ))
-    .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
 
     let workspace_name = workspace.workspace_name().to_owned();
 
@@ -536,12 +540,17 @@ fn import_into(settings: &UserSettings, git_repo_path: &Path, workspace_path: &P
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::make_settings;
+
+    /// The shared test settings, with the suite's identity pinned first.
+    fn settings() -> UserSettings {
+        test_helpers::pin_test_env();
+        test_helpers::test_settings()
+    }
 
     #[test]
     fn is_colocated_with_simple_backend_returns_false() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let settings = make_settings().expect("settings");
+        let settings = settings();
         let (_ws, repo) =
             pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
         assert!(!is_colocated(repo.as_ref(), tmp.path()));
@@ -554,7 +563,7 @@ mod tests {
     #[test]
     fn maybe_set_trunk_alias_with_simple_backend_is_a_convert_failure() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let settings = make_settings().expect("settings");
+        let settings = settings();
         let (ws, repo) =
             pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
         let result = maybe_set_trunk_alias(&ws, repo.as_ref());
@@ -569,7 +578,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         // Canonicalize so path comparison matches what gix reports for work_dir.
         let root = tmp.path().canonicalize().expect("canonicalize");
-        let settings = make_settings().expect("settings");
+        let settings = settings();
         std::process::Command::new("git")
             .args(["init", "-q"])
             .current_dir(&root)

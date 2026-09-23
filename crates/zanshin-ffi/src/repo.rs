@@ -65,6 +65,12 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
+        // Story 9.27: the effective config stack the workspace is opened/created with could
+        // not be read — the same `jj.config_error` every read verb already reports.
+        RepoError::Config { reason } => FfiErrorObj {
+            code: JJ_CONFIG_ERROR.to_owned(),
+            context: Some(reason),
+        },
     }
 }
 
@@ -476,6 +482,10 @@ fn arm_session_with(
 /// # Errors
 /// - `jj.path_not_found` — `path` does not exist on disk.
 /// - `jj.repo_not_found` — `path` exists but is not a jj repo.
+/// - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
+///   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
+///   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value. `context`
+///   names the path or key. Nothing is opened.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -510,6 +520,9 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 /// - `ffi.invalid_argument` — `backend` is not `0` or `1`.
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
 /// - `jj.jj_lib_error` — init failed (e.g. repo already exists).
+/// - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
+///   be read (refused before anything is written), or the created workspace's own stack
+///   cannot when it is re-opened. `context` names the path or key.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
 ///   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
@@ -550,11 +563,12 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 ///
 /// # Errors
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
-/// - `jj.jj_lib_error` — clone failed; detail in `context`. This also covers a config
-///   fault: the clone reads `git.abandon-unreachable-commits` from the effective config, so
-///   an unreadable config or a non-boolean value fails the clone under this code. `context`
-///   names the offending KEY for a wrong-typed value, and the offending FILE PATH for a
-///   config file that is unreadable or not valid TOML.
+/// - `jj.jj_lib_error` — clone failed; detail in `context`.
+/// - `jj.config_error` — the effective jj config cannot be read: the user-level stack the
+///   workspace is created with (refused before anything is written), or the new workspace's
+///   stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
+///   value refuses here too. `context` names the offending KEY for a wrong-typed value, and
+///   the offending FILE PATH for a config file that is unreadable or not valid TOML.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
 ///   has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
@@ -691,6 +705,9 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
 /// - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
 ///   conversion; detail in `context`.
+/// - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
+///   be read (refused before anything is written), or the converted workspace's own stack
+///   cannot when it is opened. `context` names the path or key.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -782,6 +799,8 @@ pub unsafe extern "C" fn zanshin_describe(
 ///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
 /// - `jj.invalid_input` — the parsed `parents` list is empty.
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -911,6 +930,8 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 ///   restore to).
 /// - `jj.invalid_input` — the head operation has more than one parent (a
 ///   divergent-write merge op).
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -1210,6 +1231,15 @@ mod tests {
     }
 
     #[test]
+    fn map_repo_err_config_maps_to_jj_config_error() {
+        let e = map_repo_err(RepoError::Config {
+            reason: "/cfg/config.toml: invalid TOML".to_owned(),
+        });
+        assert_eq!(e.code, JJ_CONFIG_ERROR);
+        assert_eq!(e.context.unwrap(), "/cfg/config.toml: invalid TOML");
+    }
+
+    #[test]
     fn map_mutate_err_change_not_found_maps_to_jj_change_not_found() {
         let e = map_mutate_err(MutateError::ChangeNotFound { id: "bogus".to_owned() });
         assert_eq!(e.code, JJ_CHANGE_NOT_FOUND);
@@ -1324,6 +1354,10 @@ mod tests {
         unsafe {
             std::env::set_var("JJ_CONFIG", "");
             std::env::set_var("GIT_CONFIG_GLOBAL", "");
+            std::env::set_var("JJ_USER", "Zanshin");
+            std::env::set_var("JJ_EMAIL", "zanshin@localhost");
+            std::env::set_var("JJ_OP_HOSTNAME", "localhost");
+            std::env::set_var("JJ_OP_USERNAME", "zanshin");
         }
     });
 

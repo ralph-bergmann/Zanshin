@@ -339,6 +339,17 @@ pub(crate) fn build_mutation_result<'a>(
     let abandoned_vec = b.create_vector(&abandoned_offs);
     let new_op_id_off = b.create_string(&r.new_op_id.0);
     let working_copy_change_id_off = b.create_string(&r.working_copy_change_id.0);
+    // Written iff `Some`: an ABSENT table is the wire's "identity configured / nothing
+    // committed" — never a table of two `false`s (null for absence).
+    let identity_missing_off = r.identity_missing.map(|m| {
+        fbs::IdentityMissing::create(
+            b,
+            &fbs::IdentityMissingArgs {
+                name: m.name,
+                email: m.email,
+            },
+        )
+    });
     fbs::MutationResult::create(
         b,
         &fbs::MutationResultArgs {
@@ -346,6 +357,7 @@ pub(crate) fn build_mutation_result<'a>(
             new_change_ids: Some(new_change_vec),
             abandoned_change_ids: Some(abandoned_vec),
             working_copy_change_id: Some(working_copy_change_id_off),
+            identity_missing: identity_missing_off,
         },
     )
 }
@@ -610,6 +622,7 @@ mod tests {
                 zanshin_jj::ChangeId("zsuskuln".to_owned()),
             ],
             working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+            identity_missing: None,
         };
         let buf = ok_mutation_result(&r);
         let env = verified_envelope(&buf);
@@ -629,6 +642,23 @@ mod tests {
             Some(vec!["rlvkpnrz", "zsuskuln"])
         );
         assert_eq!(mr.working_copy_change_id(), Some("qpvuntsm"));
+        assert!(mr.identity_missing().is_none(), "None must be ABSENT on the wire");
+    }
+
+    #[test]
+    fn a_missing_identity_is_written_as_the_identity_missing_table() {
+        for (name, email) in [(true, true), (true, false), (false, true)] {
+            let r = zanshin_jj::MutationResult {
+                identity_missing: Some(zanshin_jj::IdentityMissing { name, email }),
+                ..sample_mutation_result()
+            };
+            let buf = ok_mutation_result(&r);
+            let mr = verified_envelope(&buf)
+                .data_as_mutation_result()
+                .expect("MutationResult payload must be present");
+            let missing = mr.identity_missing().expect("Some must be present on the wire");
+            assert_eq!((missing.name(), missing.email()), (name, email));
+        }
     }
 
     fn sample_mutation_result() -> zanshin_jj::MutationResult {
@@ -637,6 +667,7 @@ mod tests {
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+            identity_missing: None,
         }
     }
 

@@ -4,12 +4,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 use std::{env, fs};
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::repo::Repo as _;
-use jj_lib::settings::UserSettings;
 use jj_lib::working_copy::SnapshotOptions;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
@@ -19,12 +17,16 @@ use zanshin_jj::{Backend, ChangeKind, Repo, StatusError};
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // WHY: empty string avoids needing a tempdir just for an env pin; neither
     // JJ_CONFIG="" nor GIT_CONFIG_GLOBAL="" makes jj-lib fail — it just finds no
-    // config at that (non-existent) path. make_test_settings() already pins config
-    // explicitly; GIT_CONFIG_GLOBAL="" is the part that actually isolates the git
+    // config at that (non-existent) path. test_helpers::test_settings() reads the pinned JJ_*
+    // identity variables below; GIT_CONFIG_GLOBAL="" is the part that actually isolates the git
     // backend's gix config. (Mirrors tests/repo.rs.)
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -32,30 +34,11 @@ fn pin_env() {
     LazyLock::force(&ENV_GUARD);
 }
 
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
-}
-
 /// Snapshots the on-disk working copy into a new `@` commit.
 ///
 /// TEST SETUP ONLY — production code never snapshots (D2).
 fn snapshot_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let mut workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -97,7 +80,7 @@ fn snapshot_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error
 /// TEST SETUP ONLY — needed to advance the parent pointer so subsequent
 /// snapshots produce Modified/Removed entries rather than re-stating Added.
 fn jj_new(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -128,7 +111,7 @@ fn jj_new(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// TEST SETUP ONLY — drives the `StatusError::NoWorkingCopy` path.
 fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -151,7 +134,7 @@ fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::
 /// Returns `(working_copy, parent)` change ids of `@` as jj reverse-hex, computed
 /// directly via jj-lib — an independent oracle for what `Repo::status()` reports.
 fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,

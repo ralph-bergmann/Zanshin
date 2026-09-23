@@ -168,6 +168,7 @@ final class MutationResult {
     required this.newChangeIds,
     required this.abandonedChangeIds,
     required this.workingCopyChangeId,
+    required this.identityMissing,
   });
 
   /// Id of the operation this mutation committed.
@@ -192,7 +193,31 @@ final class MutationResult {
 
   /// Change id of the working-copy commit (`@`) after this mutation.
   final String workingCopyChangeId;
+
+  /// Which identity fields were empty when this call committed an operation —
+  /// the jj CLI's "Name and email not configured" warning as a fact
+  /// (Story 9.27). `null` when both are configured, and on every call that
+  /// committed nothing. The commit was still created, with the empty identity;
+  /// the UI turns a non-null value into its "set your identity" prompt.
+  final IdentityMissing? identityMissing;
 }
+
+/// Which of `user.name` / `user.email` was empty
+/// (mirrors `zanshin_jj::IdentityMissing`).
+final class IdentityMissing {
+  const IdentityMissing({required this.name, required this.email});
+
+  /// `user.name` is empty.
+  final bool name;
+
+  /// `user.email` is empty.
+  final bool email;
+}
+
+/// Rebuilds the nested `IdentityMissing` table; an ABSENT table is `null`
+/// (null for absence), never a value of two `false`s.
+IdentityMissing? decodeIdentityMissingInternal(fbs.IdentityMissing? m) =>
+    m == null ? null : IdentityMissing(name: m.name, email: m.email);
 
 /// One path `absorb` could not split, with jj-lib's verbatim reason
 /// (mirrors `zanshin_jj::SkippedPath`).
@@ -275,6 +300,7 @@ MutationResult _decodeMutationResultEnvelope(Uint8List bytes) {
     newChangeIds: payload.newChangeIds?.toList() ?? const [],
     abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
     workingCopyChangeId: payload.workingCopyChangeId ?? '',
+    identityMissing: decodeIdentityMissingInternal(payload.identityMissing),
   );
 }
 
@@ -308,6 +334,7 @@ AbsorbResult _decodeAbsorbResultEnvelope(Uint8List bytes) {
       newChangeIds: nested?.newChangeIds?.toList() ?? const [],
       abandonedChangeIds: nested?.abandonedChangeIds?.toList() ?? const [],
       workingCopyChangeId: nested?.workingCopyChangeId ?? '',
+      identityMissing: decodeIdentityMissingInternal(nested?.identityMissing),
     ),
     rewrittenChangeIds: payload.rewrittenChangeIds?.toList() ?? const [],
     // Null-for-absence: the field is unset when jj-lib abandoned the source or

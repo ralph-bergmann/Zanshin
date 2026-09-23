@@ -115,6 +115,27 @@ void main() {
       expect(result.abandonedChangeIds, isEmpty);
       expect(result.newOpId, equals('ghi789'));
       expect(result.workingCopyChangeId, equals('qpvuntsm'));
+      expect(result.identityMissing, isNull, reason: 'an absent table is null, not two falses');
+    });
+
+    // ── identity_missing (Story 9.27) ─────────────────────────────────────────
+
+    test('decodes a present identityMissing table field by field', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.MutationResult,
+        data: fbs.MutationResultObjectBuilder(
+          newOpId: 'op1',
+          workingCopyChangeId: 'qpvuntsm',
+          identityMissing: fbs.IdentityMissingObjectBuilder(name: true, email: false),
+        ),
+      ).toBytes();
+
+      final IdentityMissing? missing = decodeMutationResultEnvelope(bytes).identityMissing;
+
+      expect(missing, isNotNull);
+      expect(missing!.name, isTrue);
+      expect(missing.email, isFalse);
     });
   });
 
@@ -162,6 +183,7 @@ void main() {
             newChangeIds: const [],
             abandonedChangeIds: const [],
             workingCopyChangeId: 'qpvuntsm',
+            identityMissing: fbs.IdentityMissingObjectBuilder(name: false, email: true),
           ),
           rewrittenChangeIds: ['rlvkpnrz', 'zsuskuln'],
           sourceChangeId: 'kkmpptxz',
@@ -174,6 +196,8 @@ void main() {
 
       expect(result.mutation.newOpId, equals('op99'));
       expect(result.mutation.workingCopyChangeId, equals('qpvuntsm'));
+      expect(result.mutation.identityMissing?.name, isFalse);
+      expect(result.mutation.identityMissing?.email, isTrue);
       expect(result.rewrittenChangeIds, equals(['rlvkpnrz', 'zsuskuln']));
       expect(result.sourceChangeId, equals('kkmpptxz'));
       expect(result.numRebased, equals(3));
@@ -197,6 +221,7 @@ void main() {
 
       expect(result.rewrittenChangeIds, isEmpty);
       expect(result.sourceChangeId, isNull);
+      expect(result.mutation.identityMissing, isNull, reason: 'an absent table decodes as null');
       expect(result.numRebased, equals(0));
       expect(result.skippedPaths, isEmpty);
       expect(result.mutation.newChangeIds, isEmpty);

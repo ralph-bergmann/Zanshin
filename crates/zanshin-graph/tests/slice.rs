@@ -23,6 +23,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 

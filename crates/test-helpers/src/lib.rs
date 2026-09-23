@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use jj_lib::backend::{CommitId, CopyId, TreeValue};
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
@@ -65,22 +65,57 @@ pub fn extract_fixture(name: &str) -> Result<FixtureHandle, Box<dyn std::error::
     Ok(FixtureHandle { _temp: temp, path })
 }
 
-fn make_test_settings() -> UserSettings {
+/// The environment every test binary pins so no developer config leaks in: no user/system
+/// config (`JJ_CONFIG=""`), no global git config, and a fixed identity + operation metadata
+/// through jj's own `EnvOverrides` variables — exactly what jj's own test harness does.
+pub const TEST_ENV: [(&str, &str); 6] = [
+    ("JJ_CONFIG", ""),
+    ("GIT_CONFIG_GLOBAL", ""),
+    ("JJ_USER", "Zanshin"),
+    ("JJ_EMAIL", "zanshin@localhost"),
+    ("JJ_OP_HOSTNAME", "localhost"),
+    ("JJ_OP_USERNAME", "zanshin"),
+];
+
+/// Pins [`TEST_ENV`] into the process environment, once per test binary.
+///
+/// The one pin helper `zanshin-jj`'s INLINE test modules share, so the lib test binary never
+/// reads the developer's real config; integration-test binaries keep their own `ENV_GUARD`s.
+pub fn pin_test_env() {
+    static GUARD: LazyLock<()> = LazyLock::new(|| {
+        for (name, value) in TEST_ENV {
+            // SAFETY: test-only; runs once, before this binary's tests read the environment
+            // through jj (the same pattern every `ENV_GUARD` in the suite uses).
+            unsafe { std::env::set_var(name, value) };
+        }
+    });
+    LazyLock::force(&GUARD);
+}
+
+/// `UserSettings` for tests that load a workspace through jj-lib directly: jj-lib's defaults
+/// with the pinned identity variables (`JJ_USER`, `JJ_EMAIL`, `JJ_OP_HOSTNAME`,
+/// `JJ_OP_USERNAME`) layered on top when they are set — the same `EnvOverrides` values
+/// `zanshin-jj` itself reads, so a test's own writes are signed like Zanshin's.
+///
+/// # Panics
+/// Panics if the pinned values do not form valid settings (they always do).
+#[must_use]
+pub fn test_settings() -> UserSettings {
+    let mut layer = ConfigLayer::empty(ConfigSource::EnvOverrides);
+    for (var, name) in [
+        ("JJ_USER", "user.name"),
+        ("JJ_EMAIL", "user.email"),
+        ("JJ_OP_HOSTNAME", "operation.hostname"),
+        ("JJ_OP_USERNAME", "operation.username"),
+    ] {
+        if let Ok(value) = std::env::var(var) {
+            layer
+                .set_value(name, value)
+                .expect("a fresh layer takes any dotted key");
+        }
+    }
     let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
+    config.add_layer(layer);
     UserSettings::from_config(config).expect("valid settings")
 }
 
@@ -117,7 +152,7 @@ pub fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
 /// # Panics
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 fn load(workspace_root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
-    let settings = make_test_settings();
+    let settings = test_settings();
     let workspace = Workspace::load(
         &settings,
         workspace_root,

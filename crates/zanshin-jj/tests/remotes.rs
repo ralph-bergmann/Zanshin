@@ -4,7 +4,6 @@ use std::env;
 use std::fs;
 use std::sync::LazyLock;
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
@@ -17,33 +16,18 @@ use zanshin_jj::{Backend, RemoteError, Repo};
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
     env::set_var("GIT_CONFIG_GLOBAL", "");
+    env::set_var("JJ_USER", "Zanshin");
+    env::set_var("JJ_EMAIL", "zanshin@localhost");
+    env::set_var("JJ_OP_HOSTNAME", "localhost");
+    env::set_var("JJ_OP_USERNAME", "zanshin");
 });
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
 }
 
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
-}
-
 fn oracle_workspace(root: &std::path::Path) -> (Workspace, UserSettings) {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         root,

@@ -313,10 +313,10 @@ or no `# Errors` block.
 
 | Symbol | Args | Request table | Success payload | Error codes | Story |
 |--------|------|---------------|-----------------|-------------|-------|
-| `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c |
+| `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
 | `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle`, `jj.no_working_copy`, `jj.jj_lib_error` | 3.4b |
@@ -336,21 +336,21 @@ or no `# Errors` block.
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.workspace_path_unresolved`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
-| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 9.3 |
 | `zanshin_absorb` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `AbsorbRequest` | `AbsorbResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.jj_lib_error` | 9.3 |
-| `zanshin_undo` | `(uint64_t handle)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.jj_lib_error` | 6.5 |
-| `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.jj_lib_error` | 9.8 |
-| `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_undo` | `(uint64_t handle)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
-| `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
-| `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_remove` | `(uint64_t handle, const char *name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_rename` | `(uint64_t handle, const char *old_name, const char *new_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
-| `zanshin_git_remote_set_url` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteSetUrlRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_remote_set_url` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteSetUrlRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
 | `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |
@@ -363,6 +363,15 @@ or no `# Errors` block.
 
 Every symbol not marked `→ char *` or `→ void` returns `ZanshinBuf *` — the
 never-null token described under *Token contract*.
+
+**`MutationResult.identity_missing` (Story 9.27).** Every `MutationResult` — top-level,
+or nested in `AbsorbResult` / `GitImportResult` / `GitExportResult` — carries an optional
+`IdentityMissing { name: bool; email: bool; }` table: PRESENT iff the call committed an
+operation while `user.name` and/or `user.email` was empty in the effective config stack
+(the jj CLI's post-transaction "Name and email not configured" warning, as a fact), ABSENT
+when both are configured and on every call that committed nothing. It is never a refusal:
+the commit was created with the empty identity, exactly as the CLI creates it; the UI turns
+a present table into its "set your identity" prompt.
 
 ---
 
@@ -941,9 +950,12 @@ four values out of it:
 | Layer (ascending precedence) | Source |
 |------------------------------|--------|
 | `ConfigSource::Default`      | jj-lib's own defaults + Zanshin's builtin layer (`[revsets] log` / `log-graph-prioritize`, `ui.log-synthetic-elided-nodes`, `ui.conflict-marker-style` (Story 9.4 — the style `zanshin_file_show` materializes a conflicted file with), and the CLI's 7-entry `[revset-aliases]` table, verbatim from `cli/src/config/{revsets,misc}.toml` @ v0.44.0) |
+| `ConfigSource::System`       | `/etc/jj/config.toml`, `/etc/jj/conf.d/` — ONLY when `JJ_CONFIG` is unset (`cli/src/config.rs:334-345` @ v0.44.0). Non-existent entries are skipped silently. |
+| `ConfigSource::EnvBase`      | `operation.hostname` / `operation.username` from `whoami` (the CLI's own crate; `$USER` as the username fallback), `NO_COLOR` (non-empty) → `ui.color = "never"`, `VISUAL` else `EDITOR` → `ui.editor` — values config files override |
 | `ConfigSource::User`         | `JJ_CONFIG` (a `PATH`-style list of files and/or directories, which REPLACES discovery — including when it is the empty string, which disables user config entirely), else `$HOME/.jjconfig.toml`, `<config_dir>/jj/config.toml`, `<config_dir>/jj/conf.d/`. Non-existent entries are skipped silently. `<config_dir>` = `$XDG_CONFIG_HOME` when absolute, else `$HOME/.config`. |
 | `ConfigSource::Repo`         | `.jj/repo/config-id` (20 ASCII hex chars) → `<config_dir>/jj/repos/<id>/config.toml`; absent id file → legacy `.jj/repo/config.toml` |
 | `ConfigSource::Workspace`    | `.jj/workspace-config-id` → `<config_dir>/jj/workspaces/<id>/config.toml`; absent id file → legacy `.jj/workspace-config.toml` |
+| `ConfigSource::EnvOverrides` | `JJ_USER` → `user.name`, `JJ_EMAIL` → `user.email`, `JJ_TIMESTAMP`, `JJ_RANDOMNESS_SEED`, `JJ_OP_TIMESTAMP`, `JJ_OP_HOSTNAME`, `JJ_OP_USERNAME`, `JJ_EDITOR`, `JJ_PAGER` — values that override every file (`cli/src/config.rs:789-819` @ v0.44.0) |
 
 then flattens `--when` / `[[--scope]]` blocks through
 `jj_lib::config::resolve`. **Read-only by construction:** the CLI reaches the
@@ -952,11 +964,18 @@ repo/workspace layer through `jj_lib::secure_config::SecureConfig`, whose
 generates a `config-id`, copies configs on repo-move detection, symlinks the
 legacy file away); Zanshin resolves the `config-id` → path indirection by hand
 instead, so nothing on disk is created, migrated or symlinked. Not layered: the
-`--config`/`--config-file` command-line layer and the `EnvBase` / `EnvOverrides`
-layers (at the pin those can only set `operation.*`, `user.*`, `debug.*`,
-`ui.color`, `ui.editor`, `ui.pager` — never a key this payload reads).
-`config_resolver::resolve` runs with `command: None` and `hostname: ""`, so
-`--when.commands` and `--when.hostnames` scopes never match in Zanshin.
+`--config`/`--config-file` command-line layer (Zanshin has no command line).
+`config_resolver::resolve` runs with `command: None`, so `--when.commands` scopes
+never match; `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes match
+as in the CLI (Story 9.27).
+
+**The same stack opens the workspace (Story 9.27).** `zanshin_repo_open` / `_init` /
+`_clone` / `_convert` build the `UserSettings` jj-lib signs commits and operations
+with — and its working-copy knobs (`fsmonitor.*`, `snapshot.*`) — from this stack
+(creation paths: up to the user level, since no repo layer exists yet), and every
+mutation re-derives them first when a stack file or the environment changed. There is
+no hardcoded identity and no `.gitconfig` fallback: an empty identity is jj-lib's
+default and is reported per mutation as `MutationResult.identity_missing`.
 
 **Re-read per call (ADR-0002 extended to config).** Nothing is cached: config
 files change externally and the op-heads watcher does not cover them, so a file

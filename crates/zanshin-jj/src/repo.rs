@@ -4,7 +4,6 @@ use std::io;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchRefExpression, GitImportOptions, GitProgress, GitSidebandLineTerminator,
@@ -14,7 +13,7 @@ use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
 use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
-use jj_lib::workspace::Workspace;
+use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceInitError, WorkspaceLoaderFactory as _};
 
 /// Errors returned by [`Repo::open`], [`Repo::init`], [`Repo::clone`], and
 /// [`crate::convert_colocated`].
@@ -62,9 +61,31 @@ pub enum RepoError {
         /// Human-readable failure reason from jj-lib or `detect_repo`.
         reason: String,
     },
+    /// The effective jj config stack could not be read — a stack file is unreadable or not
+    /// valid TOML, a `config-id` is malformed, or a value has the wrong type. The CLI fails at
+    /// start-up on the same faults, so nothing is opened or written.
+    #[error("config error: {reason}")]
+    Config {
+        /// Human-readable failure, naming the offending file path or config key.
+        reason: String,
+    },
     /// Underlying `jj_lib` failure, flattened to its Display so no `jj_lib` type escapes the public API.
     #[error("jj-lib error: {0}")]
     Backend(String),
+}
+
+impl From<crate::ConfigError> for RepoError {
+    fn from(e: crate::ConfigError) -> Self {
+        let crate::ConfigError::Load { reason } = e;
+        Self::Config { reason }
+    }
+}
+
+/// A failed git-backed workspace CREATION as a [`RepoError`]: the git backend's own read of
+/// its `git.*` keys ([`crate::config::init_config_fault`]) is a [`RepoError::Config`], like
+/// every other fault of the stack the workspace is created with; anything else is `other`.
+pub(crate) fn creation_error(e: &WorkspaceInitError, other: impl FnOnce(String) -> RepoError) -> RepoError {
+    crate::config::init_config_fault(e).map_or_else(|| other(e.to_string()), RepoError::from)
 }
 
 /// Selects the jj backend for a new workspace.
@@ -79,9 +100,15 @@ pub enum Backend {
 /// Created via [`Repo::open`], [`Repo::init`], or [`Repo::clone`]. The handle
 /// is a warm `Workspace` loader that re-resolves to the operation-log head on
 /// every call (ADR-0002) — it is not an authoritative state cache.
+///
+/// The `UserSettings` it writes with (commit author, operation user/host, working-copy
+/// knobs) come from the workspace's EFFECTIVE jj config stack — the CLI's own — and are
+/// re-derived before a mutation whenever that stack changed (Story 9.27).
 pub struct Repo {
     workspace: Workspace,
     settings: UserSettings,
+    /// What `settings` was derived from — see [`Repo::refresh_settings`].
+    stack_fingerprint: crate::config::StackFingerprint,
 }
 
 impl std::fmt::Debug for Repo {
@@ -112,6 +139,68 @@ impl Repo {
     /// Returns the user settings used to open this workspace (crate-internal use only).
     pub(crate) fn settings(&self) -> &UserSettings {
         &self.settings
+    }
+
+    /// Loads the workspace at `root` with settings from ITS OWN effective config stack.
+    ///
+    /// `Workspace::load`'s body split in two (`jj-lib workspace.rs:410-419`): the loader
+    /// resolves `.jj/repo` (following a secondary workspace's FILE indirection) BEFORE the
+    /// repo is loaded, so the repo and workspace layers are known when the settings are
+    /// built. The fingerprint is taken FIRST — a change in between costs one redundant
+    /// reload later, never a missed one. The two error mappers let [`Repo::open`] and
+    /// [`Repo::refresh_settings`] share the sequence under their own error types.
+    fn load_effective<E>(
+        root: &Path,
+        config_error: impl Fn(crate::ConfigError) -> E,
+        load_error: impl Fn(String) -> E,
+    ) -> Result<Self, E> {
+        let loader = DefaultWorkspaceLoaderFactory
+            .create(root)
+            .map_err(|e| load_error(e.to_string()))?;
+        let stack_fingerprint =
+            crate::config::stack_fingerprint(loader.repo_path(), loader.workspace_root()).map_err(&config_error)?;
+        let settings = crate::config::user_settings_for(&*loader).map_err(&config_error)?;
+        let workspace = loader
+            .load(
+                &settings,
+                &default_backend_factories(),
+                &default_working_copy_factories(),
+            )
+            // jj-lib reads keys itself while loading (the git backend's `git.*`, the working
+            // copy's `ui.conflict-marker-style`/`working-copy.*`/`fsmonitor.*`): a wrong-typed
+            // one is a CONFIG fault, reported as such, not as an opaque load failure.
+            .map_err(|e| {
+                crate::config::load_config_fault(&e).map_or_else(|| load_error(e.to_string()), &config_error)
+            })?;
+        Ok(Self {
+            workspace,
+            settings,
+            stack_fingerprint,
+        })
+    }
+
+    /// Re-derives the settings — and reloads the workspace, whose `RepoLoader` and working
+    /// copy captured the old ones — iff the effective config stack changed since they were
+    /// last derived.
+    ///
+    /// The CLI builds its `UserSettings` per invocation, so an external `jj config set` (or a
+    /// Zanshin config edit) takes effect on its very next command; this is the same, at the
+    /// cost of a few `stat`s per verb. Every `&mut self` verb calls it FIRST — it is THE
+    /// pre-verb hook later stories (snapshot, config edits) build on.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Config`] — the changed stack no longer reads (the CLI would
+    ///   fail at start-up); the handle keeps its previous settings.
+    /// - [`crate::MutateError::Backend`] — the workspace could not be reloaded.
+    pub(crate) fn refresh_settings(&mut self) -> Result<(), crate::MutateError> {
+        let current = crate::config::stack_fingerprint(self.workspace.repo_path(), self.workspace.workspace_root())
+            .map_err(crate::mutate::cfg)?;
+        if current != self.stack_fingerprint {
+            let root = self.workspace.workspace_root().to_owned();
+            *self = Self::load_effective(&root, crate::mutate::cfg, crate::mutate::be)?;
+        }
+        Ok(())
     }
 
     /// Returns the working-copy status: files changed between `@` and `@-`.
@@ -560,6 +649,7 @@ impl Repo {
         change_id: crate::ChangeId,
         description: &str,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: built from `&self` BEFORE `workspace_mut()` takes `&mut self`. The helper
         // returns an owned `Arc`, so the shared borrow ends here (Story 9.1).
         let immutable = crate::op_support::immutable_user_expression(self)?;
@@ -574,9 +664,12 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `parents` is empty.
     /// - [`crate::MutateError::ChangeNotFound`] — a parent id is malformed, absent,
     ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn new_change(&mut self, parents: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         crate::mutate::new_change(self.workspace_mut(), parents)
     }
 
@@ -598,6 +691,7 @@ impl Repo {
     // implementation only needs to borrow it, but the public API takes ownership.
     #[allow(clippy::needless_pass_by_value)]
     pub fn edit(&mut self, change_id: crate::ChangeId) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: see `describe` — the expression is built while `self` is still shared.
         let immutable = crate::op_support::immutable_user_expression(self)?;
         crate::mutate::edit(self.workspace_mut(), &immutable, &change_id)
@@ -622,6 +716,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn abandon(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: see `describe` — the expression is built while `self` is still shared.
         let immutable = crate::op_support::immutable_user_expression(self)?;
         crate::mutate::abandon(self.workspace_mut(), &immutable, change_ids)
@@ -640,9 +735,12 @@ impl Repo {
     ///   (no parent to restore to).
     /// - [`crate::MutateError::InvalidInput`] — the head operation has more than one
     ///   parent (a divergent-write merge op) — undoing a merge operation is refused.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn undo(&mut self) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         crate::op_log::undo(self.workspace_mut())
     }
 
@@ -686,6 +784,7 @@ impl Repo {
         remote_name: &str,
         progress: &crate::ProgressFn,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: all three are built from `&self` BEFORE `workspace()`/`settings()` —
         // the same borrow split `Repo::git_import` uses.
         let immutable = crate::op_support::immutable_user_expression(self)?;
@@ -773,6 +872,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_import(&mut self) -> Result<crate::GitImportResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: both are built from `&self` BEFORE `workspace_mut()` takes `&mut self` —
         // the same borrow split `describe`/`restore` use.
         let immutable = crate::op_support::immutable_user_expression(self)?;
@@ -797,9 +897,12 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_export(&mut self) -> Result<crate::GitExportResult, crate::MutateError> {
+        self.refresh_settings()?;
         crate::git::git_export(self.workspace_mut())
     }
 
@@ -827,6 +930,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `name` is the reserved `git`, contains a
     ///   slash, or is not a valid gix remote name.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]); refused before anything is written.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_remote_add(
@@ -835,6 +940,7 @@ impl Repo {
         url: &str,
         push_url: Option<&str>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         let result = crate::git::git_remote_add(self.workspace_mut(), name, url, push_url);
         self.reload_after_config_write(result)
     }
@@ -881,6 +987,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_remote_remove(&mut self, name: &str) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         let result = crate::git::git_remote_remove(self.workspace_mut(), name);
         self.reload_after_config_write(result)
     }
@@ -930,6 +1037,7 @@ impl Repo {
         old_name: &str,
         new_name: &str,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         let result = crate::git::git_remote_rename(self.workspace_mut(), old_name, new_name);
         self.reload_after_config_write(result)
     }
@@ -961,6 +1069,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `name` is the reserved `git`, contains a
     ///   slash, or is not a valid gix remote name.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]); refused before anything is written.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_remote_set_url(
@@ -969,6 +1079,7 @@ impl Repo {
         url: Option<&str>,
         push_url: Option<&str>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         let result = crate::git::git_remote_set_url(self.workspace_mut(), name, url, push_url);
         self.reload_after_config_write(result)
     }
@@ -1241,6 +1352,8 @@ impl Repo {
     ///   `name@git` does NOT count: the default-ignored remote is excluded, exactly as in the
     ///   CLI. That exclusion is git-specific — on any other backend no remote is ignored, so a
     ///   tracked `name@git` refuses there.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn bookmark_create(
@@ -1248,6 +1361,7 @@ impl Repo {
         names: &[String],
         revision: Option<&crate::ChangeId>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         crate::bookmark_ops::create(self.workspace_mut(), names, revision)
     }
 
@@ -1272,9 +1386,12 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `patterns` is empty, or a pattern does not
     ///   parse; jj-lib's reason is forwarded.
+    /// - [`crate::MutateError::Config`] — the repo's effective jj config changed and no longer
+    ///   reads (see [`Repo::open`]).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn bookmark_delete(&mut self, patterns: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         crate::bookmark_ops::delete(self.workspace_mut(), patterns)
     }
 
@@ -1336,6 +1453,7 @@ impl Repo {
         paths: &[String],
         restore_descendants: bool,
     ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: see `describe` — the expression is built while `self` is still shared.
         let immutable = crate::op_support::immutable_user_expression(self)?;
         crate::mutate::restore(
@@ -1406,6 +1524,7 @@ impl Repo {
         destinations: Option<&str>,
         paths: &[String],
     ) -> Result<crate::AbsorbResult, crate::MutateError> {
+        self.refresh_settings()?;
         // WHY: see `describe` — both expressions are built while `self` is still shared.
         let immutable = crate::op_support::immutable_user_expression(self)?;
         // WHY the literal: it is the CLI's own clap default for `--into`
@@ -1424,8 +1543,15 @@ impl Repo {
     ///
     /// Returns [`RepoError::PathNotFound`] if `path` cannot be resolved — it does not exist, or it
     /// exists but is unreachable (a parent component denies search, a symlink loop, a non-directory
-    /// component) — [`RepoError::NotARepo`] if `.jj` is absent, or [`RepoError::Backend`] on jj-lib
-    /// failure.
+    /// component) — [`RepoError::NotARepo`] if `.jj` is absent, [`RepoError::Config`] if the
+    /// workspace's effective jj config stack cannot be read (a file that is unreadable or not
+    /// valid TOML, a malformed `config-id`, a wrong-typed value — the path or key is named), or
+    /// [`RepoError::Backend`] on jj-lib failure.
+    ///
+    /// The workspace is opened with the settings the CLI would use: Default → System → `EnvBase`
+    /// → User → Repo → Workspace → `EnvOverrides`. An EMPTY identity is not an error — jj-lib
+    /// defaults `user.name`/`user.email` to `""`, and each mutation reports it through
+    /// [`crate::MutationResult::identity_missing`].
     pub fn open(path: &Path) -> Result<Self, RepoError> {
         // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
         // every workspace's root RELATIVE to the `repo_path` the store was loaded with. Resolving
@@ -1452,15 +1578,7 @@ impl Repo {
         if !root.join(".jj").is_dir() {
             return Err(RepoError::NotARepo { path: path.to_owned() });
         }
-        let settings = make_settings()?;
-        let workspace = Workspace::load(
-            &settings,
-            &root,
-            &default_backend_factories(),
-            &default_working_copy_factories(),
-        )
-        .map_err(|e| RepoError::Backend(e.to_string()))?;
-        Ok(Self { workspace, settings })
+        Self::load_effective(&root, RepoError::from, RepoError::Backend)
     }
 
     /// Initialises a new jj workspace at `path`.
@@ -1472,12 +1590,19 @@ impl Repo {
     ///
     /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
     /// `path` cannot be resolved (it must already exist); `reason` then names it.
+    /// [`RepoError::Config`] if the user-level jj config stack cannot be read — refused BEFORE
+    /// anything is written. Once created, the workspace is re-opened as by [`Repo::open`], so
+    /// that call's errors apply too.
+    ///
+    /// The workspace is CREATED with the settings of the stack up to the user level (no repo or
+    /// workspace layer exists yet); the returned handle then carries the full stack — what the
+    /// CLI's next invocation would use.
     ///
     /// `path` must already exist — this verb has never created it (jj-lib's `create_jj_dir` uses
     /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
     /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
-        let settings = make_settings()?;
+        let settings = crate::config::user_settings_for_new_workspace()?;
         // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
         // `init_with_factories`, recording the new root relative to the RAW path it was handed
         // while `Workspace::repo_path()` — the base every read joins onto — is canonical. A
@@ -1487,7 +1612,7 @@ impl Repo {
         let root = std::fs::canonicalize(path).map_err(|e| RepoError::InitFailed {
             reason: format!("{}: {e}", path.display()),
         })?;
-        let (workspace, _repo) = match backend {
+        let (_workspace, _repo) = match backend {
             // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
             // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
             // mirrors that default and reproduces pre-0.44 behaviour exactly.
@@ -1496,12 +1621,12 @@ impl Repo {
             // `clone_into`; until then a user configuring "sha256" silently gets sha1.
             Some(Backend::Git) => {
                 pollster::block_on(Workspace::init_internal_git(&settings, &root, gix::hash::Kind::Sha1))
-                    .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?
+                    .map_err(|e| creation_error(&e, |reason| RepoError::InitFailed { reason }))?
             }
             None => pollster::block_on(Workspace::init_simple(&settings, &root))
-                .map_err(|e| RepoError::InitFailed { reason: e.to_string() })?,
+                .map_err(|e| creation_error(&e, |reason| RepoError::InitFailed { reason }))?,
         };
-        Ok(Self { workspace, settings })
+        Self::open(&root)
     }
 
     /// Clones a remote Git repository into a new jj workspace at `target_path`.
@@ -1518,15 +1643,20 @@ impl Repo {
     /// # Errors
     ///
     /// Returns [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
-    /// registration, fetch, or import fails
-    /// — including when the effective jj config cannot be read, or sets a non-boolean
-    /// `git.abandon-unreachable-commits`, which the clone's import options are built from
-    /// (FR-JJ-17). A config fault is not a separate variant: every clone-step failure travels
-    /// as `CloneFailed`. `reason` names whichever of the two the config layer reported — the
-    /// offending KEY for a wrong-typed value, the offending FILE PATH for a config file that
-    /// is unreadable or not valid TOML.
+    /// registration, fetch, or import fails.
+    ///
+    /// Returns [`RepoError::Config`] when the effective jj config cannot be read — the
+    /// user-level stack the workspace is created with (refused BEFORE anything is written), or
+    /// the new workspace's stack the clone's import options are built from, including a
+    /// non-boolean `git.abandon-unreachable-commits` (FR-JJ-17). `reason` names the offending
+    /// KEY for a wrong-typed value, the offending FILE PATH for a config file that is
+    /// unreadable or not valid TOML. A config fault after the workspace was created rolls the
+    /// `.jj/` back like any other clone failure.
+    ///
+    /// Like [`Repo::init`], the clone runs with the user-level settings and the returned handle
+    /// is re-opened as by [`Repo::open`] — that call's errors apply too.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
-        let settings = make_settings()?;
+        let settings = crate::config::user_settings_for_new_workspace()?;
         // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
         // `Repo::init`, so a symlinked target would record a workspace-store entry the clone's
         // own reads cannot resolve. See `Repo::open` for the full note.
@@ -1534,23 +1664,22 @@ impl Repo {
             reason: format!("{}: {e}", target_path.display()),
         })?;
 
-        match Self::clone_into(&settings, url, &target_path) {
-            Ok(workspace) => Ok(Self { workspace, settings }),
-            Err(e) => {
+        // The re-open runs INSIDE the rolled-back result: any failure after creation rolls `.jj/` back.
+        Self::clone_into(&settings, url, &target_path)
+            .and_then(|()| Self::open(&target_path))
+            .inspect_err(|_| {
                 // Roll back only what clone created: the `.jj/` that init_internal_git wrote.
                 // A missing target can no longer reach here — `canonicalize` above refuses it.
                 let _ = std::fs::remove_dir_all(target_path.join(".jj"));
-                Err(e)
-            }
-        }
+            })
     }
 
-    /// Composes the clone steps, returning the workspace reloaded at the committed head.
+    /// Composes the clone steps; [`Repo::clone`] re-opens the committed result.
     ///
     /// `target_path` is the CANONICAL target directory (`Repo::clone` resolves it), so the
-    /// workspace-store entry `init_internal_git` writes and the two `Workspace::load` bases
-    /// below all agree on one spelling.
-    fn clone_into(settings: &UserSettings, url: &str, target_path: &Path) -> Result<Workspace, RepoError> {
+    /// workspace-store entry `init_internal_git` writes and the `Workspace::load` base below
+    /// agree on one spelling.
+    fn clone_into(settings: &UserSettings, url: &str, target_path: &Path) -> Result<(), RepoError> {
         // Step 1: Create git-backed jj workspace.
         // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see
         // `Repo::init`); making it a caller parameter is Story 9.20's scope.
@@ -1559,7 +1688,7 @@ impl Repo {
             target_path,
             gix::hash::Kind::Sha1,
         ))
-        .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
+        .map_err(|e| creation_error(&e, |reason| RepoError::CloneFailed { reason }))?;
 
         let remote_name_buf: RemoteNameBuf = "origin".into();
         let remote_name: &RemoteName = &remote_name_buf;
@@ -1606,15 +1735,13 @@ impl Repo {
         // EFFECTIVE config (FR-JJ-17); no Rust constant decides it. The workspace is the
         // Step-3 reload, which is why this needs `load_for_workspace` — there is no `Repo`
         // wrapping it yet.
-        let config = crate::config::load_for_workspace(&workspace)
-            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
+        let config = crate::config::load_for_workspace(&workspace)?;
         let import_options = GitImportOptions {
             // WHY: CLI parity — `cli/src/commands/git/clone.rs:384-389` @ v0.44.0 pins this
             // to false REGARDLESS of config ("There may be a large number of new commits").
             // Only `abandon_unreachable_commits` is taken from config here, exactly as there.
             record_synthetic_predecessors: false,
-            ..crate::config::git_import_options(&config)
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?
+            ..crate::config::git_import_options(&config)?
         };
 
         let fetch_expr = GitFetchRefExpression {
@@ -1691,16 +1818,7 @@ impl Repo {
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
         }
 
-        // Reload so the returned handle reflects the committed clone + checked-out working copy.
-        let workspace = Workspace::load(
-            settings,
-            target_path,
-            &default_backend_factories(),
-            &default_working_copy_factories(),
-        )
-        .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-
-        Ok(workspace)
+        Ok(())
     }
 }
 
@@ -1726,21 +1844,88 @@ impl GitSubprocessCallback for NoopCallback {
     }
 }
 
-pub(crate) fn make_settings() -> Result<UserSettings, RepoError> {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                    [user]
-                    name = "Zanshin"
-                    email = "zanshin@localhost"
-                    [operation]
-                    username = "zanshin"
-                    hostname = "localhost"
-                "#,
-        )
-        .map_err(|e| RepoError::Backend(e.to_string()))?,
-    );
-    UserSettings::from_config(config).map_err(|e| RepoError::Backend(e.to_string()))
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use test_helpers::{extract_fixture, FixtureHandle};
+
+    use super::{Repo, RepoError};
+    use crate::MutateError;
+
+    fn open_fixture() -> (FixtureHandle, Repo) {
+        test_helpers::pin_test_env();
+        let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+        let repo = Repo::open(&fx.path).expect("fixture opens");
+        (fx, repo)
+    }
+
+    /// The legacy repo-level file (the fixture has no `config-id`), read as the repo layer.
+    fn write_repo_config(root: &Path, body: &str) {
+        std::fs::write(root.join(".jj").join("repo").join("config.toml"), body).expect("repo config written");
+    }
+
+    /// The story's point beyond identity: jj-lib's working-copy settings are the ones the
+    /// workspace is LOADED with, so a repo-layer `fsmonitor.backend` / `snapshot.*` must reach
+    /// `Workspace::settings()` — and a later change must reach it through the pre-verb refresh.
+    #[test]
+    fn a_repo_layer_working_copy_knob_reaches_the_workspace_settings() {
+        test_helpers::pin_test_env();
+        let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+        write_repo_config(
+            &fx.path,
+            "[fsmonitor]\nbackend = \"watchman\"\n\n[snapshot]\nmax-new-file-size = \"5MiB\"\n",
+        );
+        let mut repo = Repo::open(&fx.path).expect("fixture opens");
+        let settings = repo.workspace().settings();
+        assert_eq!(settings.get_string("fsmonitor.backend").unwrap(), "watchman");
+        assert_eq!(settings.get_string("snapshot.max-new-file-size").unwrap(), "5MiB");
+
+        repo.refresh_settings()
+            .expect("an unchanged stack refreshes as a no-op");
+        write_repo_config(&fx.path, "[fsmonitor]\nbackend = \"none\"\n");
+        repo.refresh_settings().expect("a changed stack re-derives");
+        assert_eq!(
+            repo.workspace().settings().get_string("fsmonitor.backend").unwrap(),
+            "none"
+        );
+        assert_eq!(repo.settings().get_string("fsmonitor.backend").unwrap(), "none");
+    }
+
+    /// A stack that breaks under an open handle refuses the refresh as a CONFIG fault — both
+    /// the file itself and a malformed `config-id` the fingerprint trips over.
+    #[test]
+    fn refresh_refuses_a_stack_broken_after_open() {
+        let (fx, mut repo) = open_fixture();
+        write_repo_config(&fx.path, "not = = toml\n");
+        let err = repo.refresh_settings().expect_err("invalid TOML must refuse");
+        assert!(matches!(err, MutateError::Config { .. }), "got {err:?}");
+
+        std::fs::write(fx.path.join(".jj").join("repo").join("config-id"), "bad").unwrap();
+        let err = repo.refresh_settings().expect_err("a malformed config-id must refuse");
+        assert!(matches!(err, MutateError::Config { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn refresh_reports_a_workspace_that_no_longer_loads_as_backend() {
+        let (fx, mut repo) = open_fixture();
+        write_repo_config(&fx.path, "[user]\nname = \"Changed\"\n");
+        std::fs::remove_file(fx.path.join(".jj").join("working_copy").join("type")).unwrap();
+        let err = repo
+            .refresh_settings()
+            .expect_err("an unloadable workspace must refuse");
+        assert!(matches!(err, MutateError::Backend(_)), "got {err:?}");
+    }
+
+    /// A secondary workspace whose `.jj/repo` FILE points nowhere fails in the loader, before
+    /// any config is read.
+    #[test]
+    fn open_reports_a_dangling_secondary_workspace_as_backend() {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".jj")).unwrap();
+        std::fs::write(tmp.path().join(".jj").join("repo"), "../nowhere").unwrap();
+        let err = Repo::open(tmp.path()).expect_err("a dangling indirection must refuse");
+        assert!(matches!(err, RepoError::Backend(_)), "got {err:?}");
+    }
 }

@@ -123,6 +123,8 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 /// - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
 /// - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
 ///   a tracked remote bookmark; the name in `context`.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -174,6 +176,8 @@ pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, l
 ///   is not `BookmarkDelete`, i.e. the buffer was built for a different wrapper.
 /// - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
 ///   parse; jj-lib's reason in `context`.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety

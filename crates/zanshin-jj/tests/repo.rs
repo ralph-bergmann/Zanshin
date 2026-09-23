@@ -8,9 +8,10 @@ use test_helpers::extract_fixture;
 use zanshin_jj::{Backend, Repo, RepoError};
 
 /// Env-var pin applied to every test so no test reads `~/.jjconfig.toml` or
-/// `~/.gitconfig`.  The explicit `StackedConfig` in `make_settings()` already
-/// prevents jj-lib from reading user globals, but setting the vars here is
-/// defence-in-depth and keeps CI and local runs consistent.
+/// `~/.gitconfig`. `Repo::open` builds its settings from the effective jj config
+/// stack (Story 9.27), so this pin is what keeps it off the developer's config;
+/// the `JJ_*` identity overrides keep commit authors and operation metadata
+/// deterministic, exactly as jj's own test harness does.
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // WHY: empty string avoids needing a tempdir just for an env pin; neither
     // JJ_CONFIG="" nor GIT_CONFIG_GLOBAL="" causes jj-lib to fail, it simply
@@ -18,6 +19,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 

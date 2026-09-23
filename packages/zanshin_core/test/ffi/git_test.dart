@@ -59,6 +59,7 @@ void main() {
             newChangeIds: const <String>[],
             abandonedChangeIds: const <String>[],
             workingCopyChangeId: 'qpvuntsm',
+            identityMissing: fbs.IdentityMissingObjectBuilder(name: false, email: true),
           ),
           changedBookmarks: [
             fbs.GitRefUpdateObjectBuilder(
@@ -93,6 +94,8 @@ void main() {
 
       expect(result.mutation.newOpId, equals('op99'));
       expect(result.mutation.workingCopyChangeId, equals('qpvuntsm'));
+      expect(result.mutation.identityMissing?.name, isFalse);
+      expect(result.mutation.identityMissing?.email, isTrue);
       expect(result.changedBookmarks.map((u) => u.name), equals(['main', 'feature']));
       expect(result.changedBookmarks.first.remote, equals('origin'));
       expect(result.changedBookmarks.first.kind, equals(GitRefUpdateKind.created));
@@ -117,6 +120,7 @@ void main() {
       final GitImportResult result = decodeGitImportResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, isEmpty);
+      expect(result.mutation.identityMissing, isNull, reason: 'an absent table decodes as null');
       expect(result.changedBookmarks, isEmpty);
       expect(result.changedTags, isEmpty);
       expect(result.abandonedChangeIds, isEmpty);
@@ -164,6 +168,7 @@ void main() {
             newChangeIds: const <String>[],
             abandonedChangeIds: const <String>[],
             workingCopyChangeId: 'qpvuntsm',
+            identityMissing: fbs.IdentityMissingObjectBuilder(name: true, email: true),
           ),
           failedBookmarks: [
             fbs.GitExportFailureObjectBuilder(
@@ -179,6 +184,8 @@ void main() {
       final GitExportResult result = decodeGitExportResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, equals('op7'));
+      expect(result.mutation.identityMissing?.name, isTrue);
+      expect(result.mutation.identityMissing?.email, isTrue);
       expect(result.failedBookmarks, hasLength(1));
       expect(result.failedBookmarks.single.name, equals('foo/bar'));
       expect(result.failedBookmarks.single.remote, equals('git'));

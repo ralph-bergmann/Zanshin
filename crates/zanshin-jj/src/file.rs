@@ -695,14 +695,13 @@ mod tests {
     /// surfaces as [`FileError::Backend`], so there is no public-API construction to use instead.
     #[test]
     fn file_search_reports_an_unreadable_blob_as_skipped() {
-        use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
         use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
         use jj_lib::repo::Repo as _;
         use jj_lib::secret_backend::SecretBackend;
-        use jj_lib::settings::UserSettings;
         use jj_lib::workspace::Workspace;
         use test_helpers::{add_commit_with_entries, extract_fixture, Entry};
 
+        test_helpers::pin_test_env();
         let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
         // `secret.txt` is refused by SecretBackend purely because of its PATH; `plain.txt`
         // carries the same needle and must still match, which is what makes this a skip
@@ -721,22 +720,7 @@ mod tests {
         // plain git backend, which SecretBackend wraps unchanged for writes.
         SecretBackend::adopt_git_repo(&fx.path);
 
-        let mut config = StackedConfig::with_defaults();
-        config.add_layer(
-            ConfigLayer::parse(
-                ConfigSource::User,
-                r#"
-                    [user]
-                    name = "Zanshin"
-                    email = "zanshin@localhost"
-                    [operation]
-                    username = "zanshin"
-                    hostname = "localhost"
-                "#,
-            )
-            .expect("valid config literal"),
-        );
-        let settings = UserSettings::from_config(config).expect("valid settings");
+        let settings = test_helpers::test_settings();
 
         let mut factories = default_backend_factories();
         factories.add_backend(

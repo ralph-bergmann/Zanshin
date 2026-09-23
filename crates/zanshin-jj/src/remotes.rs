@@ -338,6 +338,7 @@ pub(crate) fn git_fetch(
         new_change_ids: Vec::new(),
         abandoned_change_ids,
         working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
+        identity_missing: mutate::identity_missing(new_repo.settings()),
     })
 }
 

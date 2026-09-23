@@ -41,6 +41,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
         env::set_var("XDG_CONFIG_HOME", &xdg);
     }
 });
@@ -289,14 +293,18 @@ fn git_import_honours_abandon_unreachable_commits_false() {
 
 /// A malformed value for a key this verb reads must arrive as `Config`, the same fault class
 /// the read side reports — never the unclassified `Backend` bucket — and must write nothing.
+///
+/// Since Story 9.27 the stack is also what the workspace is LOADED with, and jj-lib's git
+/// backend reads this key itself while loading — so the refusal comes from the pre-verb
+/// settings refresh (the stack changed after open), and a fresh `Repo::open` refuses too,
+/// exactly as every CLI command in such a repo fails at start-up.
 #[test]
 fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
     pin_env();
     let (tmp, _commit) = git_repo_with_one_commit();
-    write_repo_config(tmp.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
-
-    let mut repo = Repo::open(tmp.path()).expect("reopen");
+    let mut repo = Repo::open(tmp.path()).expect("open before the config breaks");
     let before = head_op_id(&repo);
+    write_repo_config(tmp.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
 
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
@@ -305,6 +313,11 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&repo), before, "a refusal writes nothing");
+    let reopen = Repo::open(tmp.path()).expect_err("a wrong-typed git key must refuse the open too");
+    assert!(
+        matches!(&reopen, zanshin_jj::RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        "unexpected error: {reopen:?}"
+    );
 }
 
 /// A native (`init_simple`) workspace has no git backend at all, so both sync verbs refuse
@@ -496,10 +509,9 @@ fn git_import_projects_a_real_git_tag_through_the_tag_branch() {
 fn git_import_with_a_non_boolean_record_synthetic_predecessors_refuses_as_config() {
     pin_env();
     let (tmp, _commit) = git_repo_with_one_commit();
-    write_repo_config(tmp.path(), "[git]\nrecord-synthetic-predecessors = 3\n");
-
-    let mut repo = Repo::open(tmp.path()).expect("reopen");
+    let mut repo = Repo::open(tmp.path()).expect("open before the config breaks");
     let before = head_op_id(&repo);
+    write_repo_config(tmp.path(), "[git]\nrecord-synthetic-predecessors = 3\n");
 
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 

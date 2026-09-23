@@ -8490,6 +8490,7 @@ pub mod zanshin {
             pub const VT_NEW_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
             pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 10;
+            pub const VT_IDENTITY_MISSING: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -8501,6 +8502,9 @@ pub mod zanshin {
                 args: &'args MutationResultArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<MutationResult<'bldr>> {
                 let mut builder = MutationResultBuilder::new(_fbb);
+                if let Some(x) = args.identity_missing {
+                    builder.add_identity_missing(x);
+                }
                 if let Some(x) = args.working_copy_change_id {
                     builder.add_working_copy_change_id(x);
                 }
@@ -8560,6 +8564,22 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(MutationResult::VT_WORKING_COPY_CHANGE_ID, None)
                 }
             }
+            /// Which identity fields were empty when this call committed an operation — the jj CLI's
+            /// "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
+            /// configured and on every call that committed nothing; the UI turns a present value into
+            /// the "set your identity" prompt. Never a refusal.
+            #[inline]
+            pub fn identity_missing(&self) -> Option<IdentityMissing<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<IdentityMissing>>(
+                        MutationResult::VT_IDENTITY_MISSING,
+                        None,
+                    )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for MutationResult<'_> {
@@ -8573,6 +8593,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("new_change_ids", Self::VT_NEW_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("working_copy_change_id", Self::VT_WORKING_COPY_CHANGE_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<IdentityMissing>>("identity_missing", Self::VT_IDENTITY_MISSING, false)?
      .finish();
                 Ok(())
             }
@@ -8584,6 +8605,7 @@ pub mod zanshin {
             pub abandoned_change_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub identity_missing: Option<::flatbuffers::WIPOffset<IdentityMissing<'a>>>,
         }
         impl<'a> Default for MutationResultArgs<'a> {
             #[inline]
@@ -8593,6 +8615,7 @@ pub mod zanshin {
                     new_change_ids: None,
                     abandoned_change_ids: None,
                     working_copy_change_id: None,
+                    identity_missing: None,
                 }
             }
         }
@@ -8637,6 +8660,13 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_identity_missing(&mut self, identity_missing: ::flatbuffers::WIPOffset<IdentityMissing<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<IdentityMissing>>(
+                    MutationResult::VT_IDENTITY_MISSING,
+                    identity_missing,
+                );
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MutationResultBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 MutationResultBuilder {
@@ -8658,6 +8688,123 @@ pub mod zanshin {
                 ds.field("new_change_ids", &self.new_change_ids());
                 ds.field("abandoned_change_ids", &self.abandoned_change_ids());
                 ds.field("working_copy_change_id", &self.working_copy_change_id());
+                ds.field("identity_missing", &self.identity_missing());
+                ds.finish()
+            }
+        }
+        pub enum IdentityMissingOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
+        pub struct IdentityMissing<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for IdentityMissing<'a> {
+            type Inner = IdentityMissing<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> IdentityMissing<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EMAIL: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                IdentityMissing { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args IdentityMissingArgs,
+            ) -> ::flatbuffers::WIPOffset<IdentityMissing<'bldr>> {
+                let mut builder = IdentityMissingBuilder::new(_fbb);
+                builder.add_email(args.email);
+                builder.add_name(args.name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(IdentityMissing::VT_NAME, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn email(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(IdentityMissing::VT_EMAIL, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for IdentityMissing<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("name", Self::VT_NAME, false)?
+                    .visit_field::<bool>("email", Self::VT_EMAIL, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct IdentityMissingArgs {
+            pub name: bool,
+            pub email: bool,
+        }
+        impl<'a> Default for IdentityMissingArgs {
+            #[inline]
+            fn default() -> Self {
+                IdentityMissingArgs {
+                    name: false,
+                    email: false,
+                }
+            }
+        }
+
+        pub struct IdentityMissingBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> IdentityMissingBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: bool) {
+                self.fbb_.push_slot::<bool>(IdentityMissing::VT_NAME, name, false);
+            }
+            #[inline]
+            pub fn add_email(&mut self, email: bool) {
+                self.fbb_.push_slot::<bool>(IdentityMissing::VT_EMAIL, email, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> IdentityMissingBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                IdentityMissingBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<IdentityMissing<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for IdentityMissing<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("IdentityMissing");
+                ds.field("name", &self.name());
+                ds.field("email", &self.email());
                 ds.finish()
             }
         }

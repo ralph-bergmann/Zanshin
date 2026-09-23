@@ -34,9 +34,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::{env, fs};
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture};
@@ -58,6 +56,10 @@ static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
         env::set_var("XDG_CONFIG_HOME", &xdg);
     }
     xdg
@@ -65,25 +67,6 @@ static ENV_GUARD: LazyLock<PathBuf> = LazyLock::new(|| {
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
-}
-
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
 }
 
 /// The oracle: `workspace_name` on the newest operation of the workspace at `root`.
@@ -103,7 +86,7 @@ fn head_op_workspace_name(root: &Path) -> Option<String> {
 /// a larger repo from walking the entire history.
 fn recent_ops(root: &Path, limit: usize) -> Vec<(String, Option<String>)> {
     let workspace = Workspace::load(
-        &make_test_settings(),
+        &test_helpers::test_settings(),
         root,
         &default_backend_factories(),
         &default_working_copy_factories(),

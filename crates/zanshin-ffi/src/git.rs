@@ -257,6 +257,8 @@ pub unsafe extern "C" fn zanshin_git_import(handle: u64) -> *mut ZanshinBuf {
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -303,6 +305,8 @@ pub unsafe extern "C" fn zanshin_git_export(handle: u64) -> *mut ZanshinBuf {
 ///   reserved `git`, contains a slash, or is not a valid gix remote name.
 /// - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -492,6 +496,8 @@ pub unsafe extern "C" fn zanshin_git_remote_rename(
 /// - `jj.remote_not_found` — at least one URL was supplied and `name` has no configured
 ///   remote; the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -537,6 +543,7 @@ mod tests {
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
+            identity_missing: None,
         }
     }
 

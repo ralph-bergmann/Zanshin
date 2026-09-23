@@ -39,6 +39,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -103,8 +107,10 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
 
     let bad_target = TempDir::new().expect("target tempdir");
     let result = Repo::clone(&src_url, bad_target.path());
-    let Err(RepoError::CloneFailed { reason }) = result else {
-        panic!("a non-boolean value must fail the clone as CloneFailed, got: {result:?}");
+    // Since Story 9.27 the clone runs WITH this stack, so jj-lib's git backend already reads the
+    // key while creating the workspace; either way a clone config fault has one code: `Config`.
+    let Err(RepoError::Config { reason }) = result else {
+        panic!("a non-boolean value must fail the clone as Config, got: {result:?}");
     };
     assert!(
         reason.contains("abandon-unreachable-commits"),

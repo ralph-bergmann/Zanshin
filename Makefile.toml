@@ -106,7 +106,7 @@ cwd = "app"
 # ZANSHIN_LOG_DIR redirects the cdylib's tracing file sink to a throwaway dir: the worker-isolate
 # tests boot a real worker which calls zanshin_logging_init -> init_tracing, which would otherwise
 # write into the developer's real ~/Library/Logs/Zanshin (test-isolation leak, fixed 2026-06-21).
-env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-dart-analyze]
 private = true
@@ -129,7 +129,7 @@ cwd = "packages/zanshin_core"
 # WHY: pin jj/git global config + redirect the tracing sink so the worker-isolate tests
 # (which drive real zanshin_repo_init/open through the cdylib and call zanshin_logging_init)
 # are deterministic on a clean CI runner and never write into ~/Library/Logs/Zanshin.
-env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-core-analyze]
 private = true
@@ -517,7 +517,7 @@ trap 'rm -f "$CORE/coverage.on"' EXIT
 # 2026-08-13 by deleting every candidate dylib, rerunning `dart test`, and checking mtimes.)
 rm -rf "$ROOT/.dart_tool/lib" "$ROOT/.dart_tool/native_assets.yaml"
 ( cd "$CORE" \
-  && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
+  && JJ_CONFIG="" GIT_CONFIG_GLOBAL="" JJ_USER="Zanshin" JJ_EMAIL="zanshin@localhost" JJ_OP_HOSTNAME="localhost" JJ_OP_USERNAME="zanshin" ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      LLVM_PROFILE_FILE="$COV/ffi-%p-%m.profraw" \
      dart test )
 DYL="$ROOT/.dart_tool/lib/libzanshin_ffi.dylib"

@@ -37,6 +37,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -421,13 +425,16 @@ fn file_show_surfaces_a_malformed_conflict_marker_style_as_jj_config_error() {
         "config-error scenario",
     );
     let change_id = change_id_for_commit(&fixture.path, &commit_hex);
+    // Opened FIRST: since Story 9.27 the working copy is loaded with this stack and reads the
+    // key itself, so `zanshin_repo_open` would already refuse (as `jj.config_error`) — the row
+    // pins `file_show`'s OWN per-call read on an already-open handle.
+    let handle = open_handle(&fixture.path);
     // Not one of jj's four style names: the USER's config is wrong, not the repository.
     fs::write(
         fixture.path.join(".jj").join("repo").join("config.toml"),
         "[ui]\nconflict-marker-style = \"nonsense\"\n",
     )
     .expect("repo config must be writable");
-    let handle = open_handle(&fixture.path);
     std::mem::forget(fixture);
 
     let req = list_request_bytes(Some(&change_id), &["a.txt"], true);

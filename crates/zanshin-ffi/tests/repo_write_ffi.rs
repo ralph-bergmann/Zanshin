@@ -44,6 +44,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -461,7 +465,14 @@ fn describe_on_an_immutable_commit_returns_jj_immutable_with_the_commit_in_conte
 fn describe_with_a_malformed_repo_config_returns_jj_config_error() {
     pin_env();
     // SAFETY: handle is closed below, before `fixture` drops at end of scope.
-    let (_fixture, handle, wc_change_id) = unsafe { open_fixture_with_repo_config("not = = toml\n") };
+    let (fixture, handle, wc_change_id) = unsafe { open_fixture_with_repo_config("") };
+    // Broken AFTER the open: since Story 9.27 a broken stack refuses `zanshin_repo_open` itself,
+    // so an open handle is where the mutation-side refusal is met.
+    fs::write(
+        fixture.path.join(".jj").join("repo").join("config.toml"),
+        "not = = toml\n",
+    )
+    .expect("repo config must be writable");
 
     let id = cstr(&wc_change_id);
     let desc = cstr("nope");

@@ -26,12 +26,10 @@ use std::{env, hint};
 use futures::executor::block_on;
 use futures::StreamExt as _;
 use jj_lib::backend::CommitId;
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::graph::TopoGroupedGraph;
 use jj_lib::repo::{ReadonlyRepo, Repo as JjRepo};
 use jj_lib::revset::ResolvedRevsetExpression;
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 
@@ -53,6 +51,10 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     unsafe {
         env::set_var("JJ_CONFIG", "");
         env::set_var("GIT_CONFIG_GLOBAL", "");
+        env::set_var("JJ_USER", "Zanshin");
+        env::set_var("JJ_EMAIL", "zanshin@localhost");
+        env::set_var("JJ_OP_HOSTNAME", "localhost");
+        env::set_var("JJ_OP_USERNAME", "zanshin");
     }
 });
 
@@ -78,10 +80,12 @@ fn measure<F: FnMut()>(warmup: u32, iters: u32, mut f: F) -> (Duration, Duration
 }
 
 /// Load a workspace from `path` and re-resolve to the head operation (ADR-0002).
-/// This is the jj-lib path `zanshin_jj::Repo::open` wraps internally — inlined here so
-/// the bench stays self-contained and ACL-clean (no `Repo` internals reached).
+/// A plain `Workspace::load` with the pinned test settings — NOT `zanshin_jj::Repo::open`'s
+/// path, which splits the load into loader → effective config stack → settings → load
+/// (Story 9.27); the settings do not affect a graph walk, so the bench stays self-contained
+/// and ACL-clean (no `Repo` internals reached).
 fn load_head(path: &Path) -> Arc<ReadonlyRepo> {
-    let settings = bench_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         path,
@@ -90,26 +94,6 @@ fn load_head(path: &Path) -> Arc<ReadonlyRepo> {
     )
     .expect("workspace must load");
     pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head must succeed")
-}
-
-/// Minimal `UserSettings` sufficient to load a fixture (mirrors `Repo::make_settings`).
-fn bench_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("config layer parses"),
-    );
-    UserSettings::from_config(config).expect("settings build")
 }
 
 /// Walk the whole commit graph in topological order (children-before-parents — the

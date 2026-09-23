@@ -29,6 +29,7 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
 use jj_lib::revset::{ResolvedRevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
+use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
@@ -76,6 +77,37 @@ pub struct MutationResult {
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
     pub working_copy_change_id: ChangeId,
+    /// Which identity fields were EMPTY in the settings this call's operation was written
+    /// with — the CLI's post-transaction "Name and email not configured" warning
+    /// (`cli/src/cli_util.rs:2387-2415` @ v0.44.0), as a fact (Story 9.27).
+    ///
+    /// `Some` only when this call COMMITTED an operation and `user.name` and/or `user.email`
+    /// is empty: the CLI's warning lives in `finish_transaction`, which it skips when nothing
+    /// changed, so every no-op result (see [`MutationResult::new_op_id`]) carries `None`. A
+    /// verb that always commits (e.g. [`crate::Repo::git_fetch`]) reports it every time. An
+    /// empty identity is never refused and never replaced by a placeholder — commits are
+    /// created with it, exactly as the CLI creates them.
+    pub identity_missing: Option<IdentityMissing>,
+}
+
+/// The identity fields a committed operation found empty — see
+/// [`MutationResult::identity_missing`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdentityMissing {
+    /// `user.name` is empty.
+    pub name: bool,
+    /// `user.email` is empty.
+    pub email: bool,
+}
+
+/// The CLI's `missing_user_name || missing_user_mail` check over `settings` — `None` when
+/// both are configured.
+pub(crate) fn identity_missing(settings: &UserSettings) -> Option<IdentityMissing> {
+    let missing = IdentityMissing {
+        name: settings.user_name().is_empty(),
+        email: settings.user_email().is_empty(),
+    };
+    (missing.name || missing.email).then_some(missing)
 }
 
 /// Errors returned by [`crate::Repo::describe`], [`crate::Repo::new_change`],
@@ -509,6 +541,7 @@ pub(crate) fn describe(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(new_repo.settings()),
     })
 }
 
@@ -568,6 +601,7 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
         new_change_ids: vec![new_change_id],
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(new_repo.settings()),
     })
 }
 
@@ -621,6 +655,7 @@ pub(crate) fn edit(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(new_repo.settings()),
     })
 }
 
@@ -737,6 +772,7 @@ pub(crate) fn abandon(
         new_change_ids,
         abandoned_change_ids: change_ids.to_vec(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(new_repo.settings()),
     })
 }
 
@@ -762,6 +798,7 @@ pub(crate) fn no_op_result(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(wc.change_id().reverse_hex()),
+        identity_missing: None,
     })
 }
 
@@ -897,6 +934,7 @@ where
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+            identity_missing: identity_missing(new_repo.settings()),
         },
         repo: new_repo,
         committed: true,
@@ -1034,6 +1072,7 @@ pub(crate) fn restore(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(new_repo.settings()),
     })
 }
 
@@ -1173,6 +1212,7 @@ pub(crate) fn absorb(
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
+            identity_missing: identity_missing(new_repo.settings()),
         },
         rewritten_change_ids,
         source_change_id,

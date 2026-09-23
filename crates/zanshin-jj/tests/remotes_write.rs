@@ -12,11 +12,9 @@ use std::env;
 use std::fs;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git;
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{resolve_revset, Backend, MutateError, ProgressEvent, Repo};
@@ -24,29 +22,14 @@ use zanshin_jj::{resolve_revset, Backend, MutateError, ProgressEvent, Repo};
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
     env::set_var("GIT_CONFIG_GLOBAL", "");
+    env::set_var("JJ_USER", "Zanshin");
+    env::set_var("JJ_EMAIL", "zanshin@localhost");
+    env::set_var("JJ_OP_HOSTNAME", "localhost");
+    env::set_var("JJ_OP_USERNAME", "zanshin");
 });
 
 fn pin_env() {
     LazyLock::force(&ENV_GUARD);
-}
-
-fn make_test_settings() -> UserSettings {
-    let mut config = StackedConfig::with_defaults();
-    config.add_layer(
-        ConfigLayer::parse(
-            ConfigSource::User,
-            r#"
-                [user]
-                name = "Zanshin"
-                email = "zanshin@localhost"
-                [operation]
-                username = "zanshin"
-                hostname = "localhost"
-            "#,
-        )
-        .expect("valid config literal"),
-    );
-    UserSettings::from_config(config).expect("valid settings")
 }
 
 /// Run a git command in `dir`; panics on non-zero exit.
@@ -125,7 +108,7 @@ fn write_repo_config(root: &std::path::Path, toml: &str) {
 /// findings), so `list_bookmarks()` would not surface it even though `git_fetch`
 /// succeeded and imported it into jj's view as `name@remote`.
 fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         root,
@@ -149,7 +132,7 @@ fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) 
 /// RemoteRefState::Tracked`, unconditionally), so this proves `import_refs()` really
 /// updated jj's own view — not just the raw git object database.
 fn remote_tag_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         root,
@@ -187,7 +170,7 @@ fn git_bare_clone(src: &std::path::Path, parent: &std::path::Path) -> std::path:
 /// Callers must `Repo::open` (not reuse an already-open `Repo`) afterward so the
 /// fresh `GitBackend` reads the new remote from disk.
 fn register_remote(root: &std::path::Path, name: &str, url: &str) {
-    let settings = make_test_settings();
+    let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
         &settings,
         root,
