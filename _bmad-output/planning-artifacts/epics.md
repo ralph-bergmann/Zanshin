@@ -5737,6 +5737,96 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Related:** 9.1 (the ported helpers), 9.3 (`restore`/`absorb` guards), 9.6 (`interdiff`), 9.9, 9.15, 9.16 (incl. the `-s`/`-b` + `-A`/`-B` corner recorded in deferred-work 2026-09-21), 9.18, 9.26 (snapshot precondition), ADR-0003, FR-JJ-17.
 
+### Story 9.32: Warning channel on every envelope — `warnings: [{ code, message }]`, the CLI's `ui.warning_*` as coded facts [M/R]
+*(Added 2026-09-24, Ralph — decided in a console session after the 9.22–9.28 follow-up reviews; refined enough to build from, ACs to be authored when scheduled. Cross-cut; prerequisite of 9.33 and 9.35.)*
+
+**Motivation.** Zanshin already answers refusals with a machine-readable code (`Envelope.error { code, context }`, registry `docs/rust-error-codes.md`), but it has no uniform channel for the other half of what the CLI prints: **success with a warning**. Today each such fact is a one-off field — `MutationResult.identity_missing` (9.27), `Precondition.working_copy_immutable_new_commit` and `Precondition.jjconflict_files_present` (9.26) — and the creation verbs cannot report anything at all (9.33). Ralph's idea (2026-09-24): a status with a code the UI can switch on, so Zanshin can offer the remedy itself (missing identity → "set your identity") without ever parsing text. Decided shape: a **list** of warnings next to the existing result, not one HTTP-style status per response, because several warnings can hold at once (a clone with an empty identity AND a file too large to track AND a failed ref export).
+
+**Scope (backend + bridge).**
+1. **Wire:** `Envelope.warnings: [Warning]` (appended field, WIP in-place edit), `table Warning { code: string; message: string; }`. Present on ok AND error envelopes (a precondition that wrote operations before the verb refused still warns). Success without caveat = `ok = true` and an empty list — there is no "success" code.
+2. **Rule:** every warning the CLI @ v0.44.0 writes through `ui.warning_default()` (or another `ui.warning_*` writer) and emits on a code path Zanshin ports becomes ONE warning code. Status lines (`ui.status()`: "Nothing changed.", "Already editing that commit.") are NOT warnings — they stay typed facts (e.g. the unchanged op id). Hints (`ui.hint_*`) are not ported — the UI derives its offer from the code. First task: an inventory of the warning sites on every shipped verb's path (`workspace_helper`/`snapshot_impl`, `finish_transaction`, the verb bodies), each mapped to a code or recorded as out of scope with the reason.
+3. **Codes** live in the same registry as the error codes (a new "Warning codes" section of `docs/rust-error-codes.md`), `jj.` namespace, one code per remedy (the house rule for errors) — e.g. `jj.identity_missing`, `jj.working_copy_immutable`, `jj.snapshot_files_refused`, `jj.jjconflict_files_present`, `jj.git_export_failed`. `message` = the CLI's text verbatim where it has one (log/tooltip only; the UI never parses it). Structured data stays typed where it already is (`SnapshotStats`, `GitExportResult`, …): the warning says that there is something, the payload says what.
+4. **One mechanism:** `MutationResult.identity_missing`, `Precondition.working_copy_immutable_new_commit` and `Precondition.jjconflict_files_present` move into warnings and the fields are removed (WIP in-place edit; the UI does not consume them yet). Which `FinishFacts` fields are warnings and which are data is part of the inventory.
+5. **Rust surface:** the warnings leave `zanshin-jj` with the result they belong to (one collector per call, like `take_precondition()`), so MCP (Epic 7) inherits them.
+6. **Dart:** every command's result exposes its warnings on success, handle-scoped and handle-less alike (the error path is 9.35); typed Dart constants for the registered codes.
+7. `docs/ffi-abi.md` (envelope contract), coverage ratchet, a `zanshin_core` witness for every warning code a fixture can produce.
+
+**Non-goals.** No UI (the "set your identity" offer is Ralph's); no severity levels beyond warning vs. error; no localization; no hint porting.
+
+**Related:** 9.26 (`precondition`), 9.27 (`identity_missing`), 9.33, 9.35, 9.37 (secure-config warnings), 9.39 (undo-a-push warning), FR-JJ-17, AR-P-4.
+
+### Story 9.33: Creation paths report what the CLI prints — `clone`/`init`/`convert`: `jj.identity_missing` + the conversion's snapshot report [M]
+*(Added 2026-09-24, Ralph — decision "extend the return value" on the 9.27 and 9.26 follow-up deferrals. Depends on 9.32.)*
+
+**Motivation.** The CLI warns about an empty identity in `finish_transaction`, which `jj git clone` reaches via `tx.finish(ui, "fetch from git remote into empty repo")` (`cli/src/commands/git/clone.rs:457` @ v0.44.0, also `:314`, `:352`) and `jj git init` over an existing Git repo via `tx.finish(ui, "import git head")` (`init.rs:268`). `zanshin_repo_clone`/`_init`/`_convert` return only a `RepoHandle`, so a GUI clone — the typical first action on a new machine — writes its operations and `@` with the empty identity and the UI learns of it only at the first later mutation. Likewise the conversion's snapshot (`maybe_snapshot` in `jj git init` over an existing repo) drops its report — files left untracked by `snapshot.max-new-file-size`/`auto-track`, the colocated `.jjconflict` warning, export and HEAD-reset failures — because 9.26's AC-3 kept `precondition` off convert envelopes.
+
+**Scope.** (1) The three creation envelopes carry 9.32's warnings exactly where the CLI's flow warns: `jj.identity_missing` only when a `finish_transaction`-equivalent committed an operation (verify each flow @ v0.44.0 — a fresh `init` of an empty directory finishes no transaction, so no warning), plus the conversion's snapshot/export warnings. (2) The conversion's snapshot report rides the convert envelope as the `Precondition`/`SnapshotStats` data 9.26 defined (AC-3's exclusion lifted). (3) Dart `clone`/`init`/`convert` return the handle together with warnings and report. (4) Witnesses per flow: clone with and without identity, init of an empty directory vs. over an existing Git repo, convert (colocated and import) with a file over the size limit.
+
+**Non-goals.** No change to what the flows do (9.20 owns the remaining clone/init parity gaps); no UI.
+
+### Story 9.34: Snapshot knobs read after `import git head` — the CLI's refusal order in the precondition [M]
+*(Added 2026-09-24, Ralph — from the 9.26 deferral "Wrong-typed snapshot knob is refused BEFORE the head import". Direction: the CLI's order, per Ralph's parity rule.)*
+
+**Motivation.** Zanshin's precondition reads `snapshot.auto-track`, `snapshot.max-new-file-size`, the ignore files and `immutable_heads()` before taking `git_import_export.lock` (`snapshot.rs::Knobs::read`, `repo.rs::Repo::precondition`); the CLI reads the snapshot knobs only inside `snapshot_working_copy`, i.e. after its lock and its `import git head` (`cli_util.rs::workspace_helper_with_stats` → `snapshot_impl` @ v0.44.0). Observable in the double fault "Git HEAD moved outside AND a wrong-typed snapshot knob": the CLI writes `import git head` and then fails, Zanshin writes nothing and fails — two different op logs. Pinned today by `tests/snapshot_colocated.rs::a_wrong_typed_knob_is_refused_before_the_lock`; the 9.26 matrix row "refused before the lock" was the spec's wording, not the CLI's behaviour.
+
+**Scope.** Read each knob where the CLI reads it (snapshot knobs inside the snapshot step; `immutable_heads()` where `snapshot_working_copy` needs it); invert the pinning test into the CLI's sequence (`import git head` written, then `jj.config_error`); rework the lock-wait witness that relied on the early read; a dated note on the 9.26 spec's matrix row (the CLI wins).
+
+**Non-goals.** No other precondition change.
+
+### Story 9.35: Dart keeps `precondition` and `warnings` on error results — handle-less commands included [bridge]
+*(Added 2026-09-24, Ralph — from the 9.28 deferral "`zanshin_config_set`'s precondition is dropped on the Dart ERROR path". Depends on 9.32.)*
+
+**Motivation.** Rust stamps `Envelope.precondition` (9.26) — and after 9.32 `Envelope.warnings` — on error envelopes too: a verb whose precondition snapshotted or imported (and wrote operations) and then refused. The Dart decoders throw `ZanshinFfiException` with code and context only, and `ZanshinWorker.send` records `lastPrecondition` only for handle-scoped commands. So the UI loses the report exactly when something went wrong — e.g. a `config_set` of `user.name` whose identity snapshot ran and then hit `jj.config_would_overwrite`.
+
+**Scope.** The Dart error result (`ZanshinFfiException` or its successor) carries the envelope's `precondition` and `warnings`; every decoder passes them through; handle-less commands (`config_*`, the creation verbs) expose them the same way as handle-scoped ones; a real-cdylib witness per command family that produces an error envelope with a precondition or a warning. Bridge-only unless an error path turns out not to stamp the envelope.
+
+**Non-goals.** No UI.
+
+### Story 9.36: Finder/Dock launch sees the login-shell environment — `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_*` as in the terminal [bootstrap] — *NEEDS DECISION*
+*(Added 2026-09-24, Ralph — from the 9.27 deferral "A Finder/Dock-launched Zanshin does not see the user's shell environment". Open decision below.)*
+
+**Motivation.** 9.27's stack reads `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*`, `VISUAL`/`EDITOR` and `NO_COLOR` exactly as the CLI does (`config.rs::ConfigEnv::from_env`), but an app launched by launchd gets launchd's minimal environment, not the login shell's. A user who sets `XDG_CONFIG_HOME` or `JJ_CONFIG` in a shell rc file then gets a different config — and identity — in Zanshin than in the terminal `jj`; the same holds for what jj-lib's `git` subprocess sees on fetch/push (`PATH`, `SSH_AUTH_SOCK`, `GIT_*`). Started from a terminal Zanshin behaves like the CLI; started from Finder it does not.
+
+**Options (decision needed).** (a) Resolve the login-shell environment once at start-up — spawn `$SHELL -l -i -c` with a machine-readable `env` dump and a timeout, the approach VS Code and other macOS developer GUIs use — and hand the result to the config stack and the git subprocess environment as an explicit map (never `std::env::set_var` in a running multi-threaded process); fall back to launchd's environment on timeout or failure and report that as a 9.32 warning. (b) Nothing in the backend; document that shell-only variables do not reach a Finder-launched Zanshin. (c) A Zanshin setting that names `JJ_CONFIG`/`XDG_CONFIG_HOME` explicitly. Recommendation: (a) — the only option under which the same user gets the same config in both tools without having to know about launchd.
+
+**Scope (if (a)).** The resolution in the app bootstrap before the worker isolate opens a repo (worker boot is bridge scope; the map crosses to Rust once at init); `ConfigEnv` and the git subprocess environment read that map instead of the process environment; tests with a fake `$SHELL`; the fallback warning.
+
+**Non-goals.** No UI beyond the warning; no edits to shell rc files.
+
+### Story 9.37: Secure-config fix-ups at every command start — `SecureConfig::maybe_load_config` parity (legacy `.jj/repo/config.toml` migration, moved/copied repos) [M]
+*(Added 2026-09-24, Ralph — from the 9.28 deferral "Read-side secure-config fix-ups are still not run". Direction: reverse "reading never writes" per Ralph's parity rule, as 9.26 reversed D2.)*
+
+**Motivation.** At the start of every command the CLI loads the repo and workspace config through `ConfigEnv::reload_repo_config` / `reload_workspace_config` → `SecureConfig::maybe_load_config` (`cli/src/config.rs:585-593`, `:653-665`, called from `cli_util.rs:4545-4549` and `:4592-4595` @ v0.44.0). That call migrates a legacy `.jj/repo/config.toml` into the secure config directory and re-points or copies the config of a moved or copied repo, printing its `warnings` via `ui.warning_default()`. Zanshin's read path never writes (`config.rs` module doc "Reading never writes"), so `config_list` shows the legacy path until a CLI run or a Zanshin config WRITE migrates it, and a moved or copied repo is not fixed up the way the CLI's next command fixes it. Every on-disk effect of the CLI is required parity.
+
+**Scope.** Run `maybe_load_config` for repo and workspace where the CLI does: `Repo::open`, the settings refresh at every verb start (9.27's fingerprint path — the fix-up must not trigger a reload loop), and the handle-less `config_*` functions with a workspace root (9.28); its warnings become 9.32 warning codes; `config.rs`'s "Reading never writes" doc and the 9.28 deferral are updated. Witnesses: a legacy file is migrated on first open and then listed with its new path; a copied repo gets its own config on open (cf. the 9.28 follow-up's copied-repo allow-list fix); no second migration on the next verb. Note: the CLI's `default_config_migrations()` (key renames through `jj_lib::config::migrate`) is empty at v0.44.0 — re-check at every pin bump; rules added there belong to this story's mechanism.
+
+**Non-goals.** No `config gc` change (9.28 ported it).
+
+### Story 9.38: `edit` of the current `@` is a no-op — "Already editing that commit." parity [M]
+*(Added 2026-09-24, Ralph — pre-existing divergence found by the 9.26 follow-up review.)*
+
+**Motivation.** `cmd_edit` (`cli/src/commands/edit.rs` @ v0.44.0) resolves the revision, runs `check_rewritable`, and then — when `get_wc_commit_id() == Some(new_commit.id())` — prints "Already editing that commit." and opens NO transaction. Zanshin's `mutate.rs::edit` always commits `edit commit <id>`, so `jj op log` gains an entry the CLI never writes, and a CLI `jj undo` after a Zanshin no-op edit undoes the previous real operation instead.
+
+**Scope.** The same early return after the immutability check and before the transaction, returning the house no-op result (`new_op_id` = the pre-call head); an immutable current `@` still refuses as `jj.immutable` (the CLI checks first); witnesses for both plus the unchanged op count. The implicit snapshot (9.26) still runs first, as in the CLI.
+
+### Story 9.39: `undo` = the v0.44.0 undo stack — a repeated `undo` goes further back [M]
+*(Added 2026-09-24, Ralph — pre-existing divergence found by the 9.26 follow-up review. Related to 9.21 (`redo`) and 9.40 (no-change gate).)*
+
+**Motivation.** `op_log.rs::undo` is v0.42.0's single-step walk-back; its doc says a second undo redoes the first. v0.44.0's `cmd_undo` (`cli/src/commands/undo.rs`) grows an undo stack keyed on the description prefix `UNDO_OP_DESC_PREFIX = "undo: restore to operation "`: undoing an undo-operation undoes the operation that undo restored to (going further back); a restore target that is itself an undo resolves to the original operation (no linked list of undos); redo is the separate `jj redo` (9.21). Refusals: "Cannot undo root operation", "Cannot undo a merge operation" (hint: `jj op restore`); undoing a push warns "Undoing a push operation often leads to conflicted bookmarks." The restore is `view_with_desired_portions_restored(target_parent.view, base.view, &DEFAULT_REVERT_WHAT)` under the description `undo: restore to operation <hex>`. A user alternating between CLI and Zanshin gets different results from the second undo today.
+
+**Scope.** Port the stack walk step for step (both prefix look-ups, the at-most-one-parent refusals, `DEFAULT_REVERT_WHAT`, the description); the push warning as a 9.32 warning code (`is_push_operation`); witnesses for the op-log example in the CLI's own comment (A, B, C, undo, E, undo, undo → A), the root and merge refusals, and CLI↔Zanshin interleaving (an undo stack started by one tool is continued by the other). An undo that restores a view equal to the current one writes nothing — that comes from 9.40's gate.
+
+**Non-goals.** `jj redo` (9.21), `op restore` / `op revert` (9.12).
+
+### Story 9.40: No-change verbs write no operation — `WorkspaceCommandTransaction::finish`'s `has_changes()` gate [M]
+*(Added 2026-09-24, Ralph — pre-existing divergence first found by the 9.27 review, re-found by the 9.26 follow-up review.)*
+
+**Motivation.** Every CLI verb that ends in `tx.finish(ui, …)` goes through `WorkspaceCommandTransaction::finish` (`cli_util.rs:2790-2806` @ v0.44.0), which prints "Nothing changed." and commits NO operation when `!tx.repo().has_changes()` — and therefore also shows no identity warning. `mutate::finish_verb` ports that function without the gate, so a `describe` with the same text, a `git fetch` that brings nothing, and an `undo` that restores an identical view all write an operation the CLI never writes; 9.27's identity fact fires with it, and a CLI `jj undo` afterwards undoes the wrong operation. `describe` additionally drops unchanged commits before rewriting (`describe.rs`: `old_commit.description() != commit_builder.description()`), so no descendant is rebased.
+
+**Scope.** Add the gate to `finish_verb` (no-op result = the pre-call head op id, the house contract); port `describe`'s unchanged-description filter; audit every `finish_verb` caller against its CLI verb (does the CLI reach `tx.finish`, or commit the raw transaction like `track`/`untrack`?); witnesses per verb (describe with the same text, fetch with nothing new, undo to an equal view; the verbs already routed through `finish_or_no_op` stay unchanged). Coordinate with 9.30's fetch rework — whichever lands first owns fetch's witness.
+
+**Non-goals.** `edit`'s guard (9.38), the undo stack (9.39).
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
