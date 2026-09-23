@@ -1246,6 +1246,10 @@ So that `zanshin-ffi` and `zanshin-mcp` can answer `status` queries with structu
 **When** `Repo::status()` is called
 **Then** it returns quickly (< 100 ms on the large fixture) because jj-lib's status check leverages the index
 
+> **Addendum 2026-09-24 (Story 9.26 follow-up review).** Since Story 9.26 `status()` includes the pre-verb
+> snapshot (a full working-copy scan without Watchman); the criterion above has not been re-measured — see
+> deferred-work.md "The cost of the per-verb precondition on a GUI refresh is unmeasured".
+
 ---
 
 ### Story 2.5: Implement `revset.rs` — revset resolution

@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
-use jj_lib::git::{self, GitImportOptions};
+use jj_lib::git;
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::lock::FileLock;
 use jj_lib::matchers::{Matcher, NothingMatcher};
@@ -178,7 +178,9 @@ pub enum PreconditionError {
         repo_op_id: String,
     },
     /// The effective config could not be read, or a knob the snapshot reads has the wrong type
-    /// (the key is named). Refused before the Git import/export lock is taken.
+    /// (the key is named). The snapshot knobs and `immutable_heads()` are refused before the
+    /// Git import/export lock is taken; a malformed Git import option only inside the refs
+    /// step, after the head import and the snapshot committed (as in the CLI).
     #[error("config error: {reason}")]
     Config {
         /// Human-readable failure, naming the file or the config key.
@@ -255,50 +257,41 @@ pub(crate) fn lock_git_import_export(
 
 // ── Knobs ────────────────────────────────────────────────────────────────────────
 
-/// Every config value the snapshot path reads, read and type-checked up front — BEFORE the
-/// lock, so a wrong-typed knob refuses without waiting for a concurrent holder.
+/// The snapshot knobs — `snapshot.auto-track`, `snapshot.max-new-file-size`, the ignore files
+/// and `immutable_heads()` — read and type-checked up front, BEFORE the lock, so a wrong-typed
+/// knob refuses without waiting for a concurrent holder.
 ///
-/// Only the knobs the CLI's `snapshot_impl` itself reads are here: the Git import options only
-/// in a colocated workspace (the CLI reads them in `import_git_refs`, which runs only there), and
-/// `snapshot.auto-update-stale` not at all — the CLI reads it only on a stale working copy
-/// (`cli_util.rs:499` @ v0.44.0), so [`crate::Repo`] does the same on that error path.
+/// Two groups of config values are deliberately NOT here, because the CLI reads them later:
+/// the Git import options (`git.*` plus `remotes.<name>.auto-track-bookmarks`) are read inside
+/// the `import git refs` step, after `import git head` and `snapshot working copy` committed
+/// (`cli_util.rs:1434-1437` @ v0.44.0), and `snapshot.auto-update-stale` only on a stale working
+/// copy (`cli_util.rs:499`), so [`crate::Repo`] does the same on that error path.
 pub(crate) struct Knobs {
     auto_tracking: Box<dyn Matcher>,
     max_new_file_size: u64,
     base_ignores: Arc<GitIgnoreFile>,
-    /// The refs import options — `git.*` plus `remotes.<name>.auto-track-bookmarks`. `Some`
-    /// exactly in a colocated workspace, and it is what gates the `import git refs` step.
-    import_options: Option<GitImportOptions>,
     /// `::(immutable_heads() | root())` as the effective config defines it.
     pub(crate) immutable: Arc<UserRevsetExpression>,
 }
 
 impl Knobs {
-    /// Reads every knob off `config` for `workspace`; the import options only when `colocated`.
+    /// Reads the snapshot knobs off `config` for `workspace`. The Git import options are not
+    /// read here — [`import_git_refs`] reads them where the CLI does.
     ///
     /// # Errors
     ///
-    /// - [`PreconditionError::Config`] — a knob has the wrong type, `snapshot.auto-track` or (in
-    ///   a colocated workspace) a `remotes.<name>.auto-track-bookmarks` does not parse, or the
-    ///   `immutable_heads()` alias does not parse.
+    /// - [`PreconditionError::Config`] — a knob has the wrong type, `snapshot.auto-track` does
+    ///   not parse, or the `immutable_heads()` alias does not parse.
     /// - [`PreconditionError::Backend`] — an ignore file could not be read.
-    pub(crate) fn read(
-        workspace: &Workspace,
-        config: &StackedConfig,
-        colocated: bool,
-    ) -> Result<Self, PreconditionError> {
+    pub(crate) fn read(workspace: &Workspace, config: &StackedConfig) -> Result<Self, PreconditionError> {
         let auto_tracking = wc_ops::auto_tracking_matcher(config)?;
         let max_new_file_size = crate::config::snapshot_max_new_file_size(config)?;
         let base_ignores = wc_ops::base_ignores(workspace)?;
-        let import_options = colocated
-            .then(|| crate::config::git_import_options(config))
-            .transpose()?;
         let immutable = crate::op_support::immutable_user_expression(workspace, config)?;
         Ok(Self {
             auto_tracking,
             max_new_file_size,
             base_ignores,
-            import_options,
             immutable,
         })
     }
@@ -360,6 +353,7 @@ impl VerbContext {
 /// head load.
 pub(crate) fn run(
     workspace: &mut Workspace,
+    config: &StackedConfig,
     knobs: &Knobs,
     colocated: bool,
     report: &mut Precondition,
@@ -367,7 +361,7 @@ pub(crate) fn run(
     let lock = lock_git_import_export(workspace, colocated)?;
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(|e| backend(&e))?;
     let loaded_op_id = repo.op_id().clone();
-    match snapshot_impl(workspace, repo, knobs, colocated, &lock, report) {
+    match snapshot_impl(workspace, repo, config, knobs, colocated, &lock, report) {
         Ok((repo, stats)) => {
             report.was_snapshot_taken = repo.op_id() != &loaded_op_id;
             Ok(stats)
@@ -387,23 +381,33 @@ pub(crate) fn run(
 /// Port of `snapshot_impl` (`cli/src/cli_util.rs:1298-1326` @ v0.44.0): colocated → import the
 /// Git HEAD, then snapshot, then import the Git refs; otherwise the snapshot alone.
 ///
-/// `_lock` must be the held [`GitImportExportLock`]; every step runs under it.
+/// `_lock` must be the held [`GitImportExportLock`]; every step runs under it. `config` is the
+/// effective stack the refs step reads the Git import options from — inside that step, after
+/// the head import and the snapshot committed, exactly where the CLI reads them.
 ///
 /// # Errors
 ///
 /// - [`PreconditionError::StaleWorkingCopy`] — see [`StaleCause`].
-/// - [`PreconditionError::Config`] — the immutable set could not be resolved.
+/// - [`PreconditionError::Config`] — the immutable set could not be resolved, or (colocated) a
+///   Git import option is malformed; the operations written before the refs step stay.
 /// - [`PreconditionError::Backend`] — any underlying jj-lib failure.
 pub(crate) fn snapshot_impl(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
+    config: &StackedConfig,
     knobs: &Knobs,
     colocated: bool,
     lock: &GitImportExportLock,
     report: &mut Precondition,
 ) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
     let mut facts = FinishFacts::default();
-    let result = snapshot_steps(workspace, repo, knobs, colocated, lock, report, &mut facts);
+    let ctx = StepCtx {
+        config,
+        knobs,
+        colocated,
+        lock,
+    };
+    let result = snapshot_steps(workspace, repo, &ctx, report, &mut facts);
     report.finish = facts.into_option();
     result
 }
@@ -413,28 +417,28 @@ pub(crate) fn snapshot_impl(
 fn snapshot_steps(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
-    knobs: &Knobs,
-    colocated: bool,
-    lock: &GitImportExportLock,
+    ctx: &StepCtx<'_>,
     report: &mut Precondition,
     facts: &mut FinishFacts,
 ) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
-    let ctx = StepCtx { knobs, colocated, lock };
-    let repo = if colocated {
-        import_git_head(workspace, repo, &ctx, report, facts)?
+    let repo = if ctx.colocated {
+        import_git_head(workspace, repo, ctx, report, facts)?
     } else {
         repo
     };
-    let (repo, stats) = snapshot_working_copy(workspace, repo, &ctx, report, facts)?;
-    let repo = match &knobs.import_options {
-        Some(options) => import_git_refs(workspace, repo, &ctx, options, report, facts)?,
-        None => repo,
+    let (repo, stats) = snapshot_working_copy(workspace, repo, ctx, report, facts)?;
+    let repo = if ctx.colocated {
+        import_git_refs(workspace, repo, ctx, report, facts)?
+    } else {
+        repo
     };
     Ok((repo, stats))
 }
 
 /// What every step needs besides the workspace and the repo.
 struct StepCtx<'a> {
+    /// The effective config stack — the refs step reads the Git import options off it.
+    config: &'a StackedConfig,
     knobs: &'a Knobs,
     colocated: bool,
     lock: &'a GitImportExportLock,
@@ -604,10 +608,15 @@ fn has_jjconflict_entries(tree: &MergedTree) -> Result<bool, PreconditionError> 
     }))
 }
 
-/// Port of `import_git_refs` (`cli/src/cli_util.rs:1428-1460` @ v0.44.0): import the Git refs
-/// with the effective `options`, and — only when that changed anything — rebase the MUTABLE
+/// Port of `import_git_refs` (`cli/src/cli_util.rs:1428-1460` @ v0.44.0): read the Git import
+/// options (`git.*` plus `remotes.<name>.auto-track-bookmarks`) off the effective config, import
+/// the Git refs with them, and — only when that changed anything — rebase the MUTABLE
 /// descendants (immutable set resolved against the BASE repo, `rebase_mutable_descendants`)
 /// and finish the transaction as `import git refs`.
+///
+/// The options are read HERE, first, as the CLI reads them (`:1434-1437`): a malformed value
+/// fails after `import git head` and `snapshot working copy` were committed, and those
+/// operations stay in the op log, exactly as the CLI leaves them.
 ///
 /// The report's [`Precondition::git_refs`] projection names `@`, so it is skipped when this
 /// workspace has no `@` in the view (forgotten elsewhere); the import itself runs regardless,
@@ -616,13 +625,13 @@ fn import_git_refs(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
     ctx: &StepCtx<'_>,
-    options: &GitImportOptions,
     report: &mut Precondition,
     facts: &mut FinishFacts,
 ) -> Result<Arc<ReadonlyRepo>, PreconditionError> {
+    let options = crate::config::git_import_options(ctx.config)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&repo, &workspace_name);
-    let stats = pollster::block_on(git::import_refs(tx.repo_mut(), options)).map_err(|e| backend(&e))?;
+    let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &options)).map_err(|e| backend(&e))?;
     if !tx.repo().has_changes() {
         drop(tx);
         if repo.view().get_wc_commit_id(&workspace_name).is_some() {

@@ -511,7 +511,10 @@ bookmark, `revset-aliases.'trunk()'` in the repo-level config file, which lives
 **outside** `.jj/`, under `<config_dir>/jj/repos/<config-id>/config.toml`. No
 work-tree file is written or deleted. `.git/` is written only by the CLI's own
 colocated steps — jj exports back the refs it has just imported and, when the
-snapshot recorded changes, resets the Git index to `@`'s parent — so no
+snapshot recorded changes, adds intent-to-add entries for the new files to
+`.git/index` (`@` is mutable after the conversion, so the snapshot takes the
+CLI's `export_working_copy_changes_to_git` branch; the HEAD/index reset happens
+only for an immutable `@`) — so no
 user-visible ref and no HEAD is moved, and a rollback never deletes or rewrites
 `.git/`.
 

@@ -219,11 +219,14 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// finishes through [`mutate::finish_verb`] like the CLI's `tx.finish` (Story 9.26): a colocated
 /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
 /// operation — the import may have rebased `@`. A fresh operation is committed even when
-/// nothing changed (CLI parity).
+/// nothing changed — NOT CLI parity: the CLI's `WorkspaceCommandTransaction::finish` writes
+/// none when `!has_changes()` (`cli_util.rs:2790-2795` @ v0.44.0); the known, tracked divergence
+/// (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an operation when nothing
+/// changed").
 ///
-/// `ctx.import_options` is supplied by the caller — [`crate::Repo::git_fetch`] reads it from
-/// the repo's EFFECTIVE config (FR-JJ-17), mirroring `cli/src/commands/git/fetch.rs:235`
-/// @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
+/// The import options are read here, off the repo's EFFECTIVE config
+/// (`crate::config::git_import_options(&ctx.config)`, FR-JJ-17), mirroring
+/// `cli/src/commands/git/fetch.rs:235` @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
 /// `git.record-synthetic-predecessors` off config. Nothing here hardcodes either key.
 ///
 /// The returned `abandoned_change_ids` are jj-lib's OWN abandonments — the commits
@@ -241,8 +244,10 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 ///   cannot run — jj-lib's `UnexpectedGitBackendError`, the only failure `GitFetch::new`
 ///   has. The same condition the six `crate::git` verbs already report under this variant.
 /// - [`MutateError::Config`] — a `git.*` / `remotes.<name>.auto-track-bookmarks` import option
-///   is malformed, or the immutable-set expression could not be resolved against the
-///   transaction's base repo (same fault class `crate::git::git_import` reports).
+///   is malformed (reached only in a NON-colocated workspace: in a colocated one the caller's
+///   pre-verb refs import reads the same keys first and refuses as
+///   [`MutateError::Precondition`]), or the immutable-set expression could not be resolved
+///   against the transaction's base repo (same fault class `crate::git::git_import` reports).
 /// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
 ///   auth, or transport error). No operation is committed.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.

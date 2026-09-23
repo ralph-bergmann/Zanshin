@@ -2206,7 +2206,10 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
  *   in `context`. Nothing is written.
  * - `jj.config_error` — the effective jj config no longer reads, or a knob the snapshot reads
- *   has the wrong type (the key in `context`); refused before the Git import/export lock.
+ *   has the wrong type (the key in `context`). The snapshot knobs and `immutable_heads()` are
+ *   refused before the Git import/export lock; `snapshot.auto-update-stale` is checked only on
+ *   a stale working copy, and the Git import options only inside the refs step — after the
+ *   head import and the snapshot, whose operations stay (as in the CLI).
  * - `jj.jj_lib_error` — an underlying jj-lib failure; jj-lib's message in `context`.
  *
  * # Safety

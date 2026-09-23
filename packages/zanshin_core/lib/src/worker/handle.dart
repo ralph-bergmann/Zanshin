@@ -494,9 +494,9 @@ final class RepoHandle {
   ///
   /// Takes no arguments; the CLI's own `jj git import` has none either. In a
   /// colocated workspace the pre-verb snapshot has already imported the refs (its
-  /// outcome is [lastPrecondition]`.gitRefs`), so this finds nothing left to do
-  /// and writes no operation — the CLI's observable end state, where it skips the
-  /// command outright.
+  /// outcome is [lastPrecondition]`.gitRefs`); the verb then returns the no-op
+  /// result before opening any transaction and writes no operation of its own —
+  /// the CLI's early return ("No import needed in colocated workspaces.").
   ///
   /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and
   /// `remotes.<name>.auto-track-bookmarks` are read from the repo's effective jj
@@ -520,8 +520,10 @@ final class RepoHandle {
   /// CLI's `jj git export`.
   ///
   /// In a colocated workspace every finished transaction has already exported,
-  /// so this usually finds git in sync — see [gitImport]. Export never moves `@`
-  /// and rewrites no commit.
+  /// so — as with [gitImport] — the verb returns the no-op result before opening
+  /// any transaction, after the pre-verb snapshot: the CLI's early return ("No
+  /// export needed in colocated workspaces."). Export never moves `@` and
+  /// rewrites no commit.
   ///
   /// If git already matched, no operation is written and `mutation.newOpId` is the
   /// pre-call op-log head. Refs that could not be written land in `failedBookmarks`
@@ -936,10 +938,10 @@ final class RepoHandle {
   /// the Git HEAD and refs (Story 9.26) — the CLI's `jj util snapshot`.
   ///
   /// It is exactly the pre-verb snapshot every other snapshotting verb runs
-  /// first, with nothing after it: the UI's "sync now", or the reaction to a
-  /// watcher event. A clean tree with unchanged refs writes no operation and
-  /// returns `wasSnapshotTaken == false`. The report also becomes
-  /// [lastPrecondition].
+  /// first, with nothing after it: the GUI's "sync now" or a future working-tree
+  /// trigger; the UI decides when to call it. A clean tree with unchanged refs
+  /// writes no operation and returns `wasSnapshotTaken == false`. The report
+  /// also becomes [lastPrecondition].
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,

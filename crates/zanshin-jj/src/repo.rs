@@ -209,7 +209,10 @@ impl Repo {
     /// (Story 9.26) — `cli/src/cli_util.rs:472-516` @ v0.44.0.
     ///
     /// 1. [`Repo::refresh_settings`], so the snapshot runs with the current config stack.
-    /// 2. Every knob the snapshot path reads is read and type-checked — BEFORE the lock.
+    /// 2. The snapshot knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`, the ignore
+    ///    files) and `immutable_heads()` are read and type-checked — BEFORE the lock. The Git
+    ///    import options are read inside the refs step, where the CLI reads them
+    ///    (`cli_util.rs:1434-1437`), so a malformed one fails after the earlier steps committed.
     /// 3. Colocated workspaces take jj's `git_import_export.lock` (blocking), then the head is
     ///    loaded and `snapshot_impl` runs: `import git head`, `snapshot working copy`,
     ///    `import git refs` (colocated) or the snapshot alone.
@@ -229,9 +232,9 @@ impl Repo {
         refreshed?;
         let config = crate::config::load(self)?;
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace);
-        let knobs = crate::snapshot::Knobs::read(&self.workspace, &config, colocated)?;
+        let knobs = crate::snapshot::Knobs::read(&self.workspace, &config)?;
         let mut report = crate::Precondition::default();
-        let result = crate::snapshot::run(&mut self.workspace, &knobs, colocated, &mut report);
+        let result = crate::snapshot::run(&mut self.workspace, &config, &knobs, colocated, &mut report);
         self.pending_precondition = Some(report);
         let auto_stats = match result {
             Err(stale @ crate::PreconditionError::StaleWorkingCopy { .. }) => {
@@ -841,8 +844,11 @@ impl Repo {
     /// [`Repo::clone`]'s own fetch step, but forwards real progress via `progress`
     /// instead of discarding it. It finishes like the CLI's `tx.finish` (Story 9.26): a
     /// colocated workspace exports the fetched refs to Git, and the working copy is checked
-    /// out at the new operation. A fresh operation is committed even when nothing changed
-    /// (CLI parity).
+    /// out at the new operation. A fresh operation is committed even when nothing changed —
+    /// NOT CLI parity: the CLI's `WorkspaceCommandTransaction::finish` writes none when
+    /// `!has_changes()` (`cli_util.rs:2790-2795` @ v0.44.0); the known, tracked divergence
+    /// (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an operation when
+    /// nothing changed").
     ///
     /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and the
     /// per-remote `remotes.<name>.auto-track-bookmarks` are read from the repo's EFFECTIVE
@@ -861,9 +867,11 @@ impl Repo {
     ///   remote.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend at all.
     /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does
-    ///   not resolve against the repo.
+    ///   not resolve against the repo, or — in a NON-colocated workspace, where the verb reads
+    ///   them — a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
-    ///   including a jj config, alias or one of the keys above that does not read or parse.
+    ///   including a jj config or alias that does not read or parse, and — in a COLOCATED
+    ///   workspace, whose pre-verb refs import reads them first — a malformed key above.
     /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
     ///   failed.
     /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
@@ -928,9 +936,10 @@ impl Repo {
     /// `jj git import`.
     ///
     /// In a colocated workspace the CLI skips this verb, because its per-command snapshot has
-    /// already imported the refs. Zanshin runs the same pre-verb snapshot (Story 9.26), so
-    /// here the verb finds nothing left to import and writes no operation — the CLI's
-    /// observable end state.
+    /// already imported the refs. Zanshin runs the same pre-verb snapshot (Story 9.26), then
+    /// returns the no-op result before opening any transaction — the CLI's early return ("No
+    /// import needed in colocated workspaces.", `cli/src/commands/git/import.rs` @ v0.44.0) —
+    /// and writes no operation of its own.
     ///
     /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and the
     /// per-remote `remotes.<name>.auto-track-bookmarks` are read from the repo's EFFECTIVE
@@ -945,9 +954,11 @@ impl Repo {
     ///
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend.
     /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does
-    ///   not resolve against the repo.
+    ///   not resolve against the repo, or — in a NON-colocated workspace, where the verb reads
+    ///   them — a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
-    ///   including a jj config, alias or one of the keys above that does not read or parse.
+    ///   including a jj config or alias that does not read or parse, and — in a COLOCATED
+    ///   workspace, whose pre-verb refs import reads them first — a malformed key above.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_import(&mut self) -> Result<crate::GitImportResult, crate::MutateError> {
@@ -959,7 +970,9 @@ impl Repo {
     /// `jj git export`.
     ///
     /// In a colocated workspace every finished transaction has already exported the refs, so
-    /// — as with [`Repo::git_import`] — the verb finds nothing to do there. Export rewrites no
+    /// — as with [`Repo::git_import`] — the verb returns the no-op result before opening any
+    /// transaction, after the pre-verb snapshot: the CLI's early return ("No export needed in
+    /// colocated workspaces.", `cli/src/commands/git/export.rs` @ v0.44.0). Export rewrites no
     /// commit, so it needs no descendant pass, and it never moves `@`.
     ///
     /// If git already matched, NO operation is written and

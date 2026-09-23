@@ -1044,6 +1044,12 @@ pub(crate) fn conflict_marker_style(
 /// (`true`/`true`) — so no [`BUILTIN_CONFIG_TOML`] entry is added and no Rust constant
 /// decides for a user who set `abandon-unreachable-commits = false` (FR-JJ-17).
 ///
+/// The CLI builds those two from `jj_lib::git::GitSettings::from_settings` (jj-lib
+/// `git.rs:107-115` @ 0.44.0), which also type-checks `git.executable-path` (a path) and
+/// `git.write-change-id-header` (a boolean); both are read here too, their values discarded,
+/// so a wrong-typed one fails every import site exactly as it fails the CLI's. Both have
+/// jj-lib `config/misc.toml` defaults, so an unset key reads fine.
+///
 /// `remote_auto_track_bookmarks` is the CLI's `parse_remote_auto_track_bookmarks_map`
 /// (`cli/src/revset_util.rs:378-391,457-470` @ v0.44.0): one string-expression matcher per
 /// `remotes.<name>.auto-track-bookmarks` (Story 9.26), so every import site — fetch, import,
@@ -1053,12 +1059,17 @@ pub(crate) fn conflict_marker_style(
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — either `git.*` key is present with a non-boolean value, or is
-///   missing from every layer (impossible while jj-lib's own defaults layer is present); a
-///   `remotes.<name>` entry is not a table of the known string keys; or an
+/// - [`ConfigError::Load`] — any of the four `git.*` keys above is present with a value of the
+///   wrong type, or is missing from every layer (impossible while jj-lib's own defaults layer
+///   is present); a `remotes.<name>` entry is not a table of the known string keys; or an
 ///   `auto-track-bookmarks` value does not parse (the CLI's
 ///   ``Invalid `remotes.<name>.auto-track-bookmarks`: …``).
 pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::GitImportOptions, ConfigError> {
+    // WHY read and discard: `GitSettings::from_settings` (jj-lib `git.rs:107-115` @ 0.44.0)
+    // reads all four `git.*` keys before the CLI builds its import options, so a wrong-typed
+    // `executable-path` / `write-change-id-header` fails the CLI's import too.
+    let _executable_path: std::path::PathBuf = config.get("git.executable-path").map_err(|e| value_error(&e))?;
+    let _write_change_id_header: bool = config.get("git.write-change-id-header").map_err(|e| value_error(&e))?;
     Ok(jj_lib::git::GitImportOptions {
         abandon_unreachable_commits: config
             .get("git.abandon-unreachable-commits")
@@ -1429,10 +1440,10 @@ mod tests {
 
     use super::{
         add_secure_layer, create_repo_config_file, env_base_layer, env_overrides_layer, fingerprint_with,
-        is_valid_config_id, load_repo_config_file, load_with, platform_config_dir, remove_remote_from_repo_config,
-        rename_remote_in_repo_config, secure_config_path, set_trunk_alias, settings_from, snapshot_auto_track,
-        snapshot_max_new_file_size, stamp, system_config_paths, user_config_paths, user_email, ConfigEnv,
-        WorkspacePaths, BUILTIN_CONFIG_TOML,
+        git_import_options, is_valid_config_id, load_repo_config_file, load_with, platform_config_dir,
+        remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path, set_trunk_alias,
+        settings_from, snapshot_auto_track, snapshot_max_new_file_size, stamp, system_config_paths, user_config_paths,
+        user_email, ConfigEnv, WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -2651,5 +2662,21 @@ fetch-bookmarks = \"main\"
         std::fs::write(repo.workspace().repo_path().join("config-id"), "not-hex").unwrap();
         let err = super::existing_repo_config_file(repo.workspace()).expect_err("a malformed config-id must refuse");
         assert!(err.to_string().contains("config-id"), "{err}");
+    }
+
+    /// Every key `GitSettings::from_settings` reads is type-checked by the import options, like
+    /// the CLI's; unset, each falls back to jj-lib's own default and reads fine.
+    #[test]
+    fn git_import_options_type_check_every_git_settings_key() {
+        let defaults = git_import_options(&load_with(&bare_env(), None).expect("the bare stack loads"))
+            .expect("jj-lib's defaults read");
+        assert!(defaults.abandon_unreachable_commits);
+        for (toml, key) in [
+            ("git.executable-path = 1\n", "git.executable-path"),
+            ("git.write-change-id-header = \"yes\"\n", "git.write-change-id-header"),
+        ] {
+            let err = git_import_options(&stack_with(toml)).expect_err("a wrong-typed key refuses");
+            assert!(err.to_string().contains(key), "{key}: {err}");
+        }
     }
 }

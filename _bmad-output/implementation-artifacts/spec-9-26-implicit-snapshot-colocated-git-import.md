@@ -5,7 +5,7 @@ created: '2026-09-23'
 status: 'done'
 baseline_revision: '570272499fa66f454aa58be219705d67646f7f11'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [oversized]
@@ -40,6 +40,77 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs::Repo::precondition
     severity: medium (unverified)
+  - summary: >-
+      The convert verbs discard their snapshot report, so files left untracked by the size limit, the .jjconflict warning and export/HEAD-reset failures of the conversion snapshot never reach the GUI (decision for Ralph).
+    evidence: |-
+      convert.rs::maybe_snapshot passes a throwaway Precondition and AC-3 forbids `precondition` on convert envelopes;
+      the CLI's maybe_snapshot (jj git init over an existing repo) prints the snapshot stats. Surfacing them needs a new
+      field on the handle-producing results (FFI + Dart), the same surface question as the 9.27 follow-up's
+      identity_missing-on-clone/init/convert item. Found by the 2026-09-24 follow-up review.
+    location: >-
+      crates/zanshin-jj/src/convert.rs::maybe_snapshot
+    severity: low
+  - summary: >-
+      `describe` with an unchanged description still writes `describe commit` (pre-existing; already tracked).
+    evidence: |-
+      cli/src/commands/describe.rs:219-226 @ v0.44.0 drops commits whose description would not change, so tx.finish
+      (cli_util.rs:2790-2795) finds !has_changes and writes nothing; mutate.rs::describe rewrites unconditionally.
+      Already recorded in deferred-work.md "Repo::git_fetch and Repo::describe write an operation when nothing
+      changed" (Story 9.27 review). Re-found by the 2026-09-24 follow-up review's parity layer.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs::describe
+    severity: medium
+  - summary: >-
+      `edit` of the commit that already is `@` writes `edit commit` where the CLI prints "Already editing that commit." and writes nothing (pre-existing).
+    evidence: |-
+      cli/src/commands/edit.rs @ v0.44.0 checks get_wc_commit_id() == Some(new_commit.id()) before opening a transaction;
+      mutate.rs::edit has no such guard (it had none before Story 9.26 either) and commits through finish_verb.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs::edit
+    severity: medium
+  - summary: >-
+      `undo` ports the v0.42.0 single-step algorithm, not v0.44.0's undo stack, and writes an operation even when the restored view equals the current one (pre-existing).
+    evidence: |-
+      cli/src/commands/undo.rs @ v0.44.0: an undo of an undo-operation undoes the operation that undo restored to (a second
+      `jj undo` goes further back; redo is `jj redo`), a target that is itself an undo is resolved to the original
+      operation, and tx.finish writes nothing when !has_changes. op_log.rs::undo documents the single-step walk-back
+      (a second undo redoes the first) and commits unconditionally. The op log and the restored state differ after
+      two consecutive undos.
+    location: >-
+      crates/zanshin-jj/src/op_log.rs::undo
+    severity: medium
+  - summary: >-
+      `git_fetch` writes an operation when nothing was fetched, ignores the fetch-bookmarks/fetch-tags/refspec defaults, and uses the raw remote name in its description (pre-existing; mostly tracked for Story 9.30).
+    evidence: |-
+      fetch.rs:254 ends in tx.finish (no op when !has_changes); fetch.rs:209-231 load_default_fetch_bookmarks; fetch.rs:258
+      formats the description with as_symbol() (quotes names that are not plain revset identifiers). remotes.rs::git_fetch
+      commits unconditionally, always fetches glob("*"), and formats the raw name. The first two are tracked in
+      deferred-work.md (Story 9.27 review item; "git fetch has no default-remote resolution" -> Story 9.30); the
+      description quoting is new. finish_verb is the port of WorkspaceCommandTransaction::finish minus its has_changes
+      early return — adding that gate there fixes the no-change op of fetch and undo; describe and edit need their own
+      guards (items above).
+    location: >-
+      crates/zanshin-jj/src/remotes.rs::git_fetch, crates/zanshin-jj/src/mutate.rs::finish_verb
+    severity: medium
+  - summary: >-
+      Converting inside a linked Git worktree is not refused, where `jj git init --colocate` refuses (pre-existing; already tracked).
+    evidence: |-
+      git/init.rs:209-218 @ v0.44.0 refuses "Cannot create a colocated jj repo inside a Git worktree."; convert_colocated
+      accepts it. Already recorded in deferred-work.md ("The CLI's refusal to colocate inside a linked Git worktree is not
+      ported"). Re-found by the 2026-09-24 follow-up review's parity layer.
+    location: >-
+      crates/zanshin-jj/src/convert.rs::convert_colocated
+    severity: medium
+  - summary: >-
+      The `reconcile divergent operations` operation jj-lib writes from load_at_head carries no workspace name (pre-existing; already tracked).
+    evidence: |-
+      jj-lib repo.rs:706-723 merges divergent op heads with workspace_name None; the CLI's resolve_operation
+      (cli_util.rs:782-800) passes Some(workspace_name). The precondition adds more load_at_head call sites but the
+      divergence predates it. Already recorded in deferred-work.md ("The reconcile divergent operations operation still
+      records workspace_name: None").
+    location: >-
+      crates/zanshin-jj/src/snapshot.rs::run (and every load_at_head call site)
+    severity: medium
 ---
 
 <intent-contract>
@@ -411,6 +482,62 @@ All CLI anchors are `git -C ../jj show v0.44.0:<path>`; jj-lib anchors are the v
   - `[false]` `[reject]` (intent) MCP inheritance untested — no MCP tools exist yet (Epic 7, `zanshin-mcp/src/main.rs` is a stub); they will call the same `zanshin-jj` verbs.
   - `[false]` `[reject]` (intent) `Repo::resolve_revset` is an unnamed exemption — Design Notes name it; it is exported to neither FFI nor MCP and its CLI surface (`eval_revset`) runs the precondition.
 
+### 2026-09-24 — Review pass (follow-up)
+
+Follow-up pass (`followup_pass = true`, Ralph's request of 2026-09-23; the first attempt was cut off by an HTTP 429 before any layer reported). Diff = this story's own commits only (`5702724..c073636`, i.e. fadbbfc + c073636, generated codegen outputs excluded); every finding verified against HEAD `e0aec8d` (9.28 and the 9.27/9.22 follow-ups stacked on top). Layers: blind, edge-case, verification-gap, intent-alignment, plus a dedicated CLI-parity reviewer (op-log sequence, lock, import-options read point, no-`@` refs import, `finish_transaction`, convert) against `v0.44.0`. No committed code of this story was reverted or re-derived.
+
+- verdicts: 47 findings — high 0, medium 10, low 29, false 7, maybe-false 1
+- findings:
+  - `[low]` `[reject]` (blind) The `<frozen-after-approval>` guard became `<intent-contract>` and `created` changed without a Spec Change Log entry — carried: same claim as the 2026-09-23 row "Spec history rewritten…"; the fix edits this build's spec.
+  - `[low]` `[patch]` (blind) Design Notes and the deferred-work entry still say every knob (incl. `auto-update-stale`, `git.*`, `auto-track-bookmarks`) is read before the lock — the spec's Design Notes are not edited (the fix would edit this build's spec); `deferred-work.md`'s two 9.26 bullets were corrected to the HEAD behaviour (snapshot knobs + `immutable_heads()` before the lock, import options inside the refs step, `auto-update-stale` only on the stale path).
+  - `[low]` `[patch]` (blind) Docs say colocated `git_import`/`git_export` "find nothing left to do", but the code returns before any transaction — patched `git.rs` module doc, `Repo::git_import`/`git_export` rustdoc and Dart `RepoHandle.gitImport`/`gitExport` to describe the CLI's early return; a typed "skipped" field is not added (the CLI's "No import needed…" is terminal text; a new field is new surface).
+  - `[low]` `[reject]` (blind) `colocated_no_op` fails with `jj.jj_lib_error` in a colocated workspace without `@` — reachable only for a workspace forgotten from another one; every mutation verb already requires `@` because `MutationResult.working_copy_change_id` is non-optional (pre-existing contract), and making it optional is new public surface.
+  - `[low]` `[patch]` (blind) Stale rustdoc after the knob relocation: `remotes::git_fetch` names a nonexistent `ctx.import_options`; `Repo::git_import`/`git_fetch` `# Errors` give the key faults only as `Precondition` — patched: `git_fetch` reads the options itself; a malformed key is `Precondition` when colocated (refs step) and `Config` when not (the verb); also dropped the false "(CLI parity)" claim on the no-change fetch op in `remotes.rs` and `repo.rs` (it is the tracked divergence).
+  - `[low]` `[reject]` (blind) `was_snapshot_taken` on the error path compares against a re-read head, so a concurrent writer makes it falsely `true` — needs a write between the precondition's own head load and its failure (the stale case's concurrent op lands BEFORE the load); the fix is per-step op tracking, more than a direct correction.
+  - `[low]` `[reject]` (blind) A partial report cannot say where it stopped; a config fault attaches an all-default report — the defaults are truthful (nothing was written, `was_snapshot_taken=false`), and a "last step reached" marker is new wire surface.
+  - `[low]` `[defer]` (blind) Convert discards its snapshot report (size-limit untracked files, `.jjconflict`, export failures) where the CLI's `maybe_snapshot` prints them — AC-3 keeps `precondition` off convert envelopes; surfacing it needs a field on the handle-producing results, the same product decision as the 9.27 follow-up's clone/init/convert `identity_missing` item → deferred (spec `deferred` + deferred-work.md).
+  - `[low]` `[patch]` (blind) `lastPrecondition` is a per-handle side channel, not tied to a call — carried: 2026-09-23 row "lastPrecondition is a side channel…" (Ask-First decision 1; doc patched then).
+  - `[low]` `[reject]` (blind) AC-1's twin check covers one scenario on jj 0.45.1 — carried: 2026-09-23 row "The gate never compares against a real `jj` binary" (manual check designated; the witnesses are derived from the v0.44.0 source).
+  - `[low]` `[patch]` (blind) Performance unmeasured, and Story 2.4's "< 100 ms" AC left unannotated — the cost claim is the carried maybe-false deferral; patched the annotation: dated 2026-09-24 note under the AC in `epics.md` pointing at the deferral.
+  - `[low]` `[reject]` (blind) Nothing tests two handles on one workspace any more — carried: 2026-09-23 row "Single-workspace concurrency lost its test".
+  - `[low]` `[patch]` (blind) `docs/ffi-abi.md` says the convert snapshot "resets the Git index to `@`'s parent" — after convert `@` is mutable, so the snapshot takes `update_intent_to_add`; patched the clause (intent-to-add entries; HEAD/index reset only for an immutable `@`).
+  - `[low]` `[patch]` (blind) `zanshin_snapshot` rustdoc says `jj.config_error` is "refused before the Git import/export lock" — patched (snapshot knobs + `immutable_heads()` before the lock, `auto-update-stale` only on a stale WC, import options inside the refs step); `cargo make codegen` refreshed `zanshin_ffi.h` / `bindings.dart`. The unused `_pending` parameter (fits `precondition_envelope`'s signature) is left as is.
+  - `[low]` `[reject]` (blind) A panic while serialising the report inside `err_never_unwind` falls back to the byte-identical panic envelope and loses the code — a panic in a FlatBuffers builder of our own table is not a shown-reachable state, and the fix is an extra retry branch.
+  - `[low]` `[patch]` (edge) Import options / `auto-track-bookmarks` are read before the lock and the head import, while the CLI reads them in `import_git_refs` after `snapshot working copy` — grouped with the parity layer's finding below; patched there. The snapshot-knob half is the carried Ralph decision (deferred 2026-09-23), unchanged.
+  - `[medium]` `[defer]` (edge) `snapshot.auto-update-stale = true` still refuses — carried: the 2026-09-23 deferral (Story 9.23).
+  - `[low]` `[reject]` (edge) A failed colocated convert leaves `.git/index` intent-to-add entries — carried: 2026-09-23 row "A colocated convert that fails after the snapshot…".
+  - `[false]` `[reject]` (edge) `import_git_refs`' no-change arm lets a report-only projection error fail the precondition — the arm reads `@`'s commit only when the view names it, and that commit was just read (or written) by `snapshot_working_copy` from the same store; the only failure left is a store read error, which fails the CLI's next read as well.
+  - `[false]` `[reject]` (edge) `_recordPrecondition` throws on a precondition decode failure and loses a successful reply — the decoder throws only for a structurally-required-but-missing field, which Zanshin's own builder always writes (PATCH B now round-trips every field); failing loudly on a corrupt envelope is the project's corruption rule.
+  - `[low]` `[reject]` (edge) A reply landing after `closeRepo` re-records a closed handle's report — carried: 2026-09-23 row "isolate.dart re-records a Precondition…".
+  - `[low]` `[reject]` (edge) = blind "`was_snapshot_taken` on the error path under a concurrent writer" — same rejection.
+  - `[medium]` `[patch]` (verification-gap) `build_precondition` fills 11 wire fields but Rust tests only ever saw default values for 9 — patched: inline `crates/zanshin-ffi/src/snapshot.rs::a_full_precondition_round_trips_through_both_envelope_arms` (distinct values in every field incl. nested `git_refs`/`finish`, through `finish_envelope` and `err_with_precondition`).
+  - `[medium]` `[patch]` (verification-gap) Ok-arm `Envelope.precondition` was asserted only for status/describe/snapshot/track — patched: `snapshot_ffi.rs::every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm`, 17 rows (change, op log, bookmarks, remotes, graph slice, the four file reads, show/evolog/interdiff, workspace list, git import/export, absorb, untrack), each on a freshly dirtied tree.
+  - `[low]` `[patch]` (verification-gap) `git_head_rebased` / `git_refs_rebased` never asserted non-zero — patched for the refs half: `snapshot_colocated.rs::a_deleted_git_branch_reports_the_rebased_descendants` (`git branch -D` outside abandons a commit with a jj-only child → `git_refs_rebased >= 1`, abandoned change id reported). A non-zero `git_head_rebased` is not constructible in jj-lib 0.44: `maybe_abandon_wc_commit` abandons `@` only when it is a visible head (`repo.rs:1663-1665`), and the deleted-HEAD arm records no rewrites.
+  - `[false]` `[reject]` (intent) The lock is released after the precondition and re-taken per finish, not held continuously — carried: 2026-09-23 row (v0.44.0 `workspace_helper_with_stats` drops it, `WorkspaceCommandTransaction::finish` re-takes it, `cli_util.rs:2800-2805`).
+  - `[false]` `[reject]` (intent) The Watchman-unavailable row succeeds; no FFI/Dart witness — carried: 2026-09-23 row (jj-lib's full-scan fallback with the CLI's default features).
+  - `[maybe-false]` `[reject]` (intent) Loop-freedom is not exercised through the watcher event path or after a colocated finish — carried: 2026-09-23 row (refuted by code; if wrong, low).
+  - `[low]` `[patch]` (intent) "The watcher calls `snapshot()`" is not wired, and the Dart doc still said "the reaction to a watcher event" — the 2026-09-23 patch missed `RepoHandle.snapshot` (so not carried): patched to the Rust wording ("sync now" or a future working-tree trigger; the UI decides when).
+  - `[low]` `[reject]` (intent) Real-CLI comparison only once, on 0.45.1 — carried: 2026-09-23 row "The gate never compares against a real `jj` binary".
+  - `[low]` `[patch]` (intent) Facts ride a side channel in the Rust/Dart APIs; concurrent calls on one handle untested; MCP must call `take_precondition()` — carried: 2026-09-23 row "`lastPrecondition` is a side channel…".
+  - `[low]` `[reject]` (intent) Stale witnesses rewrite `@` from another handle, not from another workspace — carried: 2026-09-23 row "The stale row is built by rewriting `@`…".
+  - `[low]` `[reject]` (intent) Same-workspace concurrency untested — carried: 2026-09-23 row "Single-workspace concurrency lost its test".
+  - `[low]` `[patch]` (intent) No finish-specific witness for undo/abandon/git fetch — carried: 2026-09-23 row "Colocated finish side effects are tested only for `new_change`/`describe`" (third verb added then).
+  - `[low]` `[patch]` (intent) Knob timing is inconsistent (snapshot knobs before the lock, `auto-update-stale` and import options at the CLI's points) — grouped with the parity finding below; after the patch the only pre-lock knobs are the ones the matrix row governs (the carried Ralph decision).
+  - `[false]` `[reject]` (intent) Colocated `git import`/`git export` early-return instead of "finding nothing to do" — that is the v0.44.0 source (`import.rs`/`export.rs`: `workspace_helper` first, then "No import/export needed in colocated workspaces."); the intent's matrix-level expectation (no op) holds.
+  - `[false]` `[reject]` (intent) Convert runs the whole `snapshot_impl` — carried: 2026-09-23 row (`do_init` calls `maybe_snapshot` = `snapshot_impl`).
+  - `[false]` `[reject]` (intent) The mutation finish is a wholesale `finish_transaction` port beyond the minimal reading — the intent's lock clause names "the colocated `export_refs`/`reset_head` inside every mutation's finish", and AC-2 requires the CLI's Git HEAD/branch state after `new`/`describe`; the port is what the intent asks for.
+  - `[low]` `[reject]` (intent) The Ask-First decisions are attributed to Ralph without evidence in the diff, and the frozen wrapper was replaced — the fix edits this build's spec.
+  - `[medium]` `[defer]` (parity) `describe` with an unchanged description writes an operation (CLI: `describe.rs:219-226` + `tx.finish` no-op) — pre-existing, already tracked (deferred-work "Repo::git_fetch and Repo::describe write an operation when nothing changed").
+  - `[medium]` `[defer]` (parity) `edit` of the current `@` writes an operation where the CLI prints "Already editing that commit." — pre-existing (no guard before 9.26 either) → deferred.
+  - `[medium]` `[defer]` (parity) `undo` is the v0.42.0 single-step walk-back (a second undo redoes) and writes an operation when nothing changes; v0.44.0 walks the undo stack — pre-existing → deferred.
+  - `[medium]` `[defer]` (parity) `git_fetch` writes an op when nothing was fetched, ignores fetch-bookmarks/fetch-tags/refspec defaults, and formats the raw remote name instead of `as_symbol()` — pre-existing; the first two are tracked (9.27 review item, Story 9.30), the quoting is new → deferred with the note that `finish_verb` lacks `tx.finish`'s `has_changes` early return.
+  - `[low]` `[patch]` (parity) The precondition reads the Git import options before the lock/head import, where the CLI reads them at the start of `import_git_refs` (`cli_util.rs:1434-1437`), and `config::git_import_options` did not type-check `git.executable-path` / `git.write-change-id-header` as `GitSettings::from_settings` does — patched: `Knobs` no longer holds the options; `import_git_refs` reads them first (config passed through `run`/`snapshot_impl`/`StepCtx`, convert included), gated on `colocated`; `git_import_options` reads the two extra keys. Witnesses: `snapshot_colocated.rs::an_invalid_import_option_fails_after_the_head_import_like_the_cli` (fails on the old code: the op log now keeps `import git head`, the partial report has `git_head_imported`/`was_snapshot_taken`), `config.rs::git_import_options_type_check_every_git_settings_key`, `a_wrong_typed_git_write_change_id_header_is_a_config_error` (also refused by jj-lib's `GitBackend::load` on the workspace reload, which type-checks all four keys — as the CLI's backend load does — so that half was already observably equal).
+  - `[medium]` `[defer]` (parity) Converting inside a linked Git worktree is not refused — pre-existing, already tracked (deferred-work "The CLI's refusal to colocate inside a linked Git worktree is not ported").
+  - `[medium]` `[defer]` (parity) The `reconcile divergent operations` op from `load_at_head` has no workspace name — pre-existing, already tracked (deferred-work "…still records `workspace_name: None`").
+  - `[medium]` `[defer]` (parity) `snapshot.auto-update-stale = true` still refuses — carried: the 2026-09-23 deferral (Story 9.23).
+
+Op-log parity of the precondition itself, checked by the parity layer against `v0.44.0` and found equal at HEAD: colocated order `import git head` → `snapshot working copy` → `import git refs`, each behind `has_changes()`; `is_snapshot` only on the snapshot transaction; the normal-HEAD arm (`check_out` → `locked_wc.reset` → `rebase_descendants` → commit → `locked_ws.finish`, no `finish_transaction`) vs the absent-HEAD arm (`rebase_descendants` → `finish_transaction`); `git_head_reset` only with an old git head; the lock colocated-only, before the head load, dropped after the precondition and re-taken in `finish_verb` across `try_reset_git_head`/`export_refs`; the no-`@` refs import commits `import git refs` with the same rebase and gate as the CLI, skipping only the `@`-naming projection; convert order = `do_init`'s External arm.
+
 ## Design Notes
 
 **Ask-First decisions (Ralph, 2026-09-23).** These are resolved, not intent gaps.
@@ -533,3 +660,43 @@ Commits: `fadbbfc199a40e3b67bac72acc3e4b7dd8160732` (implementation, review patc
 **Verification.** `cargo make codegen` leaves the tree unchanged. Gate run step by step (`cargo make --allow-private <task>`), rerun in full after the review patches: test-cargo, test-clippy, test-fmt, test-dart-analyze, test-dart-format, test-core, test-core-analyze, test-core-format, the nine test-shell* steps, the three test-settings* steps, test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene and coverage all PASS. test-flutter FAILS with exactly the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests (Expected 524.0, Actual 584.0; red since before 9.27, UI scope). Coverage 99.34% overall, ratchet OK, extern-coverage OK; raised: `zanshin-jj/src/snapshot.rs` 98.43 (new), `zanshin-ffi/src/snapshot.rs` 100 (new), `zanshin-jj/src/lib.rs` 100 (new), `mutate.rs` 98.14→99.52, `repo.rs` 97.08→97.25, `status.rs` 88.89→89.71, `bookmarks.rs` 94.12→94.87, `wc_ops.rs` 97.85→98.15; nothing lowered, no `exclude_prefix`. Matrix audit: every row has a running, passing witness in `snapshot_precondition.rs`, `snapshot_colocated.rs` or `snapshot_watchman.rs`. The AC-1 manual twin check is recorded in the Review Triage Log.
 
 **Residual risks.** The cost of the per-verb precondition on large repos is unmeasured (deferred). A stale working copy refuses every snapshotting verb until Story 9.23's recovery lands (CLI parity). The knob-order double-fault divergence awaits Ralph's decision.
+
+### Follow-up review pass — 2026-09-24
+
+Status: done. Blocking condition: none. Review diff: `5702724..c073636` (this story's own commits, codegen outputs excluded), findings verified against HEAD `e0aec8d`; no committed code reverted or re-derived.
+
+**Summary of the patches.** The Git import options (`git.*` + `remotes.<name>.auto-track-bookmarks`) are now read inside the precondition's `import git refs` step, where the CLI reads them (`cli_util.rs:1434-1437` @ v0.44.0): a malformed value now fails AFTER `import git head` / `snapshot working copy` committed and leaves them in the op log, exactly as the CLI does. `Knobs` keeps only the snapshot knobs + `immutable_heads()` (the matrix row's pre-lock set, still the pending Ralph decision); the refs step is gated on `colocated` instead of an `Option`. `config::git_import_options` also type-checks `git.executable-path` / `git.write-change-id-header` like `GitSettings::from_settings`. Three verification gaps closed (full-field wire round-trip of `Precondition`, ok-arm `precondition` on 17 wrappers, non-zero `git_refs_rebased`). Stale/wrong docs corrected.
+
+**Files changed.**
+- `crates/zanshin-jj/src/snapshot.rs` — import options read in `import_git_refs`; `Knobs` slimmed; config threaded through `run`/`snapshot_impl`/`StepCtx`; rustdoc.
+- `crates/zanshin-jj/src/{repo,convert}.rs` — pass the config; `Repo::precondition` step-2 doc; `git_import`/`git_export`/`git_fetch` rustdoc (early return, error mapping, no-change fetch divergence).
+- `crates/zanshin-jj/src/config.rs` — two extra `git.*` type checks + inline test.
+- `crates/zanshin-jj/src/{git,remotes}.rs` — doc corrections.
+- `crates/zanshin-jj/tests/snapshot_colocated.rs` — `an_invalid_import_option_fails_after_the_head_import_like_the_cli`, `a_wrong_typed_git_write_change_id_header_is_a_config_error`, `a_deleted_git_branch_reports_the_rebased_descendants`.
+- `crates/zanshin-ffi/src/snapshot.rs` — `zanshin_snapshot` rustdoc + inline full round-trip test; `crates/zanshin-ffi/include/zanshin_ffi.h` + `packages/zanshin_core/lib/src/ffi/bindings.dart` regenerated (doc text only).
+- `crates/zanshin-ffi/tests/snapshot_ffi.rs` — ok-arm precondition table test.
+- `packages/zanshin_core/lib/src/worker/handle.dart` — `gitImport`/`gitExport`/`snapshot` docs.
+- `docs/ffi-abi.md` (convert index clause), `_bmad-output/planning-artifacts/epics.md` (dated note under Story 2.4's "< 100 ms" AC), `deferred-work.md` (9.26 bullets corrected + new follow-up section), `sprint-status.yaml` (row note).
+
+**Review findings.** 47 (high 0, medium 10, low 29, false 7, maybe-false 1). Patched entries (this pass, at entry verdict): medium 2 (wire round-trip test; ok-arm table test), low 9 (import-options read point + `GitSettings` keys; `git_refs_rebased` witness; deferred-work text; git import/export docs; git_fetch/import rustdoc; epics annotation; ffi-abi convert clause; `zanshin_snapshot` doc; Dart `snapshot` doc), high 0. Carried from the 2026-09-23 pass (not re-patched/re-deferred): 17 rows. Deferred (new): convert discards its snapshot report (low, surface decision); `describe` unchanged-description op (medium, already tracked); `edit` of current `@` op (medium); `undo` single-step algorithm + no-change op (medium); `git_fetch` no-change op / refspec defaults / `as_symbol` description (medium, mostly tracked for 9.30); linked-worktree convert (medium, tracked); `reconcile divergent operations` workspace name (medium, tracked) — all pre-existing except the convert-report decision. Rejected with reasons in the triage log: spec-edit fixes (frozen wrapper, Ask-First attribution, Design Notes), forgotten-workspace `git import/export` (pre-existing `@` contract), `was_snapshot_taken` race (tiny window, non-trivial fix), partial-report step marker (new surface), panic-in-builder fallback, projection-error and Dart-decode claims (false), and the carried rejections.
+
+**Follow-up review: not recommended (`false`).** Follow-up pass rule: only a patched `high` would warrant another pass; none was found. Patched counts: high 0, medium 2, low 9.
+
+**Verification.** `cargo make codegen` (doc-only header/bindings change, committed). Gate run step by step (`cargo make --allow-private <task>`, foreground):
+
+| Step | Result |
+|---|---|
+| test-cargo | PASS |
+| test-clippy | PASS |
+| test-fmt | PASS |
+| test-flutter | FAIL — only the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests (UI scope) |
+| test-dart-analyze / test-dart-format | PASS |
+| test-core / test-core-analyze / test-core-format | PASS |
+| test-shell, -analyze, -format; test-shell-pi, -analyze, -format; test-shell-macos, -analyze, -format | PASS |
+| test-settings, -analyze, -format | PASS |
+| test-cargo-deny / test-cargo-hygiene / test-jj-adapter-hygiene | PASS |
+| coverage | PASS — held at 99.39% (12612/12690), extern-coverage OK, baseline unchanged (nothing raised or lowered, no `exclude_prefix`) |
+
+`pubspec.lock` drift from the Flutter runs was reverted.
+
+**Residual risks.** The pre-lock snapshot-knob ordering (Ralph decision), `auto-update-stale = true` (Story 9.23) and the unmeasured per-verb cost remain as deferred. The parity layer surfaced a cluster of pre-existing op-log divergences in the finishing verbs (`finish_verb` lacks `tx.finish`'s `has_changes` early return; `edit`'s "Already editing" guard; `undo`'s undo stack) — deferred, not caused by this story.

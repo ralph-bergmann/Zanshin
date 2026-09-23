@@ -411,6 +411,106 @@ fn a_wrong_typed_knob_is_refused_before_the_lock() {
     assert_eq!(descriptions(&root).len(), before);
 }
 
+/// A malformed Git import option fails where the CLI reads it — at the START of the refs step
+/// (`cli_util.rs:1434-1437` @ v0.44.0), AFTER `import git head` was committed: the op log keeps
+/// that operation and the partial report says so.
+#[test]
+fn an_invalid_import_option_fails_after_the_head_import_like_the_cli() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "[remotes.origin]\nauto-track-bookmarks = \"glob:(\"\n",
+    )
+    .expect("repo config");
+    let before = descriptions(&root).len();
+    write(&root, "b.txt", "committed with git\n");
+    git(&["add", "b.txt"], &root);
+    git(&["commit", "-q", "-m", "outside"], &root);
+
+    let err = repo.snapshot().expect_err("the refs step refuses the malformed option");
+
+    assert!(
+        matches!(&err, PreconditionError::Config { reason }
+            if reason.contains("Invalid `remotes.origin.auto-track-bookmarks`")),
+        "{err:?}"
+    );
+    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    let report = repo.take_precondition().expect("partial report");
+    assert!(report.git_head_imported);
+    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+    assert!(report.git_refs.is_none(), "the refs step never imported");
+}
+
+/// `git.write-change-id-header` is one of the keys `GitSettings::from_settings` type-checks
+/// before the CLI imports refs: a wrong-typed value refuses the colocated precondition as a
+/// config fault naming the key. (The precondition's workspace reload — jj-lib's
+/// `GitBackend::load` — type-checks the same key first; the import-options read itself is
+/// witnessed by `config.rs`'s inline `git_import_options_type_check_every_git_settings_key`.)
+#[test]
+fn a_wrong_typed_git_write_change_id_header_is_a_config_error() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "git.write-change-id-header = \"yes\"\n",
+    )
+    .expect("repo config");
+
+    let err = repo.snapshot().expect_err("a wrong-typed key refuses");
+
+    assert!(
+        matches!(&err, PreconditionError::Config { reason } if reason.contains("git.write-change-id-header")),
+        "{err:?}"
+    );
+}
+
+/// A Git branch deleted outside Zanshin makes the refs import abandon the commit it alone kept
+/// visible (`git.abandon-unreachable-commits`, jj-lib's default `true`); that commit's MUTABLE
+/// jj descendant is rebased off it — the CLI's "Rebased {n} descendant commits off of commits
+/// rewritten from Git.".
+#[test]
+fn a_deleted_git_branch_reports_the_rebased_descendants() {
+    let tmp = TempDir::new().expect("tempdir");
+    let root = git_repo(&tmp);
+    git(&["checkout", "-q", "-b", "feature"], &root);
+    write(&root, "feature.txt", "on feature\n");
+    git(&["add", "feature.txt"], &root);
+    git(&["commit", "-q", "-m", "feature"], &root);
+    let feature = git(&["rev-parse", "HEAD"], &root);
+    git(&["checkout", "-q", "main"], &root);
+    let mut repo = convert_colocated(&root).expect("convert");
+    // A described (so non-discardable) jj-only child of `feature`, not `@` and unbookmarked.
+    let feature_change = {
+        let (_workspace, head) = load(&root);
+        let parent = head
+            .store()
+            .get_commit(&jj_lib::backend::CommitId::try_from_hex(&feature).expect("hex"))
+            .expect("feature commit");
+        let mut tx = head.start_transaction();
+        pollster::block_on(
+            tx.repo_mut()
+                .new_commit(vec![parent.id().clone()], parent.tree())
+                .set_description("child of feature")
+                .write(),
+        )
+        .expect("child");
+        pollster::block_on(tx.commit("test: child of feature")).expect("commit");
+        ChangeId(parent.change_id().reverse_hex())
+    };
+
+    git(&["branch", "-q", "-D", "feature"], &root);
+    let report = repo.snapshot().expect("snapshot");
+
+    assert!(report.git_refs_rebased >= 1, "{report:?}");
+    let refs = report.git_refs.expect("the refs import ran");
+    assert!(
+        refs.abandoned_change_ids.contains(&feature_change),
+        "the unreachable `feature` commit is abandoned: {:?}",
+        refs.abandoned_change_ids
+    );
+}
+
 // ── AC-2: the colocated mutation finish ──────────────────────────────────────────
 
 /// `new_change` in a colocated workspace: Git HEAD equals `@-` afterwards — the CLI's

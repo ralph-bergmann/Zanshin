@@ -44,8 +44,9 @@
 //! In a COLOCATED workspace the CLI skips `git import`/`git export` with an informational,
 //! exit-0 message (`import.rs:46-50`, `export.rs:41-46`), because its per-command snapshot has
 //! already imported the refs and its `finish_transaction` exports them. Zanshin runs the same
-//! pre-verb snapshot and finish (Story 9.26), so both verbs find nothing left to do there and
-//! write no operation — the CLI's observable end state.
+//! pre-verb snapshot and finish (Story 9.26), and both verbs then return the no-op result
+//! before opening any transaction — the CLI's early return ("No import/export needed in
+//! colocated workspaces."), after the pre-verb snapshot has already imported the refs.
 //!
 //! # Deliberate divergences from the CLI at v0.44.0
 //!

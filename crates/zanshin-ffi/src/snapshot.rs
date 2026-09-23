@@ -88,7 +88,10 @@ fn snapshot_to_envelope(p: &Precondition, _pending: Option<&Precondition>) -> Ve
 /// - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
 ///   in `context`. Nothing is written.
 /// - `jj.config_error` — the effective jj config no longer reads, or a knob the snapshot reads
-///   has the wrong type (the key in `context`); refused before the Git import/export lock.
+///   has the wrong type (the key in `context`). The snapshot knobs and `immutable_heads()` are
+///   refused before the Git import/export lock; `snapshot.auto-update-stale` is checked only on
+///   a stale working copy, and the Git import options only inside the refs step — after the
+///   head import and the snapshot, whose operations stay (as in the CLI).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; jj-lib's message in `context`.
 ///
 /// # Safety
@@ -108,4 +111,178 @@ pub unsafe extern "C" fn zanshin_snapshot(handle: u64) -> *mut ZanshinBuf {
         precondition_envelope(&mut session.repo, result, map_precondition_err, snapshot_to_envelope)
     });
     vec_into_token(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::envelope::{err_with_precondition, finish_envelope};
+    use crate::envelope_generated::zanshin::ffi as fbs;
+    use flatbuffers::{FlatBufferBuilder, VerifierOptions};
+    use zanshin_jj::{
+        ChangeId, FinishFacts, GitExportFailure, GitImportResult, GitRefUpdate, GitRefUpdateKind, MutationResult,
+        OperationId, Precondition, SnapshotStats, UntrackedPath, UntrackedReason,
+    };
+
+    fn export_failure(name: &str, reason: &str) -> GitExportFailure {
+        GitExportFailure {
+            name: name.to_owned(),
+            remote: "git".to_owned(),
+            reason: reason.to_owned(),
+        }
+    }
+
+    /// A report with a DISTINCT non-default value in every field, so a swapped or dropped
+    /// field in [`super::build_precondition`] cannot round-trip unnoticed.
+    fn full_precondition() -> Precondition {
+        Precondition {
+            was_snapshot_taken: true,
+            snapshot_stats: SnapshotStats {
+                untracked: vec![
+                    UntrackedPath {
+                        path: "big.bin".to_owned(),
+                        reason: UntrackedReason::FileTooLarge { size: 11, max_size: 13 },
+                    },
+                    UntrackedPath {
+                        path: "skip.txt".to_owned(),
+                        reason: UntrackedReason::FileNotAutoTracked,
+                    },
+                ],
+                invalid_utf8_paths: vec!["bad\u{fffd}".to_owned()],
+            },
+            git_head_imported: true,
+            git_head_reset: true,
+            git_head_rebased: 3,
+            snapshot_rebased: 5,
+            working_copy_immutable_new_commit: true,
+            git_refs: Some(GitImportResult {
+                mutation: MutationResult {
+                    finish: None,
+                    new_op_id: OperationId("op42".to_owned()),
+                    new_change_ids: Vec::new(),
+                    abandoned_change_ids: Vec::new(),
+                    working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
+                    identity_missing: None,
+                },
+                changed_bookmarks: vec![GitRefUpdate {
+                    name: "main".to_owned(),
+                    remote: "origin".to_owned(),
+                    kind: GitRefUpdateKind::Updated,
+                    tracked: true,
+                }],
+                changed_tags: vec![GitRefUpdate {
+                    name: "v1".to_owned(),
+                    remote: "git".to_owned(),
+                    kind: GitRefUpdateKind::Deleted,
+                    tracked: false,
+                }],
+                abandoned_change_ids: vec![ChangeId("rlvkpnrz".to_owned())],
+                num_rewritten: 9,
+                failed_ref_names: vec!["refs/remotes/git/x".to_owned()],
+            }),
+            git_refs_rebased: 7,
+            jjconflict_files_present: true,
+            finish: Some(FinishFacts {
+                working_copy_became_immutable: true,
+                git_head_update_failed: true,
+                export_failed_bookmarks: vec![export_failure("foo/bar", "r1")],
+                export_failed_tags: vec![export_failure("t1", "r2")],
+            }),
+        }
+    }
+
+    fn strings<'a>(v: Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>) -> Vec<&'a str> {
+        v.expect("vector present").iter().collect()
+    }
+
+    fn assert_ref_update(
+        u: &fbs::GitRefUpdate<'_>,
+        name: &str,
+        remote: &str,
+        kind: fbs::GitRefUpdateKind,
+        tracked: bool,
+    ) {
+        assert_eq!(
+            (u.name(), u.remote(), u.kind(), u.tracked()),
+            (Some(name), Some(remote), kind, tracked)
+        );
+    }
+
+    fn assert_export_failure(f: &fbs::GitExportFailure<'_>, name: &str, reason: &str) {
+        assert_eq!(
+            (f.name(), f.remote(), f.reason()),
+            (Some(name), Some("git"), Some(reason))
+        );
+    }
+
+    /// Every field of the decoded wire table equals [`full_precondition`]'s.
+    fn assert_full_precondition(p: &fbs::Precondition<'_>) {
+        assert!(p.was_snapshot_taken());
+        assert!(p.git_head_imported());
+        assert!(p.git_head_reset());
+        assert_eq!(p.git_head_rebased(), 3);
+        assert_eq!(p.snapshot_rebased(), 5);
+        assert!(p.working_copy_immutable_new_commit());
+        assert_eq!(p.git_refs_rebased(), 7);
+        assert!(p.jjconflict_files_present());
+
+        let stats = p.snapshot_stats().expect("snapshot_stats present");
+        let untracked: Vec<_> = stats.untracked().expect("untracked present").iter().collect();
+        assert_eq!(untracked.len(), 2);
+        assert_eq!(untracked[0].path(), Some("big.bin"));
+        let too_large = untracked[0].reason_as_file_too_large().expect("FileTooLarge");
+        assert_eq!((too_large.size(), too_large.max_size()), (11, 13));
+        assert_eq!(untracked[1].path(), Some("skip.txt"));
+        assert!(untracked[1].reason_as_file_not_auto_tracked().is_some());
+        assert_eq!(strings(stats.invalid_utf8_paths()), ["bad\u{fffd}"]);
+
+        let refs = p.git_refs().expect("git_refs present");
+        let mutation = refs.mutation().expect("mutation present");
+        assert_eq!(mutation.new_op_id(), Some("op42"));
+        assert_eq!(mutation.working_copy_change_id(), Some("qpvuntsm"));
+        let bookmarks: Vec<_> = refs.changed_bookmarks().expect("bookmarks").iter().collect();
+        assert_eq!(bookmarks.len(), 1);
+        assert_ref_update(&bookmarks[0], "main", "origin", fbs::GitRefUpdateKind::Updated, true);
+        let tags: Vec<_> = refs.changed_tags().expect("tags").iter().collect();
+        assert_eq!(tags.len(), 1);
+        assert_ref_update(&tags[0], "v1", "git", fbs::GitRefUpdateKind::Deleted, false);
+        assert_eq!(strings(refs.abandoned_change_ids()), ["rlvkpnrz"]);
+        assert_eq!(refs.num_rewritten(), 9);
+        assert_eq!(strings(refs.failed_ref_names()), ["refs/remotes/git/x"]);
+
+        let finish = p.finish().expect("finish present");
+        assert!(finish.working_copy_became_immutable());
+        assert!(finish.git_head_update_failed());
+        let failed_bookmarks: Vec<_> = finish.export_failed_bookmarks().expect("bookmarks").iter().collect();
+        assert_eq!(failed_bookmarks.len(), 1);
+        assert_export_failure(&failed_bookmarks[0], "foo/bar", "r1");
+        let failed_tags: Vec<_> = finish.export_failed_tags().expect("tags").iter().collect();
+        assert_eq!(failed_tags.len(), 1);
+        assert_export_failure(&failed_tags[0], "t1", "r2");
+    }
+
+    fn envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
+        flatbuffers::root_with_opts::<fbs::Envelope>(&VerifierOptions::default(), bytes).expect("verified envelope")
+    }
+
+    /// Every `Precondition` field survives the wire, on the ok path AND the error path.
+    #[test]
+    fn a_full_precondition_round_trips_through_both_envelope_arms() {
+        let p = full_precondition();
+
+        let ok = finish_envelope(
+            FlatBufferBuilder::with_capacity(256),
+            fbs::Payload::NONE,
+            None,
+            Some(&p),
+        );
+        let env = envelope(&ok);
+        assert!(env.ok());
+        assert_full_precondition(&env.precondition().expect("ok-arm precondition"));
+
+        let err = err_with_precondition("jj.config_error", Some("k"), Some(&p));
+        let env = envelope(&err);
+        assert!(!env.ok());
+        assert_eq!(env.error().and_then(|e| e.code()), Some("jj.config_error"));
+        assert_full_precondition(&env.precondition().expect("error-arm precondition"));
+    }
 }

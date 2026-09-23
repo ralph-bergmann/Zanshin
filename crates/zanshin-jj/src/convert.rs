@@ -333,6 +333,7 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 fn maybe_snapshot(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
+    config: &StackedConfig,
     knobs: &snapshot::Knobs,
     colocated: bool,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
@@ -340,6 +341,7 @@ fn maybe_snapshot(
     let (repo, _stats) = snapshot::snapshot_impl(
         workspace,
         repo,
+        config,
         knobs,
         colocated,
         &lock,
@@ -471,8 +473,8 @@ fn external_arm(workspace: &mut Workspace, repo: &Arc<ReadonlyRepo>) -> Result<(
     let config = config::load_for_workspace(workspace)?;
     let repo = init_git_refs(repo, workspace.workspace_name(), colocated, &config)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let knobs = snapshot::Knobs::read(workspace, &config, colocated).map_err(precondition_error)?;
-    let repo = maybe_snapshot(workspace, repo, &knobs, colocated)?;
+    let knobs = snapshot::Knobs::read(workspace, &config).map_err(precondition_error)?;
+    let repo = maybe_snapshot(workspace, repo, &config, &knobs, colocated)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if colocated {
         return Ok(());

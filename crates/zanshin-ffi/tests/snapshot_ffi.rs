@@ -23,15 +23,20 @@ use tempfile::TempDir;
 use zanshin_ffi::bookmark_ops::zanshin_bookmark_create;
 use zanshin_ffi::bookmarks::zanshin_bookmarks;
 use zanshin_ffi::change::zanshin_change;
+use zanshin_ffi::commit_views::{zanshin_evolog, zanshin_interdiff, zanshin_show};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
+use zanshin_ffi::file::{zanshin_file_annotate, zanshin_file_list, zanshin_file_search, zanshin_file_show};
+use zanshin_ffi::file_ops::zanshin_file_untrack;
+use zanshin_ffi::git::{zanshin_git_export, zanshin_git_import};
+use zanshin_ffi::graph::zanshin_graph_slice;
 use zanshin_ffi::log_defaults::zanshin_log_defaults;
 use zanshin_ffi::op_log::zanshin_op_log;
 use zanshin_ffi::remotes::zanshin_remotes;
-use zanshin_ffi::repo::{zanshin_describe, zanshin_repo_close, zanshin_repo_detect, zanshin_repo_open};
+use zanshin_ffi::repo::{zanshin_absorb, zanshin_describe, zanshin_repo_close, zanshin_repo_detect, zanshin_repo_open};
 use zanshin_ffi::snapshot::zanshin_snapshot;
 use zanshin_ffi::status::zanshin_status;
-use zanshin_ffi::workspace::zanshin_workspace_root;
+use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
 use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_STALE_WORKING_COPY};
 use zanshin_jj::{Backend, ChangeId, Repo};
 
@@ -291,6 +296,243 @@ fn every_read_wrapper_maps_a_failed_pre_verb_snapshot_and_carries_the_partial_re
                 .unwrap_or_else(|| panic!("{name}: the partial report rides the error envelope"))
                 .was_snapshot_taken(),
             "{name}"
+        );
+    }
+    close_handle(handle);
+}
+
+/// A finished `FlatBuffers` request buffer built by `build` — the table's own `create` + finish.
+fn request(build: impl FnOnce(&mut flatbuffers::FlatBufferBuilder<'static>)) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    build(&mut b);
+    b.finished_data().to_vec()
+}
+
+/// Calls the ok-arm row `name` against `handle`, after `file` was written into the working
+/// copy (so its pre-verb snapshot has something to record). `wc` is `@`'s change id.
+///
+/// # Safety
+/// `handle` must be live.
+// WHY: one flat arm per wrapper keeps the table readable; splitting would only scatter it.
+#[allow(clippy::too_many_lines)]
+unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
+    let cstr = |s: &str| CString::new(s).expect("no NUL");
+    let buf = |bytes: &[u8]| (bytes.as_ptr(), bytes.len());
+    // SAFETY (every arm): `handle` is live; each C string / request buffer is alive for its call.
+    unsafe {
+        match name {
+            "change" => read_and_free(zanshin_change(handle, wc.as_ptr())),
+            "op_log" => read_and_free(zanshin_op_log(handle, -1)),
+            "bookmarks" => read_and_free(zanshin_bookmarks(handle)),
+            "remotes" => read_and_free(zanshin_remotes(handle)),
+            "graph_slice" => {
+                let (revset, prioritize, short) = (cstr("all()"), cstr("none()"), cstr("all()"));
+                read_and_free(zanshin_graph_slice(
+                    handle,
+                    revset.as_ptr(),
+                    prioritize.as_ptr(),
+                    true,
+                    short.as_ptr(),
+                ))
+            }
+            "file_list" | "file_show" => {
+                let show = name == "file_show";
+                let req = request(|b| {
+                    let path = b.create_string(file);
+                    let paths = Some(b.create_vector(&[path]));
+                    if show {
+                        let req = fbs::FileShowRequest::create(
+                            b,
+                            &fbs::FileShowRequestArgs {
+                                kind: fbs::RequestKind::FileShow,
+                                revision: None,
+                                paths,
+                            },
+                        );
+                        b.finish(req, None);
+                    } else {
+                        let req = fbs::FileListRequest::create(
+                            b,
+                            &fbs::FileListRequestArgs {
+                                kind: fbs::RequestKind::FileList,
+                                revision: None,
+                                paths,
+                            },
+                        );
+                        b.finish(req, None);
+                    }
+                });
+                let (ptr, len) = buf(&req);
+                if show {
+                    read_and_free(zanshin_file_show(handle, ptr, len))
+                } else {
+                    read_and_free(zanshin_file_list(handle, ptr, len))
+                }
+            }
+            "file_annotate" => {
+                let req = request(|b| {
+                    let path = b.create_string(file);
+                    let req = fbs::FileAnnotateRequest::create(
+                        b,
+                        &fbs::FileAnnotateRequestArgs {
+                            kind: fbs::RequestKind::FileAnnotate,
+                            revision: None,
+                            path: Some(path),
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_file_annotate(handle, ptr, len))
+            }
+            "file_search" => {
+                let req = request(|b| {
+                    let pattern = b.create_string("dirty");
+                    let req = fbs::FileSearchRequest::create(
+                        b,
+                        &fbs::FileSearchRequestArgs {
+                            kind: fbs::RequestKind::FileSearch,
+                            revision: None,
+                            pattern: Some(pattern),
+                            paths: None,
+                            name_only: false,
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_file_search(handle, ptr, len))
+            }
+            "show" | "evolog" => {
+                let evolog = name == "evolog";
+                let req = request(|b| {
+                    if evolog {
+                        let req = fbs::EvologRequest::create(
+                            b,
+                            &fbs::EvologRequestArgs {
+                                kind: fbs::RequestKind::Evolog,
+                                ..Default::default()
+                            },
+                        );
+                        b.finish(req, None);
+                    } else {
+                        let req = fbs::ShowRequest::create(
+                            b,
+                            &fbs::ShowRequestArgs {
+                                kind: fbs::RequestKind::Show,
+                                ..Default::default()
+                            },
+                        );
+                        b.finish(req, None);
+                    }
+                });
+                let (ptr, len) = buf(&req);
+                if evolog {
+                    read_and_free(zanshin_evolog(handle, ptr, len))
+                } else {
+                    read_and_free(zanshin_show(handle, ptr, len))
+                }
+            }
+            "interdiff" => {
+                let req = request(|b| {
+                    // The CLI requires one side; `from` defaults to `@`.
+                    let id = b.create_string(wc.to_str().expect("UTF-8"));
+                    let to = fbs::ChangeIdRef::create(b, &fbs::ChangeIdRefArgs { id: Some(id) });
+                    let req = fbs::InterdiffRequest::create(
+                        b,
+                        &fbs::InterdiffRequestArgs {
+                            kind: fbs::RequestKind::Interdiff,
+                            to_type: fbs::RevisionRef::ChangeIdRef,
+                            to: Some(to.as_union_value()),
+                            ..Default::default()
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_interdiff(handle, ptr, len))
+            }
+            "workspace_list" => read_and_free(zanshin_workspace_list(handle)),
+            "git_import" => read_and_free(zanshin_git_import(handle)),
+            "git_export" => read_and_free(zanshin_git_export(handle)),
+            "absorb" => {
+                let req = request(|b| {
+                    let req = fbs::AbsorbRequest::create(
+                        b,
+                        &fbs::AbsorbRequestArgs {
+                            kind: fbs::RequestKind::Absorb,
+                            ..Default::default()
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_absorb(handle, ptr, len))
+            }
+            "file_untrack" => {
+                let req = request(|b| {
+                    let path = b.create_string("never-existed.txt");
+                    let paths = b.create_vector(&[path]);
+                    let req = fbs::FileUntrackRequest::create(
+                        b,
+                        &fbs::FileUntrackRequestArgs {
+                            kind: fbs::RequestKind::FileUntrack,
+                            paths: Some(paths),
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_file_untrack(handle, ptr, len))
+            }
+            other => panic!("unknown row {other}"),
+        }
+    }
+}
+
+/// AC-3 on the OK arm of every distinct envelope builder: each wrapper's success envelope
+/// carries the report of the pre-verb snapshot that recorded the file written just before it.
+#[test]
+fn every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm() {
+    let (_tmp, root) = fresh_repo();
+    let wc = {
+        let mut repo = Repo::open(&root).expect("open");
+        CString::new(repo.status().expect("status").working_copy_change_id.0).expect("no NUL")
+    };
+    let handle = open_handle(&root);
+
+    for name in [
+        "change",
+        "op_log",
+        "bookmarks",
+        "remotes",
+        "graph_slice",
+        "file_list",
+        "file_show",
+        "file_annotate",
+        "file_search",
+        "show",
+        "evolog",
+        "interdiff",
+        "workspace_list",
+        "git_import",
+        "git_export",
+        "absorb",
+        "file_untrack",
+    ] {
+        let file = format!("dirty-{name}.txt");
+        fs::write(root.join(&file), "dirty\n").expect("write");
+
+        // SAFETY: handle is live.
+        let bytes = unsafe { ok_row(name, handle, &file, &wc) };
+
+        let env = parse_envelope(&bytes);
+        assert!(env.ok(), "{name}: {:?}", env.error().and_then(|e| e.context()));
+        assert!(
+            env.precondition()
+                .unwrap_or_else(|| panic!("{name}: the report rides the ok envelope"))
+                .was_snapshot_taken(),
+            "{name}: its pre-verb snapshot recorded {file}"
         );
     }
     close_handle(handle);
