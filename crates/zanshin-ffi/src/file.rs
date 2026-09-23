@@ -5,7 +5,8 @@
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and none of the four
-//! writes an operation — not even on a refusal.
+//! verbs itself writes an operation — not even on a refusal; only the pre-verb snapshot
+//! (Story 9.26) in front of each may.
 //!
 //! All four take a request BUFFER rather than C strings: each is a composite whose
 //! `revision` must be distinguishably ABSENT (that absence is what applies the CLI's own
@@ -16,9 +17,9 @@ use tracing::debug;
 use zanshin_jj::{AnnotationLine, ChangeId, FileContents, FileEntry, FileError, FileSearch, FileType};
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request,
-    session_from_handle, FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR,
-    JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
+    precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NOT_A_FILE, JJ_PATH_NOT_FOUND,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -26,6 +27,7 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 /// Maps a [`FileError`] onto its AR-P-4 code; user data always rides in `context`.
 fn map_file_err(e: FileError) -> FfiErrorObj {
     let (code, context) = match e {
+        FileError::Precondition(e) => return map_precondition_err(e),
         FileError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id),
         FileError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path),
         FileError::NotAFile { path } => (JJ_NOT_A_FILE, path),
@@ -34,6 +36,7 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
         FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
+        precondition: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -173,7 +176,7 @@ fn file_type_to_fbs(t: FileType) -> fbs::FileType {
 ///
 /// Children before parents (`FlatBuffers` requirement): each entry's string is built before
 /// its table, and the vector and `FileList` table come after the loop.
-fn file_list_to_envelope(entries: &[FileEntry]) -> Vec<u8> {
+fn file_list_to_envelope(entries: &[FileEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let offsets: Vec<_> = entries
         .iter()
@@ -192,11 +195,11 @@ fn file_list_to_envelope(entries: &[FileEntry]) -> Vec<u8> {
         .collect();
     let vec = b.create_vector(&offsets);
     let list = fbs::FileList::create(&mut b, &fbs::FileListArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::FileList, list.as_union_value())
+    finish_envelope(b, fbs::Payload::FileList, Some(list.as_union_value()), precondition)
 }
 
 /// Serialise a [`FileContents`] into a finished `Envelope<FileContents>` buffer.
-fn file_contents_to_envelope(contents: &FileContents) -> Vec<u8> {
+fn file_contents_to_envelope(contents: &FileContents, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let file_offs: Vec<_> = contents
         .files
@@ -238,11 +241,16 @@ fn file_contents_to_envelope(contents: &FileContents) -> Vec<u8> {
             skipped: Some(skipped),
         },
     );
-    finish_envelope(b, fbs::Payload::FileContents, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::FileContents,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 /// Serialise `&[AnnotationLine]` into a finished `Envelope<FileAnnotation>` buffer.
-fn file_annotation_to_envelope(lines: &[AnnotationLine]) -> Vec<u8> {
+fn file_annotation_to_envelope(lines: &[AnnotationLine], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = lines
         .iter()
@@ -264,7 +272,12 @@ fn file_annotation_to_envelope(lines: &[AnnotationLine]) -> Vec<u8> {
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::FileAnnotation::create(&mut b, &fbs::FileAnnotationArgs { lines: Some(vec) });
-    finish_envelope(b, fbs::Payload::FileAnnotation, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::FileAnnotation,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 /// Serialise a [`FileSearch`] into a finished `Envelope<FileSearch>` buffer.
@@ -274,7 +287,7 @@ fn file_annotation_to_envelope(lines: &[AnnotationLine]) -> Vec<u8> {
 ///
 /// The `skipped` loop is the same shape as `file_contents_to_envelope`'s, though the two
 /// carry different reason sets (search reports only unreadable blobs).
-fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
+fn file_search_to_envelope(search: &FileSearch, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = search
         .matches
@@ -318,7 +331,7 @@ fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
             skipped: Some(skipped),
         },
     );
-    finish_envelope(b, fbs::Payload::FileSearch, table.as_union_value())
+    finish_envelope(b, fbs::Payload::FileSearch, Some(table.as_union_value()), precondition)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -328,9 +341,9 @@ fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
 ///
 /// The arguments cross as a `FileListRequest` `FlatBuffers` request buffer (ADR-0001
 /// composite-input pattern). An ABSENT `revision` is the wire form of "the user did not
-/// supply it", which applies the CLI's own `-r` default `@` — here the LAST-SNAPSHOTTED
-/// working-copy commit, because Zanshin never snapshots (D2). `paths` entries are
-/// repo-relative PREFIXES; an empty list means all paths. This read writes NO operation.
+/// supply it", which applies the CLI's own `-r` default `@` — the working-copy commit the
+/// pre-verb snapshot has just brought up to date (Story 9.26). `paths` entries are
+/// repo-relative PREFIXES; an empty list means all paths. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileList` payload on success.
 ///
@@ -343,6 +356,10 @@ fn file_search_to_envelope(search: &FileSearch) -> Vec<u8> {
 ///   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
 ///   the CLI's `-r` default `@`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -362,8 +379,10 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
         let req = read_file_list_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let entries = session.repo.file_list(req.revision, &req.paths).map_err(map_file_err)?;
-        Ok(file_list_to_envelope(&entries))
+        let entries = session.repo.file_list(req.revision, &req.paths);
+        precondition_envelope(&mut session.repo, entries, map_file_err, |v, p| {
+            file_list_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -379,8 +398,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 /// path); with several, an absent path simply contributes nothing. A conflicted file's
 /// content is the MATERIALIZED merge, in the style the repo's effective
 /// `ui.conflict-marker-style` selects. Paths that exist but are not renderable as file
-/// content land in `FileContents.skipped` instead of failing the call. This read writes NO
-/// operation.
+/// content land in `FileContents.skipped` instead of failing the call. This read writes NO operation of its own —
+/// the pre-verb snapshot may write one.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileContents` payload on success.
 ///
@@ -395,6 +414,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 ///   tree; the path in `context`.
 /// - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
 ///   `ui.conflict-marker-style` this verb materializes conflicts with cannot be read.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -408,8 +429,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
         let req = read_file_show_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let contents = session.repo.file_show(req.revision, &req.paths).map_err(map_file_err)?;
-        Ok(file_contents_to_envelope(&contents))
+        let contents = session.repo.file_show(req.revision, &req.paths);
+        precondition_envelope(&mut session.repo, contents, map_file_err, file_contents_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -421,7 +442,7 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// single PLAIN repo-relative path, not a prefix and not a fileset. The search domain is
 /// `all()`, hardcoded exactly as the CLI hardcodes it. One entry per line, in file order —
 /// a line's own 1-based number is its index in `FileAnnotation.lines` + 1, which is why the
-/// payload carries only `original_line_number`. This read writes NO operation.
+/// payload carries only `original_line_number`. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileAnnotation` payload on success.
 ///
@@ -436,6 +457,10 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
 /// - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
 ///   submodule, or a conflict with a non-file side); the path in `context`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -449,11 +474,10 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
         let req = read_file_annotate_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let lines = session
-            .repo
-            .file_annotate(req.revision, &req.path)
-            .map_err(map_file_err)?;
-        Ok(file_annotation_to_envelope(&lines))
+        let lines = session.repo.file_annotate(req.revision, &req.path);
+        precondition_envelope(&mut session.repo, lines, map_file_err, |v, p| {
+            file_annotation_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -469,7 +493,7 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// line numbers restarting per side. Symlinks, submodules and non-file conflicts are
 /// SILENTLY not searched (CLI parity); a path whose blob could not be READ lands in the
 /// payload's `skipped` vector — the only case `jj file search` warns about — and does NOT
-/// fail the call. This read writes NO operation.
+/// fail the call. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `FileSearch` payload on success.
 ///
@@ -481,6 +505,10 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
 ///   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -496,9 +524,8 @@ pub unsafe extern "C" fn zanshin_file_search(handle: u64, data: *const u8, len: 
         let session = unsafe { session_from_handle(handle) }?;
         let search = session
             .repo
-            .file_search(req.revision, &req.pattern, &req.paths, req.name_only)
-            .map_err(map_file_err)?;
-        Ok(file_search_to_envelope(&search))
+            .file_search(req.revision, &req.pattern, &req.paths, req.name_only);
+        precondition_envelope(&mut session.repo, search, map_file_err, file_search_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -595,7 +622,7 @@ mod tests {
             },
         ];
 
-        let buf = file_list_to_envelope(&entries);
+        let buf = file_list_to_envelope(&entries, None);
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::FileList);
@@ -638,7 +665,7 @@ mod tests {
             }],
         };
 
-        let buf = file_contents_to_envelope(&contents);
+        let buf = file_contents_to_envelope(&contents, None);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileContents);
         let payload = env.data_as_file_contents().expect("FileContents payload");
@@ -675,7 +702,7 @@ mod tests {
             },
         ];
 
-        let buf = file_annotation_to_envelope(&lines);
+        let buf = file_annotation_to_envelope(&lines, None);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileAnnotation);
         let payload = env.data_as_file_annotation().expect("FileAnnotation payload");
@@ -713,7 +740,7 @@ mod tests {
             skipped: vec![],
         };
 
-        let buf = file_search_to_envelope(&search);
+        let buf = file_search_to_envelope(&search, None);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileSearch);
         let payload = env.data_as_file_search().expect("FileSearch payload");
@@ -755,7 +782,7 @@ mod tests {
             }],
         };
 
-        let buf = file_search_to_envelope(&search);
+        let buf = file_search_to_envelope(&search, None);
         let env = verified(&buf);
         let payload = env.data_as_file_search().expect("FileSearch payload");
         assert_eq!(payload.matches().expect("matches present").len(), 1);
@@ -771,20 +798,26 @@ mod tests {
     #[test]
     fn empty_results_still_produce_ok_envelopes() {
         for (buf, expected) in [
-            (file_list_to_envelope(&[]), fbs::Payload::FileList),
+            (file_list_to_envelope(&[], None), fbs::Payload::FileList),
             (
-                file_contents_to_envelope(&FileContents {
-                    files: vec![],
-                    skipped: vec![],
-                }),
+                file_contents_to_envelope(
+                    &FileContents {
+                        files: vec![],
+                        skipped: vec![],
+                    },
+                    None,
+                ),
                 fbs::Payload::FileContents,
             ),
-            (file_annotation_to_envelope(&[]), fbs::Payload::FileAnnotation),
+            (file_annotation_to_envelope(&[], None), fbs::Payload::FileAnnotation),
             (
-                file_search_to_envelope(&FileSearch {
-                    matches: vec![],
-                    skipped: vec![],
-                }),
+                file_search_to_envelope(
+                    &FileSearch {
+                        matches: vec![],
+                        skipped: vec![],
+                    },
+                    None,
+                ),
                 fbs::Payload::FileSearch,
             ),
         ] {

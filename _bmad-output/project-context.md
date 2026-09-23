@@ -62,7 +62,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 **Platform constraints:**
 - macOS-only. Windows/Linux are explicit non-goals.
 - Watchman is a runtime system dependency of jj's `fsmonitor`, NOT bundled.
-  Zanshin only detects its presence (FR-FFI-7).
+  jj-lib is built with its `watchman` feature (the CLI's default set, Story
+  9.26), so the CLIENT is compiled in and a user's `fsmonitor.backend =
+  "watchman"` is honoured by every snapshot; Zanshin never bundles or launches
+  the daemon (jj-lib falls back to a full scan when it is unreachable).
 
 **Version pinning rules:**
 - Load-bearing pre-1.0 crates: `=x.y.z` exact pins (`jj-lib`, `rmcp`, `imara-diff`).
@@ -242,10 +245,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
   or block the watcher thread. (AD-5)
 - The watcher must start BEFORE `zanshin_repo_open` returns. No race window
   where mutations happen before the watcher is armed.
-- Watchman is NOT bundled, called, or linked. Zanshin only DETECTS its presence
-  and reads `.jj/repo/config.toml` for `fsmonitor.backend = "watchman"` +
-  `register-snapshot-trigger = true` (FR-FFI-7). When absent, the app still
-  works — external-edit reactivity just degrades.
+- Watchman is NOT bundled or launched. Its client IS linked, through jj-lib's
+  `watchman` feature (amended 2026-09-23, Story 9.26): jj-lib queries the daemon
+  on every snapshot when `fsmonitor.backend = "watchman"`, exactly as the CLI
+  does, and falls back to a full scan when it is unreachable. Zanshin itself
+  never calls it; detection (`register-snapshot-trigger`, FR-FFI-7) stays
+  deferred. When absent, the app still works.
 
 **Worker isolate (Dart, AD-4):**
 - ONE worker isolate spawned at app start via manual `Isolate.spawn` +
@@ -269,7 +274,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
   `mcp-tester` smoke run before merging tool changes.
 - Same-repo concurrency model (FR-MCP-9): GUI + MCP + external `jj` CLI all
   hit the same filesystem. Mutations propagate via the watcher path. NO IPC,
-  NO locking choreography between them.
+  NO locking choreography between them — beyond jj's OWN locks, which Zanshin
+  takes exactly where the CLI does (e.g. `git_import_export.lock`, Story 9.26).
 
 ### Testing Rules
 
@@ -638,8 +644,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   reset logic that fights the debouncer. (FR-RX-4)
 - **Same-repo concurrency uses the filesystem as IPC, NOT locks.** When GUI +
   MCP + external CLI mutate the same repo, the only synchronization point is
-  `op_heads` changing. Adding any cross-process lock breaks the model.
-  (FR-MCP-9, FR-RX-3)
+  `op_heads` changing. Adding any cross-process lock OF ZANSHIN'S OWN breaks the
+  model. (FR-MCP-9, FR-RX-3) The one exception is taking jj's OWN locks where the
+  CLI takes them: the pre-verb snapshot and every colocated finish hold
+  `<repo>/git_import_export.lock` (a blocking `jj_lib::lock::FileLock`, Story
+  9.26), so a Zanshin Git HEAD/ref import-export and a CLI one never interleave.
 - **Generated code is committed; build doesn't regenerate.** When an
   `extern "C"` signature changes, run `cargo make codegen` and commit BOTH the
   source change and the regenerated header/bindings in the same PR. CI's
@@ -647,7 +656,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **No in-wire `schema_version` field in WIP.** The FlatBuffers `Envelope`
   (`ok` / `error` / `data`) carries no version field. When you change a `.fbs`,
   edit in place, regenerate both sides, and update all callers in the same PR.
-- **Watchman detection (FR-FFI-7) is deferred.** When/if it lands later:
+- **Watchman detection (FR-FFI-7) is deferred** (the jj-lib client itself is
+  compiled in since Story 9.26 — see Platform constraints). When/if it lands later:
   Watchman absence is degradation, not failure — repo-open succeeds without it,
   external-edit reactivity degrades to "refresh on jj operation only". WIP
   works without any Watchman-detection surface.

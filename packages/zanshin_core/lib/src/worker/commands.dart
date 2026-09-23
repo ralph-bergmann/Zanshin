@@ -21,6 +21,15 @@ sealed class WorkerCommand {
   final int commandId;
 }
 
+/// A command addressed to ONE open repository by its worker-side [handleId].
+///
+/// `ZanshinWorker.send` keys the per-handle bookkeeping it does on every reply
+/// (the Story 9.26 `RepoHandle.lastPrecondition`) off this interface.
+abstract interface class HandleScopedCommand {
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  int get handleId;
+}
+
 /// Open an existing jj repository at [path].
 final class OpenRepoCommand extends WorkerCommand {
   const OpenRepoCommand({required super.commandId, required this.path});
@@ -63,10 +72,11 @@ final class CloneRepoCommand extends WorkerCommand {
 ///
 /// An unknown or already-closed [handleId] is rejected by the worker as
 /// `ffi.invalid_handle` (Model A — no use-after-free is possible).
-final class CloseRepoCommand extends WorkerCommand {
+final class CloseRepoCommand extends WorkerCommand implements HandleScopedCommand {
   const CloseRepoCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id previously assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -75,10 +85,11 @@ final class CloseRepoCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_status`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<Status>` bytes.
-final class StatusCommand extends WorkerCommand {
+final class StatusCommand extends WorkerCommand implements HandleScopedCommand {
   const StatusCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -87,10 +98,11 @@ final class StatusCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_bookmarks(handle)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<Bookmarks>` bytes.
-final class BookmarksCommand extends WorkerCommand {
+final class BookmarksCommand extends WorkerCommand implements HandleScopedCommand {
   const BookmarksCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -99,10 +111,11 @@ final class BookmarksCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_remotes(handle)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<Remotes>` bytes.
-final class RemotesCommand extends WorkerCommand {
+final class RemotesCommand extends WorkerCommand implements HandleScopedCommand {
   const RemotesCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -112,10 +125,11 @@ final class RemotesCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_log_defaults(handle)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<LogDefaults>` bytes.
-final class LogDefaultsCommand extends WorkerCommand {
+final class LogDefaultsCommand extends WorkerCommand implements HandleScopedCommand {
   const LogDefaultsCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -124,7 +138,7 @@ final class LogDefaultsCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_op_log(handle, limit)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<OpLog>` bytes.
-final class OpLogCommand extends WorkerCommand {
+final class OpLogCommand extends WorkerCommand implements HandleScopedCommand {
   const OpLogCommand({
     required super.commandId,
     required this.handleId,
@@ -132,6 +146,7 @@ final class OpLogCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Max operations to return; `< 0` means all.
@@ -144,7 +159,7 @@ final class OpLogCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshin_change`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<Change>` bytes.
-final class GetChangeCommand extends WorkerCommand {
+final class GetChangeCommand extends WorkerCommand implements HandleScopedCommand {
   const GetChangeCommand({
     required super.commandId,
     required this.handleId,
@@ -152,6 +167,7 @@ final class GetChangeCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// jj reverse-hex change identifier (sendable across the isolate port).
@@ -166,7 +182,7 @@ final class GetChangeCommand extends WorkerCommand {
 /// `zanshinGraphSlice(raw, revset, prioritize, syntheticElided, shortPrefixes)`,
 /// and replies with a `BufferResult` carrying the FlatBuffers
 /// `Envelope<GraphSlice>` bytes.
-final class GraphSliceCommand extends WorkerCommand {
+final class GraphSliceCommand extends WorkerCommand implements HandleScopedCommand {
   const GraphSliceCommand({
     required super.commandId,
     required this.handleId,
@@ -177,6 +193,7 @@ final class GraphSliceCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revset selecting the rows (caller pass-through, FR-JJ-17).
@@ -224,7 +241,7 @@ final class ConvertRepoCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinDescribe(raw, changeId, description)`, and replies
 /// with a `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class DescribeCommand extends WorkerCommand {
+final class DescribeCommand extends WorkerCommand implements HandleScopedCommand {
   const DescribeCommand({
     required super.commandId,
     required this.handleId,
@@ -233,6 +250,7 @@ final class DescribeCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// jj reverse-hex change identifier to rewrite.
@@ -248,7 +266,7 @@ final class DescribeCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinNewChange(raw, parents)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class NewChangeCommand extends WorkerCommand {
+final class NewChangeCommand extends WorkerCommand implements HandleScopedCommand {
   const NewChangeCommand({
     required super.commandId,
     required this.handleId,
@@ -256,6 +274,7 @@ final class NewChangeCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// jj reverse-hex change identifiers of the new change's parents.
@@ -268,7 +287,7 @@ final class NewChangeCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinEdit(raw, changeId)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class EditCommand extends WorkerCommand {
+final class EditCommand extends WorkerCommand implements HandleScopedCommand {
   const EditCommand({
     required super.commandId,
     required this.handleId,
@@ -276,6 +295,7 @@ final class EditCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// jj reverse-hex change identifier to switch the working copy to.
@@ -287,7 +307,7 @@ final class EditCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinAbandon(raw, changeIds)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class AbandonCommand extends WorkerCommand {
+final class AbandonCommand extends WorkerCommand implements HandleScopedCommand {
   const AbandonCommand({
     required super.commandId,
     required this.handleId,
@@ -295,6 +315,7 @@ final class AbandonCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// jj reverse-hex change identifiers to abandon.
@@ -307,10 +328,11 @@ final class AbandonCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinUndo(raw)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class UndoCommand extends WorkerCommand {
+final class UndoCommand extends WorkerCommand implements HandleScopedCommand {
   const UndoCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -322,7 +344,7 @@ final class UndoCommand extends WorkerCommand {
 /// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
 /// Progress rides the same process-global event sink `WatcherEvent` already
 /// uses, tagged with the handle's `session_id`.
-final class GitFetchCommand extends WorkerCommand {
+final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand {
   const GitFetchCommand({
     required super.commandId,
     required this.handleId,
@@ -330,6 +352,7 @@ final class GitFetchCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Name of the configured git remote to fetch from.
@@ -342,7 +365,7 @@ final class GitFetchCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinRestore(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class RestoreCommand extends WorkerCommand {
+final class RestoreCommand extends WorkerCommand implements HandleScopedCommand {
   const RestoreCommand({
     required super.commandId,
     required this.handleId,
@@ -354,6 +377,7 @@ final class RestoreCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Source revision, jj reverse-hex change id; `null` = `@` (or, when [into]
@@ -381,7 +405,7 @@ final class RestoreCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinAbsorb(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<AbsorbResult>` bytes.
-final class AbsorbCommand extends WorkerCommand {
+final class AbsorbCommand extends WorkerCommand implements HandleScopedCommand {
   const AbsorbCommand({
     required super.commandId,
     required this.handleId,
@@ -391,6 +415,7 @@ final class AbsorbCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Source revision, jj reverse-hex change id; `null` = `@`.
@@ -410,7 +435,7 @@ final class AbsorbCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinFileList(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<FileList>` bytes.
-final class FileListCommand extends WorkerCommand {
+final class FileListCommand extends WorkerCommand implements HandleScopedCommand {
   const FileListCommand({
     required super.commandId,
     required this.handleId,
@@ -419,10 +444,11 @@ final class FileListCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revision to list, jj reverse-hex change id; `null` = `@` (the CLI's `-r`
-  /// default, here the last-snapshotted working-copy commit).
+  /// default, snapshotted first as in the CLI).
   final String? revision;
 
   /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
@@ -435,7 +461,7 @@ final class FileListCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinFileShow(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<FileContents>` bytes.
-final class FileShowCommand extends WorkerCommand {
+final class FileShowCommand extends WorkerCommand implements HandleScopedCommand {
   const FileShowCommand({
     required super.commandId,
     required this.handleId,
@@ -444,6 +470,7 @@ final class FileShowCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revision to read from, jj reverse-hex change id; `null` = `@`.
@@ -460,7 +487,7 @@ final class FileShowCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinFileAnnotate(raw, …)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<FileAnnotation>` bytes.
-final class FileAnnotateCommand extends WorkerCommand {
+final class FileAnnotateCommand extends WorkerCommand implements HandleScopedCommand {
   const FileAnnotateCommand({
     required super.commandId,
     required this.handleId,
@@ -469,6 +496,7 @@ final class FileAnnotateCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revision to annotate, jj reverse-hex change id; `null` = `@`.
@@ -484,7 +512,7 @@ final class FileAnnotateCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never
 /// remove), calls `zanshinFileSearch(raw, …)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<FileSearch>` bytes.
-final class FileSearchCommand extends WorkerCommand {
+final class FileSearchCommand extends WorkerCommand implements HandleScopedCommand {
   const FileSearchCommand({
     required super.commandId,
     required this.handleId,
@@ -495,6 +523,7 @@ final class FileSearchCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revision to search, jj reverse-hex change id; `null` = `@`.
@@ -517,10 +546,11 @@ final class FileSearchCommand extends WorkerCommand {
 /// calls `zanshinGitImport(raw)`, and replies with a `BufferResult` carrying the
 /// FlatBuffers `Envelope<GitImportResult>` bytes. Takes no arguments — the CLI's
 /// own `jj git import` has none either.
-final class GitImportCommand extends WorkerCommand {
+final class GitImportCommand extends WorkerCommand implements HandleScopedCommand {
   const GitImportCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -530,10 +560,11 @@ final class GitImportCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinGitExport(raw)`, and replies with a `BufferResult` carrying the
 /// FlatBuffers `Envelope<GitExportResult>` bytes.
-final class GitExportCommand extends WorkerCommand {
+final class GitExportCommand extends WorkerCommand implements HandleScopedCommand {
   const GitExportCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -543,7 +574,7 @@ final class GitExportCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinGitRemoteAdd(raw, …)`, and replies with a `BufferResult` carrying
 /// the FlatBuffers `Envelope<MutationResult>` bytes.
-final class GitRemoteAddCommand extends WorkerCommand {
+final class GitRemoteAddCommand extends WorkerCommand implements HandleScopedCommand {
   const GitRemoteAddCommand({
     required super.commandId,
     required this.handleId,
@@ -553,6 +584,7 @@ final class GitRemoteAddCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// The remote's name, e.g. `origin`.
@@ -571,7 +603,7 @@ final class GitRemoteAddCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinGitRemoteRemove(raw, name)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class GitRemoteRemoveCommand extends WorkerCommand {
+final class GitRemoteRemoveCommand extends WorkerCommand implements HandleScopedCommand {
   const GitRemoteRemoveCommand({
     required super.commandId,
     required this.handleId,
@@ -579,6 +611,7 @@ final class GitRemoteRemoveCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// The remote to remove. The reserved remote `git` is removable and writes no
@@ -592,7 +625,7 @@ final class GitRemoteRemoveCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinGitRemoteRename(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class GitRemoteRenameCommand extends WorkerCommand {
+final class GitRemoteRenameCommand extends WorkerCommand implements HandleScopedCommand {
   const GitRemoteRenameCommand({
     required super.commandId,
     required this.handleId,
@@ -601,6 +634,7 @@ final class GitRemoteRenameCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// The name of an existing remote.
@@ -618,7 +652,7 @@ final class GitRemoteRenameCommand extends WorkerCommand {
 /// calls `zanshinGitRemoteSetUrl(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes. This verb never
 /// writes an operation.
-final class GitRemoteSetUrlCommand extends WorkerCommand {
+final class GitRemoteSetUrlCommand extends WorkerCommand implements HandleScopedCommand {
   const GitRemoteSetUrlCommand({
     required super.commandId,
     required this.handleId,
@@ -628,6 +662,7 @@ final class GitRemoteSetUrlCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// The remote to re-point.
@@ -646,7 +681,7 @@ final class GitRemoteSetUrlCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinShow(raw, …)`, and replies with a `BufferResult` carrying the
 /// FlatBuffers `Envelope<ShowView>` bytes.
-final class ShowCommand extends WorkerCommand {
+final class ShowCommand extends WorkerCommand implements HandleScopedCommand {
   const ShowCommand({
     required super.commandId,
     required this.handleId,
@@ -655,6 +690,7 @@ final class ShowCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revset EXPRESSION (not a change id — the CLI unions its revsets); `null` =
@@ -673,7 +709,7 @@ final class ShowCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinEvolog(raw, …)`, and replies with a `BufferResult` carrying the
 /// FlatBuffers `Envelope<EvologView>` bytes.
-final class EvologCommand extends WorkerCommand {
+final class EvologCommand extends WorkerCommand implements HandleScopedCommand {
   const EvologCommand({
     required super.commandId,
     required this.handleId,
@@ -682,6 +718,7 @@ final class EvologCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Revset EXPRESSION; `null` = `@`, as in [ShowCommand].
@@ -699,7 +736,7 @@ final class EvologCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinInterdiff(raw, …)`, and replies with a `BufferResult` carrying
 /// the FlatBuffers `Envelope<InterdiffView>` bytes.
-final class InterdiffCommand extends WorkerCommand {
+final class InterdiffCommand extends WorkerCommand implements HandleScopedCommand {
   const InterdiffCommand({
     required super.commandId,
     required this.handleId,
@@ -709,6 +746,7 @@ final class InterdiffCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// First revision — a [ChangeIdRef] (reverse-hex change-id prefix, visible
@@ -734,10 +772,11 @@ final class InterdiffCommand extends WorkerCommand {
 /// calls `zanshinWorkspaceList(raw)`, and replies with a `BufferResult` carrying
 /// the FlatBuffers `Envelope<WorkspaceList>` bytes. No argument field: the CLI
 /// verb takes none.
-final class WorkspaceListCommand extends WorkerCommand {
+final class WorkspaceListCommand extends WorkerCommand implements HandleScopedCommand {
   const WorkspaceListCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 }
 
@@ -747,7 +786,7 @@ final class WorkspaceListCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinWorkspaceRoot(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<WorkspaceRoot>` bytes.
-final class WorkspaceRootCommand extends WorkerCommand {
+final class WorkspaceRootCommand extends WorkerCommand implements HandleScopedCommand {
   const WorkspaceRootCommand({
     required super.commandId,
     required this.handleId,
@@ -755,6 +794,7 @@ final class WorkspaceRootCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Workspace name; `null` = the CURRENT workspace, the CLI's own default. A
@@ -769,7 +809,7 @@ final class WorkspaceRootCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinBookmarkCreate(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class BookmarkCreateCommand extends WorkerCommand {
+final class BookmarkCreateCommand extends WorkerCommand implements HandleScopedCommand {
   const BookmarkCreateCommand({
     required super.commandId,
     required this.handleId,
@@ -778,6 +818,7 @@ final class BookmarkCreateCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// EXACT, DECODED bookmark names — never CLI argument text, so no revset
@@ -796,7 +837,7 @@ final class BookmarkCreateCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinBookmarkDelete(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
-final class BookmarkDeleteCommand extends WorkerCommand {
+final class BookmarkDeleteCommand extends WorkerCommand implements HandleScopedCommand {
   const BookmarkDeleteCommand({
     required super.commandId,
     required this.handleId,
@@ -804,6 +845,7 @@ final class BookmarkDeleteCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// String PATTERNS, unioned — NOT exact names. A bare pattern is a GLOB; use
@@ -818,7 +860,7 @@ final class BookmarkDeleteCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinFileTrack(raw, …)`, and replies with a `BufferResult` carrying
 /// the FlatBuffers `Envelope<TrackResult>` bytes.
-final class FileTrackCommand extends WorkerCommand {
+final class FileTrackCommand extends WorkerCommand implements HandleScopedCommand {
   const FileTrackCommand({
     required super.commandId,
     required this.handleId,
@@ -827,6 +869,7 @@ final class FileTrackCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Repo-relative PREFIXES; an empty list is refused (`jj.invalid_input`).
@@ -843,7 +886,7 @@ final class FileTrackCommand extends WorkerCommand {
 /// The worker looks up the raw handle in its Model-A table (read — never remove),
 /// calls `zanshinFileUntrack(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<UntrackResult>` bytes.
-final class FileUntrackCommand extends WorkerCommand {
+final class FileUntrackCommand extends WorkerCommand implements HandleScopedCommand {
   const FileUntrackCommand({
     required super.commandId,
     required this.handleId,
@@ -851,11 +894,27 @@ final class FileUntrackCommand extends WorkerCommand {
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
   final int handleId;
 
   /// Repo-relative PREFIXES, each of which must already be ignored; an empty
   /// list is refused (`jj.invalid_input`).
   final List<String> paths;
+}
+
+/// Snapshot the working copy of the repo identified by [handleId] right now —
+/// and, in a colocated workspace, import the Git HEAD and refs (Story 9.26) — the
+/// CLI's `jj util snapshot`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinSnapshot(raw)`, and replies with a `BufferResult` carrying an
+/// ok `Envelope` with NO `data` and the report in `Envelope.precondition`.
+final class SnapshotCommand extends WorkerCommand implements HandleScopedCommand {
+  const SnapshotCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
 }
 
 /// Request a graceful worker shutdown (Story 3.6).

@@ -10,7 +10,10 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{ChangeKind, FileChange, Status, StatusError};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY};
+use crate::envelope::{
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY,
+};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
@@ -18,11 +21,14 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_status_err(e: StatusError) -> FfiErrorObj {
     match e {
+        StatusError::Precondition(e) => map_precondition_err(e),
         StatusError::NoWorkingCopy => FfiErrorObj {
+            precondition: None,
             code: JJ_NO_WORKING_COPY.to_owned(),
             context: None,
         },
         StatusError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -68,7 +74,7 @@ pub(crate) fn file_changes_vector<'a>(
 }
 
 /// Serialise `&Status` into a finished `FlatBuffers` `Envelope<Status>` buffer.
-fn status_to_envelope(status: &Status) -> Vec<u8> {
+fn status_to_envelope(status: &Status, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
 
     // 1)+2) Build the FileChange vector, then the two change-id strings.
@@ -87,17 +93,7 @@ fn status_to_envelope(status: &Status) -> Vec<u8> {
     );
 
     // 4) Envelope — plain finish (NOT size-prefixed; length rides in ZanshinBuf.len).
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::Status,
-            data: Some(status_off.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::Status, Some(status_off.as_union_value()), precondition)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
@@ -109,6 +105,10 @@ fn status_to_envelope(status: &Status) -> Vec<u8> {
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.no_working_copy` — the workspace has no working-copy commit (@).
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
 /// # Safety
@@ -124,8 +124,8 @@ pub unsafe extern "C" fn zanshin_status(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let status = session.repo.status().map_err(map_status_err)?;
-        Ok(status_to_envelope(&status))
+        let status = session.repo.status();
+        precondition_envelope(&mut session.repo, status, map_status_err, status_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -180,7 +180,7 @@ mod tests {
             parent_change_id: ChangeId("zzzzzzzz".to_owned()),
         };
 
-        let buf = status_to_envelope(&status);
+        let buf = status_to_envelope(&status, None);
         let env = fb_root::<fbs::Envelope>(&buf).expect("Verifier must pass");
 
         assert!(env.ok(), "envelope ok must be true");

@@ -17,8 +17,8 @@ use tracing::debug;
 use zanshin_jj::{SnapshotStats, TrackResult, UntrackResult, UntrackedReason};
 
 use crate::envelope::{
-    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, reject_null_request,
-    session_from_handle, FfiErrorObj,
+    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, precondition_envelope,
+    reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -91,7 +91,7 @@ fn read_file_untrack_request(data: *const u8, len: usize) -> Result<FileUntrackR
 ///
 /// Children before parents: each `UntrackedPath`'s string and union arm are built before its
 /// table, the vectors after their elements.
-fn build_snapshot_stats<'a>(
+pub(crate) fn build_snapshot_stats<'a>(
     b: &mut FlatBufferBuilder<'a>,
     s: &SnapshotStats,
 ) -> flatbuffers::WIPOffset<fbs::SnapshotStats<'a>> {
@@ -133,7 +133,7 @@ fn build_snapshot_stats<'a>(
 }
 
 /// Serialise a [`TrackResult`] into a finished `Envelope<TrackResult>` buffer.
-fn track_result_to_envelope(r: &TrackResult) -> Vec<u8> {
+fn track_result_to_envelope(r: &TrackResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let stats = build_snapshot_stats(&mut b, &r.snapshot_stats);
@@ -145,11 +145,11 @@ fn track_result_to_envelope(r: &TrackResult) -> Vec<u8> {
             snapshot_stats: Some(stats),
         },
     );
-    finish_envelope(b, fbs::Payload::TrackResult, table.as_union_value())
+    finish_envelope(b, fbs::Payload::TrackResult, Some(table.as_union_value()), precondition)
 }
 
 /// Serialise an [`UntrackResult`] into a finished `Envelope<UntrackResult>` buffer.
-fn untrack_result_to_envelope(r: &UntrackResult) -> Vec<u8> {
+fn untrack_result_to_envelope(r: &UntrackResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let unmatched: Vec<_> = r.unmatched_paths.iter().map(|p| b.create_string(p)).collect();
@@ -168,7 +168,12 @@ fn untrack_result_to_envelope(r: &UntrackResult) -> Vec<u8> {
             failed_tags: Some(tags),
         },
     );
-    finish_envelope(b, fbs::Payload::UntrackResult, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::UntrackResult,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -183,8 +188,9 @@ fn untrack_result_to_envelope(r: &UntrackResult) -> Vec<u8> {
 /// nothing matched — exactly as the CLI commits it.
 ///
 /// `@` is NOT changed: like the CLI, the verb records the tracked paths only in the
-/// working-copy state, and the NEXT snapshot moves them into `@` (jj's GH #8298). Returns a
-/// `FlatBuffers` `Envelope` carrying a `TrackResult` payload on success.
+/// working-copy state, and the NEXT verb's pre-verb snapshot moves them into `@` (jj's GH
+/// #8298). Returns a `FlatBuffers` `Envelope` carrying a `TrackResult` payload on success; every
+/// envelope, ok or error, carries `precondition` (Story 9.26).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -197,9 +203,11 @@ fn untrack_result_to_envelope(r: &UntrackResult) -> Vec<u8> {
 /// - `jj.config_error` — the repo's effective jj config no longer reads, or
 ///   `snapshot.max-new-file-size` has the wrong type (the key in `context`); nothing is written.
 /// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
-///   rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
-///   the next snapshot); no `context`, nothing is written.
+///   rewritten without a checkout by a concurrent writer after the pre-verb snapshot); no
+///   `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -219,11 +227,8 @@ pub unsafe extern "C" fn zanshin_file_track(handle: u64, data: *const u8, len: u
         let req = read_file_track_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session
-            .repo
-            .file_track(&req.paths, req.include_ignored)
-            .map_err(map_mutate_err)?;
-        Ok(track_result_to_envelope(&result))
+        let result = session.repo.file_track(&req.paths, req.include_ignored);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, track_result_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -253,9 +258,11 @@ pub unsafe extern "C" fn zanshin_file_track(handle: u64, data: *const u8, len: u
 /// - `jj.config_error` — the repo's effective jj config no longer reads, `snapshot.auto-track` is
 ///   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type; nothing is written.
 /// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
-///   rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
-///   the next snapshot); no `context`, nothing is written.
+///   rewritten without a checkout by a concurrent writer after the pre-verb snapshot); no
+///   `context`, nothing is written.
 /// - `jj.path_not_ignored` — matched paths are not ignored, so the next snapshot would re-add
 ///   them; every offending path in `context`, joined by `\n`. No operation is written and the
 ///   working-copy state is unchanged.
@@ -274,8 +281,8 @@ pub unsafe extern "C" fn zanshin_file_untrack(handle: u64, data: *const u8, len:
         let req = read_file_untrack_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.file_untrack(&req.paths).map_err(map_mutate_err)?;
-        Ok(untrack_result_to_envelope(&result))
+        let result = session.repo.file_untrack(&req.paths);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, untrack_result_to_envelope)
     });
     vec_into_token(buf)
 }

@@ -22,7 +22,7 @@ use zanshin_jj::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdat
 
 use crate::envelope::{
     build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, missing_field,
-    ok_mutation_result, reject_null_request, session_from_handle, FfiErrorObj,
+    ok_mutation_result, precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -157,18 +157,22 @@ pub(crate) fn build_export_failures<'a>(
     b.create_vector(&offsets)
 }
 
-/// Serialise a [`GitImportResult`] into a finished `Envelope<GitImportResult>` buffer.
-fn git_import_result_to_envelope(r: &GitImportResult) -> Vec<u8> {
-    let mut b = FlatBufferBuilder::with_capacity(1024);
-    let mutation = build_mutation_result(&mut b, &r.mutation);
-    let bookmarks = build_ref_updates(&mut b, &r.changed_bookmarks);
-    let tags = build_ref_updates(&mut b, &r.changed_tags);
+/// Build the `GitImportResult` table into `b` and return its offset — the ONE construction
+/// site `zanshin_git_import` and the pre-verb snapshot's `Precondition.git_refs` (Story 9.26)
+/// share.
+pub(crate) fn build_git_import_result<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    r: &GitImportResult,
+) -> flatbuffers::WIPOffset<fbs::GitImportResult<'a>> {
+    let mutation = build_mutation_result(b, &r.mutation);
+    let bookmarks = build_ref_updates(b, &r.changed_bookmarks);
+    let tags = build_ref_updates(b, &r.changed_tags);
     let abandoned_offs: Vec<_> = r.abandoned_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
     let abandoned = b.create_vector(&abandoned_offs);
     let failed_offs: Vec<_> = r.failed_ref_names.iter().map(|n| b.create_string(n)).collect();
     let failed = b.create_vector(&failed_offs);
-    let table = fbs::GitImportResult::create(
-        &mut b,
+    fbs::GitImportResult::create(
+        b,
         &fbs::GitImportResultArgs {
             mutation: Some(mutation),
             changed_bookmarks: Some(bookmarks),
@@ -177,12 +181,23 @@ fn git_import_result_to_envelope(r: &GitImportResult) -> Vec<u8> {
             num_rewritten: r.num_rewritten,
             failed_ref_names: Some(failed),
         },
-    );
-    finish_envelope(b, fbs::Payload::GitImportResult, table.as_union_value())
+    )
+}
+
+/// Serialise a [`GitImportResult`] into a finished `Envelope<GitImportResult>` buffer.
+fn git_import_result_to_envelope(r: &GitImportResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(1024);
+    let table = build_git_import_result(&mut b, r);
+    finish_envelope(
+        b,
+        fbs::Payload::GitImportResult,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 /// Serialise a [`GitExportResult`] into a finished `Envelope<GitExportResult>` buffer.
-fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
+fn git_export_result_to_envelope(r: &GitExportResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let bookmarks = build_export_failures(&mut b, &r.failed_bookmarks);
@@ -195,7 +210,12 @@ fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
             failed_tags: Some(tags),
         },
     );
-    finish_envelope(b, fbs::Payload::GitExportResult, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::GitExportResult,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -203,9 +223,10 @@ fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
 /// Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
 /// the CLI's `jj git import`.
 ///
-/// Takes no arguments: the CLI's own `GitImportArgs` is empty. Unlike the CLI this is NOT
-/// skipped in a colocated workspace — that skip exists because the CLI imports refs during
-/// its implicit per-command snapshot, which Zanshin never performs (D2).
+/// Takes no arguments: the CLI's own `GitImportArgs` is empty. In a colocated workspace the
+/// pre-verb snapshot (Story 9.26) has already imported the refs — its outcome rides
+/// `Envelope.precondition.git_refs` — so this finds nothing left and writes no operation, the
+/// CLI's observable end state where it skips the command outright.
 ///
 /// If nothing needed importing, NO operation is written and the nested
 /// `MutationResult.new_op_id` carries the PRE-CALL op-log head. A ref that could not be
@@ -220,6 +241,8 @@ fn git_export_result_to_envelope(r: &GitExportResult) -> Vec<u8> {
 /// - `jj.config_error` — the repo's effective jj config, its
 ///   `revset-aliases."immutable_heads()"`, or `git.abandon-unreachable-commits` /
 ///   `git.record-synthetic-predecessors` could not be read, parsed, or resolved.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -235,8 +258,8 @@ pub unsafe extern "C" fn zanshin_git_import(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.git_import().map_err(map_mutate_err)?;
-        Ok(git_import_result_to_envelope(&result))
+        let result = session.repo.git_import();
+        precondition_envelope(&mut session.repo, result, map_mutate_err, git_import_result_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -260,6 +283,8 @@ pub unsafe extern "C" fn zanshin_git_import(handle: u64) -> *mut ZanshinBuf {
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -271,8 +296,8 @@ pub unsafe extern "C" fn zanshin_git_export(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.git_export().map_err(map_mutate_err)?;
-        Ok(git_export_result_to_envelope(&result))
+        let result = session.repo.git_export();
+        precondition_envelope(&mut session.repo, result, map_mutate_err, git_export_result_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -308,6 +333,8 @@ pub unsafe extern "C" fn zanshin_git_export(handle: u64) -> *mut ZanshinBuf {
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -325,9 +352,8 @@ pub unsafe extern "C" fn zanshin_git_remote_add(handle: u64, data: *const u8, le
         let session = unsafe { session_from_handle(handle) }?;
         let result = session
             .repo
-            .git_remote_add(&req.name, &req.url, req.push_url.as_deref())
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+            .git_remote_add(&req.name, &req.url, req.push_url.as_deref());
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -373,6 +399,8 @@ pub unsafe extern "C" fn zanshin_git_remote_add(handle: u64, data: *const u8, le
 /// - `jj.remote_nonstandard_config` — jj refuses to rewrite this remote's git config (a
 ///   remote ADDED with a push URL is exactly this case); the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -389,8 +417,8 @@ pub unsafe extern "C" fn zanshin_git_remote_remove(handle: u64, name: *const cor
         let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: name is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let name = unsafe { cstr_to_string(name) }?;
-        let result = session.repo.git_remote_remove(&name).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.git_remote_remove(&name);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -436,6 +464,8 @@ pub unsafe extern "C" fn zanshin_git_remote_remove(handle: u64, name: *const cor
 /// - `jj.remote_nonstandard_config` — `old_name`'s git config is not the plain
 ///   single-fetch-refspec shape jj knows how to rewrite; the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -456,11 +486,8 @@ pub unsafe extern "C" fn zanshin_git_remote_rename(
         let old_name = unsafe { cstr_to_string(old_name) }?;
         // SAFETY: see above.
         let new_name = unsafe { cstr_to_string(new_name) }?;
-        let result = session
-            .repo
-            .git_remote_rename(&old_name, &new_name)
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.git_remote_rename(&old_name, &new_name);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -499,6 +526,8 @@ pub unsafe extern "C" fn zanshin_git_remote_rename(
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -516,9 +545,8 @@ pub unsafe extern "C" fn zanshin_git_remote_set_url(handle: u64, data: *const u8
         let session = unsafe { session_from_handle(handle) }?;
         let result = session
             .repo
-            .git_remote_set_url(&req.name, req.url.as_deref(), req.push_url.as_deref())
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+            .git_remote_set_url(&req.name, req.url.as_deref(), req.push_url.as_deref());
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -540,6 +568,7 @@ mod tests {
 
     fn sample_mutation() -> MutationResult {
         MutationResult {
+            finish: None,
             new_op_id: OperationId("op99".to_owned()),
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
@@ -570,7 +599,7 @@ mod tests {
             failed_ref_names: vec!["refs/remotes/git/main".to_owned()],
         };
 
-        let buf = git_import_result_to_envelope(&r);
+        let buf = git_import_result_to_envelope(&r, None);
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::GitImportResult);
@@ -623,7 +652,7 @@ mod tests {
             failed_tags: Vec::new(),
         };
 
-        let buf = git_export_result_to_envelope(&r);
+        let buf = git_export_result_to_envelope(&r, None);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::GitExportResult);
         let p = env.data_as_git_export_result().expect("GitExportResult payload");
@@ -654,7 +683,7 @@ mod tests {
             num_rewritten: 0,
             failed_ref_names: Vec::new(),
         };
-        let import_buf = git_import_result_to_envelope(&import);
+        let import_buf = git_import_result_to_envelope(&import, None);
         let env = verified(&import_buf);
         assert!(env.ok(), "an empty import is a success, not an error");
         assert_eq!(env.data_type(), fbs::Payload::GitImportResult);
@@ -664,7 +693,7 @@ mod tests {
             failed_bookmarks: Vec::new(),
             failed_tags: Vec::new(),
         };
-        let export_buf = git_export_result_to_envelope(&export);
+        let export_buf = git_export_result_to_envelope(&export, None);
         let env = verified(&export_buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::GitExportResult);

@@ -13,6 +13,7 @@ use std::sync::Mutex;
 
 use flatbuffers::FlatBufferBuilder;
 
+use crate::envelope::finish_envelope;
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 use crate::watcher::WatcherEvent;
@@ -157,17 +158,12 @@ pub(crate) fn watcher_event_to_envelope(session_id: u64, event: &WatcherEvent) -
             message: message_off,
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::WatcherEvent,
-            data: Some(watcher_event.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(
+        b,
+        fbs::Payload::WatcherEvent,
+        Some(watcher_event.as_union_value()),
+        None,
+    )
 }
 
 /// Serialise a progress notification (FR-FFI-8) into a finished
@@ -192,17 +188,7 @@ pub(crate) fn progress_to_envelope(session_id: u64, operation: &str, progress: f
             message: Some(message_off),
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::Progress,
-            data: Some(progress_table.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::Progress, Some(progress_table.as_union_value()), None)
 }
 
 #[cfg(test)]

@@ -135,8 +135,8 @@ table AbsorbRequest {
 /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
 ///
 /// `revision` ABSENT is the wire form of "the user did not supply it", which applies the
-/// CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
-/// Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+/// CLI's own `-r` default: `@` — the working-copy commit the pre-verb snapshot has just brought
+/// up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
 /// `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
 /// rather than guessed.
 /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
@@ -233,7 +233,7 @@ table GitRemoteSetUrlRequest {
 /// InterdiffRequest's `jj.change_not_found`. Both commits stay addressable because their commit
 /// hexes are ordinary revset symbols: union them to get one entry per commit.
 /// ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
-/// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+/// `@` — the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26). An
 /// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
 /// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
 /// `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
@@ -343,8 +343,8 @@ table WorkspaceRootRequest {
 /// `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
 /// that no spelling can get around.
 /// `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
-/// CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
-/// commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+/// CLI's own clap `default_value`, the literal `@` — the working-copy commit the pre-verb
+/// snapshot has just brought up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a
 /// revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
 /// exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
 /// absence, and refuses with `jj.change_not_found`.
@@ -720,6 +720,23 @@ table MutationResult {
   /// configured and on every call that committed nothing; the UI turns a present value into
   /// the "set your identity" prompt. Never a refusal.
   identity_missing: IdentityMissing;
+  /// What the CLI's `finish_transaction` reported while committing this call's operation
+  /// (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
+  /// nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
+  finish: FinishFacts;
+}
+
+/// The colocated Git bookkeeping the CLI runs while it finishes a transaction
+/// (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
+/// `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
+/// empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
+/// `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
+/// lists are the refs the colocated export could not write.
+table FinishFacts {
+  working_copy_became_immutable: bool;
+  git_head_update_failed: bool;
+  export_failed_bookmarks: [GitExportFailure];
+  export_failed_tags: [GitExportFailure];
 }
 
 /// `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
@@ -1085,7 +1102,7 @@ table UntrackedPath {
 }
 
 /// What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
-/// warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+/// warnings print. ONE definition shared by TrackResult, UntrackResult and Precondition (Story 9.26).
 /// `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
 /// `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
 table SnapshotStats {
@@ -1121,6 +1138,36 @@ table UntrackResult {
   snapshot_stats: SnapshotStats;
   failed_bookmarks: [GitExportFailure];
   failed_tags: [GitExportFailure];
+}
+
+/// What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
+/// every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
+/// `Envelope.precondition`, never the `Payload` union.
+///
+/// `was_snapshot_taken`: the head operation changed during the precondition (`jj util
+/// snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
+/// `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
+/// "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
+/// `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
+/// on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
+/// PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
+/// `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
+/// resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
+/// The three rebased counts saturate at 4294967295.
+///
+/// On an error envelope it is PARTIAL: every fact up to the failing step.
+table Precondition {
+  was_snapshot_taken: bool;
+  snapshot_stats: SnapshotStats;
+  git_head_imported: bool;
+  git_head_reset: bool;
+  git_head_rebased: uint;
+  snapshot_rebased: uint;
+  working_copy_immutable_new_commit: bool;
+  git_refs: GitImportResult;
+  git_refs_rebased: uint;
+  jjconflict_files_present: bool;
+  finish: FinishFacts;
 }
 
 union Payload {
@@ -1167,10 +1214,18 @@ union Payload {
 /// NativeFinalizer-backed token path (zanshin_buffer_free_token) used by the
 /// FfiBuffer wrapper as a belt-and-suspenders backstop
 /// (see app/lib/src/ffi/ffi_buffer.dart).
+///
+/// `precondition` (Story 9.26) is PRESENT whenever the verb's pre-verb snapshot RAN — on the ok
+/// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
+/// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
+/// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
+/// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+/// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 table Envelope {
   ok: bool;
   error: FfiError;
   data: Payload;
+  precondition: Precondition;
 }
 
 root_type Envelope;

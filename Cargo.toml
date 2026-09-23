@@ -32,7 +32,13 @@ etcetera = "=0.11.0"  # WHY: `zanshin-jj/src/wc_ops.rs`'s port of the CLI's `bas
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: jj-lib exposes Stream-based APIs — consumed in production by zanshin-jj (status.rs, revset.rs, graph.rs) and by the zanshin-jj graph_blueprint bench
 getrandom = "=0.4.2"  # WHY: seeds the `ChaCha20Rng` that `SecureConfig::load_config` requires — the single call site is `zanshin-jj/src/config.rs::create_repo_config_file`. `rand::make_rng()` (what the CLI uses) `expect`s on OS-RNG failure and no FFI-reachable path may panic, so the seed is drawn by hand. Exact-pinned to the version already in Cargo.lock as a jj-lib transitive
-jj-lib = "=0.44.0"  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
+# WHY features = ["watchman"]: the jj CLI builds jj-lib with its default features
+# `["watchman", "git"]` (`cli/Cargo.toml:139` @ v0.44.0). Without the feature a user's
+# `fsmonitor.backend = "watchman"` makes every working-copy snapshot fail with jj-lib's "not
+# compiled with the `watchman` feature" error, where the CLI queries Watchman (and falls back to
+# a full scan when the daemon is unreachable). Story 9.26 snapshots before every verb, so the
+# feature is parity, not an option. Zanshin never bundles, installs or launches the daemon.
+jj-lib = { version = "=0.44.0", features = ["watchman"] }  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
 notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
 rand_chacha = "=0.10.0"  # WHY: `SecureConfig::load_config` takes a `&mut ChaCha20Rng` by concrete type — the single call site is `zanshin-jj/src/config.rs::create_repo_config_file`. It also re-exports `rand_core`, which is where `SeedableRng::from_seed` lives, so no separate `rand`/`rand_core` dependency is needed (and `rand` is deliberately NOT added: `rand::make_rng()` panics). Exact-pinned to the version already in Cargo.lock as a jj-lib transitive

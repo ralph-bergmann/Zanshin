@@ -73,6 +73,10 @@ pub struct WorkspaceEntry {
 /// [`list_workspaces`] collapses every path-side failure to `root: None`.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// No workspace of that name is in the head view's `wc_commit_ids()`. The remedy is to pick a
     /// different workspace — `jj workspace list` names them all.
     #[error("no such workspace: {name}")]
@@ -108,6 +112,14 @@ pub enum WorkspaceError {
 /// Converts any jj-lib error to [`WorkspaceError::Backend`].
 fn be<E: std::fmt::Display>(e: E) -> WorkspaceError {
     WorkspaceError::Backend(e.to_string())
+}
+
+/// Converts the view half's error into this module's taxonomy, variant for variant.
+fn from_view(e: crate::ViewError) -> WorkspaceError {
+    match e {
+        crate::ViewError::Backend(reason) => WorkspaceError::Backend(reason),
+        crate::ViewError::Precondition(inner) => WorkspaceError::Precondition(inner),
+    }
 }
 
 /// Resolves one workspace's RECORDED path to an absolute directory — the stage both verbs share.
@@ -152,9 +164,7 @@ fn resolve_recorded_root(
 ///   the jj-lib reason is forwarded as a string. No path failure reaches this.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntry>, WorkspaceError> {
-    let rows = crate::view::list_working_copies(workspace).map_err(|e| match e {
-        crate::ViewError::Backend(reason) => WorkspaceError::Backend(reason),
-    })?;
+    let rows = crate::view::list_working_copies(workspace).map_err(from_view)?;
     let repo_path = workspace.repo_path();
     // Loaded ONCE, looked up per row: `get_workspace_path` re-decodes the whole protobuf index
     // per call either way, and a failed load must not fail the listing.
@@ -203,4 +213,29 @@ pub(crate) fn resolve_root(workspace: &Workspace, name: Option<&str>) -> Result<
         return Err(WorkspaceError::NotFound { name: name.to_owned() });
     }
     resolve_recorded_root(&store, repo_path, name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{from_view, list_workspaces, WorkspaceError};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = list_workspaces(repo.workspace());
+        assert!(matches!(result, Err(WorkspaceError::Backend(_))), "{result:?}");
+    }
+
+    /// The view half's two variants map one-to-one; the precondition one is only produced by
+    /// [`crate::Repo`]'s own pre-verb snapshot, never by the view read this module calls.
+    #[test]
+    fn view_errors_keep_their_variant() {
+        assert!(matches!(
+            from_view(crate::ViewError::Precondition(crate::PreconditionError::Backend("p".to_owned()))),
+            WorkspaceError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "p"
+        ));
+    }
 }

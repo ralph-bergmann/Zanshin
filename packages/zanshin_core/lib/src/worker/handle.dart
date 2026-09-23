@@ -11,6 +11,7 @@ import '../ffi/graph.dart'
 import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
+import '../ffi/precondition.dart' show Precondition;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/workspace.dart' show WorkspaceEntry;
@@ -47,6 +48,17 @@ final class RepoHandle {
   /// 3.4b read commands pass this to [ZanshinWorker.send] as the handle
   /// discriminant, e.g. `StatusCommand(commandId: id, handleId: handleId)`.
   int get handleId => _handleId;
+
+  /// The pre-verb snapshot report (Story 9.26) of the latest reply for this
+  /// handle that carried one — ok OR error — or `null` before the first.
+  ///
+  /// Every snapshotting verb (all reads and mutations except [logDefaults] and
+  /// [workspaceRoot]) first snapshots the working copy and, in a colocated
+  /// workspace, imports the Git HEAD and refs, exactly as each jj CLI command
+  /// does. That can write operations the caller did not ask for; this is where
+  /// the facts the CLI would have printed land. On an error it is PARTIAL — up to
+  /// the failing step.
+  Precondition? get lastPrecondition => _worker.lastPreconditionOf(_handleId);
 
   /// Close the repository on the worker and release the handle table entry.
   ///
@@ -313,8 +325,8 @@ final class RepoHandle {
   /// `MutationResult` has no warning channel.
   ///
   /// If the resulting tree already equals the destination's, NO operation is
-  /// written and `newOpId` is the pre-call op-log head. The working copy is not
-  /// snapshotted first — `@` is the last-snapshotted working-copy commit.
+  /// written and `newOpId` is the pre-call op-log head. The working copy is
+  /// snapshotted first, as by the CLI, so on-disk edits are part of `@`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -369,8 +381,8 @@ final class RepoHandle {
   /// List the entries of a revision's tree (Story 9.4) — the CLI's
   /// `jj file list`.
   ///
-  /// A `null` [revision] applies the CLI's own `-r` default `@` — here the
-  /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. It is
+  /// A `null` [revision] applies the CLI's own `-r` default `@` — snapshotted
+  /// first, so on-disk edits are part of it, exactly as in the CLI. It is
   /// a jj reverse-hex CHANGE ID, not a revset; a divergent id is refused rather
   /// than guessed, exactly as the CLI's `-r` refuses an ambiguous revision.
   ///
@@ -384,7 +396,7 @@ final class RepoHandle {
   /// recursively and never listed — except a subtree that CONFLICTS with a
   /// non-tree, which arrives as one `FileType.conflict` entry.
   ///
-  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.change_not_found`, `jj.invalid_input`,
   /// `jj.jj_lib_error`).
@@ -480,15 +492,15 @@ final class RepoHandle {
   /// Import the backing git repo's refs into jj's view (Story 9.5) — the CLI's
   /// `jj git import`.
   ///
-  /// Takes no arguments; the CLI's own `jj git import` has none either. Unlike the
-  /// CLI this is NOT skipped in a colocated workspace: that skip exists because the
-  /// CLI imports refs during its implicit per-command snapshot, which Zanshin never
-  /// performs, so the skip's premise is false here.
+  /// Takes no arguments; the CLI's own `jj git import` has none either. In a
+  /// colocated workspace the pre-verb snapshot has already imported the refs (its
+  /// outcome is [lastPrecondition]`.gitRefs`), so this finds nothing left to do
+  /// and writes no operation — the CLI's observable end state, where it skips the
+  /// command outright.
   ///
-  /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are
-  /// read from the repo's effective jj config per call. Per-remote
-  /// `auto-track-bookmarks` is not honoured — [gitFetch] and clone leave it empty
-  /// too, and changing that is a separate, three-call-site change.
+  /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and
+  /// `remotes.<name>.auto-track-bookmarks` are read from the repo's effective jj
+  /// config per call.
   ///
   /// If nothing needed importing, no operation is written and `mutation.newOpId` is
   /// the pre-call op-log head. A ref that could not be imported lands in
@@ -507,8 +519,9 @@ final class RepoHandle {
   /// Write jj's bookmarks and tags back to the backing git repo (Story 9.5) — the
   /// CLI's `jj git export`.
   ///
-  /// Not skipped in a colocated workspace either — see [gitImport]. Export never
-  /// moves `@` and rewrites no commit.
+  /// In a colocated workspace every finished transaction has already exported,
+  /// so this usually finds git in sync — see [gitImport]. Export never moves `@`
+  /// and rewrites no commit.
   ///
   /// If git already matched, no operation is written and `mutation.newOpId` is the
   /// pre-call op-log head. Refs that could not be written land in `failedBookmarks`
@@ -630,8 +643,8 @@ final class RepoHandle {
   /// Show each revision [revset] denotes with what it changed (Story 9.6) — the
   /// CLI's `jj show`.
   ///
-  /// A `null` [revset] applies the CLI's own default `@` — here the
-  /// LAST-SNAPSHOTTED working-copy commit, because Zanshin never snapshots. Unlike
+  /// A `null` [revset] applies the CLI's own default `@`, snapshotted first as in
+  /// the CLI. Unlike
   /// [interdiff]'s two single revisions, [revset] is a pass-through EXPRESSION:
   /// the CLI unions its revsets, so entries are per COMMIT — a revset naming
   /// two commits of ONE divergent change yields two entries with the same
@@ -659,7 +672,7 @@ final class RepoHandle {
   /// there, so an over-large limit means "everything" rather than wrapping to an
   /// empty list; a NEGATIVE [limit] throws [ArgumentError].
   ///
-  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
   /// `jj.config_error`, `jj.jj_lib_error`).
@@ -697,7 +710,7 @@ final class RepoHandle {
   /// several visible commits right now — the same answer on every row) and
   /// `isAnonymous` (today's local bookmarks).
   ///
-  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
   /// `jj.config_error`, `jj.jj_lib_error`).
@@ -740,7 +753,7 @@ final class RepoHandle {
   /// in the patch TEXT, which is Epic 5's surface here. It never turns the call
   /// into a refusal, and it describes the TREE, not the filtered result.
   ///
-  /// This read writes no operation — the rebase behind it is in-memory only.
+  /// This read writes no operation of its own — the rebase behind it is in-memory only.
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error` —
@@ -768,7 +781,7 @@ final class RepoHandle {
   /// [workspaceRoot] for strict path diagnostics. That asymmetry between the two
   /// verbs is reproduced, not smoothed over.
   ///
-  /// This read writes no operation. Throws [StateError] synchronously if the
+  /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.jj_lib_error`).
   Future<List<WorkspaceEntry>> workspaces() {
@@ -814,8 +827,8 @@ final class RepoHandle {
   /// replaces, so pass what the user typed. An empty list, or an empty-string
   /// name, is refused with `jj.invalid_input`.
   ///
-  /// A `null` [revision] is the CLI's own `-r` default `@` — the LAST-SNAPSHOTTED
-  /// working-copy commit, since Zanshin never snapshots. It is a jj reverse-hex
+  /// A `null` [revision] is the CLI's own `-r` default `@`, snapshotted first as
+  /// in the CLI. It is a jj reverse-hex
   /// CHANGE id, so a divergent one is refused rather than guessed, and a commit
   /// hex, a revset expression and a hidden commit are unaddressable. ([interdiff]
   /// used to make the same trade; it gained a [CommitIdRef] arm, and this verb was
@@ -880,15 +893,10 @@ final class RepoHandle {
   ///
   /// An operation (`track paths`) is ALWAYS written, even when nothing matched.
   /// Like the CLI, `@` does NOT change: the tracked paths live in the working-copy
-  /// state until the next snapshot moves them into `@` (jj's GH #8298). Until
-  /// Story 9.26's per-verb snapshot lands, a `fileTrack` that recorded ANYTHING
-  /// (a new path, or any unsnapshotted edit — the track snapshot records all
-  /// on-disk changes into the working-copy state) leaves that state ahead of `@`:
-  /// the NEXT `fileTrack`/`fileUntrack` refuses with
-  /// `jj.concurrent_working_copy`, and every verb that moves `@` through a
-  /// checkout (`describe`, `newChange`, `edit`, `abandon`, `restore`, `absorb`,
-  /// `undo`, …) COMMITS its operation and then fails with `jj.jj_lib_error`
-  /// (jj-lib's `ConcurrentCheckout`), leaving the working copy stale.
+  /// state until the next snapshot moves them into `@` (jj's GH #8298) — which
+  /// is the pre-verb snapshot of the very next call on this handle.
+  /// `snapshotStats` merges the pre-verb snapshot's stats with the track's own,
+  /// as the CLI prints them.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ArgumentError] if a path contains an interior NUL (U+0000); throws
@@ -922,6 +930,26 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.fileUntrack(_handleId, paths);
+  }
+
+  /// Snapshot the working copy right now — and, in a colocated workspace, import
+  /// the Git HEAD and refs (Story 9.26) — the CLI's `jj util snapshot`.
+  ///
+  /// It is exactly the pre-verb snapshot every other snapshotting verb runs
+  /// first, with nothing after it: the UI's "sync now", or the reaction to a
+  /// watcher event. A clean tree with unchanged refs writes no operation and
+  /// returns `wasSnapshotTaken == false`. The report also becomes
+  /// [lastPrecondition].
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.stale_working_copy` — `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
+  /// in the context, `jj.config_error`, `jj.jj_lib_error`).
+  Future<Precondition> snapshot() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.snapshot(_handleId);
   }
 
   // GC backstop: a Dart Finalizer whose callback enqueues closeRepo on the

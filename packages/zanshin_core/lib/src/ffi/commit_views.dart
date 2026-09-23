@@ -30,8 +30,8 @@ import 'status.dart' show FileChange, mapFileChangeTable;
 /// buffer, and return the FlatBuffers `Envelope` bytes.
 ///
 /// A `null` [revset] is the wire form of "the user did not supply it", which
-/// applies the CLI's own default `@` — the LAST-SNAPSHOTTED working-copy commit,
-/// since Zanshin never snapshots. [revset] is an EXPRESSION, not a change id: the
+/// applies the CLI's own default `@` — the working-copy commit the pre-verb
+/// snapshot has just brought up to date (Story 9.26). [revset] is an EXPRESSION, not a change id: the
 /// CLI unions its revsets, so entries are per COMMIT — a revset naming two commits
 /// of ONE divergent change yields two entries with the same `Change.id`. A BARE
 /// divergent change-id symbol does NOT get that far: jj-lib's own `SymbolResolver`

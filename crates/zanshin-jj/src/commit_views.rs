@@ -5,10 +5,9 @@
 //!
 //! All three are READS: they resolve to the head operation per call (ADR-0002), read
 //! committed trees and the operation log, and return `jj_lib`-type-free owned data. None of
-//! them opens a transaction, so none writes an operation — not even on a refusal — unlike the
-//! CLI, whose `workspace_helper` snapshots the working copy first and can therefore write an
-//! op from a read. Zanshin never snapshots (D2 — `status.rs:84`), so an omitted revision is
-//! the LAST-SNAPSHOTTED `@`.
+//! them opens a transaction, so the view itself writes no operation — not even on a refusal.
+//! Like the CLI's `workspace_helper`, [`crate::Repo`] snapshots the working copy FIRST (Story
+//! 9.26), and that snapshot is what may write one; an omitted revision is the up-to-date `@`.
 //!
 //! CLI parity is at tag **v0.44.0** (`cli/src/commands/{show,evolog,interdiff}.rs` plus
 //! `cli/src/diff_util.rs::{show_patch,show_inter_diff,diff_status_inner}`) for the observable
@@ -162,6 +161,10 @@ pub struct EvologEntry {
 /// onto an error code the registry already carries — this story mints none.
 #[derive(Debug, thiserror::Error)]
 pub enum CommitViewError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// A single-revision argument (`interdiff`'s `from`/`to`) is malformed, carried by no VISIBLE
     /// commit (unknown or only-hidden), or DIVERGENT — the same refusal every other
     /// single-revision parameter makes, because the CLI resolves both sides with
@@ -223,6 +226,7 @@ fn rev(e: crate::RevsetError) -> CommitViewError {
             reason: inner.to_string(),
         },
         crate::RevsetError::JjLibError(reason) => CommitViewError::Backend(reason),
+        crate::RevsetError::Precondition(inner) => CommitViewError::Precondition(inner),
     }
 }
 
@@ -265,8 +269,8 @@ fn res_commit(e: CommitPrefixError, id: &CommitId) -> CommitViewError {
 
 /// Resolves ONE side of [`interdiff`] to its commit.
 ///
-/// An ABSENT side is the CLI's `@` default (the LAST-SNAPSHOTTED working copy — Zanshin never
-/// snapshots, D2); the two present arms dispatch to the two resolvers, each mapping its own
+/// An ABSENT side is the CLI's `@` default (the working copy the pre-verb snapshot has just
+/// recorded, Story 9.26); the two present arms dispatch to the two resolvers, each mapping its own
 /// error taxonomy. Written once rather than inline twice so the `from` and `to` sides cannot
 /// drift apart.
 fn resolve_side(
@@ -583,6 +587,11 @@ mod tests {
         assert!(matches!(
             rev(RevsetError::JjLibError("index read failed".to_owned())),
             CommitViewError::Backend(reason) if reason == "index read failed"
+        ));
+        // Story 9.26: a failed pre-verb snapshot keeps its own variant.
+        assert!(matches!(
+            rev(RevsetError::Precondition(crate::PreconditionError::Backend("b".to_owned()))),
+            CommitViewError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "b"
         ));
     }
 

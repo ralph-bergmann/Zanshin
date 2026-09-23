@@ -1076,8 +1076,8 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
 ///  Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
 ///
 ///  `revision` ABSENT is the wire form of "the user did not supply it", which applies the
-///  CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
-///  Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+///  CLI's own `-r` default: `@` — the working-copy commit the pre-verb snapshot has just brought
+///  up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
 ///  `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
 ///  rather than guessed.
 ///  `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
@@ -1729,7 +1729,7 @@ class GitRemoteSetUrlRequestObjectBuilder extends fb.ObjectBuilder {
 ///  InterdiffRequest's `jj.change_not_found`. Both commits stay addressable because their commit
 ///  hexes are ordinary revset symbols: union them to get one entry per commit.
 ///  ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
-///  `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+///  `@` — the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26). An
 ///  explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
 ///  There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
 ///  `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
@@ -2364,8 +2364,8 @@ class WorkspaceRootRequestObjectBuilder extends fb.ObjectBuilder {
 ///  `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
 ///  that no spelling can get around.
 ///  `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
-///  CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
-///  commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+///  CLI's own clap `default_value`, the literal `@` — the working-copy commit the pre-verb
+///  snapshot has just brought up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a
 ///  revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
 ///  exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
 ///  absence, and refuses with `jj.change_not_found`.
@@ -5254,9 +5254,14 @@ class MutationResult {
   ///  the "set your identity" prompt. Never a refusal.
   IdentityMissing? get identityMissing => IdentityMissing.reader.vTableGetNullable(_bc, _bcOffset, 12);
 
+  ///  What the CLI's `finish_transaction` reported while committing this call's operation
+  ///  (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
+  ///  nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
+  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 14);
+
   @override
   String toString() {
-    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, identityMissing: ${identityMissing}}';
+    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, identityMissing: ${identityMissing}, finish: ${finish}}';
   }
 }
 
@@ -5273,7 +5278,7 @@ class MutationResultBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addNewOpIdOffset(int? offset) {
@@ -5301,6 +5306,11 @@ class MutationResultBuilder {
     return fbBuilder.offset;
   }
 
+  int addFinishOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -5312,6 +5322,7 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _abandonedChangeIds;
   final String? _workingCopyChangeId;
   final IdentityMissingObjectBuilder? _identityMissing;
+  final FinishFactsObjectBuilder? _finish;
 
   MutationResultObjectBuilder({
     String? newOpId,
@@ -5319,11 +5330,13 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
     List<String>? abandonedChangeIds,
     String? workingCopyChangeId,
     IdentityMissingObjectBuilder? identityMissing,
+    FinishFactsObjectBuilder? finish,
   }) : _newOpId = newOpId,
        _newChangeIds = newChangeIds,
        _abandonedChangeIds = abandonedChangeIds,
        _workingCopyChangeId = workingCopyChangeId,
-       _identityMissing = identityMissing;
+       _identityMissing = identityMissing,
+       _finish = finish;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -5339,12 +5352,128 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeString(_workingCopyChangeId!);
     final int? identityMissingOffset = _identityMissing?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(5);
+    final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(6);
     fbBuilder.addOffset(0, newOpIdOffset);
     fbBuilder.addOffset(1, newChangeIdsOffset);
     fbBuilder.addOffset(2, abandonedChangeIdsOffset);
     fbBuilder.addOffset(3, workingCopyChangeIdOffset);
     fbBuilder.addOffset(4, identityMissingOffset);
+    fbBuilder.addOffset(5, finishOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The colocated Git bookkeeping the CLI runs while it finishes a transaction
+///  (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
+///  `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
+///  empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
+///  `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
+///  lists are the refs the colocated export could not write.
+class FinishFacts {
+  FinishFacts._(this._bc, this._bcOffset);
+  factory FinishFacts(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FinishFacts> reader = _FinishFactsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  bool get workingCopyBecameImmutable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
+  bool get gitHeadUpdateFailed => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  List<GitExportFailure>? get exportFailedBookmarks =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 8);
+  List<GitExportFailure>? get exportFailedTags =>
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'FinishFacts{workingCopyBecameImmutable: ${workingCopyBecameImmutable}, gitHeadUpdateFailed: ${gitHeadUpdateFailed}, exportFailedBookmarks: ${exportFailedBookmarks}, exportFailedTags: ${exportFailedTags}}';
+  }
+}
+
+class _FinishFactsReader extends fb.TableReader<FinishFacts> {
+  const _FinishFactsReader();
+
+  @override
+  FinishFacts createObject(fb.BufferContext bc, int offset) => FinishFacts._(bc, offset);
+}
+
+class FinishFactsBuilder {
+  FinishFactsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addWorkingCopyBecameImmutable(bool? workingCopyBecameImmutable) {
+    fbBuilder.addBool(0, workingCopyBecameImmutable);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadUpdateFailed(bool? gitHeadUpdateFailed) {
+    fbBuilder.addBool(1, gitHeadUpdateFailed);
+    return fbBuilder.offset;
+  }
+
+  int addExportFailedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addExportFailedTagsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FinishFactsObjectBuilder extends fb.ObjectBuilder {
+  final bool? _workingCopyBecameImmutable;
+  final bool? _gitHeadUpdateFailed;
+  final List<GitExportFailureObjectBuilder>? _exportFailedBookmarks;
+  final List<GitExportFailureObjectBuilder>? _exportFailedTags;
+
+  FinishFactsObjectBuilder({
+    bool? workingCopyBecameImmutable,
+    bool? gitHeadUpdateFailed,
+    List<GitExportFailureObjectBuilder>? exportFailedBookmarks,
+    List<GitExportFailureObjectBuilder>? exportFailedTags,
+  }) : _workingCopyBecameImmutable = workingCopyBecameImmutable,
+       _gitHeadUpdateFailed = gitHeadUpdateFailed,
+       _exportFailedBookmarks = exportFailedBookmarks,
+       _exportFailedTags = exportFailedTags;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? exportFailedBookmarksOffset = _exportFailedBookmarks == null
+        ? null
+        : fbBuilder.writeList(_exportFailedBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? exportFailedTagsOffset = _exportFailedTags == null
+        ? null
+        : fbBuilder.writeList(_exportFailedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addBool(0, _workingCopyBecameImmutable);
+    fbBuilder.addBool(1, _gitHeadUpdateFailed);
+    fbBuilder.addOffset(2, exportFailedBookmarksOffset);
+    fbBuilder.addOffset(3, exportFailedTagsOffset);
     return fbBuilder.endTable();
   }
 
@@ -7883,7 +8012,7 @@ class UntrackedPathObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
-///  warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+///  warnings print. ONE definition shared by TrackResult, UntrackResult and Precondition (Story 9.26).
 ///  `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
 ///  `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
 class SnapshotStats {
@@ -8215,6 +8344,195 @@ class UntrackResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
+///  every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
+///  `Envelope.precondition`, never the `Payload` union.
+///
+///  `was_snapshot_taken`: the head operation changed during the precondition (`jj util
+///  snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
+///  `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
+///  "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
+///  `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
+///  on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
+///  PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
+///  `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
+///  resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
+///  The three rebased counts saturate at 4294967295.
+///
+///  On an error envelope it is PARTIAL: every fact up to the failing step.
+class Precondition {
+  Precondition._(this._bc, this._bcOffset);
+  factory Precondition(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Precondition> reader = _PreconditionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  bool get wasSnapshotTaken => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
+  SnapshotStats? get snapshotStats => SnapshotStats.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  bool get gitHeadImported => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  bool get gitHeadReset => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  int get gitHeadRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 12, 0);
+  int get snapshotRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 14, 0);
+  bool get workingCopyImmutableNewCommit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  GitImportResult? get gitRefs => GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 18);
+  int get gitRefsRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
+  bool get jjconflictFilesPresent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 22, false);
+  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 24);
+
+  @override
+  String toString() {
+    return 'Precondition{wasSnapshotTaken: ${wasSnapshotTaken}, snapshotStats: ${snapshotStats}, gitHeadImported: ${gitHeadImported}, gitHeadReset: ${gitHeadReset}, gitHeadRebased: ${gitHeadRebased}, snapshotRebased: ${snapshotRebased}, workingCopyImmutableNewCommit: ${workingCopyImmutableNewCommit}, gitRefs: ${gitRefs}, gitRefsRebased: ${gitRefsRebased}, jjconflictFilesPresent: ${jjconflictFilesPresent}, finish: ${finish}}';
+  }
+}
+
+class _PreconditionReader extends fb.TableReader<Precondition> {
+  const _PreconditionReader();
+
+  @override
+  Precondition createObject(fb.BufferContext bc, int offset) => Precondition._(bc, offset);
+}
+
+class PreconditionBuilder {
+  PreconditionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(11);
+  }
+
+  int addWasSnapshotTaken(bool? wasSnapshotTaken) {
+    fbBuilder.addBool(0, wasSnapshotTaken);
+    return fbBuilder.offset;
+  }
+
+  int addSnapshotStatsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadImported(bool? gitHeadImported) {
+    fbBuilder.addBool(2, gitHeadImported);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadReset(bool? gitHeadReset) {
+    fbBuilder.addBool(3, gitHeadReset);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadRebased(int? gitHeadRebased) {
+    fbBuilder.addUint32(4, gitHeadRebased);
+    return fbBuilder.offset;
+  }
+
+  int addSnapshotRebased(int? snapshotRebased) {
+    fbBuilder.addUint32(5, snapshotRebased);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopyImmutableNewCommit(bool? workingCopyImmutableNewCommit) {
+    fbBuilder.addBool(6, workingCopyImmutableNewCommit);
+    return fbBuilder.offset;
+  }
+
+  int addGitRefsOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitRefsRebased(int? gitRefsRebased) {
+    fbBuilder.addUint32(8, gitRefsRebased);
+    return fbBuilder.offset;
+  }
+
+  int addJjconflictFilesPresent(bool? jjconflictFilesPresent) {
+    fbBuilder.addBool(9, jjconflictFilesPresent);
+    return fbBuilder.offset;
+  }
+
+  int addFinishOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PreconditionObjectBuilder extends fb.ObjectBuilder {
+  final bool? _wasSnapshotTaken;
+  final SnapshotStatsObjectBuilder? _snapshotStats;
+  final bool? _gitHeadImported;
+  final bool? _gitHeadReset;
+  final int? _gitHeadRebased;
+  final int? _snapshotRebased;
+  final bool? _workingCopyImmutableNewCommit;
+  final GitImportResultObjectBuilder? _gitRefs;
+  final int? _gitRefsRebased;
+  final bool? _jjconflictFilesPresent;
+  final FinishFactsObjectBuilder? _finish;
+
+  PreconditionObjectBuilder({
+    bool? wasSnapshotTaken,
+    SnapshotStatsObjectBuilder? snapshotStats,
+    bool? gitHeadImported,
+    bool? gitHeadReset,
+    int? gitHeadRebased,
+    int? snapshotRebased,
+    bool? workingCopyImmutableNewCommit,
+    GitImportResultObjectBuilder? gitRefs,
+    int? gitRefsRebased,
+    bool? jjconflictFilesPresent,
+    FinishFactsObjectBuilder? finish,
+  }) : _wasSnapshotTaken = wasSnapshotTaken,
+       _snapshotStats = snapshotStats,
+       _gitHeadImported = gitHeadImported,
+       _gitHeadReset = gitHeadReset,
+       _gitHeadRebased = gitHeadRebased,
+       _snapshotRebased = snapshotRebased,
+       _workingCopyImmutableNewCommit = workingCopyImmutableNewCommit,
+       _gitRefs = gitRefs,
+       _gitRefsRebased = gitRefsRebased,
+       _jjconflictFilesPresent = jjconflictFilesPresent,
+       _finish = finish;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
+    final int? gitRefsOffset = _gitRefs?.getOrCreateOffset(fbBuilder);
+    final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(11);
+    fbBuilder.addBool(0, _wasSnapshotTaken);
+    fbBuilder.addOffset(1, snapshotStatsOffset);
+    fbBuilder.addBool(2, _gitHeadImported);
+    fbBuilder.addBool(3, _gitHeadReset);
+    fbBuilder.addUint32(4, _gitHeadRebased);
+    fbBuilder.addUint32(5, _snapshotRebased);
+    fbBuilder.addBool(6, _workingCopyImmutableNewCommit);
+    fbBuilder.addOffset(7, gitRefsOffset);
+    fbBuilder.addUint32(8, _gitRefsRebased);
+    fbBuilder.addBool(9, _jjconflictFilesPresent);
+    fbBuilder.addOffset(10, finishOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -8226,6 +8544,13 @@ class UntrackResultObjectBuilder extends fb.ObjectBuilder {
 ///  NativeFinalizer-backed token path (zanshin_buffer_free_token) used by the
 ///  FfiBuffer wrapper as a belt-and-suspenders backstop
 ///  (see app/lib/src/ffi/ffi_buffer.dart).
+///
+///  `precondition` (Story 9.26) is PRESENT whenever the verb's pre-verb snapshot RAN — on the ok
+///  envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
+///  before the verb ran (a null pointer, an invalid handle, a request buffer that fails
+///  validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
+///  detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+///  `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 class Envelope {
   Envelope._(this._bc, this._bcOffset);
   factory Envelope(List<int> bytes) {
@@ -8303,9 +8628,11 @@ class Envelope {
     }
   }
 
+  Precondition? get precondition => Precondition.reader.vTableGetNullable(_bc, _bcOffset, 12);
+
   @override
   String toString() {
-    return 'Envelope{ok: ${ok}, error: ${error}, dataType: ${dataType}, data: ${data}}';
+    return 'Envelope{ok: ${ok}, error: ${error}, dataType: ${dataType}, data: ${data}, precondition: ${precondition}}';
   }
 }
 
@@ -8322,7 +8649,7 @@ class EnvelopeBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addOk(bool? ok) {
@@ -8345,6 +8672,11 @@ class EnvelopeBuilder {
     return fbBuilder.offset;
   }
 
+  int addPreconditionOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -8355,27 +8687,32 @@ class EnvelopeObjectBuilder extends fb.ObjectBuilder {
   final FfiErrorObjectBuilder? _error;
   final PayloadTypeId? _dataType;
   final dynamic _data;
+  final PreconditionObjectBuilder? _precondition;
 
   EnvelopeObjectBuilder({
     bool? ok,
     FfiErrorObjectBuilder? error,
     PayloadTypeId? dataType,
     dynamic data,
+    PreconditionObjectBuilder? precondition,
   }) : _ok = ok,
        _error = error,
        _dataType = dataType,
-       _data = data;
+       _data = data,
+       _precondition = precondition;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? errorOffset = _error?.getOrCreateOffset(fbBuilder);
     final int? dataOffset = _data?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(4);
+    final int? preconditionOffset = _precondition?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
     fbBuilder.addBool(0, _ok);
     fbBuilder.addOffset(1, errorOffset);
     fbBuilder.addUint8(2, _dataType?.value);
     fbBuilder.addOffset(3, dataOffset);
+    fbBuilder.addOffset(4, preconditionOffset);
     return fbBuilder.endTable();
   }
 

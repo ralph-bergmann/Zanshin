@@ -284,8 +284,8 @@ fn assert_error_with_context(bytes: &[u8], code: &str) {
 
 /// The oracle: `collect_lanes` through `zanshin_jj::Repo::open` on the same fixture path.
 fn oracle(fixture: &FixtureHandle, revset: &str, prioritize: &str) -> Vec<Row> {
-    let repo = Repo::open(&fixture.path).expect("oracle repo must open");
-    collect_lanes(&repo, revset, prioritize, SHORT, false).expect("oracle collect_lanes must succeed")
+    let mut repo = Repo::open(&fixture.path).expect("oracle repo must open");
+    collect_lanes(&mut repo, revset, prioritize, SHORT, false).expect("oracle collect_lanes must succeed")
 }
 
 // ── Round-trips against the collect_lanes oracle ──────────────────────────────
@@ -552,7 +552,7 @@ fn graph_slice_carries_the_metadata_of_the_same_snapshot_and_matches_get_change(
     let (rows, _) = ok_rows(&bytes);
 
     // The oracle reads the same repo through the typed API — one snapshot, same answers.
-    let repo = Repo::open(&fx.path).expect("oracle repo must open");
+    let mut repo = Repo::open(&fx.path).expect("oracle repo must open");
     for row in &rows {
         let meta = row.meta.as_ref().expect("every commit row carries metadata");
         let change = repo

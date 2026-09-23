@@ -16,7 +16,8 @@ use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
 use crate::op_support::start_repo_transaction;
-use crate::{ChangeId, Timestamp};
+use crate::snapshot::VerbContext;
+use crate::Timestamp;
 
 /// A jj operation-log id in plain forward-hex display form (e.g. `"abc123…"`).
 ///
@@ -56,6 +57,9 @@ pub enum OpLogError {
     /// opaque-string-wrapped so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
     Backend(String),
+    /// The pre-verb snapshot failed (Story 9.26); the log was not read.
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
 }
 
 /// Converts any jj-lib error to [`OpLogError::Backend`].
@@ -137,7 +141,7 @@ pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<
 ///   refusal to undo a merge operation, rather than silently picking one parent.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn undo(workspace: &mut Workspace) -> Result<MutationResult, MutateError> {
+pub(crate) fn undo(workspace: &mut Workspace, ctx: &VerbContext) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let head_op = readonly.operation().clone();
     let parent_ids = head_op.parent_ids();
@@ -150,7 +154,6 @@ pub(crate) fn undo(workspace: &mut Workspace) -> Result<MutationResult, MutateEr
         });
     };
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = mutate::capture_old_wc(&readonly, &workspace_name)?;
 
     let target_parent =
         pollster::block_on(workspace.repo_loader().load_operation(target_parent_id)).map_err(mutate::be)?;
@@ -159,24 +162,9 @@ pub(crate) fn undo(workspace: &mut Workspace) -> Result<MutationResult, MutateEr
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     tx.repo_mut()
         .set_view(restored_view(target_view.store_view(), readonly.view().store_view()));
-    let new_repo = pollster::block_on(tx.commit(format!("undo: restore to operation {}", target_parent.id().hex())))
-        .map_err(mutate::be)?;
-    let new_op_id = OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = mutate::sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids: Vec::new(),
-        abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: mutate::identity_missing(new_repo.settings()),
-    })
+    let description = format!("undo: restore to operation {}", target_parent.id().hex());
+    let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
+    mutate::mutation_result(&finish, Vec::new(), Vec::new())
 }
 
 /// Restores only the portions of the view the CLI's default (unflagged) `jj undo`
@@ -195,5 +183,20 @@ fn restored_view(target: &op_store::View, current: &op_store::View) -> op_store:
         git_refs: current.git_refs.clone(),
         git_head: current.git_head.clone(),
         wc_commit_ids: target.wc_commit_ids.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{op_log, OpLogError};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = op_log(repo.workspace(), None);
+        assert!(matches!(result, Err(OpLogError::Backend(_))), "{result:?}");
     }
 }

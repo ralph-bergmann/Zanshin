@@ -83,7 +83,7 @@ fn corrupt_op_heads(workspace_root: &Path) {
 fn tags_on_untouched_tiny_returns_empty() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
     assert!(tags.is_empty(), "tiny fixture ships no tags; got {tags:?}");
 }
@@ -98,7 +98,7 @@ fn tags_local_resolves_to_the_targets_change_id() {
     set_tag(&fx.path, "v1", &[&commit]);
     let expected = change_id_of(&fx.path, &commit);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     assert_eq!(tags.len(), 1, "exactly one tag row; got {tags:?}");
@@ -122,7 +122,7 @@ fn tags_tracked_remote_adds_a_row_even_when_synced_with_the_local_one() {
     set_remote_tag(&fx.path, "v1", "origin", &commit, true);
     let expected = change_id_of(&fx.path, &commit);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     assert_eq!(tags.len(), 2, "local + tracked-remote = two rows; got {tags:?}");
@@ -156,7 +156,7 @@ fn tags_remote_row_reports_the_remote_refs_own_target() {
     let remote_change = change_id_of(&fx.path, &remote_commit);
     assert_ne!(local_change, remote_change, "the two targets must genuinely differ");
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     assert_eq!(tags.len(), 2, "local + tracked-remote = two rows; got {tags:?}");
@@ -185,7 +185,7 @@ fn tags_remote_only_rows_sort_by_remote_name() {
     set_remote_tag(&fx.path, "v1", "upstream", &commit, true);
     set_remote_tag(&fx.path, "v1", "origin", &commit, true);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     let seen: Vec<(&str, &TagKind)> = tags.iter().map(|t| (t.name.as_str(), &t.kind)).collect();
@@ -218,7 +218,7 @@ fn tags_skip_untracked_remote() {
     let commit = add_commit_off_root(&fx.path, "9.2: tagged");
     set_remote_tag(&fx.path, "loose", "origin", &commit, false);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     assert!(
@@ -238,7 +238,7 @@ fn tags_conflicted_target_uses_first_added_change_id() {
     set_tag(&fx.path, "contested", &[&first, &second]);
     let expected = change_id_of(&fx.path, &first);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     assert_eq!(tags.len(), 1, "a conflicted tag is still ONE row; got {tags:?}");
@@ -260,7 +260,7 @@ fn tags_are_sorted_by_name_then_kind() {
     set_tag(&fx.path, "v1", &[&commit]);
     set_remote_tag(&fx.path, "v1", "origin", &commit, true);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
     let seen: Vec<(&str, &TagKind)> = tags.iter().map(|t| (t.name.as_str(), &t.kind)).collect();
@@ -287,15 +287,15 @@ fn tags_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: every listing re-resolves to head per call (ADR-0002).
     corrupt_op_heads(tmp.path());
 
     let result = repo.list_tags();
     assert!(
-        matches!(result, Err(ViewError::Backend(_))),
-        "corrupt op_heads must yield ViewError::Backend, got: {result:?}"
+        matches!(result, Err(ViewError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt op_heads must yield ViewError::Backend, got: {result:?}"
     );
 }
 
@@ -324,7 +324,7 @@ fn tags_store_read_failure_returns_backend_error() {
     )
     .unwrap();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let result = repo.list_tags();
     assert!(
         matches!(result, Err(ViewError::Backend(_))),
@@ -341,7 +341,7 @@ fn heads_equal_the_view_oracle_and_are_sorted_by_hex() {
     // A second head off root, so the set is genuinely > 1 and the sort has work to do.
     _ = add_commit_off_root(&fx.path, "9.2: second head");
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let heads = repo.list_heads().unwrap();
 
     let got: HashSet<String> = heads.iter().map(|id| id.0.clone()).collect();
@@ -365,14 +365,14 @@ fn heads_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
 
     let result = repo.list_heads();
     assert!(
-        matches!(result, Err(ViewError::Backend(_))),
-        "corrupt op_heads must yield ViewError::Backend, got: {result:?}"
+        matches!(result, Err(ViewError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt op_heads must yield ViewError::Backend, got: {result:?}"
     );
 }
 
@@ -382,7 +382,7 @@ fn heads_on_corrupt_repo_returns_backend_error() {
 fn working_copies_on_a_single_workspace_repo_reports_one_row() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let wcs = repo.list_working_copies().unwrap();
 
     let oracle = wc_pairs(&fx.path);
@@ -406,7 +406,7 @@ fn working_copies_multi_workspace_are_in_btreemap_order() {
     // `_second` keeps the second workspace's directory alive for the duration of the test.
     let (_second, second_wc) = add_workspace(&fx.path, "second");
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let wcs = repo.list_working_copies().unwrap();
 
     assert_eq!(wcs.len(), 2, "default + second = two workspaces; got {wcs:?}");
@@ -437,13 +437,13 @@ fn working_copies_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
 
     let result = repo.list_working_copies();
     assert!(
-        matches!(result, Err(ViewError::Backend(_))),
-        "corrupt op_heads must yield ViewError::Backend, got: {result:?}"
+        matches!(result, Err(ViewError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt op_heads must yield ViewError::Backend, got: {result:?}"
     );
 }

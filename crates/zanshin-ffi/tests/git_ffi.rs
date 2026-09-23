@@ -339,7 +339,7 @@ fn git_remote_add_happy_path_carries_url_and_push_url_through_the_request_buffer
         "the SAME handle must see the new remote — that is the reload this story adds"
     );
 
-    let repo = Repo::open(tmp.path()).expect("reopen for the oracle");
+    let mut repo = Repo::open(tmp.path()).expect("reopen for the oracle");
     let listed = repo.list_remotes().expect("list_remotes");
     assert_eq!(listed.len(), 1);
     assert_eq!(

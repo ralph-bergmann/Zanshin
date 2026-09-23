@@ -111,6 +111,10 @@ pub struct Change {
 /// Errors returned by [`crate::Repo::get_change`].
 #[derive(Debug, thiserror::Error)]
 pub enum ChangeError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// No change exists for the given id — either the id is empty or malformed
     /// (not valid reverse-hex), absent from the index, or only points to
     /// hidden/abandoned commits. These cases are indistinguishable to callers
@@ -273,4 +277,19 @@ pub(crate) fn change_from_commit(
         is_anonymous,
         divergent,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_change, ChangeError, ChangeId};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = get_change(repo.workspace(), &ChangeId("zzzzzzzzzzzz".to_owned()));
+        assert!(matches!(result, Err(ChangeError::Backend(_))), "{result:?}");
+    }
 }

@@ -448,7 +448,7 @@ fn describe_on_an_immutable_commit_returns_jj_immutable_with_the_commit_in_conte
     );
 
     // The refusal must be real, not cosmetic: the description is unchanged.
-    let repo = Repo::open(&fixture.path).expect("fixture reopens");
+    let mut repo = Repo::open(&fixture.path).expect("fixture reopens");
     let change = repo
         .get_change(&ChangeId(wc_change_id))
         .expect("the working-copy change must still exist");
@@ -828,7 +828,7 @@ unsafe fn open_content_fixture() -> (test_helpers::FixtureHandle, u64, String, S
 /// reading blobs: a purpose-built commit holding the expected files has the same tree id as
 /// the expected result.
 fn tree_hex_of_change(path: &Path, change: &str) -> String {
-    let repo = Repo::open(path).expect("fixture opens");
+    let mut repo = Repo::open(path).expect("fixture opens");
     let commit_hex = repo
         .get_change(&ChangeId(change.to_owned()))
         .expect("change resolves")

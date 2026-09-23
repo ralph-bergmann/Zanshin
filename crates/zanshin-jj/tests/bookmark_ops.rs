@@ -113,7 +113,7 @@ fn local_bookmark_target(root: &Path, name: &str) -> Option<String> {
 }
 
 /// The head operation's `(id, description)`.
-fn head_op(repo: &Repo) -> (String, String) {
+fn head_op(repo: &mut Repo) -> (String, String) {
     let ops = repo.op_log(Some(1)).expect("op log is readable");
     let head = ops.first().expect("a repo always has a head operation");
     (head.id.0.clone(), head.description.clone())
@@ -148,13 +148,13 @@ fn create_with_the_default_revision_targets_at_and_writes_the_cli_description() 
     let lay = layout(&fx.path);
     let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let result = repo.bookmark_create(&["feature".to_owned()], None).unwrap();
 
     assert_ne!(result.new_op_id.0, before, "a create always writes an operation");
     assert_no_change_churn(&result, &wc_change_id);
-    let (after, description) = head_op(&repo);
+    let (after, description) = head_op(&mut repo);
     assert_eq!(result.new_op_id.0, after);
     assert_eq!(
         description,
@@ -179,7 +179,7 @@ fn create_with_an_explicit_revision_targets_that_commit() {
     repo.bookmark_create(&["v1".to_owned()], Some(&target)).unwrap();
 
     assert_eq!(local_bookmark_target(&fx.path, "v1"), Some(target_hex.clone()));
-    let (_, description) = head_op(&repo);
+    let (_, description) = head_op(&mut repo);
     assert_eq!(
         description,
         format!("create bookmark v1 pointing to commit {target_hex}")
@@ -203,7 +203,7 @@ fn create_with_several_names_writes_one_operation_in_argument_order() {
         ops_before + 1,
         "both names must be created in a single transaction"
     );
-    let (_, description) = head_op(&repo);
+    let (_, description) = head_op(&mut repo);
     assert_eq!(
         description,
         format!("create bookmark b, a pointing to commit {}", lay.wc_commit_hex),
@@ -275,7 +275,7 @@ fn create_is_blocked_by_a_tracked_git_remote_on_a_native_backend() {
     let mut repo = Repo::init(tmp.path(), None).unwrap();
     let lay = layout(tmp.path());
     set_remote_bookmark(tmp.path(), "colocated", "git", &lay.wc_commit_hex, true);
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo.bookmark_create(&["colocated".to_owned()], None).unwrap_err();
 
@@ -283,7 +283,7 @@ fn create_is_blocked_by_a_tracked_git_remote_on_a_native_backend() {
         matches!(&err, MutateError::BookmarkTrackedRemoteExists { name } if name == "colocated"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op(&repo).0, before, "a refusal writes no operation");
+    assert_eq!(head_op(&mut repo).0, before, "a refusal writes no operation");
 }
 
 // ── create: the refusals ──────────────────────────────────────────────────────
@@ -295,7 +295,7 @@ fn create_refuses_a_name_that_already_exists_without_writing_an_operation() {
     let lay = layout(&fx.path);
     set_local_bookmark(&fx.path, "feature", &[&lay.wc_commit_hex]);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
 
@@ -303,7 +303,7 @@ fn create_refuses_a_name_that_already_exists_without_writing_an_operation() {
         matches!(&err, MutateError::BookmarkExists { name } if name == "feature"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op(&repo).0, before, "a refusal writes no operation");
+    assert_eq!(head_op(&mut repo).0, before, "a refusal writes no operation");
 }
 
 /// The CLI's per-name loop is FAIL-FAST, not validate-what-you-can: a run whose SECOND name
@@ -316,7 +316,7 @@ fn create_is_fail_fast_so_an_offending_second_name_creates_nothing() {
     let lay = layout(&fx.path);
     set_local_bookmark(&fx.path, "existing", &[&lay.wc_commit_hex]);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo
         .bookmark_create(&["fresh".to_owned(), "existing".to_owned()], None)
@@ -331,7 +331,7 @@ fn create_is_fail_fast_so_an_offending_second_name_creates_nothing() {
         vec!["existing".to_owned()],
         "`fresh` must NOT have been created"
     );
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 /// The deleted-but-tracked state gets its OWN code, because the remedy differs from
@@ -343,7 +343,7 @@ fn create_refuses_a_name_whose_remote_is_tracked_with_its_own_code() {
     let lay = layout(&fx.path);
     set_remote_bookmark(&fx.path, "foo", "origin", &lay.wc_commit_hex, true);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo.bookmark_create(&["foo".to_owned()], None).unwrap_err();
 
@@ -352,7 +352,7 @@ fn create_refuses_a_name_whose_remote_is_tracked_with_its_own_code() {
         "unexpected error: {err:?}"
     );
     assert!(local_bookmark_names(&fx.path).is_empty());
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 #[test]
@@ -360,7 +360,7 @@ fn create_refuses_an_empty_name_list_and_an_empty_name() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     for names in [vec![], vec![String::new()]] {
         let err = repo.bookmark_create(&names, None).unwrap_err();
@@ -369,7 +369,7 @@ fn create_refuses_an_empty_name_list_and_an_empty_name() {
             "unexpected error: {err:?}"
         );
     }
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 #[test]
@@ -377,7 +377,7 @@ fn create_refuses_an_unknown_revision() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo
         .bookmark_create(&["feature".to_owned()], Some(&ChangeId(ABSENT_CHANGE_ID.to_owned())))
@@ -388,7 +388,7 @@ fn create_refuses_an_unknown_revision() {
         "unexpected error: {err:?}"
     );
     assert!(local_bookmark_names(&fx.path).is_empty());
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 /// A DIVERGENT change id is refused, never guessed — the shipped `resolve_commit` contract,
@@ -401,7 +401,7 @@ fn create_refuses_a_divergent_revision() {
     let divergent = change_id_of(&fx.path, &original_hex);
     let _twin = add_divergent_twin(&fx.path, &original_hex, "divergent twin");
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let err = repo
         .bookmark_create(&["feature".to_owned()], Some(&divergent))
@@ -411,7 +411,7 @@ fn create_refuses_a_divergent_revision() {
         matches!(err, MutateError::ChangeNotFound { .. }),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 // ── delete ────────────────────────────────────────────────────────────────────
@@ -424,13 +424,13 @@ fn delete_removes_an_exactly_named_bookmark_with_the_cli_description() {
     set_local_bookmark(&fx.path, "feature", &[&lay.wc_commit_hex]);
     let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let result = repo.bookmark_delete(&["exact:feature".to_owned()]).unwrap();
 
     assert_ne!(result.new_op_id.0, before);
     assert_no_change_churn(&result, &wc_change_id);
-    let (after, description) = head_op(&repo);
+    let (after, description) = head_op(&mut repo);
     assert_eq!(result.new_op_id.0, after);
     assert_eq!(description, "delete bookmark feature");
     assert!(local_bookmark_names(&fx.path).is_empty());
@@ -452,7 +452,7 @@ fn delete_with_a_glob_removes_only_the_matches_and_names_them_in_view_order() {
     repo.bookmark_delete(&["glob:\"foo-*\"".to_owned()]).unwrap();
 
     assert_eq!(local_bookmark_names(&fx.path), vec!["bar".to_owned()]);
-    let (_, description) = head_op(&repo);
+    let (_, description) = head_op(&mut repo);
     assert_eq!(
         description, "delete bookmark foo-1, foo-2",
         "view order, not seed order"
@@ -494,12 +494,12 @@ fn delete_matching_nothing_writes_no_operation_and_returns_the_pre_call_head() {
     let lay = layout(&fx.path);
     let wc_change_id = change_id_of(&fx.path, &lay.wc_commit_hex);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, before_description) = head_op(&repo);
+    let (before, before_description) = head_op(&mut repo);
 
     let result = repo.bookmark_delete(&["nosuch".to_owned()]).unwrap();
 
     assert_eq!(result.new_op_id.0, before, "no operation is written");
-    assert_eq!(head_op(&repo), (before, before_description));
+    assert_eq!(head_op(&mut repo), (before, before_description));
     // The no-op exit (`no_op_result`) is supposed to build the SAME shape as the committed
     // one, so the other three fields are asserted on this path too.
     assert_no_change_churn(&result, &wc_change_id);
@@ -510,7 +510,7 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    let (before, _) = head_op(&repo);
+    let (before, _) = head_op(&mut repo);
 
     let malformed = repo.bookmark_delete(&["nosuchkind:foo".to_owned()]).unwrap_err();
     // jj-lib's OWN reason must survive to the caller, not just the wrapper prefix: every
@@ -531,7 +531,7 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
         matches!(empty, MutateError::InvalidInput { .. }),
         "unexpected error: {empty:?}"
     );
-    assert_eq!(head_op(&repo).0, before);
+    assert_eq!(head_op(&mut repo).0, before);
 }
 
 /// Deleting the local bookmark leaves a TRACKED `name@origin` in place — jj's

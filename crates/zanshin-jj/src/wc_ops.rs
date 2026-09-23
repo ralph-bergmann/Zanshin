@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `wc_ops.rs` — the two working-copy tracking verbs, `file track` and `file untrack`
-//! (Story 9.22), and the snapshot primitives they share with Story 9.26's per-verb snapshot.
+//! (Story 9.22), and the snapshot primitives they share with the pre-verb snapshot
+//! ([`crate::snapshot`], Story 9.26).
 //!
 //! Both verbs are step-for-step ports of `cmd_file_track` / `cmd_file_untrack`
 //! (`cli/src/commands/file/{track,untrack}.rs` @ v0.44.0): lock the working copy through
@@ -21,7 +22,8 @@
 //! own snapshot is what moves it into `@` (and rebases `@`'s children) — the CLI's own test
 //! carries "TODO: fix GH #8298 so tracking is immediate". Rewriting `@` here would give the op
 //! log different content than the CLI's and make its next snapshot a no-op, so a user could
-//! tell which tool wrote the operation. Zanshin's own next snapshot is Story 9.26's.
+//! tell which tool wrote the operation. Zanshin's next verb snapshots first too (Story 9.26), so
+//! the newly tracked path lands in `@` exactly when it would for a CLI user.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,6 +44,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::git::{map_export_err, project_failures, GitExportFailure};
 use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
+use crate::snapshot::VerbContext;
 
 // ── Result types ─────────────────────────────────────────────────────────────────
 
@@ -74,7 +77,7 @@ pub struct UntrackedPath {
 /// What a working-copy snapshot could NOT record (Story 9.22) — jj-lib's `SnapshotStats`, the
 /// facts the CLI's `print_snapshot_stats` / `print_track_snapshot_stats` warn about.
 ///
-/// One definition shared by both tracking verbs and by Story 9.26's per-verb snapshot.
+/// One definition shared by both tracking verbs and by the pre-verb snapshot (Story 9.26).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SnapshotStats {
     /// New files that stayed untracked, in jj-lib's (path) order.
@@ -392,12 +395,12 @@ fn saturate(n: usize) -> u32 {
 /// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock.
 pub(crate) fn file_track(
     workspace: &mut Workspace,
-    config: &StackedConfig,
+    ctx: &VerbContext,
     paths: &[String],
     include_ignored: bool,
 ) -> Result<TrackResult, MutateError> {
     let matcher = prefix_matcher(&parse_paths(workspace, paths, "file track")?);
-    let mut options = snapshot_options(workspace, config, matcher.as_ref())?;
+    let mut options = snapshot_options(workspace, &ctx.config, matcher.as_ref())?;
     if include_ignored {
         options.force_tracking_matcher = matcher.as_ref();
     }
@@ -409,11 +412,9 @@ pub(crate) fn file_track(
             let num_rebased = pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
             Ok((stats, num_rebased))
         })?;
-    // WHY an EMPTY auto-snapshot: the CLI merges in the stats of the snapshot its
-    // `workspace_helper_with_stats` took before the verb. Zanshin has no pre-verb snapshot until
-    // Story 9.26, so there is nothing to merge and this is the identity — kept as the call the
-    // merge will take once 9.26 supplies real auto stats.
-    let stats = merge_track_stats(working_copy::SnapshotStats::default(), track_stats);
+    // The pre-verb snapshot's reasons win for paths the track snapshot merely did not ask for
+    // (`print_track_snapshot_stats`).
+    let stats = merge_track_stats(ctx.auto_stats.clone(), track_stats);
     Ok(TrackResult {
         mutation,
         num_rebased: saturate(num_rebased),
@@ -596,7 +597,8 @@ mod tests {
         );
     }
 
-    /// An empty auto-snapshot (no Story 9.26 yet) makes the merge the identity.
+    /// An empty auto-snapshot (the pre-verb snapshot left nothing untracked) makes the merge the
+    /// identity.
     #[test]
     fn merge_track_stats_with_empty_auto_stats_is_the_identity() {
         let track = JjStats {

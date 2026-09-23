@@ -45,7 +45,7 @@ fn set_jj_config(path: &std::path::Path) {
 }
 
 /// Hex commit id of the single commit `expr` resolves to — through the public API only.
-fn commit_id_of(repo: &Repo, expr: &str) -> String {
+fn commit_id_of(repo: &mut Repo, expr: &str) -> String {
     let ids = resolve_revset(repo, expr).unwrap();
     assert_eq!(ids.len(), 1, "{expr} must resolve to exactly one change");
     repo.get_change(&ids[0]).unwrap().commit_id.0
@@ -60,14 +60,14 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     LazyLock::force(&ENV_GUARD);
     let tmp = tempfile::tempdir().unwrap();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let root = commit_id_of(&repo, "root()");
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
-    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let root = commit_id_of(&mut repo, "root()");
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&mut repo, "description(\"Commit 2\")");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         root,
         "baseline: with JJ_CONFIG=\"\" only the builtin layer applies"
     );
@@ -77,7 +77,7 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     fs::write(&user_file, alias_toml("Commit 1")).unwrap();
     set_jj_config(&user_file);
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         c1,
         "the user file must override the builtin"
     );
@@ -90,7 +90,7 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     fs::write(user_dir.join("ignored.txt"), alias_toml("Commit 3")).unwrap();
     set_jj_config(&user_dir);
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         c2,
         "20-second.toml sorts after 10-first.toml and wins; the non-.toml file is ignored"
     );
@@ -98,7 +98,7 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     // ── A missing entry is silently skipped — no layer, no error ─────────────
     set_jj_config(&tmp.path().join("does-not-exist.toml"));
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         root,
         "a non-existent JJ_CONFIG entry contributes nothing and is not an error"
     );
@@ -127,7 +127,7 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     )
     .unwrap();
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         c3,
         "the repo layer must win over the user layer"
     );

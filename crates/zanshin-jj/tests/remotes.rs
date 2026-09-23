@@ -63,7 +63,7 @@ fn add_remotes(root: &std::path::Path, remotes: &[(&str, &str)]) {
 fn remotes_on_tiny_returns_empty() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let remotes = repo.list_remotes().unwrap();
     assert!(remotes.is_empty(), "tiny fixture has no remotes; got {remotes:?}");
 }
@@ -80,7 +80,7 @@ fn remotes_on_native_backend_returns_empty() {
     // list — `Ok(vec![])`, not an error (FR-JJ-9 native-backend AC).
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
     assert!(
         remotes.is_empty(),
@@ -106,7 +106,7 @@ fn remotes_lists_configured_remotes_sorted_by_name() {
         ],
     );
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
 
     let names: Vec<&str> = remotes.iter().map(|r| r.name.as_str()).collect();
@@ -306,7 +306,7 @@ fn remotes_preserve_embedded_credentials() {
         &[("origin", "https://user:s3cr3t@github.com/priv/repo.git")],
     );
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
 
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
@@ -335,7 +335,7 @@ fn remotes_keep_ssh_form() {
     // never become https).
     add_remotes(tmp.path(), &[("origin", "git@github.com:user/repo.git")]);
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
 
     assert_eq!(remotes.len(), 1, "expected one remote; got {remotes:?}");
@@ -366,7 +366,7 @@ fn remotes_on_corrupt_repo_returns_backend_error() {
     // fail when op_heads is removed → RemoteError::Backend.
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: list_remotes() re-resolves to head per call (ADR-0002),
     // so removing op_heads makes load_at_head() fail → RemoteError::Backend.
@@ -375,7 +375,7 @@ fn remotes_on_corrupt_repo_returns_backend_error() {
 
     let result = repo.list_remotes();
     assert!(
-        matches!(result, Err(RemoteError::Backend(_))),
-        "corrupt repo must yield Backend error, got: {result:?}"
+        matches!(result, Err(RemoteError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
     );
 }

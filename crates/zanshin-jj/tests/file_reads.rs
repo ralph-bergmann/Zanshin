@@ -94,7 +94,7 @@ fn oracle_side_count(workspace_root: &Path, commit_hex: &str, path: &str) -> u32
 }
 
 /// The head operation's id, so a test can assert that a READ wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
@@ -139,8 +139,8 @@ fn open(fx: &FixtureHandle) -> Repo {
 fn file_list_returns_every_entry_in_jj_lib_tree_order() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.file_list(Some(t.change.clone()), &[]).expect("list succeeds");
 
@@ -150,14 +150,14 @@ fn file_list_returns_every_entry_in_jj_lib_tree_order() {
         oracle_paths(&t.fx.path, &t.commit_hex),
         "entries must match jj-lib's own tree order"
     );
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn file_list_reports_file_type_and_the_executable_bit() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let entries = repo.file_list(Some(t.change), &[]).expect("list succeeds");
     let by_path = |p: &str| {
@@ -194,7 +194,7 @@ fn file_list_reports_file_type_and_the_executable_bit() {
 fn file_list_filters_by_path_prefix() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let entries = repo
         .file_list(Some(t.change), &["dir".to_owned()])
@@ -208,7 +208,7 @@ fn file_list_filters_by_path_prefix() {
 fn file_list_treats_an_empty_string_path_as_the_repo_root() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let all = repo
         .file_list(Some(t.change), &[String::new()])
@@ -250,7 +250,7 @@ fn file_list_reports_a_conflicted_entry_with_jj_libs_own_side_count() {
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let merge_hex = add_conflicted_merge_off_root(&fx.path);
     let change = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let entries = repo.file_list(Some(change), &[]).expect("list succeeds");
 
@@ -270,8 +270,8 @@ fn file_list_reports_a_conflicted_entry_with_jj_libs_own_side_count() {
 fn file_list_refuses_a_malformed_revision_without_writing_an_operation() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .file_list(Some(ChangeId("not-reverse-hex!".to_owned())), &[])
@@ -281,7 +281,7 @@ fn file_list_refuses_a_malformed_revision_without_writing_an_operation() {
         matches!(&err, FileError::ChangeNotFound { id } if id == "not-reverse-hex!"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal must not write an operation");
 }
 
 #[test]
@@ -291,7 +291,7 @@ fn file_list_refuses_a_divergent_revision() {
     let original = add_commit_with_files(&fx.path, &[], &[("a.txt", "A\n")], "original");
     let change = change_id_of(&fx.path, &original);
     _ = add_divergent_twin(&fx.path, &original, "the twin");
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let err = repo
         .file_list(Some(change.clone()), &[])
@@ -307,7 +307,7 @@ fn file_list_refuses_a_divergent_revision() {
 fn file_list_refuses_a_malformed_path() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let err = repo
         .file_list(Some(t.change), &["/absolute.txt".to_owned()])
@@ -325,8 +325,8 @@ fn file_list_refuses_a_malformed_path() {
 fn file_show_returns_the_exact_bytes_of_a_single_file() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let out = repo
         .file_show(Some(t.change), &["a.txt".to_owned()])
@@ -337,14 +337,14 @@ fn file_show_returns_the_exact_bytes_of_a_single_file() {
     assert_eq!(out.files[0].content, b"alpha\nneedle here\n".to_vec());
     assert!(!out.files[0].conflict);
     assert!(out.skipped.is_empty(), "nothing was skipped");
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn file_show_visits_a_directory_recursively() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let out = repo
         .file_show(Some(t.change), &["dir".to_owned()])
@@ -358,7 +358,7 @@ fn file_show_visits_a_directory_recursively() {
 fn file_show_skips_a_symlink_with_the_clis_own_wording() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let out = repo
         .file_show(Some(t.change), &["link".to_owned()])
@@ -374,8 +374,8 @@ fn file_show_skips_a_symlink_with_the_clis_own_wording() {
 fn file_show_refuses_a_single_absent_path_but_not_one_among_many() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .file_show(Some(t.change.clone()), &["nope.txt".to_owned()])
@@ -384,7 +384,7 @@ fn file_show_refuses_a_single_absent_path_but_not_one_among_many() {
         matches!(&err, FileError::PathNotFound { path } if path == "nope.txt"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal must not write an operation");
 
     // With more than one path the CLI only warns — the missing path is simply absent.
     let out = repo
@@ -398,7 +398,7 @@ fn file_show_refuses_a_single_absent_path_but_not_one_among_many() {
 fn file_show_refuses_an_empty_path_list() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let err = repo
         .file_show(Some(t.change), &[])
@@ -414,7 +414,7 @@ fn file_show_refuses_an_empty_path_list() {
 fn file_show_refuses_a_malformed_path_on_both_parse_sites() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     // `file_show` is the only verb with TWO path-parse sites: the single-path fast path
     // parses with `parse_path`, the multi-path branch with `build_matcher`. Both must refuse.
@@ -439,7 +439,7 @@ fn file_show_refuses_a_malformed_path_on_both_parse_sites() {
 fn file_show_reports_a_malformed_conflict_marker_style_as_a_config_error() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     // `file show` is the one file read that consults the effective config. A value that is
     // not one of jj's four style names is the USER's config being wrong, not the repository
@@ -452,7 +452,7 @@ fn file_show_reports_a_malformed_conflict_marker_style_as_a_config_error() {
         .expect_err("an unknown marker style is refused");
 
     assert!(
-        matches!(&err, FileError::Config { reason } if reason.contains("conflict-marker-style")),
+        matches!(&err, FileError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("conflict-marker-style")),
         "unexpected error: {err:?}"
     );
 }
@@ -465,7 +465,7 @@ fn file_show_materializes_a_conflict_in_the_style_the_repo_config_selects() {
     let change = change_id_of(&fx.path, &merge_hex);
 
     // Default: the builtin layer's "diff", which is the CLI's own default.
-    let repo = open(&fx);
+    let mut repo = open(&fx);
     let diff_style = repo
         .file_show(Some(change.clone()), &["conflicted.txt".to_owned()])
         .expect("show succeeds");
@@ -504,8 +504,8 @@ fn file_annotate_attributes_each_line_to_its_originating_commit() {
     let a = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\ntwo\n")], "introduce a.txt");
     let b = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "one\nCHANGED\n")], "edit line 2");
     let (a_change, b_change) = (change_id_of(&fx.path, &a), change_id_of(&fx.path, &b));
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let lines = repo
         .file_annotate(Some(b_change.clone()), "a.txt")
@@ -524,15 +524,15 @@ fn file_annotate_attributes_each_line_to_its_originating_commit() {
     assert_eq!(lines[1].original_line_number, 2);
     assert!(lines[1].origin_found);
 
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn file_annotate_refuses_an_absent_path_and_a_non_file() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .file_annotate(Some(t.change.clone()), "nope.txt")
@@ -562,7 +562,7 @@ fn file_annotate_refuses_an_absent_path_and_a_non_file() {
         "unexpected error: {err:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before, "no refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
 }
 
 #[test]
@@ -571,7 +571,7 @@ fn file_annotate_accepts_a_conflicted_file() {
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let merge_hex = add_conflicted_merge_off_root(&fx.path);
     let change = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     // Every side is a file, so `to_file_merge()` is Some and the CLI accepts it too.
     let lines = repo
@@ -591,8 +591,8 @@ fn file_annotate_accepts_a_conflicted_file() {
 fn file_search_reports_one_match_per_matching_line() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let search = repo
         .file_search(Some(t.change), "needle", &[], false)
@@ -618,14 +618,14 @@ fn file_search_reports_one_match_per_matching_line() {
          reaches `skipped`, which carries unreadable blobs only; got {:?}",
         search.skipped
     );
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn file_search_splits_the_pattern_kind_and_defaults_to_regex() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let substring = repo
         .file_search(Some(t.change.clone()), "substring:ndl", &[], false)
@@ -643,8 +643,8 @@ fn file_search_splits_the_pattern_kind_and_defaults_to_regex() {
 fn file_search_refuses_an_unparseable_pattern() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&t.fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .file_search(Some(t.change), "(", &[], false)
@@ -654,7 +654,7 @@ fn file_search_refuses_an_unparseable_pattern() {
         matches!(&err, FileError::InvalidInput { reason } if !reason.is_empty()),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal must not write an operation");
 }
 
 #[test]
@@ -668,7 +668,7 @@ fn file_search_name_only_stops_a_file_at_its_first_match() {
         "three matching lines",
     );
     let change = change_id_of(&fx.path, &commit);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let all = repo
         .file_search(Some(change.clone()), "needle", &[], false)
@@ -698,7 +698,7 @@ fn file_search_numbers_conflict_sides_independently() {
     // conflicted and resolved paths are numbered differently.
     let merge_hex = add_conflicted_merge_with_extra_files(&fx.path, &[("extra.txt", "left\n")]);
     let change = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let search = repo
         .file_search(Some(change), "substring:left", &[], false)
@@ -724,7 +724,7 @@ fn file_search_numbers_conflict_sides_independently() {
 fn file_search_with_no_match_is_an_empty_success() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let search = repo
         .file_search(Some(t.change), "substring:definitely-not-present", &[], false)
@@ -747,7 +747,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
     // "t" matches on BOTH — the only way to observe the per-side early exit.
     let merge_hex = add_conflicted_merge_off_root(&fx.path);
     let change = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let both: Vec<_> = repo
         .file_search(Some(change.clone()), "substring:t", &[], false)
@@ -780,7 +780,7 @@ fn file_search_name_only_stops_a_conflicted_file_at_its_first_side() {
 fn file_search_refuses_a_malformed_path_filter() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     let err = repo
         .file_search(Some(t.change), "needle", &["dir/".to_owned()], false)
@@ -798,7 +798,7 @@ fn file_search_refuses_a_malformed_path_filter() {
 fn a_corrupt_op_log_is_a_backend_error_not_a_missing_change() {
     pin_env();
     let t = mixed_tree();
-    let repo = open(&t.fx);
+    let mut repo = open(&t.fx);
 
     // Corrupt AFTER open: every read re-resolves to head per call (ADR-0002). This is the
     // `FileError::Backend` driver (`tests/view.rs::corrupt_op_heads`'s idiom). Reporting it
@@ -810,5 +810,8 @@ fn a_corrupt_op_log_is_a_backend_error_not_a_missing_change() {
         .file_list(Some(t.change), &[])
         .expect_err("head resolution must fail on a corrupt op log");
 
-    assert!(matches!(&err, FileError::Backend(_)), "unexpected error: {err:?}");
+    assert!(
+        matches!(&err, FileError::Precondition(zanshin_jj::PreconditionError::Backend(_))),
+        "the pre-verb snapshot fails first on a corrupt op log (Story 9.26): {err:?}"
+    );
 }

@@ -15,6 +15,7 @@ use jj_lib::revset::{
     self, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions,
     RevsetParseContext, RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
+use jj_lib::workspace::Workspace;
 
 use crate::change::change_from_commit;
 use crate::config::ConfigError;
@@ -33,6 +34,10 @@ pub const DEFAULT_LOG_REVSET: &str = "present(@) | ancestors(immutable_heads()..
 /// Errors returned by [`resolve_revset`], [`Repo::eval_revset`] and [`Repo::walk_graph`].
 #[derive(Debug, thiserror::Error)]
 pub enum RevsetError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// The expression is syntactically invalid or names an unknown function.
     #[error("invalid revset: {reason}")]
     ParseError {
@@ -61,6 +66,9 @@ pub enum RevsetError {
 /// Uses jj-lib's revset parser/evaluator — the input is never string-manipulated.
 /// Resolves committed view state at head; it does not snapshot the working copy,
 /// so `@` reflects the last committed working-copy commit, not un-snapshotted edits.
+/// That is deliberate (Story 9.26): this `&Repo` resolver is exported to neither FFI nor
+/// MCP and serves as the test oracle over the current head. The CLI-counterpart surface
+/// is [`crate::Repo::eval_revset`], which runs the pre-verb snapshot first.
 ///
 /// # Errors
 ///
@@ -216,8 +224,20 @@ pub(crate) fn parse_revset_with(
     parse_config: &RevsetConfig,
     expr: &str,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    let workspace = repo.workspace();
+    parse_revset_in(repo.workspace(), parse_config, expr)
+}
 
+/// [`parse_revset_with`] for a caller that holds a bare [`Workspace`] — the conversion verbs'
+/// pre-verb snapshot runs before any [`Repo`] exists (Story 9.26).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_revset_in(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    expr: &str,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     // Parse context — every borrowed local is declared before `context` so it outlives it.
     let fileset_aliases = FilesetAliasesMap::new();
     let extensions = RevsetExtensions::default();
@@ -414,9 +434,9 @@ where
 ///
 /// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
 pub(crate) fn immutable_expression(
-    repo: &Repo,
+    workspace: &Workspace,
     parse_config: &RevsetConfig,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    let heads = parse_revset_with(repo, parse_config, "immutable_heads()")?;
+    let heads = parse_revset_in(workspace, parse_config, "immutable_heads()")?;
     Ok(heads.union(&RevsetExpression::root()).ancestors())
 }

@@ -10,13 +10,18 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{OpLogError, Operation};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR};
+use crate::envelope::{
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    JJ_JJ_LIB_ERROR,
+};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_op_log_err(e: OpLogError) -> FfiErrorObj {
     match e {
+        OpLogError::Precondition(e) => map_precondition_err(e),
         OpLogError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -28,7 +33,7 @@ fn map_op_log_err(e: OpLogError) -> FfiErrorObj {
 /// Children before parents (`FlatBuffers` requirement): for each `Operation`, its
 /// strings and `parent_ids` vector are built before its table; the `operations`
 /// vector and `OpLog` table are built after the loop.
-fn op_log_to_envelope(ops: &[Operation]) -> Vec<u8> {
+fn op_log_to_envelope(ops: &[Operation], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut op_offsets = Vec::with_capacity(ops.len());
     for op in ops {
@@ -61,17 +66,7 @@ fn op_log_to_envelope(ops: &[Operation]) -> Vec<u8> {
             operations: Some(ops_vec),
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::OpLog,
-            data: Some(oplog_off.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::OpLog, Some(oplog_off.as_union_value()), precondition)
 }
 
 /// Read the operation log of the repo identified by `handle`.
@@ -80,6 +75,10 @@ fn op_log_to_envelope(ops: &[Operation]) -> Vec<u8> {
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
 /// # Safety
@@ -94,11 +93,8 @@ pub unsafe extern "C" fn zanshin_op_log(handle: u64, limit: i64) -> *mut Zanshin
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         // limit < 0 ⇒ None (all); 0 ⇒ Some(0); n ⇒ Some(n). No `as` cast (clippy-clean).
-        let ops = session
-            .repo
-            .op_log(usize::try_from(limit).ok())
-            .map_err(map_op_log_err)?;
-        Ok(op_log_to_envelope(&ops))
+        let ops = session.repo.op_log(usize::try_from(limit).ok());
+        precondition_envelope(&mut session.repo, ops, map_op_log_err, |v, p| op_log_to_envelope(v, p))
     });
     vec_into_token(buf)
 }
@@ -166,7 +162,7 @@ mod tests {
         );
 
         let ops = vec![multi_parent.clone(), non_root.clone(), root_op.clone()];
-        let buf = op_log_to_envelope(&ops);
+        let buf = op_log_to_envelope(&ops, None);
 
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok(), "envelope must be ok");

@@ -74,7 +74,7 @@ fn change_id_of(workspace_root: &Path, commit_hex: &str) -> ChangeId {
 /// CONTENT without reading blobs: a purpose-built commit holding the expected files has the
 /// same tree id as the restored/absorbed result.
 fn tree_hex_of_change(workspace_root: &Path, change: &ChangeId) -> String {
-    let repo = Repo::open(workspace_root).expect("fixture opens");
+    let mut repo = Repo::open(workspace_root).expect("fixture opens");
     let commit_hex = repo.get_change(change).expect("change resolves").commit_id.0;
     let jj = jj_repo(workspace_root);
     let id = JjCommitId::try_from_hex(&commit_hex).expect("hex commit id");
@@ -88,11 +88,11 @@ fn tree_hex_of_change(workspace_root: &Path, change: &ChangeId) -> String {
 }
 
 /// The head operation's id, so a test can assert that a refusal — or a no-op — wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
-fn head_op_description(repo: &Repo) -> String {
+fn head_op_description(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).description.clone()
 }
 
@@ -149,7 +149,7 @@ fn restore_chain() -> RestoreChain {
 /// Asserts a successful restore's op-log head and `new_op_id` (NFR-R-2's two mandatory
 /// checks). `destination_hex_before` is the destination's PRE-rewrite commit hex: the CLI
 /// formats its description from `to_commit.id()`, which it resolved before rewriting.
-fn assert_restore_op(repo: &Repo, result: &MutationResult, destination_hex_before: &str) {
+fn assert_restore_op(repo: &mut Repo, result: &MutationResult, destination_hex_before: &str) {
     assert_eq!(
         head_op_description(repo),
         format!("restore into commit {destination_hex_before}")
@@ -192,8 +192,8 @@ fn restore_both_sides_replaces_the_destination_tree_and_records_the_cli_op_descr
     );
     assert!(result.new_change_ids.is_empty(), "restore mints nothing");
     assert!(result.abandoned_change_ids.is_empty(), "restore abandons nothing");
-    let repo = Repo::open(&chain.fx.path).expect("fixture reopens");
-    assert_restore_op(&repo, &result, &b_hex_before);
+    let mut repo = Repo::open(&chain.fx.path).expect("fixture reopens");
+    assert_restore_op(&mut repo, &result, &b_hex_before);
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn restore_with_neither_side_restores_the_working_copy_from_its_parent() {
         a_tree,
         "@ is restored from its parent tree — its own diff is undone"
     );
-    let repo = Repo::open(&chain.fx.path).expect("fixture reopens");
+    let mut repo = Repo::open(&chain.fx.path).expect("fixture reopens");
     assert_eq!(
         repo.get_change(&chain.b).expect("B resolves").description,
         "content B",
@@ -294,7 +294,7 @@ fn restore_of_identical_trees_writes_no_operation() {
     pin_env();
     let chain = restore_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     // Source == destination: the selected tree is trivially the destination's own.
     let result = repo
@@ -302,7 +302,7 @@ fn restore_of_identical_trees_writes_no_operation() {
         .expect("a no-op restore is a success, not an error");
 
     assert_eq!(
-        head_op_id(&repo),
+        head_op_id(&mut repo),
         before_op,
         "no operation may be written when nothing changed"
     );
@@ -353,7 +353,7 @@ fn restore_refuses_changes_in_combined_with_from_or_into() {
     pin_env();
     let chain = restore_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     for (from, into) in [(Some(chain.a.clone()), None), (None, Some(chain.b.clone()))] {
         let err = repo
@@ -364,7 +364,7 @@ fn restore_refuses_changes_in_combined_with_from_or_into() {
             "unexpected error: {err:?}"
         );
     }
-    assert_eq!(head_op_id(&repo), before_op, "a refusal writes no operation");
+    assert_eq!(head_op_id(&mut repo), before_op, "a refusal writes no operation");
 }
 
 #[test]
@@ -374,7 +374,7 @@ fn restore_into_the_root_commit_is_refused_as_immutable() {
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
     let root_hex = jj_repo(&chain.fx.path).store().root_commit_id().hex();
     let root_change = change_id_of(&chain.fx.path, &root_hex);
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .restore(Some(chain.a.clone()), Some(root_change), None, &[], false)
@@ -384,7 +384,7 @@ fn restore_into_the_root_commit_is_refused_as_immutable() {
         matches!(&err, MutateError::Immutable { commit_id } if *commit_id == root_hex),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -401,7 +401,7 @@ fn restore_into_an_immutable_commit_is_refused_and_writes_no_operation() {
         .0;
     set_tag(&chain.fx.path, "v1", &[&c_hex]);
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .restore(Some(chain.a.clone()), Some(chain.b.clone()), None, &[], false)
@@ -411,7 +411,7 @@ fn restore_into_an_immutable_commit_is_refused_and_writes_no_operation() {
         matches!(err, MutateError::Immutable { .. }),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -419,7 +419,7 @@ fn restore_with_a_bogus_id_on_any_side_is_refused_and_writes_no_operation() {
     pin_env();
     let chain = restore_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
     let bogus = ChangeId("nonexistentchangeid".to_owned());
 
     let cases: [(Option<ChangeId>, Option<ChangeId>, Option<ChangeId>); 3] = [
@@ -436,7 +436,7 @@ fn restore_with_a_bogus_id_on_any_side_is_refused_and_writes_no_operation() {
             "unexpected error: {err:?}"
         );
     }
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -444,7 +444,7 @@ fn restore_with_a_malformed_path_is_refused_and_writes_no_operation() {
     pin_env();
     let chain = restore_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .restore(
@@ -460,26 +460,36 @@ fn restore_with_a_malformed_path_is_refused_and_writes_no_operation() {
         matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
 fn restore_reports_a_config_fault_rather_than_falling_back_to_the_builtin_immutable_set() {
     pin_env();
     let chain = restore_chain();
+    let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
+    let before_op = head_op_id(&mut repo);
     write_repo_config(
         &chain.fx.path,
         "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n",
     );
-    let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
 
     let err = repo
         .restore(Some(chain.a.clone()), Some(chain.b.clone()), None, &[], false)
         .expect_err("an unparseable immutable_heads() alias must not be ignored");
 
-    assert!(matches!(err, MutateError::Config { .. }), "unexpected error: {err:?}");
-    assert_eq!(head_op_id(&repo), before_op);
+    // The pre-verb snapshot parses `immutable_heads()` first (Story 9.26), as the CLI does at
+    // start-up; the op log is read back once the alias is repaired, since every verb refuses
+    // while it is broken.
+    assert!(
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "unexpected error: {err:?}"
+    );
+    write_repo_config(&chain.fx.path, "");
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 // ── absorb ────────────────────────────────────────────────────────────────────────
@@ -509,7 +519,7 @@ fn absorb_chain() -> AbsorbChain {
 }
 
 /// Asserts a successful absorb's op-log head and `new_op_id`.
-fn assert_absorb_op(repo: &Repo, result: &AbsorbResult, destinations: usize) {
+fn assert_absorb_op(repo: &mut Repo, result: &AbsorbResult, destinations: usize) {
     assert_eq!(
         head_op_description(repo),
         format!("absorb changes into {destinations} commits")
@@ -557,8 +567,8 @@ fn absorb_moves_the_hunk_into_the_annotating_ancestor() {
         Some(chain.s.0.clone()),
         "the source survives: it still carries a description, so it is not discardable"
     );
-    let repo = Repo::open(&chain.fx.path).expect("fixture reopens");
-    assert_absorb_op(&repo, &result, 1);
+    let mut repo = Repo::open(&chain.fx.path).expect("fixture reopens");
+    assert_absorb_op(&mut repo, &result, 1);
 }
 
 /// The `None` arm of `AbsorbResult::source_change_id` on a REAL absorb (the no-op branch
@@ -574,7 +584,7 @@ fn absorb_abandons_a_discardable_source_and_reports_no_source_change_id() {
     let s = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "one\nCHANGED\nthree\n")], "");
     let (a, s) = (change_id_of(&fx.path, &a), change_id_of(&fx.path, &s));
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let result = repo.absorb(Some(s), None, &[]).expect("the whole diff absorbs into A");
 
@@ -590,9 +600,9 @@ fn absorb_abandons_a_discardable_source_and_reports_no_source_change_id() {
         result.source_change_id.is_none(),
         "a discardable source is abandoned, not rewritten"
     );
-    let repo = Repo::open(&fx.path).expect("fixture reopens");
-    assert_ne!(head_op_id(&repo), before_op, "this absorb DID write an operation");
-    assert_absorb_op(&repo, &result, 1);
+    let mut repo = Repo::open(&fx.path).expect("fixture reopens");
+    assert_ne!(head_op_id(&mut repo), before_op, "this absorb DID write an operation");
+    assert_absorb_op(&mut repo, &result, 1);
 }
 
 #[test]
@@ -619,7 +629,7 @@ fn absorb_with_destinations_that_exclude_the_ancestor_absorbs_nothing_and_writes
     pin_env();
     let chain = absorb_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     // `@` is the fixture's own commit off root — unrelated to S's ancestry, so the
     // annotation finds no destination inside the domain.
@@ -628,7 +638,7 @@ fn absorb_with_destinations_that_exclude_the_ancestor_absorbs_nothing_and_writes
         .expect("an empty destination set is a no-op, not an error");
 
     assert!(result.rewritten_change_ids.is_empty());
-    assert_eq!(head_op_id(&repo), before_op, "no operation may be written");
+    assert_eq!(head_op_id(&mut repo), before_op, "no operation may be written");
     assert_eq!(result.mutation.new_op_id.0, before_op);
     assert!(result.source_change_id.is_none());
     assert_eq!(result.num_rebased, 0);
@@ -667,7 +677,7 @@ fn absorb_of_a_newly_added_file_absorbs_nothing_and_writes_no_operation() {
     let s = add_commit_with_files(&fx.path, &[&a], &[("a.txt", "a1\n"), ("b.txt", "new\n")], "source");
     let s = change_id_of(&fx.path, &s);
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let result = repo
         .absorb(Some(s), None, &[])
@@ -678,7 +688,7 @@ fn absorb_of_a_newly_added_file_absorbs_nothing_and_writes_no_operation() {
         result.skipped_paths.is_empty(),
         "an added file is skipped silently, not warned about"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -691,7 +701,7 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
     let s = add_commit_with_files(&fx.path, &[&merge], &[("conflicted.txt", "resolved\n")], "source");
     let s = change_id_of(&fx.path, &s);
     let mut repo = Repo::open(&fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let result = repo
         .absorb(Some(s), None, &[])
@@ -708,7 +718,7 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
         "the (path, reason) pair is forwarded verbatim from jj-lib"
     );
     assert!(result.rewritten_change_ids.is_empty());
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -743,8 +753,8 @@ fn absorb_keeps_absorbing_the_other_paths_when_one_is_skipped() {
         1,
         "the skip must not stop clean.txt's hunk from landing in the side that introduced it"
     );
-    let repo = Repo::open(&fx.path).expect("fixture reopens");
-    assert_absorb_op(&repo, &result, 1);
+    let mut repo = Repo::open(&fx.path).expect("fixture reopens");
+    assert_absorb_op(&mut repo, &result, 1);
 }
 
 #[test]
@@ -761,7 +771,7 @@ fn absorb_into_an_immutable_destination_is_refused_and_writes_no_operation() {
         .0;
     set_tag(&chain.fx.path, "v1", &[&a_hex]);
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .absorb(Some(chain.s.clone()), Some("all()"), &[])
@@ -771,7 +781,7 @@ fn absorb_into_an_immutable_destination_is_refused_and_writes_no_operation() {
         matches!(&err, MutateError::Immutable { commit_id } if *commit_id == a_hex),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -779,7 +789,7 @@ fn absorb_with_a_syntactically_invalid_destination_revset_is_refused() {
     pin_env();
     let chain = absorb_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .absorb(Some(chain.s.clone()), Some("bogus_function()"), &[])
@@ -789,7 +799,7 @@ fn absorb_with_a_syntactically_invalid_destination_revset_is_refused() {
         matches!(err, MutateError::RevsetParseError { .. }),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -797,7 +807,7 @@ fn absorb_with_an_unresolvable_destination_symbol_is_refused() {
     pin_env();
     let chain = absorb_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .absorb(Some(chain.s.clone()), Some("nonexistent-bookmark"), &[])
@@ -807,7 +817,7 @@ fn absorb_with_an_unresolvable_destination_symbol_is_refused() {
         matches!(err, MutateError::RevsetResolutionError { .. }),
         "the parse/resolution split is preserved, not collapsed: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -815,7 +825,7 @@ fn absorb_with_a_bogus_source_is_refused_and_writes_no_operation() {
     pin_env();
     let chain = absorb_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .absorb(Some(ChangeId("nonexistentchangeid".to_owned())), None, &[])
@@ -825,7 +835,7 @@ fn absorb_with_a_bogus_source_is_refused_and_writes_no_operation() {
         matches!(&err, MutateError::ChangeNotFound { id } if id == "nonexistentchangeid"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
@@ -833,7 +843,7 @@ fn absorb_with_a_malformed_path_is_refused_and_writes_no_operation() {
     pin_env();
     let chain = absorb_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .absorb(Some(chain.s.clone()), None, &["trailing/".to_owned()])
@@ -843,24 +853,34 @@ fn absorb_with_a_malformed_path_is_refused_and_writes_no_operation() {
         matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before_op);
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]
 fn absorb_reports_a_config_fault_rather_than_falling_back_to_the_builtin_immutable_set() {
     pin_env();
     let chain = absorb_chain();
+    let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
+    let before_op = head_op_id(&mut repo);
     write_repo_config(
         &chain.fx.path,
         "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n",
     );
-    let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
-    let before_op = head_op_id(&repo);
 
     let err = repo
         .absorb(Some(chain.s.clone()), None, &[])
         .expect_err("an unparseable immutable_heads() alias must not be ignored");
 
-    assert!(matches!(err, MutateError::Config { .. }), "unexpected error: {err:?}");
-    assert_eq!(head_op_id(&repo), before_op);
+    // The pre-verb snapshot parses `immutable_heads()` first (Story 9.26), as the CLI does at
+    // start-up; the op log is read back once the alias is repaired, since every verb refuses
+    // while it is broken.
+    assert!(
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "unexpected error: {err:?}"
+    );
+    write_repo_config(&chain.fx.path, "");
+    assert_eq!(head_op_id(&mut repo), before_op);
 }

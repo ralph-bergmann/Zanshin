@@ -58,6 +58,10 @@ pub struct ChangeId(pub String);
 /// Errors returned by [`crate::Repo::status`].
 #[derive(Debug, thiserror::Error)]
 pub enum StatusError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// The workspace has no working-copy commit.
     #[error("workspace has no working-copy commit")]
     NoWorkingCopy,
@@ -81,7 +85,8 @@ fn repo_path_to_pathbuf(p: &jj_lib::repo_path::RepoPath) -> PathBuf {
 /// Computes working-copy status for the given workspace.
 ///
 /// Re-resolves to head on every call (ADR-0002: the handle is a warm loader,
-/// not a state cache). Read-only — does not snapshot the working copy (D2).
+/// not a state cache). Read-only; [`crate::Repo::status`] runs the pre-verb snapshot
+/// (Story 9.26) before calling it.
 ///
 /// # Errors
 ///
@@ -170,4 +175,19 @@ pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, Statu
         working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
         parent_change_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{working_copy_status, StatusError};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = working_copy_status(repo.workspace());
+        assert!(matches!(result, Err(StatusError::Backend(_))), "{result:?}");
+    }
 }

@@ -9,18 +9,15 @@
 //! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
 
 use std::io;
-use std::sync::Arc;
 
 use gix::remote::Direction;
 use jj_lib::git;
 use jj_lib::git::{
-    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitImportOptions, GitProgress,
-    GitSidebandLineTerminator, GitSubprocessCallback, GitSubprocessOptions, UnexpectedGitBackendError,
+    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitSidebandLineTerminator,
+    GitSubprocessCallback, GitSubprocessOptions, UnexpectedGitBackendError,
 };
-use jj_lib::object_id::ObjectId as _; // for OperationId::hex()/CommitId::hex()
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()/view()
-use jj_lib::revset::UserRevsetExpression;
+use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::{StringExpression, StringPattern};
@@ -28,7 +25,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
 use crate::op_support::{resolve_immutable, start_repo_transaction};
-use crate::ChangeId;
+use crate::snapshot::VerbContext;
 
 /// One configured git remote and its fetch/push URLs (FR-JJ-9).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +63,10 @@ pub struct Remote {
 /// Errors returned by [`crate::Repo::list_remotes`].
 #[derive(Debug, thiserror::Error)]
 pub enum RemoteError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// An underlying jj-lib failure (loader read), opaque-string-wrapped so no
     /// `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -214,13 +215,13 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
 ///
 /// Mirrors [`crate::Repo::clone`]'s own fetch step (`clone_into`), but forwards real
-/// progress via `progress` instead of discarding it via `NoopCallback`. `git_fetch`
-/// never moves `@` — it only updates remote-tracking refs — so unlike the P0
-/// mutations in `mutate.rs` there is no working-copy capture/sync step; the returned
-/// `working_copy_change_id` is simply the (unchanged) post-commit `@`. A fresh
-/// operation is committed even when nothing changed (CLI parity).
+/// progress via `progress` instead of discarding it via `NoopCallback`. The transaction
+/// finishes through [`mutate::finish_verb`] like the CLI's `tx.finish` (Story 9.26): a colocated
+/// workspace exports the fetched refs to Git, and the working copy is checked out at the new
+/// operation — the import may have rebased `@`. A fresh operation is committed even when
+/// nothing changed (CLI parity).
 ///
-/// `import_options` is supplied by the caller — [`crate::Repo::git_fetch`] reads it from
+/// `ctx.import_options` is supplied by the caller — [`crate::Repo::git_fetch`] reads it from
 /// the repo's EFFECTIVE config (FR-JJ-17), mirroring `cli/src/commands/git/fetch.rs:235`
 /// @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
 /// `git.record-synthetic-predecessors` off config. Nothing here hardcodes either key.
@@ -239,23 +240,24 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend at all, so `git fetch`
 ///   cannot run — jj-lib's `UnexpectedGitBackendError`, the only failure `GitFetch::new`
 ///   has. The same condition the six `crate::git` verbs already report under this variant.
-/// - [`MutateError::Config`] — the immutable-set expression could not be resolved against
-///   the transaction's base repo (same fault class `crate::git::git_import` reports).
+/// - [`MutateError::Config`] — a `git.*` / `remotes.<name>.auto-track-bookmarks` import option
+///   is malformed, or the immutable-set expression could not be resolved against the
+///   transaction's base repo (same fault class `crate::git::git_import` reports).
 /// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
 ///   auth, or transport error). No operation is committed.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_fetch(
-    workspace: &Workspace,
+    workspace: &mut Workspace,
     settings: &UserSettings,
     remote_name: &str,
-    immutable: &Arc<UserRevsetExpression>,
-    import_options: &GitImportOptions,
+    ctx: &VerbContext,
     progress: &ProgressFn,
 ) -> Result<MutationResult, MutateError> {
     let remote_buf: RemoteNameBuf = remote_name.into();
     let remote: &RemoteName = &remote_buf;
 
+    let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
 
@@ -268,7 +270,7 @@ pub(crate) fn git_fetch(
     // `fetch()`, as `GitFetchError::NoSuchRemote` below. The explicit parameter type is the
     // GUARD for that premise: a jj-lib bump that widens the error surface stops compiling
     // here instead of silently reporting unrelated faults as `jj.not_a_git_repo`.
-    let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, import_options)
+    let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
         .map_err(|_e: UnexpectedGitBackendError| MutateError::NotAGitRepo)?;
 
     let expr = GitFetchRefExpression {
@@ -310,43 +312,36 @@ pub(crate) fn git_fetch(
     // `tx.finish` step — `rebase_mutable_descendants` (`cli/src/cli_util.rs` @ v0.44.0) —
     // which likewise resolves the immutable set against `tx.base_repo()`.
     // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
-    let resolved = resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+    let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
     pollster::block_on(
         tx.repo_mut()
             .rebase_descendants_with_options(&resolved, &RebaseOptions::default(), |_, _| {}),
     )
     .map_err(mutate::be)?;
 
-    let new_repo =
-        pollster::block_on(tx.commit(format!("fetch from git remote(s) {remote_name}"))).map_err(mutate::be)?;
-
-    // git_fetch never moves `@` (it only touches remote-tracking refs), so there is no
-    // capture_old_wc/sync_working_copy/check_out step here — just read the (unchanged)
-    // post-commit `@`.
-    let wc_id = new_repo
-        .view()
-        .get_wc_commit_id(workspace.workspace_name())
-        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
-    let wc_commit = new_repo.store().get_commit(wc_id).map_err(mutate::be)?;
-
-    Ok(MutationResult {
-        new_op_id: crate::OperationId(new_repo.op_id().hex()),
-        // WHY empty: `GitImportStats` has no minted-change concept at all — it reports
-        // abandonments, changed remote refs, rewritten commit ids and failed ref names.
-        // `git_import` leaves this field empty for the same reason. When `@` itself was
-        // abandoned, jj-lib's replacement is already reported via `working_copy_change_id`.
-        new_change_ids: Vec::new(),
-        abandoned_change_ids,
-        working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
-        identity_missing: mutate::identity_missing(new_repo.settings()),
-    })
+    let finish = mutate::finish_verb(workspace, tx, &format!("fetch from git remote(s) {remote_name}"), ctx)?;
+    // WHY `new_change_ids` empty: `GitImportStats` has no minted-change concept at all — it
+    // reports abandonments, changed remote refs, rewritten commit ids and failed ref names.
+    // `git_import` leaves this field empty for the same reason. When `@` itself was abandoned,
+    // jj-lib's replacement is already reported via `working_copy_change_id`.
+    mutate::mutation_result(&finish, Vec::new(), abandoned_change_ids)
 }
 
 #[cfg(test)]
 mod tests {
     use jj_lib::git::GitSubprocessCallback as _;
 
-    use super::{FetchCallback, ProgressEvent};
+    use super::{list_remotes, FetchCallback, ProgressEvent, RemoteError};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = list_remotes(repo.workspace());
+        assert!(matches!(result, Err(RemoteError::Backend(_))), "{result:?}");
+    }
 
     /// `progress_message` picks whichever phase is furthest along by priority
     /// (deltas > objects > `compressed_objects` > `counted_objects`, first nonzero

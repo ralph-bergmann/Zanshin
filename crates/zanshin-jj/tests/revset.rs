@@ -545,7 +545,7 @@ fn write_repo_config(workspace_root: &Path, toml: &str) {
 }
 
 /// Hex commit id of the single commit `expr` resolves to — through the public API only.
-fn commit_id_of(repo: &Repo, expr: &str) -> String {
+fn commit_id_of(repo: &mut Repo, expr: &str) -> String {
     let ids = resolve_revset(repo, expr).unwrap();
     assert_eq!(ids.len(), 1, "{expr} must resolve to exactly one change");
     repo.get_change(&ids[0]).unwrap().commit_id.0
@@ -557,16 +557,16 @@ fn commit_id_of(repo: &Repo, expr: &str) -> String {
 fn repo_config_override_of_trunk_replaces_the_builtin_definition() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let root = commit_id_of(&repo, "root()");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&mut repo, "root()");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
     // The fixture has no remote bookmarks, so the builtin trunk() degenerates to root().
-    assert_eq!(commit_id_of(&repo, "trunk()"), root);
+    assert_eq!(commit_id_of(&mut repo, "trunk()"), root);
 
     write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 3\")'\n");
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         c3,
         "the repo layer must override the builtin trunk()"
     );
@@ -578,7 +578,7 @@ fn repo_config_override_of_trunk_replaces_the_builtin_definition() {
 fn repo_config_custom_alias_resolves_instead_of_failing_to_parse() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     assert!(
         matches!(resolve_revset(&repo, "wip()"), Err(RevsetError::ParseError { .. })),
@@ -586,8 +586,8 @@ fn repo_config_custom_alias_resolves_instead_of_failing_to_parse() {
     );
 
     write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = 'description(\"Commit 2\")'\n");
-    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
-    assert_eq!(commit_id_of(&repo, "wip()"), c2, "wip() must evaluate");
+    let c2 = commit_id_of(&mut repo, "description(\"Commit 2\")");
+    assert_eq!(commit_id_of(&mut repo, "wip()"), c2, "wip() must evaluate");
 }
 
 /// Config is re-read per operation — the SAME handle sees an externally edited config file
@@ -596,16 +596,16 @@ fn repo_config_custom_alias_resolves_instead_of_failing_to_parse() {
 fn config_is_re_read_on_every_call_so_an_edit_needs_no_reopen() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
-    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
+    let c2 = commit_id_of(&mut repo, "description(\"Commit 2\")");
 
     write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 1\")'\n");
-    assert_eq!(commit_id_of(&repo, "trunk()"), c1);
+    assert_eq!(commit_id_of(&mut repo, "trunk()"), c1);
 
     write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 2\")'\n");
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         c2,
         "the second call must reflect the new config without reopening the handle"
     );
@@ -637,8 +637,8 @@ fn malformed_repo_config_is_an_error_naming_the_file() {
 fn non_string_alias_value_is_skipped_and_the_call_succeeds() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
 
     write_repo_config(
         &fx.path,
@@ -649,7 +649,7 @@ fn non_string_alias_value_is_skipped_and_the_call_succeeds() {
         matches!(resolve_revset(&repo, "foo()"), Err(RevsetError::ParseError { .. })),
         "the skipped alias stays undefined"
     );
-    assert_eq!(commit_id_of(&repo, "bar()"), c1, "the sibling alias still loads");
+    assert_eq!(commit_id_of(&mut repo, "bar()"), c1, "the sibling alias still loads");
     assert!(
         resolve_revset(&repo, "all()").is_ok(),
         "one bad entry must not fail the call"
@@ -686,14 +686,14 @@ fn a_non_table_revset_aliases_key_is_a_config_error() {
 fn bad_alias_declaration_is_skipped_and_the_call_succeeds() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
 
     write_repo_config(
         &fx.path,
         "[revset-aliases]\n'not a decl' = 'root()'\n'ok_alias()' = 'description(\"Commit 1\")'\n",
     );
-    assert_eq!(commit_id_of(&repo, "ok_alias()"), c1);
+    assert_eq!(commit_id_of(&mut repo, "ok_alias()"), c1);
     assert!(resolve_revset(&repo, "all()").is_ok());
 }
 
@@ -703,14 +703,14 @@ fn bad_alias_declaration_is_skipped_and_the_call_succeeds() {
 fn table_shaped_alias_with_a_definition_key_is_accepted() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
 
     write_repo_config(
         &fx.path,
         "[revset-aliases]\n'wip()' = { definition = 'description(\"Commit 1\")', doc = 'work in progress' }\n",
     );
-    assert_eq!(commit_id_of(&repo, "wip()"), c1);
+    assert_eq!(commit_id_of(&mut repo, "wip()"), c1);
 }
 
 /// jj-lib does not check an alias DEFINITION at insert time ("The `defn` part isn't
@@ -739,18 +739,18 @@ fn malformed_alias_definition_fails_only_where_the_alias_is_used() {
 fn an_alias_overload_at_another_arity_leaves_the_builtin_alone() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let root = commit_id_of(&repo, "root()");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&mut repo, "root()");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
     write_repo_config(&fx.path, "[revset-aliases]\n'trunk(x)' = 'x'\n");
     assert_eq!(
-        commit_id_of(&repo, "trunk()"),
+        commit_id_of(&mut repo, "trunk()"),
         root,
         "the zero-arg builtin trunk() must survive a trunk(x) overload"
     );
     assert_eq!(
-        commit_id_of(&repo, "trunk(description(\"Commit 3\"))"),
+        commit_id_of(&mut repo, "trunk(description(\"Commit 3\"))"),
         c3,
         "the added overload must be callable"
     );
@@ -783,7 +783,7 @@ fn revset_on_corrupt_repo_returns_jj_lib_error() {
 // cannot fn-pointer-pin it (same as `Repo::walk_graph`); these fixture tests are its pin.
 
 /// Drives the whole stream into a Vec (the stream must be exhausted → `Continue`).
-fn collect_changes(repo: &Repo, revset: &str) -> Vec<Change> {
+fn collect_changes(repo: &mut Repo, revset: &str) -> Vec<Change> {
     let mut out = Vec::new();
     let flow = collect_changes_with(repo, revset, &mut out, usize::MAX);
     assert_eq!(flow, ControlFlow::Continue(()), "an unbroken walk must report Continue");
@@ -792,7 +792,7 @@ fn collect_changes(repo: &Repo, revset: &str) -> Vec<Change> {
 
 /// Drives at most `max` items into `out`, breaking on the one after — the `ControlFlow` half of
 /// the contract (mirrors `tests/graph.rs`'s `collect_nodes_with`).
-fn collect_changes_with(repo: &Repo, revset: &str, out: &mut Vec<Change>, max: usize) -> ControlFlow<()> {
+fn collect_changes_with(repo: &mut Repo, revset: &str, out: &mut Vec<Change>, max: usize) -> ControlFlow<()> {
     repo.eval_revset(revset, |change| {
         out.push(change);
         if out.len() >= max {
@@ -810,9 +810,9 @@ fn collect_changes_with(repo: &Repo, revset: &str, out: &mut Vec<Change>, max: u
 fn eval_revset_all_yields_one_row_per_commit_children_before_parents() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let changes = collect_changes(&repo, "all()");
+    let changes = collect_changes(&mut repo, "all()");
 
     let ids: Vec<&str> = changes.iter().map(|c| c.id.0.as_str()).collect();
     let walked: HashSet<String> = ids.iter().map(|id| (*id).to_owned()).collect();
@@ -857,10 +857,10 @@ fn eval_revset_all_yields_one_row_per_commit_children_before_parents() {
 fn eval_revset_break_on_the_first_item_constructs_exactly_one_change() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut out = Vec::new();
-    let flow = collect_changes_with(&repo, "all()", &mut out, 1);
+    let flow = collect_changes_with(&mut repo, "all()", &mut out, 1);
 
     assert_eq!(flow, ControlFlow::Break(()), "an early stop must report Break");
     assert_eq!(out.len(), 1, "exactly one Change may be constructed");
@@ -877,10 +877,10 @@ fn eval_revset_break_on_the_first_item_constructs_exactly_one_change() {
 fn eval_revset_break_after_several_items_stops_exactly_there() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut out = Vec::new();
-    let flow = collect_changes_with(&repo, "all()", &mut out, 3);
+    let flow = collect_changes_with(&mut repo, "all()", &mut out, 3);
 
     assert_eq!(flow, ControlFlow::Break(()), "a mid-stream stop must report Break");
     assert_eq!(out.len(), 3, "exactly the three rows taken; got {}", out.len());
@@ -894,7 +894,7 @@ fn eval_revset_break_after_several_items_stops_exactly_there() {
 fn eval_revset_empty_expression_is_a_parse_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut calls = 0_usize;
     let result = repo.eval_revset("", |_| {
@@ -913,7 +913,7 @@ fn eval_revset_empty_expression_is_a_parse_error() {
 fn eval_revset_none_never_calls_the_visitor() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut calls = 0_usize;
     let flow = repo
@@ -935,8 +935,8 @@ fn eval_revset_divergent_change_yields_one_flagged_row_per_visible_commit() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let div_change = make_divergent_change(&fx.path);
 
-    let repo = Repo::open(&fx.path).unwrap();
-    let changes = collect_changes(&repo, "all()");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let changes = collect_changes(&mut repo, "all()");
 
     let rows: Vec<&Change> = changes.iter().filter(|c| c.id.0 == div_change).collect();
     assert_eq!(
@@ -965,9 +965,9 @@ fn eval_revset_divergent_change_yields_one_flagged_row_per_visible_commit() {
 fn eval_revset_row_matches_get_change_for_the_same_change() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let changes = collect_changes(&repo, "description(\"Commit 3\")");
+    let changes = collect_changes(&mut repo, "description(\"Commit 3\")");
     assert_eq!(changes.len(), 1, "exactly one commit is described 'Commit 3'");
     let row = &changes[0];
     let direct = repo.get_change(&row.id).unwrap();
@@ -982,29 +982,27 @@ fn eval_revset_row_matches_get_change_for_the_same_change() {
     assert_eq!(row.conflict, direct.conflict);
 }
 
-/// Stage 1 (parse) runs BEFORE any `load_at_head` I/O: with `op_heads` already gone — which
-/// makes every head resolution fail — a syntax error still surfaces as `ParseError`, not as the
-/// backend failure the repo is in.
+/// The pre-verb snapshot runs BEFORE the revset is even parsed (Story 9.26), exactly as the
+/// CLI's `workspace_helper` loads the head and snapshots before `jj log -r` parses anything: with
+/// `op_heads` gone, a syntax error and a well-formed expression fail alike, as the snapshot's
+/// backend failure.
 #[test]
-fn eval_revset_parse_error_is_raised_before_any_head_io() {
+fn eval_revset_on_a_broken_repo_fails_in_the_pre_verb_snapshot_before_parsing() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     std::fs::remove_dir_all(fx.path.join(".jj").join("repo").join("op_heads")).unwrap();
 
-    let result = repo.eval_revset("bogus_function()", |_| ControlFlow::Continue(()));
-    assert!(
-        matches!(result, Err(RevsetError::ParseError { .. })),
-        "a parse fault must win over the broken repo, got: {result:?}"
-    );
-
-    // …and the same repo state DOES yield JjLibError for a well-formed expression, so the
-    // assertion above is about ordering, not about the corruption being inert.
-    let backend = repo.eval_revset("all()", |_| ControlFlow::Continue(()));
-    assert!(
-        matches!(backend, Err(RevsetError::JjLibError(_))),
-        "corrupt op_heads must yield JjLibError for a parseable revset, got: {backend:?}"
-    );
+    for revset in ["bogus_function()", "all()"] {
+        let result = repo.eval_revset(revset, |_| ControlFlow::Continue(()));
+        assert!(
+            matches!(
+                result,
+                Err(RevsetError::Precondition(zanshin_jj::PreconditionError::Backend(_)))
+            ),
+            "{revset}: the snapshot's failure must win, got: {result:?}"
+        );
+    }
 }
 
 /// Stage 2 (symbol resolution) is distinguishable from the other two fault classes.
@@ -1012,7 +1010,7 @@ fn eval_revset_parse_error_is_raised_before_any_head_io() {
 fn eval_revset_nonexistent_bookmark_returns_resolution_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut calls = 0_usize;
     let result = repo.eval_revset("nonexistent-bookmark", |_| {
@@ -1031,12 +1029,13 @@ fn eval_revset_nonexistent_bookmark_returns_resolution_error() {
 fn eval_revset_malformed_repo_config_is_a_config_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     write_repo_config(&fx.path, "not = = toml");
     let result = repo.eval_revset("all()", |_| ControlFlow::Continue(()));
-    let Err(RevsetError::Config(err)) = result else {
-        panic!("a malformed config must yield RevsetError::Config, got: {result:?}");
+    // The pre-verb snapshot reads the stack first (Story 9.26), so it is the one that refuses.
+    let Err(RevsetError::Precondition(err @ zanshin_jj::PreconditionError::Config { .. })) = result else {
+        panic!("a malformed config must yield a config error, got: {result:?}");
     };
     assert!(
         err.to_string().contains("config.toml"),
@@ -1050,17 +1049,17 @@ fn eval_revset_malformed_repo_config_is_a_config_error() {
 fn eval_revset_honours_a_repo_config_alias_override() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let root = commit_id_of(&repo, "root()");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&mut repo, "root()");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
     // The fixture has no remote bookmarks, so the builtin trunk() degenerates to root().
-    let before = collect_changes(&repo, "trunk()");
+    let before = collect_changes(&mut repo, "trunk()");
     assert_eq!(before.len(), 1);
     assert_eq!(before[0].commit_id.0, root);
 
     write_repo_config(&fx.path, "[revset-aliases]\n'trunk()' = 'description(\"Commit 3\")'\n");
-    let after = collect_changes(&repo, "trunk()");
+    let after = collect_changes(&mut repo, "trunk()");
     assert_eq!(after.len(), 1);
     assert_eq!(
         after[0].commit_id.0, c3,
@@ -1080,8 +1079,8 @@ fn eval_revset_mid_walk_store_failure_keeps_the_rows_already_visited() {
     // Read the id through a handle that is then DROPPED: the store caches every commit it
     // loads, so the handle that walks must never have seen the one removed below.
     let oldest = {
-        let probe = Repo::open(&fx.path).unwrap();
-        commit_id_of(&probe, "description(\"Commit 1\")")
+        let mut probe = Repo::open(&fx.path).unwrap();
+        commit_id_of(&mut probe, "description(\"Commit 1\")")
     };
 
     // Remove exactly ONE loose object. The fixture is a linear chain (root → Commit 1 → 2 → 3,
@@ -1100,7 +1099,7 @@ fn eval_revset_mid_walk_store_failure_keeps_the_rows_already_visited() {
         .join(&oldest[2..]);
     std::fs::remove_file(&object).unwrap();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let mut visited: Vec<String> = Vec::new();
     let result = repo.eval_revset("all()", |change| {
         visited.push(change.commit_id.0.clone());

@@ -41,17 +41,14 @@
 //! `save()` failure can still abort the transaction after jj-lib's git-config edit has landed,
 //! which is the asymmetry the CLI's own `?` produces.
 //!
+//! In a COLOCATED workspace the CLI skips `git import`/`git export` with an informational,
+//! exit-0 message (`import.rs:46-50`, `export.rs:41-46`), because its per-command snapshot has
+//! already imported the refs and its `finish_transaction` exports them. Zanshin runs the same
+//! pre-verb snapshot and finish (Story 9.26), so both verbs find nothing left to do there and
+//! write no operation — the CLI's observable end state.
+//!
 //! # Deliberate divergences from the CLI at v0.44.0
 //!
-//! - **No colocated skip.** `git import`/`git export` refuse in a colocated workspace with
-//!   an informational, exit-0 message (`import.rs:46-50`, `export.rs:41-46`). Its own
-//!   comment gives the reason — "Git refs are imported during the snapshot" — which is a
-//!   consequence of the CLI's implicit per-command snapshot and its `finish_transaction`
-//!   auto-export. Zanshin performs neither (D2: the working copy is never snapshotted, and
-//!   `export_refs` was called nowhere in this crate before this story), so the guard's
-//!   premise is false here and porting it would make both verbs unusable in exactly the
-//!   repos that need them. Running them unconditionally reproduces the CLI's observable END
-//!   STATE (refs imported / exported), which is what NFR-R-2 pins.
 //! - **No terminal UX.** No hints, no padded columns, no "Nothing changed." — the typed
 //!   results below carry the structured fields those lines would have rendered.
 //! - **No `--no-integrate-operation` refusal** (`export.rs:36-39`): Zanshin has no such
@@ -61,18 +58,16 @@
 
 use std::sync::Arc;
 
-use jj_lib::git::{
-    self, GitExportError, GitImportError, GitImportOptions, GitImportRefUpdate, GitRemoteManagementError,
-};
+use jj_lib::git::{self, GitExportError, GitImportError, GitImportRefUpdate, GitRemoteManagementError};
 use jj_lib::op_store::RemoteRefState;
 use jj_lib::ref_name::RemoteNameBuf;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::revset::UserRevsetExpression;
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, flatten_chain, MutateError, MutationResult};
 use crate::op_support::resolve_immutable;
+use crate::snapshot::VerbContext;
 use crate::ChangeId;
 
 // ── Result types ─────────────────────────────────────────────────────────────────
@@ -307,22 +302,34 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 /// the NO-OP path too: a run where every pending ref failed changes nothing yet must still
 /// report `failed_ref_names`.
 ///
+/// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No import
+/// needed in colocated workspaces.", `cli/src/commands/git/import.rs:46-50` @ v0.44.0): the
+/// pre-verb snapshot already imported the refs, so the result is the no-op at the head.
+///
 /// # Errors
 ///
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend.
-/// - [`MutateError::Config`] — the immutable-set expression could not be resolved.
+/// - [`MutateError::Config`] — a `git.*` / `remotes.<name>.auto-track-bookmarks` import option
+///   is malformed, or the immutable-set expression could not be resolved.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn git_import(
-    workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
-    options: &GitImportOptions,
-) -> Result<GitImportResult, MutateError> {
-    let finished = mutate::finish_or_no_op(workspace, "import git refs", |tx| {
+pub(crate) fn git_import(workspace: &mut Workspace, ctx: &VerbContext) -> Result<GitImportResult, MutateError> {
+    if ctx.colocated {
+        return Ok(GitImportResult {
+            changed_bookmarks: Vec::new(),
+            changed_tags: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            num_rewritten: 0,
+            failed_ref_names: Vec::new(),
+            mutation: colocated_no_op(workspace)?,
+        });
+    }
+    let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
+    let finished = mutate::finish_or_no_op(workspace, "import git refs", ctx, |tx| {
         pollster::block_on(git::import_head(tx.repo_mut())).map_err(map_import_err)?;
-        let stats = pollster::block_on(git::import_refs(tx.repo_mut(), options)).map_err(map_import_err)?;
+        let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &import_options)).map_err(map_import_err)?;
         // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
-        let resolved = resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+        let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
         pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
             &resolved,
             &RebaseOptions::default(),
@@ -331,18 +338,44 @@ pub(crate) fn git_import(
         .map_err(mutate::be)?;
         Ok(stats)
     })?;
+    Ok(project_import(
+        &finished.value,
+        &finished.repo,
+        finished.committed,
+        finished.mutation,
+    ))
+}
 
-    let stats = finished.value;
-    // WHY the branch instead of projecting unconditionally: on the no-op path
-    // `finished.repo` is the PRE-transaction repo, so `project_updates`' post-import
-    // tracking-flag read would be answered by a stale view. It cannot currently produce a
-    // wrong value — jj-lib reports no changed refs exactly when nothing was written — but
-    // that is a coupling between two independent jj-lib facts, so it is asserted rather
-    // than relied on.
-    let (changed_bookmarks, changed_tags) = if finished.committed {
+/// The no-op result the colocated `git import` / `git export` return: nothing written, the head
+/// as it stands after the pre-verb snapshot.
+fn colocated_no_op(workspace: &Workspace) -> Result<MutationResult, MutateError> {
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    mutate::no_op_result(workspace.workspace_name(), &readonly)
+}
+
+/// Projects an `import_refs` run into a [`GitImportResult`] — shared by [`git_import`] and the
+/// pre-verb snapshot's `import git refs` step (Story 9.26), which report the same fact.
+///
+/// `repo` is the repo AFTER the call; `committed` says whether it is a post-import view. The
+/// changed-ref lists are only projected from a post-import view — see the WHY below. The
+/// abandoned commits, the rewrite count and the failed refs are facts of the import itself and
+/// are reported either way: a run where every pending ref failed changes nothing yet must still
+/// report `failed_ref_names`.
+pub(crate) fn project_import(
+    stats: &jj_lib::git::GitImportStats,
+    repo: &Arc<ReadonlyRepo>,
+    committed: bool,
+    mutation: MutationResult,
+) -> GitImportResult {
+    // WHY the branch instead of projecting unconditionally: on the no-op path `repo` is the
+    // PRE-transaction repo, so `project_updates`' post-import tracking-flag read would be
+    // answered by a stale view. It cannot currently produce a wrong value — jj-lib reports no
+    // changed refs exactly when nothing was written — but that is a coupling between two
+    // independent jj-lib facts, so it is asserted rather than relied on.
+    let (changed_bookmarks, changed_tags) = if committed {
         (
-            project_updates(&finished.repo, &stats.changed_remote_bookmarks, false),
-            project_updates(&finished.repo, &stats.changed_remote_tags, true),
+            project_updates(repo, &stats.changed_remote_bookmarks, false),
+            project_updates(repo, &stats.changed_remote_tags, true),
         )
     } else {
         debug_assert!(
@@ -351,10 +384,10 @@ pub(crate) fn git_import(
         );
         (Vec::new(), Vec::new())
     };
-    Ok(GitImportResult {
+    GitImportResult {
         changed_bookmarks,
         changed_tags,
-        abandoned_change_ids: project_abandoned(&stats),
+        abandoned_change_ids: project_abandoned(stats),
         // Saturating, not wrapping or fallible — see `GitImportResult::num_rewritten`.
         num_rewritten: u32::try_from(stats.rewritten_commit_ids.len()).unwrap_or(u32::MAX),
         failed_ref_names: stats
@@ -362,8 +395,8 @@ pub(crate) fn git_import(
             .iter()
             .map(|n| String::from_utf8_lossy(n).into_owned())
             .collect(),
-        mutation: finished.mutation,
-    })
+        mutation,
+    }
 }
 
 // ── git export ───────────────────────────────────────────────────────────────────
@@ -393,13 +426,24 @@ pub(crate) fn project_failures(
 /// Refs that could not be written are carried in [`GitExportResult::failed_bookmarks`] /
 /// `failed_tags`, never as an `Err`: the CLI warns and exits 0 (`git_util.rs:468-506`).
 ///
+/// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No export
+/// needed in colocated workspaces.", `cli/src/commands/git/export.rs:41-46` @ v0.44.0) — even
+/// when jj holds refs that were never exported.
+///
 /// # Errors
 ///
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn git_export(workspace: &mut Workspace) -> Result<GitExportResult, MutateError> {
-    let finished = mutate::finish_or_no_op(workspace, "export git refs", |tx| {
+pub(crate) fn git_export(workspace: &mut Workspace, ctx: &VerbContext) -> Result<GitExportResult, MutateError> {
+    if ctx.colocated {
+        return Ok(GitExportResult {
+            failed_bookmarks: Vec::new(),
+            failed_tags: Vec::new(),
+            mutation: colocated_no_op(workspace)?,
+        });
+    }
+    let finished = mutate::finish_or_no_op(workspace, "export git refs", ctx, |tx| {
         git::export_refs(tx.repo_mut()).map_err(map_export_err)
     })?;
     let stats = finished.value;
@@ -431,12 +475,13 @@ pub(crate) fn git_export(workspace: &mut Workspace) -> Result<GitExportResult, M
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_add(
     workspace: &mut Workspace,
+    ctx: &VerbContext,
     name: &str,
     url: &str,
     push_url: Option<&str>,
 ) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
-    let finished = mutate::finish_or_no_op(workspace, &format!("add git remote {name}"), |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &format!("add git remote {name}"), ctx, |tx| {
         git::add_remote(tx.repo_mut(), &remote, url, push_url).map_err(map_remote_mgmt_err)
     })?;
     Ok(finished.mutation)
@@ -471,13 +516,17 @@ pub(crate) fn git_remote_add(
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn git_remote_remove(workspace: &mut Workspace, name: &str) -> Result<MutationResult, MutateError> {
+pub(crate) fn git_remote_remove(
+    workspace: &mut Workspace,
+    ctx: &VerbContext,
+    name: &str,
+) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
     // Resolved AND LOADED before the transaction opens, so every read-side fault — a
     // malformed `config-id`, an unreadable file, invalid TOML — refuses before anything at
     // all is mutated, exactly as the CLI's start-up-parsed repo layer does.
     let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), move |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), ctx, move |tx| {
         git::remove_remote(tx.repo_mut(), &remote).map_err(map_remote_mgmt_err)?;
         crate::config::remove_remote_from_repo_config(config_file, name).map_err(mutate::cfg)
     })?;
@@ -514,6 +563,7 @@ pub(crate) fn git_remote_remove(workspace: &mut Workspace, name: &str) -> Result
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_rename(
     workspace: &mut Workspace,
+    ctx: &VerbContext,
     old_name: &str,
     new_name: &str,
 ) -> Result<MutationResult, MutateError> {
@@ -522,7 +572,7 @@ pub(crate) fn git_remote_rename(
     let description = format!("rename git remote {old_name} to {new_name}");
     // Resolved AND LOADED before the transaction opens — see `git_remote_remove`.
     let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &description, move |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &description, ctx, move |tx| {
         git::rename_remote(tx.repo_mut(), &old, &new).map_err(map_remote_mgmt_err)?;
         crate::config::rename_remote_in_repo_config(config_file, old_name, new_name).map_err(mutate::cfg)
     })?;
@@ -558,19 +608,9 @@ pub(crate) fn git_remote_set_url(
     push_url: Option<&str>,
 ) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
-    let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = mutate::capture_old_wc(&readonly, &workspace_name)?;
-
     let remote: RemoteNameBuf = name.into();
     git::set_remote_urls(readonly.store(), &remote, url, push_url).map_err(map_remote_mgmt_err)?;
-
-    mutate::no_op_result(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &readonly,
-    )
+    mutate::no_op_result(workspace.workspace_name(), &readonly)
 }
 
 #[cfg(test)]

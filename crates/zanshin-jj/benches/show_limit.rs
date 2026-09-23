@@ -37,7 +37,7 @@ const LIMITS: [usize; 3] = [1, 10, 100];
 fn main() {
     pin_env();
     let fixture = extract_fixture(FIXTURE).expect("fixture must extract");
-    let repo = Repo::open(&fixture.path).expect("fixture must open");
+    let mut repo = Repo::open(&fixture.path).expect("fixture must open");
 
     // This run doubles as the warmup, so the expensive unbounded case is not paid one extra
     // time purely to print a count.

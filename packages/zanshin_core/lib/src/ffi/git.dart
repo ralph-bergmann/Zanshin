@@ -9,7 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'mutate.dart' show MutationResult, decodeIdentityMissingInternal, decodeMutationResultEnvelopeInternal;
+import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal, decodeMutationResultInternal;
 import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.5's six `jj git` sync + remote-config
@@ -31,17 +31,16 @@ import 'request_bytes.dart';
 /// Call `zanshin_git_import` with the raw `u64` handle and return the FlatBuffers
 /// `Envelope` bytes.
 ///
-/// Takes no arguments — the CLI's `jj git import` has none either. Unlike the CLI
-/// this is NOT skipped in a colocated workspace: that skip exists because the CLI
-/// imports refs during its implicit per-command snapshot, which Zanshin never
-/// performs.
+/// Takes no arguments — the CLI's `jj git import` has none either. In a colocated
+/// workspace the pre-verb snapshot (Story 9.26) has already imported the refs, so
+/// this finds nothing left to import — exactly the CLI's outcome there.
 Uint8List zanshinGitImport(int rawHandle) => readToken(zanshin_git_import(rawHandle));
 
 /// Call `zanshin_git_export` with the raw `u64` handle and return the FlatBuffers
 /// `Envelope` bytes.
 ///
-/// Takes no arguments, and — like [zanshinGitImport] — is not skipped in a
-/// colocated workspace.
+/// Takes no arguments. In a colocated workspace every finished transaction has
+/// already exported, so this usually finds git in sync.
 Uint8List zanshinGitExport(int rawHandle) => readToken(zanshin_git_export(rawHandle));
 
 /// Call `zanshin_git_remote_add` with the raw `u64` handle and a
@@ -264,15 +263,19 @@ GitImportResult _decodeGitImportResultEnvelope(Uint8List bytes) {
   if (payload is! fbs.GitImportResult) {
     throw ZanshinFfiException('ffi.unknown', 'expected GitImportResult payload, got ${env.dataType}');
   }
-  return GitImportResult(
-    mutation: _mutation(payload.mutation),
-    changedBookmarks: _refUpdates(payload.changedBookmarks),
-    changedTags: _refUpdates(payload.changedTags),
-    abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
-    numRewritten: payload.numRewritten,
-    failedRefNames: payload.failedRefNames?.toList() ?? const [],
-  );
+  return decodeGitImportResultInternal(payload);
 }
+
+/// Rebuild a [GitImportResult] from its table — shared by `gitImport` and the
+/// Story 9.26 precondition report's `gitRefs`.
+GitImportResult decodeGitImportResultInternal(fbs.GitImportResult payload) => GitImportResult(
+  mutation: decodeMutationResultInternal(payload.mutation),
+  changedBookmarks: _refUpdates(payload.changedBookmarks),
+  changedTags: _refUpdates(payload.changedTags),
+  abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
+  numRewritten: payload.numRewritten,
+  failedRefNames: payload.failedRefNames?.toList() ?? const [],
+);
 
 /// Decode a `GitExportResult` `Envelope` buffer into a [GitExportResult].
 ///
@@ -291,9 +294,9 @@ GitExportResult _decodeGitExportResultEnvelope(Uint8List bytes) {
     throw ZanshinFfiException('ffi.unknown', 'expected GitExportResult payload, got ${env.dataType}');
   }
   return GitExportResult(
-    mutation: _mutation(payload.mutation),
-    failedBookmarks: _exportFailures(payload.failedBookmarks),
-    failedTags: _exportFailures(payload.failedTags),
+    mutation: decodeMutationResultInternal(payload.mutation),
+    failedBookmarks: decodeExportFailuresInternal(payload.failedBookmarks),
+    failedTags: decodeExportFailuresInternal(payload.failedTags),
   );
 }
 
@@ -314,16 +317,6 @@ fbs.Envelope _okEnvelope(Uint8List bytes) {
   return env;
 }
 
-/// Rebuild the nested [MutationResult]; an absent table is an empty contract, not
-/// a crash.
-MutationResult _mutation(fbs.MutationResult? m) => MutationResult(
-  newOpId: m?.newOpId ?? '',
-  newChangeIds: m?.newChangeIds?.toList() ?? const [],
-  abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
-  workingCopyChangeId: m?.workingCopyChangeId ?? '',
-  identityMissing: decodeIdentityMissingInternal(m?.identityMissing),
-);
-
 List<GitRefUpdate> _refUpdates(List<fbs.GitRefUpdate>? raw) =>
     raw
         ?.map(
@@ -337,7 +330,8 @@ List<GitRefUpdate> _refUpdates(List<fbs.GitRefUpdate>? raw) =>
         .toList() ??
     const [];
 
-List<GitExportFailure> _exportFailures(List<fbs.GitExportFailure>? raw) =>
+/// Rebuild a `GitExportFailure` list; an absent vector is empty.
+List<GitExportFailure> decodeExportFailuresInternal(List<fbs.GitExportFailure>? raw) =>
     raw?.map((f) => GitExportFailure(name: f.name ?? '', remote: f.remote ?? '', reason: f.reason ?? '')).toList() ??
     const [];
 

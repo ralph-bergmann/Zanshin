@@ -82,16 +82,16 @@ fn git_store(root: &Path) -> PathBuf {
     root.join(".jj").join("repo").join("store").join("git")
 }
 
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
-fn head_op_description(repo: &Repo) -> String {
+fn head_op_description(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).description.clone()
 }
 
 /// Remote names as `Repo::list_remotes` reports them, on the handle passed in.
-fn remote_names(repo: &Repo) -> Vec<String> {
+fn remote_names(repo: &mut Repo) -> Vec<String> {
     repo.list_remotes()
         .expect("list_remotes")
         .into_iter()
@@ -100,7 +100,7 @@ fn remote_names(repo: &Repo) -> Vec<String> {
 }
 
 /// The fetch URL `Repo::list_remotes` reports for `name`, if any.
-fn remote_url(repo: &Repo, name: &str) -> Option<String> {
+fn remote_url(repo: &mut Repo, name: &str) -> Option<String> {
     repo.list_remotes()
         .expect("list_remotes")
         .into_iter()
@@ -111,7 +111,7 @@ fn remote_url(repo: &Repo, name: &str) -> Option<String> {
 /// The push URL `Repo::list_remotes` reports for `name` — `None` both when the remote is
 /// missing and when it pushes to its own fetch URL (the field is a DIFFERENCE, matching
 /// `jj git remote list`'s `(push: …)` suffix).
-fn remote_push_url(repo: &Repo, name: &str) -> Option<String> {
+fn remote_push_url(repo: &mut Repo, name: &str) -> Option<String> {
     repo.list_remotes()
         .expect("list_remotes")
         .into_iter()
@@ -141,18 +141,18 @@ fn git_remote_add_is_visible_through_the_same_handle_and_writes_the_cli_operatio
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_remote_add("origin", &url, None).expect("add must succeed");
 
     assert_ne!(result.new_op_id.0, before, "adding a remote writes an operation");
     assert_eq!(
-        head_op_description(&repo),
+        head_op_description(&mut repo),
         "add git remote origin",
         "the op-log description is the CLI's own, byte-identical (NFR-R-2)"
     );
-    assert_eq!(remote_names(&repo), vec!["origin".to_owned()], "no reopen required");
-    assert_eq!(remote_url(&repo, "origin").as_deref(), Some(url.as_str()));
+    assert_eq!(remote_names(&mut repo), vec!["origin".to_owned()], "no reopen required");
+    assert_eq!(remote_url(&mut repo, "origin").as_deref(), Some(url.as_str()));
 }
 
 /// `push_url` must actually reach jj-lib. `list_remotes` now reports the push URL as well
@@ -170,9 +170,9 @@ fn git_remote_add_carries_a_push_url_into_the_git_config() {
     repo.git_remote_add("origin", &url, Some(&push))
         .expect("add with a push url must succeed");
 
-    assert_eq!(remote_push_url(&repo, "origin").as_deref(), Some(push.as_str()));
+    assert_eq!(remote_push_url(&mut repo, "origin").as_deref(), Some(push.as_str()));
     assert_eq!(
-        remote_url(&repo, "origin").as_deref(),
+        remote_url(&mut repo, "origin").as_deref(),
         Some(url.as_str()),
         "the fetch url is untouched by the push url"
     );
@@ -184,7 +184,7 @@ fn git_remote_add_refuses_a_duplicate_name() {
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("first add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .git_remote_add("origin", &url, None)
@@ -194,7 +194,7 @@ fn git_remote_add_refuses_a_duplicate_name() {
         matches!(&err, MutateError::RemoteExists { name } if name == "origin"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal writes nothing");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes nothing");
 }
 
 /// jj-lib's three name refusals are one fault class with one remedy, so all three arrive as
@@ -204,7 +204,7 @@ fn git_remote_add_refuses_every_invalid_name() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let reserved = repo
         .git_remote_add("git", &url, None)
@@ -230,7 +230,7 @@ fn git_remote_add_refuses_every_invalid_name() {
         "unexpected error: {empty:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before, "no refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
 }
 
 // ── git remote remove ─────────────────────────────────────────────────────────────
@@ -245,12 +245,12 @@ fn git_remote_remove_is_visible_through_the_same_handle_and_writes_the_cli_opera
     let result = repo.git_remote_remove("origin").expect("remove must succeed");
 
     assert_eq!(
-        head_op_description(&repo),
+        head_op_description(&mut repo),
         "remove git remote origin",
         "the op-log description is the CLI's own, byte-identical (NFR-R-2)"
     );
-    assert_eq!(result.new_op_id.0, head_op_id(&repo));
-    assert!(remote_names(&repo).is_empty(), "no reopen required");
+    assert_eq!(result.new_op_id.0, head_op_id(&mut repo));
+    assert!(remote_names(&mut repo).is_empty(), "no reopen required");
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn git_remote_remove_refuses_a_missing_remote() {
     pin_env();
     let (tmp, _remote_dir, _url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .git_remote_remove("nonexistent")
@@ -268,7 +268,7 @@ fn git_remote_remove_refuses_a_missing_remote() {
         matches!(&err, MutateError::RemoteNotFound { name } if name == "nonexistent"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// The other half of the story's op-log criterion: the reserved remote `git` IS removable —
@@ -293,8 +293,8 @@ fn git_remote_remove_of_the_reserved_git_remote_writes_no_operation() {
         "[remotes.git]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@git'\n",
     );
     let mut repo = Repo::open(tmp.path()).expect("open AFTER the config write");
-    assert_eq!(remote_names(&repo), vec!["git".to_owned()], "precondition");
-    let before = head_op_id(&repo);
+    assert_eq!(remote_names(&mut repo), vec!["git".to_owned()], "precondition");
+    let before = head_op_id(&mut repo);
 
     let result = repo
         .git_remote_remove("git")
@@ -304,8 +304,11 @@ fn git_remote_remove_of_the_reserved_git_remote_writes_no_operation() {
         result.new_op_id.0, before,
         "removing `git` touches no view state, so nothing is written"
     );
-    assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
-    assert!(remote_names(&repo).is_empty(), "the git config really was rewritten");
+    assert_eq!(head_op_id(&mut repo), before, "the op log is byte-identical");
+    assert!(
+        remote_names(&mut repo).is_empty(),
+        "the git config really was rewritten"
+    );
 
     let after = fs::read_to_string(&config_path).expect("the repo config must still be readable");
     assert!(
@@ -325,7 +328,7 @@ fn git_remote_remove_refuses_a_remote_that_was_added_with_a_push_url() {
     let push = format!("{url}-push");
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, Some(&push)).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .git_remote_remove("origin")
@@ -335,9 +338,9 @@ fn git_remote_remove_refuses_a_remote_that_was_added_with_a_push_url() {
         matches!(&err, MutateError::RemoteNonstandardConfig { name } if name == "origin"),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
     assert_eq!(
-        remote_names(&repo),
+        remote_names(&mut repo),
         vec!["origin".to_owned()],
         "the refusal is real: the remote survives"
     );
@@ -356,11 +359,15 @@ fn git_remote_rename_is_visible_through_the_same_handle_and_writes_the_cli_opera
         .expect("rename must succeed");
 
     assert_eq!(
-        head_op_description(&repo),
+        head_op_description(&mut repo),
         "rename git remote origin to upstream",
         "the op-log description is the CLI's own, byte-identical (NFR-R-2)"
     );
-    assert_eq!(remote_names(&repo), vec!["upstream".to_owned()], "no reopen required");
+    assert_eq!(
+        remote_names(&mut repo),
+        vec!["upstream".to_owned()],
+        "no reopen required"
+    );
 }
 
 /// jj-lib validates the NEW name BEFORE it reports that the OLD one is missing. Both
@@ -389,7 +396,7 @@ fn git_remote_rename_refuses_a_missing_old_name_and_a_taken_new_name() {
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add origin");
     repo.git_remote_add("upstream", &url, None).expect("add upstream");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let missing = repo
         .git_remote_rename("nonexistent", "fresh")
@@ -407,7 +414,7 @@ fn git_remote_rename_refuses_a_missing_old_name_and_a_taken_new_name() {
         "the NEW name is the one that is taken: {taken:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before, "no refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
 }
 
 /// Renaming FROM the reserved remote `git` rewrites the git config and refs but touches no
@@ -423,7 +430,7 @@ fn git_remote_rename_from_the_reserved_git_remote_writes_no_operation() {
         "[remotes.git]\nfetch-tags = \"none\"\n\n[revset-aliases]\n'trunk()' = 'main@git'\n",
     );
     let mut repo = Repo::open(tmp.path()).expect("open AFTER the config write");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo
         .git_remote_rename("git", "origin")
@@ -433,9 +440,9 @@ fn git_remote_rename_from_the_reserved_git_remote_writes_no_operation() {
         result.new_op_id.0, before,
         "renaming FROM `git` touches no view state, so nothing is written"
     );
-    assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
+    assert_eq!(head_op_id(&mut repo), before, "the op log is byte-identical");
     assert_eq!(
-        remote_names(&repo),
+        remote_names(&mut repo),
         vec!["origin".to_owned()],
         "the git config really was rewritten"
     );
@@ -462,21 +469,21 @@ fn git_remote_set_url_changes_the_fetch_url_without_writing_an_operation() {
     let repointed = format!("{url}-elsewhere");
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo
         .git_remote_set_url("origin", Some(&repointed), None)
         .expect("set-url must succeed");
 
     assert_eq!(result.new_op_id.0, before, "set-url never opens a transaction");
-    assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
+    assert_eq!(head_op_id(&mut repo), before, "the op log is byte-identical");
     assert_eq!(
-        remote_url(&repo, "origin").as_deref(),
+        remote_url(&mut repo, "origin").as_deref(),
         Some(repointed.as_str()),
         "no reopen required"
     );
     assert_eq!(
-        remote_push_url(&repo, "origin"),
+        remote_push_url(&mut repo, "origin"),
         None,
         "a fetch-only set-url must not invent a push url"
     );
@@ -502,7 +509,7 @@ fn git_remote_set_url_changes_only_the_push_url_when_only_that_is_given() {
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None)
         .expect("add without a push url");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo
         .git_remote_set_url("origin", None, Some(&push))
@@ -510,12 +517,12 @@ fn git_remote_set_url_changes_only_the_push_url_when_only_that_is_given() {
 
     assert_eq!(result.new_op_id.0, before, "set-url never opens a transaction");
     assert_eq!(
-        remote_push_url(&repo, "origin").as_deref(),
+        remote_push_url(&mut repo, "origin").as_deref(),
         Some(push.as_str()),
         "the push url must reach jj-lib verbatim"
     );
     assert_eq!(
-        remote_url(&repo, "origin").as_deref(),
+        remote_url(&mut repo, "origin").as_deref(),
         Some(url.as_str()),
         "an absent fetch url means LEAVE IT ALONE, not clear it"
     );
@@ -529,14 +536,14 @@ fn git_remote_set_url_with_both_urls_absent_succeeds_even_for_a_missing_remote()
     pin_env();
     let (tmp, _remote_dir, _url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo
         .git_remote_set_url("nonexistent", None, None)
         .expect("jj-lib's own early return: no urls, no work, no refusal");
 
     assert_eq!(result.new_op_id.0, before);
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 #[test]
@@ -544,7 +551,7 @@ fn git_remote_set_url_refuses_a_missing_remote_and_the_reserved_name() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let missing = repo
         .git_remote_set_url("nonexistent", Some(&url), None)
@@ -562,7 +569,7 @@ fn git_remote_set_url_refuses_a_missing_remote_and_the_reserved_name() {
         "unexpected error: {reserved:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before, "no refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
 }
 
 /// A native workspace has no git backend, so every remote verb refuses with the answerable
@@ -574,7 +581,7 @@ fn every_remote_verb_refuses_a_native_backend() {
     let tmp = TempDir::new().expect("tempdir");
     Repo::init(tmp.path(), None).expect("native init");
     let mut repo = Repo::open(tmp.path()).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     for err in [
         repo.git_remote_add("origin", "/tmp/nowhere", None).unwrap_err(),
@@ -585,7 +592,7 @@ fn every_remote_verb_refuses_a_native_backend() {
     ] {
         assert!(matches!(err, MutateError::NotAGitRepo), "unexpected error: {err:?}");
     }
-    assert_eq!(head_op_id(&repo), before, "no refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
 }
 
 /// A remote registered by an external `jj`/`git` process must be reachable by these verbs
@@ -599,10 +606,10 @@ fn a_remote_added_externally_can_be_renamed_and_removed_through_the_same_handle(
     let mut repo = Repo::open(tmp.path()).expect("open AFTER the external write");
 
     repo.git_remote_rename("external", "renamed").expect("rename");
-    assert_eq!(remote_names(&repo), vec!["renamed".to_owned()]);
+    assert_eq!(remote_names(&mut repo), vec!["renamed".to_owned()]);
 
     repo.git_remote_remove("renamed").expect("remove");
-    assert!(remote_names(&repo).is_empty());
+    assert!(remote_names(&mut repo).is_empty());
 }
 
 // ── The repo-config rewrite (Epic 9 follow-up J) ──────────────────────────────────
@@ -651,7 +658,7 @@ fn write_pinned_repo_config(root: &Path) -> PathBuf {
 
 /// `trunk()` evaluated through the SAME handle: `Ok` with the resolved changes, or the
 /// refusal's reason.
-fn eval_trunk(repo: &Repo) -> Result<usize, String> {
+fn eval_trunk(repo: &mut Repo) -> Result<usize, String> {
     let mut n = 0;
     repo.eval_revset("trunk()", |_| {
         n += 1;
@@ -693,7 +700,7 @@ fn remove_rewrites_the_jj_repo_config_and_the_builtin_trunk_applies_again() {
     );
 
     assert_eq!(
-        eval_trunk(&repo),
+        eval_trunk(&mut repo),
         Ok(1),
         "the SAME handle must resolve `trunk()` through the builtin alias (root(), in a \
          repo with no remote bookmarks) — config is re-read per call"
@@ -730,7 +737,7 @@ fn rename_moves_the_repo_config_section_and_repoints_the_trunk_alias() {
         "the alias keeps its bookmark and names the new remote: {after:?}"
     );
 
-    let refusal = eval_trunk(&repo).expect_err("`main@upstream` names no remote bookmark");
+    let refusal = eval_trunk(&mut repo).expect_err("`main@upstream` names no remote bookmark");
     assert!(
         refusal.contains("upstream"),
         "the reloaded session must read the RE-POINTED alias, got: {refusal}"
@@ -787,16 +794,29 @@ fn a_malformed_config_id_refuses_before_anything_is_mutated() {
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     fs::write(tmp.path().join(".jj").join("repo").join("config-id"), "not-hex").expect("config-id must be writable");
 
     let err = repo
         .git_remote_remove("origin")
         .expect_err("a malformed config-id must refuse");
 
-    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
-    assert_eq!(remote_names(&repo), vec!["origin".to_owned()], "nothing was mutated");
-    assert_eq!(head_op_id(&repo), before, "and no operation was written");
+    // The pre-verb snapshot reads the stack first (Story 9.26); the state is read back once the
+    // id is repaired, since every verb refuses while it is broken.
+    assert!(
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "got: {err:?}"
+    );
+    fs::remove_file(tmp.path().join(".jj").join("repo").join("config-id")).expect("config-id removable");
+    assert_eq!(
+        remote_names(&mut repo),
+        vec!["origin".to_owned()],
+        "nothing was mutated"
+    );
+    assert_eq!(head_op_id(&mut repo), before, "and no operation was written");
 }
 
 /// Every READ-side config fault is raised before the transaction opens — the file is loaded
@@ -808,17 +828,26 @@ fn an_unparseable_repo_config_refuses_before_anything_is_mutated() {
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     write_repo_config(tmp.path(), "not = = toml\n");
 
     let err = repo
         .git_remote_remove("origin")
         .expect_err("an unparseable repo config must refuse");
 
-    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
-    assert_eq!(head_op_id(&repo), before, "no operation was written");
+    // The pre-verb snapshot reads the stack first (Story 9.26); the state is read back once the
+    // file is repaired, since every verb refuses while it is broken.
+    assert!(
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "got: {err:?}"
+    );
+    write_repo_config(tmp.path(), "");
+    assert_eq!(head_op_id(&mut repo), before, "no operation was written");
     assert_eq!(
-        remote_names(&repo),
+        remote_names(&mut repo),
         vec!["origin".to_owned()],
         "and jj-lib's git-config edit never ran either — the load precedes it"
     );
@@ -832,17 +861,26 @@ fn an_unparseable_repo_config_refuses_rename_too_before_anything_is_mutated() {
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     write_repo_config(tmp.path(), "not = = toml\n");
 
     let err = repo
         .git_remote_rename("origin", "upstream")
         .expect_err("an unparseable repo config must refuse");
 
-    assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
-    assert_eq!(head_op_id(&repo), before, "no operation was written");
+    // The pre-verb snapshot reads the stack first (Story 9.26); the state is read back once the
+    // file is repaired, since every verb refuses while it is broken.
+    assert!(
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "got: {err:?}"
+    );
+    write_repo_config(tmp.path(), "");
+    assert_eq!(head_op_id(&mut repo), before, "no operation was written");
     assert_eq!(
-        remote_names(&repo),
+        remote_names(&mut repo),
         vec!["origin".to_owned()],
         "and the git config was not rewritten"
     );
@@ -861,7 +899,7 @@ fn an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit() 
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     let config_path = write_pinned_repo_config(tmp.path());
     fs::set_permissions(&config_path, fs::Permissions::from_mode(0o444)).expect("chmod");
 
@@ -871,9 +909,9 @@ fn an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit() 
 
     fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644)).expect("chmod back");
     assert!(matches!(err, MutateError::Config { .. }), "got: {err:?}");
-    assert_eq!(head_op_id(&repo), before, "the transaction was dropped");
+    assert_eq!(head_op_id(&mut repo), before, "the transaction was dropped");
     assert!(
-        remote_names(&repo).is_empty(),
+        remote_names(&mut repo).is_empty(),
         "jj-lib's own git-config edit ran before the save and is NOT rolled back"
     );
 }
@@ -915,7 +953,7 @@ fn the_canonical_config_id_addressed_file_is_the_one_rewritten() {
         "the legacy file is neither read nor written once a config-id exists"
     );
     assert_eq!(
-        eval_trunk(&repo),
+        eval_trunk(&mut repo),
         Ok(1),
         "the same-session read-back must agree: the rewritten file IS this repo's repo layer"
     );
@@ -926,16 +964,17 @@ fn the_canonical_config_id_addressed_file_is_the_one_rewritten() {
 /// git-ref edits that can still fail, so a mid-verb failure would otherwise leave a stale
 /// gix config cache behind for the rest of the session.
 ///
-/// Provoked by removing `.jj/working_copy` from under an open handle: `Workspace::load`
-/// needs it, while the already-built repo loader does not — so the verbs still run and only
-/// the reopen fails. Both halves of the contract are asserted, and the second assertion is
+/// Provoked by removing `.jj/working_copy/type` from under an open handle: `Workspace::load`
+/// needs it, while the already-built working copy does not — so the pre-verb snapshot (which
+/// locks and snapshots through the loaded working copy) and the verbs still run, and only the
+/// reopen fails. Both halves of the contract are asserted, and the second assertion is
 /// also what proves the reload really is failing (otherwise it would read as a success).
 #[test]
 fn a_failed_reload_is_surfaced_only_when_the_verb_itself_succeeded() {
     pin_env();
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
-    fs::remove_dir_all(tmp.path().join(".jj").join("working_copy")).expect("remove working copy state");
+    fs::remove_file(tmp.path().join(".jj").join("working_copy").join("type")).expect("remove working copy type");
 
     // Verb fails AND reload fails: the VERB's error survives — it is the one that explains
     // what the user did. The reload's is traced (`tracing::warn!`), never silently dropped.
@@ -957,7 +996,7 @@ fn a_failed_reload_is_surfaced_only_when_the_verb_itself_succeeded() {
         matches!(&reload_err, MutateError::Backend(_)),
         "unexpected error: {reload_err:?}"
     );
-    // The oracle is the raw git config, not another `Repo`: with `.jj/working_copy` gone,
+    // The oracle is the raw git config, not another `Repo`: with `.jj/working_copy/type` gone,
     // `Workspace::load` fails for EVERY handle — which is itself the proof that the reload
     // above really failed rather than quietly succeeding.
     let (ok, out) = git_try(&["config", "--get", "remote.origin.url"], &git_store(tmp.path()));

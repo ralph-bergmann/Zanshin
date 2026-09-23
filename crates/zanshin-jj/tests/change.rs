@@ -238,7 +238,7 @@ fn change_on_known_id_returns_metadata() {
     let (oracle_change_id, oracle_commit_id, oracle_parents, oracle_desc, oracle_author_name, oracle_author_email) =
         wc_oracle_fields(&fx.path);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let change = repo.get_change(&ChangeId(oracle_change_id.clone())).unwrap();
 
     assert_eq!(change.id.0, oracle_change_id, "change id must match oracle");
@@ -290,7 +290,7 @@ fn change_on_working_copy_includes_parent() {
 
     let (_, _, oracle_parents, _, _, _) = wc_oracle_fields(&fx.path);
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let status = repo.status().unwrap();
     let change = repo.get_change(&status.working_copy_change_id).unwrap();
 
@@ -313,7 +313,7 @@ fn change_on_working_copy_includes_parent() {
 fn change_on_nonexistent_id_returns_not_found() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     // A syntactically valid reverse-hex id that doesn't exist in this repo.
     let result = repo.get_change(&ChangeId("qpvuntsmwlqtpvuntsmwlqtpvuntsm".to_owned()));
@@ -328,7 +328,7 @@ fn change_on_nonexistent_id_returns_not_found() {
 fn change_on_malformed_id_returns_not_found() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     // Characters outside the reverse-hex alphabet (z-k: "a-z" rotated; `!` is invalid).
     let result = repo.get_change(&ChangeId("not-valid-reverse-hex!".to_owned()));
@@ -345,7 +345,7 @@ fn change_on_malformed_id_returns_not_found() {
 fn change_on_empty_id_returns_not_found() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     // Empty string is even-length, so try_from_reverse_hex returns Some; without the
     // explicit empty guard this would reach resolve_change_id and panic (AmbiguousMatch).
@@ -377,7 +377,7 @@ fn change_on_root_returns_empty_parents() {
     let root_commit = repo_jj.store().root_commit();
     let root_change_id = ChangeId(root_commit.change_id().reverse_hex());
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let change = repo.get_change(&root_change_id).unwrap();
 
     assert!(
@@ -396,7 +396,7 @@ fn change_on_anonymous_commit_is_anonymous() {
     Repo::init(tmp.path(), None).unwrap();
 
     // Fresh repo: initial WC commit has empty description and no local bookmark → anonymous.
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
     let change = repo.get_change(&status.working_copy_change_id).unwrap();
 
@@ -415,7 +415,7 @@ fn change_on_described_commit_is_not_anonymous() {
 
     jj_new_with_description(tmp.path(), "my feature").unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
     let change = repo.get_change(&status.working_copy_change_id).unwrap();
 
@@ -466,7 +466,7 @@ fn change_on_merge_in_medium_fixture_has_three_parents() {
     let merge_change_id =
         merge_change_id.expect("medium-1k-commits must have a 3-parent merge commit with bookmark 'merge'");
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let change = repo.get_change(&merge_change_id).unwrap();
 
     assert_eq!(change.parents.len(), 3, "merge commit must have 3 parents");
@@ -488,7 +488,7 @@ fn change_on_divergent_id_returns_divergent_flag() {
     let divergent_change_id_str = make_divergent_change(tmp.path());
     let divergent_id = ChangeId(divergent_change_id_str);
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let change = repo.get_change(&divergent_id).unwrap();
 
     assert!(
@@ -532,7 +532,7 @@ fn change_on_divergent_id_returns_divergent_flag() {
 fn change_on_clean_commit_returns_clean_conflict() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let status = repo.status().unwrap();
     let change = repo.get_change(&status.working_copy_change_id).unwrap();
@@ -553,7 +553,7 @@ fn change_on_conflicted_commit_returns_conflicted_paths() {
     // Construct a genuine add/add conflict on `conflicted.txt` via jj-lib (no jj CLI).
     let conflicted_change_id = ChangeId(make_conflicted_change(tmp.path()));
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let change = repo.get_change(&conflicted_change_id).unwrap();
 
     // D7: a commit jj reports as conflicted must surface ConflictState::Conflicted with the
@@ -584,7 +584,7 @@ fn change_on_corrupt_repo_returns_backend_error() {
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
     let change_id = status.working_copy_change_id.clone();
 
@@ -596,7 +596,7 @@ fn change_on_corrupt_repo_returns_backend_error() {
     let result = repo.get_change(&change_id);
 
     assert!(
-        matches!(result, Err(ChangeError::Backend(_))),
-        "corrupt repo must yield Backend error, got: {result:?}"
+        matches!(result, Err(ChangeError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
     );
 }

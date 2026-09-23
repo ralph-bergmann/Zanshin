@@ -169,6 +169,21 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
             name: true,
             email: false,
         }),
+        finish: Some(sample_finish_facts()),
+    }
+}
+
+/// Names every `FinishFacts` field by its public path (Story 9.26).
+fn sample_finish_facts() -> zanshin_jj::FinishFacts {
+    zanshin_jj::FinishFacts {
+        working_copy_became_immutable: false,
+        git_head_update_failed: false,
+        export_failed_bookmarks: vec![zanshin_jj::GitExportFailure {
+            name: String::new(),
+            remote: String::new(),
+            reason: String::new(),
+        }],
+        export_failed_tags: vec![],
     }
 }
 
@@ -393,6 +408,8 @@ fn api_surface_resolves() {
     // fn-pointer: compiles only if the signature matches exactly.
     // `_ = expr` (anonymous discard) avoids the no_effect_underscore_binding lint
     // while still confirming the function resolves at compile time.
+    // Stays `&Repo` and precondition-free: the test oracle, exported to neither FFI nor MCP
+    // (Story 9.26).
     _ = zanshin_jj::resolve_revset
         as fn(&zanshin_jj::Repo, &str) -> Result<Vec<zanshin_jj::ChangeId>, zanshin_jj::RevsetError>;
 
@@ -507,11 +524,11 @@ fn api_surface_resolves() {
     _ = zanshin_jj::TagKind::Local;
     _ = sample_tag();
     _ = sample_working_copy();
-    _ = zanshin_jj::Repo::list_tags as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Tag>, zanshin_jj::ViewError>;
+    _ = zanshin_jj::Repo::list_tags as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Tag>, zanshin_jj::ViewError>;
     _ = zanshin_jj::Repo::list_heads
-        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::CommitId>, zanshin_jj::ViewError>;
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::CommitId>, zanshin_jj::ViewError>;
     _ = zanshin_jj::Repo::list_working_copies
-        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkingCopy>, zanshin_jj::ViewError>;
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkingCopy>, zanshin_jj::ViewError>;
 }
 
 /// Content ops (Story 9.3): 2 new types, 2 new `MutateError` variants, 2 new `Repo` methods.
@@ -576,25 +593,25 @@ fn file_reads_surface_resolves() {
 
     _ = zanshin_jj::Repo::file_list
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<zanshin_jj::ChangeId>,
             &[String],
         ) -> Result<Vec<zanshin_jj::FileEntry>, zanshin_jj::FileError>;
     _ = zanshin_jj::Repo::file_show
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<zanshin_jj::ChangeId>,
             &[String],
         ) -> Result<zanshin_jj::FileContents, zanshin_jj::FileError>;
     _ = zanshin_jj::Repo::file_annotate
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<zanshin_jj::ChangeId>,
             &str,
         ) -> Result<Vec<zanshin_jj::AnnotationLine>, zanshin_jj::FileError>;
     _ = zanshin_jj::Repo::file_search
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<zanshin_jj::ChangeId>,
             &str,
             &[String],
@@ -716,19 +733,19 @@ fn commit_views_surface_resolves() {
 
     _ = zanshin_jj::Repo::show
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<&str>,
             Option<usize>,
         ) -> Result<Vec<zanshin_jj::ShowEntry>, zanshin_jj::CommitViewError>;
     _ = zanshin_jj::Repo::evolog
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<&str>,
             Option<usize>,
         ) -> Result<Vec<zanshin_jj::EvologEntry>, zanshin_jj::CommitViewError>;
     _ = zanshin_jj::Repo::interdiff
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             Option<zanshin_jj::RevisionRef>,
             Option<zanshin_jj::RevisionRef>,
             &[String],
@@ -772,7 +789,8 @@ fn workspace_surface_resolves() {
     _ = sample_workspace_entry();
 
     _ = zanshin_jj::Repo::list_workspaces
-        as fn(&zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkspaceEntry>, zanshin_jj::WorkspaceError>;
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkspaceEntry>, zanshin_jj::WorkspaceError>;
+    // `workspace root` is in the CLI's no-snapshot set, so both stay `&self` (Story 9.26).
     _ = zanshin_jj::Repo::resolve_workspace_root
         as fn(&zanshin_jj::Repo, Option<&str>) -> Result<std::path::PathBuf, zanshin_jj::WorkspaceError>;
     // The shipped infallible accessor keeps its name and its `&Path` return (Story 9.7 adds a
@@ -883,4 +901,91 @@ fn file_track_surface_resolves() {
         as fn(&mut zanshin_jj::Repo, &[String], bool) -> Result<zanshin_jj::TrackResult, zanshin_jj::MutateError>;
     _ = zanshin_jj::Repo::file_untrack
         as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::UntrackResult, zanshin_jj::MutateError>;
+}
+
+// snapshot precondition (Story 9.26)
+type _Precondition = zanshin_jj::Precondition;
+type _PreconditionError = zanshin_jj::PreconditionError;
+type _StaleCause = zanshin_jj::StaleCause;
+type _FinishFacts = zanshin_jj::FinishFacts;
+
+/// Names every `Precondition` field by its public path (Story 9.26).
+fn sample_precondition() -> zanshin_jj::Precondition {
+    zanshin_jj::Precondition {
+        was_snapshot_taken: false,
+        snapshot_stats: sample_snapshot_stats(),
+        git_head_imported: false,
+        git_head_reset: false,
+        git_head_rebased: 0,
+        snapshot_rebased: 0,
+        working_copy_immutable_new_commit: false,
+        git_refs: Some(sample_git_import_result()),
+        git_refs_rebased: 0,
+        jjconflict_files_present: false,
+        finish: Some(sample_finish_facts()),
+    }
+}
+
+/// The Story 9.26 surface: the precondition's types, the explicit `snapshot` verb and
+/// `take_precondition`, the `&mut self` receivers every snapshotting read gained, and the
+/// `Precondition` variant each error enum gained — constructed AND `Display`-asserted, since
+/// the variant is `#[error(transparent)]`.
+#[test]
+fn snapshot_precondition_surface_resolves() {
+    _ = sample_precondition();
+    let stale = zanshin_jj::PreconditionError::StaleWorkingCopy {
+        cause: zanshin_jj::StaleCause::SiblingOperation,
+        working_copy_op_id: "a".to_owned(),
+        repo_op_id: "b".to_owned(),
+    };
+    assert_eq!(
+        stale.to_string(),
+        "stale working copy (sibling_operation): working copy at operation a, repo at b"
+    );
+    let config = || zanshin_jj::PreconditionError::Config { reason: "k".to_owned() };
+    assert_eq!(config().to_string(), "config error: k");
+    assert_eq!(
+        zanshin_jj::PreconditionError::Backend("b".to_owned()).to_string(),
+        "jj-lib error: b"
+    );
+    assert_eq!(zanshin_jj::StaleCause::Stale.as_str(), "stale");
+    assert_eq!(
+        zanshin_jj::StaleCause::OperationNotFound.to_string(),
+        "operation_not_found"
+    );
+
+    // Every error enum wraps the precondition failure transparently.
+    assert_eq!(zanshin_jj::MutateError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::StatusError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::ChangeError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::OpLogError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::BookmarkError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::ViewError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::RemoteError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::FileError::from(config()).to_string(), "config error: k");
+    assert_eq!(zanshin_jj::RevsetError::from(config()).to_string(), "config error: k");
+    assert_eq!(
+        zanshin_jj::CommitViewError::from(config()).to_string(),
+        "config error: k"
+    );
+    assert_eq!(
+        zanshin_jj::WorkspaceError::from(config()).to_string(),
+        "config error: k"
+    );
+
+    _ = zanshin_jj::Repo::snapshot
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::Precondition, zanshin_jj::PreconditionError>;
+    _ = zanshin_jj::Repo::take_precondition as fn(&mut zanshin_jj::Repo) -> Option<zanshin_jj::Precondition>;
+    _ = zanshin_jj::Repo::status as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::Status, zanshin_jj::StatusError>;
+    _ = zanshin_jj::Repo::get_change
+        as fn(&mut zanshin_jj::Repo, &zanshin_jj::ChangeId) -> Result<zanshin_jj::Change, zanshin_jj::ChangeError>;
+    _ = zanshin_jj::Repo::op_log
+        as fn(&mut zanshin_jj::Repo, Option<usize>) -> Result<Vec<zanshin_jj::Operation>, zanshin_jj::OpLogError>;
+    _ = zanshin_jj::Repo::list_bookmarks
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Bookmark>, zanshin_jj::BookmarkError>;
+    _ = zanshin_jj::Repo::list_remotes
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Remote>, zanshin_jj::RemoteError>;
+    // A config read with no CLI verb behind it: no snapshot, still `&self`.
+    _ = zanshin_jj::Repo::log_defaults
+        as fn(&zanshin_jj::Repo) -> Result<zanshin_jj::LogDefaults, zanshin_jj::ConfigError>;
 }

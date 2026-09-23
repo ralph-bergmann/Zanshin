@@ -251,6 +251,16 @@ typedef struct {
 
 #define MutationResult_VT_IDENTITY_MISSING 12
 
+#define MutationResult_VT_FINISH 14
+
+#define FinishFacts_VT_WORKING_COPY_BECAME_IMMUTABLE 4
+
+#define FinishFacts_VT_GIT_HEAD_UPDATE_FAILED 6
+
+#define FinishFacts_VT_EXPORT_FAILED_BOOKMARKS 8
+
+#define FinishFacts_VT_EXPORT_FAILED_TAGS 10
+
 #define SkippedPath_VT_REASON 6
 
 #define AbsorbResult_VT_MUTATION 4
@@ -329,6 +339,26 @@ typedef struct {
 
 #define UntrackResult_VT_UNMATCHED_PATHS 8
 
+#define Precondition_VT_WAS_SNAPSHOT_TAKEN 4
+
+#define Precondition_VT_GIT_HEAD_IMPORTED 8
+
+#define Precondition_VT_GIT_HEAD_RESET 10
+
+#define Precondition_VT_GIT_HEAD_REBASED 12
+
+#define Precondition_VT_SNAPSHOT_REBASED 14
+
+#define Precondition_VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT 16
+
+#define Precondition_VT_GIT_REFS 18
+
+#define Precondition_VT_GIT_REFS_REBASED 20
+
+#define Precondition_VT_JJCONFLICT_FILES_PRESENT 22
+
+#define Envelope_VT_PRECONDITION 12
+
 /**
  * Build-stamp version string.
  *
@@ -349,8 +379,8 @@ char *zanshin_ffi_version(void);
  *
  * The arguments cross as a `BookmarkCreateRequest` `FlatBuffers` request buffer (ADR-0001
  * composite-input pattern): `revision` must be distinguishably ABSENT, which is what applies
- * the CLI's `-r` default `@` (the LAST-SNAPSHOTTED working copy — Zanshin never snapshots,
- * D2). `names` are EXACT, DECODED bookmark names, not CLI argument text: revset quoting is
+ * the CLI's `-r` default `@` (snapshotted first, as in the CLI — Story 9.26). `names` are
+ * EXACT, DECODED bookmark names, not CLI argument text: revset quoting is
  * terminal input syntax the GUI replaces (ADR-0003).
  *
  * Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as in the CLI: a run
@@ -376,6 +406,8 @@ char *zanshin_ffi_version(void);
  *   a tracked remote bookmark; the name in `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -419,6 +451,8 @@ ZanshinBuf *zanshin_bookmark_create(uint64_t handle,
  *   parse; jj-lib's reason in `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -439,6 +473,10 @@ ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
  * # Safety
@@ -462,6 +500,10 @@ ZanshinBuf *zanshin_bookmarks(uint64_t handle);
  * - `ffi.null_pointer` — `change_id` is a null pointer.
  * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
  * - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
  * # Safety
@@ -484,8 +526,8 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  *
  * The argument crosses as a `ShowRequest` `FlatBuffers` request buffer (ADR-0001
  * composite-input pattern). An ABSENT `revset` is the wire form of "the user did not supply
- * it", which applies the CLI's own default `@` — here the LAST-SNAPSHOTTED working-copy commit,
- * because Zanshin never snapshots (D2). `revset` is an EXPRESSION, not a change id: the CLI
+ * it", which applies the CLI's own default `@` — the working-copy commit the pre-verb snapshot
+ * has just brought up to date (Story 9.26). `revset` is an EXPRESSION, not a change id: the CLI
  * unions its revsets, so entries are per COMMIT — a revset naming two commits of ONE divergent
  * change yields two entries carrying the same `Change.id`. A BARE divergent change-id symbol
  * does NOT get that far: jj-lib's own `SymbolResolver` refuses it
@@ -494,7 +536,7 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  * `jj.revset_resolution_error` — a different refusal from `zanshin_interdiff`'s
  * `jj.change_not_found`. Union the two COMMIT hexes to address both.
  * Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
- * path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
+ * path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation of its own.
  *
  * `limit` is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it streams to a
  * pager where this builds ONE buffer whose every entry pays a merged-parent tree diff plus a
@@ -516,6 +558,8 @@ ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
  *   `context`.
  * - `jj.config_error` — the repo's effective jj config, which the revset aliases come from, is
  *   unreadable or malformed.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -551,6 +595,8 @@ ZanshinBuf *zanshin_show(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
  * - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
  * - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure, including jj-lib's own
  *   predecessor-cycle detection; detail in `context`.
  *
@@ -580,7 +626,7 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  *
  * No `Renamed`/`Copied` entry is ever produced — the CLI's `show_inter_diff` passes no copy
  * records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
- * it is in-memory only, so this read writes NO operation.
+ * it is in-memory only, so this read writes NO operation of its own.
  *
  * The payload's `base_has_conflicts` is a ZANSHIN-SIDE addition reporting whether the REBASED
  * `from` tree — the left side of the diff — is conflicted. The CLI signals this by rendering
@@ -608,6 +654,10 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  *   bullet above.
  * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
  *   jj-lib's own ambiguity wording in `context`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -712,9 +762,9 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  *
  * The arguments cross as a `FileListRequest` `FlatBuffers` request buffer (ADR-0001
  * composite-input pattern). An ABSENT `revision` is the wire form of "the user did not
- * supply it", which applies the CLI's own `-r` default `@` — here the LAST-SNAPSHOTTED
- * working-copy commit, because Zanshin never snapshots (D2). `paths` entries are
- * repo-relative PREFIXES; an empty list means all paths. This read writes NO operation.
+ * supply it", which applies the CLI's own `-r` default `@` — the working-copy commit the
+ * pre-verb snapshot has just brought up to date (Story 9.26). `paths` entries are
+ * repo-relative PREFIXES; an empty list means all paths. This read writes NO operation of its own.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `FileList` payload on success.
  *
@@ -727,6 +777,10 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  *   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
  *   the CLI's `-r` default `@`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -754,8 +808,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  * path); with several, an absent path simply contributes nothing. A conflicted file's
  * content is the MATERIALIZED merge, in the style the repo's effective
  * `ui.conflict-marker-style` selects. Paths that exist but are not renderable as file
- * content land in `FileContents.skipped` instead of failing the call. This read writes NO
- * operation.
+ * content land in `FileContents.skipped` instead of failing the call. This read writes NO operation of its own —
+ * the pre-verb snapshot may write one.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `FileContents` payload on success.
  *
@@ -770,6 +824,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  *   tree; the path in `context`.
  * - `jj.config_error` — the repo's effective jj config is unreadable or malformed, so the
  *   `ui.conflict-marker-style` this verb materializes conflicts with cannot be read.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -777,7 +833,9 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  * `fbs.FileShowRequestObjectBuilder(...).toBytes()` buffer.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_file_show(uint64_t handle,
+                              const uint8_t *data,
+                              uintptr_t len);
 
 /**
  * Annotate one file line by line in the repo identified by `handle` — the CLI's
@@ -787,7 +845,7 @@ ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t le
  * single PLAIN repo-relative path, not a prefix and not a fileset. The search domain is
  * `all()`, hardcoded exactly as the CLI hardcodes it. One entry per line, in file order —
  * a line's own 1-based number is its index in `FileAnnotation.lines` + 1, which is why the
- * payload carries only `original_line_number`. This read writes NO operation.
+ * payload carries only `original_line_number`. This read writes NO operation of its own.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `FileAnnotation` payload on success.
  *
@@ -802,6 +860,10 @@ ZanshinBuf *zanshin_file_show(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
  * - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
  *   submodule, or a conflict with a non-file side); the path in `context`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -825,7 +887,7 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * line numbers restarting per side. Symlinks, submodules and non-file conflicts are
  * SILENTLY not searched (CLI parity); a path whose blob could not be READ lands in the
  * payload's `skipped` vector — the only case `jj file search` warns about — and does NOT
- * fail the call. This read writes NO operation.
+ * fail the call. This read writes NO operation of its own.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `FileSearch` payload on success.
  *
@@ -837,6 +899,10 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
  *   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -859,8 +925,9 @@ ZanshinBuf *zanshin_file_search(uint64_t handle,
  * nothing matched — exactly as the CLI commits it.
  *
  * `@` is NOT changed: like the CLI, the verb records the tracked paths only in the
- * working-copy state, and the NEXT snapshot moves them into `@` (jj's GH #8298). Returns a
- * `FlatBuffers` `Envelope` carrying a `TrackResult` payload on success.
+ * working-copy state, and the NEXT verb's pre-verb snapshot moves them into `@` (jj's GH
+ * #8298). Returns a `FlatBuffers` `Envelope` carrying a `TrackResult` payload on success; every
+ * envelope, ok or error, carries `precondition` (Story 9.26).
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -873,9 +940,11 @@ ZanshinBuf *zanshin_file_search(uint64_t handle,
  * - `jj.config_error` — the repo's effective jj config no longer reads, or
  *   `snapshot.max-new-file-size` has the wrong type (the key in `context`); nothing is written.
  * - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
- *   rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
- *   the next snapshot); no `context`, nothing is written.
+ *   rewritten without a checkout by a concurrent writer after the pre-verb snapshot); no
+ *   `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -917,9 +986,11 @@ ZanshinBuf *zanshin_file_track(uint64_t handle, const uint8_t *data, uintptr_t l
  * - `jj.config_error` — the repo's effective jj config no longer reads, `snapshot.auto-track` is
  *   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type; nothing is written.
  * - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.concurrent_working_copy` — the working copy's recorded tree differs from `@`'s (`@`
- *   rewritten without a checkout, or the state ahead of `@` after a `zanshin_file_track` until
- *   the next snapshot); no `context`, nothing is written.
+ *   rewritten without a checkout by a concurrent writer after the pre-verb snapshot); no
+ *   `context`, nothing is written.
  * - `jj.path_not_ignored` — matched paths are not ignored, so the next snapshot would re-add
  *   them; every offending path in `context`, joined by `\n`. No operation is written and the
  *   working-copy state is unchanged.
@@ -940,9 +1011,10 @@ ZanshinBuf *zanshin_file_untrack(uint64_t handle,
  * Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
  * the CLI's `jj git import`.
  *
- * Takes no arguments: the CLI's own `GitImportArgs` is empty. Unlike the CLI this is NOT
- * skipped in a colocated workspace — that skip exists because the CLI imports refs during
- * its implicit per-command snapshot, which Zanshin never performs (D2).
+ * Takes no arguments: the CLI's own `GitImportArgs` is empty. In a colocated workspace the
+ * pre-verb snapshot (Story 9.26) has already imported the refs — its outcome rides
+ * `Envelope.precondition.git_refs` — so this finds nothing left and writes no operation, the
+ * CLI's observable end state where it skips the command outright.
  *
  * If nothing needed importing, NO operation is written and the nested
  * `MutationResult.new_op_id` carries the PRE-CALL op-log head. A ref that could not be
@@ -957,6 +1029,8 @@ ZanshinBuf *zanshin_file_untrack(uint64_t handle,
  * - `jj.config_error` — the repo's effective jj config, its
  *   `revset-aliases."immutable_heads()"`, or `git.abandon-unreachable-commits` /
  *   `git.record-synthetic-predecessors` could not be read, parsed, or resolved.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -989,6 +1063,8 @@ ZanshinBuf *zanshin_git_import(uint64_t handle);
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1029,6 +1105,8 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1084,6 +1162,8 @@ ZanshinBuf *zanshin_git_remote_add(uint64_t handle,
  * - `jj.remote_nonstandard_config` — jj refuses to rewrite this remote's git config (a
  *   remote ADDED with a push URL is exactly this case); the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1137,6 +1217,8 @@ ZanshinBuf *zanshin_git_remote_remove(uint64_t handle, const char *name);
  * - `jj.remote_nonstandard_config` — `old_name`'s git config is not the plain
  *   single-fetch-refspec shape jj knows how to rewrite; the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1181,6 +1263,8 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1222,6 +1306,8 @@ ZanshinBuf *zanshin_git_remote_set_url(uint64_t handle,
  *   unknown function; jj-lib's reason in `context`.
  * - `jj.revset_resolution_error` — an expression names a symbol that cannot be
  *   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
  * - `jj.config_error` — the repo's effective jj config, which the revset aliases are
  *   resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
@@ -1315,6 +1401,10 @@ void zanshin_logging_init(void);
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
  * # Safety
@@ -1332,6 +1422,10 @@ ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
  * # Safety
@@ -1480,18 +1574,19 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * identical in semantics to the one returned by `zanshin_repo_open` / `_init` /
  * `_clone` and must be released via `zanshin_repo_close`.
  *
- * No working-copy file is written: the conversion runs the same sequence as `jj git init`
- * over an existing `.git/`, which writes up to two operations (`import git refs`, then
- * `import git head`, each skipped when its import changed nothing), seeds a
- * `.jj/.gitignore` that hides the whole `.jj/` directory from the colocated Git repo, and
- * — when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark —
- * writes `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE
- * `.jj/` under `<config_dir>/jj/repos/`. Unlike the CLI, the head import does not
- * re-parent `@` onto the imported HEAD (that working-copy half is Story 9.26's).
+ * No working-copy file is written or deleted: the conversion runs the same sequence as
+ * `jj git init` over an existing `.git/` — `import git refs` (skipped when it changed
+ * nothing), a `.jj/.gitignore` that hides the whole `.jj/` directory from the colocated Git
+ * repo, then the CLI's own per-command snapshot under jj's Git import/export lock (Story
+ * 9.26): `import git head` re-parents `@` onto the Git HEAD by resetting the working-copy
+ * STATE only, and `snapshot working copy` records a dirty work tree into `@`. Finally, when
+ * `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark, it writes
+ * `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE `.jj/`
+ * under `<config_dir>/jj/repos/`.
  *
- * `.git/` is written to exactly once, by the CLI's own colocated `export_refs` step inside
- * the refs operation: jj exports back the refs it has just imported, so no user-visible ref
- * and no HEAD is moved.
+ * `.git/` is written only by the CLI's own colocated steps: jj exports back the refs it has
+ * just imported and, when the snapshot recorded changes, resets the Git index to `@`'s
+ * parent (HEAD itself stays where it was), so no user-visible ref and no HEAD is moved.
  *
  * If the operation fails, `.jj/` is rolled back, leaving the Git repo intact
  * (no-data-loss invariant) — the rollback never deletes or rewrites `.git/`. A failure
@@ -1536,6 +1631,8 @@ ZanshinBuf *zanshin_repo_convert(const char *path);
  * - `jj.config_error` — the repo's jj config, or its
  *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
  *   immutable set is unknown; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1572,6 +1669,8 @@ ZanshinBuf *zanshin_describe(uint64_t handle, const char *change_id, const char 
  * - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1605,6 +1704,8 @@ ZanshinBuf *zanshin_new_change(uint64_t handle, const uint8_t *data, uintptr_t l
  * - `jj.config_error` — the repo's jj config, or its
  *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
  *   immutable set is unknown; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1646,6 +1747,8 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
  * - `jj.config_error` — the repo's jj config, or its
  *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
  *   immutable set is unknown; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1675,6 +1778,8 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  *   divergent-write merge op).
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1714,6 +1819,8 @@ ZanshinBuf *zanshin_undo(uint64_t handle);
  *   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
  *   non-boolean value; both are read per call rather than hardcoded.
  * - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1741,8 +1848,8 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const char *remote_name);
  * restored from its PARENT tree. `changes_in` may not be combined with `from`/`into`.
  * An empty `paths` means all paths; entries are repo-relative PREFIXES.
  *
- * The working copy is NOT snapshotted first: `@` is the last-snapshotted working-copy
- * commit (D2). If the resulting tree already equals the destination's, NO operation is
+ * The working copy is snapshotted first, as by the CLI (Story 9.26), so on-disk edits are
+ * part of `@`. If the resulting tree already equals the destination's, NO operation is
  * written and `MutationResult.new_op_id` carries the PRE-CALL op-log head.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
@@ -1765,6 +1872,8 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const char *remote_name);
  * - `jj.config_error` — the repo's jj config, or its
  *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
  *   immutable set is unknown; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1795,7 +1904,8 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * jj-lib refuses to split are reported in `AbsorbResult.skipped_paths` (the CLI prints one
  * warning per entry) rather than failing the call. If nothing was absorbable, NO operation
  * is written, `rewritten_change_ids` is empty, and the nested `MutationResult.new_op_id`
- * carries the PRE-CALL op-log head. The working copy is NOT snapshotted first (D2).
+ * carries the PRE-CALL op-log head. The working copy is snapshotted first, as by the CLI
+ * (Story 9.26).
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1816,6 +1926,8 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * - `jj.config_error` — the repo's jj config, or its
  *   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved; detail in
  *   `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
  * # Safety
@@ -1832,6 +1944,37 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
 ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
+ * Snapshot the working copy of the repo referenced by `handle` — and, in a colocated
+ * workspace, import the Git HEAD and refs — right now: the CLI's `jj util snapshot`
+ * (Story 9.26).
+ *
+ * It is exactly the pre-verb snapshot every other handle-scoped wrapper runs first, with
+ * nothing after it — for the GUI's "sync now" or a future working-tree trigger; the UI
+ * decides when to call it, nothing in Zanshin calls it on its own. A
+ * clean tree with unchanged refs writes no operation and reports `was_snapshot_taken = false`.
+ *
+ * Returns an ok `FlatBuffers` `Envelope` with NO `data` and `precondition` set on success; an
+ * error envelope carries the PARTIAL `precondition` up to the failing step.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
+ *   in `context`. Nothing is written.
+ * - `jj.config_error` — the effective jj config no longer reads, or a knob the snapshot reads
+ *   has the wrong type (the key in `context`); refused before the Git import/export lock.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; jj-lib's message in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been
+ * closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero handle is
+ * undefined behaviour; the Dart worker's Model-A handle table (Story 3.9) makes a stale
+ * handle unreachable.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_snapshot(uint64_t handle);
+
+/**
  * Read the working-copy status of the repo identified by `handle`.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
@@ -1839,6 +1982,10 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.no_working_copy` — the workspace has no working-copy commit (@).
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
  *
  * # Safety
@@ -1860,12 +2007,16 @@ ZanshinBuf *zanshin_status(uint64_t handle);
  * is ABSENT when the path cannot be reported — no recorded path (a workspace predating jj
  * 0.38.0), an unreadable store, or a recorded directory that moved or was deleted. None of those
  * fails the call: the CLI's own list template degrades the same way and points at
- * `zanshin_workspace_root` for strict diagnostics. This read writes NO operation.
+ * `zanshin_workspace_root` for strict diagnostics. This read writes NO operation of its own.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceList` payload on success.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+ *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+ *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — `load_at_head` failed, i.e. the VIEW half could not be read; detail in
  *   `context`. No path failure reaches this.
  *

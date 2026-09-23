@@ -4,13 +4,10 @@
 //! `search` (Story 9.4, Epic 9 Tier A).
 //!
 //! Every operation resolves to the head operation per call (ADR-0002), reads a committed
-//! tree, and returns `jj_lib`-type-free owned data. None of them writes an operation — not
-//! even on a refusal — unlike the CLI, whose `workspace_helper` snapshots the working copy
-//! first and can therefore write an op from a read. Zanshin never snapshots (D2 —
-//! `status.rs:84`, `revset.rs:61-62`), so an omitted `revision` is the LAST-SNAPSHOTTED `@`;
-//! the locked-working-copy primitives exist since Story 9.22
-//! (`mutate::lock_working_copy`, `wc_ops::snapshot_options`), and the per-verb snapshot that
-//! drives them in front of these reads is Story 9.26's.
+//! tree, and returns `jj_lib`-type-free owned data. The read itself writes no operation — not
+//! even on a refusal; like the CLI's `workspace_helper`, [`crate::Repo`] snapshots the working
+//! copy FIRST (Story 9.26), and that snapshot is what may write one. An omitted `revision` is
+//! therefore the up-to-date `@`, on-disk edits included.
 //!
 //! CLI parity is at tag **v0.44.0** (`cli/src/commands/file/{list,show,annotate,search}.rs`)
 //! for the observable behavior — defaults, refusals, skip rules, pattern parsing — never for
@@ -177,6 +174,10 @@ pub struct FileSearch {
 /// [`crate::Repo::file_annotate`] and [`crate::Repo::file_search`].
 #[derive(Debug, thiserror::Error)]
 pub enum FileError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// The `revision` argument is malformed, carried by no VISIBLE commit (unknown or
     /// only-hidden), or DIVERGENT — the same refusal `mutate.rs` makes, because the CLI's
     /// `-r` is `resolve_single_rev`, which refuses an ambiguous revision rather than picking
@@ -683,6 +684,36 @@ mod tests {
         collect_matches, file_type_of, is_executable, parse_path, parse_pattern, res, ChangeId, FileError, FileType,
         ResolveError,
     };
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = super::file_list(repo.workspace(), None, &[]);
+        assert!(matches!(result, Err(FileError::Backend(_))), "{result:?}");
+    }
+
+    /// `file_show`'s own read of `ui.conflict-marker-style` refuses a wrong value as a config
+    /// fault. Through [`crate::Repo`] the pre-verb snapshot (Story 9.26) re-reads the changed
+    /// stack first and refuses before it, so the module function is called directly.
+    #[test]
+    fn file_show_refuses_a_malformed_conflict_marker_style_as_config() {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        std::fs::write(
+            repo.workspace().repo_path().join("config.toml"),
+            "ui.conflict-marker-style = \"bogus\"\n",
+        )
+        .expect("repo config");
+        let result = super::file_show(&repo, None, &["a.txt".to_owned()]);
+        assert!(
+            matches!(&result, Err(FileError::Config { reason }) if reason.contains("conflict-marker-style")),
+            "{result:?}"
+        );
+    }
 
     /// `file_search` reports an UNREADABLE blob in `skipped`, with `jj file search`'s own
     /// warning sentence, while every other matching file still reports normally.

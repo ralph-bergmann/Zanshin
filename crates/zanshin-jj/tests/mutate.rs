@@ -146,22 +146,30 @@ fn describe_empty_string_makes_change_anonymous() {
     assert!(change.is_anonymous, "empty description + no bookmark must be anonymous");
 }
 
+/// A mutation that does not move `@` still finishes like the CLI's `finish_transaction`
+/// (Story 9.26): `update_working_copy` checks `@` out UNCONDITIONALLY, which touches no file
+/// (the tree did not change) but records the new operation in the working copy's checkout
+/// state — so the next CLI command finds the working copy fresh at the head.
 #[test]
-fn describe_non_wc_change_does_not_touch_on_disk_working_copy() {
+fn describe_non_wc_change_records_the_new_operation_in_the_working_copy_state() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let layout = oracle_layout(&fx.path);
     let checkout_path = checkout_state_path(&fx.path);
-    let before = fs::read(&checkout_path).unwrap();
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    repo.describe(ChangeId(layout.commit1_change_id), "unrelated change")
+    let result = repo
+        .describe(ChangeId(layout.commit1_change_id), "unrelated change")
         .unwrap();
 
     let after = fs::read(&checkout_path).unwrap();
-    assert_eq!(
-        before, after,
-        "a mutation that doesn't move `@` must never call workspace.check_out"
+    let op_id: Vec<u8> = (0..result.new_op_id.0.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&result.new_op_id.0[i..i + 2], 16).unwrap())
+        .collect();
+    assert!(
+        after.windows(op_id.len()).any(|w| w == op_id.as_slice()),
+        "the checkout state must name the describe's operation"
     );
 }
 

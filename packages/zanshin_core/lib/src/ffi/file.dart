@@ -32,8 +32,8 @@ void _rejectPathNuls(String? revision, List<String> paths) {
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///
 /// A `null` [revision] is the wire form of "the user did not supply it", which
-/// applies the CLI's own `-r` default `@` — the LAST-SNAPSHOTTED working-copy
-/// commit, since Zanshin never snapshots. [paths] entries are repo-relative
+/// applies the CLI's own `-r` default `@` — the working-copy commit the pre-verb
+/// snapshot has just brought up to date (Story 9.26). [paths] entries are repo-relative
 /// PREFIXES; an empty list means all paths, and an empty-STRING entry is the
 /// repository root, which prefixes everything.
 Uint8List zanshinFileList(int rawHandle, {String? revision, List<String> paths = const <String>[]}) {

@@ -14,13 +14,14 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{ConfigError, LogDefaults};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_CONFIG_ERROR};
+use crate::envelope::{catch, finish_envelope, session_from_handle, FfiErrorObj, JJ_CONFIG_ERROR};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_config_err(e: ConfigError) -> FfiErrorObj {
     match e {
         ConfigError::Load { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -45,17 +46,7 @@ fn log_defaults_to_envelope(defaults: &LogDefaults) -> Vec<u8> {
             synthetic_elided: defaults.synthetic_elided,
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::LogDefaults,
-            data: Some(payload.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::LogDefaults, Some(payload.as_union_value()), None)
 }
 
 /// Read the effective `jj log` defaults of the repo identified by `handle`.

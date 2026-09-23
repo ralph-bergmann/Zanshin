@@ -44,6 +44,7 @@ pub(crate) mod op_support;
 pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
+pub(crate) mod snapshot;
 pub(crate) mod status;
 pub(crate) mod view;
 pub(crate) mod wc_ops;
@@ -64,7 +65,25 @@ pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
+pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
 pub use view::{Tag, TagKind, ViewError, WorkingCopy};
 pub use wc_ops::{SnapshotStats, TrackResult, UntrackResult, UntrackedPath, UntrackedReason};
 pub use workspace::{WorkspaceEntry, WorkspaceError};
+
+/// Fixtures shared by the inline `#[cfg(test)]` modules.
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// A fresh repo whose operation-log head no longer loads (`op_heads` removed after init).
+    ///
+    /// Through [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits that failure FIRST, so a
+    /// read module's own mapping of it is only reachable by calling the module function directly —
+    /// which is what the inline tests using this do.
+    pub(crate) fn repo_with_a_broken_head() -> (tempfile::TempDir, crate::Repo) {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        std::fs::remove_dir_all(repo.workspace().repo_path().join("op_heads")).expect("remove op_heads");
+        (tmp, repo)
+    }
+}

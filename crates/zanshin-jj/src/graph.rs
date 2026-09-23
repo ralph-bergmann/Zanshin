@@ -173,7 +173,7 @@ pub(crate) fn walk_graph(
     let short = (!short_prefixes.is_empty())
         .then(|| parse_revset_with(repo, &parse_config, short_prefixes))
         .transpose()?;
-    let immutable = immutable_expression(repo, &parse_config)?;
+    let immutable = immutable_expression(repo.workspace(), &parse_config)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;

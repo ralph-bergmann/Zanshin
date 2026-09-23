@@ -32,7 +32,7 @@ use crate::{stream_lanes, LaneStreamError, Row};
 /// - [`LaneStreamError::Graph`] — the exhausted stream left a dangling non-`Missing` edge
 ///   (contract violation by the upstream stream).
 pub fn collect_lanes(
-    repo: &zanshin_jj::Repo,
+    repo: &mut zanshin_jj::Repo,
     revset: &str,
     prioritize: &str,
     short_prefixes: &str,

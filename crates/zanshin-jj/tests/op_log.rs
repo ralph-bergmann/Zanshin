@@ -108,7 +108,7 @@ fn oracle_layout(workspace_root: &Path) -> Layout {
 fn op_log_on_tiny_returns_history_with_root_op_last() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
 
@@ -130,7 +130,7 @@ fn op_log_on_tiny_returns_history_with_root_op_last() {
 fn op_log_with_limit_one_returns_most_recent() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(Some(1)).unwrap();
 
@@ -143,7 +143,7 @@ fn op_log_with_limit_one_returns_most_recent() {
 fn op_log_with_limit_zero_returns_empty() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(Some(0)).unwrap();
     assert!(ops.is_empty(), "limit 0 must return empty Vec");
@@ -153,7 +153,7 @@ fn op_log_with_limit_zero_returns_empty() {
 fn op_log_with_limit_over_count_equals_full_history() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let all = repo.op_log(None).unwrap();
     // A limit larger than the op count must terminate via stream exhaustion
@@ -178,7 +178,7 @@ fn op_log_with_limit_over_count_equals_full_history() {
 fn op_log_root_op_has_empty_parents_and_root_op_true() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
     let root = ops.last().expect("root must exist");
@@ -194,7 +194,7 @@ fn op_log_root_op_has_empty_parents_and_root_op_true() {
 fn op_log_non_root_op_has_parents_and_root_op_false() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
     // The head op (index 0) is a regular operation — it has parents.
@@ -210,7 +210,7 @@ fn op_log_non_root_op_has_parents_and_root_op_false() {
 fn op_log_head_op_matches_oracle() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
     let head = &ops[0];
@@ -237,7 +237,7 @@ fn op_log_head_op_matches_oracle() {
 fn op_log_is_reverse_chronological() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
     assert!(ops.len() >= 2, "need at least 2 ops for ordering check");
@@ -260,7 +260,7 @@ fn op_log_is_reverse_chronological() {
 fn op_log_limit_matches_oracle_head_sequence() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let all_ops = repo.op_log(None).unwrap();
     let total = all_ops.len();
@@ -284,7 +284,7 @@ fn op_log_limit_matches_oracle_head_sequence() {
 fn op_log_all_ids_match_oracle_walk() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let ops = repo.op_log(None).unwrap();
 
@@ -318,7 +318,7 @@ fn op_log_on_corrupt_repo_returns_backend_error() {
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: op_log() re-resolves to head on every call (ADR-0002),
     // so removing op_heads makes load_at_head() fail → OpLogError::Backend.
@@ -328,8 +328,8 @@ fn op_log_on_corrupt_repo_returns_backend_error() {
     let result = repo.op_log(None);
 
     assert!(
-        matches!(result, Err(OpLogError::Backend(_))),
-        "corrupt repo must yield Backend error, got: {result:?}"
+        matches!(result, Err(OpLogError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
     );
 }
 
@@ -440,7 +440,7 @@ fn undo_at_root_operation_returns_nothing_to_undo() {
     Repo::init(tmp.path(), None).unwrap();
 
     let (head_hex, root_hex) = {
-        let repo = Repo::open(tmp.path()).unwrap();
+        let mut repo = Repo::open(tmp.path()).unwrap();
         let ops = repo.op_log(None).unwrap();
         let head_hex = ops[0].id.0.clone();
         let root_hex = ops.iter().find(|op| op.root_op).unwrap().id.0.clone();
@@ -480,8 +480,8 @@ fn undo_on_corrupt_repo_returns_backend_error() {
     let result = repo.undo();
 
     assert!(
-        matches!(result, Err(MutateError::Backend(_))),
-        "corrupt repo must yield Backend error, got: {result:?}"
+        matches!(result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
     );
 }
 
@@ -515,7 +515,7 @@ fn undo_on_merge_op_returns_invalid_input() {
     // Deterministic marker-file choreography for a real 2-parent op-heads state (see
     // spec-6-2-op-log-undo.md's Design Notes) — no threads, no flakiness.
     // 1. Handle A: note h0 = the current head hex.
-    let repo_a = Repo::open(&fx.path).unwrap();
+    let mut repo_a = Repo::open(&fx.path).unwrap();
     let h0 = repo_a.op_log(Some(1)).unwrap()[0].id.0.clone();
     drop(repo_a);
 

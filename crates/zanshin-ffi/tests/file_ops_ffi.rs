@@ -196,7 +196,9 @@ fn untrack_fixture() -> PathBuf {
 /// `track paths` operation.
 #[test]
 fn track_round_trips_through_track_result_with_both_reason_arms() {
-    let root = init_repo("snapshot.max-new-file-size = 5\n");
+    // `auto-track = none()`: otherwise the pre-verb snapshot (Story 9.26) would auto-track the
+    // small `other.txt` itself, and only the too-large file would stay untracked.
+    let root = init_repo("snapshot.max-new-file-size = 5\nsnapshot.auto-track = \"none()\"\n");
     fs::write(root.join("big.bin"), "0123456789").expect("big");
     fs::write(root.join("other.txt"), "o").expect("other");
     let handle = open_handle(&root);

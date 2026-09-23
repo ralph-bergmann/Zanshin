@@ -11,10 +11,10 @@
 // function in the coverage ratchet's extern-fn guard
 // (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
-// SCOPE NOTE - why no committed file content here. Zanshin never snapshots the
-// working copy (D2), and no shipped verb writes file content into a tree, so a
-// repo reachable from Dart alone has only EMPTY trees - and no verb rewrites a
-// commit, so no evolution chain either. Every content-carrying and
+// SCOPE NOTE - why no committed file content here. These tests keep to repos
+// with EMPTY trees (the pre-verb snapshot of Story 9.26 could record on-disk
+// files, but these suites write none) and build no evolution chain. Every
+// content-carrying and
 // multi-version row of the I/O matrix therefore lives in the Rust suites, which
 // can build trees and operations directly:
 // crates/zanshin-jj/tests/commit_views.rs (behaviour) and

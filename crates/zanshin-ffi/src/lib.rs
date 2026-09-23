@@ -46,6 +46,7 @@ pub mod logging;
 pub mod op_log;
 pub mod remotes;
 pub mod repo;
+pub mod snapshot;
 pub mod status;
 pub mod tracing_init;
 pub mod watcher;

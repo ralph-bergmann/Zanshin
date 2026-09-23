@@ -80,11 +80,11 @@ fn git_store(root: &Path) -> PathBuf {
 }
 
 /// The head operation's id, so a test can assert that a refusal — or a no-op — wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
-fn head_op_description(repo: &Repo) -> String {
+fn head_op_description(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).description.clone()
 }
 
@@ -120,13 +120,13 @@ fn git_import_imports_a_new_git_ref_and_writes_the_cli_operation() {
     git_cmd(&["update-ref", "refs/heads/feature", &commit], &git_store(tmp.path()));
 
     let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the new ref");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_import().expect("import must succeed");
 
     assert_ne!(result.mutation.new_op_id.0, before, "a real import writes an operation");
     assert_eq!(
-        head_op_description(&repo),
+        head_op_description(&mut repo),
         "import git refs",
         "the op-log description is the CLI's own, byte-identical (NFR-R-2)"
     );
@@ -169,7 +169,7 @@ fn git_import_with_nothing_to_import_writes_no_operation() {
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
     repo.git_import().expect("first import");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_import().expect("second import must succeed");
 
@@ -177,7 +177,7 @@ fn git_import_with_nothing_to_import_writes_no_operation() {
         result.mutation.new_op_id.0, before,
         "a legitimate no-op reports the PRE-CALL head"
     );
-    assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
+    assert_eq!(head_op_id(&mut repo), before, "the op log is byte-identical");
     assert!(result.changed_bookmarks.is_empty());
     assert!(result.changed_tags.is_empty());
     assert!(result.abandoned_change_ids.is_empty());
@@ -198,7 +198,7 @@ fn git_import_reports_a_reserved_namespace_ref_as_failed_without_writing_an_oper
     );
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_import().expect("a failed ref is not an error");
 
@@ -211,7 +211,7 @@ fn git_import_reports_a_reserved_namespace_ref_as_failed_without_writing_an_oper
         result.mutation.new_op_id.0, before,
         "nothing else changed, so nothing was written"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// The working copy itself becomes unreachable in git and is abandoned; jj-lib mints a
@@ -253,7 +253,7 @@ fn git_import_abandoning_the_working_copy_reports_it_and_moves_at() {
         "an abandoned `@` is replaced by a fresh, empty commit"
     );
     // The on-disk working copy really moved, not just the view: a fresh handle agrees.
-    let reopened = Repo::open(tmp.path()).expect("reopen");
+    let mut reopened = Repo::open(tmp.path()).expect("reopen");
     assert_eq!(
         reopened.status().expect("status").working_copy_change_id,
         result.mutation.working_copy_change_id
@@ -303,21 +303,23 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
     pin_env();
     let (tmp, _commit) = git_repo_with_one_commit();
     let mut repo = Repo::open(tmp.path()).expect("open before the config breaks");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     write_repo_config(tmp.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
 
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal writes nothing");
     let reopen = Repo::open(tmp.path()).expect_err("a wrong-typed git key must refuse the open too");
     assert!(
         matches!(&reopen, zanshin_jj::RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {reopen:?}"
     );
+    // Every verb refuses while the stack is broken, so it is repaired before the read-back.
+    write_repo_config(tmp.path(), "");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes nothing");
 }
 
 /// A native (`init_simple`) workspace has no git backend at all, so both sync verbs refuse
@@ -328,7 +330,7 @@ fn git_import_and_export_refuse_a_native_backend() {
     let tmp = TempDir::new().expect("tempdir");
     Repo::init(tmp.path(), None).expect("native init");
     let mut repo = Repo::open(tmp.path()).expect("reopen");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     assert!(
         matches!(
@@ -344,7 +346,7 @@ fn git_import_and_export_refuse_a_native_backend() {
         ),
         "export must refuse"
     );
-    assert_eq!(head_op_id(&repo), before, "neither refusal writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "neither refusal writes an operation");
 }
 
 // ── git export ────────────────────────────────────────────────────────────────────
@@ -361,13 +363,13 @@ fn git_export_writes_a_jj_bookmark_into_the_backing_git_repo() {
     set_local_bookmark(tmp.path(), "shipped", &[&commit]);
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_export().expect("export must succeed");
 
     assert_ne!(result.mutation.new_op_id.0, before, "a real export writes an operation");
     assert_eq!(
-        head_op_description(&repo),
+        head_op_description(&mut repo),
         "export git refs",
         "the op-log description is the CLI's own, byte-identical (NFR-R-2)"
     );
@@ -391,7 +393,7 @@ fn git_export_with_nothing_to_export_writes_no_operation() {
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
     repo.git_export().expect("first export");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let result = repo.git_export().expect("second export must succeed");
 
@@ -399,7 +401,7 @@ fn git_export_with_nothing_to_export_writes_no_operation() {
         result.mutation.new_op_id.0, before,
         "a legitimate no-op reports the PRE-CALL head"
     );
-    assert_eq!(head_op_id(&repo), before, "the op log is byte-identical");
+    assert_eq!(head_op_id(&mut repo), before, "the op log is byte-identical");
 }
 
 /// A bookmark git cannot hold is NOT an error: the call succeeds and the failure rides the
@@ -413,13 +415,13 @@ fn git_export_reports_a_conflicting_ref_name_as_a_failure_and_still_succeeds() {
     set_local_bookmark(tmp.path(), "foo/bar", &[&commit]);
 
     let mut repo = Repo::open(tmp.path()).expect("reopen");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     let result = repo.git_export().expect("a failed ref is not an error");
 
     // A PARTLY-failed export still exported something, so it must still write the CLI's own
     // operation — a failure list is not a refusal (module doc's second invariant).
     assert_ne!(result.mutation.new_op_id.0, before);
-    assert_eq!(head_op_description(&repo), "export git refs");
+    assert_eq!(head_op_description(&mut repo), "export git refs");
     assert_eq!(
         result.failed_bookmarks.len(),
         1,
@@ -510,31 +512,28 @@ fn git_import_with_a_non_boolean_record_synthetic_predecessors_refuses_as_config
     pin_env();
     let (tmp, _commit) = git_repo_with_one_commit();
     let mut repo = Repo::open(tmp.path()).expect("open before the config breaks");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     write_repo_config(tmp.path(), "[git]\nrecord-synthetic-predecessors = 3\n");
 
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("record-synthetic-predecessors")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("record-synthetic-predecessors")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal writes nothing");
+    write_repo_config(tmp.path(), "");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes nothing");
 }
 
-// ── The colocated divergence ──────────────────────────────────────────────────────
+// ── Colocated: the pre-verb snapshot did the work ────────────────────────────────
 
-/// The one surface where this story deliberately diverges from the CLI: `jj git import` and
-/// `jj git export` REFUSE in a colocated workspace (exit 0 with an informational message),
-/// because the CLI imports refs during its implicit per-command snapshot and auto-exports
-/// after every op. Zanshin does neither (D2), so the guard's premise is false here and both
-/// verbs run unconditionally.
-///
-/// Without this row the module doc's central claim is unasserted: a future port of the CLI
-/// guard would keep every other test green while making both verbs useless in exactly the
-/// repos that need them.
+/// In a colocated workspace the CLI skips `jj git import`/`jj git export` (exit 0), because
+/// its per-command snapshot has already imported the refs and every `finish_transaction`
+/// exports them. Zanshin runs the same pre-verb snapshot and finish (Story 9.26), so both verbs
+/// find NOTHING left to do — the CLI's observable end state — while the snapshot's own report
+/// carries the import, and the finish of its `import git refs` operation carried the export.
 #[test]
-fn both_sync_verbs_do_real_work_in_a_colocated_workspace() {
+fn both_sync_verbs_find_nothing_left_in_a_colocated_workspace() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     // A real git repo with one commit on `main`, converted in place — `.git` and `.jj` now
@@ -561,18 +560,36 @@ fn both_sync_verbs_do_real_work_in_a_colocated_workspace() {
 
     let mut repo = Repo::open(tmp.path()).expect("open the colocated workspace");
 
-    let imported = repo.git_import().expect("import must not be skipped here");
+    let imported = repo.git_import().expect("import runs");
     assert!(
-        imported.changed_bookmarks.iter().any(|u| u.name == "colocated-only"),
-        "the CLI would have skipped and imported nothing; got {:?}",
+        imported.changed_bookmarks.is_empty(),
+        "the pre-verb snapshot already imported everything; got {:?}",
         imported.changed_bookmarks
     );
-
-    let exported = repo.git_export().expect("export must not be skipped here");
-    assert!(exported.failed_bookmarks.is_empty(), "got {exported:?}");
+    let precondition = repo.take_precondition().expect("git_import runs the precondition");
+    let refs = precondition
+        .git_refs
+        .expect("a colocated precondition imports the refs");
+    assert!(
+        refs.changed_bookmarks.iter().any(|u| u.name == "colocated-only"),
+        "the snapshot's `import git refs` step imported the git-only branch; got {:?}",
+        refs.changed_bookmarks
+    );
+    assert_eq!(
+        imported.mutation.new_op_id.0, refs.mutation.new_op_id.0,
+        "git_import itself wrote no operation"
+    );
     let (ok, _) = git_try(&["show-ref", "refs/heads/from-jj"], tmp.path());
     assert!(
         ok,
-        "the jj-only bookmark must now exist in the colocated git repo — export really ran"
+        "the jj-only bookmark was exported by the finish of the snapshot's refs operation"
+    );
+
+    let before_export = head_op_id(&mut repo);
+    let exported = repo.git_export().expect("export runs");
+    assert!(exported.failed_bookmarks.is_empty(), "got {exported:?}");
+    assert_eq!(
+        exported.mutation.new_op_id.0, before_export,
+        "nothing was left to export, so no operation was written"
     );
 }

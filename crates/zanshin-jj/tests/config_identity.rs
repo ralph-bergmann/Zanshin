@@ -193,8 +193,8 @@ fn secure_config_ids_select_the_repo_and_workspace_layers(xdg: &Path) {
 fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).expect("open");
-    let head = |repo: &Repo| repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0;
-    let before = head(&repo);
+    let head = |repo: &mut Repo| repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0;
+    let before = head(&mut repo);
     set_jj_config(&config_file(tmp, "broken-verbs.toml", "not = = toml\n"));
 
     let id = || ChangeId("zzzzzzzzzzzz".to_owned());
@@ -223,12 +223,13 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     ];
     for (verb, result) in results {
         assert!(
-            matches!(&result, Err(MutateError::Config { reason }) if reason.contains("broken-verbs.toml")),
-            "{verb} must refuse at the pre-verb refresh, got: {result:?}"
+            matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })) if reason.contains("broken-verbs.toml")),
+            "{verb} must refuse in the pre-verb snapshot (Story 9.26), got: {result:?}"
         );
     }
-    assert_eq!(head(&repo), before, "no verb wrote an operation");
+    // Every verb refuses while the stack is broken, so it is repaired before the read-back.
     set_jj_config(user_file);
+    assert_eq!(head(&mut repo), before, "no verb wrote an operation");
 }
 
 /// User file → commit author + whoami op metadata; a rewritten file and a repointed
@@ -381,7 +382,8 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
     set_jj_config(&config_file(tmp, "broken.toml", "not = = toml\n"));
     let err = other_repo.new_change(&wc).expect_err("a broken stack must refuse");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("broken.toml")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+            if reason.contains("broken.toml")),
         "unexpected error: {err:?}"
     );
     let err = Repo::open(&other.path).expect_err("invalid TOML must refuse the open");

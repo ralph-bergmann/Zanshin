@@ -13,7 +13,10 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{Change, ChangeError, ChangeId, ConflictState, Signature};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_CHANGE_NOT_FOUND, JJ_JJ_LIB_ERROR};
+use crate::envelope::{
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    JJ_CHANGE_NOT_FOUND, JJ_JJ_LIB_ERROR,
+};
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
 
@@ -21,11 +24,14 @@ use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
 
 fn map_change_err(e: ChangeError) -> FfiErrorObj {
     match e {
+        ChangeError::Precondition(e) => map_precondition_err(e),
         ChangeError::NotFound { id } => FfiErrorObj {
+            precondition: None,
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
         },
         ChangeError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -112,22 +118,11 @@ pub(crate) fn change_offset<'a>(
 }
 
 /// Serialise `&Change` into a finished `FlatBuffers` `Envelope<Change>` buffer.
-fn change_to_envelope(change: &Change) -> Vec<u8> {
+fn change_to_envelope(change: &Change, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let change_off = change_offset(&mut b, change);
 
-    // Envelope — plain finish (NOT size-prefixed; length rides in ZanshinBuf.len).
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::Change,
-            data: Some(change_off.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::Change, Some(change_off.as_union_value()), precondition)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
@@ -142,6 +137,10 @@ fn change_to_envelope(change: &Change) -> Vec<u8> {
 /// - `ffi.null_pointer` — `change_id` is a null pointer.
 /// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
 /// - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
 /// # Safety
@@ -163,8 +162,8 @@ pub unsafe extern "C" fn zanshin_change(handle: u64, change_id: *const c_char) -
         let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: change_id is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
-        let change = session.repo.get_change(&ChangeId(id)).map_err(map_change_err)?;
-        Ok(change_to_envelope(&change))
+        let change = session.repo.get_change(&ChangeId(id));
+        precondition_envelope(&mut session.repo, change, map_change_err, change_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -236,7 +235,7 @@ mod tests {
             false, // is_anonymous
         );
 
-        let buf = change_to_envelope(&change);
+        let buf = change_to_envelope(&change, None);
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
 
         assert!(env.ok(), "envelope ok must be true");
@@ -290,7 +289,7 @@ mod tests {
             true,  // is_anonymous
         );
 
-        let buf = change_to_envelope(&change);
+        let buf = change_to_envelope(&change, None);
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok());
 

@@ -33,12 +33,12 @@ fn pin_env() {
 
 /// Collects every row (the stream must be exhausted → `Continue`, `finish` ran Ok), with
 /// elided-row splicing OFF — the pre-4.8 stream every legacy assertion below describes.
-fn collect_rows(repo: &Repo, revset: &str, prioritize: &str) -> Vec<Row> {
+fn collect_rows(repo: &mut Repo, revset: &str, prioritize: &str) -> Vec<Row> {
     collect_rows_with(repo, revset, prioritize, false)
 }
 
 /// [`collect_rows`] with an explicit `synthetic_elided` toggle.
-fn collect_rows_with(repo: &Repo, revset: &str, prioritize: &str, synthetic_elided: bool) -> Vec<Row> {
+fn collect_rows_with(repo: &mut Repo, revset: &str, prioritize: &str, synthetic_elided: bool) -> Vec<Row> {
     let mut rows = Vec::new();
     let flow = stream_lanes(repo, revset, prioritize, SHORT, synthetic_elided, |row| {
         rows.push(row);
@@ -54,7 +54,7 @@ fn collect_rows_with(repo: &Repo, revset: &str, prioritize: &str, synthetic_elid
 }
 
 /// Hex commit id of the single commit `revset` resolves to — through the public API only.
-fn commit_id_of(repo: &Repo, revset: &str) -> String {
+fn commit_id_of(repo: &mut Repo, revset: &str) -> String {
     let ids = resolve_revset(repo, revset).unwrap();
     assert_eq!(ids.len(), 1, "{revset} must resolve to exactly one change");
     repo.get_change(&ids[0]).unwrap().commit_id.0
@@ -86,14 +86,14 @@ fn assert_row(actual: &Row, commit_id: &str, lane: u32, edges: &[(&str, Option<u
 fn stream_lanes_tiny_all_with_default_prioritize_yields_hand_traced_rows() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let wc = commit_id_of(&repo, "@");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
-    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
-    let root = commit_id_of(&repo, "root()");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&mut repo, "@");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
+    let c2 = commit_id_of(&mut repo, "description(\"Commit 2\")");
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
+    let root = commit_id_of(&mut repo, "root()");
 
-    let rows = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
 
     assert_eq!(rows.len(), 5);
     assert_row(&rows[0], &wc, 0, &[(&root, Some(0), EdgeKind::Direct)]);
@@ -118,12 +118,12 @@ fn stream_lanes_tiny_all_with_default_prioritize_yields_hand_traced_rows() {
 fn stream_lanes_tiny_all_without_prioritize_honours_the_parameter() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let wc = commit_id_of(&repo, "@");
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&mut repo, "@");
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
-    let prioritized = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
-    let natural = collect_rows(&repo, "all()", "none()");
+    let prioritized = collect_rows(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+    let natural = collect_rows(&mut repo, "all()", "none()");
 
     let as_set = |rows: &[Row]| -> HashSet<String> { rows.iter().map(|r| r.commit_id.clone()).collect() };
     assert_eq!(as_set(&natural), as_set(&prioritized), "same rows as a set");
@@ -144,10 +144,10 @@ fn stream_lanes_tiny_all_without_prioritize_honours_the_parameter() {
 fn stream_lanes_carries_the_upstream_metadata_onto_the_row_it_produced() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
 
-    let rows = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
 
     let c3_row = rows.iter().find(|r| r.commit_id == c3).expect("c3 present");
     let meta = c3_row.meta.as_ref().expect("a commit row carries metadata");
@@ -162,13 +162,13 @@ fn stream_lanes_carries_the_upstream_metadata_onto_the_row_it_produced() {
 fn stream_lanes_splices_a_synthetic_row_after_each_child_that_elides_an_ancestor() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
     let eliding = "all() ~ description(\"Commit 2\")";
 
-    let off = collect_rows_with(&repo, eliding, DEFAULT_GRAPH_PRIORITIZE, false);
-    let on = collect_rows_with(&repo, eliding, DEFAULT_GRAPH_PRIORITIZE, true);
+    let off = collect_rows_with(&mut repo, eliding, DEFAULT_GRAPH_PRIORITIZE, false);
+    let on = collect_rows_with(&mut repo, eliding, DEFAULT_GRAPH_PRIORITIZE, true);
 
     // OFF: the pre-4.8 stream — a plain Indirect edge, no extra row.
     assert_eq!(off.len(), 4);
@@ -204,14 +204,14 @@ fn stream_lanes_splices_a_synthetic_row_after_each_child_that_elides_an_ancestor
 fn stream_lanes_emits_one_synthetic_row_per_child_without_deduplicating_targets() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let root = commit_id_of(&repo, "root()");
-    let tip_a = commit_id_of(&repo, "bookmarks(exact:\"branch-a\")");
-    let tip_b = commit_id_of(&repo, "bookmarks(exact:\"branch-b\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&mut repo, "root()");
+    let tip_a = commit_id_of(&mut repo, "bookmarks(exact:\"branch-a\")");
+    let tip_b = commit_id_of(&mut repo, "bookmarks(exact:\"branch-b\")");
 
     // Two branch tips whose whole ancestry is elided down to the SAME target (root).
     let selected = "bookmarks(exact:\"branch-a\") | bookmarks(exact:\"branch-b\") | root()";
-    let rows = collect_rows_with(&repo, selected, "none()", true);
+    let rows = collect_rows_with(&mut repo, selected, "none()", true);
 
     let synthetic: Vec<&Row> = rows.iter().filter(|r| r.synthetic_elided).collect();
     assert_eq!(synthetic.len(), 2, "the CLI does not dedup duplicate elided targets");
@@ -239,8 +239,8 @@ fn stream_lanes_emits_one_synthetic_row_per_child_without_deduplicating_targets(
 fn stream_lanes_synthetic_row_reports_its_own_pass_through_lanes() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let root = commit_id_of(&repo, "root()");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = commit_id_of(&mut repo, "root()");
 
     // Two tips each elide to root. Every synthetic row sits directly behind its own child,
     // so the walk is tip_a, synthetic, tip_b, synthetic, root. At the FIRST synthetic row
@@ -249,7 +249,7 @@ fn stream_lanes_synthetic_row_reports_its_own_pass_through_lanes() {
     // genuine pass-through: the first synthetic row routed its own edge to root, and that
     // segment is still open when the second synthetic row lands in a different lane.
     let selected = "bookmarks(exact:\"branch-a\") | bookmarks(exact:\"branch-b\") | root()";
-    let rows = collect_rows_with(&repo, selected, "none()", true);
+    let rows = collect_rows_with(&mut repo, selected, "none()", true);
 
     let synthetic: Vec<usize> = rows
         .iter()
@@ -283,11 +283,11 @@ fn stream_lanes_synthetic_row_reports_its_own_pass_through_lanes() {
 fn stream_lanes_sink_break_on_a_synthetic_row_stops_mid_splice() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut seen = Vec::new();
     let result = stream_lanes(
-        &repo,
+        &mut repo,
         "all() ~ description(\"Commit 2\")",
         DEFAULT_GRAPH_PRIORITIZE,
         SHORT,
@@ -321,10 +321,10 @@ fn stream_lanes_sink_break_on_a_synthetic_row_stops_mid_splice() {
 fn stream_lanes_heads_only_yields_missing_stubs_that_free_their_lane() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let wc = commit_id_of(&repo, "@");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&mut repo, "@");
 
-    let rows = collect_rows(&repo, "heads(all())", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "heads(all())", DEFAULT_GRAPH_PRIORITIZE);
 
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].commit_id, wc);
@@ -341,12 +341,12 @@ fn stream_lanes_heads_only_yields_missing_stubs_that_free_their_lane() {
 fn stream_lanes_elided_parent_yields_indirect_edge_on_the_childs_lane() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let c3 = commit_id_of(&repo, "description(\"Commit 3\")");
-    let c2 = commit_id_of(&repo, "description(\"Commit 2\")");
-    let c1 = commit_id_of(&repo, "description(\"Commit 1\")");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
+    let c2 = commit_id_of(&mut repo, "description(\"Commit 2\")");
+    let c1 = commit_id_of(&mut repo, "description(\"Commit 1\")");
 
-    let rows = collect_rows(&repo, "all() ~ description(\"Commit 2\")", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "all() ~ description(\"Commit 2\")", DEFAULT_GRAPH_PRIORITIZE);
 
     assert_eq!(rows.len(), 4);
     assert!(rows.iter().all(|r| r.commit_id != c2), "c2 is absent");
@@ -367,11 +367,11 @@ fn stream_lanes_elided_parent_yields_indirect_edge_on_the_childs_lane() {
 fn stream_lanes_medium_all_satisfies_structural_invariants_and_is_deterministic() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let wc = commit_id_of(&repo, "@");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let wc = commit_id_of(&mut repo, "@");
 
-    let rows = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
-    let rows_again = collect_rows(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
+    let rows_again = collect_rows(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE);
     assert_eq!(rows, rows_again, "stream_lanes must be deterministic");
 
     assert_eq!(rows.len(), 1002, "root + @ + 1000 fixture commits");
@@ -420,10 +420,10 @@ fn stream_lanes_medium_all_satisfies_structural_invariants_and_is_deterministic(
 fn stream_lanes_sink_break_stops_after_the_row_and_skips_finish() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let mut observed = 0usize;
-    let result = stream_lanes(&repo, "all()", DEFAULT_GRAPH_PRIORITIZE, SHORT, true, |_row| {
+    let result = stream_lanes(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE, SHORT, true, |_row| {
         observed += 1;
         if observed == 2 {
             ControlFlow::Break(())
@@ -442,9 +442,9 @@ fn stream_lanes_sink_break_stops_after_the_row_and_skips_finish() {
 fn stream_lanes_empty_revset_yields_no_rows_and_continue() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let rows = collect_rows(&repo, "none()", DEFAULT_GRAPH_PRIORITIZE);
+    let rows = collect_rows(&mut repo, "none()", DEFAULT_GRAPH_PRIORITIZE);
 
     assert!(rows.is_empty());
 }
@@ -455,11 +455,16 @@ fn stream_lanes_empty_revset_yields_no_rows_and_continue() {
 fn stream_lanes_bogus_revset_returns_revset_parse_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let result = stream_lanes(&repo, "bogus_function()", DEFAULT_GRAPH_PRIORITIZE, SHORT, true, |_| {
-        ControlFlow::Continue(())
-    });
+    let result = stream_lanes(
+        &mut repo,
+        "bogus_function()",
+        DEFAULT_GRAPH_PRIORITIZE,
+        SHORT,
+        true,
+        |_| ControlFlow::Continue(()),
+    );
     assert!(
         matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
         "bogus_function() must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
@@ -470,9 +475,9 @@ fn stream_lanes_bogus_revset_returns_revset_parse_error() {
 fn stream_lanes_bogus_prioritize_returns_revset_parse_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let result = stream_lanes(&repo, "all()", "(", SHORT, true, |_| ControlFlow::Continue(()));
+    let result = stream_lanes(&mut repo, "all()", "(", SHORT, true, |_| ControlFlow::Continue(()));
     assert!(
         matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
         "an unbalanced prioritize must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
@@ -483,12 +488,14 @@ fn stream_lanes_bogus_prioritize_returns_revset_parse_error() {
 fn stream_lanes_blank_prioritize_returns_revset_parse_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     // The documented contract: `none()` is the canonical no-prioritization value; an
     // empty/blank expression is a ParseError.
     for prioritize in ["", "   "] {
-        let result = stream_lanes(&repo, "all()", prioritize, SHORT, true, |_| ControlFlow::Continue(()));
+        let result = stream_lanes(&mut repo, "all()", prioritize, SHORT, true, |_| {
+            ControlFlow::Continue(())
+        });
         assert!(
             matches!(result, Err(LaneStreamError::Revset(RevsetError::ParseError { .. }))),
             "a blank prioritize ({prioritize:?}) must surface as LaneStreamError::Revset(ParseError), got: {result:?}"
@@ -500,10 +507,10 @@ fn stream_lanes_blank_prioritize_returns_revset_parse_error() {
 fn stream_lanes_nonexistent_bookmark_returns_revset_resolution_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let result = stream_lanes(
-        &repo,
+        &mut repo,
         "nonexistent-bookmark-xyz",
         DEFAULT_GRAPH_PRIORITIZE,
         SHORT,
@@ -523,9 +530,9 @@ fn stream_lanes_nonexistent_bookmark_returns_revset_resolution_error() {
 fn stream_lanes_unresolvable_prioritize_returns_revset_resolution_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
-    let result = stream_lanes(&repo, "all()", "nonexistent-bookmark-xyz", SHORT, true, |_| {
+    let result = stream_lanes(&mut repo, "all()", "nonexistent-bookmark-xyz", SHORT, true, |_| {
         ControlFlow::Continue(())
     });
     assert!(

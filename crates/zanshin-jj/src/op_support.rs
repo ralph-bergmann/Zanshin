@@ -41,6 +41,7 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::{CommitId, TreeId};
 use jj_lib::commit::Commit;
+use jj_lib::config::StackedConfig;
 use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::{Diff, Merge};
@@ -54,10 +55,10 @@ use jj_lib::rewrite::{restore_tree, CommitWithSelection};
 use jj_lib::store::Store;
 use jj_lib::trailer::{parse_description_trailers, Trailer};
 use jj_lib::transaction::Transaction;
+use jj_lib::workspace::Workspace;
 
 use crate::mutate::{be, cfg, MutateError};
 use crate::revset::{immutable_expression, resolve_expression, revset_config};
-use crate::Repo;
 
 // ── §1 Rewritability guard ────────────────────────────────────────────────────────
 
@@ -69,8 +70,9 @@ use crate::Repo;
 /// exactly as it does for the CLI — the guard reads the effective config, never a Rust
 /// constant.
 ///
-/// Returns an OWNED `Arc`, so a caller may build it from `&Repo` and then take
-/// `&mut Repo` — the borrow split the three mutation facades depend on.
+/// Built off an already-loaded stack for a bare [`Workspace`], so the pre-verb snapshot's knobs
+/// ([`crate::snapshot::Knobs`], Story 9.26) — and the conversion verbs, which have no
+/// [`crate::Repo`] yet — read it from the one config load every verb makes.
 ///
 /// # Errors
 ///
@@ -79,10 +81,12 @@ use crate::Repo;
 ///   ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1139`), and the same one
 ///   the read side surfaces as [`crate::RevsetError::Config`] — never the unclassified
 ///   backend bucket, and never a silent fall-back to the builtin set.
-pub(crate) fn immutable_user_expression(repo: &Repo) -> Result<Arc<UserRevsetExpression>, MutateError> {
-    let config = crate::config::load(repo).map_err(cfg)?;
-    let parse_config = revset_config(&config).map_err(cfg)?;
-    immutable_expression(repo, &parse_config).map_err(cfg)
+pub(crate) fn immutable_user_expression(
+    workspace: &Workspace,
+    config: &StackedConfig,
+) -> Result<Arc<UserRevsetExpression>, MutateError> {
+    let parse_config = revset_config(config).map_err(cfg)?;
+    immutable_expression(workspace, &parse_config).map_err(cfg)
 }
 
 /// Resolves the immutable expression's symbols against `repo`.
@@ -585,7 +589,7 @@ pub(crate) fn resolve_commit_id_prefix(
 /// Resolves `id`, or — when it is `None` — the workspace's working-copy commit, mirroring
 /// the CLI's `RevisionArg::AT` (`@`) default for every omitted revision argument.
 ///
-/// `@` is the LAST-SNAPSHOTTED working-copy commit: Zanshin never snapshots (D2).
+/// `@` is the working-copy commit the pre-verb snapshot has just recorded (Story 9.26).
 ///
 /// # Errors
 ///
@@ -679,10 +683,9 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 /// the only place a constant `default` would show.
 ///
 /// The CLI has a second caller, the snapshot path (`cli_util.rs:2099`), which follows it with
-/// `set_is_snapshot(true)`; Zanshin has no snapshot OPERATION yet (project decision D2 — Story
-/// 9.22 built the locked-working-copy primitives, whose `file track`/`untrack` operations are not
-/// snapshots; the per-verb snapshot is Story 9.26's), which is why nothing here touches
-/// `is_snapshot`.
+/// `set_is_snapshot(true)`; Zanshin's port of it, `snapshot::commit_snapshot` (Story 9.26), does
+/// exactly that on this helper's result — `is_snapshot` is not this helper's business in the CLI
+/// either.
 ///
 /// A guard test in this module's `tests` asserts that no other file under
 /// `crates/zanshin-jj/src` calls `start_transaction` directly, so an operation cannot regain a
@@ -725,7 +728,8 @@ mod tests {
     /// Opens the fixture and returns the head-resolved repo plus its immutable set.
     fn immutable_at_head(path: &Path) -> (Arc<ReadonlyRepo>, Arc<ResolvedRevsetExpression>) {
         let repo = Repo::open(path).expect("fixture opens");
-        let expr = immutable_user_expression(&repo).expect("builtin immutable_heads() parses");
+        let config = crate::config::load(&repo).expect("config loads");
+        let expr = immutable_user_expression(repo.workspace(), &config).expect("builtin immutable_heads() parses");
         let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head");
         let resolved = resolve_immutable(readonly.as_ref(), &expr).expect("immutable set resolves");
         (readonly, resolved)

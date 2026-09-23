@@ -20,6 +20,7 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/file.dart' show FileEntry;
 import 'package:zanshin_core/src/ffi/file_ops.dart' show TrackResult, UntrackResult;
 import 'package:zanshin_core/src/ffi/op_log.dart' show Operation;
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -111,18 +112,24 @@ void main() {
       await handle.close();
     });
 
-    // Until Story 9.26 snapshots before each verb, the path `fileTrack` recorded
-    // lives only in the working-copy state, so the next working-copy verb sees a
-    // state that no longer matches `@` — and the new code crosses the seam.
-    test('a_second_verb_right_after_track_surfaces_jj_concurrent_working_copy', () async {
+    // AC-5 (Story 9.26): the path `fileTrack` recorded lives only in the
+    // working-copy state until the NEXT call's pre-verb snapshot moves it into
+    // `@` — so a second track, then describe, then newChange all succeed. With
+    // `snapshot.auto-track = "none()"` only the explicit track records the file.
+    test('verbs_right_after_track_succeed_and_see_the_tracked_path', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync('snapshot.auto-track = "none()"\n');
       File('${tempDir.path}/zanshin_track_me.dat').writeAsStringSync('tracked');
       await handle.fileTrack(['zanshin_track_me.dat']);
 
-      await expectLater(
-        handle.fileUntrack(['zanshin_track_me.dat']),
-        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.concurrent_working_copy')),
-      );
+      await handle.fileTrack(['zanshin_track_me.dat']);
+
+      expect(handle.lastPrecondition?.wasSnapshotTaken, isTrue, reason: 'the pre-verb snapshot moved it into `@`');
+      final List<FileEntry> entries = await handle.fileList();
+      expect(entries.map((e) => e.path), contains('zanshin_track_me.dat'));
+      final String wc = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: wc, description: 'tracked');
+      await handle.newChange([wc]);
 
       await handle.close();
     });

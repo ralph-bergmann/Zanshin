@@ -51,6 +51,7 @@ use jj_lib::str_util::{StringExpression, StringMatcher};
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, finish_or_no_op_at, flatten_chain, MutateError, MutationResult};
+use crate::snapshot::VerbContext;
 use crate::ChangeId;
 
 /// Turns caller-supplied names into jj-lib `RefNameBuf`s, refusing the two arities the CLI
@@ -155,8 +156,8 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 /// `jj bookmark create`.
 ///
 /// `revision` is the CLI's `-r/--revision`, whose clap `default_value` is the literal `"@"`
-/// (not a config key), so `None` resolves the workspace's working-copy commit — the
-/// LAST-SNAPSHOTTED one, since Zanshin never snapshots (D2).
+/// (not a config key), so `None` resolves the workspace's working-copy commit, which the
+/// pre-verb snapshot has just brought up to date (Story 9.26).
 ///
 /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, exactly as the CLI's
 /// loop is (`create.rs:64-83` returns on the first offender, before its transaction opens):
@@ -178,6 +179,7 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn create(
     workspace: &mut Workspace,
+    ctx: &VerbContext,
     names: &[String],
     revision: Option<&ChangeId>,
 ) -> Result<MutationResult, MutateError> {
@@ -200,7 +202,7 @@ pub(crate) fn create(
         names = join_symbols(&ref_names),
         id = target_id.hex(),
     );
-    let finished = finish_or_no_op_at(workspace, readonly, &description, |tx| {
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx| {
         // Both guards for EVERY name run before ANY write, and returning `Err` from here
         // drops the transaction unwritten — so a refusal creates nothing, not even the
         // names that precede the offender. The CLI reaches the same observable outcome by
@@ -257,7 +259,11 @@ pub(crate) fn create(
 /// - [`MutateError::InvalidInput`] — `patterns` is empty, or a pattern does not parse.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn delete(workspace: &mut Workspace, patterns: &[String]) -> Result<MutationResult, MutateError> {
+pub(crate) fn delete(
+    workspace: &mut Workspace,
+    ctx: &VerbContext,
+    patterns: &[String],
+) -> Result<MutationResult, MutateError> {
     if patterns.is_empty() {
         return Err(MutateError::InvalidInput {
             reason: "bookmark delete requires at least one name pattern".to_owned(),
@@ -278,7 +284,7 @@ pub(crate) fn delete(workspace: &mut Workspace, patterns: &[String]) -> Result<M
         .collect();
 
     let description = format!("delete bookmark {}", join_symbols(&doomed));
-    let finished = finish_or_no_op_at(workspace, readonly, &description, |tx| {
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx| {
         for name in &doomed {
             tx.repo_mut().set_local_bookmark_target(name, RefTarget::absent());
         }

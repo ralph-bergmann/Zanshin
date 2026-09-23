@@ -32,6 +32,7 @@ import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
 import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
+import '../ffi/precondition.dart' as repo_ffi_precondition;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
@@ -388,13 +389,36 @@ class ZanshinWorker {
   /// caller to decode via the generated FlatBuffers accessors.
   ///
   /// Throws [StateError] (`'Worker is closed'`) synchronously after [close].
+  ///
+  /// This is also the ONE choke point that records a handle-scoped reply's
+  /// `Envelope.precondition` (Story 9.26) — ok or error — for
+  /// [lastPreconditionOf]; a reply without one (a verb that runs no pre-verb
+  /// snapshot, or a refusal before Rust was reached) leaves the last one standing.
   Future<Uint8List> send(WorkerCommand cmd) async {
     final WorkerResponse response = await _sendCommand(cmd);
     return switch (response) {
-      BufferResult(:final bytes) => bytes,
+      BufferResult(:final bytes) => _recordPrecondition(cmd, bytes),
       HandleResult() => throw StateError('send() received HandleResult — use openRepo/initRepo/cloneRepo'),
     };
   }
+
+  // Latest pre-verb snapshot report per handle id (Story 9.26); dropped on close.
+  final Map<int, repo_ffi_precondition.Precondition> _lastPreconditions = {};
+
+  Uint8List _recordPrecondition(WorkerCommand cmd, Uint8List bytes) {
+    if (cmd case HandleScopedCommand(:final int handleId)) {
+      final repo_ffi_precondition.Precondition? p = repo_ffi_precondition.decodeEnvelopePreconditionInternal(bytes);
+      if (p != null) {
+        _lastPreconditions[handleId] = p;
+      }
+    }
+    return bytes;
+  }
+
+  /// The pre-verb snapshot report (Story 9.26) of the latest reply for
+  /// [handleId] that carried one, or `null` when none has yet. See
+  /// [RepoHandle.lastPrecondition].
+  repo_ffi_precondition.Precondition? lastPreconditionOf(int handleId) => _lastPreconditions[handleId];
 
   Future<WorkerResponse> _sendCommand(WorkerCommand cmd) {
     if (_closed) {
@@ -477,6 +501,7 @@ class ZanshinWorker {
     if (_closed) {
       return;
     }
+    _lastPreconditions.remove(handleId);
     final WorkerResponse response = await _sendCommand(
       CloseRepoCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
@@ -838,9 +863,9 @@ class ZanshinWorker {
   /// List the entries of a revision's tree in the repo identified by [handleId]
   /// (Story 9.4) — the CLI's `jj file list`.
   ///
-  /// A `null` [revision] applies the CLI's own `-r` default `@`, which here is the
-  /// last-snapshotted working-copy commit. [paths] entries are repo-relative
-  /// PREFIXES; an empty list means all paths. This read writes no operation.
+  /// A `null` [revision] applies the CLI's own `-r` default `@`, snapshotted first
+  /// as in the CLI. [paths] entries are repo-relative
+  /// PREFIXES; an empty list means all paths. This read writes no operation of its own.
   ///
   /// Sends a [FileListCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<FileList>` bytes into a `List<FileEntry>`.
@@ -939,8 +964,8 @@ class ZanshinWorker {
   /// Import the backing git repo's refs into jj's view, in the repo identified by
   /// [handleId] (Story 9.5) — the CLI's `jj git import`.
   ///
-  /// Not skipped in a colocated workspace, unlike the CLI — see
-  /// [RepoHandle.gitImport]. If nothing needed importing, no operation is written
+  /// In a colocated workspace the pre-verb snapshot has already imported the
+  /// refs — see [RepoHandle.gitImport]. If nothing needed importing, no operation is written
   /// and `mutation.newOpId` is the pre-call op-log head. A ref that could not be
   /// imported lands in `failedRefNames` and does NOT fail the call.
   ///
@@ -1111,7 +1136,7 @@ class ZanshinWorker {
   /// [limit] is applied in WALK order (the CLI limits before reversing); `0` is an
   /// empty result, not an error, and a limit above the wire field's `uint` ceiling
   /// (4294967295) SATURATES there rather than wrapping to an empty result. A
-  /// negative [limit] is an [ArgumentError]. This read writes no operation.
+  /// negative [limit] is an [ArgumentError]. This read writes no operation of its own.
   ///
   /// Sends an [EvologCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<EvologView>` bytes into a `List<EvologEntry>`.
@@ -1149,7 +1174,7 @@ class ZanshinWorker {
   /// absent side is `@`;
   /// omitting BOTH is refused with `jj.invalid_input`. No
   /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
-  /// records, the CLI's own asymmetry with `show`. This read writes no operation.
+  /// records, the CLI's own asymmetry with `show`. This read writes no operation of its own.
   ///
   /// `InterdiffView.baseHasConflicts` reports whether the REBASED `from` tree —
   /// the left side of the diff — is conflicted; that never turns the call into a
@@ -1187,8 +1212,8 @@ class ZanshinWorker {
   /// lexicographic order; the path half comes from the workspace store. A row's
   /// `root` is `null` when the path cannot be reported (no recorded path, an
   /// unreadable store, or a directory that moved or was deleted) — that never
-  /// fails the listing, which is the CLI's own degradation. This read writes no
-  /// operation.
+  /// fails the listing, which is the CLI's own degradation. This read writes no operation of its own —
+  /// the pre-verb snapshot may write one.
   ///
   /// Sends a [WorkspaceListCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<WorkspaceList>` bytes into a `List<WorkspaceEntry>`.
@@ -1243,7 +1268,7 @@ class ZanshinWorker {
   ///
   /// [names] are EXACT, DECODED bookmark names — the revset quoting the CLI
   /// requires is terminal input syntax the GUI replaces. A `null` [revision] is
-  /// the CLI's own `-r` default `@` (the last-snapshotted working copy); it is a
+  /// the CLI's own `-r` default `@` (snapshotted first, as in the CLI); it is a
   /// jj reverse-hex CHANGE id, so a divergent one is refused, never guessed.
   /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
   /// whose second name already exists creates nothing and writes no operation.
@@ -1364,6 +1389,26 @@ class ZanshinWorker {
       FileUntrackCommand(commandId: _correlator.allocateId(), handleId: handleId, paths: paths),
     );
     return repo_ffi_file_ops.decodeUntrackResultEnvelopeInternal(bytes);
+  }
+
+  /// Snapshot the working copy of the repo identified by [handleId] right now —
+  /// and, in a colocated workspace, import the Git HEAD and refs (Story 9.26) —
+  /// the CLI's `jj util snapshot`.
+  ///
+  /// It is exactly the pre-verb snapshot every other handle-scoped verb runs
+  /// first, with nothing after it. A clean tree with unchanged refs writes no
+  /// operation and reports `wasSnapshotTaken == false`.
+  ///
+  /// Sends a [SnapshotCommand] via [send] and decodes the report from the
+  /// returned envelope's `precondition`.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.snapshot].
+  Future<repo_ffi_precondition.Precondition> snapshot(int handleId) async {
+    final Uint8List bytes = await send(SnapshotCommand(commandId: _correlator.allocateId(), handleId: handleId));
+    return repo_ffi_precondition.decodeSnapshotEnvelopeInternal(bytes);
   }
 }
 
@@ -1915,6 +1960,17 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file_ops.zanshinFileUntrack(raw, paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SnapshotCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SnapshotCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_precondition.zanshinSnapshot(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

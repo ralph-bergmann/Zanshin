@@ -110,7 +110,7 @@ fn elided_node(target: String) -> GraphNode {
 /// - [`LaneStreamError::Graph`] — the exhausted stream left a dangling non-`Missing` edge
 ///   (contract violation by the upstream stream).
 pub fn stream_lanes(
-    repo: &zanshin_jj::Repo,
+    repo: &mut zanshin_jj::Repo,
     revset: &str,
     prioritize: &str,
     short_prefixes: &str,

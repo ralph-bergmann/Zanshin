@@ -101,7 +101,7 @@ fn write_repo_config(workspace_root: &Path, toml: &str) {
 }
 
 /// The head operation's id, so a test can assert that a refusal wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).unwrap()[0].id.0.clone()
 }
 
@@ -122,14 +122,18 @@ fn describe_on_a_tagged_commit_is_refused_and_writes_no_operation() {
     set_tag(&fx.path, "v1", &[&layout.commit3_commit_hex]);
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .describe(ChangeId(layout.commit3_change_id.clone()), "nope")
         .expect_err("a tagged commit is immutable");
     assert_immutable(&err, &layout.commit3_commit_hex);
 
-    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+    assert_eq!(
+        before_op,
+        head_op_id(&mut repo),
+        "a refusal must not commit an operation"
+    );
     let change = repo.get_change(&ChangeId(layout.commit3_change_id)).unwrap();
     assert_eq!(change.description, "Commit 3", "the description must be untouched");
 }
@@ -142,13 +146,17 @@ fn edit_on_a_tagged_commit_is_refused_and_writes_no_operation() {
     set_tag(&fx.path, "v1", &[&layout.commit3_commit_hex]);
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .edit(ChangeId(layout.commit3_change_id))
         .expect_err("a tagged commit is immutable");
     assert_immutable(&err, &layout.commit3_commit_hex);
-    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+    assert_eq!(
+        before_op,
+        head_op_id(&mut repo),
+        "a refusal must not commit an operation"
+    );
 }
 
 #[test]
@@ -159,14 +167,18 @@ fn abandon_on_a_tagged_commit_is_refused_and_writes_no_operation() {
     set_tag(&fx.path, "v1", &[&layout.commit3_commit_hex]);
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     let err = repo
         .abandon(&[ChangeId(layout.commit3_change_id.clone())])
         .expect_err("a tagged commit is immutable");
     assert_immutable(&err, &layout.commit3_commit_hex);
 
-    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+    assert_eq!(
+        before_op,
+        head_op_id(&mut repo),
+        "a refusal must not commit an operation"
+    );
     repo.get_change(&ChangeId(layout.commit3_change_id))
         .expect("the commit must still be visible");
 }
@@ -218,7 +230,7 @@ fn edit_root_commit_returns_immutable() {
     let layout = oracle_layout(&fx.path);
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
 
     // WHY this test exists: Story 9.1 deliberately CHANGED this shipped error code.
     // `describe`/`abandon` guard the root commit explicitly (pre-empting jj-lib's internal
@@ -231,7 +243,11 @@ fn edit_root_commit_returns_immutable() {
         .edit(ChangeId(layout.root_change_id))
         .expect_err("the root commit is immutable");
     assert_immutable(&err, &layout.root_commit_hex);
-    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+    assert_eq!(
+        before_op,
+        head_op_id(&mut repo),
+        "a refusal must not commit an operation"
+    );
 }
 
 // ── A config fault is a config error, not an unclassified backend failure ─────────
@@ -248,20 +264,26 @@ fn a_malformed_repo_config_makes_describe_fail_with_config_not_backend() {
     // stack refuses `Repo::open` itself (the CLI fails at start-up), so the verb-side refusal
     // is the one an already-open handle meets.
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
     write_repo_config(&fx.path, "not = = toml");
     let err = repo
         .describe(ChangeId(layout.commit1_change_id), "nope")
         .expect_err("a malformed config must not be silently ignored");
 
-    let MutateError::Config { reason } = &err else {
+    // The pre-verb snapshot reads the stack first (Story 9.26), so it is the one that refuses.
+    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) = &err else {
         panic!("expected Config, got {err:?}");
     };
     assert!(
         reason.contains("config.toml"),
         "the reason must name the file: {reason}"
     );
-    assert_eq!(before_op, head_op_id(&repo), "a refusal must not commit an operation");
+    write_repo_config(&fx.path, "");
+    assert_eq!(
+        before_op,
+        head_op_id(&mut repo),
+        "a refusal must not commit an operation"
+    );
 }
 
 #[test]
@@ -288,7 +310,8 @@ fn an_unparseable_immutable_heads_alias_is_a_config_error() {
     let layout = oracle_layout(&fx.path);
     // The PARSE half of the same contract (the sibling above is the RESOLVE half): a
     // syntactically broken alias travels a different code path, and an implementation
-    // could easily classify only one of the two.
+    // could easily classify only one of the two. The PARSE is the pre-verb snapshot's (Story
+    // 9.26), as the CLI parses `immutable_heads()` at start-up for every command.
     write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'bogus_function('\n");
 
     let mut repo = Repo::open(&fx.path).unwrap();
@@ -296,7 +319,10 @@ fn an_unparseable_immutable_heads_alias_is_a_config_error() {
         .describe(ChangeId(layout.commit3_change_id), "nope")
         .expect_err("a guard that cannot determine what is protected must refuse");
     assert!(
-        matches!(err, MutateError::Config { .. }),
+        matches!(
+            err,
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
         "expected Config, got {err:?}"
     );
 }
@@ -310,7 +336,7 @@ fn describe_outside_the_immutable_set_still_succeeds() {
     let layout = oracle_layout(&fx.path);
     // Tag `Commit 1`: the immutable set is `::Commit 1`, so its DESCENDANTS stay mutable.
     let commit1_hex = {
-        let repo = Repo::open(&fx.path).unwrap();
+        let mut repo = Repo::open(&fx.path).unwrap();
         repo.get_change(&ChangeId(layout.commit1_change_id.clone()))
             .unwrap()
             .commit_id
@@ -379,7 +405,7 @@ fn a_config_override_can_widen_the_immutable_set_to_everything() {
     write_repo_config(&fx.path, "[revset-aliases]\n'immutable_heads()' = 'all()'\n");
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let before_op = head_op_id(&repo);
+    let before_op = head_op_id(&mut repo);
     let err = repo
         .describe(ChangeId(layout.commit3_change_id), "nope")
         .expect_err("everything is immutable under this override");
@@ -387,5 +413,5 @@ fn a_config_override_can_widen_the_immutable_set_to_everything() {
         matches!(err, MutateError::Immutable { .. }),
         "unexpected error: {err:?}"
     );
-    assert_eq!(before_op, head_op_id(&repo));
+    assert_eq!(before_op, head_op_id(&mut repo));
 }

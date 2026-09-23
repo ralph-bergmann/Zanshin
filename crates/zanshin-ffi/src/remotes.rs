@@ -11,13 +11,18 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{Remote, RemoteError};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR};
+use crate::envelope::{
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    JJ_JJ_LIB_ERROR,
+};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
     match e {
+        RemoteError::Precondition(e) => map_precondition_err(e),
         RemoteError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -30,7 +35,7 @@ fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
 /// strings are built before its table; the `remotes` vector and `Remotes` table
 /// come after the loop. No kind match — a `Remote` is just plain strings, one of
 /// which (`push_url`) is null-for-absence and stays ABSENT rather than `""`.
-fn remotes_to_envelope(remotes: &[Remote]) -> Vec<u8> {
+fn remotes_to_envelope(remotes: &[Remote], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(remotes.len());
     for r in remotes {
@@ -49,17 +54,7 @@ fn remotes_to_envelope(remotes: &[Remote]) -> Vec<u8> {
     }
     let vec = b.create_vector(&offsets);
     let rems_off = fbs::Remotes::create(&mut b, &fbs::RemotesArgs { remotes: Some(vec) });
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::Remotes,
-            data: Some(rems_off.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::Remotes, Some(rems_off.as_union_value()), precondition)
 }
 
 /// List the configured git remotes of the repo identified by `handle`.
@@ -68,6 +63,10 @@ fn remotes_to_envelope(remotes: &[Remote]) -> Vec<u8> {
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
 /// # Safety
@@ -83,8 +82,10 @@ pub unsafe extern "C" fn zanshin_remotes(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let rems = session.repo.list_remotes().map_err(map_remotes_err)?;
-        Ok(remotes_to_envelope(&rems))
+        let rems = session.repo.list_remotes();
+        precondition_envelope(&mut session.repo, rems, map_remotes_err, |v, p| {
+            remotes_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -114,7 +115,7 @@ mod tests {
                 push_url: Some("ssh://user:s3cr3t@example.com/r.git".to_owned()),
             },
         ];
-        let buf = remotes_to_envelope(&remotes);
+        let buf = remotes_to_envelope(&remotes, None);
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Remotes);
@@ -147,7 +148,7 @@ mod tests {
 
     #[test]
     fn remotes_to_envelope_empty_roundtrips() {
-        let buf = remotes_to_envelope(&[]);
+        let buf = remotes_to_envelope(&[], None);
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Remotes);

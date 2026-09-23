@@ -45,6 +45,10 @@ pub struct Bookmark {
 /// Errors returned by [`crate::Repo::list_bookmarks`].
 #[derive(Debug, thiserror::Error)]
 pub enum BookmarkError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// An underlying jj-lib failure (loader / view / store read),
     /// opaque-string-wrapped so no `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -111,4 +115,19 @@ pub(crate) fn list_bookmarks(workspace: &Workspace) -> Result<Vec<Bookmark>, Boo
 
     out.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.kind.cmp(&b.kind)));
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{list_bookmarks, BookmarkError};
+
+    /// A head that no longer loads is this module's own `Backend` failure. Through
+    /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
+    /// is called directly.
+    #[test]
+    fn a_head_that_no_longer_loads_is_a_backend_error() {
+        let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
+        let result = list_bookmarks(repo.workspace());
+        assert!(matches!(result, Err(BookmarkError::Backend(_))), "{result:?}");
+    }
 }

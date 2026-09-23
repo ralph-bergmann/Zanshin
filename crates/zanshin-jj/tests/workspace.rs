@@ -109,7 +109,7 @@ fn corrupt_op_heads(workspace_root: &Path) {
 }
 
 /// The head operation's id, so a test can assert that a READ wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
@@ -130,8 +130,8 @@ fn assert_same_dir(actual: &Path, expected: &Path) {
 fn list_on_the_fixture_reports_one_row_with_no_root() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     let entries = repo.list_workspaces().unwrap();
 
@@ -146,7 +146,7 @@ fn list_on_the_fixture_reports_one_row_with_no_root() {
         entries[0].root, None,
         "the fixture records the GENERATOR's temp dir, which no longer resolves"
     );
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 /// Added workspaces record paths that DO resolve, so both halves of a row are exercised at once:
@@ -163,7 +163,7 @@ fn list_with_more_workspaces_reports_resolvable_roots_in_lexicographic_order() {
     let (second, second_wc) = add_workspace(&fx.path, "second");
     let (aaa, _aaa_wc) = add_workspace(&fx.path, "aaa");
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let entries = repo.list_workspaces().unwrap();
 
     assert_eq!(entries.len(), 3, "default + second + aaa; got {entries:?}");
@@ -192,8 +192,8 @@ fn list_with_no_recorded_path_still_returns_the_row() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     remove_workspace_store(&fx.path);
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     let entries = repo.list_workspaces().unwrap();
 
@@ -205,7 +205,7 @@ fn list_with_no_recorded_path_still_returns_the_row() {
         "SimpleWorkspaceStore::load recreates the store dir for a legacy repo"
     );
     assert_eq!(
-        head_op_id(&repo),
+        head_op_id(&mut repo),
         before,
         "recreating the store writes no OPERATION, only files"
     );
@@ -220,7 +220,7 @@ fn list_with_an_unreadable_store_still_returns_the_rows() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     corrupt_workspace_store(&fx.path);
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let entries = repo.list_workspaces().unwrap();
 
@@ -240,7 +240,7 @@ fn list_with_an_unloadable_store_still_returns_the_rows() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     dangle_workspace_store(&fx.path);
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let entries = repo.list_workspaces().unwrap();
 
@@ -255,14 +255,14 @@ fn list_on_a_corrupt_repo_returns_a_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
 
     let result = repo.list_workspaces();
     assert!(
-        matches!(result, Err(WorkspaceError::Backend(_))),
-        "corrupt op_heads must yield WorkspaceError::Backend, got: {result:?}"
+        matches!(result, Err(WorkspaceError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt op_heads must yield WorkspaceError::Backend, got: {result:?}"
     );
 }
 
@@ -274,8 +274,8 @@ fn list_on_a_corrupt_repo_returns_a_backend_error() {
 fn root_without_a_name_is_the_open_workspace() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     let root = repo.resolve_workspace_root(None).unwrap();
 
@@ -294,7 +294,7 @@ fn root_without_a_name_is_the_open_workspace() {
         fs::canonicalize(&root).unwrap(),
         "the returned root must already be canonical"
     );
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 /// The whole point of the verb, from the OTHER side: a secondary workspace resolves its siblings.
@@ -314,7 +314,7 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     );
 
     // Opened at the SECONDARY workspace, not the fixture root.
-    let repo = Repo::open(&second.path).unwrap();
+    let mut repo = Repo::open(&second.path).unwrap();
 
     // (a) the listing reaches the shared store and both rows come back.
     let entries = repo.list_workspaces().unwrap();
@@ -355,13 +355,13 @@ fn root_with_a_name_finds_a_sibling_workspace() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let (second, _wc) = add_workspace(&fx.path, "second");
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     let root = repo.resolve_workspace_root(Some("second")).unwrap();
 
     assert_same_dir(&root, &second.path);
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 /// The CLI's asymmetry, in one test: `None` succeeds on the very repo where naming the SAME
@@ -371,8 +371,8 @@ fn root_with_a_name_finds_a_sibling_workspace() {
 fn root_named_current_workspace_refuses_where_the_default_path_succeeds() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     assert!(repo.resolve_workspace_root(None).is_ok());
 
@@ -385,7 +385,7 @@ fn root_named_current_workspace_refuses_where_the_default_path_succeeds() {
         other => panic!("a stale recorded path must be PathUnresolved, got: {other:?}"),
     }
     assert_eq!(
-        head_op_id(&repo),
+        head_op_id(&mut repo),
         before,
         "a REFUSAL must not write an operation either"
     );
@@ -397,8 +397,8 @@ fn root_named_current_workspace_refuses_where_the_default_path_succeeds() {
 fn root_with_an_unknown_or_empty_name_is_not_found() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
-    let before = head_op_id(&repo);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head_op_id(&mut repo);
 
     for name in ["nosuch", ""] {
         let result = repo.resolve_workspace_root(Some(name));
@@ -408,7 +408,7 @@ fn root_with_an_unknown_or_empty_name_is_not_found() {
         }
     }
     assert_eq!(
-        head_op_id(&repo),
+        head_op_id(&mut repo),
         before,
         "a REFUSAL must not write an operation either"
     );
@@ -491,7 +491,7 @@ fn root_with_a_name_on_a_corrupt_repo_is_a_backend_error() {
 // ── a workspace must resolve its OWN root, symlinked caller path or not ──────
 
 /// Both verbs report `expected` for the single `default` workspace of `repo`.
-fn assert_own_root_resolves(repo: &Repo, expected: &Path) {
+fn assert_own_root_resolves(repo: &mut Repo, expected: &Path) {
     let entries = repo.list_workspaces().unwrap();
     assert_eq!(
         entries.len(),
@@ -544,9 +544,9 @@ fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
          disables it"
     );
 
-    let created = Repo::init(tmp.path(), None).unwrap();
-    assert_own_root_resolves(&created, tmp.path());
+    let mut created = Repo::init(tmp.path(), None).unwrap();
+    assert_own_root_resolves(&mut created, tmp.path());
 
-    let reopened = Repo::open(tmp.path()).unwrap();
-    assert_own_root_resolves(&reopened, tmp.path());
+    let mut reopened = Repo::open(tmp.path()).unwrap();
+    assert_own_root_resolves(&mut reopened, tmp.path());
 }

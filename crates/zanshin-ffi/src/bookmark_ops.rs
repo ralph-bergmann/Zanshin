@@ -20,8 +20,8 @@ use tracing::debug;
 use zanshin_jj::ChangeId;
 
 use crate::envelope::{
-    catch, expect_request_kind, invalid_request, ok_mutation_result, reject_null_request, session_from_handle,
-    FfiErrorObj,
+    catch, expect_request_kind, invalid_request, ok_mutation_result, precondition_envelope, reject_null_request,
+    session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -98,8 +98,8 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 ///
 /// The arguments cross as a `BookmarkCreateRequest` `FlatBuffers` request buffer (ADR-0001
 /// composite-input pattern): `revision` must be distinguishably ABSENT, which is what applies
-/// the CLI's `-r` default `@` (the LAST-SNAPSHOTTED working copy — Zanshin never snapshots,
-/// D2). `names` are EXACT, DECODED bookmark names, not CLI argument text: revset quoting is
+/// the CLI's `-r` default `@` (snapshotted first, as in the CLI — Story 9.26). `names` are
+/// EXACT, DECODED bookmark names, not CLI argument text: revset quoting is
 /// terminal input syntax the GUI replaces (ADR-0003).
 ///
 /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as in the CLI: a run
@@ -125,6 +125,8 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 ///   a tracked remote bookmark; the name in `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -144,11 +146,8 @@ pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, l
         let req = read_bookmark_create_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session
-            .repo
-            .bookmark_create(&req.names, req.revision.as_ref())
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.bookmark_create(&req.names, req.revision.as_ref());
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -178,6 +177,8 @@ pub unsafe extern "C" fn zanshin_bookmark_create(handle: u64, data: *const u8, l
 ///   parse; jj-lib's reason in `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -193,8 +194,8 @@ pub unsafe extern "C" fn zanshin_bookmark_delete(handle: u64, data: *const u8, l
         let req = read_bookmark_delete_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.bookmark_delete(&req.names).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.bookmark_delete(&req.names);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }

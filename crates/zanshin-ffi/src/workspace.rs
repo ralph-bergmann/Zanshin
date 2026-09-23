@@ -4,8 +4,9 @@
 //! (Story 9.7).
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
-//! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither writes an
-//! operation — not even on a refusal.
+//! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither verb itself
+//! writes an operation — not even on a refusal; only `zanshin_workspace_list`'s pre-verb
+//! snapshot (Story 9.26) may (`zanshin_workspace_root` runs none, like the CLI's).
 //!
 //! The two verbs cross the boundary DIFFERENTLY, mirroring the CLI's own argument arity:
 //! `zanshin_workspace_list` is handle-only, because `jj workspace list` takes no argument at all
@@ -22,8 +23,9 @@ use tracing::debug;
 use zanshin_jj::{WorkspaceEntry, WorkspaceError};
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, reject_null_request, session_from_handle,
-    FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, precondition_envelope,
+    reject_null_request, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
+    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -35,12 +37,14 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 /// workspace name and the I/O reason, since neither alone identifies the failure.
 fn map_workspace_err(e: WorkspaceError) -> FfiErrorObj {
     let (code, context) = match e {
+        WorkspaceError::Precondition(e) => return map_precondition_err(e),
         WorkspaceError::NotFound { name } => (JJ_WORKSPACE_NOT_FOUND, name),
         WorkspaceError::NoRecordedPath { name } => (JJ_WORKSPACE_NO_RECORDED_PATH, name),
         WorkspaceError::PathUnresolved { name, reason } => (JJ_WORKSPACE_PATH_UNRESOLVED, format!("{name}: {reason}")),
         WorkspaceError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
+        precondition: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -86,7 +90,7 @@ fn read_workspace_root_request(data: *const u8, len: usize) -> Result<WorkspaceR
 /// table, and the outer vector and `WorkspaceList` table come after the loop. `root` is written
 /// only when present — null-for-absence is the wire form of "this workspace's path cannot be
 /// reported", which is never an error here.
-fn workspace_list_to_envelope(entries: &[WorkspaceEntry]) -> Vec<u8> {
+fn workspace_list_to_envelope(entries: &[WorkspaceEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let offsets: Vec<_> = entries
         .iter()
@@ -108,7 +112,12 @@ fn workspace_list_to_envelope(entries: &[WorkspaceEntry]) -> Vec<u8> {
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::WorkspaceList::create(&mut b, &fbs::WorkspaceListArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::WorkspaceList, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::WorkspaceList,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 /// Serialise one resolved workspace root into a finished `Envelope<WorkspaceRoot>` buffer.
@@ -119,7 +128,7 @@ fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let root_off = b.create_string(&root.to_string_lossy());
     let table = fbs::WorkspaceRoot::create(&mut b, &fbs::WorkspaceRootArgs { root: Some(root_off) });
-    finish_envelope(b, fbs::Payload::WorkspaceRoot, table.as_union_value())
+    finish_envelope(b, fbs::Payload::WorkspaceRoot, Some(table.as_union_value()), None)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -132,12 +141,16 @@ fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
 /// is ABSENT when the path cannot be reported — no recorded path (a workspace predating jj
 /// 0.38.0), an unreadable store, or a recorded directory that moved or was deleted. None of those
 /// fails the call: the CLI's own list template degrades the same way and points at
-/// `zanshin_workspace_root` for strict diagnostics. This read writes NO operation.
+/// `zanshin_workspace_root` for strict diagnostics. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceList` payload on success.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — `load_at_head` failed, i.e. the VIEW half could not be read; detail in
 ///   `context`. No path failure reaches this.
 ///
@@ -153,8 +166,10 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let entries = session.repo.list_workspaces().map_err(map_workspace_err)?;
-        Ok(workspace_list_to_envelope(&entries))
+        let entries = session.repo.list_workspaces();
+        precondition_envelope(&mut session.repo, entries, map_workspace_err, |v, p| {
+            workspace_list_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -237,7 +252,7 @@ mod tests {
 
     #[test]
     fn workspace_list_writes_present_and_absent_roots_in_order() {
-        let buf = workspace_list_to_envelope(&[entry("default", Some("/tmp/ws")), entry("second", None)]);
+        let buf = workspace_list_to_envelope(&[entry("default", Some("/tmp/ws")), entry("second", None)], None);
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::WorkspaceList);
@@ -257,7 +272,7 @@ mod tests {
 
     #[test]
     fn workspace_list_empty_roundtrips() {
-        let buf = workspace_list_to_envelope(&[]);
+        let buf = workspace_list_to_envelope(&[], None);
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         let payload = env.data_as_workspace_list().expect("expected WorkspaceList payload");

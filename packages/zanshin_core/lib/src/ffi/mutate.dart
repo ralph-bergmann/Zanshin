@@ -9,6 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'precondition.dart' show FinishFacts, decodeFinishFactsInternal;
 import 'request_bytes.dart';
 
 // This file owns the Dart half of the whole mutation surface: the Story 6.5
@@ -169,6 +170,7 @@ final class MutationResult {
     required this.abandonedChangeIds,
     required this.workingCopyChangeId,
     required this.identityMissing,
+    required this.finish,
   });
 
   /// Id of the operation this mutation committed.
@@ -200,6 +202,12 @@ final class MutationResult {
   /// committed nothing. The commit was still created, with the empty identity;
   /// the UI turns a non-null value into its "set your identity" prompt.
   final IdentityMissing? identityMissing;
+
+  /// The colocated Git bookkeeping this mutation's commit ran — the jj CLI's
+  /// `finish_transaction` warnings as facts (Story 9.26). `null` when every fact
+  /// is at its default, and always outside a colocated workspace unless `@`
+  /// became immutable.
+  final FinishFacts? finish;
 }
 
 /// Which of `user.name` / `user.email` was empty
@@ -213,6 +221,18 @@ final class IdentityMissing {
   /// `user.email` is empty.
   final bool email;
 }
+
+/// Rebuild a [MutationResult] from its table — the ONE spelling every payload
+/// that nests the shared mutation contract decodes through. An absent table is
+/// an empty contract, not a crash.
+MutationResult decodeMutationResultInternal(fbs.MutationResult? m) => MutationResult(
+  newOpId: m?.newOpId ?? '',
+  newChangeIds: m?.newChangeIds?.toList() ?? const [],
+  abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
+  workingCopyChangeId: m?.workingCopyChangeId ?? '',
+  identityMissing: decodeIdentityMissingInternal(m?.identityMissing),
+  finish: decodeFinishFactsInternal(m?.finish),
+);
 
 /// Rebuilds the nested `IdentityMissing` table; an ABSENT table is `null`
 /// (null for absence), never a value of two `false`s.
@@ -295,13 +315,7 @@ MutationResult _decodeMutationResultEnvelope(Uint8List bytes) {
       'expected MutationResult payload, got ${env.dataType}',
     );
   }
-  return MutationResult(
-    newOpId: payload.newOpId ?? '',
-    newChangeIds: payload.newChangeIds?.toList() ?? const [],
-    abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
-    workingCopyChangeId: payload.workingCopyChangeId ?? '',
-    identityMissing: decodeIdentityMissingInternal(payload.identityMissing),
-  );
+  return decodeMutationResultInternal(payload);
 }
 
 /// Decode an `AbsorbResult` `Envelope` buffer into an [AbsorbResult].
@@ -327,15 +341,8 @@ AbsorbResult _decodeAbsorbResultEnvelope(Uint8List bytes) {
       'expected AbsorbResult payload, got ${env.dataType}',
     );
   }
-  final fbs.MutationResult? nested = payload.mutation;
   return AbsorbResult(
-    mutation: MutationResult(
-      newOpId: nested?.newOpId ?? '',
-      newChangeIds: nested?.newChangeIds?.toList() ?? const [],
-      abandonedChangeIds: nested?.abandonedChangeIds?.toList() ?? const [],
-      workingCopyChangeId: nested?.workingCopyChangeId ?? '',
-      identityMissing: decodeIdentityMissingInternal(nested?.identityMissing),
-    ),
+    mutation: decodeMutationResultInternal(payload.mutation),
     rewrittenChangeIds: payload.rewrittenChangeIds?.toList() ?? const [],
     // Null-for-absence: the field is unset when jj-lib abandoned the source or
     // nothing moved — never coerced to ''.

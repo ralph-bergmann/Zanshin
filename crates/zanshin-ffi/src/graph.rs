@@ -21,8 +21,8 @@ use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
 use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError};
 
 use crate::envelope::{
-    catch, session_from_handle, FfiErrorObj, GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR,
-    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -31,23 +31,29 @@ use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
 
 fn map_lane_stream_err(e: LaneStreamError) -> FfiErrorObj {
     match e {
+        LaneStreamError::Revset(RevsetError::Precondition(e)) => map_precondition_err(e),
         LaneStreamError::Revset(RevsetError::ParseError { reason }) => FfiErrorObj {
+            precondition: None,
             code: JJ_REVSET_PARSE_ERROR.to_owned(),
             context: Some(reason),
         },
         LaneStreamError::Revset(RevsetError::ResolutionError { reason }) => FfiErrorObj {
+            precondition: None,
             code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
             context: Some(reason),
         },
         LaneStreamError::Revset(RevsetError::JjLibError(reason)) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
         LaneStreamError::Revset(RevsetError::Config(ConfigError::Load { reason })) => FfiErrorObj {
+            precondition: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
         LaneStreamError::Graph(GraphError::DanglingEdge { target }) => FfiErrorObj {
+            precondition: None,
             code: GRAPH_DANGLING_EDGE.to_owned(),
             context: Some(target),
         },
@@ -190,7 +196,7 @@ fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::Gr
 /// `Missing`) is written as `0`;
 /// the Dart model restores `null` from `kind`.
 #[must_use]
-pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
+pub fn graph_slice_to_envelope(rows: &[Row], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let row_offs: Vec<_> = rows.iter().map(|r| row_offset(&mut b, r)).collect();
     let rows_vec = b.create_vector(&row_offs);
@@ -202,17 +208,7 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
             total_rows: u32::try_from(rows.len()).unwrap_or(u32::MAX),
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::GraphSlice,
-            data: Some(slice.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::GraphSlice, Some(slice.as_union_value()), precondition)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
@@ -244,6 +240,8 @@ pub fn graph_slice_to_envelope(rows: &[Row]) -> Vec<u8> {
 ///   unknown function; jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — an expression names a symbol that cannot be
 ///   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
 /// - `jj.config_error` — the repo's effective jj config, which the revset aliases are
 ///   resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
@@ -279,9 +277,16 @@ pub unsafe extern "C" fn zanshin_graph_slice(
         let revset = unsafe { cstr_to_string(revset) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
         let prioritize = unsafe { cstr_to_string(prioritize) }?;
         let short_prefixes = unsafe { cstr_to_string(short_prefixes) }?;
-        let rows = collect_lanes(&session.repo, &revset, &prioritize, &short_prefixes, synthetic_elided)
-            .map_err(map_lane_stream_err)?;
-        Ok(graph_slice_to_envelope(&rows))
+        let rows = collect_lanes(
+            &mut session.repo,
+            &revset,
+            &prioritize,
+            &short_prefixes,
+            synthetic_elided,
+        );
+        precondition_envelope(&mut session.repo, rows, map_lane_stream_err, |rows, p| {
+            graph_slice_to_envelope(rows, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -503,7 +508,7 @@ mod tests {
     #[test]
     fn graph_slice_roundtrips_fork_then_merge_rows_verbatim() {
         let rows = fork_then_merge_rows();
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         assert_eq!(slice.total_rows(), 3, "total_rows must equal the input length");
@@ -554,7 +559,7 @@ mod tests {
             "fixture must exercise the Missing (target_lane: None) path"
         );
 
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         assert_eq!(usize::try_from(slice.total_rows()).ok(), Some(rows.len()));
@@ -563,7 +568,7 @@ mod tests {
 
     #[test]
     fn empty_slice_has_present_empty_rows_and_zero_total() {
-        let buf = graph_slice_to_envelope(&[]);
+        let buf = graph_slice_to_envelope(&[], None);
 
         let slice = verified_slice(&buf);
         assert_eq!(slice.rows().map(|v| v.len()), Some(0), "rows must be present and empty");
@@ -573,7 +578,7 @@ mod tests {
     #[test]
     fn missing_edge_is_written_as_target_lane_zero_with_kind_missing() {
         let rows = vec![row("x", 0, vec![edge("outside", None, EdgeKind::Missing)])];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_edge = slice.rows().expect("rows").get(0).edges().expect("edges").get(0);
@@ -596,7 +601,7 @@ mod tests {
             active_lanes: vec![],
             meta: Some(full_meta()),
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_row = slice.rows().expect("rows").get(0);
@@ -614,7 +619,7 @@ mod tests {
             meta: Some(full_meta()),
             ..row("c", 0, vec![])
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         assert_eq!(rows_from_wire(slice), rows);
@@ -631,7 +636,7 @@ mod tests {
             }),
             ..row("c", 0, vec![])
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_meta = slice.rows().expect("rows").get(0).meta().expect("meta");
@@ -656,7 +661,7 @@ mod tests {
                 vec![edge("elided-target", Some(1), EdgeKind::Direct)],
             )
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_row = slice.rows().expect("rows").get(0);
@@ -680,7 +685,7 @@ mod tests {
             ],
             ..row("c", 0, vec![])
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_lanes = slice.rows().expect("rows").get(0).active_lanes().expect("active_lanes");
@@ -706,7 +711,7 @@ mod tests {
             }),
             ..row("c", 0, vec![])
         }];
-        let buf = graph_slice_to_envelope(&rows);
+        let buf = graph_slice_to_envelope(&rows, None);
 
         let slice = verified_slice(&buf);
         let wire_ref = slice

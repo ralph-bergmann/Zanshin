@@ -60,6 +60,10 @@ pub struct WorkingCopy {
 /// [`crate::Repo::list_working_copies`].
 #[derive(Debug, thiserror::Error)]
 pub enum ViewError {
+    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// [`crate::PreconditionError`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// An underlying jj-lib failure (loader / view / store read), opaque-string-wrapped so no
     /// `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]

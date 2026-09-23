@@ -36,7 +36,8 @@ fn pin_env() {
 
 /// Snapshots the on-disk working copy into a new `@` commit.
 ///
-/// TEST SETUP ONLY — production code never snapshots (D2).
+/// TEST SETUP ONLY — an out-of-band snapshot through jj-lib (with its own test options), so a
+/// test can stage `@` independently of the pre-verb snapshot every `Repo` read runs (Story 9.26).
 fn snapshot_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
     let mut workspace = Workspace::load(
@@ -165,7 +166,7 @@ fn wc_and_parent_change_ids(workspace_root: &Path) -> (String, String) {
 fn status_on_clean_fixture_returns_no_files() {
     pin_env();
     let fixture = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fixture.path).unwrap();
+    let mut repo = Repo::open(&fixture.path).unwrap();
     let status = repo.status().unwrap();
     assert!(status.files.is_empty());
     assert!(!status.working_copy_change_id.0.is_empty());
@@ -183,7 +184,7 @@ fn status_on_added_file_returns_added() {
     fs::write(tmp.path().join("new_file.txt"), b"hello").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
 
     assert_eq!(status.files.len(), 1);
@@ -206,7 +207,7 @@ fn status_on_modified_file_returns_modified() {
     fs::write(tmp.path().join("file.txt"), b"modified").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
 
     assert_eq!(status.files.len(), 1);
@@ -229,7 +230,7 @@ fn status_on_removed_file_returns_removed() {
     fs::remove_file(tmp.path().join("file.txt")).unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
 
     assert_eq!(status.files.len(), 1);
@@ -252,7 +253,7 @@ fn status_on_renamed_file_on_git_backend_returns_renamed() {
     fs::rename(tmp.path().join("old_name.txt"), tmp.path().join("new_name.txt")).unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
 
     // One rename entry, NO separate Added+Removed pair (AC-11).
@@ -281,7 +282,7 @@ fn status_working_copy_change_id_reflects_current_wc_commit() {
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
 
     // Assert the reported ids EQUAL the actual @ / @- change ids (computed
@@ -301,7 +302,7 @@ fn status_on_workspace_without_wc_commit_returns_no_working_copy() {
     Repo::init(tmp.path(), None).unwrap();
     remove_working_copy(tmp.path()).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
     let result = repo.status();
 
     assert!(
@@ -316,7 +317,7 @@ fn status_on_corrupt_repo_returns_backend_error() {
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: status() re-resolves to head on every call (ADR-0002),
     // so removing op_heads makes head re-resolution fail -> StatusError::Backend.
@@ -326,7 +327,7 @@ fn status_on_corrupt_repo_returns_backend_error() {
     let result = repo.status();
 
     assert!(
-        matches!(result, Err(StatusError::Backend(_))),
-        "expected Backend error on corrupt repo, got: {result:?}"
+        matches!(result, Err(StatusError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): expected Backend error on corrupt repo, got: {result:?}"
     );
 }

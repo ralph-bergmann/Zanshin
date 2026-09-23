@@ -2058,8 +2058,8 @@ pub mod zanshin {
         /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
         ///
         /// `revision` ABSENT is the wire form of "the user did not supply it", which applies the
-        /// CLI's own `-r` default: `@` — here the LAST-SNAPSHOTTED working-copy commit, since
-        /// Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
+        /// CLI's own `-r` default: `@` — the working-copy commit the pre-verb snapshot has just brought
+        /// up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a revset: `-r` is
         /// `resolve_single_rev`, which refuses an ambiguous revision, so a divergent id is refused
         /// rather than guessed.
         /// `paths` are repo-relative paths interpreted as PREFIXES; empty/absent = all paths. The
@@ -3118,7 +3118,7 @@ pub mod zanshin {
         /// InterdiffRequest's `jj.change_not_found`. Both commits stay addressable because their commit
         /// hexes are ordinary revset symbols: union them to get one entry per commit.
         /// ABSENT is the wire form of "the user did not supply it", which applies the CLI's own default
-        /// `@` — here the LAST-SNAPSHOTTED working-copy commit, since Zanshin never snapshots (D2). An
+        /// `@` — the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26). An
         /// explicitly present EMPTY string is a VALUE, not an absence, and is a revset parse error.
         /// There is deliberately no `paths` field: `jj show` hardcodes `EverythingMatcher`.
         /// `limit` is a ZANSHIN-SIDE addition the CLI has no counterpart for — `jj show` has no
@@ -4167,8 +4167,8 @@ pub mod zanshin {
         /// `required = true`), and so is an empty-STRING name — the one refusal `parse_symbol` makes
         /// that no spelling can get around.
         /// `revision` ABSENT is the wire form of "the user did not supply `-r`", which applies the
-        /// CLI's own clap `default_value`, the literal `@` — here the LAST-SNAPSHOTTED working-copy
-        /// commit, since Zanshin never snapshots (D2). It is a jj reverse-hex CHANGE ID, not a
+        /// CLI's own clap `default_value`, the literal `@` — the working-copy commit the pre-verb
+        /// snapshot has just brought up to date (Story 9.26). It is a jj reverse-hex CHANGE ID, not a
         /// revset: `-r` is `resolve_single_rev`, so a divergent id is refused rather than guessed,
         /// exactly as in FileListRequest. An explicitly present EMPTY string is a VALUE, not an
         /// absence, and refuses with `jj.change_not_found`.
@@ -8898,6 +8898,7 @@ pub mod zanshin {
             pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 10;
             pub const VT_IDENTITY_MISSING: ::flatbuffers::VOffsetT = 12;
+            pub const VT_FINISH: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -8909,6 +8910,9 @@ pub mod zanshin {
                 args: &'args MutationResultArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<MutationResult<'bldr>> {
                 let mut builder = MutationResultBuilder::new(_fbb);
+                if let Some(x) = args.finish {
+                    builder.add_finish(x);
+                }
                 if let Some(x) = args.identity_missing {
                     builder.add_identity_missing(x);
                 }
@@ -8987,6 +8991,19 @@ pub mod zanshin {
                     )
                 }
             }
+            /// What the CLI's `finish_transaction` reported while committing this call's operation
+            /// (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
+            /// nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
+            #[inline]
+            pub fn finish(&self) -> Option<FinishFacts<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FinishFacts>>(MutationResult::VT_FINISH, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for MutationResult<'_> {
@@ -9001,6 +9018,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("working_copy_change_id", Self::VT_WORKING_COPY_CHANGE_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<IdentityMissing>>("identity_missing", Self::VT_IDENTITY_MISSING, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
      .finish();
                 Ok(())
             }
@@ -9013,6 +9031,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub identity_missing: Option<::flatbuffers::WIPOffset<IdentityMissing<'a>>>,
+            pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
         }
         impl<'a> Default for MutationResultArgs<'a> {
             #[inline]
@@ -9023,6 +9042,7 @@ pub mod zanshin {
                     abandoned_change_ids: None,
                     working_copy_change_id: None,
                     identity_missing: None,
+                    finish: None,
                 }
             }
         }
@@ -9074,6 +9094,11 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_finish(&mut self, finish: ::flatbuffers::WIPOffset<FinishFacts<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FinishFacts>>(MutationResult::VT_FINISH, finish);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MutationResultBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 MutationResultBuilder {
@@ -9096,6 +9121,223 @@ pub mod zanshin {
                 ds.field("abandoned_change_ids", &self.abandoned_change_ids());
                 ds.field("working_copy_change_id", &self.working_copy_change_id());
                 ds.field("identity_missing", &self.identity_missing());
+                ds.field("finish", &self.finish());
+                ds.finish()
+            }
+        }
+        pub enum FinishFactsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The colocated Git bookkeeping the CLI runs while it finishes a transaction
+        /// (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
+        /// `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
+        /// empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
+        /// `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
+        /// lists are the refs the colocated export could not write.
+        pub struct FinishFacts<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FinishFacts<'a> {
+            type Inner = FinishFacts<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FinishFacts<'a> {
+            pub const VT_WORKING_COPY_BECAME_IMMUTABLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_GIT_HEAD_UPDATE_FAILED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_EXPORT_FAILED_BOOKMARKS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_EXPORT_FAILED_TAGS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FinishFacts { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FinishFactsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FinishFacts<'bldr>> {
+                let mut builder = FinishFactsBuilder::new(_fbb);
+                if let Some(x) = args.export_failed_tags {
+                    builder.add_export_failed_tags(x);
+                }
+                if let Some(x) = args.export_failed_bookmarks {
+                    builder.add_export_failed_bookmarks(x);
+                }
+                builder.add_git_head_update_failed(args.git_head_update_failed);
+                builder.add_working_copy_became_immutable(args.working_copy_became_immutable);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn working_copy_became_immutable(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FinishFacts::VT_WORKING_COPY_BECAME_IMMUTABLE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn git_head_update_failed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FinishFacts::VT_GIT_HEAD_UPDATE_FAILED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn export_failed_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(FinishFacts::VT_EXPORT_FAILED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn export_failed_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>(FinishFacts::VT_EXPORT_FAILED_TAGS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FinishFacts<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>(
+                        "working_copy_became_immutable",
+                        Self::VT_WORKING_COPY_BECAME_IMMUTABLE,
+                        false,
+                    )?
+                    .visit_field::<bool>("git_head_update_failed", Self::VT_GIT_HEAD_UPDATE_FAILED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>("export_failed_bookmarks", Self::VT_EXPORT_FAILED_BOOKMARKS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
+                    >>("export_failed_tags", Self::VT_EXPORT_FAILED_TAGS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FinishFactsArgs<'a> {
+            pub working_copy_became_immutable: bool,
+            pub git_head_update_failed: bool,
+            pub export_failed_bookmarks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+            pub export_failed_tags: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for FinishFactsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FinishFactsArgs {
+                    working_copy_became_immutable: false,
+                    git_head_update_failed: false,
+                    export_failed_bookmarks: None,
+                    export_failed_tags: None,
+                }
+            }
+        }
+
+        pub struct FinishFactsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FinishFactsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_working_copy_became_immutable(&mut self, working_copy_became_immutable: bool) {
+                self.fbb_.push_slot::<bool>(
+                    FinishFacts::VT_WORKING_COPY_BECAME_IMMUTABLE,
+                    working_copy_became_immutable,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_git_head_update_failed(&mut self, git_head_update_failed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FinishFacts::VT_GIT_HEAD_UPDATE_FAILED, git_head_update_failed, false);
+            }
+            #[inline]
+            pub fn add_export_failed_bookmarks(
+                &mut self,
+                export_failed_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    FinishFacts::VT_EXPORT_FAILED_BOOKMARKS,
+                    export_failed_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_export_failed_tags(
+                &mut self,
+                export_failed_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitExportFailure<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    FinishFacts::VT_EXPORT_FAILED_TAGS,
+                    export_failed_tags,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FinishFactsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FinishFactsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FinishFacts<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FinishFacts<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FinishFacts");
+                ds.field("working_copy_became_immutable", &self.working_copy_became_immutable());
+                ds.field("git_head_update_failed", &self.git_head_update_failed());
+                ds.field("export_failed_bookmarks", &self.export_failed_bookmarks());
+                ds.field("export_failed_tags", &self.export_failed_tags());
                 ds.finish()
             }
         }
@@ -13190,7 +13432,7 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// What a working-copy snapshot could NOT record (Story 9.22) — the facts the CLI's snapshot
-        /// warnings print. ONE definition shared by TrackResult, UntrackResult and Story 9.26.
+        /// warnings print. ONE definition shared by TrackResult, UntrackResult and Precondition (Story 9.26).
         /// `invalid_utf8_paths` are files skipped because their NAME is not valid UTF-8, rendered as
         /// `"<dir>/<name>"` (the bare name at the root) with the name lossily decoded.
         pub struct SnapshotStats<'a> {
@@ -13760,6 +14002,371 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum PreconditionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
+        /// every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
+        /// `Envelope.precondition`, never the `Payload` union.
+        ///
+        /// `was_snapshot_taken`: the head operation changed during the precondition (`jj util
+        /// snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
+        /// `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
+        /// "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
+        /// `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
+        /// on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
+        /// PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
+        /// `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
+        /// resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
+        /// The three rebased counts saturate at 4294967295.
+        ///
+        /// On an error envelope it is PARTIAL: every fact up to the failing step.
+        pub struct Precondition<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Precondition<'a> {
+            type Inner = Precondition<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Precondition<'a> {
+            pub const VT_WAS_SNAPSHOT_TAKEN: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SNAPSHOT_STATS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_GIT_HEAD_IMPORTED: ::flatbuffers::VOffsetT = 8;
+            pub const VT_GIT_HEAD_RESET: ::flatbuffers::VOffsetT = 10;
+            pub const VT_GIT_HEAD_REBASED: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SNAPSHOT_REBASED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_GIT_REFS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_GIT_REFS_REBASED: ::flatbuffers::VOffsetT = 20;
+            pub const VT_JJCONFLICT_FILES_PRESENT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_FINISH: ::flatbuffers::VOffsetT = 24;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Precondition { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PreconditionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Precondition<'bldr>> {
+                let mut builder = PreconditionBuilder::new(_fbb);
+                if let Some(x) = args.finish {
+                    builder.add_finish(x);
+                }
+                builder.add_git_refs_rebased(args.git_refs_rebased);
+                if let Some(x) = args.git_refs {
+                    builder.add_git_refs(x);
+                }
+                builder.add_snapshot_rebased(args.snapshot_rebased);
+                builder.add_git_head_rebased(args.git_head_rebased);
+                if let Some(x) = args.snapshot_stats {
+                    builder.add_snapshot_stats(x);
+                }
+                builder.add_jjconflict_files_present(args.jjconflict_files_present);
+                builder.add_working_copy_immutable_new_commit(args.working_copy_immutable_new_commit);
+                builder.add_git_head_reset(args.git_head_reset);
+                builder.add_git_head_imported(args.git_head_imported);
+                builder.add_was_snapshot_taken(args.was_snapshot_taken);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn was_snapshot_taken(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(Precondition::VT_WAS_SNAPSHOT_TAKEN, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn snapshot_stats(&self) -> Option<SnapshotStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(Precondition::VT_SNAPSHOT_STATS, None)
+                }
+            }
+            #[inline]
+            pub fn git_head_imported(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(Precondition::VT_GIT_HEAD_IMPORTED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn git_head_reset(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(Precondition::VT_GIT_HEAD_RESET, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn git_head_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Precondition::VT_GIT_HEAD_REBASED, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn snapshot_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Precondition::VT_SNAPSHOT_REBASED, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn working_copy_immutable_new_commit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(Precondition::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn git_refs(&self) -> Option<GitImportResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<GitImportResult>>(Precondition::VT_GIT_REFS, None)
+                }
+            }
+            #[inline]
+            pub fn git_refs_rebased(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Precondition::VT_GIT_REFS_REBASED, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn jjconflict_files_present(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(Precondition::VT_JJCONFLICT_FILES_PRESENT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn finish(&self) -> Option<FinishFacts<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FinishFacts>>(Precondition::VT_FINISH, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Precondition<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("was_snapshot_taken", Self::VT_WAS_SNAPSHOT_TAKEN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(
+                        "snapshot_stats",
+                        Self::VT_SNAPSHOT_STATS,
+                        false,
+                    )?
+                    .visit_field::<bool>("git_head_imported", Self::VT_GIT_HEAD_IMPORTED, false)?
+                    .visit_field::<bool>("git_head_reset", Self::VT_GIT_HEAD_RESET, false)?
+                    .visit_field::<u32>("git_head_rebased", Self::VT_GIT_HEAD_REBASED, false)?
+                    .visit_field::<u32>("snapshot_rebased", Self::VT_SNAPSHOT_REBASED, false)?
+                    .visit_field::<bool>(
+                        "working_copy_immutable_new_commit",
+                        Self::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<GitImportResult>>(
+                        "git_refs",
+                        Self::VT_GIT_REFS,
+                        false,
+                    )?
+                    .visit_field::<u32>("git_refs_rebased", Self::VT_GIT_REFS_REBASED, false)?
+                    .visit_field::<bool>("jjconflict_files_present", Self::VT_JJCONFLICT_FILES_PRESENT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PreconditionArgs<'a> {
+            pub was_snapshot_taken: bool,
+            pub snapshot_stats: Option<::flatbuffers::WIPOffset<SnapshotStats<'a>>>,
+            pub git_head_imported: bool,
+            pub git_head_reset: bool,
+            pub git_head_rebased: u32,
+            pub snapshot_rebased: u32,
+            pub working_copy_immutable_new_commit: bool,
+            pub git_refs: Option<::flatbuffers::WIPOffset<GitImportResult<'a>>>,
+            pub git_refs_rebased: u32,
+            pub jjconflict_files_present: bool,
+            pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
+        }
+        impl<'a> Default for PreconditionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PreconditionArgs {
+                    was_snapshot_taken: false,
+                    snapshot_stats: None,
+                    git_head_imported: false,
+                    git_head_reset: false,
+                    git_head_rebased: 0,
+                    snapshot_rebased: 0,
+                    working_copy_immutable_new_commit: false,
+                    git_refs: None,
+                    git_refs_rebased: 0,
+                    jjconflict_files_present: false,
+                    finish: None,
+                }
+            }
+        }
+
+        pub struct PreconditionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PreconditionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_was_snapshot_taken(&mut self, was_snapshot_taken: bool) {
+                self.fbb_
+                    .push_slot::<bool>(Precondition::VT_WAS_SNAPSHOT_TAKEN, was_snapshot_taken, false);
+            }
+            #[inline]
+            pub fn add_snapshot_stats(&mut self, snapshot_stats: ::flatbuffers::WIPOffset<SnapshotStats<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<SnapshotStats>>(
+                    Precondition::VT_SNAPSHOT_STATS,
+                    snapshot_stats,
+                );
+            }
+            #[inline]
+            pub fn add_git_head_imported(&mut self, git_head_imported: bool) {
+                self.fbb_
+                    .push_slot::<bool>(Precondition::VT_GIT_HEAD_IMPORTED, git_head_imported, false);
+            }
+            #[inline]
+            pub fn add_git_head_reset(&mut self, git_head_reset: bool) {
+                self.fbb_
+                    .push_slot::<bool>(Precondition::VT_GIT_HEAD_RESET, git_head_reset, false);
+            }
+            #[inline]
+            pub fn add_git_head_rebased(&mut self, git_head_rebased: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Precondition::VT_GIT_HEAD_REBASED, git_head_rebased, 0);
+            }
+            #[inline]
+            pub fn add_snapshot_rebased(&mut self, snapshot_rebased: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Precondition::VT_SNAPSHOT_REBASED, snapshot_rebased, 0);
+            }
+            #[inline]
+            pub fn add_working_copy_immutable_new_commit(&mut self, working_copy_immutable_new_commit: bool) {
+                self.fbb_.push_slot::<bool>(
+                    Precondition::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT,
+                    working_copy_immutable_new_commit,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_git_refs(&mut self, git_refs: ::flatbuffers::WIPOffset<GitImportResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<GitImportResult>>(Precondition::VT_GIT_REFS, git_refs);
+            }
+            #[inline]
+            pub fn add_git_refs_rebased(&mut self, git_refs_rebased: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Precondition::VT_GIT_REFS_REBASED, git_refs_rebased, 0);
+            }
+            #[inline]
+            pub fn add_jjconflict_files_present(&mut self, jjconflict_files_present: bool) {
+                self.fbb_.push_slot::<bool>(
+                    Precondition::VT_JJCONFLICT_FILES_PRESENT,
+                    jjconflict_files_present,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_finish(&mut self, finish: ::flatbuffers::WIPOffset<FinishFacts<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FinishFacts>>(Precondition::VT_FINISH, finish);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PreconditionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PreconditionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Precondition<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Precondition<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Precondition");
+                ds.field("was_snapshot_taken", &self.was_snapshot_taken());
+                ds.field("snapshot_stats", &self.snapshot_stats());
+                ds.field("git_head_imported", &self.git_head_imported());
+                ds.field("git_head_reset", &self.git_head_reset());
+                ds.field("git_head_rebased", &self.git_head_rebased());
+                ds.field("snapshot_rebased", &self.snapshot_rebased());
+                ds.field(
+                    "working_copy_immutable_new_commit",
+                    &self.working_copy_immutable_new_commit(),
+                );
+                ds.field("git_refs", &self.git_refs());
+                ds.field("git_refs_rebased", &self.git_refs_rebased());
+                ds.field("jjconflict_files_present", &self.jjconflict_files_present());
+                ds.field("finish", &self.finish());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -13774,6 +14381,13 @@ pub mod zanshin {
         /// NativeFinalizer-backed token path (zanshin_buffer_free_token) used by the
         /// FfiBuffer wrapper as a belt-and-suspenders backstop
         /// (see app/lib/src/ffi/ffi_buffer.dart).
+        ///
+        /// `precondition` (Story 9.26) is PRESENT whenever the verb's pre-verb snapshot RAN — on the ok
+        /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
+        /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
+        /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
+        /// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events).
+        /// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
         pub struct Envelope<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -13793,6 +14407,7 @@ pub mod zanshin {
             pub const VT_ERROR: ::flatbuffers::VOffsetT = 6;
             pub const VT_DATA_TYPE: ::flatbuffers::VOffsetT = 8;
             pub const VT_DATA: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PRECONDITION: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -13804,6 +14419,9 @@ pub mod zanshin {
                 args: &'args EnvelopeArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Envelope<'bldr>> {
                 let mut builder = EnvelopeBuilder::new(_fbb);
+                if let Some(x) = args.precondition {
+                    builder.add_precondition(x);
+                }
                 if let Some(x) = args.data {
                     builder.add_data(x);
                 }
@@ -13851,6 +14469,16 @@ pub mod zanshin {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(Envelope::VT_DATA, None)
+                }
+            }
+            #[inline]
+            pub fn precondition(&self) -> Option<Precondition<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Precondition>>(Envelope::VT_PRECONDITION, None)
                 }
             }
             #[inline]
@@ -14402,6 +15030,11 @@ pub mod zanshin {
                             _ => Ok(()),
                         },
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<Precondition>>(
+                        "precondition",
+                        Self::VT_PRECONDITION,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -14411,6 +15044,7 @@ pub mod zanshin {
             pub error: Option<::flatbuffers::WIPOffset<FfiError<'a>>>,
             pub data_type: Payload,
             pub data: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
+            pub precondition: Option<::flatbuffers::WIPOffset<Precondition<'a>>>,
         }
         impl<'a> Default for EnvelopeArgs<'a> {
             #[inline]
@@ -14420,6 +15054,7 @@ pub mod zanshin {
                     error: None,
                     data_type: Payload::NONE,
                     data: None,
+                    precondition: None,
                 }
             }
         }
@@ -14447,6 +15082,13 @@ pub mod zanshin {
             pub fn add_data(&mut self, data: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Envelope::VT_DATA, data);
+            }
+            #[inline]
+            pub fn add_precondition(&mut self, precondition: ::flatbuffers::WIPOffset<Precondition<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<Precondition>>(
+                    Envelope::VT_PRECONDITION,
+                    precondition,
+                );
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EnvelopeBuilder<'a, 'b, A> {
@@ -14664,6 +15306,7 @@ pub mod zanshin {
                         ds.field("data", &x)
                     }
                 };
+                ds.field("precondition", &self.precondition());
                 ds.finish()
             }
         }

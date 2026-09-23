@@ -257,7 +257,7 @@ fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
 }
 
 /// Both workspace READ verbs report `expected` for the single `default` workspace of `repo`.
-fn assert_own_root_resolves(repo: &Repo, expected: &std::path::Path) {
+fn assert_own_root_resolves(repo: &mut Repo, expected: &std::path::Path) {
     let entries = repo.list_workspaces().expect("list_workspaces");
     assert_eq!(
         entries.len(),
@@ -313,9 +313,9 @@ fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
     );
 
     let src_url = format!("file://{}", src_tmp.path().display());
-    let cloned = Repo::clone(&src_url, target_tmp.path()).expect("clone from local file://");
+    let mut cloned = Repo::clone(&src_url, target_tmp.path()).expect("clone from local file://");
 
-    assert_own_root_resolves(&cloned, target_tmp.path());
+    assert_own_root_resolves(&mut cloned, target_tmp.path());
 }
 
 // ── AC-20: 100× open/drop loop — no fd leak ──────────────────────────────────

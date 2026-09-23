@@ -13,31 +13,35 @@
 //! the CLI, which prints "Nothing changed." and commits nothing; the transaction is simply
 //! dropped and [`MutationResult::new_op_id`] carries the PRE-CALL head op id.
 //!
-//! Neither verb snapshots the working copy (D2 — `status.rs:84`, `revset.rs:61-62`): both
-//! read the last-snapshotted `@`, where the CLI's `workspace_helper` would have snapshotted
-//! on-disk edits first. The locked-working-copy lifecycle — [`lock_working_copy`] and
-//! [`commit_with_locked_wc`] (Story 9.22) — is the shared primitive `file track`/`file untrack`
-//! use today and Story 9.26's per-verb snapshot will drive in front of the other verbs.
+//! Every verb runs after [`crate::Repo`]'s pre-verb snapshot (Story 9.26), so `@` already holds
+//! the on-disk edits, exactly as after the CLI's `workspace_helper`. Every verb whose CLI
+//! counterpart ends in `tx.finish` commits through [`finish_transaction`], the port of the CLI's
+//! `finish_transaction`: the became-immutable new `@`, the colocated Git HEAD reset and ref
+//! export under the Git import/export lock, the commit, and the working-copy checkout. The
+//! locked-working-copy lifecycle — [`lock_working_copy`] and [`commit_with_locked_wc`] (Story
+//! 9.22) — is the raw-transaction shape `file track`/`file untrack` use instead.
 
 use std::sync::Arc;
 
 use jj_lib::absorb::{absorb_hunks, split_hunks_to_trees, AbsorbSource};
 use jj_lib::commit::{conflict_label_for_commits, Commit};
+use jj_lib::git;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
-use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
-use jj_lib::revset::{ResolvedRevsetExpression, UserRevsetExpression};
+use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
 use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
 use jj_lib::working_copy::LockedWorkingCopy;
 use jj_lib::workspace::{LockedWorkspace, Workspace};
 
+use crate::git::{map_export_err, project_failures};
 use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
+use crate::snapshot::{lock_git_import_export, FinishFacts, GitImportExportLock, VerbContext};
 use crate::ChangeId;
 
 /// Outcome of a successful mutation (FR-JJ-10a).
@@ -93,6 +97,12 @@ pub struct MutationResult {
     /// empty identity is never refused and never replaced by a placeholder — commits are
     /// created with it, exactly as the CLI creates them.
     pub identity_missing: Option<IdentityMissing>,
+    /// What the CLI's `finish_transaction` reported while committing this call's operation
+    /// (Story 9.26): a `@` that became immutable, a Git HEAD that could not be reset, refs the
+    /// colocated export could not write. `None` when every fact is at its default — always for
+    /// a result that wrote no operation, and for [`crate::Repo::file_track`] /
+    /// [`crate::Repo::file_untrack`], which never reach `finish_transaction`.
+    pub finish: Option<FinishFacts>,
 }
 
 /// The identity fields a committed operation found empty — see
@@ -292,11 +302,9 @@ pub enum MutateError {
     #[error("nothing checked out in this workspace")]
     NoWorkingCopy,
     /// The working copy's recorded tree differs from `@`'s tree in the head view (Story 9.22):
-    /// either `@` was rewritten without a checkout, or — until Story 9.26's per-verb snapshot —
-    /// the working-copy state is AHEAD of `@` because an earlier [`crate::Repo::file_track`]
-    /// recorded paths the next snapshot has not yet moved into `@`. The CLI's check behind
-    /// "Concurrent working copy operation. Try again." (`cli_util.rs:1501-1505`). Nothing is
-    /// written.
+    /// `@` was rewritten without a checkout between the pre-verb snapshot and the verb's own
+    /// working-copy lock — a concurrent writer. The CLI's check behind "Concurrent working copy
+    /// operation. Try again." (`cli_util.rs:1501-1505`). Nothing is written.
     #[error("concurrent working copy operation")]
     ConcurrentWorkingCopy,
     /// [`crate::Repo::file_untrack`] matched paths that are NOT ignored, so the next snapshot
@@ -311,6 +319,10 @@ pub enum MutateError {
         /// Repo-relative paths (jj's internal `/`-separated form) that would be re-added.
         paths: Vec<String>,
     },
+    /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
+    /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
+    #[error(transparent)]
+    Precondition(#[from] crate::PreconditionError),
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes
     /// the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -401,6 +413,7 @@ pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
         crate::RevsetError::ResolutionError { reason } => MutateError::RevsetResolutionError { reason },
         crate::RevsetError::Config(inner) => cfg(inner),
         crate::RevsetError::JjLibError(reason) => MutateError::Backend(reason),
+        crate::RevsetError::Precondition(inner) => MutateError::Precondition(inner),
     }
 }
 
@@ -470,48 +483,227 @@ fn guard_rewritable(
     Ok(resolved)
 }
 
-/// Captures the working-copy commit's id and tree BEFORE a transaction starts, so the
-/// post-commit sync step can tell whether this mutation moved `@`, and so
-/// `workspace.check_out` gets the pre-mutation tree for jj-lib's own
-/// concurrent-modification guard.
-pub(crate) fn capture_old_wc(
-    readonly: &ReadonlyRepo,
-    workspace_name: &WorkspaceName,
-) -> Result<(Option<jj_lib::backend::CommitId>, Option<MergedTree>), MutateError> {
-    let old_wc_id = readonly.view().get_wc_commit_id(workspace_name).cloned();
-    let old_tree = match &old_wc_id {
-        Some(id) => Some(readonly.store().get_commit(id).map_err(be)?.tree()),
-        None => None,
-    };
-    Ok((old_wc_id, old_tree))
+// ── Finishing a transaction (Story 9.26) ─────────────────────────────────────────
+
+/// What [`finish_transaction`] needs besides the transaction: the immutable set (for the
+/// became-immutable check), whether the workspace is colocated, and the held Git
+/// import/export lock the colocated HEAD reset and ref export run under.
+pub(crate) struct FinishCtx<'a> {
+    /// `::(immutable_heads() | root())` as the effective config defines it.
+    pub(crate) immutable: &'a Arc<UserRevsetExpression>,
+    /// Whether the working copy is shared with a Git work tree.
+    pub(crate) colocated: bool,
+    /// Proof that the Git import/export lock is held for the whole finish — never read, like the
+    /// CLI's `_git_import_export_lock` parameter: requiring it is the point.
+    pub(crate) _lock: &'a GitImportExportLock,
 }
 
-/// Syncs the on-disk working copy to the just-committed transaction's `@`, but ONLY if
-/// this mutation actually moved it (AC-3: no `workspace.check_out` call otherwise).
-/// Returns the new `@` commit either way, so callers can read its change id.
-pub(crate) fn sync_working_copy(
-    workspace: &mut Workspace,
-    workspace_name: &WorkspaceName,
-    old_wc_id: Option<&jj_lib::backend::CommitId>,
-    old_tree: Option<&MergedTree>,
-    new_repo: &Arc<ReadonlyRepo>,
-) -> Result<Commit, MutateError> {
-    let new_wc_id = new_repo
-        .view()
-        .get_wc_commit_id(workspace_name)
-        .cloned()
-        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
-    let new_wc_commit = new_repo.store().get_commit(&new_wc_id).map_err(be)?;
-    if Some(&new_wc_id) != old_wc_id {
-        pollster::block_on(workspace.check_out(new_repo.op_id().clone(), old_tree, &new_wc_commit)).map_err(be)?;
+/// The outcome of [`finish_transaction`].
+pub(crate) struct Finish {
+    /// The just-committed repo.
+    pub(crate) repo: Arc<ReadonlyRepo>,
+    /// `@` after the finish — `None` only when the workspace is gone from the view.
+    pub(crate) wc_commit: Option<Commit>,
+    /// The warnings the CLI prints while finishing, as facts.
+    pub(crate) facts: FinishFacts,
+}
+
+/// Resets Git HEAD to `wc_commit`'s parent and the index to its tree — the CLI's
+/// `try_reset_git_head` (`cli/src/cli_util.rs:2673-2695` @ v0.44.0). A failure to MOVE the HEAD
+/// ref (a concurrent `git checkout`) is a warning there, so it is a fact here; the next snapshot
+/// imports whatever HEAD actually is.
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — any other reset failure.
+pub(crate) fn try_reset_git_head(
+    mut_repo: &mut MutableRepo,
+    wc_commit: &Commit,
+    facts: &mut FinishFacts,
+) -> Result<(), MutateError> {
+    match pollster::block_on(git::reset_head(mut_repo, wc_commit)) {
+        Ok(()) => Ok(()),
+        Err(git::GitResetHeadError::UpdateHeadRef(_)) => {
+            facts.git_head_update_failed = true;
+            Ok(())
+        }
+        Err(e) => Err(MutateError::Backend(flatten_chain(&e))),
     }
-    Ok(new_wc_commit)
+}
+
+/// Exports jj's refs to Git and records the refs that could not be written — the CLI's
+/// `export_refs` + `print_git_export_stats` pair inside `finish_transaction`.
+///
+/// # Errors
+///
+/// - [`MutateError::NotAGitRepo`] / [`MutateError::Backend`] — see
+///   [`crate::git::map_export_err`].
+pub(crate) fn export_refs_into(mut_repo: &mut MutableRepo, facts: &mut FinishFacts) -> Result<(), MutateError> {
+    let stats = git::export_refs(mut_repo).map_err(map_export_err)?;
+    facts
+        .export_failed_bookmarks
+        .extend(project_failures(&stats.failed_bookmarks));
+    facts.export_failed_tags.extend(project_failures(&stats.failed_tags));
+    Ok(())
+}
+
+/// Whether `wc_commit` is inside the immutable set as `tx.repo()` sees it. An immutable set that
+/// does not RESOLVE counts as "not immutable": the CLI skips the step on that failure
+/// (`if let Ok(immutable_expr) = …`, `cli_util.rs:2324-2329`).
+fn wc_is_immutable(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    wc_commit: &Commit,
+) -> Result<bool, MutateError> {
+    let Ok(resolved) = resolve_immutable(tx.repo(), immutable) else {
+        return Ok(false);
+    };
+    let set = resolved
+        .intersection(&RevsetExpression::commit(wc_commit.id().clone()))
+        .evaluate(tx.repo())
+        .map_err(be)?;
+    Ok(!set.is_empty().map_err(be)?)
+}
+
+/// Port of the CLI's `finish_transaction` (`cli/src/cli_util.rs:2300-2417` @ v0.44.0) minus its
+/// terminal output.
+///
+/// 1. If the transaction leaves `@` inside the immutable set, a new, empty `@` is created on top
+///    of it ("The working-copy commit became immutable…").
+/// 2. Colocated: Git HEAD is reset to `@`'s parent ([`try_reset_git_head`]) and jj's refs are
+///    exported ([`export_refs_into`]), under `ctx.lock`.
+/// 3. The transaction is committed as `description`. There is no `has_changes()` check here —
+///    the CLI has none either; its callers skip the call when nothing changed.
+/// 4. `@` is checked out ALWAYS when it exists, even if it did not move: the CLI's
+///    `update_working_copy` calls `Workspace::check_out` unconditionally, which (re)records the
+///    working copy at the new operation.
+///
+/// The old `@` whose tree `check_out` verifies the working copy against is read from
+/// `tx.base_repo()`, as in the CLI.
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — a store read, the Git reset, the commit or the checkout failed
+///   ("Failed to check out commit …").
+/// - [`MutateError::NotAGitRepo`] — the colocated export found no Git backend.
+pub(crate) fn finish_transaction(
+    workspace: &mut Workspace,
+    mut tx: Transaction,
+    description: &str,
+    ctx: &FinishCtx<'_>,
+) -> Result<Finish, MutateError> {
+    let workspace_name = workspace.workspace_name().to_owned();
+    let get_wc_commit = |repo: &dyn jj_lib::repo::Repo| -> Result<Option<Commit>, MutateError> {
+        repo.view()
+            .get_wc_commit_id(&workspace_name)
+            .map(|id| repo.store().get_commit(id))
+            .transpose()
+            .map_err(be)
+    };
+    let maybe_old_wc_commit = get_wc_commit(tx.base_repo().as_ref())?;
+    let maybe_new_wc_commit = get_wc_commit(tx.repo())?;
+
+    let mut facts = FinishFacts::default();
+    let maybe_new_wc_commit = match maybe_new_wc_commit {
+        Some(wc_commit) if wc_is_immutable(&tx, ctx.immutable, &wc_commit)? => {
+            let new_wc_commit = pollster::block_on(
+                tx.repo_mut()
+                    .new_commit(vec![wc_commit.id().clone()], wc_commit.tree())
+                    .write(),
+            )
+            .map_err(be)?;
+            tx.repo_mut()
+                .set_wc_commit(workspace_name.clone(), new_wc_commit.id().clone())
+                .map_err(be)?;
+            facts.working_copy_became_immutable = true;
+            Some(new_wc_commit)
+        }
+        other => other,
+    };
+
+    if ctx.colocated {
+        if let Some(wc_commit) = &maybe_new_wc_commit {
+            try_reset_git_head(tx.repo_mut(), wc_commit, &mut facts)?;
+        }
+        export_refs_into(tx.repo_mut(), &mut facts)?;
+    }
+
+    let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
+
+    if let Some(new_wc_commit) = &maybe_new_wc_commit {
+        let old_tree = maybe_old_wc_commit.as_ref().map(Commit::tree);
+        pollster::block_on(workspace.check_out(new_repo.op_id().clone(), old_tree.as_ref(), new_wc_commit)).map_err(
+            |e| {
+                MutateError::Backend(format!(
+                    "Failed to check out commit {}: {}",
+                    new_wc_commit.id().hex(),
+                    flatten_chain(&e)
+                ))
+            },
+        )?;
+    }
+    Ok(Finish {
+        repo: new_repo,
+        wc_commit: maybe_new_wc_commit,
+        facts,
+    })
+}
+
+/// Takes the Git import/export lock and finishes `tx` — `WorkspaceCommandTransaction::finish`'s
+/// tail (`cli/src/cli_util.rs:2800-2805` @ v0.44.0), which takes the lock right before
+/// `finish_transaction` so the Git HEAD export is atomic with the commit.
+///
+/// # Errors
+///
+/// Anything [`lock_git_import_export`] or [`finish_transaction`] returns.
+pub(crate) fn finish_verb(
+    workspace: &mut Workspace,
+    tx: Transaction,
+    description: &str,
+    ctx: &VerbContext,
+) -> Result<Finish, MutateError> {
+    let lock = lock_git_import_export(workspace, ctx.colocated)?;
+    finish_transaction(
+        workspace,
+        tx,
+        description,
+        &FinishCtx {
+            immutable: &ctx.immutable,
+            colocated: ctx.colocated,
+            _lock: &lock,
+        },
+    )
+}
+
+/// The shared mutation contract out of a [`Finish`]: the committed op id, `@`'s change id, the
+/// identity check and the finish facts.
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — the workspace has no working-copy commit after the finish.
+pub(crate) fn mutation_result(
+    finish: &Finish,
+    new_change_ids: Vec<ChangeId>,
+    abandoned_change_ids: Vec<ChangeId>,
+) -> Result<MutationResult, MutateError> {
+    let wc_commit = finish
+        .wc_commit
+        .as_ref()
+        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
+    Ok(MutationResult {
+        new_op_id: crate::OperationId(finish.repo.op_id().hex()),
+        new_change_ids,
+        abandoned_change_ids,
+        working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
+        identity_missing: identity_missing(finish.repo.settings()),
+        finish: finish.facts.clone().into_option(),
+    })
 }
 
 /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
 ///
-/// `immutable` is the repo's effective immutable-set expression
-/// ([`crate::op_support::immutable_user_expression`]); the target is refused if it falls
+/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
+/// snapshot ([`crate::snapshot::Knobs`]); the target is refused if it falls
 /// inside it, mirroring the CLI's `check_rewritable` in `jj describe`
 /// (`cli/src/commands/describe.rs:101` @ v0.44.0).
 ///
@@ -527,13 +719,12 @@ pub(crate) fn sync_working_copy(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn describe(
     workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
+    ctx: &VerbContext,
     change_id: &ChangeId,
     description: &str,
 ) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let commit = resolve_commit(tx.repo(), change_id)?;
@@ -547,7 +738,7 @@ pub(crate) fn describe(
             reason: "cannot describe the root commit".to_owned(),
         });
     }
-    guard_rewritable(&tx, immutable, std::slice::from_ref(commit.id()))?;
+    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(commit.id()))?;
     pollster::block_on(
         tx.repo_mut()
             .rewrite_commit(&commit)
@@ -556,23 +747,8 @@ pub(crate) fn describe(
     )
     .map_err(be)?;
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
-    let new_repo = pollster::block_on(tx.commit(format!("describe commit {}", commit.id().hex()))).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids: Vec::new(),
-        abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(new_repo.settings()),
-    })
+    let finish = finish_verb(workspace, tx, &format!("describe commit {}", commit.id().hex()), ctx)?;
+    mutation_result(&finish, Vec::new(), Vec::new())
 }
 
 /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit when
@@ -586,7 +762,11 @@ pub(crate) fn describe(
 ///   divergent.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Result<MutationResult, MutateError> {
+pub(crate) fn new_change(
+    workspace: &mut Workspace,
+    ctx: &VerbContext,
+    parents: &[ChangeId],
+) -> Result<MutationResult, MutateError> {
     if parents.is_empty() {
         return Err(MutateError::InvalidInput {
             reason: "new_change requires at least one parent".to_owned(),
@@ -595,7 +775,6 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let mut parent_commits = Vec::with_capacity(parents.len());
@@ -616,29 +795,14 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
     // rebase_descendants() in finish_transaction; do the same here.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     let new_change_id = ChangeId(new_commit.change_id().reverse_hex());
-    let new_repo = pollster::block_on(tx.commit("new empty commit")).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids: vec![new_change_id],
-        abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(new_repo.settings()),
-    })
+    let finish = finish_verb(workspace, tx, "new empty commit", ctx)?;
+    mutation_result(&finish, vec![new_change_id], Vec::new())
 }
 
 /// Switches the working copy to `change_id` without creating a new commit (FR-JJ-10a).
 ///
-/// `immutable` is the repo's effective immutable-set expression
-/// ([`crate::op_support::immutable_user_expression`]); the target is refused if it falls
+/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
+/// snapshot ([`crate::snapshot::Knobs`]); the target is refused if it falls
 /// inside it, mirroring the CLI's `check_rewritable` in `jj edit`
 /// (`cli/src/commands/edit.rs:63` @ v0.44.0).
 ///
@@ -656,44 +820,28 @@ pub(crate) fn new_change(workspace: &mut Workspace, parents: &[ChangeId]) -> Res
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn edit(
     workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
+    ctx: &VerbContext,
     change_id: &ChangeId,
 ) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let commit = resolve_commit(tx.repo(), change_id)?;
-    guard_rewritable(&tx, immutable, std::slice::from_ref(commit.id()))?;
+    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(commit.id()))?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
     // See new_change's comment: edit() may implicitly abandon a discardable previous
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
-    let new_repo = pollster::block_on(tx.commit(format!("edit commit {}", commit.id().hex()))).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids: Vec::new(),
-        abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(new_repo.settings()),
-    })
+    let finish = finish_verb(workspace, tx, &format!("edit commit {}", commit.id().hex()), ctx)?;
+    mutation_result(&finish, Vec::new(), Vec::new())
 }
 
 /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
 /// bookmarks that pointed only at the abandoned commits (FR-JJ-10a).
 ///
-/// `immutable` is the repo's effective immutable-set expression
-/// ([`crate::op_support::immutable_user_expression`]); a target inside it is refused,
+/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
+/// snapshot ([`crate::snapshot::Knobs`]); a target inside it is refused,
 /// mirroring the CLI's `check_rewritable` in `jj abandon`
 /// (`cli/src/commands/abandon.rs:85` @ v0.44.0).
 ///
@@ -709,7 +857,7 @@ pub(crate) fn edit(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn abandon(
     workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
+    ctx: &VerbContext,
     change_ids: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
     if change_ids.is_empty() {
@@ -720,7 +868,7 @@ pub(crate) fn abandon(
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
+    let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let mut commits = Vec::with_capacity(change_ids.len());
@@ -742,7 +890,7 @@ pub(crate) fn abandon(
     // NOT shadowing `immutable`: the parameter is the UNRESOLVED user expression, this is
     // the set resolved against `tx.base_repo()`, and the distinction is what the
     // `rebase_descendants_with_options` call ~30 lines below depends on.
-    let resolved_immutable = guard_rewritable(&tx, immutable, &target_ids)?;
+    let resolved_immutable = guard_rewritable(&tx, &ctx.immutable, &target_ids)?;
     // Whether `@` itself is among the abandoned commits determines whether jj-lib's
     // own update_wc_commits() mints a genuinely NEW change to replace it (vs. `@`
     // merely being rebased because it descends from an abandoned ancestor, which
@@ -782,53 +930,44 @@ pub(crate) fn abandon(
             commits.len() - 1
         )
     };
-    let new_repo = pollster::block_on(tx.commit(description)).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
-    let new_change_ids = if wc_was_abandoned {
-        vec![ChangeId(new_wc_commit.change_id().reverse_hex())]
-    } else {
-        Vec::new()
+    let finish = finish_verb(workspace, tx, &description, ctx)?;
+    let new_change_ids = match (&finish.wc_commit, wc_was_abandoned) {
+        (Some(new_wc_commit), true) => vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
+        _ => Vec::new(),
     };
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids,
-        abandoned_change_ids: change_ids.to_vec(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(new_repo.settings()),
-    })
+    mutation_result(&finish, new_change_ids, change_ids.to_vec())
 }
 
 /// Builds the result of a mutation that deliberately wrote NOTHING.
 ///
 /// `readonly` is the SAME head-resolved repo the (now dropped) transaction started from, so
-/// the op-log head is unchanged and `@` cannot have moved — `sync_working_copy` therefore
-/// never reaches `workspace.check_out` here and is reused only to read the current `@`.
+/// the op-log head is unchanged and `@` cannot have moved: nothing is checked out, `@` is only
+/// read. `finish` is `None` — the CLI's `finish_transaction` never ran.
 ///
-/// `pub(crate)` so [`crate::git`]'s shared `finish_or_no_op` skeleton — and
-/// `git_remote_set_url`, which never opens a transaction at all — build the same shape
-/// instead of a second, desyncable copy (Story 9.5).
+/// `pub(crate)` so [`crate::git`]'s verbs — and `git_remote_set_url`, which never opens a
+/// transaction at all — and the precondition's refs import build the same shape instead of a
+/// second, desyncable copy (Story 9.5).
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — the workspace has no working-copy commit, or it could not be
+///   read.
 pub(crate) fn no_op_result(
-    workspace: &mut Workspace,
     workspace_name: &WorkspaceName,
-    old_wc_id: Option<&jj_lib::backend::CommitId>,
-    old_tree: Option<&MergedTree>,
     readonly: &Arc<ReadonlyRepo>,
 ) -> Result<MutationResult, MutateError> {
-    let wc = sync_working_copy(workspace, workspace_name, old_wc_id, old_tree, readonly)?;
+    let wc_id = readonly
+        .view()
+        .get_wc_commit_id(workspace_name)
+        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
+    let wc = readonly.store().get_commit(wc_id).map_err(be)?;
     Ok(MutationResult {
         new_op_id: crate::OperationId(readonly.op_id().hex()),
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(wc.change_id().reverse_hex()),
         identity_missing: None,
+        finish: None,
     })
 }
 
@@ -888,13 +1027,14 @@ pub(crate) struct Finished<T> {
 pub(crate) fn finish_or_no_op<T, F>(
     workspace: &mut Workspace,
     description: &str,
+    ctx: &VerbContext,
     work: F,
 ) -> Result<Finished<T>, MutateError>
 where
     F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
 {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
-    finish_or_no_op_at(workspace, readonly, description, work)
+    finish_or_no_op_at(workspace, readonly, description, ctx, work)
 }
 
 /// Runs `work` in a transaction started from `readonly` and commits it as `description`,
@@ -921,25 +1061,18 @@ pub(crate) fn finish_or_no_op_at<T, F>(
     workspace: &mut Workspace,
     readonly: Arc<ReadonlyRepo>,
     description: &str,
+    ctx: &VerbContext,
     work: F,
 ) -> Result<Finished<T>, MutateError>
 where
     F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
 {
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
-
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let value = work(&mut tx)?;
     if !tx.repo().has_changes() {
         drop(tx);
-        let mutation = no_op_result(
-            workspace,
-            &workspace_name,
-            old_wc_id.as_ref(),
-            old_tree.as_ref(),
-            &readonly,
-        )?;
+        let mutation = no_op_result(&workspace_name, &readonly)?;
         return Ok(Finished {
             value,
             mutation,
@@ -948,25 +1081,12 @@ where
         });
     }
 
-    let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
+    let finish = finish_verb(workspace, tx, description, ctx)?;
+    let mutation = mutation_result(&finish, Vec::new(), Vec::new())?;
     Ok(Finished {
         value,
-        mutation: MutationResult {
-            new_op_id,
-            new_change_ids: Vec::new(),
-            abandoned_change_ids: Vec::new(),
-            working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-            identity_missing: identity_missing(new_repo.settings()),
-        },
-        repo: new_repo,
+        mutation,
+        repo: finish.repo,
         committed: true,
     })
 }
@@ -975,7 +1095,7 @@ where
 //
 // The working-copy lifecycle the CLI runs whenever a verb reads or rewrites the ON-DISK state
 // rather than only the view: lock → `snapshot`/`reset` → commit → `finish(op_id)`. Unlike
-// `sync_working_copy` (which goes through `Workspace::check_out` and rewrites FILES),
+// `finish_transaction` (which goes through `Workspace::check_out` and rewrites FILES),
 // `snapshot` and `reset` never touch a file: they update the recorded working-copy STATE, which
 // `finish` persists together with the operation id it now corresponds to.
 
@@ -1028,7 +1148,7 @@ pub(crate) fn lock_working_copy<'w>(
 ///
 /// No `check_out` follows: `work` has already left the working-copy state where it belongs
 /// (a snapshot records the files as they are; a `reset` points the state at the new `@`
-/// without touching a file). That is the difference to [`sync_working_copy`]. The returned
+/// without touching a file). That is the difference to [`finish_transaction`]. The returned
 /// [`MutationResult`] reads `@` from the committed view; its id vectors are empty.
 ///
 /// # Errors
@@ -1066,6 +1186,7 @@ where
             // `finish_transaction`, the only place the CLI prints "Name and email not
             // configured" (`cli/src/cli_util.rs:2387-2415` @ v0.44.0).
             identity_missing: None,
+            finish: None,
         },
     ))
 }
@@ -1090,8 +1211,8 @@ where
 /// replaced by `has_changes()`: `rewrite_commit(...).set_tree(same_tree).write()` already
 /// records a rewrite.
 ///
-/// There is NO interactive/hunk selection (epics.md:5536 scopes this to whole files); the
-/// working copy is never snapshotted, so `@` is the last-snapshotted one (D2).
+/// There is NO interactive/hunk selection (epics.md:5536 scopes this to whole files); `@` is
+/// the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26).
 ///
 /// # Errors
 ///
@@ -1112,7 +1233,7 @@ where
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn restore(
     workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
+    ctx: &VerbContext,
     from: Option<&ChangeId>,
     into: Option<&ChangeId>,
     changes_in: Option<&ChangeId>,
@@ -1130,7 +1251,6 @@ pub(crate) fn restore(
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let (to_commit, from_tree, from_commits) = if from.is_some() || into.is_some() {
@@ -1146,7 +1266,7 @@ pub(crate) fn restore(
     };
     // CLI parity (`restore.rs:138`): the rewritability guard runs BEFORE any matcher or
     // tree work, so an immutable destination costs no diffing and writes no blobs.
-    guard_rewritable(&tx, immutable, std::slice::from_ref(to_commit.id()))?;
+    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(to_commit.id()))?;
 
     let matcher = build_matcher(paths)?;
     let to_tree = to_commit.tree();
@@ -1161,13 +1281,7 @@ pub(crate) fn restore(
     )?;
     if selected.tree().tree_ids() == to_commit.tree_ids() {
         drop(tx);
-        return no_op_result(
-            workspace,
-            &workspace_name,
-            old_wc_id.as_ref(),
-            old_tree.as_ref(),
-            &readonly,
-        );
+        return no_op_result(&workspace_name, &readonly);
     }
 
     pollster::block_on(
@@ -1185,24 +1299,13 @@ pub(crate) fn restore(
     } else {
         pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     }
-    let new_repo =
-        pollster::block_on(tx.commit(format!("restore into commit {}", to_commit.id().hex()))).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
+    let finish = finish_verb(
         workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
+        tx,
+        &format!("restore into commit {}", to_commit.id().hex()),
+        ctx,
     )?;
-    Ok(MutationResult {
-        new_op_id,
-        new_change_ids: Vec::new(),
-        abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(new_repo.settings()),
-    })
+    mutation_result(&finish, Vec::new(), Vec::new())
 }
 
 /// Moves each hunk of the source commit into the closest commit in `destinations` where the
@@ -1212,8 +1315,8 @@ pub(crate) fn restore(
 /// `destinations` is a caller-supplied revset EXPRESSION, not an id list: the CLI's `--into`
 /// is a `Vec<RevisionArg>` unioned into a *set* whose default is the dynamic `mutable()`
 /// alias, and materializing it into ids would destroy that meaning (FR-JJ-17). `from`
-/// defaults to `@` — the last-snapshotted working-copy commit (D2), where the CLI would
-/// have snapshotted on-disk edits first.
+/// defaults to `@`, which the pre-verb snapshot has just brought up to date with the on-disk
+/// edits, exactly as the CLI's `workspace_helper` does (Story 9.26).
 ///
 /// Ordering mirrors `cli/src/commands/absorb.rs` @ v0.44.0: resolve → split → collect the
 /// skipped paths → `check_rewritable` on the split's TARGETS → absorb → descendant pass.
@@ -1245,14 +1348,13 @@ pub(crate) fn restore(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn absorb(
     workspace: &mut Workspace,
-    immutable: &Arc<UserRevsetExpression>,
+    ctx: &VerbContext,
     from: Option<&ChangeId>,
     destinations: &Arc<UserRevsetExpression>,
     paths: &[String],
 ) -> Result<AbsorbResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let (old_wc_id, old_tree) = capture_old_wc(&readonly, &workspace_name)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let source_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
@@ -1283,7 +1385,7 @@ pub(crate) fn absorb(
     // discovered by annotation — not over anything the caller named. An empty target set is
     // trivially rewritable and falls through to the no-op path below.
     let target_ids: Vec<jj_lib::backend::CommitId> = selected.target_commits.keys().cloned().collect();
-    guard_rewritable(&tx, immutable, &target_ids)?;
+    guard_rewritable(&tx, &ctx.immutable, &target_ids)?;
 
     let stats = pollster::block_on(absorb_hunks(tx.repo_mut(), &source, selected.target_commits)).map_err(be)?;
     // `absorb_hunks` transforms descendants but leaves `parent_mapping` populated, so this
@@ -1299,13 +1401,7 @@ pub(crate) fn absorb(
         // `skipped_paths` IS carried through: those are facts about the source's own trees,
         // independent of whether anything was written.
         return Ok(AbsorbResult {
-            mutation: no_op_result(
-                workspace,
-                &workspace_name,
-                old_wc_id.as_ref(),
-                old_tree.as_ref(),
-                &readonly,
-            )?,
+            mutation: no_op_result(&workspace_name, &readonly)?,
             rewritten_change_ids: Vec::new(),
             source_change_id: None,
             num_rebased: 0,
@@ -1325,24 +1421,9 @@ pub(crate) fn absorb(
     // Saturating, not wrapping or fallible — see `AbsorbResult::num_rebased`'s doc.
     let num_rebased = u32::try_from(stats.num_rebased).unwrap_or(u32::MAX);
     let description = format!("absorb changes into {} commits", stats.rewritten_destinations.len());
-    let new_repo = pollster::block_on(tx.commit(description)).map_err(be)?;
-    let new_op_id = crate::OperationId(new_repo.op_id().hex());
-
-    let new_wc_commit = sync_working_copy(
-        workspace,
-        &workspace_name,
-        old_wc_id.as_ref(),
-        old_tree.as_ref(),
-        &new_repo,
-    )?;
+    let finish = finish_verb(workspace, tx, &description, ctx)?;
     Ok(AbsorbResult {
-        mutation: MutationResult {
-            new_op_id,
-            new_change_ids: Vec::new(),
-            abandoned_change_ids: Vec::new(),
-            working_copy_change_id: ChangeId(new_wc_commit.change_id().reverse_hex()),
-            identity_missing: identity_missing(new_repo.settings()),
-        },
+        mutation: mutation_result(&finish, Vec::new(), Vec::new())?,
         rewritten_change_ids,
         source_change_id,
         num_rebased,
@@ -1437,6 +1518,74 @@ mod tests {
             rev(RevsetError::JjLibError("b".to_owned())),
             MutateError::Backend(reason) if reason == "b"
         ));
+        // Story 9.26: a failed pre-verb snapshot keeps its own variant.
+        assert!(matches!(
+            rev(RevsetError::Precondition(crate::PreconditionError::Backend("p".to_owned()))),
+            MutateError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "p"
+        ));
+    }
+
+    /// A repo whose `@` was rewritten with a new tree WITHOUT the working copy being updated — the
+    /// state a concurrent writer leaves between a verb's pre-verb snapshot (Story 9.26) and the
+    /// verb's own working-copy work. Returns the head repo that sees the rewritten `@`.
+    fn at_rewritten_without_checkout() -> (
+        tempfile::TempDir,
+        crate::Repo,
+        std::sync::Arc<jj_lib::repo::ReadonlyRepo>,
+    ) {
+        use jj_lib::object_id::ObjectId as _;
+
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        let load_head = |repo: &crate::Repo| {
+            pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head")
+        };
+        let at = load_head(&repo)
+            .view()
+            .get_wc_commit_id(repo.workspace().workspace_name())
+            .expect("@")
+            .hex();
+        let _ = test_helpers::rewrite_commit_files(repo.workspace_root(), &at, &[("elsewhere.txt", "x")]);
+        let head = load_head(&repo);
+        (tmp, repo, head)
+    }
+
+    /// The working-copy lock refuses when the recorded tree no longer matches `@`'s — the CLI's
+    /// "Concurrent working copy operation. Try again.". After the pre-verb snapshot only a
+    /// concurrent writer can cause it, so the lock is exercised directly.
+    #[test]
+    fn locking_a_working_copy_behind_at_is_a_concurrent_working_copy_refusal() {
+        let (_tmp, mut repo, head) = at_rewritten_without_checkout();
+        let result = super::lock_working_copy(repo.workspace_mut(), &head);
+        assert!(matches!(result.err(), Some(MutateError::ConcurrentWorkingCopy)));
+    }
+
+    /// `finish_transaction`'s unconditional checkout (the CLI's `update_working_copy`) fails when
+    /// the working copy is not at the base repo's `@` — reported as the CLI's "Failed to check
+    /// out commit …" with jj-lib's reason.
+    #[test]
+    fn a_checkout_over_a_working_copy_behind_at_fails_the_finish() {
+        let (_tmp, mut repo, head) = at_rewritten_without_checkout();
+        let config = crate::config::load(&repo).expect("config");
+        let immutable = crate::op_support::immutable_user_expression(repo.workspace(), &config).expect("immutable set");
+        let lock = crate::snapshot::lock_git_import_export(repo.workspace(), false).expect("no lock needed");
+        let workspace_name = repo.workspace().workspace_name().to_owned();
+        let tx = crate::op_support::start_repo_transaction(&head, &workspace_name);
+        let ctx = super::FinishCtx {
+            immutable: &immutable,
+            colocated: false,
+            _lock: &lock,
+        };
+
+        let err = super::finish_transaction(repo.workspace_mut(), tx, "test", &ctx)
+            .err()
+            .expect("the checkout must fail");
+
+        assert!(
+            matches!(&err, MutateError::Backend(reason) if reason.starts_with("Failed to check out commit ")),
+            "{err:?}"
+        );
     }
 
     /// An empty-string entry is the repo ROOT, which prefixes everything — so it widens the

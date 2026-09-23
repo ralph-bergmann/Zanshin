@@ -12,6 +12,12 @@
 //! below never depend on the total op count (which varies with how much divergence the
 //! scheduler happens to produce) — only on each thread's own labeled operations having
 //! landed.
+//!
+//! The two writers live in two WORKSPACES of the one repo. Since Story 9.26 every verb snapshots
+//! its working copy first, exactly like the CLI — and two uncoordinated writers sharing ONE
+//! working copy can then hit the CLI's own refusals (a stale working copy, a sibling operation,
+//! a concurrent checkout) purely by timing, which two concurrent `jj` processes in one workspace
+//! can hit too. Two workspaces keep the op-heads model under test deterministic.
 
 use std::path::Path;
 use std::sync::{Arc, Barrier, LazyLock};
@@ -81,6 +87,7 @@ const ITERATIONS: usize = 8;
 fn concurrent_describe_and_new_change_from_two_repo_handles() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (second, _second_wc) = test_helpers::add_workspace(&fx.path, "second");
     let (commit1_change_id, commit3_change_id) = oracle_targets(&fx.path);
     let barrier = Arc::new(Barrier::new(2));
 
@@ -99,7 +106,7 @@ fn concurrent_describe_and_new_change_from_two_repo_handles() {
     };
 
     let creator = {
-        let path = fx.path.clone();
+        let path = second.path.clone();
         let change_id = commit3_change_id;
         let barrier = Arc::clone(&barrier);
         thread::spawn(move || {
@@ -117,7 +124,7 @@ fn concurrent_describe_and_new_change_from_two_repo_handles() {
 
     // A fresh third handle, opened only after both threads finished: every operation
     // from both threads must be visible via the shared op-heads store.
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let ops = repo.op_log(None).unwrap();
 
     let describe_ops = ops

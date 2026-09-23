@@ -5,7 +5,8 @@
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and none of the three
-//! writes an operation — not even on a refusal.
+//! verbs itself writes an operation — not even on a refusal; only the pre-verb snapshot
+//! (Story 9.26) in front of each may.
 //!
 //! All three take a request BUFFER rather than C strings, the ADR-0001 composite-input case
 //! Story 9.3 established: `show`'s `revset` and `interdiff`'s two revisions must be
@@ -22,9 +23,10 @@ use zanshin_jj::{ChangeId, CommitId, CommitViewError, EvologEntry, InterdiffView
 
 use crate::change::change_offset;
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request,
-    session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
-    JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
+    precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
+    JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -35,6 +37,7 @@ use crate::status::file_changes_vector;
 /// Every variant lands on an ALREADY-REGISTERED code — Story 9.6 mints none.
 fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
     let (code, context) = match e {
+        CommitViewError::Precondition(e) => return map_precondition_err(e),
         CommitViewError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id),
         CommitViewError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
         CommitViewError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
@@ -43,6 +46,7 @@ fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
         CommitViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
+        precondition: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -110,6 +114,7 @@ fn read_revision_ref(
             commit.ok_or_else(|| missing_field(&format!("{field}.id")))?.to_owned(),
         )))),
         other => Err(FfiErrorObj {
+            precondition: None,
             code: FFI_INVALID_ARGUMENT.to_owned(),
             context: Some(format!("unknown {field} revision ref: {other:?}")),
         }),
@@ -196,7 +201,7 @@ fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffReques
 /// Children before parents (`FlatBuffers` requirement): each entry's nested `Change` and its
 /// `[FileChange]` vector are complete before the `ShowEntry` table opens, and the outer vector
 /// and `ShowView` table come after the loop.
-fn show_view_to_envelope(entries: &[ShowEntry]) -> Vec<u8> {
+fn show_view_to_envelope(entries: &[ShowEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = entries
         .iter()
@@ -214,14 +219,14 @@ fn show_view_to_envelope(entries: &[ShowEntry]) -> Vec<u8> {
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::ShowView::create(&mut b, &fbs::ShowViewArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::ShowView, table.as_union_value())
+    finish_envelope(b, fbs::Payload::ShowView, Some(table.as_union_value()), precondition)
 }
 
 /// Serialise `&[EvologEntry]` into a finished `Envelope<EvologView>` buffer.
 ///
 /// `operation_id` is written only when present: null-for-absence is the wire form of "the walk
 /// emitted this entry from its flush tail", i.e. the evolution may be truncated.
-fn evolog_view_to_envelope(entries: &[EvologEntry]) -> Vec<u8> {
+fn evolog_view_to_envelope(entries: &[EvologEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = entries
         .iter()
@@ -242,14 +247,14 @@ fn evolog_view_to_envelope(entries: &[EvologEntry]) -> Vec<u8> {
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::EvologView::create(&mut b, &fbs::EvologViewArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::EvologView, table.as_union_value())
+    finish_envelope(b, fbs::Payload::EvologView, Some(table.as_union_value()), precondition)
 }
 
 /// Serialise an [`InterdiffView`] into a finished `Envelope<InterdiffView>` buffer.
 ///
 /// `base_has_conflicts` rides alongside the change list rather than replacing it: a conflicted
 /// rebase base is a fact about the comparison, never a refusal.
-fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
+fn interdiff_view_to_envelope(view: &InterdiffView, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let vec = file_changes_vector(&mut b, &view.file_changes);
     let table = fbs::InterdiffView::create(
@@ -259,7 +264,12 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
             base_has_conflicts: view.base_has_conflicts,
         },
     );
-    finish_envelope(b, fbs::Payload::InterdiffView, table.as_union_value())
+    finish_envelope(
+        b,
+        fbs::Payload::InterdiffView,
+        Some(table.as_union_value()),
+        precondition,
+    )
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -269,8 +279,8 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
 ///
 /// The argument crosses as a `ShowRequest` `FlatBuffers` request buffer (ADR-0001
 /// composite-input pattern). An ABSENT `revset` is the wire form of "the user did not supply
-/// it", which applies the CLI's own default `@` — here the LAST-SNAPSHOTTED working-copy commit,
-/// because Zanshin never snapshots (D2). `revset` is an EXPRESSION, not a change id: the CLI
+/// it", which applies the CLI's own default `@` — the working-copy commit the pre-verb snapshot
+/// has just brought up to date (Story 9.26). `revset` is an EXPRESSION, not a change id: the CLI
 /// unions its revsets, so entries are per COMMIT — a revset naming two commits of ONE divergent
 /// change yields two entries carrying the same `Change.id`. A BARE divergent change-id symbol
 /// does NOT get that far: jj-lib's own `SymbolResolver` refuses it
@@ -279,7 +289,7 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
 /// `jj.revset_resolution_error` — a different refusal from `zanshin_interdiff`'s
 /// `jj.change_not_found`. Union the two COMMIT hexes to address both.
 /// Each entry's `file_changes` is the diff against the commit's MERGED parent tree; there is no
-/// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation.
+/// path filter and no textual patch (Epic 5 owns hunks). This read writes NO operation of its own.
 ///
 /// `limit` is a ZANSHIN-SIDE addition — `jj show` has no `-n/--limit`, because it streams to a
 /// pager where this builds ONE buffer whose every entry pays a merged-parent tree diff plus a
@@ -301,6 +311,8 @@ fn interdiff_view_to_envelope(view: &InterdiffView) -> Vec<u8> {
 ///   `context`.
 /// - `jj.config_error` — the repo's effective jj config, which the revset aliases come from, is
 ///   unreadable or malformed.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -319,11 +331,10 @@ pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) 
         let req = read_show_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let entries = session
-            .repo
-            .show(req.revset.as_deref(), req.limit)
-            .map_err(map_commit_view_err)?;
-        Ok(show_view_to_envelope(&entries))
+        let entries = session.repo.show(req.revset.as_deref(), req.limit);
+        precondition_envelope(&mut session.repo, entries, map_commit_view_err, |v, p| {
+            show_view_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -348,6 +359,8 @@ pub unsafe extern "C" fn zanshin_show(handle: u64, data: *const u8, len: usize) 
 /// - `jj.revset_parse_error` — `revset` is syntactically invalid; reason in `context`.
 /// - `jj.revset_resolution_error` — a symbol in `revset` cannot be resolved.
 /// - `jj.config_error` — the repo's effective jj config is unreadable or malformed.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure, including jj-lib's own
 ///   predecessor-cycle detection; detail in `context`.
 ///
@@ -362,11 +375,10 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
         let req = read_evolog_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let entries = session
-            .repo
-            .evolog(req.revset.as_deref(), req.limit)
-            .map_err(map_commit_view_err)?;
-        Ok(evolog_view_to_envelope(&entries))
+        let entries = session.repo.evolog(req.revset.as_deref(), req.limit);
+        precondition_envelope(&mut session.repo, entries, map_commit_view_err, |v, p| {
+            evolog_view_to_envelope(v, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -389,7 +401,7 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 ///
 /// No `Renamed`/`Copied` entry is ever produced — the CLI's `show_inter_diff` passes no copy
 /// records, and that asymmetry with `zanshin_show` is reproduced deliberately. The rebase behind
-/// it is in-memory only, so this read writes NO operation.
+/// it is in-memory only, so this read writes NO operation of its own.
 ///
 /// The payload's `base_has_conflicts` is a ZANSHIN-SIDE addition reporting whether the REBASED
 /// `from` tree — the left side of the diff — is conflicted. The CLI signals this by rendering
@@ -417,6 +429,10 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 ///   bullet above.
 /// - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
 ///   jj-lib's own ambiguity wording in `context`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -430,11 +446,8 @@ pub unsafe extern "C" fn zanshin_interdiff(handle: u64, data: *const u8, len: us
         let req = read_interdiff_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let view = session
-            .repo
-            .interdiff(req.from, req.to, &req.paths)
-            .map_err(map_commit_view_err)?;
-        Ok(interdiff_view_to_envelope(&view))
+        let view = session.repo.interdiff(req.from, req.to, &req.paths);
+        precondition_envelope(&mut session.repo, view, map_commit_view_err, interdiff_view_to_envelope)
     });
     vec_into_token(buf)
 }
@@ -532,6 +545,14 @@ mod tests {
                 JJ_JJ_LIB_ERROR,
                 "boom",
             ),
+            // Story 9.26: a failed pre-verb snapshot takes the shared precondition mapping.
+            (
+                map_commit_view_err(CommitViewError::Precondition(zanshin_jj::PreconditionError::Config {
+                    reason: "snapshot.auto-track".to_owned(),
+                })),
+                JJ_CONFIG_ERROR,
+                "snapshot.auto-track",
+            ),
         ];
         for (obj, code, context) in cases {
             assert_eq!(obj.code, code, "code for {context}");
@@ -557,7 +578,7 @@ mod tests {
             ],
         }];
 
-        let buf = show_view_to_envelope(&entries);
+        let buf = show_view_to_envelope(&entries, None);
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::ShowView);
@@ -598,7 +619,7 @@ mod tests {
             },
         ];
 
-        let buf = evolog_view_to_envelope(&entries);
+        let buf = evolog_view_to_envelope(&entries, None);
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::EvologView);
         let view = env.data_as_evolog_view().expect("EvologView payload");
@@ -628,13 +649,16 @@ mod tests {
     #[test]
     fn interdiff_view_carries_the_change_list_and_both_conflict_arms() {
         for base_has_conflicts in [false, true] {
-            let buf = interdiff_view_to_envelope(&InterdiffView {
-                file_changes: vec![FileChange {
-                    path: PathBuf::from("b.txt"),
-                    kind: ChangeKind::Added,
-                }],
-                base_has_conflicts,
-            });
+            let buf = interdiff_view_to_envelope(
+                &InterdiffView {
+                    file_changes: vec![FileChange {
+                        path: PathBuf::from("b.txt"),
+                        kind: ChangeKind::Added,
+                    }],
+                    base_has_conflicts,
+                },
+                None,
+            );
             let env = verified(&buf);
             assert_eq!(env.data_type(), fbs::Payload::InterdiffView);
             let view = env.data_as_interdiff_view().expect("InterdiffView payload");
@@ -653,13 +677,16 @@ mod tests {
     #[test]
     fn empty_results_still_produce_ok_envelopes() {
         for (buf, expected) in [
-            (show_view_to_envelope(&[]), fbs::Payload::ShowView),
-            (evolog_view_to_envelope(&[]), fbs::Payload::EvologView),
+            (show_view_to_envelope(&[], None), fbs::Payload::ShowView),
+            (evolog_view_to_envelope(&[], None), fbs::Payload::EvologView),
             (
-                interdiff_view_to_envelope(&InterdiffView {
-                    file_changes: Vec::new(),
-                    base_has_conflicts: false,
-                }),
+                interdiff_view_to_envelope(
+                    &InterdiffView {
+                        file_changes: Vec::new(),
+                        base_has_conflicts: false,
+                    },
+                    None,
+                ),
                 fbs::Payload::InterdiffView,
             ),
         ] {

@@ -10,13 +10,18 @@ use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{Bookmark, BookmarkError, BookmarkKind};
 
-use crate::envelope::{catch, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR};
+use crate::envelope::{
+    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
+    JJ_JJ_LIB_ERROR,
+};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
     match e {
+        BookmarkError::Precondition(e) => map_precondition_err(e),
         BookmarkError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -28,7 +33,7 @@ fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
 /// Children before parents (`FlatBuffers` requirement): for each `Bookmark`, its
 /// strings are built before its table; the `bookmarks` vector and `Bookmarks` table
 /// come after the loop. `remote_name` is only created for `Remote` entries.
-fn bookmarks_to_envelope(bookmarks: &[Bookmark]) -> Vec<u8> {
+fn bookmarks_to_envelope(bookmarks: &[Bookmark], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(bookmarks.len());
     for bm in bookmarks {
@@ -51,17 +56,7 @@ fn bookmarks_to_envelope(bookmarks: &[Bookmark]) -> Vec<u8> {
     }
     let vec = b.create_vector(&offsets);
     let bms_off = fbs::Bookmarks::create(&mut b, &fbs::BookmarksArgs { bookmarks: Some(vec) });
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::Bookmarks,
-            data: Some(bms_off.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::Bookmarks, Some(bms_off.as_union_value()), precondition)
 }
 
 /// List local + tracked-remote bookmarks of the repo identified by `handle`.
@@ -70,6 +65,10 @@ fn bookmarks_to_envelope(bookmarks: &[Bookmark]) -> Vec<u8> {
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
 ///
 /// # Safety
@@ -85,8 +84,10 @@ pub unsafe extern "C" fn zanshin_bookmarks(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let bms = session.repo.list_bookmarks().map_err(map_bookmarks_err)?;
-        Ok(bookmarks_to_envelope(&bms))
+        let bms = session.repo.list_bookmarks();
+        precondition_envelope(&mut session.repo, bms, map_bookmarks_err, |bms, p| {
+            bookmarks_to_envelope(bms, p)
+        })
     });
     vec_into_token(buf)
 }
@@ -119,7 +120,7 @@ mod tests {
             },
         );
 
-        let buf = bookmarks_to_envelope(&[local.clone(), remote.clone()]);
+        let buf = bookmarks_to_envelope(&[local.clone(), remote.clone()], None);
 
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok(), "envelope must be ok");
@@ -151,7 +152,7 @@ mod tests {
 
     #[test]
     fn bookmarks_to_envelope_empty_roundtrips() {
-        let buf = bookmarks_to_envelope(&[]);
+        let buf = bookmarks_to_envelope(&[], None);
         let env = fb_root::<fbs::Envelope>(&buf).expect("verifier must pass");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Bookmarks);

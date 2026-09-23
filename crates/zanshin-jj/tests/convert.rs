@@ -138,7 +138,7 @@ fn convert_git_repo_with_commit_returns_jj() {
     assert!(tmp.path().join(".jj").is_dir(), ".jj/ must exist after convert");
 
     // Repo::open must succeed.
-    let repo = zanshin_jj::Repo::open(tmp.path()).expect("Repo::open after convert");
+    let mut repo = zanshin_jj::Repo::open(tmp.path()).expect("Repo::open after convert");
 
     // The imported `main` bookmark must be present (AC-9 case 1: HEAD commit reachable via bookmark).
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
@@ -347,7 +347,7 @@ fn convert_detached_head_imports_head_commit() {
     git(&["checkout", "--detach", "HEAD"], tmp.path());
     git(&["branch", "-D", "main"], tmp.path());
 
-    let repo = convert_colocated(tmp.path()).expect("convert detached HEAD");
+    let mut repo = convert_colocated(tmp.path()).expect("convert detached HEAD");
 
     // No bookmark survives the branch deletion …
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
@@ -601,14 +601,14 @@ fn convert_import_unborn_branch_source_succeeds() {
         "must detect as Jj even with unborn branch source"
     );
     // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1).
-    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    let mut repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
     assert_eq!(git_head_ids(&dst).len(), 0, "unborn source must import no HEAD commit");
     // The NON-colocated head transaction carries its own `has_changes()` guard, separate
     // from the ones inside `init_git_refs` / `import_git_head` — and this is the only
     // `convert_import` row with an empty source. Without this assertion, dropping that guard
     // would ship a spurious `import git head` operation unnoticed.
     assert_eq!(
-        op_descriptions(&repo),
+        op_descriptions(&mut repo),
         vec!["add workspace 'default'", ""],
         "an unborn source must write neither operation on the non-colocated path either"
     );
@@ -806,17 +806,16 @@ fn convert_import_into_same_dir_is_colocated() {
     assert!(src.path().join(".jj").is_dir(), ".jj/ must exist");
     assert!(src.path().join(".git").exists(), ".git/ must still exist (colocated)");
 
-    // The colocated skip must have fired: no jj-native `@` was created on top of
-    // the imported HEAD. If is_colocated() had wrongly returned false (the raw-path
-    // bug), check_out would have run and git_head would gain a strict descendant.
-    let repo = zanshin_jj::Repo::open(src.path()).expect("Repo::open");
+    // The colocated shape must have been taken: if is_colocated had wrongly returned false
+    // (the raw-path bug), the non-colocated tail would have run too.
+    let mut repo = zanshin_jj::Repo::open(src.path()).expect("Repo::open");
 
-    // D5 takes the COLOCATED shape whole, not just its `check_out` skip: the head import is
-    // the reset-free `import_git_head` (so the op log is the CLI's two operations, and the
-    // non-colocated tail's `if colocated { return }` really did fire), and the `.gitignore`
-    // is seeded like any other colocated conversion.
+    // D5 takes the COLOCATED shape whole: the head import is the colocated snapshot's (so the
+    // op log is the CLI's two operations, and the non-colocated tail's `if colocated
+    // { return }` really did fire), and the `.gitignore` is seeded like any other colocated
+    // conversion.
     assert_eq!(
-        op_descriptions(&repo),
+        op_descriptions(&mut repo),
         vec!["import git head", "import git refs", "add workspace 'default'", ""],
         "the colocated shape writes the CLI's two operations here too"
     );
@@ -833,12 +832,14 @@ fn convert_import_into_same_dir_is_colocated() {
         panic!("expected exactly one imported git_head commit; got: {head_ids:?}");
     };
     let head_hex = head.hex();
+    // The colocated head import checks `@` out onto the imported HEAD (Story 9.26 — the CLI's
+    // `maybe_snapshot`), so HEAD's only descendant is `@` itself: one child, created by the
+    // head import, not by the non-colocated tail (which would have written a SECOND
+    // `import git head` operation above).
     assert_eq!(
-        zanshin_jj::resolve_revset(&repo, &format!("descendants({head_hex}) ~ {head_hex}"))
-            .expect("resolve revset")
-            .len(),
-        0,
-        "colocated skip: imported HEAD must have no fresh jj-native child commit"
+        zanshin_jj::resolve_revset(&repo, &format!("descendants({head_hex}) ~ {head_hex}")).expect("resolve revset"),
+        zanshin_jj::resolve_revset(&repo, "@").expect("resolve @"),
+        "the colocated head import re-parents `@` onto the imported HEAD"
     );
 }
 
@@ -859,7 +860,7 @@ fn assert_same_dir(actual: &std::path::Path, expected: &std::path::Path) {
 }
 
 /// Both workspace READ verbs report `expected` for the single `default` workspace of `repo`.
-fn assert_own_root_resolves(repo: &zanshin_jj::Repo, expected: &std::path::Path) {
+fn assert_own_root_resolves(repo: &mut zanshin_jj::Repo, expected: &std::path::Path) {
     let entries = repo.list_workspaces().expect("list_workspaces");
     assert_eq!(
         entries.len(),
@@ -907,9 +908,9 @@ fn convert_colocated_through_a_symlinked_path_resolves_its_own_root() {
     );
     init_git_repo_with_commit(tmp.path());
 
-    let converted = convert_colocated(tmp.path()).expect("convert_colocated");
+    let mut converted = convert_colocated(tmp.path()).expect("convert_colocated");
 
-    assert_own_root_resolves(&converted, tmp.path());
+    assert_own_root_resolves(&mut converted, tmp.path());
 }
 
 /// The same round trip for the IMPORT seam — where the canonicalize has to follow the
@@ -934,9 +935,9 @@ fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
     let dest = dest_parent.path().join("workspace");
     assert!(!dest.exists(), "the dest must be created by import_into itself");
 
-    let imported = convert_import(src.path(), &dest).expect("convert_import");
+    let mut imported = convert_import(src.path(), &dest).expect("convert_import");
 
-    assert_own_root_resolves(&imported, &dest);
+    assert_own_root_resolves(&mut imported, &dest);
 }
 
 // =============================================================================
@@ -953,7 +954,7 @@ fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
 const FRESH_FILE_HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
 
 /// Operation descriptions, newest-first — what `jj op log` would print, root op last.
-fn op_descriptions(repo: &Repo) -> Vec<String> {
+fn op_descriptions(repo: &mut Repo) -> Vec<String> {
     repo.op_log(None)
         .expect("op log")
         .into_iter()
@@ -1011,10 +1012,10 @@ fn convert_colocated_writes_the_two_cli_operations() {
     init_git_repo_with_commit(tmp.path());
     let before = git_ref_snapshot(tmp.path());
 
-    let repo = convert_colocated(tmp.path()).expect("convert");
+    let mut repo = convert_colocated(tmp.path()).expect("convert");
 
     assert_eq!(
-        op_descriptions(&repo),
+        op_descriptions(&mut repo),
         vec!["import git head", "import git refs", "add workspace 'default'", ""],
         "the op log must be the CLI's, newest-first — one folded op would fail here"
     );
@@ -1040,10 +1041,10 @@ fn convert_import_writes_the_two_cli_operations_and_materialises_head() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let repo = convert_import(src.path(), &dst).expect("convert_import");
+    let mut repo = convert_import(src.path(), &dst).expect("convert_import");
 
     assert_eq!(
-        op_descriptions(&repo),
+        op_descriptions(&mut repo),
         vec!["import git head", "import git refs", "add workspace 'default'", ""],
         "the non-colocated branch must write the same two operations, in the same order"
     );
@@ -1064,9 +1065,9 @@ fn a_source_with_no_refs_writes_no_operation_at_all() {
     git(&["config", "user.email", "test@zanshin.test"], tmp.path());
     git(&["config", "user.name", "Fixture"], tmp.path());
 
-    let repo = convert_colocated(tmp.path()).expect("convert of an unborn branch");
+    let mut repo = convert_colocated(tmp.path()).expect("convert of an unborn branch");
     assert_eq!(
-        op_descriptions(&repo),
+        op_descriptions(&mut repo),
         vec!["add workspace 'default'", ""],
         "an unborn source must add neither `import git refs` nor `import git head`"
     );

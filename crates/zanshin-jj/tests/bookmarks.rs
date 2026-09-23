@@ -47,7 +47,7 @@ fn oracle_workspace(root: &Path) -> (Workspace, UserSettings) {
 fn bookmarks_on_tiny_returns_empty() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
     assert!(bms.is_empty(), "tiny fixture has no bookmarks; got {bms:?}");
 }
@@ -58,7 +58,7 @@ fn bookmarks_on_tiny_returns_empty() {
 fn bookmarks_on_medium_equals_local_oracle() {
     pin_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     // All medium entries are Local (fixture has no remote bookmarks).
@@ -167,7 +167,7 @@ fn bookmarks_local_and_remote_tracking_yields_two_entries() {
 
     // Re-resolves to head (ADR-0002): the Repo opened after the transaction sees
     // the new operation.
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     let feature_bms: Vec<_> = bms.iter().filter(|b| b.name == "feature").collect();
@@ -202,7 +202,7 @@ fn bookmarks_skips_absent_and_untracked_remotes() {
     pin_env();
     let (fx, _) = setup_with_remote_bookmarks();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     assert!(
@@ -222,7 +222,7 @@ fn bookmarks_are_sorted_by_name_then_kind() {
     pin_env();
     let (fx, _) = setup_with_remote_bookmarks();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     // Assert the full list is sorted by (name, kind).
@@ -266,7 +266,7 @@ fn bookmarks_on_corrupt_repo_returns_backend_error() {
     let tmp = TempDir::new().unwrap();
     Repo::init(tmp.path(), None).unwrap();
 
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: list_bookmarks() re-resolves to head per call (ADR-0002),
     // so removing op_heads makes load_at_head() fail → BookmarkError::Backend.
@@ -275,8 +275,8 @@ fn bookmarks_on_corrupt_repo_returns_backend_error() {
 
     let result = repo.list_bookmarks();
     assert!(
-        matches!(result, Err(BookmarkError::Backend(_))),
-        "corrupt repo must yield Backend error, got: {result:?}"
+        matches!(result, Err(BookmarkError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
+        "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
     );
 }
 
@@ -324,7 +324,7 @@ fn bookmarks_conflicted_target_uses_first_added_change_id() {
     );
     pollster::block_on(tx.commit("test: add divergent local bookmark")).unwrap();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     let divergent: Vec<_> = bms.iter().filter(|b| b.name == "divergent").collect();
@@ -363,7 +363,7 @@ fn bookmarks_preserve_non_ascii_name_and_sort_by_codepoint() {
     mr.set_local_bookmark_target("zzz-éclair".as_ref(), RefTarget::normal(commit_id.clone()));
     pollster::block_on(tx.commit("test: non-ASCII bookmark name")).unwrap();
 
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let bms = repo.list_bookmarks().unwrap();
 
     // Verbatim UTF-8 preservation of the non-ASCII name.

@@ -10,9 +10,9 @@
 // what credits each zanshin_file_* extern "C" function in the coverage ratchet's
 // extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
-// SCOPE NOTE - why no committed file content here. Zanshin never snapshots the
-// working copy (D2), and no shipped verb writes file content into a tree, so a
-// repo reachable from Dart alone has only EMPTY trees. Every content-carrying row
+// SCOPE NOTE - why no committed file content here. These tests keep to repos
+// with EMPTY trees (the pre-verb snapshot of Story 9.26 could record on-disk
+// files, but these suites write none). Every content-carrying row
 // of the I/O matrix therefore lives in the Rust suites, which can build trees
 // directly: crates/zanshin-jj/tests/file_reads.rs (behaviour) and
 // crates/zanshin-ffi/tests/file_ffi.rs (payload bytes across the FFI). What these

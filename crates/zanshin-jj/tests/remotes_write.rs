@@ -103,9 +103,8 @@ fn write_repo_config(root: &std::path::Path, toml: &str) {
 ///
 /// Reads via `jj_lib` directly (already imported for fixture setup elsewhere in this
 /// file) rather than `zanshin_jj::Repo::list_bookmarks`, because a freshly-fetched
-/// bookmark is UNTRACKED by default here (`git_fetch`'s `remote_auto_track_bookmarks`
-/// is hardcoded empty, mirroring `clone_into` — see the story spec's `deferred`
-/// findings), so `list_bookmarks()` would not surface it even though `git_fetch`
+/// bookmark is UNTRACKED by default (no `remotes.<name>.auto-track-bookmarks` is set in
+/// these tests' config), so `list_bookmarks()` would not surface it even though `git_fetch`
 /// succeeded and imported it into jj's view as `name@remote`.
 fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
     let settings = test_helpers::test_settings();
@@ -257,6 +256,42 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
     assert_eq!(
         status.working_copy_change_id, result.working_copy_change_id,
         "git_fetch must never move @"
+    );
+}
+
+/// `remotes.<name>.auto-track-bookmarks` is read from the effective config (Story 9.26, the
+/// CLI's `parse_remote_auto_track_bookmarks_map`): a fetched bookmark the expression matches
+/// is TRACKED, so a local bookmark is created for it; one it does not match stays untracked.
+#[test]
+fn git_fetch_honours_remote_auto_track_bookmarks() {
+    pin_env();
+    let src = TempDir::new().unwrap();
+    init_git_repo_with_a_branch_only_commit(src.path());
+    let main_hex = git_stdout(&["rev-parse", "main"], src.path());
+
+    let parent = TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+
+    let dst = TempDir::new().unwrap();
+    Repo::init(dst.path(), Some(Backend::Git)).unwrap();
+    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+    write_repo_config(dst.path(), "[remotes.origin]\nauto-track-bookmarks = \"exact:main\"\n");
+
+    let mut repo = Repo::open(dst.path()).unwrap();
+    repo.git_fetch("origin", &|_| {}).expect("git_fetch should succeed");
+
+    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    let local = |name: &str| {
+        bookmarks
+            .iter()
+            .any(|b| b.name == name && b.kind == zanshin_jj::BookmarkKind::Local)
+    };
+    assert!(local("main"), "main@origin matches, so it is tracked: {bookmarks:?}");
+    assert!(!local("feature"), "feature@origin does not match: {bookmarks:?}");
+    assert_eq!(
+        remote_bookmark_commit_hex(dst.path(), "main", "origin").as_deref(),
+        Some(main_hex.as_str()),
+        "the tracked remote bookmark is at the source's main"
     );
 }
 
@@ -524,9 +559,11 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
         .expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
         "expected Config naming the key, got {err:?}"
     );
+    // Every verb refuses while the stack is broken, so it is repaired before the read-back.
+    write_repo_config(dst.path(), "");
     let after = repo.op_log(None).unwrap();
     assert_eq!(after.len(), before.len(), "a refusal must write no operation");
     assert_eq!(after[0].id, before[0].id, "the op-log head is untouched");
@@ -643,7 +680,7 @@ fn amend_upstream(fx: &AmendFixture) -> String {
 }
 
 /// Collects every predecessor commit id `Repo::evolog` reports for [`AMENDED_CHANGE_ID`].
-fn evolog_predecessor_hexes(repo: &Repo) -> Vec<String> {
+fn evolog_predecessor_hexes(repo: &mut Repo) -> Vec<String> {
     repo.evolog(Some(AMENDED_CHANGE_ID), None)
         .expect("the amended change resolves to its one visible commit")
         .iter()
@@ -670,7 +707,7 @@ fn git_fetch_records_synthetic_predecessors_by_default() {
         "the fetch must really have moved main@origin — otherwise nothing was rewritten"
     );
 
-    let predecessors = evolog_predecessor_hexes(&repo);
+    let predecessors = evolog_predecessor_hexes(&mut repo);
     assert!(
         predecessors.contains(&fx.old_commit),
         "the default `true` must record the pre-amend commit as a predecessor; evolog reported {predecessors:?}"
@@ -697,7 +734,7 @@ fn git_fetch_honours_record_synthetic_predecessors_false() {
         "the fetch must really have moved main@origin — otherwise there was nothing to suppress"
     );
 
-    let predecessors = evolog_predecessor_hexes(&repo);
+    let predecessors = evolog_predecessor_hexes(&mut repo);
     assert!(
         !predecessors.contains(&fx.old_commit),
         "the user turned recording off, so no predecessor may be recorded; evolog reported {predecessors:?}"

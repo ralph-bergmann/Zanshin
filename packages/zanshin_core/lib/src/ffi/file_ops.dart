@@ -7,14 +7,14 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'git.dart' show GitExportFailure;
-import 'mutate.dart' show MutationResult, decodeIdentityMissingInternal;
+import 'git.dart' show GitExportFailure, decodeExportFailuresInternal;
+import 'mutate.dart' show MutationResult, decodeMutationResultInternal;
 import 'request_bytes.dart';
 
 // This file owns the Dart half of Story 9.22's two working-copy tracking verbs:
 // the request builders and adapters (fileTrack / fileUntrack), the payload models
 // (TrackResult, UntrackResult and the SnapshotStats shape both share, which Story
-// 9.26's per-verb snapshot will reuse) and their decoders. `dart:ffi` stays inside
+// 9.26's pre-verb snapshot report reuses) and their decoders. `dart:ffi` stays inside
 // `ffi/` — only the worker isolate calls these adapters.
 //
 // The shared `rejectInteriorNuls` calls below are the DIRECT-CALLER backstop: the
@@ -173,9 +173,9 @@ TrackResult _decodeTrackResultEnvelope(Uint8List bytes) {
     throw ZanshinFfiException('ffi.unknown', 'expected TrackResult payload, got ${env.dataType}');
   }
   return TrackResult(
-    mutation: _mutation(payload.mutation),
+    mutation: decodeMutationResultInternal(payload.mutation),
     numRebased: payload.numRebased,
-    snapshotStats: _stats(payload.snapshotStats),
+    snapshotStats: decodeSnapshotStatsInternal(payload.snapshotStats),
   );
 }
 
@@ -196,12 +196,12 @@ UntrackResult _decodeUntrackResultEnvelope(Uint8List bytes) {
     throw ZanshinFfiException('ffi.unknown', 'expected UntrackResult payload, got ${env.dataType}');
   }
   return UntrackResult(
-    mutation: _mutation(payload.mutation),
+    mutation: decodeMutationResultInternal(payload.mutation),
     numRebased: payload.numRebased,
     unmatchedPaths: payload.unmatchedPaths?.toList() ?? const [],
-    snapshotStats: _stats(payload.snapshotStats),
-    failedBookmarks: _exportFailures(payload.failedBookmarks),
-    failedTags: _exportFailures(payload.failedTags),
+    snapshotStats: decodeSnapshotStatsInternal(payload.snapshotStats),
+    failedBookmarks: decodeExportFailuresInternal(payload.failedBookmarks),
+    failedTags: decodeExportFailuresInternal(payload.failedTags),
   );
 }
 
@@ -215,17 +215,9 @@ fbs.Envelope _okEnvelope(Uint8List bytes) {
   return env;
 }
 
-/// Rebuild the nested [MutationResult]; an absent table is an empty contract, not
-/// a crash.
-MutationResult _mutation(fbs.MutationResult? m) => MutationResult(
-  newOpId: m?.newOpId ?? '',
-  newChangeIds: m?.newChangeIds?.toList() ?? const [],
-  abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
-  workingCopyChangeId: m?.workingCopyChangeId ?? '',
-  identityMissing: decodeIdentityMissingInternal(m?.identityMissing),
-);
-
-SnapshotStats _stats(fbs.SnapshotStats? s) => SnapshotStats(
+/// Rebuild a [SnapshotStats]; an absent table is empty stats, not a crash.
+/// Shared by the track verbs and the Story 9.26 precondition report.
+SnapshotStats decodeSnapshotStatsInternal(fbs.SnapshotStats? s) => SnapshotStats(
   untracked: s?.untracked?.map((u) => UntrackedPath(path: u.path ?? '', reason: _reason(u))).toList() ?? const [],
   invalidUtf8Paths: s?.invalidUtf8Paths?.toList() ?? const [],
 );
@@ -237,7 +229,3 @@ UntrackedReason _reason(fbs.UntrackedPath u) => switch (u.reason) {
   fbs.FileNotAutoTracked() => const FileNotAutoTracked(),
   _ => throw ZanshinFfiException('ffi.unknown', 'UntrackedPath.reason missing for ${u.path}'),
 };
-
-List<GitExportFailure> _exportFailures(List<fbs.GitExportFailure>? raw) =>
-    raw?.map((f) => GitExportFailure(name: f.name ?? '', remote: f.remote ?? '', reason: f.reason ?? '')).toList() ??
-    const [];

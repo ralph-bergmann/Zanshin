@@ -1235,6 +1235,13 @@ So that `zanshin-ffi` and `zanshin-mcp` can answer `status` queries with structu
 **Then** it returns the state as seen by jj at call time
 **And** does NOT trigger a manual snapshot — that's jj's `fsmonitor.backend = "watchman"` path's job at the system level.
 
+> **Addendum 2026-09-23 (Story 9.26) — superseded.** `Repo::status()` (like every other handle-scoped read
+> and mutation except `log_defaults` / `workspace_root`) now runs the jj CLI's pre-command snapshot first —
+> colocated: Git HEAD import → working-copy snapshot → Git refs import, under jj's `git_import_export.lock` —
+> so it returns the state INCLUDING on-disk edits, exactly as `jj status` does, and may write a
+> `snapshot working copy` operation. Watchman is honoured through jj-lib's `watchman` feature
+> (`fsmonitor.backend = "watchman"`), never bundled or launched by Zanshin. See ADR-0002's 2026-09-23 addendum.
+
 **Given** a very large working copy (10,000+ files, none changed)
 **When** `Repo::status()` is called
 **Then** it returns quickly (< 100 ms on the large fixture) because jj-lib's status check leverages the index

@@ -87,7 +87,7 @@ fn oracle_paths(workspace_root: &Path, commit_hex: &str) -> Vec<String> {
 }
 
 /// The head operation's id, so a test can assert that a READ wrote nothing.
-fn head_op_id(repo: &Repo) -> String {
+fn head_op_id(repo: &mut Repo) -> String {
     repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0
 }
 
@@ -180,8 +180,9 @@ const COPY_BODY: &str = "line one\nline two\nline three\nline four\n";
 // ── Git-backed working-copy harness (rename detection) ────────────────────────────
 //
 // The `@`-relative rows additionally need a real snapshot chain rather than a hand-built tree,
-// because `@` itself must carry the rename. Both helpers are TEST SETUP ONLY: production code
-// never snapshots (D2). Mirrors `tests/status.rs`.
+// because `@` itself must carry the rename. Both helpers are TEST SETUP ONLY: an out-of-band
+// jj-lib snapshot staging `@` independently of the pre-verb snapshot (Story 9.26). Mirrors
+// `tests/status.rs`.
 
 fn snapshot_working_copy(workspace_root: &Path) {
     let settings = test_helpers::test_settings();
@@ -274,8 +275,8 @@ fn renamed_on_git_backend() -> (TempDir, Repo) {
 #[test]
 fn show_defaults_to_the_working_copy_and_reuses_the_change_construction_site() {
     pin_env();
-    let (_tmp, repo) = renamed_on_git_backend();
-    let before = head_op_id(&repo);
+    let (_tmp, mut repo) = renamed_on_git_backend();
+    let before = head_op_id(&mut repo);
 
     let entries = repo.show(None, None).expect("show succeeds");
     assert_eq!(entries.len(), 1, "`@` is one commit");
@@ -292,13 +293,13 @@ fn show_defaults_to_the_working_copy_and_reuses_the_change_construction_site() {
         "show's `change` must be the same projection get_change produces"
     );
 
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn show_reports_a_rename_with_its_source_path_on_the_git_backend() {
     pin_env();
-    let (_tmp, repo) = renamed_on_git_backend();
+    let (_tmp, mut repo) = renamed_on_git_backend();
 
     let entries = repo.show(None, None).expect("show succeeds");
     let changes = &entries[0].file_changes;
@@ -321,8 +322,8 @@ fn show_reports_a_rename_with_its_source_path_on_the_git_backend() {
 fn show_of_a_root_commit_reports_no_file_changes() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.show(Some("root()"), None).expect("show succeeds");
 
@@ -332,7 +333,7 @@ fn show_of_a_root_commit_reports_no_file_changes() {
         "the root commit's tree equals its own parent tree"
     );
     assert!(entries[0].change.parents.is_empty(), "the root change has no parents");
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// The payload's documented ORDER — "raw revset order, children before parents" — and the
@@ -353,8 +354,8 @@ fn show_returns_children_before_parents_and_diffs_each_against_its_own_parent() 
         &[("a.txt", "alpha\n"), ("b.txt", "beta\n")],
         "adds b",
     );
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo
         .show(Some(&format!("{parent}::{child}")), None)
@@ -371,7 +372,7 @@ fn show_returns_children_before_parents_and_diffs_each_against_its_own_parent() 
         ],
         "raw revset order is children before parents, and each row is diffed against ITS OWN parent"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// An ordinary EDIT — the single most common thing a GUI renders, and the one `ChangeKind` no
@@ -383,7 +384,7 @@ fn show_reports_an_edited_file_as_modified() {
     let base = add_commit_with_files(&fx.path, &[], &[("a.txt", "alpha\n")], "base");
     let edited = add_commit_with_files(&fx.path, &[&base], &[("a.txt", "alpha\nbeta\n")], "edit a.txt");
     let change = change_id_of(&fx.path, &edited);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
@@ -413,7 +414,7 @@ fn show_accumulates_copy_records_over_every_parent_not_just_the_first() {
         "merge that renames old.txt",
     );
     let change = change_id_of(tmp.path(), &merge);
-    let repo = Repo::open(tmp.path()).expect("repo opens");
+    let mut repo = Repo::open(tmp.path()).expect("repo opens");
 
     let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
@@ -451,7 +452,7 @@ fn show_reports_a_copy_whose_source_was_edited_in_the_same_commit() {
         "copy a.txt and edit the original",
     );
     let change = change_id_of(tmp.path(), &copied);
-    let repo = Repo::open(tmp.path()).expect("repo opens");
+    let mut repo = Repo::open(tmp.path()).expect("repo opens");
 
     let entries = repo.show(Some(&change.0), None).expect("show succeeds");
 
@@ -481,7 +482,7 @@ fn show_of_a_merge_diffs_against_the_merged_parent_tree() {
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let merge_hex = add_conflicted_merge_off_root(&fx.path);
     let merge = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let entries = repo.show(Some(&merge.0), None).expect("show succeeds");
     assert_eq!(entries.len(), 1);
@@ -521,8 +522,8 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
     let original = add_commit_off_root(&fx.path, "original");
     let twin = add_divergent_twin(&fx.path, &original, "twin");
     let change = change_id_of(&fx.path, &original);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .show(Some(&change.0), None)
@@ -531,7 +532,7 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
         matches!(&err, CommitViewError::RevsetResolutionError { reason } if reason.contains("divergent")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "a refusal must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal must not write an operation");
 
     let entries = repo
         .show(Some(&format!("{original} | {twin}")), None)
@@ -570,8 +571,8 @@ fn show_applies_the_limit_in_raw_revset_order_and_is_unbounded_when_absent() {
         "adds b",
     );
     let range = format!("{parent}::{child}");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let unbounded = repo.show(Some(&range), None).expect("show succeeds");
     assert_eq!(unbounded.len(), 2, "the range denotes both commits");
@@ -604,14 +605,14 @@ fn show_applies_the_limit_in_raw_revset_order_and_is_unbounded_when_absent() {
         .expect("an empty revset with a limit is not an error")
         .is_empty());
 
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 #[test]
 fn show_of_an_empty_revset_is_an_empty_success() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let entries = repo
         .show(Some("none()"), None)
@@ -623,8 +624,8 @@ fn show_of_an_empty_revset_is_an_empty_success() {
 fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo.show(Some("::("), None).expect_err("a syntax error is refused");
     assert!(
@@ -653,7 +654,7 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
     );
 
     assert_eq!(
-        head_op_id(&repo),
+        head_op_id(&mut repo),
         before,
         "a refusal must not write an operation either"
     );
@@ -663,8 +664,8 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
 fn show_reports_a_malformed_repo_config_as_a_config_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
     // TABLE level, not entry level: a `revset-aliases` that is not a table at all is a hard
     // error in the CLI too — never a silent fall-back to the builtin aliases.
     write_repo_config(&fx.path, "revset-aliases = 42\n");
@@ -673,10 +674,12 @@ fn show_reports_a_malformed_repo_config_as_a_config_error() {
         .show(None, None)
         .expect_err("a non-table revset-aliases is refused");
     assert!(
-        matches!(&err, CommitViewError::Config { reason } if reason.contains("revset-aliases")),
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("revset-aliases")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    // Every verb refuses while the stack is broken, so it is repaired before the read-back.
+    write_repo_config(&fx.path, "");
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 // ── evolog ────────────────────────────────────────────────────────────────────────
@@ -695,8 +698,8 @@ fn evolution_chain() -> (FixtureHandle, ChangeId, [String; 3]) {
 fn evolog_walks_every_version_newest_first_with_its_predecessors() {
     pin_env();
     let (fx, change, [v3, v2, v1]) = evolution_chain();
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.evolog(Some(&change.0), None).expect("evolog succeeds");
 
@@ -742,7 +745,7 @@ fn evolog_walks_every_version_newest_first_with_its_predecessors() {
         );
     }
 
-    assert_eq!(head_op_id(&repo), before, "a read must not write an operation");
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 /// The FLUSH TAIL — the one state in which `operation_id` is `None`.
@@ -756,7 +759,7 @@ fn evolog_walks_every_version_newest_first_with_its_predecessors() {
 fn evolog_of_the_root_commit_is_emitted_from_the_flush_tail() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let entries = repo.evolog(Some("root()"), None).expect("evolog succeeds");
 
@@ -775,7 +778,7 @@ fn evolog_of_the_root_commit_is_emitted_from_the_flush_tail() {
 fn evolog_applies_the_limit_in_walk_order() {
     pin_env();
     let (fx, change, [v3, v2, _v1]) = evolution_chain();
-    let repo = open(&fx);
+    let mut repo = open(&fx);
 
     let two = repo.evolog(Some(&change.0), Some(2)).expect("evolog succeeds");
     assert_eq!(
@@ -795,8 +798,8 @@ fn evolog_of_a_never_rewritten_commit_is_a_single_entry_and_defaults_to_the_work
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let fresh = add_commit_off_root(&fx.path, "never rewritten");
     let fresh_change = change_id_of(&fx.path, &fresh);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.evolog(Some(&fresh_change.0), None).expect("evolog succeeds");
     assert_eq!(entries.len(), 1, "a commit that was never rewritten has one version");
@@ -808,15 +811,15 @@ fn evolog_of_a_never_rewritten_commit_is_a_single_entry_and_defaults_to_the_work
     assert_eq!(default.len(), 1);
     assert_eq!(default[0].change.id, wc, "an omitted revset is `@`");
 
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 #[test]
 fn evolog_refuses_a_malformed_revset_without_writing_an_operation() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo.evolog(Some("::("), None).expect_err("a syntax error is refused");
     assert!(
@@ -832,7 +835,7 @@ fn evolog_refuses_a_malformed_revset_without_writing_an_operation() {
         "unexpected error: {err:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// `docs/rust-error-codes.md` registers `jj.config_error` for `evolog` as well as `show`, and
@@ -842,18 +845,20 @@ fn evolog_refuses_a_malformed_revset_without_writing_an_operation() {
 fn evolog_reports_a_malformed_repo_config_as_a_config_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
     write_repo_config(&fx.path, "revset-aliases = 42\n");
 
     let err = repo
         .evolog(None, None)
         .expect_err("a non-table revset-aliases is refused");
     assert!(
-        matches!(&err, CommitViewError::Config { reason } if reason.contains("revset-aliases")),
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("revset-aliases")),
         "unexpected error: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    // Every verb refuses while the stack is broken, so it is repaired before the read-back.
+    write_repo_config(&fx.path, "");
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 // ── interdiff ─────────────────────────────────────────────────────────────────────
@@ -862,8 +867,8 @@ fn evolog_reports_a_malformed_repo_config_as_a_config_error() {
 fn interdiff_factors_out_the_parent_difference() {
     pin_env();
     let p = interdiff_pair();
-    let repo = open(&p.fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&p.fx);
+    let before = head_op_id(&mut repo);
 
     let view = repo
         .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &[])
@@ -881,14 +886,14 @@ fn interdiff_factors_out_the_parent_difference() {
         !view.base_has_conflicts,
         "disjoint edits rebase cleanly — the NEGATIVE pole of the flag"
     );
-    assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
+    assert_eq!(head_op_id(&mut repo), before, "the rebase is in-memory — no operation");
 }
 
 #[test]
 fn interdiff_of_a_revision_against_itself_is_empty() {
     pin_env();
     let p = interdiff_pair();
-    let repo = open(&p.fx);
+    let mut repo = open(&p.fx);
 
     let view = repo
         .interdiff(Some(chg(&p.to)), Some(chg(&p.to)), &[])
@@ -908,7 +913,7 @@ fn interdiff_of_a_revision_against_itself_is_empty() {
 fn interdiff_filters_by_path_prefix() {
     pin_env();
     let p = interdiff_pair();
-    let repo = open(&p.fx);
+    let mut repo = open(&p.fx);
 
     let matching = repo
         .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &["b.txt".to_owned()])
@@ -927,8 +932,8 @@ fn interdiff_filters_by_path_prefix() {
 fn interdiff_refuses_when_both_revisions_are_absent() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let err = repo
         .interdiff(None, None, &[])
@@ -937,7 +942,7 @@ fn interdiff_refuses_when_both_revisions_are_absent() {
         matches!(&err, CommitViewError::InvalidInput { reason } if reason.contains("from") && reason.contains("to")),
         "the refusal must name which arguments are meant: {err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 #[test]
@@ -946,7 +951,7 @@ fn interdiff_defaults_the_omitted_side_to_the_working_copy() {
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let other = add_commit_off_root(&fx.path, "other");
     let other_change = change_id_of(&fx.path, &other);
-    let repo = open(&fx);
+    let mut repo = open(&fx);
     let wc = repo.status().expect("status").working_copy_change_id;
 
     // Supplying ONE side is enough; the other becomes `@`. Both spellings must agree.
@@ -978,8 +983,8 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
     let divergent = change_id_of(&fx.path, &original);
     // A resolvable counterpart, so the OTHER side is never the reason for the refusal.
     let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     for (spelling, id) in [
         // NOT "zzzzzzzz" — that is a prefix of the ROOT commit's all-zero change id.
@@ -1007,7 +1012,7 @@ fn interdiff_refuses_an_unknown_divergent_or_empty_revision_on_either_side() {
         }
     }
 
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 /// The `true` pole of `base_has_conflicts`: a rebase whose own 3-way merge cannot resolve.
@@ -1035,8 +1040,8 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
     let to_hex = add_commit_with_files(&fx.path, &[&p2], &[("f.txt", "to\n")], "to");
     let from = change_id_of(&fx.path, &from_hex);
     let to = change_id_of(&fx.path, &to_hex);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let view = repo
         .interdiff(Some(chg(&from)), Some(chg(&to)), &[])
@@ -1064,7 +1069,7 @@ fn interdiff_reports_a_conflicted_rebase_base_without_refusing() {
         "the flag describes the rebased tree, not the filtered change list"
     );
 
-    assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
+    assert_eq!(head_op_id(&mut repo), before, "the rebase is in-memory — no operation");
 }
 
 /// The SECOND documented cause of `base_has_conflicts`: the rebase's FAST PATH.
@@ -1086,8 +1091,8 @@ fn interdiff_flags_a_conflicted_base_reached_through_the_rebase_fast_path() {
     let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
     let merge_hex = add_conflicted_merge_off_root(&fx.path);
     let merge = change_id_of(&fx.path, &merge_hex);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let view = repo
         .interdiff(Some(chg(&merge)), Some(chg(&merge)), &[])
@@ -1102,13 +1107,13 @@ fn interdiff_flags_a_conflicted_base_reached_through_the_rebase_fast_path() {
         view.base_has_conflicts,
         "the fast path handed back `from`'s own CONFLICTED tree, got {view:?}"
     );
-    assert_eq!(head_op_id(&repo), before, "the rebase is in-memory — no operation");
+    assert_eq!(head_op_id(&mut repo), before, "the rebase is in-memory — no operation");
 }
 
 #[test]
 fn interdiff_never_reports_a_rename_even_where_show_does() {
     pin_env();
-    let (_tmp, repo) = renamed_on_git_backend();
+    let (_tmp, mut repo) = renamed_on_git_backend();
     let status = repo.status().expect("status");
 
     // The SAME pair `show` reports as one Renamed entry.
@@ -1154,8 +1159,8 @@ fn interdiff_diffs_an_evolog_predecessor_against_the_current_version() {
     let v1 = add_commit_with_files(&fx.path, &[], &[("a.txt", "one\n")], "v1");
     let v2 = rewrite_commit_files(&fx.path, &v1, &[("a.txt", "two\n"), ("b.txt", "added\n")]);
     let change = change_id_of(&fx.path, &v2);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.evolog(Some(&change.0), None).expect("evolog succeeds");
     let pred = entries[0]
@@ -1184,7 +1189,7 @@ fn interdiff_diffs_an_evolog_predecessor_against_the_current_version() {
         "the change-id arm must keep refusing it, echoing the offending id: {err:?}"
     );
 
-    assert_eq!(head_op_id(&repo), before, "neither call writes an operation");
+    assert_eq!(head_op_id(&mut repo), before, "neither call writes an operation");
 }
 
 /// BOTH sides hidden — the shape only the commit-id arm can express at all.
@@ -1203,8 +1208,8 @@ fn interdiff_diffs_two_hidden_versions_of_one_change() {
     let v2 = rewrite_commit_files(&fx.path, &v1, &[("a.txt", "two\n"), ("b.txt", "added\n")]);
     let v3 = rewrite_commit_files(&fx.path, &v2, &[("a.txt", "three\n")]);
     let change = change_id_of(&fx.path, &v3);
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     let entries = repo.evolog(Some(&change.0), None).expect("evolog succeeds");
     let pred_of_v3 = entries[0]
@@ -1231,7 +1236,7 @@ fn interdiff_diffs_two_hidden_versions_of_one_change() {
     );
     assert!(!view.base_has_conflicts);
 
-    assert_eq!(head_op_id(&repo), before, "the read writes no operation");
+    assert_eq!(head_op_id(&mut repo), before, "the read writes no operation");
 }
 
 /// A one-character commit-id prefix that at least two commits in `workspace_root` share.
@@ -1265,8 +1270,8 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
     let ambiguous = ambiguous_one_char_commit_prefix(&fx.path);
     // A resolvable counterpart, so the OTHER side is never the reason for the refusal.
     let good = change_id_of(&fx.path, &add_commit_off_root(&fx.path, "resolvable"));
-    let repo = open(&fx);
-    let before = head_op_id(&repo);
+    let mut repo = open(&fx);
+    let before = head_op_id(&mut repo);
 
     for (spelling, hex) in [
         ("empty", String::new()),
@@ -1303,5 +1308,5 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
         }
     }
 
-    assert_eq!(head_op_id(&repo), before, "a refusal writes no operation either");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes no operation either");
 }

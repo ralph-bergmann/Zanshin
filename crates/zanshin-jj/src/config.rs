@@ -160,6 +160,7 @@ conflict-marker-style = "diff"
 [snapshot]
 max-new-file-size = "1MiB"
 auto-track = "all()"
+auto-update-stale = false
 
 [revset-aliases]
 # trunk() can be overridden as '<bookmark>@<remote>'.
@@ -887,17 +888,20 @@ pub(crate) fn conflict_marker_style(
 /// (`true`/`true`) — so no [`BUILTIN_CONFIG_TOML`] entry is added and no Rust constant
 /// decides for a user who set `abandon-unreachable-commits = false` (FR-JJ-17).
 ///
-/// `remote_auto_track_bookmarks` stays EMPTY, exactly as
-/// [`crate::Repo::git_fetch`] and `clone_into` already leave it: porting the CLI's
-/// `remotes.<name>.auto-track-bookmarks` string-expression parser would have to change all
-/// three call sites at once, and that is not this story's scope.
+/// `remote_auto_track_bookmarks` is the CLI's `parse_remote_auto_track_bookmarks_map`
+/// (`cli/src/revset_util.rs:378-391,457-470` @ v0.44.0): one string-expression matcher per
+/// `remotes.<name>.auto-track-bookmarks` (Story 9.26), so every import site — fetch, import,
+/// clone, convert and the pre-verb snapshot — auto-tracks exactly what the user's CLI does.
 ///
 /// Returns a `jj_lib` type, which is why it is `pub(crate)` (FR-JJ-16).
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — either key is present with a non-boolean value, or is missing
-///   from every layer (impossible while jj-lib's own defaults layer is present).
+/// - [`ConfigError::Load`] — either `git.*` key is present with a non-boolean value, or is
+///   missing from every layer (impossible while jj-lib's own defaults layer is present); a
+///   `remotes.<name>` entry is not a table of the known string keys; or an
+///   `auto-track-bookmarks` value does not parse (the CLI's
+///   ``Invalid `remotes.<name>.auto-track-bookmarks`: …``).
 pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::GitImportOptions, ConfigError> {
     Ok(jj_lib::git::GitImportOptions {
         abandon_unreachable_commits: config
@@ -906,8 +910,48 @@ pub(crate) fn git_import_options(config: &StackedConfig) -> Result<jj_lib::git::
         record_synthetic_predecessors: config
             .get("git.record-synthetic-predecessors")
             .map_err(|e| value_error(&e))?,
-        remote_auto_track_bookmarks: HashMap::new(),
+        remote_auto_track_bookmarks: remote_auto_track_bookmarks(config)?,
     })
+}
+
+/// The CLI's `parse_remote_auto_track_bookmarks_map` over the effective `[remotes]` table —
+/// jj-lib's `RemoteSettings::table_from_settings` read off the stack directly, then each
+/// `auto-track-bookmarks` parsed as a string expression and turned into its matcher.
+fn remote_auto_track_bookmarks(
+    config: &StackedConfig,
+) -> Result<HashMap<jj_lib::ref_name::RemoteNameBuf, jj_lib::str_util::StringMatcher>, ConfigError> {
+    let mut matchers = HashMap::new();
+    let names: Vec<String> = config.table_keys("remotes").map(str::to_owned).collect();
+    for name in names {
+        let settings: jj_lib::settings::RemoteSettings =
+            config.get(["remotes", name.as_str()]).map_err(|e| value_error(&e))?;
+        let Some(text) = settings.auto_track_bookmarks else {
+            continue;
+        };
+        let remote: jj_lib::ref_name::RemoteNameBuf = name.as_str().into();
+        let expression = jj_lib::revset::parse_string_expression(&mut jj_lib::revset::RevsetDiagnostics::new(), &text)
+            .map_err(|e| ConfigError::Load {
+                reason: format!(
+                    "Invalid `remotes.{}.auto-track-bookmarks`: {}",
+                    remote.as_symbol(),
+                    e.kind()
+                ),
+            })?;
+        matchers.insert(remote, expression.to_matcher());
+    }
+    Ok(matchers)
+}
+
+/// Reads the effective `snapshot.auto-update-stale` (Story 9.26) — the CLI's
+/// `settings().get_bool("snapshot.auto-update-stale")` (`cli/src/cli_util.rs:499` @ v0.44.0),
+/// whose default `false` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named), or is missing from
+///   every layer (impossible while the builtin layer is present).
+pub(crate) fn snapshot_auto_update_stale(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config.get("snapshot.auto-update-stale").map_err(|e| value_error(&e))
 }
 
 /// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).
@@ -2368,5 +2412,18 @@ fetch-bookmarks = \"main\"
         let err = secure_config_path(tmp.path(), "config-id", "config.toml", Some(Path::new("/cfg/jj/repos")))
             .expect_err("an unreadable config-id must propagate");
         assert!(err.to_string().contains("config-id"));
+    }
+
+    /// The remote writers' own refusal of a malformed `config-id`. Through [`crate::Repo`] the
+    /// pre-verb snapshot (Story 9.26) reads the same stack first and refuses before them, so the
+    /// function is called directly.
+    #[test]
+    fn existing_repo_config_file_refuses_a_malformed_config_id() {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        std::fs::write(repo.workspace().repo_path().join("config-id"), "not-hex").unwrap();
+        let err = super::existing_repo_config_file(repo.workspace()).expect_err("a malformed config-id must refuse");
+        assert!(err.to_string().contains("config-id"), "{err}");
     }
 }

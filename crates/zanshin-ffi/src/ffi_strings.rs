@@ -45,6 +45,7 @@ pub fn string_to_cstring(s: String) -> *mut c_char {
 pub unsafe fn cstr_to_string(ptr: *const c_char) -> Result<String, FfiErrorObj> {
     if ptr.is_null() {
         return Err(FfiErrorObj {
+            precondition: None,
             code: FFI_NULL_POINTER.to_owned(),
             context: None,
         });
@@ -52,6 +53,7 @@ pub unsafe fn cstr_to_string(ptr: *const c_char) -> Result<String, FfiErrorObj> 
     // SAFETY: caller guarantees ptr is a valid NUL-terminated C string for the call.
     let cstr = unsafe { CStr::from_ptr(ptr) };
     cstr.to_str().map(ToOwned::to_owned).map_err(|_| FfiErrorObj {
+        precondition: None,
         code: FFI_UTF8_ERROR.to_owned(),
         context: None,
     })

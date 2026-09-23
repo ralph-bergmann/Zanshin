@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::{env, fs};
 
+use futures::TryStreamExt as _;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::{EverythingMatcher, Matcher, NothingMatcher};
@@ -23,7 +24,10 @@ use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::working_copy::SnapshotOptions;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
-use zanshin_jj::{convert_colocated, Backend, MutateError, Repo, SnapshotStats, UntrackedPath, UntrackedReason};
+use zanshin_jj::{
+    convert_colocated, Backend, ChangeId, MutateError, PreconditionError, Repo, SnapshotStats, StaleCause,
+    UntrackedPath, UntrackedReason,
+};
 
 /// Env pin + two leaked process-lifetime dirs (the `tests/convert.rs` pattern):
 /// `$XDG_CONFIG_HOME` (so `base_ignores`' `$XDG_CONFIG_HOME/git/ignore` fallback and any repo
@@ -195,16 +199,25 @@ fn is_head(root: &Path, hex: &str) -> bool {
     repo.view().heads().iter().any(|id| id.hex() == hex)
 }
 
-fn op_count(repo: &Repo) -> usize {
-    repo.op_log(None).expect("op log").len()
+/// The op log read through jj-lib, newest first — WITHOUT the pre-verb snapshot every
+/// `Repo::op_log` call takes since Story 9.26, so a test measures exactly what the verb under
+/// test wrote rather than what a snapshot taken by the measurement itself adds.
+fn raw_ops(repo: &Repo) -> Vec<jj_lib::operation::Operation> {
+    let (_workspace, head) = load(repo.workspace_root());
+    pollster::block_on(jj_lib::op_walk::walk_ancestors(std::slice::from_ref(head.operation())).try_collect())
+        .expect("op walk")
 }
 
-fn head_op_description(repo: &Repo) -> String {
-    repo.op_log(Some(1)).expect("op log")[0].description.clone()
+fn op_count(repo: &mut Repo) -> usize {
+    raw_ops(repo).len()
 }
 
-fn head_op_id(repo: &Repo) -> String {
-    repo.op_log(Some(1)).expect("op log")[0].id.0.clone()
+fn head_op_description(repo: &mut Repo) -> String {
+    raw_ops(repo)[0].metadata().description.clone()
+}
+
+fn head_op_id(repo: &mut Repo) -> String {
+    raw_ops(repo)[0].id().hex()
 }
 
 fn tree_state_bytes(root: &Path) -> Vec<u8> {
@@ -231,13 +244,13 @@ fn track_untracked_file_writes_one_track_op_and_records_it_in_the_wc_state() {
     let fx = git_fx(NO_AUTO_TRACK);
     write(&fx.root, "a.txt", "under the limit");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_track(&strings(&["a.txt"]), false).expect("track");
 
-    assert_eq!(op_count(&repo), before + 1, "exactly one new operation");
-    assert_eq!(head_op_description(&repo), "track paths");
-    assert_eq!(result.mutation.new_op_id.0, head_op_id(&repo));
+    assert_eq!(op_count(&mut repo), before + 1, "exactly one new operation");
+    assert_eq!(head_op_description(&mut repo), "track paths");
+    assert_eq!(result.mutation.new_op_id.0, head_op_id(&mut repo));
     assert_eq!(result.num_rebased, 0);
     assert_eq!(result.snapshot_stats, SnapshotStats::default());
     assert!(result.mutation.new_change_ids.is_empty());
@@ -255,12 +268,12 @@ fn track_file_over_the_limit_writes_the_op_but_leaves_it_untracked() {
     let fx = git_fx("snapshot.max-new-file-size = 10\n");
     write(&fx.root, "a.bin", &"a".repeat(20));
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_track(&strings(&["a.bin"]), false).expect("track");
 
-    assert_eq!(op_count(&repo), before + 1, "the CLI commits unconditionally");
-    assert_eq!(head_op_description(&repo), "track paths");
+    assert_eq!(op_count(&mut repo), before + 1, "the CLI commits unconditionally");
+    assert_eq!(head_op_description(&mut repo), "track paths");
     assert!(wc_state_paths(&fx.root).is_empty(), "a too-large file stays untracked");
     assert_eq!(
         result.snapshot_stats.untracked,
@@ -268,6 +281,37 @@ fn track_file_over_the_limit_writes_the_op_but_leaves_it_untracked() {
             "a.bin",
             UntrackedReason::FileTooLarge { size: 20, max_size: 10 }
         )]
+    );
+}
+
+/// `file track` merges the PRE-VERB snapshot's stats into its own (the CLI's
+/// `print_track_snapshot_stats`, Story 9.26): `big.bin` is outside the track's own matcher, so
+/// the track's snapshot alone would call it `FileNotAutoTracked`; the auto-tracking pre-verb
+/// snapshot saw it first and knows the real reason — too large.
+#[test]
+fn track_reports_the_pre_verb_snapshots_reason_for_a_path_it_did_not_match() {
+    let fx = git_fx("snapshot.max-new-file-size = 5\n");
+    write(&fx.root, ".gitignore", "a.txt\n");
+    write(&fx.root, "a.txt", "ignored");
+    write(&fx.root, "big.bin", &"b".repeat(20));
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    let result = repo.file_track(&strings(&["a.txt"]), false).expect("track");
+
+    let big: Vec<_> = result
+        .snapshot_stats
+        .untracked
+        .iter()
+        .filter(|u| u.path == "big.bin")
+        .collect();
+    assert_eq!(
+        big,
+        [&untracked(
+            "big.bin",
+            UntrackedReason::FileTooLarge { size: 20, max_size: 5 }
+        )],
+        "{:?}",
+        result.snapshot_stats.untracked
     );
 }
 
@@ -301,14 +345,15 @@ fn track_ignored_path_writes_the_op_but_leaves_it_untracked() {
     write(&fx.root, ".gitignore", "b.txt\n");
     write(&fx.root, "b.txt", "ignored");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_track(&strings(&["b.txt"]), false).expect("track");
 
-    assert_eq!(op_count(&repo), before + 1);
+    assert_eq!(op_count(&mut repo), before + 1);
     assert!(wc_state_paths(&fx.root).is_empty(), "an ignored path is not tracked");
-    // With no pre-verb snapshot (Story 9.26) the other new file reports as not auto-tracked;
-    // the ignored one is not reported at all, as in jj-lib.
+    // The pre-verb snapshot (auto-track `none()`) and the track snapshot both leave the other
+    // new file untracked as not auto-tracked; the ignored one is not reported at all, as in
+    // jj-lib.
     assert_eq!(
         result.snapshot_stats.untracked,
         vec![untracked(".gitignore", UntrackedReason::FileNotAutoTracked)]
@@ -331,24 +376,24 @@ fn track_ignored_path_with_include_ignored_tracks_it() {
 fn track_matching_nothing_still_writes_the_op_and_changes_nothing() {
     let fx = git_fx(NO_AUTO_TRACK);
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     // The matrix row's `nope/`: parsed like the CLI's cwd-relative path (cwd = workspace root),
     // so the trailing `/` normalises away instead of being refused.
     let result = repo.file_track(&strings(&["nope/"]), false).expect("track");
 
-    assert_eq!(op_count(&repo), before + 1);
-    assert_eq!(head_op_description(&repo), "track paths");
+    assert_eq!(op_count(&mut repo), before + 1);
+    assert_eq!(head_op_description(&mut repo), "track paths");
     assert!(wc_state_paths(&fx.root).is_empty());
     assert!(at_paths(&fx.root).is_empty());
     assert_eq!(result.snapshot_stats, SnapshotStats::default());
 }
 
 /// `@`'s children are NOT rebased by `track` — the snapshot tree is discarded (GH #8298); the
-/// NEXT snapshot is what rebases them.
+/// NEXT verb's pre-verb snapshot (Story 9.26) is what rebases them, as the CLI's next command's.
 #[test]
 fn track_with_descendants_rebases_nothing_until_the_next_snapshot() {
-    let fx = git_fx("");
+    let fx = git_fx(NO_AUTO_TRACK);
     write(&fx.root, "f.txt", "base");
     snapshot(&fx.root, true);
     let at = at_hex(&fx.root);
@@ -361,8 +406,10 @@ fn track_with_descendants_rebases_nothing_until_the_next_snapshot() {
     assert_eq!(result.num_rebased, 0);
     assert_eq!(at_hex(&fx.root), at, "@ is not rewritten");
     assert!(is_head(&fx.root, &child), "the child keeps its commit");
-    // The CLI's next command: its snapshot moves `a.txt` into `@` and rebases the child.
-    snapshot(&fx.root, false);
+    // The next verb: its pre-verb snapshot moves `a.txt` into `@` and rebases the child.
+    let precondition = repo.snapshot().expect("the next verb snapshots");
+    assert!(precondition.was_snapshot_taken);
+    assert_eq!(precondition.snapshot_rebased, 1, "the child is rebased onto the new @");
     assert_eq!(at_paths(&fx.root), strings(&["a.txt", "f.txt"]));
     assert!(!is_head(&fx.root, &child), "the next snapshot rebased the child");
 }
@@ -384,13 +431,13 @@ fn untrack_ignored_tracked_path_removes_it_from_at_and_the_wc_state() {
     let fx = untrack_fx("");
     let at_before = at_hex(&fx.root);
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_untrack(&strings(&["c.log"])).expect("untrack");
 
-    assert_eq!(op_count(&repo), before + 1);
-    assert_eq!(head_op_description(&repo), "untrack paths");
-    assert_eq!(result.mutation.new_op_id.0, head_op_id(&repo));
+    assert_eq!(op_count(&mut repo), before + 1);
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
+    assert_eq!(result.mutation.new_op_id.0, head_op_id(&mut repo));
     assert_ne!(at_hex(&fx.root), at_before, "@ was rewritten");
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "d.txt"]));
     assert_eq!(wc_state_paths(&fx.root), strings(&[".gitignore", "d.txt"]));
@@ -405,7 +452,7 @@ fn untrack_ignored_tracked_path_removes_it_from_at_and_the_wc_state() {
 fn untrack_not_ignored_path_refuses_and_writes_nothing() {
     let fx = untrack_fx("");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let op_before = head_op_id(&repo);
+    let op_before = head_op_id(&mut repo);
     let at_before = at_hex(&fx.root);
     let state_before = tree_state_bytes(&fx.root);
 
@@ -417,7 +464,7 @@ fn untrack_not_ignored_path_refuses_and_writes_nothing() {
         matches!(&err, MutateError::PathsNotIgnored { paths } if *paths == strings(&["d.txt"])),
         "{err:?}"
     );
-    assert_eq!(head_op_id(&repo), op_before, "no operation");
+    assert_eq!(head_op_id(&mut repo), op_before, "no operation");
     assert_eq!(at_hex(&fx.root), at_before);
     assert_eq!(
         tree_state_bytes(&fx.root),
@@ -432,7 +479,7 @@ fn untrack_not_ignored_path_refuses_and_writes_nothing() {
 fn untrack_mixed_paths_names_only_the_unignored_ones() {
     let fx = untrack_fx("");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let op_before = head_op_id(&repo);
+    let op_before = head_op_id(&mut repo);
 
     let err = repo
         .file_untrack(&strings(&["c.log", "d.txt"]))
@@ -442,7 +489,7 @@ fn untrack_mixed_paths_names_only_the_unignored_ones() {
         matches!(&err, MutateError::PathsNotIgnored { paths } if *paths == strings(&["d.txt"])),
         "{err:?}"
     );
-    assert_eq!(head_op_id(&repo), op_before);
+    assert_eq!(head_op_id(&mut repo), op_before);
     assert_eq!(wc_state_paths(&fx.root), strings(&[".gitignore", "c.log", "d.txt"]));
 }
 
@@ -468,12 +515,12 @@ fn untrack_a_directory_of_unignored_files_names_every_offender() {
 fn untrack_matching_nothing_writes_the_op_and_reports_the_unmatched_path() {
     let fx = untrack_fx("");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_untrack(&strings(&["nope.txt"])).expect("untrack");
 
-    assert_eq!(op_count(&repo), before + 1);
-    assert_eq!(head_op_description(&repo), "untrack paths");
+    assert_eq!(op_count(&mut repo), before + 1);
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert_eq!(result.unmatched_paths, strings(&["nope.txt"]));
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "c.log", "d.txt"]));
 }
@@ -492,7 +539,7 @@ fn paths_normalise_like_the_cli_and_escaping_paths_are_refused() {
         .expect("untrack");
 
     assert_eq!(result.unmatched_paths, strings(&["nope.txt", "dir", "abs.txt"]));
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     let err = repo
         .file_untrack(&strings(&["../outside.txt"]))
         .expect_err("escapes the workspace");
@@ -500,27 +547,33 @@ fn paths_normalise_like_the_cli_and_escaping_paths_are_refused() {
         matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
         "{err:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
-/// Another tracked file edited on disk (but never snapshotted) before the call: the post-reset
-/// snapshot sees a change OUTSIDE the matcher and resets again, so the edit is not mixed into
-/// the rewritten `@` — it stays on disk for the next snapshot.
+/// Another tracked file edited on disk before the call: exactly like the CLI's `workspace_helper`,
+/// the pre-verb snapshot (Story 9.26) records the edit into `@` FIRST — as its own `snapshot
+/// working copy` operation — and the untrack then rewrites that up-to-date `@`, leaving the
+/// working-copy state reset to it.
 #[test]
-fn untrack_does_not_mix_in_a_concurrent_working_copy_edit() {
+fn untrack_after_an_unsnapshotted_edit_keeps_the_edit_in_at() {
     let fx = untrack_fx("");
     let d_before = path_value_hex(&fx.root, "d.txt");
     write(&fx.root, "d.txt", "an edit nobody snapshotted");
     let mut repo = Repo::open(&fx.root).expect("open");
+    let before = op_count(&mut repo);
 
     repo.file_untrack(&strings(&["c.log"])).expect("untrack");
 
+    let ops = raw_ops(&repo);
+    assert_eq!(ops.len(), before + 2, "the snapshot's operation, then the untrack's");
+    assert_eq!(ops[1].metadata().description, "snapshot working copy");
+    assert!(ops[1].metadata().is_snapshot);
+    assert_eq!(ops[0].metadata().description, "untrack paths");
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "d.txt"]));
-    assert_eq!(path_value_hex(&fx.root, "d.txt"), d_before, "@ keeps the old content");
-    assert_eq!(
-        fs::read_to_string(fx.root.join("d.txt")).expect("read d.txt"),
-        "an edit nobody snapshotted",
-        "the disk keeps the new content"
+    assert_ne!(
+        path_value_hex(&fx.root, "d.txt"),
+        d_before,
+        "@ holds the snapshotted edit"
     );
     let (workspace, repo_oracle) = load(&fx.root);
     let at = repo_oracle
@@ -576,12 +629,12 @@ fn untrack_in_a_colocated_workspace_updates_the_git_index_and_exports_refs() {
     );
     test_helpers::set_local_bookmark(&fx.root, "feat", &[&at_hex(&fx.root)]);
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
 
     let result = repo.file_untrack(&strings(&["c.log"])).expect("untrack");
 
-    assert_eq!(op_count(&repo), before + 1, "export rides the same operation");
-    assert_eq!(head_op_description(&repo), "untrack paths");
+    assert_eq!(op_count(&mut repo), before + 1, "export rides the same operation");
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert!(
         !git(&["ls-files"], &fx.root).lines().any(|l| l == "c.log"),
         "the intent-to-add entry is gone"
@@ -608,7 +661,7 @@ fn untrack_in_a_colocated_workspace_reports_a_failed_bookmark_export() {
         .file_untrack(&strings(&["c.log"]))
         .expect("a failed ref is not an error");
 
-    assert_eq!(head_op_description(&repo), "untrack paths");
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert_eq!(result.failed_bookmarks.len(), 1, "{:?}", result.failed_bookmarks);
     assert_eq!(result.failed_bookmarks[0].name, "foo/bar");
     assert_eq!(result.failed_bookmarks[0].remote, "git");
@@ -626,7 +679,7 @@ fn untrack_on_a_native_backend_writes_the_op_without_git() {
 
     let result = repo.file_untrack(&strings(&["c.log"])).expect("untrack");
 
-    assert_eq!(head_op_description(&repo), "untrack paths");
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore"]));
     assert!(result.failed_bookmarks.is_empty() && result.failed_tags.is_empty());
 }
@@ -669,10 +722,12 @@ fn untrack_outside_the_sparse_patterns_needs_no_ignore() {
 #[test]
 fn an_empty_path_entry_is_refused_by_both_verbs() {
     // `""` would parse to the repo ROOT — every path; the CLI refuses `jj file track ""`.
-    let fx = untrack_fx("");
+    // `auto-track = none()` keeps the pre-verb snapshot from tracking `new.txt` on its own, so
+    // only a (refused) forced track of the root could.
+    let fx = untrack_fx(NO_AUTO_TRACK);
     write(&fx.root, "new.txt", "n");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let track = repo.file_track(&strings(&[""]), true).expect_err("empty entry");
     let untrack = repo.file_untrack(&strings(&[""])).expect_err("empty entry");
@@ -683,7 +738,7 @@ fn an_empty_path_entry_is_refused_by_both_verbs() {
             "{err:?}"
         );
     }
-    assert_eq!(head_op_id(&repo), before, "no operation");
+    assert_eq!(head_op_id(&mut repo), before, "no operation");
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "c.log", "d.txt"]));
 }
 
@@ -691,7 +746,7 @@ fn an_empty_path_entry_is_refused_by_both_verbs() {
 fn empty_paths_are_refused_by_both_verbs() {
     let fx = git_fx("");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
     let track = repo.file_track(&[], false).expect_err("empty");
     let untrack = repo.file_untrack(&[]).expect_err("empty");
@@ -704,7 +759,7 @@ fn empty_paths_are_refused_by_both_verbs() {
         matches!(&untrack, MutateError::InvalidInput { reason } if reason.contains("file untrack")),
         "{untrack:?}"
     );
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 #[test]
@@ -725,18 +780,20 @@ fn a_wrong_typed_size_knob_is_a_config_error_for_both_verbs() {
     let fx = git_fx("snapshot.max-new-file-size = \"lots\"\n");
     write(&fx.root, "a.txt", "a");
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
 
+    // The pre-verb snapshot reads the knob first (Story 9.26) — before its lock.
     for err in [
         repo.file_track(&strings(&["a.txt"]), false).expect_err("bad size"),
         repo.file_untrack(&strings(&["a.txt"])).expect_err("bad size"),
     ] {
         assert!(
-            matches!(&err, MutateError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+                if reason.contains("snapshot.max-new-file-size")),
             "{err:?}"
         );
     }
-    assert_eq!(head_op_id(&repo), before);
+    assert_eq!(head_op_id(&mut repo), before);
 }
 
 #[test]
@@ -747,7 +804,8 @@ fn an_unparseable_auto_track_fileset_is_a_config_error() {
     let err = repo.file_untrack(&strings(&["a.txt"])).expect_err("bad fileset");
 
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("snapshot.auto-track")),
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+            if reason.contains("snapshot.auto-track")),
         "{err:?}"
     );
 }
@@ -768,41 +826,69 @@ fn auto_track_resolves_fileset_aliases() {
 // ── Refusals at the lock ─────────────────────────────────────────────────────────
 
 /// `@` rewritten in the op log without a checkout: the recorded working-copy tree is no longer
-/// `@`'s, so both verbs refuse — the CLI's "Concurrent working copy operation".
+/// `@`'s. The pre-verb snapshot meets it first (Story 9.26) and refuses both verbs as the CLI's
+/// stale working copy ("The working copy is stale"), writing nothing.
 #[test]
-fn a_rewritten_but_unchecked_out_at_is_a_concurrent_working_copy() {
+fn a_rewritten_but_unchecked_out_at_is_a_stale_working_copy() {
     let fx = untrack_fx("");
     let _ = test_helpers::rewrite_commit_files(&fx.root, &at_hex(&fx.root), &[("elsewhere.txt", "x")]);
     let mut repo = Repo::open(&fx.root).expect("open");
-    let before = head_op_id(&repo);
+    let before = head_op_id(&mut repo);
     let state_before = tree_state_bytes(&fx.root);
 
-    let track = repo.file_track(&strings(&["d.txt"]), false).expect_err("concurrent");
-    let untrack = repo.file_untrack(&strings(&["c.log"])).expect_err("concurrent");
+    let track = repo.file_track(&strings(&["d.txt"]), false).expect_err("stale");
+    let untrack = repo.file_untrack(&strings(&["c.log"])).expect_err("stale");
 
-    assert!(matches!(track, MutateError::ConcurrentWorkingCopy), "{track:?}");
-    assert!(matches!(untrack, MutateError::ConcurrentWorkingCopy), "{untrack:?}");
-    assert_eq!(head_op_id(&repo), before);
+    for err in [&track, &untrack] {
+        assert!(
+            matches!(
+                err,
+                MutateError::Precondition(PreconditionError::StaleWorkingCopy {
+                    cause: StaleCause::Stale,
+                    ..
+                })
+            ),
+            "{err:?}"
+        );
+    }
+    assert_eq!(head_op_id(&mut repo), before);
     assert_eq!(tree_state_bytes(&fx.root), state_before);
 }
 
-/// Pins the gap Story 9.26 closes: after `track` the working-copy state leads `@` (GH #8298),
-/// so a second working-copy verb BEFORE any snapshot is refused as concurrent — where the CLI's
-/// next command would have snapshotted first. After a snapshot it works again.
+/// AC-5 (Story 9.26): after a `track` the working-copy state leads `@` (GH #8298); the NEXT
+/// verb's pre-verb snapshot moves the tracked path into `@` first, exactly as the CLI's next
+/// command does — so a second `track`, a `describe` and a `new_change` all succeed, with no
+/// concurrent or stale refusal.
 #[test]
-fn a_second_verb_after_track_needs_the_next_snapshot_first() {
-    let fx = git_fx("");
+fn working_copy_verbs_after_track_snapshot_the_tracked_path_into_at_first() {
+    let fx = git_fx(NO_AUTO_TRACK);
     write(&fx.root, "a.txt", "a");
     write(&fx.root, "b.txt", "b");
     let mut repo = Repo::open(&fx.root).expect("open");
     repo.file_track(&strings(&["a.txt"]), false).expect("first track");
+    assert!(at_paths(&fx.root).is_empty(), "GH #8298: the track leaves @ alone");
 
-    let err = repo.file_track(&strings(&["b.txt"]), false).expect_err("state leads @");
-    assert!(matches!(err, MutateError::ConcurrentWorkingCopy), "{err:?}");
+    let second = repo
+        .file_track(&strings(&["b.txt"]), false)
+        .expect("the second track runs after the pre-verb snapshot");
+    assert_eq!(
+        at_paths(&fx.root),
+        strings(&["a.txt"]),
+        "the pre-verb snapshot moved the first tracked path into @"
+    );
+    assert_eq!(wc_state_paths(&fx.root), strings(&["a.txt", "b.txt"]));
 
-    snapshot(&fx.root, false);
-    repo.file_track(&strings(&["b.txt"]), false)
-        .expect("after the next snapshot");
+    let described = repo
+        .describe(second.mutation.working_copy_change_id.clone(), "tracked")
+        .expect("describe after track");
+    assert_eq!(
+        at_paths(&fx.root),
+        strings(&["a.txt", "b.txt"]),
+        "describe's own pre-verb snapshot moved the second tracked path in"
+    );
+    repo.new_change(&[ChangeId(described.working_copy_change_id.0)])
+        .expect("new_change after track");
+    assert!(at_paths(&fx.root).contains(&"a.txt".to_owned()));
 }
 
 #[test]
@@ -837,10 +923,10 @@ fn cli_track_ignored_sequence() {
     let _child = test_helpers::add_commit_with_files(&fx.root, &[&at], &[], "child");
     let mut repo = Repo::open(&fx.root).expect("open");
 
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
     let result = repo.file_track(&strings(&["file1"]), false).expect("track file1");
-    assert_eq!(op_count(&repo), before + 1);
-    assert_eq!(head_op_description(&repo), "track paths");
+    assert_eq!(op_count(&mut repo), before + 1);
+    assert_eq!(head_op_description(&mut repo), "track paths");
     assert_eq!(result.num_rebased, 0);
     assert!(
         at_paths(&fx.root).is_empty(),
@@ -855,10 +941,10 @@ fn cli_track_ignored_sequence() {
     snapshot(&fx.root, false);
     assert_eq!(at_paths(&fx.root), strings(&["file1", "file2"]));
 
-    let before = op_count(&repo);
+    let before = op_count(&mut repo);
     let result = repo.file_untrack(&strings(&["file2"])).expect("untrack file2");
-    assert_eq!(op_count(&repo), before + 1);
-    assert_eq!(head_op_description(&repo), "untrack paths");
+    assert_eq!(op_count(&mut repo), before + 1);
+    assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert_eq!(result.num_rebased, 1, "eviction is immediate and affects descendants");
     assert_eq!(at_paths(&fx.root), strings(&["file1"]));
     assert_eq!(wc_state_paths(&fx.root), strings(&["file1"]));
@@ -912,7 +998,9 @@ fn base_ignores_reads_the_xdg_git_ignore_on_a_native_backend() {
 /// git config is re-read per call, as the CLI re-reads it per command.
 #[test]
 fn base_ignores_sees_a_core_excludes_file_set_after_open() {
-    let fx = git_fx("");
+    // `auto-track = none()`: otherwise the pre-verb snapshot would auto-track the new
+    // `late-excludes` file itself, which is not what this row is about.
+    let fx = git_fx(NO_AUTO_TRACK);
     write(&fx.root, "late.lateex", "x");
     let mut repo = Repo::open(&fx.root).expect("open");
     let git_config = fx

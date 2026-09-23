@@ -22,13 +22,14 @@ use zanshin_jj::{
 };
 
 use crate::envelope::{
-    catch, expect_request_kind, invalid_request, ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle,
-    reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE,
-    JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND,
-    JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT,
-    JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND,
-    JJ_PATH_NOT_IGNORED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
-    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, ok_absorb_result, ok_empty,
+    ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
+    JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR,
+    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
+    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
+    JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -41,34 +42,41 @@ use crate::watcher::{Watcher, WatcherError, WatcherEvent};
 fn map_repo_err(e: RepoError) -> FfiErrorObj {
     match e {
         RepoError::PathNotFound { path } => FfiErrorObj {
+            precondition: None,
             code: JJ_PATH_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotARepo { path } => FfiErrorObj {
+            precondition: None,
             code: JJ_REPO_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::InitFailed { reason } | RepoError::CloneFailed { reason } | RepoError::Backend(reason) => {
             FfiErrorObj {
+                precondition: None,
                 code: JJ_JJ_LIB_ERROR.to_owned(),
                 context: Some(reason),
             }
         }
         RepoError::ConvertFailed { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_CONVERT_FAILED.to_owned(),
             context: Some(reason),
         },
         RepoError::AlreadyJjRepo { path } => FfiErrorObj {
+            precondition: None,
             code: JJ_ALREADY_JJ_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotAGitRepo { path } => FfiErrorObj {
+            precondition: None,
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
         // Story 9.27: the effective config stack the workspace is opened/created with could
         // not be read — the same `jj.config_error` every read verb already reports.
         RepoError::Config { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -103,77 +111,96 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// `jj.path_not_ignored` and to the registered `jj.no_working_copy`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
+        MutateError::Precondition(e) => map_precondition_err(e),
         MutateError::ChangeNotFound { id } => FfiErrorObj {
+            precondition: None,
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
         },
         MutateError::InvalidInput { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some(reason),
         },
         MutateError::Immutable { commit_id } => FfiErrorObj {
+            precondition: None,
             code: JJ_IMMUTABLE.to_owned(),
             context: Some(commit_id),
         },
         MutateError::Config { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::NothingToUndo => FfiErrorObj {
+            precondition: None,
             code: JJ_NOTHING_TO_UNDO.to_owned(),
             context: None,
         },
         MutateError::RemoteNotFound { name } => FfiErrorObj {
+            precondition: None,
             code: JJ_REMOTE_NOT_FOUND.to_owned(),
             context: Some(name),
         },
         MutateError::NetworkError { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::RemoteExists { name } => FfiErrorObj {
+            precondition: None,
             code: JJ_REMOTE_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::RemoteNonstandardConfig { name } => FfiErrorObj {
+            precondition: None,
             code: JJ_REMOTE_NONSTANDARD_CONFIG.to_owned(),
             context: Some(name),
         },
         // No `context`: this variant names no path and no remote — the fault is the whole
         // workspace's backend, which the code already says.
         MutateError::NotAGitRepo => FfiErrorObj {
+            precondition: None,
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: None,
         },
         MutateError::RevsetParseError { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_REVSET_PARSE_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::RevsetResolutionError { reason } => FfiErrorObj {
+            precondition: None,
             code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::BookmarkExists { name } => FfiErrorObj {
+            precondition: None,
             code: JJ_BOOKMARK_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::BookmarkTrackedRemoteExists { name } => FfiErrorObj {
+            precondition: None,
             code: JJ_BOOKMARK_TRACKED_REMOTE_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::NoWorkingCopy => FfiErrorObj {
+            precondition: None,
             code: JJ_NO_WORKING_COPY.to_owned(),
             context: None,
         },
         MutateError::ConcurrentWorkingCopy => FfiErrorObj {
+            precondition: None,
             code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
             context: None,
         },
         MutateError::PathsNotIgnored { paths } => FfiErrorObj {
+            precondition: None,
             code: JJ_PATH_NOT_IGNORED.to_owned(),
             context: Some(paths.join("\n")),
         },
         MutateError::Backend(reason) => FfiErrorObj {
+            precondition: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -296,6 +323,7 @@ fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned
 
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
     FfiErrorObj {
+        precondition: None,
         code: JJ_DETECT_FAILED.to_owned(),
         context: Some(e.to_string()),
     }
@@ -326,17 +354,7 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
             suggested_kind,
         },
     );
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::RepoDetect,
-            data: Some(detect.as_union_value()),
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::RepoDetect, Some(detect.as_union_value()), None)
 }
 
 // ── RepoSession: warm loader + watcher owner (ADR-0002:34) ───────────────────
@@ -385,6 +403,7 @@ impl RepoSession {
 
 fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
     FfiErrorObj {
+        precondition: None,
         code: WATCHER_IO_ERROR.to_owned(),
         context: Some(e.to_string()),
     }
@@ -557,6 +576,7 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
             1 => Some(Backend::Git),
             _ => {
                 return Err(FfiErrorObj {
+                    precondition: None,
                     code: FFI_INVALID_ARGUMENT.to_owned(),
                     context: Some(format!("backend discriminant {backend} is not 0 (native) or 1 (git)")),
                 })
@@ -632,6 +652,7 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         if handle == 0 {
             return Err(FfiErrorObj {
+                precondition: None,
                 code: FFI_INVALID_HANDLE.to_owned(),
                 context: None,
             });
@@ -698,18 +719,19 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// identical in semantics to the one returned by `zanshin_repo_open` / `_init` /
 /// `_clone` and must be released via `zanshin_repo_close`.
 ///
-/// No working-copy file is written: the conversion runs the same sequence as `jj git init`
-/// over an existing `.git/`, which writes up to two operations (`import git refs`, then
-/// `import git head`, each skipped when its import changed nothing), seeds a
-/// `.jj/.gitignore` that hides the whole `.jj/` directory from the colocated Git repo, and
-/// — when `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark —
-/// writes `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE
-/// `.jj/` under `<config_dir>/jj/repos/`. Unlike the CLI, the head import does not
-/// re-parent `@` onto the imported HEAD (that working-copy half is Story 9.26's).
+/// No working-copy file is written or deleted: the conversion runs the same sequence as
+/// `jj git init` over an existing `.git/` — `import git refs` (skipped when it changed
+/// nothing), a `.jj/.gitignore` that hides the whole `.jj/` directory from the colocated Git
+/// repo, then the CLI's own per-command snapshot under jj's Git import/export lock (Story
+/// 9.26): `import git head` re-parents `@` onto the Git HEAD by resetting the working-copy
+/// STATE only, and `snapshot working copy` records a dirty work tree into `@`. Finally, when
+/// `refs/remotes/upstream/HEAD` or `refs/remotes/origin/HEAD` names a bookmark, it writes
+/// `revset-aliases.'trunk()'` into the repo-level config file, which lives OUTSIDE `.jj/`
+/// under `<config_dir>/jj/repos/`.
 ///
-/// `.git/` is written to exactly once, by the CLI's own colocated `export_refs` step inside
-/// the refs operation: jj exports back the refs it has just imported, so no user-visible ref
-/// and no HEAD is moved.
+/// `.git/` is written only by the CLI's own colocated steps: jj exports back the refs it has
+/// just imported and, when the snapshot recorded changes, resets the Git index to `@`'s
+/// parent (HEAD itself stays where it was), so no user-visible ref and no HEAD is moved.
 ///
 /// If the operation fails, `.jj/` is rolled back, leaving the Git repo intact
 /// (no-data-loss invariant) — the rollback never deletes or rewrites `.git/`. A failure
@@ -765,6 +787,8 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 ///   immutable set is unknown; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -791,8 +815,8 @@ pub unsafe extern "C" fn zanshin_describe(
         // SAFETY: both are caller-owned NUL-terminated C strings (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?;
         let desc = unsafe { cstr_to_string(description) }?;
-        let result = session.repo.describe(ChangeId(id), &desc).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.describe(ChangeId(id), &desc);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -816,6 +840,8 @@ pub unsafe extern "C" fn zanshin_describe(
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -835,8 +861,8 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
         let parents = read_change_id_list(data, len, fbs::RequestKind::NewChange)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.new_change(&parents).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.new_change(&parents);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -858,6 +884,8 @@ pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: u
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 ///   immutable set is unknown; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -878,8 +906,8 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
         let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: change_id is a caller-owned NUL-terminated C string (Dart allocates + frees).
         let id = unsafe { cstr_to_string(change_id) }?;
-        let result = session.repo.edit(ChangeId(id)).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.edit(ChangeId(id));
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -909,6 +937,8 @@ pub unsafe extern "C" fn zanshin_edit(handle: u64, change_id: *const c_char) -> 
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 ///   immutable set is unknown; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -928,8 +958,8 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
         let change_ids = read_change_id_list(data, len, fbs::RequestKind::Abandon)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.abandon(&change_ids).map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.abandon(&change_ids);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -947,6 +977,8 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 ///   divergent-write merge op).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -962,8 +994,8 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.undo().map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.undo();
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -994,6 +1026,8 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
 ///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
 ///   non-boolean value; both are read per call rather than hardcoded.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -1025,11 +1059,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
                 &e.message,
             ));
         };
-        let result = session
-            .repo
-            .git_fetch(&remote_name, &progress)
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+        let result = session.repo.git_fetch(&remote_name, &progress);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -1047,8 +1078,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 /// restored from its PARENT tree. `changes_in` may not be combined with `from`/`into`.
 /// An empty `paths` means all paths; entries are repo-relative PREFIXES.
 ///
-/// The working copy is NOT snapshotted first: `@` is the last-snapshotted working-copy
-/// commit (D2). If the resulting tree already equals the destination's, NO operation is
+/// The working copy is snapshotted first, as by the CLI (Story 9.26), so on-disk edits are
+/// part of `@`. If the resulting tree already equals the destination's, NO operation is
 /// written and `MutationResult.new_op_id` carries the PRE-CALL op-log head.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
@@ -1071,6 +1102,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 ///   immutable set is unknown; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -1092,9 +1125,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
         let session = unsafe { session_from_handle(handle) }?;
         let result = session
             .repo
-            .restore(req.from, req.into, req.changes_in, &req.paths, req.restore_descendants)
-            .map_err(map_mutate_err)?;
-        Ok(ok_mutation_result(&result))
+            .restore(req.from, req.into, req.changes_in, &req.paths, req.restore_descendants);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }
@@ -1113,7 +1145,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 /// jj-lib refuses to split are reported in `AbsorbResult.skipped_paths` (the CLI prints one
 /// warning per entry) rather than failing the call. If nothing was absorbable, NO operation
 /// is written, `rewritten_change_ids` is empty, and the nested `MutationResult.new_op_id`
-/// carries the PRE-CALL op-log head. The working copy is NOT snapshotted first (D2).
+/// carries the PRE-CALL op-log head. The working copy is snapshotted first, as by the CLI
+/// (Story 9.26).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1134,6 +1167,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved; detail in
 ///   `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
 /// # Safety
@@ -1153,11 +1188,8 @@ pub unsafe extern "C" fn zanshin_absorb(handle: u64, data: *const u8, len: usize
         let req = read_absorb_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session
-            .repo
-            .absorb(req.from, req.into.as_deref(), &req.paths)
-            .map_err(map_mutate_err)?;
-        Ok(ok_absorb_result(&result))
+        let result = session.repo.absorb(req.from, req.into.as_deref(), &req.paths);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_absorb_result)
     });
     vec_into_token(buf)
 }
