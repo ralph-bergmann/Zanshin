@@ -5827,6 +5827,22 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Non-goals.** `edit`'s guard (9.38), the undo stack (9.39).
 
+### Story 9.41: `--when.commands` config scopes apply per verb — every Zanshin verb resolves the config with its CLI command name [M]
+*(Added 2026-09-24, Ralph — from the 9.27 second follow-up review's deferral "`--when.commands` scopes never apply outside the config verbs".)*
+
+**Motivation.** A jj config file can scope a table to commands: `[[--scope]]` with `--when.commands = ["git fetch"]`. jj-lib's resolver (`config_resolver.rs:74-78`, `matches_command` @ 0.44.0) matches space-separated prefixes (`["git"]` matches `git fetch`, `["git fetch"]` matches `git fetch` and longer). The CLI names the command before its start-up resolution — `config_env.set_command_name(command_name(&matches))` (`cli_util.rs:4581` @ v0.44.0), where `command_name` joins the clap subcommand chain with spaces (`:4238-4248`, e.g. `"git clone"`, `"describe"`, `"bookmark create"`) — and `settings_for_new_workspace` clones that `config_env` (`:377`). So a scope applies to exactly the commands it names, including identity and op metadata: a user can give `jj git clone` a different `user.email` or `describe` a different editor setting. Zanshin resolves with `command: None` for every verb except Story 9.28's config verbs (documented in the `config.rs` module doc), so such a scope never applies — at creation, open or mutation — and Zanshin writes something the CLI would not.
+
+**Scope (backend).**
+1. **Mapping:** every public verb carries the CLI command name of its counterpart as a constant next to the verb (`Repo::clone` → `"git clone"`, `init` → `"git init"`, `convert_colocated` / `convert_import` → `"git init"`, `describe` → `"describe"`, `new_change` → `"new"`, `git_fetch` → `"git fetch"`, `bookmark_create` → `"bookmark create"`, `file_track` → `"file track"`, `snapshot` → `"util snapshot"`, reads → `"status"`, `"log"`, `"show"`, `"file show"` …) — one table in one place, audited against the clap tree @ v0.44.0 and re-checked at every pin bump. Where one Zanshin read serves several CLI commands (e.g. the graph = `log`), the table names the command whose output it replaces and says why.
+2. **Resolution:** the name flows into `ConfigResolutionContext.command` for the verb's own resolution — the start-up stack (9.27 `check_startup_stack`), `settings_for_new_workspace`, the per-verb settings refresh inside `Repo::precondition` and every named config read the verb does (`config::load_with`).
+3. **Settings per verb:** because the resolved settings now depend on the verb, the refresh can no longer be decided on the stack-file fingerprint alone — resolve per verb and reload the `Workspace` only when the RESOLVED settings differ from the ones it was loaded with (so a config without command scopes keeps today's zero-reload behaviour). Pin the cost on `large-10k` like 9.27 did.
+4. The 9.28 config verbs already pass `"config …"` names — fold them into the same table.
+5. Witnesses: a `--when.commands = ["describe"]` scope changes the author/op metadata `describe` writes and NOT what `new_change` writes; a `["git clone"]` scope applies to the clone's operations; a `["git"]` prefix matches `git fetch`; no scope → no workspace reload between two different verbs.
+
+**Non-goals.** No CLI aliases (`[aliases]` expansion changes the CLI's command name, but Zanshin has no alias input); no `--config`/`--config-file` flags.
+
+**Related:** 9.26 (`precondition`, where the refresh runs), 9.27 (config stack, fingerprint refresh), 9.28 (config verbs), 9.33, 9.36.
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
