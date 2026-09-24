@@ -623,7 +623,9 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 /// Clone a jj repository from `url` into `target_path`.
 ///
 /// Uses a `file://` local source in tests — no network access is needed or allowed.
-/// On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone`.
+/// On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone` — only a
+/// `.jj/` the clone created; a target that already held one (an existing jj workspace) is
+/// refused and left untouched.
 ///
 /// Returns a `RepoHandle` envelope on success.
 ///

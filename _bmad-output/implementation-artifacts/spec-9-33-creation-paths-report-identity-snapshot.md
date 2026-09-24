@@ -511,3 +511,5 @@ Status: done. Blocking condition: none. Every change since baseline `9c77e2ca` (
 - `pubspec.lock` drift was reverted.
 
 **Residual risks.** Unchanged from the first pass: the HIGH clone-rollback data loss (fix chip + 9.20 handover), the Dart error path (9.35), no Dart successful-clone witness, clone's identity count and start-up environment (9.20).
+
+**Post-story resolution (2026-09-24).** The HIGH clone-rollback data loss (frontmatter `deferred` item 1) is fixed by `spec-clone-rollback-keeps-existing-jj.md`. The rollback now runs only for a `.jj/` the clone created, witnessed by `tests/repo.rs::a_clone_into_an_existing_jj_workspace_fails_and_keeps_it`.

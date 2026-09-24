@@ -1919,8 +1919,10 @@ impl Repo {
     /// then points the working copy at the fetched default branch (a fresh `@` commit on its tip).
     ///
     /// On failure, the partial `.jj/` created under `target_path` is rolled back so a
-    /// retry into the same path starts clean. `target_path` must already exist — clone never
-    /// created it (`create_jj_dir` needs the parent), and a missing target is refused up front.
+    /// retry into the same path starts clean. A `.jj` that existed before the call (an existing
+    /// jj workspace, a symlink) is never touched: creation refuses it and no rollback runs.
+    /// `target_path` must already exist — clone never created it (`create_jj_dir` needs the
+    /// parent), and a missing target is refused up front.
     /// The CLI's `jj git clone` instead creates its destination and refuses a non-empty one
     /// (`cli/src/commands/git/clone.rs` @ v0.44.0); that parity is Story 9.20's.
     ///
@@ -1941,7 +1943,8 @@ impl Repo {
     ///
     /// In [`CreationOutcome::result`]:
     /// [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
-    /// registration, fetch, or import fails.
+    /// registration, fetch, or import fails — the init refuses a target that already holds a
+    /// `.jj` (jj-lib's "The destination repo (…) already exists"), which stays untouched.
     ///
     /// [`RepoError::Config`] when the effective jj config cannot be read — the stack
     /// the workspace is created with (refused BEFORE anything is written; a user-level fault
@@ -1979,11 +1982,24 @@ impl Repo {
         })?;
         let settings = crate::config::user_settings_for_new_workspace(&target_path)?;
 
+        // Anything already at `.jj` (a workspace, a symlink — even a dangling one) is not this
+        // call's: the init refuses it (`DestinationExists`; a non-directory already fails the
+        // config read above) and the rollback must never remove it. Only a definite `NotFound`
+        // counts as absent — an unreadable entry is treated as someone else's.
+        let jj_preexisted = !matches!(
+            target_path.join(".jj").symlink_metadata(),
+            Err(e) if e.kind() == io::ErrorKind::NotFound
+        );
+
         // The re-open runs INSIDE the rolled-back result: any failure after creation rolls `.jj/` back.
         // A missing target can no longer reach the rollback — `canonicalize` above refuses it.
         Self::clone_into(&settings, url, &target_path, sink)
             .and_then(|()| Self::open(&target_path))
-            .inspect_err(|_| sink.extend(roll_back_clone(&target_path)))
+            .inspect_err(|_| {
+                if !jj_preexisted {
+                    sink.extend(roll_back_clone(&target_path));
+                }
+            })
     }
 
     /// Composes the clone steps; [`Repo::clone`] re-opens the committed result.
@@ -2147,11 +2163,11 @@ impl Repo {
     }
 }
 
-/// Rolls a failed clone back: removes `.jj/` under the CANONICAL `target_path` — Zanshin's
-/// rollback scope, which never touches anything else there. That is normally the `.jj/`
-/// `init_internal_git` wrote, but it cannot tell: when the target ALREADY held a `.jj/` (the init
-/// then refuses with `DestinationExists`), this removes that pre-existing one — the recorded data
-/// loss (`deferred-work.md`, first surfaced by Story 3.4a; Story 9.20's destination parity).
+/// Rolls a failed clone back: removes the `.jj/` `init_internal_git` wrote under the CANONICAL
+/// `target_path` — Zanshin's rollback scope, which never touches anything else there. Only called
+/// when the clone created that `.jj/`: `Repo::clone` skips the rollback when anything already
+/// existed at `.jj` (the init then refuses with `DestinationExists`), so a pre-existing workspace
+/// is never deleted.
 ///
 /// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.44.0) treats a directory that is already
 /// gone as removed and warns about any other failure; so does this, returning that warning.

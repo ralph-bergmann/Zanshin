@@ -1748,7 +1748,9 @@ ZanshinBuf *zanshin_repo_init(const char *path, int32_t backend);
  * Clone a jj repository from `url` into `target_path`.
  *
  * Uses a `file://` local source in tests — no network access is needed or allowed.
- * On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone`.
+ * On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone` — only a
+ * `.jj/` the clone created; a target that already held one (an existing jj workspace) is
+ * refused and left untouched.
  *
  * Returns a `RepoHandle` envelope on success.
  *
