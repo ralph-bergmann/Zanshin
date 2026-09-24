@@ -310,3 +310,16 @@ Status: done
 - The `jj.config_error` context text for a wrong-typed `snapshot.max-new-file-size` now carries a `config error: ` prefix (as `snapshot.auto-track` already did) — deferred with the intended-form decision.
 - The "start-up environment before `.jj/.gitignore`" order in the conversion is implemented and documented but unwitnessed (needs a write-fault seam).
 - The installed jj is 0.45.1, not the 0.44.0 pin; the twin check matches the v0.44.0 source read points.
+
+### Orchestrator verification (2026-09-24)
+
+The dispatched `story-builder` subagent did not return after implementation. It ran step-03 through finalize itself: review layers, patches, and commit `b25550de3d4c4e0b484f6697c9e25be72aca5139`. The orchestrating session therefore re-verified the committed tree from the main session instead of running a second review:
+- `cargo make --allow-private` `test-cargo`, `test-clippy`, `test-fmt`, `test-core-analyze`, `test-core-format`, `test-dart-analyze`, `coverage` → all exit 0. Coverage held at 99.46% (13665/13739), extern guard OK.
+- `cargo make codegen` → idempotent (only the known `pubspec.lock` drift, reverted).
+- `grep -rn Knobs crates/` → no match.
+- The matrix witnesses were re-run by suite and seen passing:
+  - `snapshot_colocated.rs`: the double fault, the auto-track double fault, the lock wait, and the bad alias and non-table fileset table refused before the lock;
+  - `snapshot_precondition.rs`: the knob fault naming the key, and the knob winning over the stale check;
+  - `warnings.rs`: the fileset and revset warning order;
+  - `creation_warnings.rs`: the conversion phases;
+  - `snapshot_ffi.rs`: the FFI double fault with its partial report.
