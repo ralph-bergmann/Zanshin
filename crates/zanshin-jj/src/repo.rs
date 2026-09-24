@@ -1933,7 +1933,9 @@ impl Repo {
     /// `jj.identity_missing` ONCE (the CLI warns once per finished transaction; Zanshin writes
     /// one operation where the CLI writes up to three). On failure the outcome keeps what was
     /// warned before it, and a rollback that cannot remove `.jj/` adds
-    /// `jj.clone_cleanup_failed` last. There is never a snapshot report.
+    /// `jj.clone_cleanup_failed` last. There is never a snapshot report. The CLI's
+    /// start-up-environment warnings (`for_workable_repo`: alias tables, `immutable_heads()`)
+    /// are not ported to creation.
     ///
     /// # Errors
     ///

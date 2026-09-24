@@ -366,7 +366,8 @@ class ZanshinWorker {
   ///
   /// [backend]: `0` = native/simple, `1` = Git. The returned handle's
   /// `warnings` are always empty and its `precondition` is `null`: the jj CLI's
-  /// empty-directory init warns about nothing.
+  /// `jj git init --no-colocate` into an empty directory warns about nothing
+  /// (the default colocated init's alias-table warnings are not ported).
   Future<CreatedRepoHandle> initRepo(String path, {required int backend}) async {
     final WorkerResponse response = await _sendCommand(
       InitRepoCommand(
@@ -386,7 +387,9 @@ class ZanshinWorker {
   /// because this clone accepts a non-empty target, which the jj CLI refuses;
   /// Story 9.20), then
   /// `jj.identity_missing` once when `user.name`/`user.email` is empty. Its
-  /// `precondition` is `null`. A refused clone throws [ZanshinFfiException]
+  /// `precondition` is `null`. The jj CLI's start-up-environment warnings
+  /// (alias tables, `immutable_heads()`) are not ported. A refused clone throws
+  /// [ZanshinFfiException]
   /// WITHOUT its report — including `jj.clone_cleanup_failed`, which only an
   /// error envelope carries — until Story 9.35 brings the error path's report
   /// to Dart.

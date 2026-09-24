@@ -120,6 +120,7 @@ fn creation_paths_report_what_the_cli_prints() {
     a_big_new_file_is_refused_and_reported();
     a_reserved_ref_warns_in_the_refs_step_and_again_in_the_snapshot();
     a_refs_step_that_imports_nothing_still_warns();
+    a_refs_step_export_failure_warns_first(tmp.path());
     a_bad_alias_entry_warns_between_the_two_imports(tmp.path());
     a_jjconflict_entry_is_reported_by_the_colocated_conversion();
     a_snapshot_failure_keeps_a_partial_report();
@@ -340,6 +341,33 @@ fn a_refs_step_that_imports_nothing_still_warns() {
             (WarningKind::GitImportFailed, STOLEN),
             (WarningKind::GitImportFailed, STOLEN)
         ]
+    );
+}
+
+/// `remotes.origin.auto-track-bookmarks` makes the refs step create a local `foo/bar` from
+/// `foo/bar@origin`; its colocated export cannot write `refs/heads/foo/bar` beside
+/// `refs/heads/foo` (a Git file/directory conflict), so the refs step warns
+/// `jj.git_export_failed` (`git/init.rs:311-312`) — the conversion's first warning.
+fn a_refs_step_export_failure_warns_first(tmp: &Path) {
+    let user = tmp.join("auto-track.toml");
+    fs::write(&user, "[remotes.origin]\nauto-track-bookmarks = \"glob:*\"\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let dir = TempDir::new().unwrap();
+    git_with_commit(dir.path());
+    git(&["update-ref", "refs/heads/foo", "HEAD"], dir.path());
+    git(&["update-ref", "refs/remotes/origin/foo/bar", "HEAD"], dir.path());
+    let outcome = convert_colocated(dir.path());
+    set_env("JJ_CONFIG", Some(""));
+
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    let kinds: Vec<WarningKind> = outcome.warnings.iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::GitExportFailed], "{:?}", outcome.warnings);
+    assert!(
+        outcome.warnings[0]
+            .message
+            .starts_with("Failed to export some bookmarks:\n  foo/bar"),
+        "{:?}",
+        outcome.warnings[0].message
     );
 }
 

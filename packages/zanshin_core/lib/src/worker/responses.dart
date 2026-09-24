@@ -22,8 +22,9 @@ final class HandleResult extends WorkerResponse {
   /// Opaque dense id in the worker's `Map<int, int>` handle table.
   final int handleId;
 
-  /// The ok `Envelope` bytes the handle came in — the creating call's report
-  /// (`warnings`, and `precondition` for convert; Story 9.33) rides them.
+  /// The ok `Envelope` bytes the handle came in. For a creation
+  /// (init/clone/convert) the creating call's report rides them (`warnings`,
+  /// and `precondition` for convert; Story 9.33); `openRepo` ignores them.
   final Uint8List bytes;
 }
 

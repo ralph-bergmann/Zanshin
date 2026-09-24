@@ -1023,8 +1023,9 @@ fn convert_colocated_writes_the_two_cli_operations() {
     // were. It would hold with the colocated `export_refs` removed, too — per the CLI's own
     // comment at `init.rs:308-310` that export only has anything to write once
     // `remotes.<name>.auto-track-bookmarks` has created local bookmarks for the imported
-    // remote branches, and this crate hardcodes that map EMPTY (a separate ledger item; see
-    // `config::git_import_options`). So the branch is unobservable today; what this row is
+    // remote branches. That map is the effective config's (`config::git_import_options`), and
+    // this row sets none, so the export writes nothing here; the branch itself is witnessed by
+    // `tests/creation_warnings.rs::a_refs_step_export_failure_warns_first`. What this row is
     // for is to fail the moment it starts moving a ref.
     assert_eq!(
         git_ref_snapshot(tmp.path()),

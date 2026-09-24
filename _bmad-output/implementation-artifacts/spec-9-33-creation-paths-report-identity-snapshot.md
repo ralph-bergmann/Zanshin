@@ -5,7 +5,7 @@ created: '2026-09-24'
 status: 'done'
 baseline_revision: '9c77e2ca6c1d0eda9f52f2ddadd82877aa633d64'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/docs/coverage.md'
@@ -63,6 +63,13 @@ deferred:
       packages/zanshin_core/lib/zanshin_core.dart exports ZanshinWorker and the warning types only; RepoHandle and Precondition were already absent before this story (type inference still exposes .warnings / .precondition). Pre-existing (review pass 2026-09-24, Blind Hunter).
     location: >-
       packages/zanshin_core/lib/zanshin_core.dart
+    severity: low
+  - summary: >-
+      Until Story 9.35 a failed creation's warnings are visible nowhere on the Dart side — no exception field and no log.
+    evidence: |-
+      Before this story the conversion's warnings were traced (log_dropped("convert")); now they ride the error envelope, and _createdOrThrow turns it into ZanshinFfiException(code, context). Rust/MCP callers keep them. Story 9.35 owns the creation verbs' error results (follow-up review 2026-09-24, Edge Case Hunter).
+    location: >-
+      packages/zanshin_core/lib/src/worker/isolate.dart::_createdOrThrow → Story 9.35
     severity: low
 ---
 
@@ -293,6 +300,37 @@ The oracle is `git -C ../jj show v0.44.0:<path>` (`cu` = `cli/src/cli_util.rs`).
   - `[false]` `[reject]` (Intent Alignment) The report lives in `CreatedRepoHandle.precondition`, not `lastPrecondition`. This is the intent's "return the handle together with warnings and report"; `lastPrecondition` is the last VERB's report and a creation is not a verb on the handle.
   - `[false]` `[reject]` (Intent Alignment) "No change to what the flows do" holds on disk; an absent `.jj/` is now explicitly success. Not a defect: the on-disk rollback is identical (a `NotFound` removal was already ignored).
 
+### 2026-09-24 — Review pass (follow-up)
+- verdicts: 27 findings — high 1, medium 3, low 18, false 5, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (Blind Hunter) The init docs say the CLI's init reaches no `ui.warning_*`, but its default colocated arm runs `for_workable_repo` (`git/init.rs:241`), which loads the alias tables; clone's list reads as complete although that runs twice there. `zanshin_repo_init`'s `# Warnings` and `initRepo`'s doc now name the `--no-colocate` equivalence and the unported alias warnings; `Repo::clone`, `zanshin_repo_clone` and `cloneRepo` docs say the start-up-environment warnings are not ported (+ codegen).
+  - `[false]` `[reject]` (Blind Hunter) A linked Git worktree takes the non-colocated shape, so `zanshin_repo_convert` could warn the head-import finish's codes. `wc_ops.rs::is_colocated_git_workspace` returns true when the git work dir IS the workspace root, which is the case for a linked worktree (its gitdir pointer resolves to that worktree), so it takes the colocated shape.
+  - `[low]` `[patch]` (Blind Hunter) The convert module doc and `convert_import`'s rustdoc omit the head-import finish's `jj.working_copy_immutable`, which the registry lists. Both now list it before the checkout skip and the identity (the finish's order).
+  - `[medium]` `[patch]` (Blind Hunter) No test covers the refs step's new `jj.git_export_failed` call site. Group "refs-step export witness" with the Verification Gap row.
+  - `[low]` `[reject]` (Blind Hunter) Clone's `jj.git_import_failed` has no witness and no deferral. The trigger is unreachable on macOS: the fetch from `origin` writes only `refs/remotes/origin/*` (the reserved namespace is `refs/remotes/git/*`) and APFS refuses non-UTF-8 names; the builder is witnessed (9.32), and the emission is one line.
+  - `[low]` `[defer]` (Blind Hunter) "Precondition present" differs between verbs and convert on a knob failure. carried — first pass's knob-order row (frontmatter item 4 → Story 9.34); the code reads as that row describes.
+  - `[low]` `[patch]` (Blind Hunter) The 9.20/9.34 handovers were recorded only in deferred-work. The `9-20`, `9-34` and `9-35` entries in `sprint-status.yaml` now carry dated "HANDED OVER … by 9-33" notes (the `9-20` 9.27 precedent).
+  - `[high]` `[defer]` (Blind Hunter) The clone-rollback data loss has no owner and no test, and the deferral should be reconsidered. carried — first pass's data-loss row (pre-existing since 3.4a, excluded by the intent's non-goal; frontmatter item 1). A fix chip ("Stop clone rollback deleting an existing .jj/") and the 9-20 handover now name the owner.
+  - `[low]` `[patch]` (Blind Hunter) `ffi-abi.md`'s warnings paragraph lacks the Dart "success only" caveat the precondition paragraph got. Added: a refused creation throws without its warnings (e.g. `jj.clone_cleanup_failed`) until Story 9.35.
+  - `[low]` `[patch]` (Blind Hunter) `HandleResult.bytes` is sent for `openRepo` too, and its doc speaks only of creations. The doc now says open ignores them (a ~100-byte envelope; no payload change).
+  - `[low]` `[patch]` (Blind Hunter) The two RESOLVED deferred-work entries keep present-tense text without the file's resolved marker. Their titles are now struck through (`~~…~~`), the house convention for resolved entries.
+  - `[false]` `[reject]` (Edge Case Hunter) `decodeCreationReportInternal` throws and orphans the handle. carried — first pass: unreachable (one schema, one build).
+  - `[low]` `[reject]` (Edge Case Hunter) A `.jj/.gitignore` write failure plus a bad alias entry loses the alias warnings the CLI prints before that failure. Double fault; the order (`Knobs::read` after the gitignore) predates this story, and separating the alias load from the knob read is Story 9.34's move — more than a direct correction.
+  - `[low]` `[defer]` (Edge Case Hunter) With `log_dropped("convert")` gone, a failed Dart creation's warnings show up nowhere. The Dart error path is Story 9.35's (intent's Never list) → frontmatter + deferred-work + `9-35` handover note.
+  - `[low]` `[patch]` (Edge Case Hunter) The Dart error arm discards the report. carried — first pass's "Dart error arm" docs group; the code reads as documented.
+  - `[medium]` `[patch]` (Verification Gap) The refs step's `jj.git_export_failed` is asserted by no test. Group "refs-step export witness": `creation_warnings.rs::a_refs_step_export_failure_warns_first` (user config `remotes.origin.auto-track-bookmarks = "glob:*"`, `refs/heads/foo` + `refs/remotes/origin/foo/bar`) asserts exactly `[GitExportFailed]` whose message starts "Failed to export some bookmarks:\n  foo/bar".
+  - `[low]` `[patch]` (Verification Gap, other) `tests/convert.rs`'s comment says the auto-track map is hardcoded empty. Rewritten: the map is the effective config's; the branch is witnessed by the new row.
+  - `[low]` `[reject]` (Intent Alignment) The empty-identity clone is witnessed in Rust only. carried — first pass: harness pins `JJ_USER`/`JJ_EMAIL`, and the VM reaps `git`.
+  - `[low]` `[reject]` (Intent Alignment) The Dart colliding-clone witness became a refusal test. carried — first pass: infeasible in `dart test`.
+  - `[low]` `[defer]` (Intent Alignment) The clean-up-failure row is witnessed only in pieces. carried — first pass: end-to-end witness with Story 9.20's rollback fix.
+  - `[false]` `[reject]` (Intent Alignment) `convert_import`'s identity reaches no envelope. carried — first pass: no FFI symbol (pre-existing), and the colocated convert matches the CLI.
+  - `[low]` `[reject]` (Intent Alignment) Init, identity-set clone, colocated identity and the import-shape big file are Rust-only or harness-pinned at the FFI/Dart surfaces. The FFI stamping is flow-independent and witnessed on the ok wire (big file, colliding clone) and a real error envelope; identity is pinned by the harness.
+  - `[false]` `[reject]` (Intent Alignment) The reserved-ref-twice row appears only once on the FFI wire. The row describes the conversion's logic, witnessed at the Rust surface; the FFI error test deliberately fails the snapshot before its refs import, and the wire carries whatever list the outcome holds.
+  - `[false]` `[reject]` (Intent Alignment) The late-failure row is staged in `creation_warnings.rs`, not `tests/convert_alias_write_failure.rs`. The matrix names that file as the trigger; `a_late_failure_keeps_the_report` uses the same `XDG_CONFIG_HOME` trigger.
+  - `[low]` `[patch]` (Intent Alignment) The spec's AC includes the Dart error arm, which is not met. carried — first pass's "Dart error arm" docs group (by design, 9.35).
+  - `[medium]` `[patch]` (Intent Alignment) Conversion emitters lack conversion witnesses. Group "refs-step export witness" for `jj.git_export_failed`; `working_copy_immutable` / `git_head_update_failed` are carried from the first pass (shared snapshot machinery).
+  - `[low]` `[patch]` (Intent Alignment) The out-of-scope "`In remotes.<r>.*` / `In name pattern`" entry has no owner. Added: the next jj-lib pin bump re-checks it.
+
 ## Design Notes
 
 **Inventory — in scope.** Every code except `jj.clone_cleanup_failed` is 9.32's; only the emitters are new.
@@ -437,3 +475,39 @@ Rejected, with reasons in the Review Triage Log:
 - A refused creation's report is invisible in Dart until 9.35.
 - The Dart `cloneRepo` success path has no real-cdylib witness, and an app-process clone may hit the same `git` wait failure (unverified; check named for 6.4a).
 - Clone warns the identity once where the CLI warns up to 3 times, and clone/init lack the CLI's start-up-environment warnings (9.20 / start-up port).
+
+### Follow-up review pass (2026-09-24)
+
+Status: done. Blocking condition: none. Every change since baseline `9c77e2ca` (commit `a46687af`) was reviewed with all four layers: blind, edge-case, verification-gap and intent-alignment. The intent-alignment layer got the spec's intent contract. Ten findings carried over from the first pass (same location and claim, code as described) and were not re-patched or re-deferred.
+
+**Summary of the change.** The shipped behaviour has no defect. This pass witnessed the one new emission site nothing reached (the refs step's colocated `jj.git_export_failed`) and tightened docs and bookkeeping.
+
+**Files changed.**
+- `crates/zanshin-jj/tests/creation_warnings.rs`: new `a_refs_step_export_failure_warns_first`, using an auto-track glob and a `foo` / `foo/bar` Git ref conflict.
+- `crates/zanshin-jj/tests/convert.rs`: the stale auto-track comment.
+- `crates/zanshin-jj/src/{convert,repo}.rs`: the head-import finish now lists `jj.working_copy_immutable`; clone's start-up-environment note.
+- `crates/zanshin-ffi/src/repo.rs` + codegen (`zanshin_ffi.h`, `bindings.dart`): init's `--no-colocate` equivalence and clone's start-up-environment note.
+- `packages/zanshin_core/lib/src/worker/{isolate,responses}.dart`: the `initRepo` / `cloneRepo` docs, and `HandleResult.bytes` for open.
+- `docs/ffi-abi.md`: the Dart success-only caveat on the warnings paragraph.
+- `docs/rust-error-codes.md`: an owner for the diagnostics entry.
+- `_bmad-output/implementation-artifacts/deferred-work.md`: struck-through RESOLVED titles, plus the 9.35 visibility deferral.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`: handover notes on `9-20`, `9-34` and `9-35`.
+
+**Review findings.** 27 findings (high 1, medium 3, low 18, false 5, maybe-false 0).
+- **Patched:**
+  - medium 1: the refs-step export witness, one group of three members.
+  - low 9: init/clone start-up-environment docs, the head-import warning list, the sprint-status handovers, the ffi-abi caveat, the `HandleResult` doc, the RESOLVED markers, the stale test comment, and the owner of the out-of-scope entry.
+- **Deferred (new):** a failed creation's warnings are invisible on the Dart side until Story 9.35.
+- **Rejected** (reasons in the Review Triage Log): the linked-worktree shape (false), clone's unreachable import-failure witness, the gitignore + alias double fault, the Rust-only surfaces pinned by the harness, the reserved-ref FFI count (false), and the late-failure test location (false). The rest are carried rejections.
+
+**Follow-up review recommended: false.** This follow-up pass patched no `high` (medium 1, low 9), so the work has converged.
+
+**Verification.**
+- `cargo make codegen` changes only the generated docs and is idempotent.
+- `cargo make --allow-private` PASS: test-cargo (76 suites), test-clippy, test-fmt, test-dart-analyze, test-dart-format, test-core (464 tests), test-core-analyze/format, all `test-shell*` / `test-settings*` steps, test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene and coverage.
+- test-flutter FAILS only on the 3 pre-existing `zanshin_bootstrap_test.dart` splash-card tests.
+- Coverage is 99.46% (13672/13746) with no baseline change; extern-coverage is OK.
+- `log_dropped` has no creation caller.
+- `pubspec.lock` drift was reverted.
+
+**Residual risks.** Unchanged from the first pass: the HIGH clone-rollback data loss (fix chip + 9.20 handover), the Dart error path (9.35), no Dart successful-clone witness, clone's identity count and start-up environment (9.20).

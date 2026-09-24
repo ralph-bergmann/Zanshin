@@ -91,8 +91,9 @@ none. The creations (Story 9.33) — `zanshin_repo_init` / `_clone` / `_convert`
 creating call's warnings on the `RepoHandle` ok envelope AND on every error envelope
 (including `watcher.io_error` after a successful creation); in Dart `initRepo`,
 `cloneRepo` and `convert` return a `CreatedRepoHandle` (a `RepoHandle` subtype, so
-existing callers compile unchanged) exposing them as `warnings`. `zanshin_repo_open`
-carries none.
+existing callers compile unchanged) exposing them as `warnings` — on success only: a
+refused creation throws `ZanshinFfiException` without its warnings (e.g.
+`jj.clone_cleanup_failed`) until Story 9.35. `zanshin_repo_open` carries none.
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 

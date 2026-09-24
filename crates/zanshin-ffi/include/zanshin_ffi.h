@@ -1731,9 +1731,12 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  *   Detail in `context`.
  *
  * # Warnings
- * None, and no `Envelope.precondition` (Story 9.33): the CLI's empty-directory `jj git init`
- * finishes no transaction, so it reaches no `ui.warning_*`. The envelope carries the creating
- * call's report the way `zanshin_repo_clone` does — always empty here.
+ * None, and no `Envelope.precondition` (Story 9.33): this creates what the CLI's
+ * `jj git init --no-colocate` creates, which finishes no transaction and builds no workspace
+ * environment, so it reaches no `ui.warning_*`. (The CLI's default colocated init also loads
+ * the alias tables — `for_workable_repo` — whose warnings are not ported; see the registry's
+ * start-up-environment entry.) The envelope carries the creating call's report the way
+ * `zanshin_repo_clone` does — always empty here.
  *
  * # Safety
  * `path` must be a valid, NUL-terminated C string or null. The returned token
@@ -1771,7 +1774,9 @@ ZanshinBuf *zanshin_repo_init(const char *path, int32_t backend);
  * non-empty target, which the CLI refuses; Story 9.20), then `jj.identity_missing` once when
  * `user.name`/`user.email` is empty; on a failure, whatever was warned before it, and
  * `jj.clone_cleanup_failed` last when the rollback could not remove `.jj/`. No
- * `Envelope.precondition`.
+ * `Envelope.precondition`. The CLI's start-up-environment warnings (the alias tables and
+ * `immutable_heads()` its `for_workable_repo` loads, twice on a clone) are not ported — see the
+ * registry's start-up-environment entry.
  *
  * # Safety
  * `url` and `target_path` must each be a valid, NUL-terminated C string or null.
