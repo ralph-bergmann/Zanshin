@@ -17,6 +17,9 @@ build/
 # Rust
 target/
 
+# Swift (SwiftPM / SourceKit index builds, at any depth)
+.build/
+
 # Coverage: the instrumentation marker is transient (created/removed by
 # `cargo make coverage`); never commit it. The committed ratchet baseline is
 # coverage-baseline.txt (tracked on purpose).
