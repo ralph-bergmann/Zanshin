@@ -5,7 +5,7 @@ created: '2026-09-23'
 status: 'done'
 baseline_revision: '677dbf546fc2d19203019b06b6ea1ef431aa64fd'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/docs/coverage.md'
@@ -67,6 +67,13 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs::Repo::clone, crates/zanshin-jj/src/repo.rs::Repo::init, crates/zanshin-jj/src/convert.rs::convert_colocated
     severity: medium
+  - summary: >-
+      Creation paths (and every verb except the config verbs) resolve --when.commands scopes with no command name, where the CLI resolves them under its own command name ("git init", "git clone").
+    evidence: |-
+      The CLI sets the command name before its start-up resolution (cli/src/cli_util.rs:4581 @ v0.44.0), and settings_for_new_workspace clones that config_env (:377), so a [[--scope]] with --when.commands = ["git clone"] applies to what jj git clone writes. Zanshin passes command None everywhere except Story 9.28's config verbs (config.rs module doc, resolve_raw), so such a scope never applies to init/clone/convert or to open/mutations. Pre-existing and documented; the fix needs a CLI command name per Zanshin verb (a mapping across every verb, not a local fix). Second follow-up review 2026-09-24 (BH + ECH).
+    location: >-
+      crates/zanshin-jj/src/config.rs::load_with, crates/zanshin-jj/src/config.rs::resolve_raw
+    severity: low
 ---
 
 <intent-contract>
@@ -258,6 +265,35 @@ Oracle: `git -C ../jj show v0.44.0:<path>` (CLI), `~/.cargo/registry/src/*/jj-li
   - `[false]` `[reject]` IA: test_settings() is not a full stack — it only signs the test oracle's own loads, with the same EnvOverrides values Zanshin reads; no test compares against a full-stack value through it.
   - `[false]` `[reject]` IA: Makefile pins reach flutter/dart/coverage runs beyond the intent's surface — the intent requires machine-independent gates, and those runs load the cdylib through the same stack.
 
+### 2026-09-24 — Review pass (second follow-up; diff = 84a4df8 only, every finding verified against HEAD 7b7b506)
+- verdicts: 25 findings — high 0, medium 3, low 18, false 4, maybe-false 0
+- findings:
+  - `[low]` `[patch]` BH: the doc sweep missed `zanshin_repo_init`/`_clone`/`_convert`'s `# Errors` rustdoc (`crates/zanshin-ffi/src/repo.rs`, hence `zanshin_ffi.h` and `bindings.dart`) and `docs/rust-error-codes.md`'s `jj.jj_lib_error` row, which still said "the user-level stack the workspace is created with" — patched: all describe the start-up check followed by the new-workspace resolution; `cargo make codegen` regenerated the header and bindings.
+  - `[low]` `[defer]` BH: `--when.commands` scopes do not apply at creation although the CLI resolves under "git init"/"git clone" — verified (cli_util.rs:4581 sets the command name before start-up; settings_for_new_workspace clones that config_env, :377); pre-existing and documented (every non-config verb resolves with command None, config.rs module doc); the fix is a per-verb command-name mapping, not local → deferred (frontmatter + deferred-work.md "Surfaced 2026-09-24 — Story 9.27 second follow-up review").
+  - `[medium]` `[patch]` BH: clone (the main case) and `convert_import` have no scoped-identity witness — patched: `scoped_creation` clones a local source into the scoped root and imports a source outside the scope into it, asserting the scoped author (mutation-checked: resolving the import for its SOURCE fails the witness).
+  - `[low]` `[patch]` BH: no negative control; `--when.workspaces` claimed but untested — patched: an init outside the scope keeps `unscoped@example.com`; a `--when.workspaces` scope sets the name of an init under its root.
+  - `[low]` `[patch]` BH: nothing checks that the creation and the re-opened handle resolve the same identity — patched: `new_change` on the handle `Repo::init` returned keeps the scoped author.
+  - `[low]` `[patch]` BH: `import_into`'s comment claims the CLI's `create_or_reuse_dir` order although `create_dir_all` creates missing parents, which a config fault now leaves behind — the orphan-parent rollback itself is pre-existing and tracked (deferred-work.md "Nested-destination rollback leaves orphaned empty parent directories"); its new config-fault route is the ordering group below and is closed there; the comment now names the start-up check and the documented liberalization.
+  - `[low]` `[patch]` BH: `load_with`'s doc names a caller that does not exist (config verbs call `load_raw`/`resolve_raw`), and `config.rs`'s test still calls `None` "the creation stack" — patched: `load_with(None)` is again a production path (the new `check_startup_stack`), doc and test message say "start-up".
+  - `[false]` `[reject]` BH: "those two layers find nothing" is assumed; a leftover `.jj/repo/config-id` at the target is read and a malformed one wins over "already exists" — the CLI's `settings_for_new_workspace` reloads exactly `<root>/.jj/repo` and `<root>` at the same point (cli_util.rs:379-383 @ v0.44.0), so it reads and refuses the same file identically; the non-empty-destination refusal is 9.20's (deferred-work.md). The doc wording was softened to "normally … whatever is there is read, as the CLI's reload reads it".
+  - `[low]` `[patch]` BH: `TEST_ENV`'s comparison with jj's harness is incomplete — verified `cli/tests/common/test_environment.rs:130-177` @ v0.44.0 also pins `HOME`, `GIT_CONFIG_SYSTEM=/dev/null` and a hermetic `GIT_CONFIG_COUNT` set; patched: the doc names them and states the system git config is NOT excluded (pinning it in ~45 guards stays the carried ENV_GUARD row).
+  - `[low]` `[reject]` BH: the deferred-work identity entry overstates when the CLI warns (init only on the External arm with changes, clone only with a working branch) — creation-path identity reporting is Story 9.33 (added 2026-09-24); tracked there, not re-deferred.
+  - `[false]` `[reject]` BH: the scoped TOML is built with `{:?}` — `str`'s Debug escapes only `\\`, `\"` and non-printable characters; `\\`/`\"` are valid TOML basic-string escapes, printable Unicode and `'` stay literal, and a temp path holds no control characters.
+  - `[false]` `[reject]` BH: the sprint-status note gives no coverage figures, so the ratchet cannot be judged — the pass's Auto Run Result records it (overall 99.38 %, no baseline change); bookkeeping only.
+  - `[low]` `[patch]` ECH: `import_into` leaves missing parents behind on a config fault — same group as the BH `import_into` row; closed by the start-up check.
+  - `[low]` `[defer]` ECH: `--when.commands` dropped at creation — same as the BH row; deferred.
+  - `[low]` `[patch]` ECH: `load_with(None)` test-only with a wrong doc — same group as the BH `load_with` row; patched.
+  - `[low]` `[reject]` ECH: the spec's task list still shows `user_settings_for_new_workspace()` without an argument — the fix would edit this build's spec; the signature change is recorded in the first follow-up's Auto Run Result.
+  - `[low]` `[patch]` ECH: `TEST_ENV` does not pin `GIT_CONFIG_SYSTEM`/`HOME` — same group as the BH `TEST_ENV` row; doc patched.
+  - `[medium]` `[patch]` VG: `Repo::clone` and `convert_import` never run with a scoped identity — same group as the BH scoped-witness row; patched.
+  - `[low]` `[patch]` VG: resolution for the CANONICAL root is untested (the witness passed canonical paths) — patched: an init through a symlink to the scoped root must still get the scoped email (mutation-checked: resolving for the caller's path fails it).
+  - `[low]` `[patch]` VG (other): error precedence changed — a missing path now beats a broken stack — verified against the CLI: `CliRunner::run_internal` loads system/user config, resolves it and builds `UserSettings` (cli_util.rs:4543-4627 @ v0.44.0) before `cmd_git_init` (`create_or_reuse_dir`, init.rs) or `cmd_git_clone` (destination checks, clone.rs:187-220) touch a path, so a user-level fault wins over every path and precondition error and nothing is created. Patched: `config::check_startup_stack()` runs FIRST in `Repo::init`, `Repo::clone`, `convert_colocated` and `convert_import`; `user_settings_for_new_workspace` still follows once the root is known. Witness `user_level_faults_refuse_first` (init/clone/convert on a missing path, import with a missing source, import into a missing parent → `Config` naming `user.name`, nothing created; mutation-checked against the 84a4df8 order).
+  - `[false]` `[reject]` IA: the diff implements the CLI reading (R2) of "WITHOUT repo/workspace layers" rather than the literal one — Ralph's overriding CLI-parity rule fixes the reading (the first follow-up's high row); no repo/workspace file exists at creation, so the layers stay empty while scopes resolve as the CLI resolves them.
+  - `[low]` `[patch]` IA: stale R1 traces (`config.rs` test message, `load_with` doc) — same group as the BH `load_with` row; patched.
+  - `[low]` `[patch]` IA: `convert_import` now refuses a user-level fault only after creating the destination, and a canonicalize failure beats a config fault — same ordering group as the VG row; patched.
+  - `[medium]` `[reject]` IA: clone/init/convert still expose no `identity_missing` — tracked as Story 9.33 (adaptation 2), not re-deferred.
+  - `[low]` `[patch]` IA: tests leave clone/import scopes, scoped op metadata and the FFI/Dart surface unwitnessed — clone/import patched with the BH scoped-witness group; scoped `operation.*` resolves through the same stack and scope context as the witnessed `user.*`, and the FFI docs describe `map_repo_err`'s unchanged mapping (carried FFI rationale) — no further witness.
+
 ## Design Notes
 
 **Ask-First decisions (Ralph, 2026-09-23)** — resolved, not intent gaps:
@@ -341,3 +377,29 @@ Status: done. Blocking condition: none. Review diff = this story's own range (`6
 **Verification.** `cargo make --allow-private <task>` one by one after the patches: test-cargo PASS, test-clippy PASS, test-fmt PASS (after `cargo fmt`), test-flutter FAIL (only the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests), test-dart-analyze, test-dart-format, test-core(+analyze/format), test-shell(+analyze/format), test-shell-pi(+analyze/format), test-shell-macos(+analyze/format), test-settings(+analyze/format), test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene all PASS; coverage PASS (overall 99.38%, no baseline change). `pubspec.lock` drift reverted.
 
 **Residual risks.** Clone/init/convert still give the UI no identity fact (deferred); no-change fetch/describe still write an op (carried).
+
+### Second follow-up review pass — 2026-09-24
+
+Status: done. Blocking condition: none. Review diff = commit 84a4df8 only (`86e3062..84a4df8`, this spec excluded); every finding verified against HEAD `7b7b506`; no committed code reverted.
+
+**CLI verdict on the two orderings (oracle `cli/src/cli_util.rs`, `cli/src/commands/git/{init,clone}.rs` @ v0.44.0).** The CLI resolves config twice: at START-UP (`CliRunner::run_internal` :4543-4627 — system + user files, resolve, `UserSettings::from_config`; outside a workspace for a GUI-like call) before any command code runs, and again in `settings_for_new_workspace` (:372-388) once the destination exists. (1) `jj git init --git-repo=<src> <dest>` with a broken user-level stack refuses at start-up — before `create_or_reuse_dir`, before any source check — and leaves nothing on disk; 84a4df8 made Zanshin create the destination (with `create_dir_all`, i.e. also missing parents) and then roll back only the leaf. (2) `jj git init` / `jj git clone` with a missing path AND a broken user-level stack report the CONFIG error (start-up wins); 84a4df8 made Zanshin report the path error first. Both orderings were CLI divergences and are patched by a start-up check that runs first in all four creation verbs. Only a fault that needs the new workspace's paths (a scoped table) surfaces after the destination exists — there the CLI's `jj git init` leaves the created directory (no cleanup), while Zanshin's `convert_import` removes it: that is the already documented deliberate departure ("A failure rolls back further than the CLI", `convert_import` rustdoc), not new.
+
+**Summary of the change in this pass.** `config::check_startup_stack()` (user-level stack, no workspace paths, `UserSettings` built) runs first in `Repo::init`, `Repo::clone`, `convert_colocated`, `convert_import`; the new-workspace resolution of 84a4df8 is kept after it. Docs aligned (FFI rustdoc → header/bindings via codegen, `ffi-abi.md`, `rust-error-codes.md`, `load_with`/`user_settings_for_new_workspace` docs, `TEST_ENV` doc). New witnesses in `tests/config_identity.rs`: `user_level_faults_refuse_first`, and `scoped_creation` (clone + import + symlinked init + negative control + `--when.workspaces` + re-opened-handle agreement), each ordering/scope witness mutation-checked against the old code.
+
+**Files changed.**
+- `crates/zanshin-jj/src/config.rs` — `check_startup_stack`; `load_with` / `user_settings_for_new_workspace` docs; test message.
+- `crates/zanshin-jj/src/repo.rs` — start-up check first in `init`/`clone`; `# Errors` docs.
+- `crates/zanshin-jj/src/convert.rs` — start-up check first in both conversions; docs; `import_into` comment.
+- `crates/zanshin-jj/tests/config_identity.rs` — `git_repo_with_a_commit`, `user_level_faults_refuse_first`, `scoped_creation` (split out of `creation_paths`).
+- `crates/zanshin-ffi/src/repo.rs` + generated `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart` — `jj.config_error` wording.
+- `crates/test-helpers/src/lib.rs` — `TEST_ENV` doc.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — creation-stack wording.
+- `_bmad-output/implementation-artifacts/{sprint-status.yaml,deferred-work.md}` — 9-27 note, dated deferral section.
+
+**Review findings.** 25 (high 0, medium 3, low 18, false 4). Patched entries: medium 1 (clone/import scoped witnesses), low 7 (creation ordering vs the CLI start-up, FFI/error-code doc sweep, negative control + `--when.workspaces`, re-opened-handle agreement, `load_with` doc/test message, `TEST_ENV` doc, canonical-root witness). Deferred: 1 (`--when.commands` resolves with no command name outside the config verbs — pre-existing, needs a per-verb command-name mapping). Rejected: 4 false (leftover-file reads are CLI-identical, `{:?}` TOML escapes valid, coverage recorded in the spec, R2 reading is CLI parity) and 3 low/medium tracked or spec-only (identity reporting → Story 9.33 ×2, spec task text).
+
+**Follow-up review recommended: false.** Patched by verdict: medium 1, low 7, no high — the work has converged.
+
+**Verification.** `cargo make --allow-private <task>` one by one after the patches: test-cargo PASS, test-clippy PASS (after splitting `scoped_creation` out for `too_many_lines`), test-fmt PASS, test-flutter FAIL (only the 3 pre-existing `app/test/features/bootstrap/zanshin_bootstrap_test.dart` splash-card tests), test-dart-analyze, test-dart-format, test-core(+analyze/format), test-shell(+analyze/format), test-shell-pi(+analyze/format), test-shell-macos(+analyze/format), test-settings(+analyze/format), test-cargo-deny, test-cargo-hygiene, test-jj-adapter-hygiene all PASS; coverage PASS (overall 99.39 %, no baseline change, every extern covered). `cargo make codegen` outputs committed; `pubspec.lock` drift reverted. Mutation checks: disabling the start-up check fails `user_level_faults_refuse_first` (init reports `InitFailed` first); dropping it only from `convert_import` fails "a refused import creates nothing" (orphan parent); resolving `init` for the caller's path fails the symlink witness; resolving the import for its source fails the scoped-import witness.
+
+**Residual risks.** `--when.commands` scopes never apply outside the config verbs (deferred); a scoped-table fault in `convert_import` removes the destination the CLI would leave (documented departure); creation paths still report no identity fact (Story 9.33).

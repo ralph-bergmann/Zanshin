@@ -123,9 +123,12 @@ use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 ///   conversion; the partially-created `.jj/` is rolled back.
 /// - [`RepoError::Config`] — the jj config stack the workspace would be created with (resolved
 ///   for its own paths, as the CLI's `settings_for_new_workspace`) cannot be read; refused
-///   before anything is written. The converted workspace is then opened as by [`Repo::open`],
-///   whose errors apply too.
+///   before anything is written. A fault of the user-level stack is checked first, as the
+///   CLI's start-up does, so it wins over every other error above. The converted workspace is
+///   then opened as by [`Repo::open`], whose errors apply too.
 pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
+    // The CLI's start-up config check runs before the command touches any path.
+    config::check_startup_stack()?;
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
         Ok(RepoKind::Git) => {}
@@ -201,10 +204,13 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
 ///   `workspace_path` cannot be created or resolved; the partially-created destination is
 ///   rolled back.
-/// - [`RepoError::Config`] — as for [`convert_colocated`], except that the stack is resolved
-///   once the destination exists (the CLI's order), so a destination created for the call is
-///   rolled back with it.
+/// - [`RepoError::Config`] — as for [`convert_colocated`]: a user-level fault refuses first,
+///   before the destination is created; a fault that needs the destination's own paths (a
+///   scoped table) surfaces once the destination exists (the CLI's order), so a destination
+///   created for the call is rolled back with it.
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
+    // The CLI's start-up config check runs before the command touches any path.
+    config::check_startup_stack()?;
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
     // child). We check is_bare_git_dir() locally — do NOT extend detect_repo (D3).
@@ -446,8 +452,10 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoEr
     let workspace_path =
         std::fs::canonicalize(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // The settings are resolved for the canonical destination, AFTER it exists — the CLI's
-    // order (`create_or_reuse_dir` → canonicalize → `settings_for_new_workspace`); a config
-    // fault here is rolled back with the directory.
+    // order (start-up check → create the destination → canonicalize →
+    // `settings_for_new_workspace`); only a fault that needs the destination's paths is left
+    // for here, and it is rolled back with the directory. (The CLI's `create_or_reuse_dir`
+    // creates ONE level; `create_dir_all` is the bridge's documented liberalization.)
     let settings = config::user_settings_for_new_workspace(&workspace_path)?;
 
     let resolved = resolve_git_repo_path(git_repo_path);

@@ -402,39 +402,137 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
     );
 }
 
-/// Creation refuses a broken stack BEFORE writing; a wrong-typed `git.*` key the git backend
-/// reads while creating is a config fault too (init AND both conversions); creation resolves
-/// the stack for the NEW workspace's paths, so a `--when.repositories` scope applies to what
-/// it writes (the CLI's `settings_for_new_workspace`); a created repo is re-opened with its
-/// full stack. Leaves `JJ_CONFIG` on `user_file`.
-fn creation_paths(tmp: &Path, user_file: &Path) {
-    let fresh = tmp.join("fresh");
-    fs::create_dir_all(&fresh).unwrap();
-    set_jj_config(&config_file(tmp, "wrong-type-init.toml", "[user]\nname = 1\n"));
-    let err = Repo::init(&fresh, None).expect_err("init must refuse a broken stack");
-    assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
-        "unexpected error: {err:?}"
-    );
-    assert!(!fresh.join(".jj").exists(), "a refused init writes nothing");
+/// A plain Git repo with one commit at `path` (fixture setup only — AR-AP-1's allowed git use).
+fn git_repo_with_a_commit(path: &Path) {
+    for args in [
+        &["init", "-q", "--initial-branch=main"][..],
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.com",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "initial",
+        ][..],
+    ] {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .status()
+            .expect("git spawns");
+        assert!(status.success(), "git {args:?} failed");
+    }
+}
 
+fn is_user_name_fault(err: &RepoError) -> bool {
+    matches!(err, RepoError::Config { reason } if reason.contains("user.name"))
+}
+
+/// The CLI checks the user-level stack at START-UP, before the command touches any path
+/// (`cli/src/cli_util.rs:4543-4627` @ v0.44.0): a user-level fault wins over a missing
+/// destination or source, and a refused creation creates nothing — not even the missing
+/// parent of an import destination. Expects `JJ_CONFIG` on a stack with `user.name = 1`.
+fn user_level_faults_refuse_first(tmp: &Path) {
+    let missing = tmp.join("missing");
+    let err = Repo::init(&missing, None).expect_err("init must refuse");
+    assert!(is_user_name_fault(&err), "init reported the path first: {err:?}");
+    let err = Repo::clone("file:///nonexistent-zanshin-source", &missing).expect_err("clone must refuse");
+    assert!(is_user_name_fault(&err), "clone reported the path first: {err:?}");
+    let err = convert_colocated(&missing).expect_err("convert must refuse");
+    assert!(is_user_name_fault(&err), "convert reported the path first: {err:?}");
+    let missing_parent = tmp.join("missing-parent");
+    let err = convert_import(&missing, &missing_parent.join("dest")).expect_err("import must refuse");
+    assert!(is_user_name_fault(&err), "import reported the source first: {err:?}");
+    let source = TempDir::new().unwrap();
+    git_repo_with_a_commit(source.path());
+    let err = convert_import(source.path(), &missing_parent.join("dest")).expect_err("import must refuse");
+    assert!(is_user_name_fault(&err), "unexpected error: {err:?}");
+    assert!(!missing_parent.exists(), "a refused import creates nothing");
+    assert!(!missing.exists(), "no refused creation creates its destination");
+}
+
+/// Creation (init, clone, both conversions) resolves the stack for the NEW workspace's
+/// canonical paths — the CLI's `settings_for_new_workspace` — so `--when.repositories` /
+/// `--when.workspaces` scopes (a per-directory identity) sign what it writes, and the
+/// re-opened handle resolves the same scope. Leaves `JJ_CONFIG` on a scoped stack.
+fn scoped_creation(tmp: &Path) {
     // A per-directory identity: the scope matches only the NEW workspace's own paths.
-    let scoped_root = fs::canonicalize(tmp).unwrap().join("scoped");
+    let canonical_tmp = fs::canonicalize(tmp).unwrap();
+    let scoped_root = canonical_tmp.join("scoped");
+    let ws_scoped_root = canonical_tmp.join("ws-scoped");
     set_jj_config(&config_file(
         tmp,
         "scoped-repos.toml",
         &format!(
-            "[user]\nname = \"Creator\"\nemail = \"unscoped@example.com\"\n\n[[--scope]]\n--when.repositories = [{:?}]\n[--scope.user]\nemail = \"scoped@example.com\"\n",
-            scoped_root.to_str().expect("utf-8 temp path")
+            "[user]\nname = \"Creator\"\nemail = \"unscoped@example.com\"\n\n[[--scope]]\n--when.repositories = [{:?}]\n[--scope.user]\nemail = \"scoped@example.com\"\n\n[[--scope]]\n--when.workspaces = [{:?}]\n[--scope.user]\nname = \"Workspace Scoped\"\n",
+            scoped_root.to_str().expect("utf-8 temp path"),
+            ws_scoped_root.to_str().expect("utf-8 temp path")
         ),
     ));
     let scoped_init = scoped_root.join("init");
     fs::create_dir_all(&scoped_init).unwrap();
-    Repo::init(&scoped_init, None).expect("init with a scoped stack");
+    let mut scoped_handle = Repo::init(&scoped_init, None).expect("init with a scoped stack");
     assert_eq!(
         author(&scoped_init),
         pair("Creator", "scoped@example.com"),
         "init's working-copy commit is signed with the scope of its own path"
+    );
+    new_change_on_wc(&mut scoped_handle);
+    assert_eq!(
+        author(&scoped_init),
+        pair("Creator", "scoped@example.com"),
+        "the re-opened handle resolves the same scope as the creation"
+    );
+    let unscoped_init = canonical_tmp.join("unscoped-init");
+    fs::create_dir_all(&unscoped_init).unwrap();
+    Repo::init(&unscoped_init, None).expect("init outside the scope");
+    assert_eq!(
+        author(&unscoped_init),
+        pair("Creator", "unscoped@example.com"),
+        "a creation outside the scope keeps the unscoped identity"
+    );
+    let ws_scoped_init = ws_scoped_root.join("init");
+    fs::create_dir_all(&ws_scoped_init).unwrap();
+    Repo::init(&ws_scoped_init, None).expect("init with a workspace scope");
+    assert_eq!(
+        author(&ws_scoped_init),
+        pair("Workspace Scoped", "unscoped@example.com"),
+        "a --when.workspaces scope applies to the creation's own workspace path"
+    );
+    // A symlinked caller path: the scope names the CANONICAL root, so it matches only because
+    // the stack is resolved for the canonicalized destination, as the CLI resolves it.
+    let link = canonical_tmp.join("scoped-link");
+    std::os::unix::fs::symlink(&scoped_root, &link).unwrap();
+    let via_link = link.join("via-link");
+    fs::create_dir_all(&via_link).unwrap();
+    Repo::init(&via_link, None).expect("init through a symlinked path");
+    assert_eq!(
+        author(&via_link),
+        pair("Creator", "scoped@example.com"),
+        "the scope matches the canonical destination, not the caller's spelling"
+    );
+    let clone_source = TempDir::new().unwrap();
+    git_repo_with_a_commit(clone_source.path());
+    let scoped_clone = scoped_root.join("clone");
+    fs::create_dir_all(&scoped_clone).unwrap();
+    Repo::clone(&format!("file://{}", clone_source.path().display()), &scoped_clone)
+        .expect("clone with a scoped stack");
+    assert_eq!(
+        author(&scoped_clone),
+        pair("Creator", "scoped@example.com"),
+        "the clone's working-copy commit is signed with the scope of its own path"
+    );
+    let import_source = TempDir::new().unwrap();
+    git_repo_with_a_commit(import_source.path());
+    let scoped_import = scoped_root.join("import");
+    convert_import(import_source.path(), &scoped_import).expect("import with a scoped stack");
+    assert_eq!(
+        author(&scoped_import),
+        pair("Creator", "scoped@example.com"),
+        "the import's working-copy commit is signed with the scope of its DESTINATION"
     );
     let scoped_git = scoped_root.join("git");
     fs::create_dir_all(&scoped_git).unwrap();
@@ -450,6 +548,27 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         pair("Creator", "scoped@example.com"),
         "the conversion's working-copy commit is signed with the scope of its own path"
     );
+}
+
+/// Creation refuses a broken stack BEFORE writing, a user-level fault ahead of every path
+/// error; a wrong-typed `git.*` key the git backend reads while creating is a config fault too
+/// (init AND both conversions); creation (init, clone, both conversions) resolves the stack
+/// for the NEW workspace's canonical paths, so `--when.repositories` / `--when.workspaces`
+/// scopes apply to what it writes (the CLI's `settings_for_new_workspace`); a created repo is
+/// re-opened with its full stack. Leaves `JJ_CONFIG` on `user_file`.
+fn creation_paths(tmp: &Path, user_file: &Path) {
+    let fresh = tmp.join("fresh");
+    fs::create_dir_all(&fresh).unwrap();
+    set_jj_config(&config_file(tmp, "wrong-type-init.toml", "[user]\nname = 1\n"));
+    let err = Repo::init(&fresh, None).expect_err("init must refuse a broken stack");
+    assert!(
+        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+        "unexpected error: {err:?}"
+    );
+    assert!(!fresh.join(".jj").exists(), "a refused init writes nothing");
+    user_level_faults_refuse_first(tmp);
+
+    scoped_creation(tmp);
 
     set_jj_config(&config_file(
         tmp,

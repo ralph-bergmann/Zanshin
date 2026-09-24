@@ -554,9 +554,10 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 /// - `ffi.invalid_argument` — `backend` is not `0` or `1`.
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
 /// - `jj.jj_lib_error` — init failed (e.g. repo already exists).
-/// - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
-///   be read (refused before anything is written), or the created workspace's own stack
-///   cannot when it is re-opened. `context` names the path or key.
+/// - `jj.config_error` — the jj config stack the workspace is created with cannot be read
+///   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
+///   workspace's paths; refused before anything is written), or the created workspace's own
+///   stack cannot when it is re-opened. `context` names the path or key.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
 ///   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
@@ -599,9 +600,10 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 /// # Errors
 /// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
 /// - `jj.jj_lib_error` — clone failed; detail in `context`.
-/// - `jj.config_error` — the effective jj config cannot be read: the user-level stack the
-///   workspace is created with (refused before anything is written), or the new workspace's
-///   stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
+/// - `jj.config_error` — the effective jj config cannot be read: the stack the workspace is
+///   created with (the user-level stack first, as the CLI's start-up, then the stack resolved
+///   for the new workspace's paths; refused before anything is written), or the new
+///   workspace's stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
 ///   value refuses here too. `context` names the offending KEY for a wrong-typed value, and
 ///   the offending FILE PATH for a config file that is unreadable or not valid TOML.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -742,9 +744,10 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
 /// - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
 ///   conversion; detail in `context`.
-/// - `jj.config_error` — the user-level jj config stack the workspace is created with cannot
-///   be read (refused before anything is written), or the converted workspace's own stack
-///   cannot when it is opened. `context` names the path or key.
+/// - `jj.config_error` — the jj config stack the workspace is created with cannot be read
+///   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
+///   workspace's paths; refused before anything is written), or the converted workspace's own
+///   stack cannot when it is opened. `context` names the path or key.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:

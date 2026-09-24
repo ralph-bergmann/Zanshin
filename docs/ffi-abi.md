@@ -1046,9 +1046,10 @@ as in the CLI (Story 9.27).
 **The same stack opens the workspace (Story 9.27).** `zanshin_repo_open` / `_init` /
 `_clone` / `_convert` build the `UserSettings` jj-lib signs commits and operations
 with — and its working-copy knobs (`fsmonitor.*`, `snapshot.*`) — from this stack
-(creation paths: resolved for the NEW workspace's paths, as the CLI's
-`settings_for_new_workspace` — no repo or workspace file exists yet, but
-`--when.repositories` / `--when.workspaces` scopes already apply), and every
+(creation paths: the user-level stack is checked first, as the CLI's start-up, then
+resolved for the NEW workspace's paths, as the CLI's `settings_for_new_workspace` —
+normally no repo or workspace file exists there yet, but `--when.repositories` /
+`--when.workspaces` scopes already apply), and every
 snapshotting call (see *`precondition`* above) re-derives them first when a stack file
 or the environment changed. There is
 no hardcoded identity and no `.gitconfig` fallback: an empty identity is jj-lib's

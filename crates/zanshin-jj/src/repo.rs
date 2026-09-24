@@ -1782,8 +1782,9 @@ impl Repo {
     /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
     /// `path` cannot be resolved (it must already exist); `reason` then names it. Returns
     /// [`RepoError::Config`] if the jj config stack the workspace would be created with cannot
-    /// be read — refused BEFORE anything is written. Once created, the workspace is re-opened
-    /// as by [`Repo::open`], so that call's errors apply too.
+    /// be read — refused BEFORE anything is written. A fault of the user-level stack is checked
+    /// first, as the CLI's start-up does, so it wins over an unresolvable `path`. Once created,
+    /// the workspace is re-opened as by [`Repo::open`], so that call's errors apply too.
     ///
     /// The workspace is CREATED with the stack resolved for its own paths, as the CLI's
     /// `settings_for_new_workspace` does (no repo or workspace config file exists yet, but
@@ -1794,6 +1795,8 @@ impl Repo {
     /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
     /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
     pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
+        // The CLI's start-up config check runs before the command touches any path.
+        crate::config::check_startup_stack()?;
         // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
         // `init_with_factories`, recording the new root relative to the RAW path it was handed
         // while `Workspace::repo_path()` — the base every read joins onto — is canonical. A
@@ -1839,7 +1842,9 @@ impl Repo {
     /// registration, fetch, or import fails.
     ///
     /// Returns [`RepoError::Config`] when the effective jj config cannot be read — the stack
-    /// the workspace is created with (refused BEFORE anything is written), or
+    /// the workspace is created with (refused BEFORE anything is written; a user-level fault
+    /// is checked first, as the CLI's start-up does, and wins over an unresolvable
+    /// `target_path`), or
     /// the new workspace's stack the clone's import options are built from, including a
     /// non-boolean `git.abandon-unreachable-commits` (FR-JJ-17). `reason` names the offending
     /// KEY for a wrong-typed value, the offending FILE PATH for a config file that is
@@ -1850,6 +1855,8 @@ impl Repo {
     /// paths and the returned handle is re-opened as by [`Repo::open`] — that call's errors
     /// apply too.
     pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
+        // The CLI's start-up config check runs before the command touches any path.
+        crate::config::check_startup_stack()?;
         // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
         // `Repo::init`, so a symlinked target would record a workspace-store entry the clone's
         // own reads cannot resolve. See `Repo::open` for the full note.

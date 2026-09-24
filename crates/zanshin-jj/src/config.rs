@@ -716,9 +716,9 @@ pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [Secu
 /// (`cli/src/config.rs:713-730` @ v0.44.0): Default → System → `EnvBase` → User → Repo →
 /// Workspace → `EnvOverrides`.
 ///
-/// `workspace` is `None` outside any workspace (a config verb run without a repo, Story
-/// 9.28): the stack stops at the user level and resolves with no repo/workspace path — the
-/// state the CLI is in without a workspace. A CREATION path passes the new workspace's paths
+/// `workspace` is `None` outside any workspace ([`check_startup_stack`]): the stack stops at
+/// the user level and resolves with no repo/workspace path — the state the CLI starts up in
+/// without a workspace. A CREATION path then passes the new workspace's paths
 /// ([`user_settings_for_new_workspace`]).
 fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
     resolve_raw(env, workspace, &load_raw(env, workspace)?, None)
@@ -823,12 +823,30 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
     settings_from(load_with(&ConfigEnv::from_env(), Some(paths))?)
 }
 
+/// The CLI's start-up config check, run FIRST by every creation path (`init`, `clone`,
+/// conversions): before any command touches a path, the CLI loads and resolves the stack
+/// outside a workspace and builds `UserSettings` from it (`CliRunner::run_internal`,
+/// `cli/src/cli_util.rs:4543-4627` @ v0.44.0). A broken system/user file or a wrong-typed
+/// `user.*` / `operation.*` value therefore refuses before a destination is created and wins
+/// over every path or precondition error — only a fault that needs the new workspace's paths
+/// (a scoped table) surfaces later, in [`user_settings_for_new_workspace`].
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — as [`user_settings_for`].
+pub(crate) fn check_startup_stack() -> Result<(), ConfigError> {
+    settings_from(load_with(&ConfigEnv::from_env(), None)?).map(drop)
+}
+
 /// The `UserSettings` the workspace at `workspace_root` is CREATED with (`init`, `clone`,
 /// conversions) — the CLI's `settings_for_new_workspace` (`cli/src/cli_util.rs:372-388` @
 /// v0.44.0): the stack is built for the NEW workspace's paths (`<root>/.jj/repo`, `<root>`),
 /// so `--when.repositories` / `--when.workspaces` scopes (a per-directory identity) already
-/// apply to what the creation writes. No repo or workspace config file exists yet, so those
-/// two layers find nothing — exactly as the CLI's reload finds nothing there.
+/// apply to what the creation writes. Normally no repo or workspace config file exists there
+/// yet; whatever is there is read, exactly as the CLI's reload reads it.
+///
+/// Runs once the creation's root is known — after [`check_startup_stack`], as the CLI runs it
+/// after its start-up.
 ///
 /// # Errors
 ///
@@ -2083,7 +2101,7 @@ mod tests {
             "EnvOverrides beat the repo layer"
         );
 
-        let without = load_with(&env, None).expect("the creation stack must load");
+        let without = load_with(&env, None).expect("the start-up stack must load");
         assert_eq!(
             without.get::<String>("user.name").unwrap(),
             "",
