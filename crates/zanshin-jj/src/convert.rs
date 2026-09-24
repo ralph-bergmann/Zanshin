@@ -717,4 +717,69 @@ mod tests {
             RepoError::ConvertFailed { reason } if reason == "lock"
         ));
     }
+
+    /// The state [`external_arm`] starts from: a colocated `init_external_git` over a fresh
+    /// `git init` in `root`, with `repo_config` as its repo-level config — the legacy
+    /// `.jj/repo/config.toml`, which is read while no `config-id` exists.
+    fn external_workspace(root: &Path, repo_config: &str) -> (Workspace, Arc<ReadonlyRepo>) {
+        let settings = settings();
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(root)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .status()
+            .expect("git spawns");
+        assert!(status.success(), "git init");
+        let fixture = pollster::block_on(Workspace::init_external_git(&settings, root, &root.join(".git")))
+            .expect("init_external_git");
+        std::fs::write(root.join(".jj").join("repo").join("config.toml"), repo_config).expect("repo config");
+        fixture
+    }
+
+    /// Story 9.34: the start-up environment is built where the CLI's `for_workable_repo` builds
+    /// it, BEFORE `maybe_add_gitignore` (`git/init.rs:252-253` @ v0.44.0) — so a bad
+    /// `immutable_heads()` alias refuses before `.jj/.gitignore` is written.
+    #[test]
+    fn a_start_up_refusal_comes_before_the_gitignore_write() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonicalize");
+        let (mut workspace, repo) =
+            external_workspace(&root, "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n");
+        let mut report = ConversionReport::default();
+
+        let result = external_arm(&mut workspace, &repo, &mut report);
+
+        assert!(
+            matches!(&result, Err(RepoError::Config { reason }) if reason.contains("bogus_function")),
+            "{result:?}"
+        );
+        assert!(
+            !root.join(".jj").join(".gitignore").exists(),
+            "the start-up refusal comes before the .gitignore write"
+        );
+        assert!(report.precondition.is_none(), "the snapshot never started");
+    }
+
+    /// Story 9.34, the double fault "`.jj/.gitignore` cannot be written AND a `[revset-aliases]`
+    /// entry is bad": the alias table loads first, as in the CLI, so the failed conversion still
+    /// carries the alias warning the CLI prints before that failure.
+    #[test]
+    fn a_failed_gitignore_write_keeps_the_start_up_warnings() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonicalize");
+        let (mut workspace, repo) = external_workspace(&root, "[revset-aliases]\n'bad(' = 'x'\n");
+        // A directory in its place makes the `.gitignore` write fail.
+        std::fs::create_dir(root.join(".jj").join(".gitignore")).expect("block the .gitignore write");
+        let mut report = ConversionReport::default();
+
+        let result = external_arm(&mut workspace, &repo, &mut report);
+
+        assert!(matches!(result, Err(RepoError::ConvertFailed { .. })), "{result:?}");
+        let warnings = report.warnings.take();
+        let kinds: Vec<crate::WarningKind> = warnings.iter().map(|w| w.kind).collect();
+        assert_eq!(kinds, [crate::WarningKind::ConfigAliasInvalid]);
+        let prefix = "Failed to load `revset-aliases.bad(`:";
+        assert_eq!(warnings[0].message.get(..prefix.len()), Some(prefix));
+        assert!(report.precondition.is_none(), "the snapshot never started");
+    }
 }

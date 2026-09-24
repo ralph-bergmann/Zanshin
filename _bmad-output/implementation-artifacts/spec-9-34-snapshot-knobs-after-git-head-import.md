@@ -251,7 +251,7 @@ The oracle is `git -C ../jj show v0.44.0:<path>` (`cu` = `cli/src/cli_util.rs`).
 
 **Other double faults, for the record.** These are not witnessed and follow from the placement:
 - a stale working copy plus a wrong-typed knob still refuses on the knob, because the knobs are read before the stale check, as in the CLI;
-- in the conversion, a failed `.jj/.gitignore` write plus a bad alias entry now carries the alias warnings, because the start-up read precedes `maybe_add_gitignore` (9.33 follow-up row, rejected there and routed here).
+- in the conversion, a failed `.jj/.gitignore` write plus a bad alias entry now carries the alias warnings, because the start-up read precedes `maybe_add_gitignore` (9.33 follow-up row, rejected there and routed here). *(2026-09-24: now witnessed. The inline `convert.rs` tests below cover it; § Auto Run Result → Gitignore-order witnesses.)*
 
 ## Verification
 
@@ -308,7 +308,7 @@ Status: done
 
 **Residual risks.**
 - The `jj.config_error` context text for a wrong-typed `snapshot.max-new-file-size` now carries a `config error: ` prefix (as `snapshot.auto-track` already did) — deferred with the intended-form decision.
-- The "start-up environment before `.jj/.gitignore`" order in the conversion is implemented and documented but unwitnessed (needs a write-fault seam).
+- ~~The "start-up environment before `.jj/.gitignore`" order in the conversion is implemented and documented but unwitnessed (needs a write-fault seam).~~ RESOLVED 2026-09-24 — see Gitignore-order witnesses below.
 - The installed jj is 0.45.1, not the 0.44.0 pin; the twin check matches the v0.44.0 source read points.
 
 ### Orchestrator verification (2026-09-24)
@@ -323,3 +323,11 @@ The dispatched `story-builder` subagent did not return after implementation. It 
   - `warnings.rs`: the fileset and revset warning order;
   - `creation_warnings.rs`: the conversion phases;
   - `snapshot_ffi.rs`: the FFI double fault with its partial report.
+
+### Gitignore-order witnesses (2026-09-24, Ralph asked)
+
+No public-API path can make the `.jj/.gitignore` write fail: `.jj/` must not exist before a conversion, and jj-lib's `init_external_git` does not write that file. The witnesses are therefore inline in `crates/zanshin-jj/src/convert.rs` and drive the private `external_arm` directly. Their shared fixture `external_workspace` is a colocated `init_external_git` over a fresh `git init`, with the legacy `.jj/repo/config.toml` as the repo layer.
+- `a_start_up_refusal_comes_before_the_gitignore_write`: a bad `immutable_heads()` alias gives `RepoError::Config` naming `bogus_function`, `.jj/.gitignore` does NOT exist, and `precondition` is `None`.
+- `a_failed_gitignore_write_keeps_the_start_up_warnings`: `.jj/.gitignore` is pre-created as a directory and `[revset-aliases]` has a bad entry. The result is `RepoError::ConvertFailed`, the warnings are exactly `[jj.config_alias_invalid]` ("Failed to load `revset-aliases.bad(`: …"), and `precondition` is `None`.
+- **Mutation check:** with `CommandEnv::load` and `maybe_add_gitignore` swapped back to the old order, both tests FAIL: `.gitignore` exists, and the warnings are `[]`. The swap was reverted and production code is unchanged.
+- **Gate steps run:** `cargo make --allow-private` `test-cargo`, `test-clippy`, `test-fmt` and `coverage` all exit 0.
