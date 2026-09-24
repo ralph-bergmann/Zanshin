@@ -5782,14 +5782,14 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Non-goals.** No UI.
 
-### Story 9.36: Finder/Dock launch sees the login-shell environment — `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_*` as in the terminal [bootstrap] — *NEEDS DECISION*
-*(Added 2026-09-24, Ralph — from the 9.27 deferral "A Finder/Dock-launched Zanshin does not see the user's shell environment". Open decision below.)*
+### Story 9.36: Finder/Dock launch sees the login-shell environment — `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_*` as in the terminal [bootstrap]
+*(Added 2026-09-24, Ralph — from the 9.27 deferral "A Finder/Dock-launched Zanshin does not see the user's shell environment". **Decided 2026-09-24, Ralph: option (a)** — resolve the login-shell environment at start-up; (b) and (c) are kept below for the record only.)*
 
 **Motivation.** 9.27's stack reads `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*`, `VISUAL`/`EDITOR` and `NO_COLOR` exactly as the CLI does (`config.rs::ConfigEnv::from_env`), but an app launched by launchd gets launchd's minimal environment, not the login shell's. A user who sets `XDG_CONFIG_HOME` or `JJ_CONFIG` in a shell rc file then gets a different config — and identity — in Zanshin than in the terminal `jj`; the same holds for what jj-lib's `git` subprocess sees on fetch/push (`PATH`, `SSH_AUTH_SOCK`, `GIT_*`). Started from a terminal Zanshin behaves like the CLI; started from Finder it does not.
 
-**Options (decision needed).** (a) Resolve the login-shell environment once at start-up — spawn `$SHELL -l -i -c` with a machine-readable `env` dump and a timeout, the approach VS Code and other macOS developer GUIs use — and hand the result to the config stack and the git subprocess environment as an explicit map (never `std::env::set_var` in a running multi-threaded process); fall back to launchd's environment on timeout or failure and report that as a 9.32 warning. (b) Nothing in the backend; document that shell-only variables do not reach a Finder-launched Zanshin. (c) A Zanshin setting that names `JJ_CONFIG`/`XDG_CONFIG_HOME` explicitly. Recommendation: (a) — the only option under which the same user gets the same config in both tools without having to know about launchd.
+**Options (decided: (a)).** (a) Resolve the login-shell environment once at start-up — spawn `$SHELL -l -i -c` with a machine-readable `env` dump and a timeout, the approach VS Code and other macOS developer GUIs use — and hand the result to the config stack and the git subprocess environment as an explicit map (never `std::env::set_var` in a running multi-threaded process); fall back to launchd's environment on timeout or failure and report that as a 9.32 warning. (b) Nothing in the backend; document that shell-only variables do not reach a Finder-launched Zanshin. (c) A Zanshin setting that names `JJ_CONFIG`/`XDG_CONFIG_HOME` explicitly. Recommendation: (a) — the only option under which the same user gets the same config in both tools without having to know about launchd.
 
-**Scope (if (a)).** The resolution in the app bootstrap before the worker isolate opens a repo (worker boot is bridge scope; the map crosses to Rust once at init); `ConfigEnv` and the git subprocess environment read that map instead of the process environment; tests with a fake `$SHELL`; the fallback warning.
+**Scope.** The resolution in the app bootstrap before the worker isolate opens a repo (worker boot is bridge scope; the map crosses to Rust once at init); `ConfigEnv` and the git subprocess environment read that map instead of the process environment; tests with a fake `$SHELL`; the fallback warning.
 
 **Non-goals.** No UI beyond the warning; no edits to shell rc files.
 
