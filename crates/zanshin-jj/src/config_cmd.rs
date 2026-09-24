@@ -823,7 +823,7 @@ fn check_wc_author(
 ) -> Option<WorkingCopyAuthor> {
     let mut repo = crate::Repo::open(workspace_root).ok()?;
     let snapshot = repo.snapshot();
-    *warnings = repo.take_warnings();
+    warnings.extend(repo.take_warnings());
     let Ok(report) = snapshot else {
         *precondition = repo.take_precondition();
         return None;

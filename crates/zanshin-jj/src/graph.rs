@@ -111,8 +111,10 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMet
 /// (`cli/src/commit_templater.rs:2203-2216` @ v0.44.0, pinned by jj's own
 /// `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`, where
 /// `revsets.short-prefixes = 'missing'` warns and still prints the whole log). The warning is
-/// `jj.short_prefixes_failed`: the CLI's "Failed to load short-prefixes index" and the
-/// failure's source chain, without the template-position rendering (Story 9.32).
+/// `jj.short_prefixes_failed` (Story 9.32): the CLI's `print_parse_diagnostics` block — its
+/// "In template expression" context line, "Failed to load short-prefixes index" and the
+/// failure's source chain. One deviation remains: the CLI also renders the template position
+/// (the `-->` span over the template text); Zanshin renders no template, so there is none.
 fn short_prefix_index<'c>(
     ctx: &'c IdPrefixContext,
     repo_dyn: &dyn jj_lib::repo::Repo,
@@ -121,7 +123,10 @@ fn short_prefix_index<'c>(
     match ctx.populate(repo_dyn) {
         Ok(index) => index,
         Err(e) => {
-            let mut lines = vec!["Failed to load short-prefixes index".to_owned()];
+            let mut lines = vec![
+                "In template expression".to_owned(),
+                "Failed to load short-prefixes index".to_owned(),
+            ];
             lines.extend(warning::error_chain_lines(&e));
             sink.push(WarningKind::ShortPrefixesFailed, lines.join("\n"));
             IdPrefixIndex::empty()

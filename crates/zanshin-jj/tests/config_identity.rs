@@ -314,7 +314,20 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
     // The shared committed path (`finish_or_no_op_at`: bookmark + git verbs) and `describe`.
     repo.bookmark_create(&["empty-identity".to_owned()], None)
         .expect("bookmark_create commits");
-    assert_eq!(identity_warnings(&mut repo), both_missing, "bookmark_create");
+    // The full list, in the CLI's print order: the verb body's note on the empty `@`, then the
+    // finish's identity note — last, as `finish_transaction` prints it.
+    let warnings = repo.take_warnings();
+    assert_eq!(
+        warnings
+            .iter()
+            .map(|w| (w.kind, w.message.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (WarningKind::BookmarkTargetEmpty, "Target revision is empty."),
+            (WarningKind::IdentityMissing, both_missing[0].as_str())
+        ],
+        "bookmark_create"
+    );
     let wc = resolve_revset(&repo, "@").expect("@ resolves").swap_remove(0);
     repo.describe(wc, "described anonymously").expect("describe commits");
     assert_eq!(identity_warnings(&mut repo), both_missing, "describe");

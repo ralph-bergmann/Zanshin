@@ -161,6 +161,15 @@ pub(crate) fn local(kind: WarningKind, message: impl Into<String>) -> Warning {
     }
 }
 
+/// Leaves a trace of the warnings a caller WITHOUT a warning channel collected and drops — one
+/// `tracing::warn!` per warning (kind + message), as the pre-9.32 alias loader logged a skipped
+/// entry. `site` names the dropping caller.
+pub(crate) fn log_dropped(site: &str, warnings: Vec<Warning>) {
+    for w in warnings {
+        tracing::warn!(site, kind = ?w.kind, message = %w.message, "warning dropped: no warning channel");
+    }
+}
+
 // ── Rendering ────────────────────────────────────────────────────────────────────
 
 /// A repo path as the CLI renders it when run from the workspace root

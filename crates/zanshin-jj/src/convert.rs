@@ -478,20 +478,31 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoEr
 /// gitdir POINTER file) reaches `convert_colocated` too, and `workspace_path == git_repo_path`
 /// (D5) is a colocated request `convert_import` honours.
 fn external_arm(workspace: &mut Workspace, repo: &Arc<ReadonlyRepo>) -> Result<(), RepoError> {
-    // The conversion's warnings are collected and dropped: the creation verbs' warnings (and
-    // their return shape) are Story 9.33's.
+    // The conversion's warnings are collected, logged and dropped — on success AND on failure:
+    // the creation verbs' warnings (and their return shape) are Story 9.33's.
     let mut sink = Warnings::default();
+    let result = external_arm_steps(workspace, repo, &mut sink);
+    crate::warning::log_dropped("convert", sink.take());
+    result
+}
+
+/// [`external_arm`]'s steps, collecting their warnings into `sink`.
+fn external_arm_steps(
+    workspace: &mut Workspace,
+    repo: &Arc<ReadonlyRepo>,
+    sink: &mut Warnings,
+) -> Result<(), RepoError> {
     let colocated = is_colocated_git_workspace(workspace);
     let config = config::load_for_workspace(workspace)?;
     let repo = init_git_refs(repo, workspace.workspace_name(), colocated, &config)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let knobs = snapshot::Knobs::read(workspace, &config, &mut sink).map_err(precondition_error)?;
-    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, &mut sink)?;
+    let knobs = snapshot::Knobs::read(workspace, &config, sink).map_err(precondition_error)?;
+    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, sink)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if colocated {
         return Ok(());
     }
-    import_head_into_destination(workspace, &repo, &knobs, &mut sink)
+    import_head_into_destination(workspace, &repo, &knobs, sink)
 }
 
 /// The CLI's non-colocated head import (`init.rs:260-270`): import HEAD, check `@` out onto the

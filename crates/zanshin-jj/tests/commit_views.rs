@@ -919,13 +919,21 @@ fn interdiff_filters_by_path_prefix() {
         .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &["b.txt".to_owned()])
         .expect("interdiff succeeds");
     assert_eq!(summary(&matching.file_changes), vec![("b.txt".to_owned(), "A")]);
+    // `b.txt` exists only in `to`'s tree — present in ONE checked tree is a match (Story 9.32:
+    // `jj.paths_unmatched` needs the path absent from every tree).
+    assert!(repo.take_warnings().is_empty());
 
-    // An unmatched filter is a CLI *warning*, not an error — this API has no warning channel,
-    // so it is simply an empty result.
+    // An unmatched filter is a CLI *warning*, not an error: the result is empty and the call
+    // warns `jj.paths_unmatched`.
     let unmatched = repo
         .interdiff(Some(chg(&p.from)), Some(chg(&p.to)), &["nosuchdir".to_owned()])
         .expect("an unmatched path filter is not a refusal");
     assert!(unmatched.file_changes.is_empty());
+    let warnings = repo.take_warnings();
+    assert_eq!(
+        warnings.iter().map(|w| w.kind).collect::<Vec<_>>(),
+        [zanshin_jj::WarningKind::PathsUnmatched]
+    );
 }
 
 #[test]

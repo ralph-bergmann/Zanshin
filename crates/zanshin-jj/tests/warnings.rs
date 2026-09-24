@@ -180,12 +180,32 @@ fn restore_absorb_and_interdiff_warn_about_unmatched_paths() {
         .all(|w| w.kind != WarningKind::PathsUnmatched));
 }
 
+/// "Unmatched" means absent from EVERY tree the verb checks: a file `@` deleted exists only in
+/// restore's source tree (`@-`), and naming it is a match.
+#[test]
+fn restoring_a_file_at_deleted_is_not_an_unmatched_path() {
+    let fx = git_fx("");
+    write(&fx.root, "f.txt", "one\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let parent = at(&repo);
+    repo.new_change(std::slice::from_ref(&parent)).expect("new @");
+    fs::remove_file(fx.root.join("f.txt")).expect("delete f.txt in @");
+
+    repo.restore(None, None, None, &["f.txt".to_owned()], false)
+        .expect("restore");
+
+    assert!(repo
+        .take_warnings()
+        .iter()
+        .all(|w| w.kind != WarningKind::PathsUnmatched));
+}
+
 // ── Config-load warnings ─────────────────────────────────────────────────────────
 
-/// A bad alias ENTRY warns (and is skipped) on every precondition verb, and a call that loads
-/// the table twice — the graph walk re-reads it for its own parse — records it ONCE.
+/// A bad alias ENTRY warns (and is skipped) on a precondition verb, and a call that loads the
+/// table twice — the graph walk re-reads it for its own parse — records it ONCE.
 #[test]
-fn a_bad_alias_entry_warns_once_per_call_on_every_verb() {
+fn a_bad_alias_entry_warns_once_per_call_on_status_and_the_graph_walk() {
     let fx = git_fx("[revset-aliases]\n'bad(' = 'x'\n\n[fileset-aliases]\n'worse(' = 'y'\n");
     let mut repo = Repo::open(&fx.root).expect("open");
 
@@ -220,6 +240,35 @@ fn a_bad_alias_entry_warns_once_per_call_on_every_verb() {
     );
 }
 
+/// A verb that re-loads the revset table for its OWN parse (`show`, after the precondition's
+/// load) still records the bad entry once.
+#[test]
+fn show_records_a_bad_revset_alias_entry_once() {
+    let fx = git_fx("[revset-aliases]\n'bad(' = 'x'\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    repo.show(Some("@"), None).expect("show");
+
+    assert_eq!(kinds(&repo.take_warnings()), [WarningKind::ConfigAliasInvalid]);
+}
+
+/// A NON-STRING alias value is the other entry failure (`config.rs:1018-1024` @ v0.44.0).
+#[test]
+fn a_non_string_alias_value_warns_with_its_type() {
+    let fx = git_fx("[revset-aliases]\n'foo()' = 42\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    repo.status().expect("a bad entry is skipped, not an error");
+
+    let warnings = repo.take_warnings();
+    assert_eq!(kinds(&warnings), [WarningKind::ConfigAliasInvalid]);
+    assert_eq!(
+        warnings[0].message,
+        "Failed to load `revset-aliases.foo()`: Expected a string or a table with a `definition` string key, but is \
+         integer"
+    );
+}
+
 #[test]
 fn redefining_a_mutability_builtin_warns() {
     let fx = git_fx("[revset-aliases]\n'mutable()' = '~immutable()'\n");
@@ -232,6 +281,26 @@ fn redefining_a_mutability_builtin_warns() {
     assert_eq!(
         warnings[0].message,
         "Redefining `revset-aliases.mutable()` is not recommended; redefine `immutable_heads()` instead."
+    );
+}
+
+/// The redefinition check walks the LAYERS, as the CLI's `warn_user_redefined_builtin` does: the
+/// same builtin redefined in the repo AND the workspace config warns once per layer.
+#[test]
+fn a_builtin_redefined_in_two_layers_warns_once_per_layer() {
+    let fx = git_fx("[revset-aliases]\n'mutable()' = '~immutable()'\n");
+    fs::write(
+        fx.root.join(".jj").join("workspace-config.toml"),
+        "[revset-aliases]\n'mutable()' = '~immutable()'\n",
+    )
+    .expect("workspace config");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    repo.status().expect("status");
+
+    assert_eq!(
+        kinds(&repo.take_warnings()),
+        [WarningKind::ConfigAliasRedefined, WarningKind::ConfigAliasRedefined]
     );
 }
 

@@ -71,6 +71,11 @@ pub enum RevsetError {
 /// MCP and serves as the test oracle over the current head. The CLI-counterpart surface
 /// is [`crate::Repo::eval_revset`], which runs the pre-verb snapshot first.
 ///
+/// Warnings (Story 9.32) are NOT returned: this oracle has no warning channel, so its
+/// alias-load warnings (`jj.config_alias_invalid` / `jj.config_alias_redefined`) and revset
+/// parse diagnostics (`jj.revset_diagnostic`) are only logged (`tracing::warn!`) and dropped.
+/// [`crate::Repo::eval_revset`] reports them.
+///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function
@@ -79,7 +84,7 @@ pub enum RevsetError {
 ///   (`nonexistent-branch`), no working-copy commit for `@`, or an unmatched/ambiguous id.
 /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable,
 ///   or a layer's `revset-aliases` is not a table. A single bad alias ENTRY is not an
-///   error: like the CLI, it warns and is skipped.
+///   error: like the CLI, it warns (see above) and is skipped.
 /// - [`RevsetError::JjLibError`] — an internal jj-lib evaluation or backend failure.
 #[must_use = "the resolved change ids are the result of this call"]
 pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetError> {
@@ -89,8 +94,11 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
     // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`). This oracle
-    //    has no warning channel, so its parse warnings are dropped.
-    let parsed = parse_revset(repo, expr, &mut Warnings::default())?;
+    //    has no warning channel, so its parse warnings are logged and dropped.
+    let mut sink = Warnings::default();
+    let parsed = parse_revset(repo, expr, &mut sink);
+    crate::warning::log_dropped("resolve_revset", sink.take());
+    let parsed = parsed?;
     let set = evaluate_revset(repo_dyn, &parsed)?;
 
     // 3. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it

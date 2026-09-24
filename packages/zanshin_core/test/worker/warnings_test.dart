@@ -153,7 +153,10 @@ void main() {
       final GraphSlice slice = await handle.graphSlice(revset: 'all()', shortPrefixes: 'nonexistent-bookmark-xyz');
 
       expect(_codes(slice.warnings), [ZanshinWarningCode.shortPrefixesFailed]);
-      expect(slice.warnings.single.message, startsWith('Failed to load short-prefixes index\n'));
+      expect(
+        slice.warnings.single.message,
+        startsWith('In template expression\nFailed to load short-prefixes index\n'),
+      );
       expect(slice.warnings.single.message, contains('nonexistent-bookmark-xyz'));
       await handle.close();
     });

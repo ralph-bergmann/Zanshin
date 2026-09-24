@@ -235,6 +235,24 @@ fn identity_writes_reload_the_handle_and_report_the_working_copy_author() {
     assert_ne!(head(&root).0, op, "the snapshot operation, as in the CLI");
 }
 
+/// The identity check's snapshot warnings are handed to the outcome BEFORE the author note —
+/// the CLI's print order (Story 9.32): the snapshot's alias load warns first.
+#[test]
+fn identity_set_reports_the_snapshot_warnings_then_the_author_note() {
+    let (_tmp, root) = workspace(Some(Backend::Git));
+    config_set(Some(&root), ConfigScope::Repo, "revset-aliases.'bad('", "x", None)
+        .result
+        .expect("the CLI sets any leaf");
+
+    let set = config_set(Some(&root), ConfigScope::Repo, "user.name", "Somebody", None);
+
+    set.result.expect("set");
+    assert_eq!(
+        set.warnings.iter().map(|w| w.kind).collect::<Vec<_>>(),
+        [WarningKind::ConfigAliasInvalid, WarningKind::ConfigWorkingCopyAuthor]
+    );
+}
+
 /// The 9.27 carry-over: a wrong-typed key only the workspace LOAD reads makes `Repo::open`
 /// refuse, but not the config verbs — which then repair it.
 #[test]

@@ -686,7 +686,9 @@ fn walk_graph_unresolvable_short_prefixes_degrades_to_full_index_prefixes() {
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::ShortPrefixesFailed);
     assert!(
-        warnings[0].message.starts_with("Failed to load short-prefixes index\n")
+        warnings[0]
+            .message
+            .starts_with("In template expression\nFailed to load short-prefixes index\n")
             && warnings[0].message.contains("nonexistent-bookmark-xyz"),
         "{}",
         warnings[0].message

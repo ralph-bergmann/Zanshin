@@ -84,8 +84,10 @@ list — and never appears on `PANIC_FALLBACK_ENVELOPE`, whose bytes are unchang
 Success without a caveat is `ok` with no warnings; there is no success code and no
 severity. Config-load warnings are recorded once per call. On the Dart side every
 `ZanshinWorker` / `RepoHandle` command result exposes them as `warnings`
-(`List<ZanshinWarning>`), decoded by one shared helper; a list result is a
-`WarnedList<E>`; payloads nested in another payload carry none.
+(`List<ZanshinWarning>`), decoded by one shared helper — except `openRepo`, `initRepo`,
+`cloneRepo` and `convert` (their return shape is Story 9.33's), `closeRepo` / `close`
+(lifecycle) and `events` (a stream, not a command); a list result is a `WarnedList<E>`;
+payloads nested in another payload carry none.
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
@@ -1121,11 +1123,11 @@ LogDefaults {
 The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
 
 - **Table level → error.** A layer whose `revset-aliases` key is not a table
-  fails the call with `jj.config_error` (`cli/src/config.rs:943-953`).
+  fails the call with `jj.config_error` (`cli/src/config.rs:1000-1007` @ v0.44.0, `ConfigGetError::Type`).
 - **Entry level → warn and continue.** A single entry with a non-string value or
   a declaration jj-lib's parser rejects is skipped with a `jj.config_alias_invalid`
   warning (Story 9.32), and the call succeeds with every other alias loaded
-  (`cli/src/config.rs:964-977`).
+  (`cli/src/config.rs:1009-1032` @ v0.44.0).
   A malformed alias DEFINITION is not caught at load time at all — it surfaces
   as `jj.revset_parse_error` when the alias is used.
 

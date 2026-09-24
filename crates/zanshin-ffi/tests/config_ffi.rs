@@ -580,6 +580,14 @@ fn verb_refusals_carry_their_codes() {
         envelope(&bytes).precondition().is_some(),
         "the identity check ran before the write failed"
     );
+    // …and so did its author note (Story 9.32): the CLI prints it before `set_value` fails.
+    let codes: Vec<&str> = envelope(&bytes)
+        .warnings()
+        .expect("the error arm carries the check's warnings")
+        .iter()
+        .map(|w| w.code().unwrap())
+        .collect();
+    assert_eq!(codes, ["jj.config_working_copy_author"]);
 }
 
 #[test]
