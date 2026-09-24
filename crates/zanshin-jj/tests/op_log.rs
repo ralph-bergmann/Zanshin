@@ -316,7 +316,7 @@ fn op_log_all_ids_match_oracle_walk() {
 fn op_log_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 
@@ -437,7 +437,7 @@ fn undo_twice_in_a_row_redoes_the_mutation() {
 fn undo_at_root_operation_returns_nothing_to_undo() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let (head_hex, root_hex) = {
         let mut repo = Repo::open(tmp.path()).unwrap();
@@ -468,7 +468,7 @@ fn undo_at_root_operation_returns_nothing_to_undo() {
 fn undo_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 
@@ -489,7 +489,7 @@ fn undo_on_corrupt_repo_returns_backend_error() {
 fn undo_immediately_after_init_returns_backend_error_no_working_copy() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     // The head op right after Repo::init is "add workspace 'default'", whose single

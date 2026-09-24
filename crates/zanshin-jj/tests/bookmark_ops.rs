@@ -272,7 +272,7 @@ fn create_is_not_blocked_by_a_tracked_remote_on_the_reserved_git_remote() {
 fn create_is_blocked_by_a_tracked_git_remote_on_a_native_backend() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    let mut repo = Repo::init(tmp.path(), None).unwrap();
+    let mut repo = Repo::init(tmp.path(), None).result.unwrap();
     let lay = layout(tmp.path());
     set_remote_bookmark(tmp.path(), "colocated", "git", &lay.wc_commit_hex, true);
     let (before, _) = head_op(&mut repo);

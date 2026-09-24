@@ -69,7 +69,7 @@ fn an_uncreatable_repo_config_fails_the_conversion_and_rolls_it_back() {
         parent.path(),
     );
 
-    let result = convert_colocated(&work);
+    let result = convert_colocated(&work).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "an uncreatable repo config must fail the conversion, got: {result:?}"

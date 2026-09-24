@@ -35,7 +35,7 @@ import 'package:zanshin_core/src/ffi/graph.dart' show decodeGraphSliceEnvelope;
 import 'package:zanshin_core/src/ffi/log_defaults.dart' show decodeLogDefaultsEnvelope;
 import 'package:zanshin_core/src/ffi/mutate.dart' show decodeAbsorbResultEnvelope, decodeMutationResultEnvelope;
 import 'package:zanshin_core/src/ffi/op_log.dart' show decodeOpLogEnvelope;
-import 'package:zanshin_core/src/ffi/precondition.dart' show decodeSnapshotEnvelope;
+import 'package:zanshin_core/src/ffi/precondition.dart' show Precondition, decodeCreationReport, decodeSnapshotEnvelope;
 import 'package:zanshin_core/src/ffi/remotes.dart' show decodeRemotesEnvelope;
 import 'package:zanshin_core/src/ffi/repo_detect.dart' show decodeRepoDetectEnvelope;
 import 'package:zanshin_core/src/ffi/status.dart' show decodeStatusEnvelope;
@@ -313,8 +313,9 @@ void main() {
         'jj.config_working_copy_author',
         'jj.config_gc_delete_failed',
         'jj.config_nothing_listed',
+        'jj.clone_cleanup_failed',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(23), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(24), reason: 'no code is registered twice');
     });
   });
 
@@ -353,6 +354,32 @@ void main() {
       ).toBytes();
 
       expect(decodeSnapshotEnvelope(bytes).warnings, _expected);
+    });
+
+    // Story 9.33: init/clone/convert answer with a RepoHandle whose envelope
+    // carries the creating call's report.
+    test('creation: the report carries them and the precondition', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 1, sessionId: 1),
+        precondition: fbs.PreconditionObjectBuilder(wasSnapshotTaken: true),
+        warnings: _wire(),
+      ).toBytes();
+
+      final (:List<ZanshinWarning> warnings, :Precondition? precondition) = decodeCreationReport(bytes);
+
+      expect(warnings, _expected);
+      expect(precondition?.wasSnapshotTaken, isTrue);
+    });
+
+    test('creation: absent → [] and null', () {
+      final (:List<ZanshinWarning> warnings, :Precondition? precondition) = decodeCreationReport(
+        _ok(fbs.PayloadTypeId.RepoHandle, fbs.RepoHandleObjectBuilder(handle: 1, sessionId: 1), warned: false),
+      );
+
+      expect(warnings, isEmpty);
+      expect(precondition, isNull);
     });
   });
 }

@@ -657,3 +657,152 @@ fn git_with_commit(dir: &std::path::Path) {
     git(&["add", "."], dir);
     git(&["commit", "-m", "initial"], dir);
 }
+
+// ── Story 9.33: the creating call's report ────────────────────────────────────
+
+/// The envelope's warnings as `(code, message)` pairs, in wire order; absent reads as empty.
+fn wire_warnings(env: &fbs::Envelope<'_>) -> Vec<(String, String)> {
+    env.warnings()
+        .map(|v| {
+            v.iter()
+                .map(|w| (w.code().unwrap_or("").to_owned(), w.message().unwrap_or("").to_owned()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Closes `handle`, asserting the close succeeded.
+fn close(handle: u64) {
+    let bytes = unsafe { read_and_free(zanshin_repo_close(handle)) };
+    assert!(parse_envelope(&bytes).ok(), "close must succeed");
+}
+
+/// Init and open report nothing: both creation-report fields are ABSENT on the wire.
+#[test]
+fn init_and_open_envelopes_carry_no_report() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let init_bytes = unsafe { read_and_free(zanshin_repo_init(path.as_ptr(), 1)) };
+    let init = parse_envelope(&init_bytes);
+    assert!(init.ok());
+    assert!(init.precondition().is_none(), "init runs no snapshot");
+    assert!(init.warnings().is_none(), "init warns about nothing");
+    close(init.data_as_repo_handle().expect("RepoHandle").handle());
+
+    let open_bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
+    let open = parse_envelope(&open_bytes);
+    assert!(open.ok());
+    assert!(open.precondition().is_none(), "open runs no snapshot");
+    assert!(open.warnings().is_none(), "open warns about nothing");
+    close(open.data_as_repo_handle().expect("RepoHandle").handle());
+}
+
+/// A clone into a target that already holds an untracked `README.md` the default branch also
+/// has: the checkout leaves it alone, and the ok envelope says so. Reachable only because
+/// Zanshin's clone accepts a non-empty target, which the CLI refuses (`git/clone.rs:188-192`) —
+/// a Story 9.20 divergence; this witness flips to a refusal when 9.20 lands.
+#[test]
+fn clone_into_a_colliding_target_warns_that_a_checkout_was_skipped() {
+    pin_env();
+    let src = TempDir::new().expect("src tempdir");
+    git_with_commit(src.path());
+    let target = TempDir::new().expect("target tempdir");
+    fs::write(target.path().join("README.md"), "local").expect("write the untracked file");
+    let url = cstr(&format!("file://{}", src.path().display()));
+    let target_c = cstr(target.path().to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(zanshin_repo_clone(url.as_ptr(), target_c.as_ptr())) };
+    let env = parse_envelope(&bytes);
+    assert!(
+        env.ok(),
+        "clone must succeed: {:?}",
+        env.error().and_then(|e| e.context())
+    );
+    assert!(env.precondition().is_none(), "a clone runs no snapshot");
+    assert_eq!(
+        wire_warnings(&env),
+        [(
+            "jj.checkout_files_skipped".to_owned(),
+            "1 of those updates were skipped because there were conflicting changes in the working copy.".to_owned()
+        )]
+    );
+    assert_eq!(fs::read_to_string(target.path().join("README.md")).unwrap(), "local");
+    close(env.data_as_repo_handle().expect("RepoHandle").handle());
+}
+
+/// A conversion whose work tree holds a new file over the builtin 1 MiB limit: the ok envelope
+/// carries the conversion's snapshot report naming it, and the refusal warning.
+#[test]
+fn convert_with_a_big_new_file_reports_the_snapshot_and_the_refusal() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+    fs::write(tmp.path().join("big.bin"), vec![b'a'; 2 * 1024 * 1024]).expect("write the big file");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(zanshin_repo_convert(path.as_ptr())) };
+    let env = parse_envelope(&bytes);
+    assert!(
+        env.ok(),
+        "convert must succeed: {:?}",
+        env.error().and_then(|e| e.context())
+    );
+    let precondition = env
+        .precondition()
+        .expect("the conversion's snapshot report rides the envelope");
+    assert!(precondition.git_head_imported());
+    let untracked = precondition
+        .snapshot_stats()
+        .and_then(|s| s.untracked())
+        .expect("the refused file is reported");
+    assert_eq!(untracked.len(), 1);
+    assert_eq!(untracked.get(0).path(), Some("big.bin"));
+    assert_eq!(
+        wire_warnings(&env),
+        [(
+            "jj.snapshot_files_refused".to_owned(),
+            "Refused to snapshot some files:\n  big.bin: 2.0MiB (2097152 bytes); the maximum size allowed is 1.0MiB \
+             (1048576 bytes)"
+                .to_owned()
+        )]
+    );
+    close(env.data_as_repo_handle().expect("RepoHandle").handle());
+}
+
+/// A conversion whose own snapshot fails (a new file it cannot open, mode `0o000`): the ERROR
+/// envelope carries the refs step's warning and the partial snapshot report on the wire.
+#[test]
+fn convert_whose_snapshot_fails_reports_on_the_error_envelope() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+    git(&["update-ref", "refs/remotes/git/stolen", "HEAD"], tmp.path());
+    let locked = tmp.path().join("locked.txt");
+    fs::write(&locked, "unreadable").expect("write the unreadable file");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("make it unreadable");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(zanshin_repo_convert(path.as_ptr())) };
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("restore the mode");
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok(), "the snapshot cannot open the file");
+    assert_eq!(env.error().and_then(|e| e.code()), Some("jj.convert_failed"));
+    assert_eq!(
+        wire_warnings(&env),
+        [(
+            "jj.git_import_failed".to_owned(),
+            "Failed to import some Git refs:\n  refs/remotes/git/stolen".to_owned()
+        )]
+    );
+    let precondition = env
+        .precondition()
+        .expect("the partial snapshot report rides the error envelope");
+    assert!(
+        precondition.git_head_imported(),
+        "the head import ran before the snapshot failed"
+    );
+}

@@ -39,12 +39,15 @@ To expose a new jj concept (a new "noun"):
 
 ## Conversion modes
 
-Two functions convert an existing Git repository into a jj workspace:
+Two functions convert an existing Git repository into a jj workspace. Like every
+creation (`Repo::init`, `Repo::clone`), they return a `CreationOutcome` — the
+`Result<Repo, RepoError>` as `result`, plus the warnings the jj CLI prints on the
+same flow and the conversion's snapshot report (Story 9.33):
 
 ### `convert_colocated` — in-place, colocated (FR-JJ-18a)
 
 ```rust
-convert_colocated(path: &Path) -> Result<Repo, RepoError>
+convert_colocated(path: &Path) -> CreationOutcome
 ```
 
 Creates a jj workspace **inside** the existing Git repo: `.jj/` is added
@@ -58,7 +61,7 @@ not supported** (returns `NotAGitRepo`).
 ### `convert_import` — jj-native at a separate destination (FR-JJ-18b)
 
 ```rust
-convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError>
+convert_import(git_repo_path: &Path, workspace_path: &Path) -> CreationOutcome
 ```
 
 Creates a **separate**, non-colocated jj workspace at a **user-chosen

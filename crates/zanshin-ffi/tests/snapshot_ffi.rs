@@ -127,6 +127,7 @@ fn fresh_repo() -> (TempDir, PathBuf) {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let root = Repo::init(tmp.path(), Some(Backend::Git))
+        .result
         .expect("init")
         .workspace_root()
         .to_owned();
@@ -650,7 +651,7 @@ fn a_colocated_export_failure_rides_finish_export_failed_bookmarks() {
             String::from_utf8_lossy(&out.stderr)
         );
     }
-    drop(zanshin_jj::convert_colocated(&root).expect("convert"));
+    drop(zanshin_jj::convert_colocated(&root).result.expect("convert"));
     let handle = open_handle(&root);
     let request = {
         let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);

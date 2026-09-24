@@ -78,7 +78,7 @@ fn remotes_on_native_backend_returns_empty() {
     // backend has no git remotes: `get_all_remote_names` yields
     // `UnexpectedGitBackendError`, which `unwrap_or_default` collapses to an empty
     // list — `Ok(vec![])`, not an error (FR-JJ-9 native-backend AC).
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     let remotes = repo.list_remotes().unwrap();
@@ -94,7 +94,7 @@ fn remotes_on_native_backend_returns_empty() {
 fn remotes_lists_configured_remotes_sorted_by_name() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     // Added in reverse alphabetical order to verify sort is applied.
     add_remotes(
@@ -134,7 +134,7 @@ fn remotes_lists_configured_remotes_sorted_by_name() {
 fn remotes_report_a_distinct_push_url() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     repo.git_remote_add(
@@ -157,7 +157,7 @@ fn remotes_report_a_distinct_push_url() {
 fn remotes_without_a_push_url_report_none() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     repo.git_remote_add("origin", "https://github.com/origin/repo.git", None)
@@ -181,7 +181,7 @@ fn remotes_without_a_push_url_report_none() {
 fn remotes_pair_each_push_url_with_its_own_remote() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     repo.git_remote_add(
@@ -227,7 +227,7 @@ fn remotes_pair_each_push_url_with_its_own_remote() {
 fn remotes_report_a_push_url_added_later() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     repo.git_remote_add("origin", "https://github.com/origin/repo.git", None)
@@ -255,7 +255,7 @@ fn remotes_report_a_push_url_added_later() {
 fn remotes_report_none_when_the_push_url_equals_the_fetch_url() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let url = "https://github.com/origin/repo.git";
     let mut repo = Repo::open(tmp.path()).unwrap();
@@ -274,7 +274,7 @@ fn remotes_report_none_when_the_push_url_equals_the_fetch_url() {
 fn remotes_preserve_embedded_credentials_in_the_push_url() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     repo.git_remote_add(
@@ -299,7 +299,7 @@ fn remotes_preserve_embedded_credentials_in_the_push_url() {
 fn remotes_preserve_embedded_credentials() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     add_remotes(
         tmp.path(),
@@ -328,7 +328,7 @@ fn remotes_preserve_embedded_credentials() {
 fn remotes_keep_ssh_form() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).unwrap();
+    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
 
     // scp-like form (`git@host:path`) — the AC-named case (AC-6 #13 / AC-9 #18);
     // exercises gix's alternative-form serialisation branch (must stay ssh-ish,
@@ -364,7 +364,7 @@ fn remotes_on_corrupt_repo_returns_backend_error() {
     let tmp = TempDir::new().unwrap();
     // Native backend: list_remotes() still calls load_at_head() first, which will
     // fail when op_heads is removed → RemoteError::Backend.
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 

@@ -750,7 +750,7 @@ mod tests {
     fn file_show_refuses_a_malformed_conflict_marker_style_as_config() {
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
         std::fs::write(
             repo.workspace().repo_path().join("config.toml"),
             "ui.conflict-marker-style = \"bogus\"\n",

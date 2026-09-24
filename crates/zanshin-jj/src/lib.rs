@@ -71,7 +71,7 @@ pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
-pub use repo::{Backend, Repo, RepoError};
+pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
@@ -91,7 +91,7 @@ pub(crate) mod test_support {
     pub(crate) fn repo_with_a_broken_head() -> (tempfile::TempDir, crate::Repo) {
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
         std::fs::remove_dir_all(repo.workspace().repo_path().join("op_heads")).expect("remove op_heads");
         (tmp, repo)
     }

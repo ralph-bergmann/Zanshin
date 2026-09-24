@@ -53,7 +53,7 @@ fn workspace(backend: Option<Backend>) -> (TempDir, PathBuf) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("ws");
     fs::create_dir(&root).unwrap();
-    Repo::init(&root, backend).expect("init");
+    Repo::init(&root, backend).result.expect("init");
     let root = fs::canonicalize(&root).unwrap();
     (tmp, root)
 }

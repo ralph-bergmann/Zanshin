@@ -243,6 +243,8 @@ pub const JJ_CONFIG_WORKING_COPY_AUTHOR: &str = "jj.config_working_copy_author";
 pub const JJ_CONFIG_GC_DELETE_FAILED: &str = "jj.config_gc_delete_failed";
 /// Warning: `config list` found nothing to list.
 pub const JJ_CONFIG_NOTHING_LISTED: &str = "jj.config_nothing_listed";
+/// Warning: a failed clone could not remove what it had created (Story 9.33).
+pub const JJ_CLONE_CLEANUP_FAILED: &str = "jj.clone_cleanup_failed";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -273,6 +275,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigWorkingCopyAuthor => JJ_CONFIG_WORKING_COPY_AUTHOR,
         K::ConfigGcDeleteFailed => JJ_CONFIG_GC_DELETE_FAILED,
         K::ConfigNothingListed => JJ_CONFIG_NOTHING_LISTED,
+        K::CloneCleanupFailed => JJ_CLONE_CLEANUP_FAILED,
     }
 }
 
@@ -524,23 +527,15 @@ pub fn ok_empty() -> Vec<u8> {
 /// stores it and passes it back verbatim to `zanshin_repo_close`. `session_id` is
 /// the process-unique, never-reused id async events carry as their correlation id
 /// (the raw address is ABA-unsafe across close→reopen; the session id is not).
+///
+/// `report` is the creating call's (Story 9.33): its warnings and — convert only — the
+/// conversion's snapshot report. `zanshin_repo_open` passes `&CallReport::default()`, which
+/// writes neither field.
 #[must_use]
-pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
+pub fn ok_repo_handle(handle: u64, session_id: u64, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
     let h = fbs::RepoHandle::create(&mut b, &fbs::RepoHandleArgs { handle, session_id });
-    let envelope = fbs::Envelope::create(
-        &mut b,
-        &fbs::EnvelopeArgs {
-            ok: true,
-            error: None,
-            data_type: fbs::Payload::RepoHandle,
-            data: Some(h.as_union_value()),
-            precondition: None,
-            warnings: None,
-        },
-    );
-    b.finish(envelope, None);
-    b.finished_data().to_vec()
+    finish_envelope(b, fbs::Payload::RepoHandle, Some(h.as_union_value()), report)
 }
 
 /// Build the `MutationResult` table into `b` and return its offset.
@@ -854,7 +849,7 @@ mod tests {
 
     #[test]
     fn ok_repo_handle_produces_repo_handle_envelope() {
-        let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7);
+        let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7, &CallReport::default());
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert!(env.error().is_none());
@@ -862,6 +857,37 @@ mod tests {
         let rh = env.data_as_repo_handle().expect("RepoHandle payload must be present");
         assert_eq!(rh.handle(), 0xdead_beef_cafe_1234);
         assert_eq!(rh.session_id(), 7);
+        // Story 9.33: an empty report (`open`, or a creation with nothing to report) writes
+        // neither field.
+        assert!(env.precondition().is_none());
+        assert!(env.warnings().is_none());
+    }
+
+    /// Story 9.33: a creation's ok envelope carries its report beside the handle — the
+    /// conversion's snapshot report and the warnings in order.
+    #[test]
+    fn ok_repo_handle_carries_the_creation_report() {
+        let report = CallReport {
+            precondition: Some(zanshin_jj::Precondition {
+                was_snapshot_taken: true,
+                ..zanshin_jj::Precondition::default()
+            }),
+            warnings: vec![
+                warning(zanshin_jj::WarningKind::SnapshotFilesRefused, "refused"),
+                warning(zanshin_jj::WarningKind::IdentityMissing, "identity"),
+            ],
+        };
+        let buf = ok_repo_handle(1, 2, &report);
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_as_repo_handle().map(|h| h.handle()), Some(1));
+        assert!(env.precondition().is_some_and(|p| p.was_snapshot_taken()));
+        assert_eq!(
+            wire_warnings(&env),
+            [
+                ("jj.snapshot_files_refused".to_owned(), "refused".to_owned()),
+                ("jj.identity_missing".to_owned(), "identity".to_owned()),
+            ]
+        );
     }
 
     #[test]
@@ -1021,6 +1047,7 @@ mod tests {
                 K::ConfigWorkingCopyAuthor => "jj.config_working_copy_author",
                 K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
                 K::ConfigNothingListed => "jj.config_nothing_listed",
+                K::CloneCleanupFailed => "jj.clone_cleanup_failed",
             }
         }
         let kinds = [
@@ -1047,6 +1074,7 @@ mod tests {
             K::ConfigWorkingCopyAuthor,
             K::ConfigGcDeleteFailed,
             K::ConfigNothingListed,
+            K::CloneCleanupFailed,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

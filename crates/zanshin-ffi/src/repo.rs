@@ -17,14 +17,14 @@ use std::thread::{self, JoinHandle};
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
 use zanshin_jj::{
-    convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, DetectError, MutateError, Repo, RepoError,
-    RepoKind, RepoRoot,
+    convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, CreationOutcome, DetectError, MutateError, Repo,
+    RepoError, RepoKind, RepoRoot,
 };
 
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, ok_absorb_result, ok_empty,
-    ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
+    ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request, session_from_handle, CallReport,
+    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
     JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR,
     JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
     JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
@@ -510,6 +510,21 @@ fn arm_session_with(
     Ok((raw as u64, session_id))
 }
 
+/// The tail of every creation wrapper — init, clone, convert (Story 9.33): arms the created
+/// repo's session and stamps the creating call's report (its warnings, and the conversion's
+/// snapshot report) onto whichever envelope answers — the `RepoHandle` ok envelope, the
+/// refusal, or the `watcher.io_error` of an arming that failed after the creation succeeded.
+fn creation_envelope(outcome: CreationOutcome) -> Result<Vec<u8>, FfiErrorObj> {
+    let report = CallReport {
+        precondition: outcome.precondition,
+        warnings: outcome.warnings,
+    };
+    match outcome.result.map_err(map_repo_err).and_then(arm_session) {
+        Ok((handle, session_id)) => Ok(ok_repo_handle(handle, session_id, &report)),
+        Err(e) => Err(e.with_report(report)),
+    }
+}
+
 // ── extern "C" functions ──────────────────────────────────────────────────────
 
 /// Open an existing jj repository at `path`.
@@ -517,6 +532,10 @@ fn arm_session_with(
 /// Returns a success `Envelope` whose payload is `RepoHandle { handle }` on success,
 /// or an error `Envelope` on failure. The handle is an opaque integer the Dart caller
 /// must pass back to `zanshin_repo_close` when done.
+///
+/// Opening runs no snapshot and warns about nothing: neither envelope carries
+/// `Envelope.precondition` or `Envelope.warnings` (`open` is not a CLI command; its start-up
+/// warnings belong to the start-up-environment port).
 ///
 /// # Errors
 /// - `jj.path_not_found` — `path` does not exist on disk.
@@ -543,7 +562,7 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
         let p = unsafe { cstr_to_string(path) }?;
         let repo = Repo::open(Path::new(&p)).map_err(map_repo_err)?;
         let (handle, session_id) = arm_session(repo)?;
-        Ok(ok_repo_handle(handle, session_id))
+        Ok(ok_repo_handle(handle, session_id, &CallReport::default()))
     });
     vec_into_token(buf)
 }
@@ -568,6 +587,11 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 ///   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
 ///   Detail in `context`.
 ///
+/// # Warnings
+/// None, and no `Envelope.precondition` (Story 9.33): the CLI's empty-directory `jj git init`
+/// finishes no transaction, so it reaches no `ui.warning_*`. The envelope carries the creating
+/// call's report the way `zanshin_repo_clone` does — always empty here.
+///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned token
 /// must be freed via `zanshin_buffer_free_token`.
@@ -588,9 +612,7 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
                 })
             }
         };
-        let repo = Repo::init(Path::new(&p), backend_opt).map_err(map_repo_err)?;
-        let (handle, session_id) = arm_session(repo)?;
-        Ok(ok_repo_handle(handle, session_id))
+        creation_envelope(Repo::init(Path::new(&p), backend_opt))
     });
     vec_into_token(buf)
 }
@@ -616,6 +638,16 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
 ///   has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
 ///   persists and a retry sees an existing repo. Detail in `context`.
 ///
+/// # Warnings
+/// `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
+/// envelope, in the CLI's order (Story 9.33): `jj.git_import_failed` (refs the fetch's import
+/// could not read), then `jj.checkout_files_skipped` (files the checkout left alone because an
+/// untracked file of the same name was in the way — reachable only because this clone accepts a
+/// non-empty target, which the CLI refuses; Story 9.20), then `jj.identity_missing` once when
+/// `user.name`/`user.email` is empty; on a failure, whatever was warned before it, and
+/// `jj.clone_cleanup_failed` last when the rollback could not remove `.jj/`. No
+/// `Envelope.precondition`.
+///
 /// # Safety
 /// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
 /// The returned token must be freed via `zanshin_buffer_free_token`.
@@ -626,9 +658,7 @@ pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *co
     let buf = catch(|| {
         let u = unsafe { cstr_to_string(url) }?;
         let t = unsafe { cstr_to_string(target_path) }?;
-        let repo = Repo::clone(&u, Path::new(&t)).map_err(map_repo_err)?;
-        let (handle, session_id) = arm_session(repo)?;
-        Ok(ok_repo_handle(handle, session_id))
+        creation_envelope(Repo::clone(&u, Path::new(&t)))
     });
     vec_into_token(buf)
 }
@@ -760,6 +790,20 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 ///   conversion has succeeded, so the written `.jj/` persists and a retry sees an existing
 ///   jj repo. Detail in `context`.
 ///
+/// # Warnings
+/// Both envelopes — ok AND error — carry the conversion's report (Story 9.33):
+/// `Envelope.precondition` is the report of the CLI's implicit snapshot the conversion runs,
+/// present iff that snapshot started (PARTIAL when it failed; on an error envelope from a failure
+/// before the re-open it describes state the rollback removed — a failed re-open or watcher
+/// arming leaves `.jj/` in place). `Envelope.warnings` holds, in the CLI's order:
+/// `jj.git_import_failed` / `jj.git_export_failed` from the refs step; the config-load warnings
+/// (`jj.config_alias_invalid`, `jj.config_alias_redefined`, `jj.revset_diagnostic`); the
+/// snapshot's own (as every verb's precondition reports them — an unreadable ref a second
+/// time); then, when the snapshot succeeded, `jj.snapshot_files_refused` /
+/// `jj.snapshot_paths_not_utf8`. The refs step and the snapshot's head import commit without a
+/// finish, as in the CLI, so an empty identity (`jj.identity_missing`) is warned only when the
+/// snapshot's own refs import finishes a change.
+///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
 /// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
@@ -771,9 +815,7 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
     // SAFETY: caller guarantees path is null or a valid NUL-terminated C string.
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
-        let repo = convert_colocated(Path::new(&p)).map_err(map_repo_err)?;
-        let (handle, session_id) = arm_session(repo)?;
-        Ok(ok_repo_handle(handle, session_id))
+        creation_envelope(convert_colocated(Path::new(&p)))
     });
     vec_into_token(buf)
 }
@@ -1473,6 +1515,54 @@ mod tests {
         let err = arm_session_with(repo, |_, _| Err(std::io::Error::other("injected: thread spawn failed")))
             .expect_err("arm_session_with must fail when the spawner fails");
         assert_eq!(err.code, crate::WATCHER_IO_ERROR);
+    }
+
+    fn warning(kind: zanshin_jj::WarningKind, message: &str) -> zanshin_jj::Warning {
+        zanshin_jj::Warning {
+            kind,
+            message: message.to_owned(),
+        }
+    }
+
+    /// Story 9.33: a refused creation keeps its report — the error carries the warnings and
+    /// the (partial) snapshot report the creation left behind.
+    #[test]
+    fn a_refused_creation_carries_its_report_on_the_error() {
+        let outcome = CreationOutcome {
+            result: Err(RepoError::CloneFailed {
+                reason: "fetch failed".to_owned(),
+            }),
+            precondition: Some(zanshin_jj::Precondition::default()),
+            warnings: vec![warning(
+                zanshin_jj::WarningKind::CloneCleanupFailed,
+                "Failed to clean up /t: denied",
+            )],
+        };
+        let e = creation_envelope(outcome).expect_err("a refusal answers with an error");
+        assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+        let report = e.report.expect("the refusal carries the report");
+        assert!(report.precondition.is_some());
+        assert_eq!(report.warnings[0].kind, zanshin_jj::WarningKind::CloneCleanupFailed);
+    }
+
+    /// Story 9.33: an arming that fails AFTER a successful creation still reports what the
+    /// creation warned — on the `watcher.io_error` envelope.
+    #[test]
+    fn an_arming_failure_after_a_creation_carries_its_report() {
+        std::sync::LazyLock::force(&ENV_GUARD);
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture must extract");
+        let repo = Repo::open(&fixture.path).expect("Repo::open must succeed while checkout exists");
+        std::fs::remove_file(fixture.path.join(".jj/working_copy/checkout")).expect("sabotage the checkout");
+        let outcome = CreationOutcome {
+            result: Ok(repo),
+            precondition: None,
+            warnings: vec![warning(zanshin_jj::WarningKind::IdentityMissing, "identity")],
+        };
+        let e = creation_envelope(outcome).expect_err("an unarmable repo does not open");
+        assert_eq!(e.code, crate::WATCHER_IO_ERROR);
+        let report = e.report.expect("the arming failure carries the report");
+        assert!(report.precondition.is_none());
+        assert_eq!(report.warnings[0].message, "identity");
     }
 
     #[test]

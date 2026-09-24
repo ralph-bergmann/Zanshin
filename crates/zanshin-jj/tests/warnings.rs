@@ -53,6 +53,7 @@ fn git_fx(config: &str) -> Fx {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let root = Repo::init(tmp.path(), Some(Backend::Git))
+        .result
         .expect("init")
         .workspace_root()
         .to_owned();

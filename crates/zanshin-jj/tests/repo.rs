@@ -87,7 +87,7 @@ fn repo_open_with_nonexistent_path_returns_path_not_found() {
 fn repo_init_with_nonexistent_path_returns_init_failed() {
     pin_env();
     let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
-    let result = Repo::init(missing, None);
+    let result = Repo::init(missing, None).result;
     match result {
         Err(RepoError::InitFailed { reason }) => assert!(
             reason.starts_with("/nonexistent/zanshin-test-abc123: "),
@@ -104,7 +104,7 @@ fn repo_init_with_nonexistent_path_returns_init_failed() {
 fn repo_clone_with_nonexistent_target_returns_clone_failed() {
     pin_env();
     let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
-    let result = Repo::clone("file:///nowhere", missing);
+    let result = Repo::clone("file:///nowhere", missing).result;
     match result {
         Err(RepoError::CloneFailed { reason }) => assert!(
             reason.starts_with("/nonexistent/zanshin-test-abc123: "),
@@ -156,7 +156,9 @@ fn repo_open_with_corrupt_op_heads_returns_err_no_panic() {
 fn repo_init_with_git_backend_then_open_returns_ok() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git)).expect("init git backend");
+    Repo::init(tmp.path(), Some(Backend::Git))
+        .result
+        .expect("init git backend");
     let result = Repo::open(tmp.path());
     assert!(result.is_ok(), "open after git-backend init failed: {result:?}");
 }
@@ -165,7 +167,7 @@ fn repo_init_with_git_backend_then_open_returns_ok() {
 fn repo_init_with_native_backend_then_open_returns_ok() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), None).expect("init native backend");
+    Repo::init(tmp.path(), None).result.expect("init native backend");
     let result = Repo::open(tmp.path());
     assert!(result.is_ok(), "open after native-backend init failed: {result:?}");
 }
@@ -180,7 +182,7 @@ fn repo_init_with_native_backend_then_open_returns_ok() {
 fn repo_clone_with_invalid_url_returns_clone_failed() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let result = Repo::clone("not-a-real-url://nope", tmp.path());
+    let result = Repo::clone("not-a-real-url://nope", tmp.path()).result;
     assert!(
         matches!(result, Err(RepoError::CloneFailed { .. })),
         "expected CloneFailed for invalid URL, got: {result:?}"
@@ -191,7 +193,7 @@ fn repo_clone_with_invalid_url_returns_clone_failed() {
 fn repo_clone_failure_leaves_no_partial_workspace() {
     pin_env();
     let target_tmp = TempDir::new().expect("target tempdir");
-    let result = Repo::clone("not-a-real-url://nope", target_tmp.path());
+    let result = Repo::clone("not-a-real-url://nope", target_tmp.path()).result;
     assert!(
         matches!(result, Err(RepoError::CloneFailed { .. })),
         "expected CloneFailed, got {result:?}"
@@ -223,7 +225,7 @@ fn repo_clone_from_local_git_source_returns_ok() {
 
     let target_tmp = TempDir::new().expect("target tempdir");
     let src_url = format!("file://{}", src_tmp.path().display());
-    let result = Repo::clone(&src_url, target_tmp.path());
+    let result = Repo::clone(&src_url, target_tmp.path()).result;
     assert!(result.is_ok(), "clone from local file:// failed: {result:?}");
 
     // Verify the cloned workspace is openable.
@@ -313,7 +315,9 @@ fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
     );
 
     let src_url = format!("file://{}", src_tmp.path().display());
-    let mut cloned = Repo::clone(&src_url, target_tmp.path()).expect("clone from local file://");
+    let mut cloned = Repo::clone(&src_url, target_tmp.path())
+        .result
+        .expect("clone from local file://");
 
     assert_own_root_resolves(&mut cloned, target_tmp.path());
 }

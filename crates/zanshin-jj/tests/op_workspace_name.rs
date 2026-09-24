@@ -163,7 +163,9 @@ fn working_copy_change(repo: &Repo) -> ChangeId {
 /// over the root op and `@` is the initial empty change.
 fn git_workspace() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git)).expect("git-backed init");
+    Repo::init(tmp.path(), Some(Backend::Git))
+        .result
+        .expect("git-backed init");
     tmp
 }
 
@@ -283,7 +285,9 @@ fn clone_names_the_workspace() {
 
     let target = TempDir::new().expect("target tempdir");
     let url = format!("file://{}", src.path().display());
-    Repo::clone(&url, target.path()).expect("clone from local file://");
+    Repo::clone(&url, target.path())
+        .result
+        .expect("clone from local file://");
 
     assert_eq!(head_op_workspace_name(target.path()).as_deref(), Some("default"));
 }
@@ -298,7 +302,7 @@ fn convert_colocated_names_the_workspace_on_both_operations() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo_with_commit(tmp.path());
 
-    convert_colocated(tmp.path()).expect("conversion succeeds");
+    convert_colocated(tmp.path()).result.expect("conversion succeeds");
 
     let rows = recent_ops(tmp.path(), 4);
     assert_op_named(&rows, "import git refs", "default");
@@ -314,7 +318,7 @@ fn convert_import_names_the_workspace_on_both_operations() {
     let dest_parent = TempDir::new().expect("dest tempdir");
     let dest = dest_parent.path().join("imported");
 
-    convert_import(src.path(), &dest).expect("import succeeds");
+    convert_import(src.path(), &dest).result.expect("import succeeds");
 
     let rows = recent_ops(&dest, 4);
     assert_op_named(&rows, "import git refs", "default");

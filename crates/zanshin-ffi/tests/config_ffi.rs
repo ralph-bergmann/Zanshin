@@ -88,7 +88,7 @@ fn workspace() -> (TempDir, String) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("ws");
     fs::create_dir(&root).unwrap();
-    Repo::init(&root, None).expect("init");
+    Repo::init(&root, None).result.expect("init");
     let root = fs::canonicalize(&root).unwrap().to_str().unwrap().to_owned();
     (tmp, root)
 }

@@ -528,6 +528,9 @@ table ConfigGcDeleteRequest {
 /// id. Unlike `handle` (an allocation address that a close→reopen can reuse —
 /// the rawToId ABA race, resolved 2026-07-04), a session id can never be
 /// misattributed to a later session.
+/// The envelope carrying it from init/clone/convert also carries the creating call's report
+/// (`Envelope.warnings`, and — convert only — `Envelope.precondition`; Story 9.33); from open,
+/// neither.
 table RepoHandle {
   handle: ulong;
   session_id: ulong;
@@ -1407,11 +1410,14 @@ table Warning {
 /// `precondition` (Story 9.26) is PRESENT whenever the verb's pre-verb snapshot RAN — on the ok
 /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
-/// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/convert/
-/// detect/close, `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every
-/// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
-/// its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
-/// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+/// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
+/// `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every `zanshin_config_*` symbol
+/// except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
+/// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
+/// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
+/// started — on its ok envelope and on its error envelope (after a failure before the re-open it
+/// describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
+/// place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 ///
 /// `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
 /// envelope AND on an error envelope (then everything warned before the failure). ABSENT when

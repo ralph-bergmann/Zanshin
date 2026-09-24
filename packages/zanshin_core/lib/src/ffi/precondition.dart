@@ -144,6 +144,22 @@ Precondition? decodeEnvelopePrecondition(Uint8List bytes) => decodeEnvelopePreco
 Precondition? decodeEnvelopePreconditionInternal(Uint8List bytes) =>
     decodePreconditionInternal(fbs.Envelope(bytes).precondition);
 
+/// The creating call's report on an init/clone/convert ok envelope (Story 9.33):
+/// its warnings — absent reads as `[]` — and, for convert only, the conversion's
+/// snapshot report — absent reads as `null`.
+///
+/// Exposed for decode-contract tests with synthetic buffers; production reads go
+/// through `ZanshinWorker.initRepo` / `cloneRepo` / `convert`.
+@visibleForTesting
+({List<ZanshinWarning> warnings, Precondition? precondition}) decodeCreationReport(Uint8List bytes) =>
+    decodeCreationReportInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+({List<ZanshinWarning> warnings, Precondition? precondition}) decodeCreationReportInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  return (warnings: decodeEnvelopeWarningsInternal(env), precondition: decodePreconditionInternal(env.precondition));
+}
+
 /// Decode a `zanshin_snapshot` `Envelope` buffer into its [Precondition].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go

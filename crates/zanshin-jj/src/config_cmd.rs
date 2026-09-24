@@ -1062,7 +1062,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("ws");
         fs::create_dir(&root).unwrap();
-        crate::Repo::init(&root, None).expect("init");
+        crate::Repo::init(&root, None).result.expect("init");
         (tmp, root)
     }
 

@@ -254,7 +254,7 @@ fn list_with_an_unloadable_store_still_returns_the_rows() {
 fn list_on_a_corrupt_repo_returns_a_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
@@ -471,7 +471,7 @@ fn root_with_an_unloadable_store_is_a_backend_error() {
 fn root_with_a_name_on_a_corrupt_repo_is_a_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
@@ -544,7 +544,7 @@ fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
          disables it"
     );
 
-    let mut created = Repo::init(tmp.path(), None).unwrap();
+    let mut created = Repo::init(tmp.path(), None).result.unwrap();
     assert_own_root_resolves(&mut created, tmp.path());
 
     let mut reopened = Repo::open(tmp.path()).unwrap();

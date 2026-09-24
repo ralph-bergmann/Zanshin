@@ -104,7 +104,9 @@ fn write_repo_config(root: &Path, toml: &str) {
 /// git ref. Returns the temp dir and `A`'s hex commit id.
 fn git_repo_with_one_commit() -> (TempDir, String) {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git)).expect("git-backed init");
+    Repo::init(tmp.path(), Some(Backend::Git))
+        .result
+        .expect("git-backed init");
     let commit = add_commit_off_root(tmp.path(), "a commit only jj knows");
     (tmp, commit)
 }
@@ -336,7 +338,7 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
 fn git_import_and_export_refuse_a_native_backend() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), None).expect("native init");
+    Repo::init(tmp.path(), None).result.expect("native init");
     let mut repo = Repo::open(tmp.path()).expect("reopen");
     let before = head_op_id(&mut repo);
 
@@ -563,7 +565,9 @@ fn both_sync_verbs_find_nothing_left_in_a_colocated_workspace() {
     fs::write(tmp.path().join("README.md"), "hello").expect("write README");
     git_cmd(&["add", "."], tmp.path());
     git_cmd(&["commit", "-m", "initial"], tmp.path());
-    zanshin_jj::convert_colocated(tmp.path()).expect("convert to colocated");
+    zanshin_jj::convert_colocated(tmp.path())
+        .result
+        .expect("convert to colocated");
 
     let head = {
         let out = std::process::Command::new("git")

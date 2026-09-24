@@ -1578,6 +1578,16 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 /// has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
 /// persists and a retry sees an existing repo. Detail in `context`.
 ///
+/// # Warnings
+/// `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
+/// envelope, in the CLI's order (Story 9.33): `jj.git_import_failed` (refs the fetch's import
+/// could not read), then `jj.checkout_files_skipped` (files the checkout left alone because an
+/// untracked file of the same name was in the way — reachable only because this clone accepts a
+/// non-empty target, which the CLI refuses; Story 9.20), then `jj.identity_missing` once when
+/// `user.name`/`user.email` is empty; on a failure, whatever was warned before it, and
+/// `jj.clone_cleanup_failed` last when the rollback could not remove `.jj/`. No
+/// `Envelope.precondition`.
+///
 /// # Safety
 /// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
 /// The returned token must be freed via `zanshin_buffer_free_token`.
@@ -1652,6 +1662,20 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 /// conversion has succeeded, so the written `.jj/` persists and a retry sees an existing
 /// jj repo. Detail in `context`.
 ///
+/// # Warnings
+/// Both envelopes — ok AND error — carry the conversion's report (Story 9.33):
+/// `Envelope.precondition` is the report of the CLI's implicit snapshot the conversion runs,
+/// present iff that snapshot started (PARTIAL when it failed; on an error envelope from a failure
+/// before the re-open it describes state the rollback removed — a failed re-open or watcher
+/// arming leaves `.jj/` in place). `Envelope.warnings` holds, in the CLI's order:
+/// `jj.git_import_failed` / `jj.git_export_failed` from the refs step; the config-load warnings
+/// (`jj.config_alias_invalid`, `jj.config_alias_redefined`, `jj.revset_diagnostic`); the
+/// snapshot's own (as every verb's precondition reports them — an unreadable ref a second
+/// time); then, when the snapshot succeeded, `jj.snapshot_files_refused` /
+/// `jj.snapshot_paths_not_utf8`. The refs step and the snapshot's head import commit without a
+/// finish, as in the CLI, so an empty identity (`jj.identity_missing`) is warned only when the
+/// snapshot's own refs import finishes a change.
+///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned `*mut ZanshinBuf`
 /// is heap-allocated and must be freed exactly once via `zanshin_buffer_free_token`.
@@ -1708,6 +1732,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_detect(
 /// has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
 /// Detail in `context`.
 ///
+/// # Warnings
+/// None, and no `Envelope.precondition` (Story 9.33): the CLI's empty-directory `jj git init`
+/// finishes no transaction, so it reaches no `ui.warning_*`. The envelope carries the creating
+/// call's report the way `zanshin_repo_clone` does — always empty here.
+///
 /// # Safety
 /// `path` must be a valid, NUL-terminated C string or null. The returned token
 /// must be freed via `zanshin_buffer_free_token`.
@@ -1722,6 +1751,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_init(
 /// Returns a success `Envelope` whose payload is `RepoHandle { handle }` on success,
 /// or an error `Envelope` on failure. The handle is an opaque integer the Dart caller
 /// must pass back to `zanshin_repo_close` when done.
+///
+/// Opening runs no snapshot and warns about nothing: neither envelope carries
+/// `Envelope.precondition` or `Envelope.warnings` (`open` is not a CLI command; its start-up
+/// warnings belong to the start-up-environment port).
 ///
 /// # Errors
 /// - `jj.path_not_found` — `path` does not exist on disk.

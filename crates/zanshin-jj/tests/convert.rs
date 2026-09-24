@@ -127,7 +127,7 @@ fn convert_git_repo_with_commit_returns_jj() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo_with_commit(tmp.path());
 
-    let result = convert_colocated(tmp.path());
+    let result = convert_colocated(tmp.path()).result;
     assert!(result.is_ok(), "expected Ok, got: {result:?}");
 
     // detect_repo must see Jj after conversion.
@@ -172,7 +172,7 @@ fn convert_git_repo_does_not_modify_git_dir() {
         tmp.path(),
     );
 
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
 
     let head_after = git_stdout(&["rev-parse", "HEAD"], tmp.path());
     let refs_after = git_stdout(
@@ -198,7 +198,7 @@ fn convert_git_repo_does_not_modify_git_dir() {
 fn convert_already_jj_repo_returns_already_jj_repo() {
     pin_env();
     let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
-    let result = convert_colocated(&fixture.path);
+    let result = convert_colocated(&fixture.path).result;
     assert!(
         matches!(result, Err(RepoError::AlreadyJjRepo { .. })),
         "expected AlreadyJjRepo, got: {result:?}"
@@ -211,7 +211,7 @@ fn convert_already_jj_repo_returns_already_jj_repo() {
 fn convert_empty_dir_returns_not_a_git_repo() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let result = convert_colocated(tmp.path());
+    let result = convert_colocated(tmp.path()).result;
     assert!(
         matches!(result, Err(RepoError::NotAGitRepo { .. })),
         "expected NotAGitRepo for empty dir, got: {result:?}"
@@ -223,7 +223,7 @@ fn convert_empty_dir_returns_not_a_git_repo() {
 #[test]
 fn convert_nonexistent_path_returns_not_a_git_repo() {
     pin_env();
-    let result = convert_colocated(std::path::Path::new("/nonexistent/zanshin-convert-test-abc123"));
+    let result = convert_colocated(std::path::Path::new("/nonexistent/zanshin-convert-test-abc123")).result;
     assert!(
         matches!(result, Err(RepoError::NotAGitRepo { .. })),
         "expected NotAGitRepo for nonexistent path, got: {result:?}"
@@ -241,7 +241,7 @@ fn convert_unborn_branch_succeeds_empty_history() {
     git(&["config", "user.name", "Fixture"], tmp.path());
     // No commits — unborn branch.
 
-    let result = convert_colocated(tmp.path());
+    let result = convert_colocated(tmp.path()).result;
     assert!(
         result.is_ok(),
         "convert with unborn branch must succeed, got: {result:?}"
@@ -262,7 +262,7 @@ fn convert_dirty_tree_preserves_uncommitted_changes() {
     // Dirty the working tree without committing.
     fs::write(tmp.path().join("README.md"), "dirty").expect("write dirty README");
 
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
 
     // The dirty contents must survive byte-identical (AC-6: no data loss).
     let contents = fs::read_to_string(tmp.path().join("README.md")).expect("read README after convert");
@@ -288,7 +288,7 @@ fn convert_failure_rolls_back_partial_jj() {
     // story's Review Findings).
     fs::create_dir(tmp.path().join(".git")).expect("create empty .git dir");
 
-    let result = convert_colocated(tmp.path());
+    let result = convert_colocated(tmp.path()).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for invalid .git, got: {result:?}"
@@ -307,7 +307,7 @@ fn convert_bare_repo_returns_not_a_git_repo() {
     let tmp = TempDir::new().expect("tempdir");
     git(&["init", "--bare"], tmp.path());
 
-    let result = convert_colocated(tmp.path());
+    let result = convert_colocated(tmp.path()).result;
     assert!(
         matches!(result, Err(RepoError::NotAGitRepo { .. })),
         "expected NotAGitRepo for bare repo (detect_repo classifies as Neither), got: {result:?}"
@@ -322,7 +322,7 @@ fn convert_then_remove_jj_restores_git() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo_with_commit(tmp.path());
 
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
     assert_eq!(zanshin_jj::detect_repo(tmp.path()).expect("detect jj"), RepoKind::Jj);
 
     fs::remove_dir_all(tmp.path().join(".jj")).expect("remove .jj");
@@ -347,7 +347,7 @@ fn convert_detached_head_imports_head_commit() {
     git(&["checkout", "--detach", "HEAD"], tmp.path());
     git(&["branch", "-D", "main"], tmp.path());
 
-    let mut repo = convert_colocated(tmp.path()).expect("convert detached HEAD");
+    let mut repo = convert_colocated(tmp.path()).result.expect("convert detached HEAD");
 
     // No bookmark survives the branch deletion …
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
@@ -376,7 +376,7 @@ fn convert_path_under_regular_file_returns_convert_failed() {
     // Stat'ing a path *under* a regular file yields ENOTDIR, so detect_repo returns
     // Err(DetectError) — a genuine I/O error, distinct from PathNotFound — which
     // convert maps to ConvertFailed (AC-7), not NotAGitRepo.
-    let result = convert_colocated(&file.join("child"));
+    let result = convert_colocated(&file.join("child")).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for a detect_repo I/O error, got: {result:?}"
@@ -409,7 +409,7 @@ fn convert_import_git_repo_with_commit_returns_jj_native() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(src.path(), &dst);
+    let result = convert_import(src.path(), &dst).result;
     assert!(result.is_ok(), "expected Ok, got: {result:?}");
 
     // jj-native: detect_repo sees Jj; .jj/ present; NO .git/ in dest.
@@ -455,7 +455,7 @@ fn convert_import_does_not_modify_source_git() {
 
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
-    convert_import(src.path(), &dst).expect("convert_import");
+    convert_import(src.path(), &dst).result.expect("convert_import");
 
     let head_after = git_stdout(&["rev-parse", "HEAD"], src.path());
     let refs_after = git_stdout(
@@ -489,7 +489,7 @@ fn convert_import_bare_source_returns_jj_native() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(&bare, &dst);
+    let result = convert_import(&bare, &dst).result;
     assert!(result.is_ok(), "bare source must succeed, got: {result:?}");
 
     assert_eq!(
@@ -521,7 +521,7 @@ fn convert_import_destination_already_jj_returns_already_jj_repo() {
     // Destination is a pre-existing jj repo (from fixture).
     let dst_fixture = extract_fixture("tiny-3-commits").expect("fixture");
 
-    let result = convert_import(src.path(), &dst_fixture.path);
+    let result = convert_import(src.path(), &dst_fixture.path).result;
     // AC-3 / Test-recipe row 4: the offending `path` is the DESTINATION.
     assert!(
         matches!(&result, Err(RepoError::AlreadyJjRepo { path }) if path == &dst_fixture.path),
@@ -539,7 +539,7 @@ fn convert_import_source_already_jj_returns_already_jj_repo() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(&src_fixture.path, &dst);
+    let result = convert_import(&src_fixture.path, &dst).result;
     // AC-3 / Test-recipe row 5: the offending `path` is the SOURCE.
     assert!(
         matches!(&result, Err(RepoError::AlreadyJjRepo { path }) if path == &src_fixture.path),
@@ -557,7 +557,7 @@ fn convert_import_empty_source_returns_not_a_git_repo() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(src.path(), &dst);
+    let result = convert_import(src.path(), &dst).result;
     assert!(
         matches!(result, Err(RepoError::NotAGitRepo { .. })),
         "expected NotAGitRepo for empty source, got: {result:?}"
@@ -572,7 +572,7 @@ fn convert_import_nonexistent_source_returns_not_a_git_repo() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(std::path::Path::new("/nonexistent/zanshin-import-test-abc123"), &dst);
+    let result = convert_import(std::path::Path::new("/nonexistent/zanshin-import-test-abc123"), &dst).result;
     assert!(
         matches!(result, Err(RepoError::NotAGitRepo { .. })),
         "expected NotAGitRepo for nonexistent source, got: {result:?}"
@@ -593,7 +593,7 @@ fn convert_import_unborn_branch_source_succeeds() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(src.path(), &dst);
+    let result = convert_import(src.path(), &dst).result;
     assert!(result.is_ok(), "unborn branch source must succeed, got: {result:?}");
     assert_eq!(
         zanshin_jj::detect_repo(&dst).expect("detect"),
@@ -628,7 +628,7 @@ fn convert_import_bare_unborn_source_succeeds() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(bare.path(), &dst);
+    let result = convert_import(bare.path(), &dst).result;
     assert!(result.is_ok(), "bare unborn source must succeed, got: {result:?}");
     assert_eq!(
         zanshin_jj::detect_repo(&dst).expect("detect"),
@@ -656,7 +656,7 @@ fn convert_import_failure_rolls_back() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(src.path(), &dst);
+    let result = convert_import(src.path(), &dst).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for invalid source, got: {result:?}"
@@ -679,7 +679,7 @@ fn convert_import_detect_io_error_returns_convert_failed() {
     // Path under a regular file → ENOTDIR → detect_repo returns Err → ConvertFailed.
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
-    let result = convert_import(&file.join("child"), &dst);
+    let result = convert_import(&file.join("child"), &dst).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for detect_repo I/O error, got: {result:?}"
@@ -697,7 +697,7 @@ fn convert_import_then_remove_dest_restores_source() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    convert_import(src.path(), &dst).expect("convert_import");
+    convert_import(src.path(), &dst).result.expect("convert_import");
     fs::remove_dir_all(&dst).expect("remove dest");
 
     // Source remains a healthy standalone Git repo.
@@ -723,7 +723,7 @@ fn convert_import_dest_detect_io_error_returns_convert_failed() {
     fs::write(&file, "regular file").expect("write regular file");
 
     // workspace_path under a regular file → ENOTDIR → detect_repo Err → ConvertFailed.
-    let result = convert_import(src.path(), &file.join("child"));
+    let result = convert_import(src.path(), &file.join("child")).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for I/O error on dest detect, got: {result:?}"
@@ -744,7 +744,7 @@ fn convert_import_failure_with_pre_existing_dest_removes_jj_only() {
     let dst = dst_parent.path().join("workspace");
     fs::create_dir(&dst).expect("create pre-existing dest");
 
-    let result = convert_import(src.path(), &dst);
+    let result = convert_import(src.path(), &dst).result;
     assert!(
         matches!(result, Err(RepoError::ConvertFailed { .. })),
         "expected ConvertFailed for invalid source, got: {result:?}"
@@ -768,7 +768,7 @@ fn convert_import_dot_git_path_succeeds() {
     // Passing src/.git directly: resolve_git_repo_path returns it as-is
     // (arg.ends_with(".git") is true).
     let dot_git = src.path().join(".git");
-    let result = convert_import(&dot_git, &dst);
+    let result = convert_import(&dot_git, &dst).result;
     assert!(
         result.is_ok(),
         "passing .git path directly must succeed, got: {result:?}"
@@ -797,7 +797,7 @@ fn convert_import_into_same_dir_is_colocated() {
     // against `workspace.workspace_root()` — both canonical, neither a raw caller
     // path — so the colocated detection must hold for a non-canonical argument
     // (macOS /var → /private/var). Canonicalizing in the TEST would mask that.
-    let result = convert_import(src.path(), src.path());
+    let result = convert_import(src.path(), src.path()).result;
     assert!(
         result.is_ok(),
         "same-dir must produce a colocated result, got: {result:?}"
@@ -908,7 +908,7 @@ fn convert_colocated_through_a_symlinked_path_resolves_its_own_root() {
     );
     init_git_repo_with_commit(tmp.path());
 
-    let mut converted = convert_colocated(tmp.path()).expect("convert_colocated");
+    let mut converted = convert_colocated(tmp.path()).result.expect("convert_colocated");
 
     assert_own_root_resolves(&mut converted, tmp.path());
 }
@@ -935,7 +935,7 @@ fn convert_import_through_a_symlinked_path_resolves_its_own_root() {
     let dest = dest_parent.path().join("workspace");
     assert!(!dest.exists(), "the dest must be created by import_into itself");
 
-    let mut imported = convert_import(src.path(), &dest).expect("convert_import");
+    let mut imported = convert_import(src.path(), &dest).result.expect("convert_import");
 
     assert_own_root_resolves(&mut imported, &dest);
 }
@@ -1012,7 +1012,7 @@ fn convert_colocated_writes_the_two_cli_operations() {
     init_git_repo_with_commit(tmp.path());
     let before = git_ref_snapshot(tmp.path());
 
-    let mut repo = convert_colocated(tmp.path()).expect("convert");
+    let mut repo = convert_colocated(tmp.path()).result.expect("convert");
 
     assert_eq!(
         op_descriptions(&mut repo),
@@ -1041,7 +1041,7 @@ fn convert_import_writes_the_two_cli_operations_and_materialises_head() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let mut repo = convert_import(src.path(), &dst).expect("convert_import");
+    let mut repo = convert_import(src.path(), &dst).result.expect("convert_import");
 
     assert_eq!(
         op_descriptions(&mut repo),
@@ -1065,7 +1065,9 @@ fn a_source_with_no_refs_writes_no_operation_at_all() {
     git(&["config", "user.email", "test@zanshin.test"], tmp.path());
     git(&["config", "user.name", "Fixture"], tmp.path());
 
-    let mut repo = convert_colocated(tmp.path()).expect("convert of an unborn branch");
+    let mut repo = convert_colocated(tmp.path())
+        .result
+        .expect("convert of an unborn branch");
     assert_eq!(
         op_descriptions(&mut repo),
         vec!["add workspace 'default'", ""],
@@ -1083,7 +1085,7 @@ fn undo_after_convert_import_reverts_only_the_head_import() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let mut repo = convert_import(src.path(), &dst).expect("convert_import");
+    let mut repo = convert_import(src.path(), &dst).result.expect("convert_import");
     let head_ids = git_head_ids(&dst);
     let [head] = head_ids.as_slice() else {
         panic!("expected exactly one imported git_head commit; got: {head_ids:?}");
@@ -1120,7 +1122,7 @@ fn convert_colocated_seeds_the_jj_gitignore() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo_with_commit(tmp.path());
 
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
 
     assert_eq!(
         fs::read_to_string(tmp.path().join(".jj").join(".gitignore")).expect(".jj/.gitignore must exist"),
@@ -1137,7 +1139,7 @@ fn convert_import_writes_no_gitignore() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    convert_import(src.path(), &dst).expect("convert_import");
+    convert_import(src.path(), &dst).result.expect("convert_import");
 
     assert!(
         !dst.join(".jj").join(".gitignore").exists(),
@@ -1153,7 +1155,7 @@ fn a_symbolic_origin_head_sets_the_repo_level_trunk_alias() {
     let parent = TempDir::new().expect("tempdir parent");
     let work = git_clone(src.path(), parent.path());
 
-    let repo = convert_colocated(&work).expect("convert");
+    let repo = convert_colocated(&work).result.expect("convert");
 
     let path = repo_config_path(&work, xdg).expect("a config-id must have been written");
     assert_eq!(
@@ -1190,7 +1192,7 @@ fn convert_import_sets_the_trunk_alias_on_the_destination() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    convert_import(&work, &dst).expect("convert_import");
+    convert_import(&work, &dst).result.expect("convert_import");
 
     let path = repo_config_path(&dst, xdg).expect("the destination must have its own config-id");
     assert_eq!(
@@ -1219,7 +1221,7 @@ fn upstream_head_wins_over_origin_head() {
         &work,
     );
 
-    convert_colocated(&work).expect("convert");
+    convert_colocated(&work).result.expect("convert");
 
     let path = repo_config_path(&work, xdg).expect("a config-id must have been written");
     assert_eq!(
@@ -1241,7 +1243,7 @@ fn an_unparseable_upstream_head_writes_no_alias_and_stops_the_loop() {
     let head_sha = git_stdout(&["rev-parse", "HEAD"], &work);
     git(&["update-ref", "refs/remotes/upstream/HEAD", &head_sha], &work);
 
-    convert_colocated(&work).expect("convert");
+    convert_colocated(&work).result.expect("convert");
 
     assert!(
         repo_config_path(&work, xdg).is_none(),
@@ -1255,7 +1257,7 @@ fn a_source_without_any_remote_head_writes_no_alias() {
     let tmp = TempDir::new().expect("tempdir");
     init_git_repo_with_commit(tmp.path());
 
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
 
     assert!(
         repo_config_path(tmp.path(), xdg).is_none(),

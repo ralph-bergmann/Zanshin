@@ -376,7 +376,7 @@ fn the_precondition_finish_warns_about_the_identity_too(tmp: &Path) {
     fs::write(dir.join("README.md"), "hello").unwrap();
     git(&["add", "."]);
     git(&["commit", "-m", "initial"]);
-    convert_colocated(&dir).expect("convert");
+    convert_colocated(&dir).result.expect("convert");
     let mut repo = Repo::open(&dir).expect("open");
     repo.status().expect("settle the colocated state");
     let _ = repo.take_warnings();
@@ -508,18 +508,24 @@ fn is_user_name_fault(err: &RepoError) -> bool {
 /// parent of an import destination. Expects `JJ_CONFIG` on a stack with `user.name = 1`.
 fn user_level_faults_refuse_first(tmp: &Path) {
     let missing = tmp.join("missing");
-    let err = Repo::init(&missing, None).expect_err("init must refuse");
+    let err = Repo::init(&missing, None).result.expect_err("init must refuse");
     assert!(is_user_name_fault(&err), "init reported the path first: {err:?}");
-    let err = Repo::clone("file:///nonexistent-zanshin-source", &missing).expect_err("clone must refuse");
+    let err = Repo::clone("file:///nonexistent-zanshin-source", &missing)
+        .result
+        .expect_err("clone must refuse");
     assert!(is_user_name_fault(&err), "clone reported the path first: {err:?}");
-    let err = convert_colocated(&missing).expect_err("convert must refuse");
+    let err = convert_colocated(&missing).result.expect_err("convert must refuse");
     assert!(is_user_name_fault(&err), "convert reported the path first: {err:?}");
     let missing_parent = tmp.join("missing-parent");
-    let err = convert_import(&missing, &missing_parent.join("dest")).expect_err("import must refuse");
+    let err = convert_import(&missing, &missing_parent.join("dest"))
+        .result
+        .expect_err("import must refuse");
     assert!(is_user_name_fault(&err), "import reported the source first: {err:?}");
     let source = TempDir::new().unwrap();
     git_repo_with_a_commit(source.path());
-    let err = convert_import(source.path(), &missing_parent.join("dest")).expect_err("import must refuse");
+    let err = convert_import(source.path(), &missing_parent.join("dest"))
+        .result
+        .expect_err("import must refuse");
     assert!(is_user_name_fault(&err), "unexpected error: {err:?}");
     assert!(!missing_parent.exists(), "a refused import creates nothing");
     assert!(!missing.exists(), "no refused creation creates its destination");
@@ -545,7 +551,7 @@ fn scoped_creation(tmp: &Path) {
     ));
     let scoped_init = scoped_root.join("init");
     fs::create_dir_all(&scoped_init).unwrap();
-    let mut scoped_handle = Repo::init(&scoped_init, None).expect("init with a scoped stack");
+    let mut scoped_handle = Repo::init(&scoped_init, None).result.expect("init with a scoped stack");
     assert_eq!(
         author(&scoped_init),
         pair("Creator", "scoped@example.com"),
@@ -559,7 +565,7 @@ fn scoped_creation(tmp: &Path) {
     );
     let unscoped_init = canonical_tmp.join("unscoped-init");
     fs::create_dir_all(&unscoped_init).unwrap();
-    Repo::init(&unscoped_init, None).expect("init outside the scope");
+    Repo::init(&unscoped_init, None).result.expect("init outside the scope");
     assert_eq!(
         author(&unscoped_init),
         pair("Creator", "unscoped@example.com"),
@@ -567,7 +573,9 @@ fn scoped_creation(tmp: &Path) {
     );
     let ws_scoped_init = ws_scoped_root.join("init");
     fs::create_dir_all(&ws_scoped_init).unwrap();
-    Repo::init(&ws_scoped_init, None).expect("init with a workspace scope");
+    Repo::init(&ws_scoped_init, None)
+        .result
+        .expect("init with a workspace scope");
     assert_eq!(
         author(&ws_scoped_init),
         pair("Workspace Scoped", "unscoped@example.com"),
@@ -579,7 +587,9 @@ fn scoped_creation(tmp: &Path) {
     std::os::unix::fs::symlink(&scoped_root, &link).unwrap();
     let via_link = link.join("via-link");
     fs::create_dir_all(&via_link).unwrap();
-    Repo::init(&via_link, None).expect("init through a symlinked path");
+    Repo::init(&via_link, None)
+        .result
+        .expect("init through a symlinked path");
     assert_eq!(
         author(&via_link),
         pair("Creator", "scoped@example.com"),
@@ -590,6 +600,7 @@ fn scoped_creation(tmp: &Path) {
     let scoped_clone = scoped_root.join("clone");
     fs::create_dir_all(&scoped_clone).unwrap();
     Repo::clone(&format!("file://{}", clone_source.path().display()), &scoped_clone)
+        .result
         .expect("clone with a scoped stack");
     assert_eq!(
         author(&scoped_clone),
@@ -599,7 +610,9 @@ fn scoped_creation(tmp: &Path) {
     let import_source = TempDir::new().unwrap();
     git_repo_with_a_commit(import_source.path());
     let scoped_import = scoped_root.join("import");
-    convert_import(import_source.path(), &scoped_import).expect("import with a scoped stack");
+    convert_import(import_source.path(), &scoped_import)
+        .result
+        .expect("import with a scoped stack");
     assert_eq!(
         author(&scoped_import),
         pair("Creator", "scoped@example.com"),
@@ -613,7 +626,9 @@ fn scoped_creation(tmp: &Path) {
         .status()
         .expect("git init spawns");
     assert!(status.success());
-    convert_colocated(&scoped_git).expect("conversion with a scoped stack");
+    convert_colocated(&scoped_git)
+        .result
+        .expect("conversion with a scoped stack");
     assert_eq!(
         author(&scoped_git),
         pair("Creator", "scoped@example.com"),
@@ -631,7 +646,9 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     let fresh = tmp.join("fresh");
     fs::create_dir_all(&fresh).unwrap();
     set_jj_config(&config_file(tmp, "wrong-type-init.toml", "[user]\nname = 1\n"));
-    let err = Repo::init(&fresh, None).expect_err("init must refuse a broken stack");
+    let err = Repo::init(&fresh, None)
+        .result
+        .expect_err("init must refuse a broken stack");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
         "unexpected error: {err:?}"
@@ -648,7 +665,9 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     ));
     let fresh_git = tmp.join("fresh-git");
     fs::create_dir_all(&fresh_git).unwrap();
-    let err = Repo::init(&fresh_git, Some(Backend::Git)).expect_err("a wrong-typed git key must refuse");
+    let err = Repo::init(&fresh_git, Some(Backend::Git))
+        .result
+        .expect_err("a wrong-typed git key must refuse");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
@@ -660,7 +679,9 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         .status()
         .expect("git init spawns");
     assert!(status.success());
-    let err = convert_colocated(git_repo.path()).expect_err("a wrong-typed git key must refuse");
+    let err = convert_colocated(git_repo.path())
+        .result
+        .expect_err("a wrong-typed git key must refuse");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
@@ -670,7 +691,9 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         "the failed conversion rolled back"
     );
     let import_dest = tmp.join("import-dest");
-    let err = convert_import(git_repo.path(), &import_dest).expect_err("a wrong-typed git key must refuse the import");
+    let err = convert_import(git_repo.path(), &import_dest)
+        .result
+        .expect_err("a wrong-typed git key must refuse the import");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
@@ -681,7 +704,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     );
 
     set_jj_config(user_file);
-    let mut created = Repo::init(&fresh, None).expect("init with a valid stack");
+    let mut created = Repo::init(&fresh, None).result.expect("init with a valid stack");
     fs::write(
         fresh.join(".jj").join("repo").join("config.toml"),
         "[user]\nname = \"Fresh Repo\"\n",

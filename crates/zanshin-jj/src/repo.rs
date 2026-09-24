@@ -88,6 +88,23 @@ pub(crate) fn creation_error(e: &WorkspaceInitError, other: impl FnOnce(String) 
     crate::config::init_config_fault(e).map_or_else(|| other(e.to_string()), RepoError::from)
 }
 
+/// What a workspace CREATION reports (Story 9.33) — [`Repo::init`], [`Repo::clone`],
+/// [`crate::convert_colocated`] and [`crate::convert_import`] — in [`crate::ConfigSetOutcome`]'s
+/// shape: the result, and what the jj CLI would have printed on the way, on success AND on
+/// failure.
+#[derive(Debug)]
+pub struct CreationOutcome {
+    /// The created workspace, or why it was not created.
+    pub result: Result<Repo, RepoError>,
+    /// The conversion's implicit snapshot report (`do_init`'s `maybe_snapshot`): `Some` iff that
+    /// snapshot started — only the two conversions run it — and PARTIAL when a step of it failed.
+    /// On a conversion that failed before its re-open it describes state the rollback has since
+    /// removed; a failed re-open leaves `.jj/` in place.
+    pub precondition: Option<crate::Precondition>,
+    /// The call's warnings in the CLI's print order, including those recorded before a failure.
+    pub warnings: Vec<crate::Warning>,
+}
+
 /// Selects the jj backend for a new workspace.
 #[derive(Clone, Copy)]
 pub enum Backend {
@@ -1831,9 +1848,16 @@ impl Repo {
     /// `backend = Some(Backend::Git)` creates a git-backed workspace;
     /// `backend = None` uses jj's native backend.
     ///
+    /// The outcome never carries a warning or a snapshot report (Story 9.33): the CLI's
+    /// empty-directory `jj git init` finishes no transaction, so nothing reaches a
+    /// `ui.warning_*` — not even the identity check. The CLI's start-up environment
+    /// (`for_workable_repo`: alias tables, `immutable_heads()`) is not ported to creation; its
+    /// warnings belong to that port.
+    ///
     /// # Errors
     ///
-    /// Returns [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
+    /// In [`CreationOutcome::result`]:
+    /// [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
     /// `path` cannot be resolved (it must already exist); `reason` then names it. Returns
     /// [`RepoError::Config`] if the jj config stack the workspace would be created with cannot
     /// be read — refused BEFORE anything is written. A fault of the user-level stack is checked
@@ -1848,7 +1872,17 @@ impl Repo {
     /// `path` must already exist — this verb has never created it (jj-lib's `create_jj_dir` uses
     /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
     /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
-    pub fn init(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
+    #[must_use = "the outcome carries the result"]
+    pub fn init(path: &Path, backend: Option<Backend>) -> CreationOutcome {
+        CreationOutcome {
+            result: Self::init_workspace(path, backend),
+            precondition: None,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// [`Repo::init`]'s creation.
+    fn init_workspace(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
         // The CLI's start-up config check runs before the command touches any path.
         crate::config::check_startup_stack()?;
         // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
@@ -1890,12 +1924,24 @@ impl Repo {
     /// The CLI's `jj git clone` instead creates its destination and refuses a non-empty one
     /// (`cli/src/commands/git/clone.rs` @ v0.44.0); that parity is Story 9.20's.
     ///
+    /// # Warnings
+    ///
+    /// The outcome's warnings are the CLI's for the steps this port runs, in its order
+    /// (Story 9.33): `jj.git_import_failed` for refs the fetch's import could not read, then
+    /// — after the single `clone` operation is committed — `jj.checkout_files_skipped` for files
+    /// the checkout left alone because an untracked file of the same name was in the way, then
+    /// `jj.identity_missing` ONCE (the CLI warns once per finished transaction; Zanshin writes
+    /// one operation where the CLI writes up to three). On failure the outcome keeps what was
+    /// warned before it, and a rollback that cannot remove `.jj/` adds
+    /// `jj.clone_cleanup_failed` last. There is never a snapshot report.
+    ///
     /// # Errors
     ///
-    /// Returns [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
+    /// In [`CreationOutcome::result`]:
+    /// [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
     /// registration, fetch, or import fails.
     ///
-    /// Returns [`RepoError::Config`] when the effective jj config cannot be read — the stack
+    /// [`RepoError::Config`] when the effective jj config cannot be read — the stack
     /// the workspace is created with (refused BEFORE anything is written; a user-level fault
     /// is checked first, as the CLI's start-up does, and wins over an unresolvable
     /// `target_path`), or
@@ -1908,7 +1954,19 @@ impl Repo {
     /// Like [`Repo::init`], the clone runs with the stack resolved for the new workspace's
     /// paths and the returned handle is re-opened as by [`Repo::open`] — that call's errors
     /// apply too.
-    pub fn clone(url: &str, target_path: &Path) -> Result<Self, RepoError> {
+    #[must_use = "the outcome carries the result and the warnings"]
+    pub fn clone(url: &str, target_path: &Path) -> CreationOutcome {
+        let mut sink = crate::warning::Warnings::default();
+        let result = Self::clone_reported(url, target_path, &mut sink);
+        CreationOutcome {
+            result,
+            precondition: None,
+            warnings: sink.take(),
+        }
+    }
+
+    /// [`Repo::clone`]'s creation, recording its warnings into `sink`.
+    fn clone_reported(url: &str, target_path: &Path, sink: &mut crate::warning::Warnings) -> Result<Self, RepoError> {
         // The CLI's start-up config check runs before the command touches any path.
         crate::config::check_startup_stack()?;
         // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
@@ -1920,13 +1978,10 @@ impl Repo {
         let settings = crate::config::user_settings_for_new_workspace(&target_path)?;
 
         // The re-open runs INSIDE the rolled-back result: any failure after creation rolls `.jj/` back.
-        Self::clone_into(&settings, url, &target_path)
+        // A missing target can no longer reach the rollback — `canonicalize` above refuses it.
+        Self::clone_into(&settings, url, &target_path, sink)
             .and_then(|()| Self::open(&target_path))
-            .inspect_err(|_| {
-                // Roll back only what clone created: the `.jj/` that init_internal_git wrote.
-                // A missing target can no longer reach here — `canonicalize` above refuses it.
-                let _ = std::fs::remove_dir_all(target_path.join(".jj"));
-            })
+            .inspect_err(|_| sink.extend(roll_back_clone(&target_path)))
     }
 
     /// Composes the clone steps; [`Repo::clone`] re-opens the committed result.
@@ -1934,7 +1989,16 @@ impl Repo {
     /// `target_path` is the CANONICAL target directory (`Repo::clone` resolves it), so the
     /// workspace-store entry `init_internal_git` writes and the `Workspace::load` base below
     /// agree on one spelling.
-    fn clone_into(settings: &UserSettings, url: &str, target_path: &Path) -> Result<(), RepoError> {
+    ///
+    /// Its warnings land in `sink` where the CLI prints them: the fetch's failed imports before
+    /// the commit (`clone.rs:456`), the checkout's skipped files and the identity check after it
+    /// (the finish, `cli_util.rs:3304`, `:2387`).
+    fn clone_into(
+        settings: &UserSettings,
+        url: &str,
+        target_path: &Path,
+        sink: &mut crate::warning::Warnings,
+    ) -> Result<(), RepoError> {
         // Step 1: Create git-backed jj workspace.
         // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see
         // `Repo::init`); making it a caller parameter is Story 9.20's scope.
@@ -2033,6 +2097,8 @@ impl Repo {
                 .get_default_branch(remote_name)
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
         }
+        // `print_git_import_stats`, after the default branch is known (`clone.rs:406`, `:456`).
+        sink.extend(crate::warning::git_import_failed(&import_stats));
 
         // Point `@` at the fetched default branch: create a fresh working-copy commit
         // on its tip so the cloned workspace shows the default branch's files.
@@ -2069,11 +2135,29 @@ impl Repo {
 
         // Materialise the working copy on disk to match the new `@` commit.
         if let Some(wc_commit) = &new_wc_commit {
-            pollster::block_on(workspace.check_out(new_repo.op_id().clone(), None, wc_commit))
+            let stats = pollster::block_on(workspace.check_out(new_repo.op_id().clone(), None, wc_commit))
                 .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
+            sink.extend(crate::warning::checkout_files_skipped(stats.skipped_files));
         }
+        sink.extend(crate::warning::identity_missing(settings));
 
         Ok(())
+    }
+}
+
+/// Rolls a failed clone back: removes `.jj/` under the CANONICAL `target_path` — Zanshin's
+/// rollback scope, which never touches anything else there. That is normally the `.jj/`
+/// `init_internal_git` wrote, but it cannot tell: when the target ALREADY held a `.jj/` (the init
+/// then refuses with `DestinationExists`), this removes that pre-existing one — the recorded data
+/// loss (`deferred-work.md`, first surfaced by Story 3.4a; Story 9.20's destination parity).
+///
+/// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.44.0) treats a directory that is already
+/// gone as removed and warns about any other failure; so does this, returning that warning.
+fn roll_back_clone(target_path: &Path) -> Option<crate::Warning> {
+    match std::fs::remove_dir_all(target_path.join(".jj")) {
+        Ok(()) => None,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => Some(crate::warning::clone_cleanup_failed(target_path, &e)),
     }
 }
 
@@ -2170,6 +2254,34 @@ mod tests {
             .refresh_settings()
             .expect_err("an unloadable workspace must refuse");
         assert!(matches!(err, MutateError::Backend(_)), "got {err:?}");
+    }
+
+    /// Story 9.33: the clone rollback removes `.jj/`, treats an absent one as removed, and turns
+    /// any other failure into the CLI's clean-up warning — naming the target and the I/O error.
+    #[cfg(unix)]
+    #[test]
+    fn a_clone_rollback_that_cannot_remove_jj_warns_like_the_cli() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let target = std::fs::canonicalize(tmp.path()).unwrap();
+        let jj = target.join(".jj");
+        std::fs::create_dir(&jj).unwrap();
+        std::fs::write(jj.join("held"), "x").unwrap();
+        std::fs::set_permissions(&jj, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let warning = super::roll_back_clone(&target);
+        std::fs::set_permissions(&jj, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let warning = warning.expect("a `.jj/` whose entries cannot be removed must warn");
+        assert_eq!(warning.kind, crate::WarningKind::CloneCleanupFailed);
+        let prefix = format!("Failed to clean up {}: ", target.display());
+        assert!(warning.message.starts_with(&prefix), "got {:?}", warning.message);
+        assert!(jj.join("held").exists(), "a failed removal leaves the entry in place");
+
+        assert_eq!(super::roll_back_clone(&target), None, "now removable: no warning");
+        assert!(!jj.exists());
+        assert_eq!(super::roll_back_clone(&target), None, "an absent `.jj/` is no failure");
     }
 
     /// A secondary workspace whose `.jj/repo` FILE points nowhere fails in the loader, before

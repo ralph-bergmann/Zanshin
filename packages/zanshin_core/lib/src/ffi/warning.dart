@@ -109,6 +109,11 @@ abstract final class ZanshinWarningCode {
   /// `config list` found nothing to list.
   static const configNothingListed = 'jj.config_nothing_listed';
 
+  /// A failed clone could not remove what it had created (Story 9.33). Only an
+  /// error envelope carries it, so Dart sees it once Story 9.35 exposes the
+  /// error path's warnings.
+  static const cloneCleanupFailed = 'jj.clone_cleanup_failed';
+
   /// Every constant above, in registry order.
   static const List<String> values = [
     identityMissing,
@@ -134,6 +139,7 @@ abstract final class ZanshinWarningCode {
     configWorkingCopyAuthor,
     configGcDeleteFailed,
     configNothingListed,
+    cloneCleanupFailed,
   ];
 }
 

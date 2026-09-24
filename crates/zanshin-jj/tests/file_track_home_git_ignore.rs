@@ -62,6 +62,7 @@ fn an_empty_xdg_config_home_falls_back_to_the_home_git_ignore() {
 
     let tmp = TempDir::new().expect("tempdir");
     let root = Repo::init(tmp.path(), Some(Backend::Git))
+        .result
         .expect("init")
         .workspace_root()
         .to_owned();

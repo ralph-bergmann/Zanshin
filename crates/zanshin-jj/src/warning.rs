@@ -80,6 +80,8 @@ pub enum WarningKind {
     ConfigGcDeleteFailed,
     /// `config list` found nothing to list (`config/list.rs:116-123`).
     ConfigNothingListed,
+    /// A failed clone could not remove what it had created (`git/clone.rs:276-284`, Story 9.33).
+    CloneCleanupFailed,
 }
 
 /// One warning a call produced (Story 9.32).
@@ -358,6 +360,15 @@ pub(crate) fn checkout_files_skipped(skipped_files: u32) -> Option<Warning> {
     })
 }
 
+/// The failed clone's clean-up warning (`git/clone.rs:276-284`): the canonical target the clone
+/// was rolled back in, then the I/O error of the removal.
+pub(crate) fn clone_cleanup_failed(target: &Path, err: &std::io::Error) -> Warning {
+    local(
+        WarningKind::CloneCleanupFailed,
+        format!("Failed to clean up {}: {err}", target.display()),
+    )
+}
+
 /// The explicit `paths` absent from EVERY tree in `trees`, in request order — the filter of
 /// `print_unmatched_explicit_paths` (`cli_util.rs:3329-3333`).
 ///
@@ -417,8 +428,8 @@ mod tests {
     use jj_lib::repo_path::RepoPathBuf;
 
     use super::{
-        caused_by, checkout_files_skipped, git_head_update_failed, identity_missing, local, paths_unmatched, ui_path,
-        Load, WarningKind, Warnings,
+        caused_by, checkout_files_skipped, clone_cleanup_failed, git_head_update_failed, identity_missing, local,
+        paths_unmatched, ui_path, Load, WarningKind, Warnings,
     };
 
     #[derive(Debug)]
@@ -489,6 +500,16 @@ mod tests {
         );
         assert!(caused_by(None).is_empty());
         assert_eq!(git_head_update_failed(&Leaf("bare")).message, "bare");
+    }
+
+    /// Story 9.33: the CLI's `"Failed to clean up {path}: {err}"` — the target as displayed, then
+    /// the removal's I/O error.
+    #[test]
+    fn a_failed_clone_clean_up_names_the_target_and_the_io_error() {
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
+        let w = clone_cleanup_failed(Path::new("/ws/target"), &err);
+        assert_eq!(w.kind, WarningKind::CloneCleanupFailed);
+        assert_eq!(w.message, "Failed to clean up /ws/target: Permission denied");
     }
 
     #[test]

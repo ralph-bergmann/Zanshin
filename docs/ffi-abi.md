@@ -84,10 +84,15 @@ list — and never appears on `PANIC_FALLBACK_ENVELOPE`, whose bytes are unchang
 Success without a caveat is `ok` with no warnings; there is no success code and no
 severity. Config-load warnings are recorded once per call. On the Dart side every
 `ZanshinWorker` / `RepoHandle` command result exposes them as `warnings`
-(`List<ZanshinWarning>`), decoded by one shared helper — except `openRepo`, `initRepo`,
-`cloneRepo` and `convert` (their return shape is Story 9.33's), `closeRepo` / `close`
-(lifecycle) and `events` (a stream, not a command); a list result is a `WarnedList<E>`;
-payloads nested in another payload carry none.
+(`List<ZanshinWarning>`), decoded by one shared helper — except `openRepo` (opening
+warns about nothing), `closeRepo` / `close` (lifecycle) and `events` (a stream, not a
+command); a list result is a `WarnedList<E>`; payloads nested in another payload carry
+none. The creations (Story 9.33) — `zanshin_repo_init` / `_clone` / `_convert` — carry the
+creating call's warnings on the `RepoHandle` ok envelope AND on every error envelope
+(including `watcher.io_error` after a successful creation); in Dart `initRepo`,
+`cloneRepo` and `convert` return a `CreatedRepoHandle` (a `RepoHandle` subtype, so
+existing callers compile unchanged) exposing them as `warnings`. `zanshin_repo_open`
+carries none.
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
@@ -107,11 +112,18 @@ outcome and rebased counts, and the ref export failures as `finish`). The pure
 notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD reset —
 are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
-init, clone, convert, detect, close, `zanshin_log_defaults`,
+init, clone, detect, close, `zanshin_log_defaults`,
 `zanshin_workspace_root`, the infrastructure symbols, async events, and every
 `zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
-a request buffer that fails validation).
+a request buffer that fails validation). `zanshin_repo_convert` (Story 9.33) carries
+the conversion's snapshot report — `jj git init`'s `maybe_snapshot` — iff that snapshot
+started, on the ok and the error envelope (after a failure before the re-open it
+describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/`
+in place); Dart exposes it as `CreatedRepoHandle.precondition`, never as
+`lastPrecondition`, because a creation is not a verb on the handle — and only on
+success: a refused creation throws `ZanshinFfiException` without its report until
+Story 9.35.
 A failed pre-verb snapshot is `jj.stale_working_copy`, `jj.config_error` or
 `jj.jj_lib_error`; every such symbol's row names all three.
 
@@ -397,9 +409,9 @@ or no `# Errors` block.
 | Symbol | Args | Request table | Success payload | Error codes | Story |
 |--------|------|---------------|-----------------|-------------|-------|
 | `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a |
-| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c |
+| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
+| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
+| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
 | `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle`, `jj.no_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
@@ -468,7 +480,12 @@ variant), verbatim. Story 9.27's `MutationResult.identity_missing` table
 is never a refusal: the commit was created with the empty identity, exactly as the CLI
 creates it; nothing is emitted when both are configured or when the call committed nothing
 (and not for `zanshin_file_track` / `_untrack`, whose CLI verbs skip the finish). The
-pre-verb snapshot's own import finishes warn too, as the CLI's do.
+pre-verb snapshot's own import finishes warn too, as the CLI's do. Since Story 9.33 the
+creations carry it where the CLI's flow finishes a transaction: `zanshin_repo_clone` ONCE
+after its single `clone` operation (the CLI, which finishes up to three transactions, warns
+up to three times — a recorded Story 9.20 deferral), the conversion snapshot's own finishes;
+never `zanshin_repo_init` (an empty-directory `jj git init` finishes nothing) and never the
+conversion's raw commits.
 
 ---
 
@@ -551,6 +568,20 @@ On success the function returns a live `RepoHandle` for the converted
 workspace. The Dart worker stores the raw handle in its Model-A handle table
 (`handleId → raw *mut RepoSession`) and returns an opaque `handleId` to the caller.
 
+**The conversion's report (Story 9.33).** Both envelopes — ok and error — carry what
+`jj git init` would have printed. `Envelope.precondition` is the report of the snapshot
+the conversion runs, present iff it started (PARTIAL when it failed). `Envelope.warnings`
+holds, in the CLI's order: the refs step's `jj.git_import_failed` (`git/init.rs:304`,
+also when the step writes no operation) and colocated `jj.git_export_failed`
+(`:311-312`); the config-load warnings (`jj.config_alias_invalid`,
+`jj.config_alias_redefined`, `jj.revset_diagnostic`); the snapshot's own warnings (its
+colocated refs import reports an unreadable ref a SECOND time, as the CLI does); then,
+on the snapshot's success, `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`.
+The refs step and the head import commit without a finish, so an empty identity is
+warned only by a finish the snapshot itself runs. A failure keeps everything reported
+before it — when it came before the re-open, although the rollback removes `.jj/`; a
+failed re-open or watcher arming leaves `.jj/` in place.
+
 **Success payload:** `Envelope<RepoHandle>`
 
 ```
@@ -586,13 +617,15 @@ case DetectRepoCommand(:final String path):
 
 case ConvertRepoCommand(:final String path):
   final bytes = repo_ffi.zanshinRepoConvert(path);
-  _replyRepoOp(bytes, ...);  // stores handle on success, replies HandleResult
+  _replyRepoOp(bytes, ...);  // stores handle on success, replies HandleResult(id, bytes)
 ```
 
 Public `ZanshinWorker` API:
 
 - `Future<RepoDetectResult> detect(String path)` — decodes via `decodeRepoDetectEnvelopeInternal`
-- `Future<RepoHandle> convert(String path)` — stores handle, returns `RepoHandle`
+- `Future<CreatedRepoHandle> convert(String path)` — stores handle, returns a
+  `CreatedRepoHandle` whose `warnings` / `precondition` are decoded from the ok envelope
+  `HandleResult` forwards (`decodeCreationReportInternal`, Story 9.33)
 
 ---
 
@@ -620,8 +653,9 @@ dropped, so no callback can fire for a handle after `close` returns.
 returns `watcher.io_error` and **no handle** — the repo is not left open in
 an unwatched state. For `init`/`clone`/`convert` the on-disk artefacts
 created before the arming failure **persist** (only the arming failed; a
-retry will see an existing repo — same posture as other post-init failures);
-`open` leaves no residue. Post-arm watch degradation (e.g. an FS error after a
+retry will see an existing repo — same posture as other post-init failures) and
+the `watcher.io_error` envelope still carries the creation's warnings / snapshot
+report (Story 9.33); `open` leaves no residue. Post-arm watch degradation (e.g. an FS error after a
 successful open) never re-uses this code string; it rides the event stream
 instead (see `WatchError` below) — `watcher.io_error` is emitted in exactly
 one place: the arming-failure envelope at open/init/clone/convert.

@@ -66,9 +66,11 @@ typedef _WorkerInit = (SendPort, SendPort, SendPort, bool, bool);
 /// CLI's `Warning: …` blocks as [ZanshinWarning]s, in the CLI's print order,
 /// empty when there were none. A list result is a [WarnedList]; a result that
 /// was a bare `String` or `void` is a small class carrying the value and the
-/// warnings. Four kinds of member carry none: [openRepo], [initRepo], [cloneRepo]
-/// and [convert] (their return shape belongs to Story 9.33, and nothing warns
-/// there yet); [closeRepo] and [close] (lifecycle, no CLI counterpart); and
+/// warnings. The creations — [initRepo], [cloneRepo] and [convert] — return a
+/// [CreatedRepoHandle]: a [RepoHandle] that also carries the creating call's
+/// warnings and, for [convert], its snapshot report (Story 9.33). Three kinds of
+/// member carry none: [openRepo] (opening warns about nothing and runs no
+/// snapshot); [closeRepo] and [close] (lifecycle, no CLI counterpart); and
 /// [events] (a stream, not a command).
 class ZanshinWorker {
   ZanshinWorker._({
@@ -362,8 +364,10 @@ class ZanshinWorker {
 
   /// Initialise a new jj repository at [path].
   ///
-  /// [backend]: `0` = native/simple, `1` = Git.
-  Future<RepoHandle> initRepo(String path, {required int backend}) async {
+  /// [backend]: `0` = native/simple, `1` = Git. The returned handle's
+  /// `warnings` are always empty and its `precondition` is `null`: the jj CLI's
+  /// empty-directory init warns about nothing.
+  Future<CreatedRepoHandle> initRepo(String path, {required int backend}) async {
     final WorkerResponse response = await _sendCommand(
       InitRepoCommand(
         commandId: _correlator.allocateId(),
@@ -371,11 +375,22 @@ class ZanshinWorker {
         backend: backend,
       ),
     );
-    return _handleOrThrow(response);
+    return _createdOrThrow(response);
   }
 
   /// Clone a remote repository from [url] into [targetPath].
-  Future<RepoHandle> cloneRepo({
+  ///
+  /// The returned handle's `warnings` are the clone's, in the jj CLI's order:
+  /// `jj.git_import_failed`, `jj.checkout_files_skipped` (a file of the default
+  /// branch left alone because an untracked one was in the way — possible only
+  /// because this clone accepts a non-empty target, which the jj CLI refuses;
+  /// Story 9.20), then
+  /// `jj.identity_missing` once when `user.name`/`user.email` is empty. Its
+  /// `precondition` is `null`. A refused clone throws [ZanshinFfiException]
+  /// WITHOUT its report — including `jj.clone_cleanup_failed`, which only an
+  /// error envelope carries — until Story 9.35 brings the error path's report
+  /// to Dart.
+  Future<CreatedRepoHandle> cloneRepo({
     required String url,
     required String targetPath,
   }) async {
@@ -386,13 +401,26 @@ class ZanshinWorker {
         targetPath: targetPath,
       ),
     );
-    return _handleOrThrow(response);
+    return _createdOrThrow(response);
   }
 
   RepoHandle _handleOrThrow(WorkerResponse response) => switch (response) {
     HandleResult(:final handleId) => RepoHandle(this, handleId),
     BufferResult(:final bytes) => throw _envelopeToException(bytes),
   };
+
+  /// A creation's reply: the [CreatedRepoHandle] with the report its ok
+  /// envelope carries (Story 9.33), or the refusal as [ZanshinFfiException].
+  CreatedRepoHandle _createdOrThrow(WorkerResponse response) {
+    switch (response) {
+      case HandleResult(:final handleId, :final bytes):
+        final (:List<ZanshinWarning> warnings, :repo_ffi_precondition.Precondition? precondition) =
+            repo_ffi_precondition.decodeCreationReportInternal(bytes);
+        return CreatedRepoHandle(this, handleId, warnings: warnings, precondition: precondition);
+      case BufferResult(:final bytes):
+        throw _envelopeToException(bytes);
+    }
+  }
 
   /// Generic path for read commands (Story 3.4b).
   ///
@@ -678,15 +706,21 @@ class ZanshinWorker {
 
   /// Convert the Git repository at [path] to a colocated jj workspace.
   ///
-  /// On success returns a [RepoHandle] backed by the new workspace.
+  /// On success returns a [CreatedRepoHandle] backed by the new workspace. Its
+  /// `precondition` is the report of the snapshot the conversion runs (the jj
+  /// CLI's `jj git init` snapshots the working copy once) and its `warnings`
+  /// are the conversion's, in the CLI's order — e.g. `jj.git_import_failed`,
+  /// `jj.snapshot_files_refused`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.already_jj_repo`,
-  /// `jj.not_a_git_repo`, `jj.convert_failed`).
-  Future<RepoHandle> convert(String path) async {
+  /// `jj.not_a_git_repo`, `jj.convert_failed`) — WITHOUT the failed
+  /// conversion's warnings and partial snapshot report until Story 9.35 brings
+  /// the error path's report to Dart.
+  Future<CreatedRepoHandle> convert(String path) async {
     final WorkerResponse response = await _sendCommand(
       ConvertRepoCommand(commandId: _correlator.allocateId(), path: path),
     );
-    return _handleOrThrow(response);
+    return _createdOrThrow(response);
   }
 
   /// Rewrite the description of [changeId] in the repo identified by [handleId]
@@ -2269,9 +2303,10 @@ Uint8List _invalidHandleEnvelope(int handleId) => fbs.EnvelopeObjectBuilder(
   ),
 ).toBytes();
 
-/// Handle open/init/clone FFI bytes: store the raw handle plus the session-id
-/// event-demux mapping and reply with [HandleResult] on success, or forward
-/// the error envelope as [BufferResult].
+/// Handle open/init/clone/convert FFI bytes: store the raw handle plus the
+/// session-id event-demux mapping and reply with [HandleResult] — carrying the ok
+/// envelope, whose report main decodes (Story 9.33) — on success, or forward the
+/// error envelope as [BufferResult].
 void _replyRepoOp(
   Uint8List bytes,
   int commandId,
@@ -2289,7 +2324,7 @@ void _replyRepoOp(
     handles[id] = raw;
     sessionToId[rh.sessionId] = id;
     log.fine('Worker: repo opened raw=$raw session=${rh.sessionId} → handleId=$id');
-    responseSP.send((commandId, HandleResult(id)));
+    responseSP.send((commandId, HandleResult(id, bytes)));
   } else {
     responseSP.send((commandId, BufferResult(bytes)));
   }

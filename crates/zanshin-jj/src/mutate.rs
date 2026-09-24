@@ -1557,7 +1557,7 @@ mod tests {
 
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
         let load_head = |repo: &crate::Repo| {
             pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head")
         };

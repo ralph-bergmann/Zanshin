@@ -2726,7 +2726,7 @@ fetch-bookmarks = \"main\"
     fn existing_repo_config_file_refuses_a_malformed_config_id() {
         test_helpers::pin_test_env();
         let tmp = tempfile::tempdir().unwrap();
-        let repo = crate::Repo::init(tmp.path(), None).expect("init");
+        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
         std::fs::write(repo.workspace().repo_path().join("config-id"), "not-hex").unwrap();
         let err = super::existing_repo_config_file(repo.workspace()).expect_err("a malformed config-id must refuse");
         assert!(err.to_string().contains("config-id"), "{err}");

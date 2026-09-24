@@ -393,7 +393,7 @@ fn change_on_root_returns_empty_parents() {
 fn change_on_anonymous_commit_is_anonymous() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     // Fresh repo: initial WC commit has empty description and no local bookmark → anonymous.
     let mut repo = Repo::open(tmp.path()).unwrap();
@@ -411,7 +411,7 @@ fn change_on_anonymous_commit_is_anonymous() {
 fn change_on_described_commit_is_not_anonymous() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     jj_new_with_description(tmp.path(), "my feature").unwrap();
 
@@ -483,7 +483,7 @@ fn change_on_merge_in_medium_fixture_has_three_parents() {
 fn change_on_divergent_id_returns_divergent_flag() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let divergent_change_id_str = make_divergent_change(tmp.path());
     let divergent_id = ChangeId(divergent_change_id_str);
@@ -548,7 +548,7 @@ fn change_on_clean_commit_returns_clean_conflict() {
 fn change_on_conflicted_commit_returns_conflicted_paths() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     // Construct a genuine add/add conflict on `conflicted.txt` via jj-lib (no jj CLI).
     let conflicted_change_id = ChangeId(make_conflicted_change(tmp.path()));
@@ -582,7 +582,7 @@ fn change_on_conflicted_commit_returns_conflicted_paths() {
 fn change_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();

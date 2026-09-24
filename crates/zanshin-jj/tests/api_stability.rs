@@ -482,10 +482,10 @@ fn api_surface_resolves() {
         synthetic_elided: false,
     };
 
-    // convert (free fns + RepoError variants — no new *type* exported)
-    _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
-    _ = zanshin_jj::convert_import
-        as fn(&std::path::Path, &std::path::Path) -> Result<zanshin_jj::Repo, zanshin_jj::RepoError>;
+    // convert (free fns + RepoError variants); since Story 9.33 every creation returns a
+    // `CreationOutcome` (pinned in `story_9_33_creation_outcome_resolves`)
+    _ = zanshin_jj::convert_colocated as fn(&std::path::Path) -> zanshin_jj::CreationOutcome;
+    _ = zanshin_jj::convert_import as fn(&std::path::Path, &std::path::Path) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::RepoError::AlreadyJjRepo {
         path: std::path::PathBuf::new(),
     };
@@ -1115,6 +1115,7 @@ fn story_9_32_warning_surface_resolves() {
         K::ConfigWorkingCopyAuthor,
         K::ConfigGcDeleteFailed,
         K::ConfigNothingListed,
+        K::CloneCleanupFailed,
     ];
     for kind in every {
         match kind {
@@ -1140,9 +1141,31 @@ fn story_9_32_warning_surface_resolves() {
             | K::PathNotAFile
             | K::ConfigWorkingCopyAuthor
             | K::ConfigGcDeleteFailed
-            | K::ConfigNothingListed => {}
+            | K::ConfigNothingListed
+            | K::CloneCleanupFailed => {}
         }
     }
-    assert_eq!(every.len(), 23);
+    assert_eq!(every.len(), 24);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
+}
+
+/// Story 9.33: the four creation functions return a `CreationOutcome` — every field named by its
+/// public path, so a rename or a type change breaks this test at compile time.
+#[test]
+fn story_9_33_creation_outcome_resolves() {
+    use std::path::Path;
+
+    _ = zanshin_jj::Repo::init as fn(&Path, Option<zanshin_jj::Backend>) -> zanshin_jj::CreationOutcome;
+    _ = zanshin_jj::Repo::clone as fn(&str, &Path) -> zanshin_jj::CreationOutcome;
+    _ = zanshin_jj::convert_colocated as fn(&Path) -> zanshin_jj::CreationOutcome;
+    _ = zanshin_jj::convert_import as fn(&Path, &Path) -> zanshin_jj::CreationOutcome;
+    let outcome = zanshin_jj::CreationOutcome {
+        result: Err(zanshin_jj::RepoError::CloneFailed { reason: String::new() }),
+        precondition: Some(zanshin_jj::Precondition::default()),
+        warnings: vec![zanshin_jj::Warning {
+            kind: zanshin_jj::WarningKind::CloneCleanupFailed,
+            message: String::new(),
+        }],
+    };
+    assert!(outcome.result.is_err());
 }

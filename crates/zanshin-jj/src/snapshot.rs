@@ -339,7 +339,7 @@ impl VerbContext {
 
 // ── The precondition ─────────────────────────────────────────────────────────────
 
-/// Takes the lock, loads the head and runs [`snapshot_impl`] — the body of the CLI's
+/// Takes the lock, loads the head and runs [`snapshot_locked`] — the body of the CLI's
 /// `workspace_helper_with_stats` after its knobs are known.
 ///
 /// Fills `report` and `sink` as it goes, so a failure leaves the partial facts behind. Returns
@@ -360,17 +360,34 @@ pub(crate) fn run(
 ) -> Result<working_copy::SnapshotStats, PreconditionError> {
     let lock = lock_git_import_export(workspace, colocated)?;
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(|e| backend(&e))?;
-    let loaded_op_id = repo.op_id().clone();
     let ctx = StepCtx {
         config,
         knobs,
         colocated,
         lock: &lock,
     };
-    match snapshot_impl(workspace, repo, &ctx, report, sink) {
+    snapshot_locked(workspace, repo, &ctx, report, sink).map(|(_, stats)| stats)
+}
+
+/// [`snapshot_impl`] on `repo` under the held `ctx.lock`, with [`Precondition::was_snapshot_taken`]
+/// set from whether the head moved off `repo`'s operation — the body the verb precondition
+/// ([`run`]) and the conversions' `maybe_snapshot` share.
+///
+/// # Errors
+///
+/// Anything [`snapshot_impl`] returns.
+pub(crate) fn snapshot_locked(
+    workspace: &mut Workspace,
+    repo: Arc<ReadonlyRepo>,
+    ctx: &StepCtx<'_>,
+    report: &mut Precondition,
+    sink: &mut Warnings,
+) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
+    let loaded_op_id = repo.op_id().clone();
+    match snapshot_impl(workspace, repo, ctx, report, sink) {
         Ok((repo, stats)) => {
             report.was_snapshot_taken = repo.op_id() != &loaded_op_id;
-            Ok(stats)
+            Ok((repo, stats))
         }
         Err(e) => {
             // A later step failed after an earlier one may have committed (e.g. `import git

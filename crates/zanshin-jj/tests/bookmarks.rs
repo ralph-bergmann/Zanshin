@@ -264,7 +264,7 @@ fn bookmarks_are_sorted_by_name_then_kind() {
 fn bookmarks_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 

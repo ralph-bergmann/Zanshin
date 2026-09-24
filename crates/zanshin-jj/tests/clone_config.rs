@@ -88,7 +88,7 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
     set_jj_config(&good);
 
     let ok_target = TempDir::new().expect("target tempdir");
-    let cloned = Repo::clone(&src_url, ok_target.path());
+    let cloned = Repo::clone(&src_url, ok_target.path()).result;
     assert!(
         cloned.is_ok(),
         "a valid config value must not break the clone: {cloned:?}"
@@ -106,7 +106,7 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
     set_jj_config(&broken);
 
     let bad_target = TempDir::new().expect("target tempdir");
-    let result = Repo::clone(&src_url, bad_target.path());
+    let result = Repo::clone(&src_url, bad_target.path()).result;
     // Since Story 9.27 the clone runs WITH this stack, so jj-lib's git backend already reads the
     // key while creating the workspace; either way a clone config fault has one code: `Config`.
     let Err(RepoError::Config { reason }) = result else {

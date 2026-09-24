@@ -133,7 +133,7 @@ fn user_scope_matrix() {
 fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
     let ws = tmp.join("ws");
     fs::create_dir(&ws).unwrap();
-    let repo = Repo::init(&ws, Some(Backend::Git)).expect("init");
+    let repo = Repo::init(&ws, Some(Backend::Git)).result.expect("init");
     config_set(None, ConfigScope::User, "revsets.log", "root()", Some(first))
         .result
         .expect("set");

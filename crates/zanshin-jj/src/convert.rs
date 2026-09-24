@@ -74,6 +74,31 @@
 //!
 //! One deliberate departure, documented at its site: a failed conversion rolls back further
 //! than the CLI does, which never undoes a partial `jj git init`.
+//!
+//! ## What both verbs report (Story 9.33)
+//!
+//! Both return a [`CreationOutcome`]. Its warnings are every `ui.warning_*` the CLI reaches on
+//! the steps above, in the CLI's print order:
+//!
+//! 1. `jj.git_import_failed` — refs the `import git refs` step could not read (`init.rs:304`),
+//!    reported even when the step then writes no operation;
+//! 2. colocated only: `jj.git_export_failed` — refs that step's export could not write
+//!    (`init.rs:311-312`);
+//! 3. the config-load warnings (alias tables, builtin redefinitions, `immutable_heads()`
+//!    diagnostics) the CLI prints while building the workspace command (`cli_util.rs:936-966`);
+//! 4. the implicit snapshot's own warnings, as every verb's precondition reports them — its
+//!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does;
+//! 5. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
+//!    (`cli_util.rs:1340`);
+//! 6. non-colocated only: the `import git head` finish — `jj.checkout_files_skipped` and
+//!    `jj.identity_missing`.
+//!
+//! The raw commits (`import git refs`, the colocated `import git head`, `snapshot working copy`)
+//! run no identity check, exactly as in the CLI; only a finish does. The snapshot's report is
+//! [`CreationOutcome::precondition`], `Some` iff the snapshot started. A failure keeps
+//! everything reported before it — when the failure came before the re-open, even though the
+//! rollback then removes the state it describes; a failed re-open (or, in the FFI, a failed
+//! watcher arming) leaves `.jj/` in place.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -86,16 +111,37 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
 use crate::op_support::start_repo_transaction;
-use crate::repo::creation_error;
-use crate::warning::Warnings;
+use crate::repo::{creation_error, CreationOutcome};
+use crate::warning::{self, Warnings};
 use crate::wc_ops::is_colocated_git_workspace;
 use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
+
+/// What a conversion reports beside its result (Story 9.33), filled as the steps run so a
+/// failure keeps what came before it.
+#[derive(Default)]
+struct ConversionReport {
+    /// `maybe_snapshot`'s report — `Some` from the moment it starts.
+    precondition: Option<crate::Precondition>,
+    /// The conversion's warnings, in the CLI's print order.
+    warnings: Warnings,
+}
+
+impl ConversionReport {
+    /// The verb's outcome: `result` with everything reported on the way to it.
+    fn into_outcome(mut self, result: Result<Repo, RepoError>) -> CreationOutcome {
+        CreationOutcome {
+            result,
+            precondition: self.precondition,
+            warnings: self.warnings.take(),
+        }
+    }
+}
 
 /// Converts the Git repository at `path` into a colocated jj workspace (FR-JJ-18a).
 ///
 /// Additive and reversible: a `.jj/` is created alongside the existing,
 /// non-destructively-reused `.git/`; the working-copy files are never
-/// overwritten. Returns a warm [`Repo`] handle for the now-colocated workspace.
+/// overwritten. The outcome's result is a warm [`Repo`] handle for the now-colocated workspace.
 ///
 /// # What lands on disk
 ///
@@ -115,8 +161,15 @@ use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 /// or rewrites `.git/` — so a conversion that fails *after* the alias step can orphan the
 /// secure-config directory it created.
 ///
+/// # Warnings and the snapshot report
+///
+/// See the module doc's "What both verbs report": the outcome carries the conversion's
+/// warnings in the CLI's order and — once the implicit snapshot started — its report, on
+/// success AND on failure.
+///
 /// # Errors
 ///
+/// In [`CreationOutcome::result`]:
 /// - [`RepoError::AlreadyJjRepo`] — `path` is already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists, or it cannot be
 ///   resolved to an absolute path (the same answer the not-found case gives).
@@ -127,7 +180,15 @@ use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 ///   before anything is written. A fault of the user-level stack is checked first, as the
 ///   CLI's start-up does, so it wins over every other error above. The converted workspace is
 ///   then opened as by [`Repo::open`], whose errors apply too.
-pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
+#[must_use = "the outcome carries the result, the snapshot report and the warnings"]
+pub fn convert_colocated(path: &Path) -> CreationOutcome {
+    let mut report = ConversionReport::default();
+    let result = convert_colocated_steps(path, &mut report);
+    report.into_outcome(result)
+}
+
+/// [`convert_colocated`]'s steps, reporting into `report`.
+fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
     config::check_startup_stack()?;
     match detect_repo(path) {
@@ -149,7 +210,7 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
     // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
     let settings = config::user_settings_for_new_workspace(&root)?;
-    match convert_into(&settings, &root) {
+    match convert_into(&settings, &root, report) {
         Ok(()) => Repo::open(&root),
         Err(e) => {
             // Roll back only what convert created: the `.jj/` dir. Never touch `.git/`.
@@ -196,8 +257,15 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 /// removed, the source is never touched, and a failure *after* the alias step can orphan the
 /// secure-config directory it created.
 ///
+/// # Warnings and the snapshot report
+///
+/// As for [`convert_colocated`] (see the module doc's "What both verbs report"); the
+/// non-colocated shape adds the head import's finish — `jj.checkout_files_skipped` and the
+/// ONE `jj.identity_missing` a conversion with an empty identity reports.
+///
 /// # Errors
 ///
+/// In [`CreationOutcome::result`]:
 /// - [`RepoError::AlreadyJjRepo`] — `workspace_path` (or `git_repo_path`) is
 ///   already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
@@ -209,7 +277,19 @@ pub fn convert_colocated(path: &Path) -> Result<Repo, RepoError> {
 ///   before the destination is created; a fault that needs the destination's own paths (a
 ///   scoped table) surfaces once the destination exists (the CLI's order), so a destination
 ///   created for the call is rolled back with it.
-pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Repo, RepoError> {
+#[must_use = "the outcome carries the result, the snapshot report and the warnings"]
+pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> CreationOutcome {
+    let mut report = ConversionReport::default();
+    let result = convert_import_steps(git_repo_path, workspace_path, &mut report);
+    report.into_outcome(result)
+}
+
+/// [`convert_import`]'s steps, reporting into `report`.
+fn convert_import_steps(
+    git_repo_path: &Path,
+    workspace_path: &Path,
+    report: &mut ConversionReport,
+) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
     config::check_startup_stack()?;
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
@@ -244,7 +324,7 @@ pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> Result<Rep
     }
 
     let created_dir = !workspace_path.exists();
-    match import_into(git_repo_path, workspace_path) {
+    match import_into(git_repo_path, workspace_path, report) {
         Ok(()) => Repo::open(workspace_path),
         Err(e) => {
             if created_dir {
@@ -296,11 +376,17 @@ fn resolve_git_repo_path(arg: &Path) -> PathBuf {
 /// `abandon_unreachable_commits` ("There should be no old refs to abandon, but enforce it")
 /// and `record_synthetic_predecessors` ("There may be a large number of new commits") are
 /// pinned to `false` regardless of the user's config.
+///
+/// Its warnings land in `sink` where the CLI prints them (Story 9.33): the refs the import could
+/// not read (`print_git_import_stats_summary`, BEFORE the early return), then — colocated — the
+/// refs the export could not write (`print_git_export_stats`). The commit is a raw
+/// `tx.commit`, not a finish, so no identity check runs.
 fn init_git_refs(
     repo: &Arc<ReadonlyRepo>,
     workspace_name: &WorkspaceName,
     colocated: bool,
     config: &StackedConfig,
+    sink: &mut Warnings,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
     let import_options = GitImportOptions {
         abandon_unreachable_commits: false,
@@ -308,13 +394,16 @@ fn init_git_refs(
         ..config::git_import_options(config)?
     };
     let mut tx = start_repo_transaction(repo, workspace_name);
-    pollster::block_on(import_refs(tx.repo_mut(), &import_options))
+    let stats = pollster::block_on(import_refs(tx.repo_mut(), &import_options))
         .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+    sink.extend(warning::git_import_failed(&stats));
     if !tx.repo().has_changes() {
         return Ok(Arc::clone(repo));
     }
     if colocated {
-        jj_lib::git::export_refs(tx.repo_mut()).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        let stats =
+            jj_lib::git::export_refs(tx.repo_mut()).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        sink.extend(warning::git_export_failed(&stats));
     }
     pollster::block_on(tx.commit("import git refs")).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
 }
@@ -334,18 +423,21 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 }
 
 /// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1331-1342` @
-/// v0.44.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_impl`]),
-/// under the Git import/export lock, on the repo the refs step left behind. Its report and its
-/// warnings are not surfaced — the conversion verbs return a [`Repo`], and the CLI only prints
-/// them; `sink` is the conversion's throwaway collector (the creation verbs' warnings are
-/// Story 9.33's).
+/// v0.44.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_locked`]),
+/// under the Git import/export lock, on the repo the refs step left behind.
+///
+/// Its report is `report.precondition` — `Some` from the moment this starts, PARTIAL when a step
+/// fails, `was_snapshot_taken` computed as the verb precondition computes it — and its warnings
+/// land in `report.warnings`: the snapshot's own, then, on success only, the snapshot stats
+/// (`print_snapshot_stats`, printed after `snapshot_impl`).
 fn maybe_snapshot(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
     (config, knobs): (&StackedConfig, &snapshot::Knobs),
     colocated: bool,
-    sink: &mut Warnings,
+    report: &mut ConversionReport,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
+    let precondition = report.precondition.insert(crate::Precondition::default());
     let lock = snapshot::lock_git_import_export(workspace, colocated).map_err(convert_failed)?;
     let ctx = snapshot::StepCtx {
         config,
@@ -353,8 +445,11 @@ fn maybe_snapshot(
         colocated,
         lock: &lock,
     };
-    let (repo, _stats) = snapshot::snapshot_impl(workspace, repo, &ctx, &mut crate::Precondition::default(), sink)
+    let (repo, stats) = snapshot::snapshot_locked(workspace, repo, &ctx, precondition, &mut report.warnings)
         .map_err(precondition_error)?;
+    report
+        .warnings
+        .extend(warning::snapshot_stats(workspace.workspace_root(), &stats));
     Ok(repo)
 }
 
@@ -424,9 +519,9 @@ fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) 
     Ok(())
 }
 
-/// Runs the colocated external-git init and then `do_init`'s External sequence. On `Err`,
-/// the caller rolls back `.jj/`.
-fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
+/// Runs the colocated external-git init and then `do_init`'s External sequence, reporting into
+/// `report`. On `Err`, the caller rolls back `.jj/`.
+fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     // Open the EXISTING `.git` as the backing store (gix::open — strictly non-destructive).
     // Because `.git` is inside `path`, the workspace is colocated. This is what
     // `jj git init --colocate` does for an existing repo (cli/src/commands/git/init.rs @
@@ -438,13 +533,13 @@ fn convert_into(settings: &UserSettings, path: &Path) -> Result<(), RepoError> {
         &git_repo_path,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
-    external_arm(&mut workspace, &repo)
+    external_arm(&mut workspace, &repo, report)
 }
 
 /// Ports `do_init`'s `GitInitMode::External` branch (jj CLI @ v0.44.0), non-colocated in the
-/// intended two-path use. Creates and populates the jj workspace at `workspace_path`. On
-/// `Err`, the caller rolls back the destination.
-fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoError> {
+/// intended two-path use. Creates and populates the jj workspace at `workspace_path`, reporting
+/// into `report`. On `Err`, the caller rolls back the destination.
+fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
     // canonicalize has to follow the directory creation. It has to happen at all because
@@ -468,7 +563,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoEr
         &resolved,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
-    external_arm(&mut workspace, &repo)
+    external_arm(&mut workspace, &repo, report)
 }
 
 /// The CLI's External-arm steps after `init_external_git`, in its order: refs op,
@@ -477,32 +572,33 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoEr
 /// [`convert_colocated`] and false for [`convert_import`], but a linked git worktree (`.git` a
 /// gitdir POINTER file) reaches `convert_colocated` too, and `workspace_path == git_repo_path`
 /// (D5) is a colocated request `convert_import` honours.
-fn external_arm(workspace: &mut Workspace, repo: &Arc<ReadonlyRepo>) -> Result<(), RepoError> {
-    // The conversion's warnings are collected, logged and dropped — on success AND on failure:
-    // the creation verbs' warnings (and their return shape) are Story 9.33's.
-    let mut sink = Warnings::default();
-    let result = external_arm_steps(workspace, repo, &mut sink);
-    crate::warning::log_dropped("convert", sink.take());
-    result
-}
-
-/// [`external_arm`]'s steps, collecting their warnings into `sink`.
-fn external_arm_steps(
+///
+/// Every step reports into `report` as it runs (Story 9.33), so a failure keeps what came
+/// before it: the refs step's warnings, the config-load warnings `Knobs::read` records where the
+/// CLI's `for_workable_repo` prints them, `maybe_snapshot`'s report and warnings, and — non-
+/// colocated only — the head import's finish.
+fn external_arm(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
-    sink: &mut Warnings,
+    report: &mut ConversionReport,
 ) -> Result<(), RepoError> {
     let colocated = is_colocated_git_workspace(workspace);
     let config = config::load_for_workspace(workspace)?;
-    let repo = init_git_refs(repo, workspace.workspace_name(), colocated, &config)?;
+    let repo = init_git_refs(
+        repo,
+        workspace.workspace_name(),
+        colocated,
+        &config,
+        &mut report.warnings,
+    )?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let knobs = snapshot::Knobs::read(workspace, &config, sink).map_err(precondition_error)?;
-    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, sink)?;
+    let knobs = snapshot::Knobs::read(workspace, &config, &mut report.warnings).map_err(precondition_error)?;
+    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, report)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if colocated {
         return Ok(());
     }
-    import_head_into_destination(workspace, &repo, &knobs, sink)
+    import_head_into_destination(workspace, &repo, &knobs, &mut report.warnings)
 }
 
 /// The CLI's non-colocated head import (`init.rs:260-270`): import HEAD, check `@` out onto the

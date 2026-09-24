@@ -77,7 +77,7 @@ fn git_repo(tmp: &TempDir) -> PathBuf {
 /// The colocated workspace: [`git_repo`] converted in place, opened.
 fn colocated(tmp: &TempDir) -> (PathBuf, Repo) {
     let root = git_repo(tmp);
-    let repo = convert_colocated(&root).expect("convert");
+    let repo = convert_colocated(&root).result.expect("convert");
     (root, repo)
 }
 
@@ -209,7 +209,7 @@ fn a_git_checkout_outside_imports_head_and_nothing_else() {
     git(&["add", "other.txt"], &root);
     git(&["commit", "-q", "-m", "other"], &root);
     git(&["checkout", "-q", "main"], &root);
-    let mut repo = convert_colocated(&root).expect("convert");
+    let mut repo = convert_colocated(&root).result.expect("convert");
     let before = descriptions(&root).len();
 
     git(&["checkout", "-q", "other"], &root);
@@ -264,7 +264,7 @@ fn a_git_fetch_outside_imports_only_the_remote_refs() {
     );
     git(&["config", "user.email", "test@zanshin.test"], &root);
     git(&["config", "user.name", "Fixture"], &root);
-    let mut repo = convert_colocated(&root).expect("convert");
+    let mut repo = convert_colocated(&root).result.expect("convert");
     write(&upstream, "up.txt", "upstream\n");
     git(&["add", "up.txt"], &upstream);
     git(&["commit", "-q", "-m", "upstream"], &upstream);
@@ -512,7 +512,7 @@ fn a_deleted_git_branch_reports_the_rebased_descendants() {
     git(&["commit", "-q", "-m", "feature"], &root);
     let feature = git(&["rev-parse", "HEAD"], &root);
     git(&["checkout", "-q", "main"], &root);
-    let mut repo = convert_colocated(&root).expect("convert");
+    let mut repo = convert_colocated(&root).result.expect("convert");
     // A described (so non-discardable) jj-only child of `feature`, not `@` and unbookmarked.
     let feature_change = {
         let (_workspace, head) = load(&root);
@@ -621,7 +621,7 @@ fn converting_a_dirty_work_tree_snapshots_it() {
     write(&root, "untracked.txt", "untracked\n");
     let head = git(&["rev-parse", "HEAD"], &root);
 
-    let mut repo = convert_colocated(&root).expect("convert");
+    let mut repo = convert_colocated(&root).result.expect("convert");
 
     assert_eq!(
         descriptions(&root),
@@ -663,7 +663,7 @@ fn converting_a_clean_work_tree_reparents_at_onto_head() {
     let root = git_repo(&tmp);
     let head = git(&["rev-parse", "HEAD"], &root);
 
-    let _repo = convert_colocated(&root).expect("convert");
+    let _repo = convert_colocated(&root).result.expect("convert");
 
     assert_eq!(
         descriptions(&root),

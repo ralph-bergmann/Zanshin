@@ -70,6 +70,7 @@ fn init(backend: Option<Backend>, repo_config: &str) -> Fx {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let root = Repo::init(tmp.path(), backend)
+        .result
         .expect("init")
         .workspace_root()
         .to_owned();
@@ -111,7 +112,7 @@ fn colocated_fx() -> Fx {
     fs::write(tmp.path().join("README.md"), "hello").expect("write README");
     git(&["add", "."], tmp.path());
     git(&["commit", "-m", "initial"], tmp.path());
-    convert_colocated(tmp.path()).expect("convert");
+    convert_colocated(tmp.path()).result.expect("convert");
     let root = Repo::open(tmp.path()).expect("open").workspace_root().to_owned();
     Fx { _tmp: tmp, root }
 }

@@ -14,7 +14,7 @@ import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
-import '../ffi/warning.dart' show WarnedList;
+import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
 import '../ffi/workspace.dart' show WorkspaceEntry, WorkspaceRootResult;
 import 'isolate.dart';
 import 'responses.dart';
@@ -26,8 +26,9 @@ import 'responses.dart';
 /// contains only integers.
 ///
 /// Lifecycle:
-/// - Created by [ZanshinWorker.openRepo] / [ZanshinWorker.initRepo] /
-///   [ZanshinWorker.cloneRepo].
+/// - Created by [ZanshinWorker.openRepo], or — as a [CreatedRepoHandle] — by
+///   [ZanshinWorker.initRepo] / [ZanshinWorker.cloneRepo] /
+///   [ZanshinWorker.convert].
 /// - Closed explicitly via [close], or implicitly when GC runs the
 ///   Dart [Finalizer] (belt-and-suspenders).
 ///
@@ -973,4 +974,35 @@ final class RepoHandle {
     // intentionally (suppresses discarded_futures lint).
     worker.closeRepo(handleId).catchError((_) {}).ignore();
   });
+}
+
+/// A [RepoHandle] fresh from a creation — [ZanshinWorker.initRepo],
+/// [ZanshinWorker.cloneRepo] or [ZanshinWorker.convert] — carrying what the
+/// creating call reported (Story 9.33).
+///
+/// It IS a [RepoHandle]: every verb, [close] and the finalizer behave exactly as
+/// on one from [ZanshinWorker.openRepo], so a caller that types the result as a
+/// plain [RepoHandle] keeps working unchanged.
+///
+/// Only a SUCCESSFUL creation yields one: a refused creation throws
+/// `ZanshinFfiException` without its report until Story 9.35.
+final class CreatedRepoHandle extends RepoHandle {
+  /// Wrap `handleId` returned by the worker, with the creating call's report.
+  CreatedRepoHandle(super._worker, super._handleId, {required this.warnings, required this.precondition});
+
+  /// The creating call's warnings, in the jj CLI's print order; empty when
+  /// there were none — e.g. `jj.identity_missing` after a clone with an empty
+  /// identity, `jj.snapshot_files_refused` for a new file a conversion could
+  /// not snapshot.
+  final List<ZanshinWarning> warnings;
+
+  /// The conversion's implicit snapshot report — non-null only from
+  /// [ZanshinWorker.convert], whose `jj git init` flow snapshots the working
+  /// copy once; `null` from [ZanshinWorker.initRepo] and
+  /// [ZanshinWorker.cloneRepo].
+  ///
+  /// Not [lastPrecondition]: that one is the last VERB's report on this handle,
+  /// and a creation is not a verb on the handle — it stays `null` until the
+  /// first verb runs.
+  final Precondition? precondition;
 }

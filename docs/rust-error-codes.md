@@ -95,26 +95,29 @@ codes never appear in a `# Errors` rustdoc section.
 without the CLI's hints, paths rendered as the CLI renders them from the workspace root. Order is
 the CLI's print order — config-load warnings, the pre-verb snapshot and imports, the verb body, then
 `finish_transaction`. Config-load warnings (alias entries, alias redefinition, `immutable_heads()`
-diagnostics) are recorded ONCE per call, as the CLI loads them once per command.
+diagnostics) are recorded ONCE per call, as the CLI loads them once per command. Since Story 9.33
+the creation symbols (`zanshin_repo_init` / `_clone` / `_convert`, and `zanshin_jj::CreationOutcome`)
+carry them too, in their own CLI flow's order: a conversion's refs step comes BEFORE its config
+loads (`git/init.rs:251-254`) — see `crates/zanshin-jj/src/convert.rs`'s module doc.
 
 `cu` = `cli/src/cli_util.rs`; every CLI path is relative to `../jj/cli/src/` at tag `v0.44.0`.
 "Data" names the typed field that carries the same fact where one exists.
 
 | Code | CLI site / text | Emitted by | Data |
 |------|-----------------|------------|------|
-| `jj.identity_missing` | cu:2390-2401, 3 variants ("Name and email not configured." / "Name not configured." / "Email not configured." + the rest of the block) | every `finish_transaction` that commits: the mutation verbs and the pre-verb snapshot's own import finishes — NOT track/untrack (the CLI skips the finish there) and not a no-op result | — |
-| `jj.working_copy_immutable` | cu:2123-2127 "The working-copy commit is immutable; a new commit has been created on top of it." / cu:2338-2342 "… became immutable; …" | the pre-verb snapshot / every finish | `MutationResult.working_copy_change_id` |
-| `jj.jjconflict_files_present` | cu:2206-2210 | the colocated pre-verb snapshot (also when the tree did not change) | — |
-| `jj.git_head_update_failed` | cu:2689-2690 `{err}` + `Caused by:` chain | the colocated finish, the snapshot's immutable branch | — |
-| `jj.git_export_failed` | `git_util.rs:470` / `:482` + `  {name}@{remote}: {chain}` lines; one warning for bookmarks, one for tags | the colocated finish, snapshot, untrack, `git export` | `FinishFacts.export_failed_*`, `UntrackResult.failed_*`, `GitExportResult.failed_*` |
-| `jj.git_import_failed` | `git_util.rs:272` "Failed to import some Git refs:" + `  {ref}` lines | the pre-verb refs import, `git import`, `git fetch` | `GitImportResult.failed_ref_names` (fetch: none — deferred) |
-| `jj.snapshot_files_refused` | cu:3194 "Refused to snapshot some files:" + `  {path}: {size} ({n} bytes); the maximum size allowed is …` (too-large files only) | every snapshot the CLI prints stats for (pre-verb snapshot, `status`, `snapshot`, untrack; track: its merged stats) | `SnapshotStats.untracked` |
-| `jj.snapshot_paths_not_utf8` | cu:3215-3218 + `  {dir}: {name:?}` | as `jj.snapshot_files_refused`, except track | `SnapshotStats.invalid_utf8_paths` |
-| `jj.checkout_files_skipped` | cu:3303-3309 | the finish's working-copy update | — |
+| `jj.identity_missing` | cu:2390-2401, 3 variants ("Name and email not configured." / "Name not configured." / "Email not configured." + the rest of the block) | every `finish_transaction` that commits: the mutation verbs and the pre-verb snapshot's own import finishes — NOT track/untrack (the CLI skips the finish there) and not a no-op result. Story 9.33: `clone` ONCE, after its single `clone` operation (see § Not ported, `clone`'s identity count); `convert_import`'s `import git head` finish (`git/init.rs:268`); the conversion's snapshot finishes, as above. Never `init` and never a raw `tx.commit` (the conversion's `import git refs`, the colocated `import git head`) | — |
+| `jj.working_copy_immutable` | cu:2123-2127 "The working-copy commit is immutable; a new commit has been created on top of it." / cu:2338-2342 "… became immutable; …" | the pre-verb snapshot / every finish — Story 9.33: also the conversion's snapshot and `convert_import`'s head-import finish | `MutationResult.working_copy_change_id` |
+| `jj.jjconflict_files_present` | cu:2206-2210 | the colocated pre-verb snapshot (also when the tree did not change) and — Story 9.33 — the colocated conversion's snapshot | — |
+| `jj.git_head_update_failed` | cu:2689-2690 `{err}` + `Caused by:` chain | the colocated finish, the snapshot's immutable branch — Story 9.33: also inside the colocated conversion's snapshot | — |
+| `jj.git_export_failed` | `git_util.rs:470` / `:482` + `  {name}@{remote}: {chain}` lines; one warning for bookmarks, one for tags | the colocated finish, snapshot, untrack, `git export`; Story 9.33: the colocated conversion's `import git refs` step (`git/init.rs:311-312`) and its snapshot | `FinishFacts.export_failed_*`, `UntrackResult.failed_*`, `GitExportResult.failed_*` (the conversion's refs step: none) |
+| `jj.git_import_failed` | `git_util.rs:272` "Failed to import some Git refs:" + `  {ref}` lines | the pre-verb refs import, `git import`, `git fetch`; Story 9.33: `clone`'s fetch import (`git/clone.rs:456`), the conversion's `import git refs` step (`git/init.rs:304`, also when it writes no operation) and the colocated conversion's snapshot — so one unreadable ref warns TWICE on a colocated conversion, as in the CLI | `GitImportResult.failed_ref_names` (fetch, clone, the conversion's refs step: none) |
+| `jj.snapshot_files_refused` | cu:3194 "Refused to snapshot some files:" + `  {path}: {size} ({n} bytes); the maximum size allowed is …` (too-large files only) | every snapshot the CLI prints stats for (pre-verb snapshot, `status`, `snapshot`, untrack; track: its merged stats; Story 9.33: the conversion's snapshot, on success — cu:1340) | `SnapshotStats.untracked` (convert: `CreationOutcome.precondition`) |
+| `jj.snapshot_paths_not_utf8` | cu:3215-3218 + `  {dir}: {name:?}` | as `jj.snapshot_files_refused`, except track | `SnapshotStats.invalid_utf8_paths` (convert: `CreationOutcome.precondition`) |
+| `jj.checkout_files_skipped` | cu:3303-3309 | the finish's working-copy update; Story 9.33: `clone`'s checkout of the default branch (reachable only because Zanshin's `clone` accepts a non-empty target, which the CLI refuses — `git/clone.rs:188-192`, Story 9.20), `convert_import`'s head-import finish | — |
 | `jj.paths_unmatched` | cu:3340-3343 "No matching entries for paths: a, b" | untrack, restore, absorb, interdiff, file list, file show (several paths), file search — over the trees each CLI verb checks | `UntrackResult.unmatched_paths` |
-| `jj.config_alias_invalid` | `config.rs:1027-1030` "Failed to load `{table}.{decl}`: {reason}" | every `[revset-aliases]` / `[fileset-aliases]` load (so every pre-verb snapshot, plus every revset parse) | — |
-| `jj.config_alias_redefined` | `revset_util.rs:172-176` "Redefining `revset-aliases.{decl}` is not recommended; redefine `immutable_heads()` instead." | the revset-alias load | — |
-| `jj.revset_diagnostic` | `print_parse_diagnostics` under the CLI's context line: "In `revset-aliases.immutable_heads()`" / "In `revsets.short-prefixes`" / "In revset expression" | the immutable-set parse (once per call), the graph's short-prefixes parse, every verb's revset parse | — |
+| `jj.config_alias_invalid` | `config.rs:1027-1030` "Failed to load `{table}.{decl}`: {reason}" | every `[revset-aliases]` / `[fileset-aliases]` load (so every pre-verb snapshot, plus every revset parse; Story 9.33: the conversion's knob read, where `for_workable_repo` loads them — cu:936-966) | — |
+| `jj.config_alias_redefined` | `revset_util.rs:172-176` "Redefining `revset-aliases.{decl}` is not recommended; redefine `immutable_heads()` instead." | the revset-alias load (Story 9.33: also the conversion's) | — |
+| `jj.revset_diagnostic` | `print_parse_diagnostics` under the CLI's context line: "In `revset-aliases.immutable_heads()`" / "In `revsets.short-prefixes`" / "In revset expression" | the immutable-set parse (once per call; Story 9.33: also the conversion's), the graph's short-prefixes parse, every verb's revset parse | — |
 | `jj.short_prefixes_failed` | `commit_templater.rs:2210` via `print_parse_diagnostics` (`cli_util.rs:419` / `:1165`): "In template expression" + "Failed to load short-prefixes index" + source chain. Deviation: the CLI's template-position rendering (the `-->` span over the template text) is absent — Zanshin renders no template | `graph_slice` | — |
 | `jj.remote_url_duplicate` | `git/remote/add.rs:104-107` "Remote {name} already uses the same URL." | `git remote add` | — |
 | `jj.bookmark_target_empty` | `bookmark/create.rs:84-86` "Target revision is empty." | `bookmark create` | — |
@@ -125,6 +128,7 @@ diagnostics) are recorded ONCE per call, as the CLI loads them once per command.
 | `jj.config_working_copy_author` | `config/set.rs:121-126` (3 lines) | `config set` of `user.name` / `user.email` | `ConfigSetResult.working_copy_author` |
 | `jj.config_gc_delete_failed` | `config/gc.rs:80-84` "Failed to delete {dir}: {err}", one per directory | `config gc` delete half | `ConfigGcResult.failed` |
 | `jj.config_nothing_listed` | `config/list.rs:118-122` "No matching config key for: {name}" / "No config to list." | `config list` | the empty entry list |
+| `jj.clone_cleanup_failed` | `git/clone.rs:277-282` "Failed to clean up {path}: {err}" — the canonical target, then the I/O error | Story 9.33: a failed `clone` whose rollback cannot remove the `.jj/` it created (a `.jj/` already gone is no failure, as in the CLI) — always the LAST warning, on the error envelope | — |
 
 `FileContents.skipped` reasons the CLI never warns about (it panics: "is absent", "is a directory")
 stay data only.
@@ -146,7 +150,13 @@ These CLI warnings have no code, each for the reason given (and the story that o
 - **`git fetch`'s "Ignored refspec", unmatched remotes and `--branch`** — Story 9.30 (fetch rework); the failed-ref NAMES of a fetch are a warning only, with no payload (deferred).
 - **`bookmark create` auto-track** — Stories 9.11 / 9.30.
 - **Push stats** — Story 9.20.
-- **Creation verbs** (`open` / `init` / `clone` / `convert`) — Story 9.33; until then `convert`'s snapshot writes into a throwaway collector.
+- **Start-up environment on `clone` / `init`** (`for_workable_repo`, cu:936-966 — twice on `clone`): the alias-load, `immutable_heads()`, short-prefixes and template diagnostics, and `clone`'s became-immutable check, which needs that parsed set. They come with the start-up-environment port Story 9.32 deferred; for `clone` that is Story 9.20's parity. (The conversions DO read the knobs, so their alias and `immutable_heads()` warnings are ported.)
+- **`clone`'s identity count** — the CLI warns `jj.identity_missing` once per finish: `add git remote` always, the fetch when it changed something, the checkout when there is a working branch — up to three times. Zanshin writes ONE `clone` operation and so warns once; it converges when Story 9.20 splits the operation.
+- **"No matching branches found on remote"** (`git/clone.rs:436-443`) — Zanshin's clone takes no `--branch` (Stories 9.20 / 9.30).
+- **`In remotes.<r>.*` / `In name pattern` diagnostics** of the remote settings `clone` and the conversion's refs step read (`parse_remote_fetch_*`, `load_git_import_options`) — unreachable at jj-lib 0.44, which emits none.
+- **Colocated `clone` / `init` export and HEAD warnings** — Zanshin's `clone` and `init` are never colocated (Story 9.20).
+- **Secure-config migration messages** on a freshly created `.jj/` — unreachable there (Story 9.37).
+- **`open`** — not a CLI command; its start-up warnings belong to the same start-up-environment deferral. `zanshin_repo_open` carries neither `precondition` nor `warnings`.
 - **cu:2277-2281 unresolved conflicts**, **cu:2437-2442 "workspace no longer exists"** (Zanshin errors after committing instead — a recorded divergence) and **`status`'s conflict lines** — status formatter output, not `ui.warning_*`.
 - **Pager / editor / argv / alias-command / `debug` warnings** — terminal UX the GUI replaces.
 - **Stale working copy auto-update** — Story 9.23.

@@ -286,7 +286,7 @@ fn tags_are_sorted_by_name_then_kind() {
 fn tags_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     // Corrupt AFTER open: every listing re-resolves to head per call (ADR-0002).
@@ -364,7 +364,7 @@ fn heads_equal_the_view_oracle_and_are_sorted_by_hex() {
 fn heads_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
@@ -436,7 +436,7 @@ fn working_copies_multi_workspace_are_in_btreemap_order() {
 fn working_copies_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).unwrap();
+    Repo::init(tmp.path(), None).result.unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());

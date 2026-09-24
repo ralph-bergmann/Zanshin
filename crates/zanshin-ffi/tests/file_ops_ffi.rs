@@ -167,6 +167,7 @@ fn init_repo(repo_config: &str) -> PathBuf {
     pin_env();
     let tmp = TempDir::new().expect("tempdir").keep();
     let root = Repo::init(&tmp, Some(Backend::Git))
+        .result
         .expect("init")
         .workspace_root()
         .to_owned();

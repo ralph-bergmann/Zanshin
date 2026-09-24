@@ -11,16 +11,20 @@ sealed class WorkerResponse {
   const WorkerResponse();
 }
 
-/// Signals that an open/init/clone command succeeded.
+/// Signals that an open/init/clone/convert command succeeded.
 ///
 /// The repository is now tracked in the worker's handle table under [handleId].
 /// Main references it via `handleId` (wrapped in a `RepoHandle`) — the raw `u64`
 /// pointer is consumed in the worker and never exposed on the main side.
 final class HandleResult extends WorkerResponse {
-  const HandleResult(this.handleId);
+  const HandleResult(this.handleId, this.bytes);
 
   /// Opaque dense id in the worker's `Map<int, int>` handle table.
   final int handleId;
+
+  /// The ok `Envelope` bytes the handle came in — the creating call's report
+  /// (`warnings`, and `precondition` for convert; Story 9.33) rides them.
+  final Uint8List bytes;
 }
 
 /// Carries raw FlatBuffers `Envelope` bytes.
