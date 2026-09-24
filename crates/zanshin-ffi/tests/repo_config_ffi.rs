@@ -134,12 +134,22 @@ fn the_config_stack_reaches_the_ffi_envelopes() {
     let bytes = unsafe { read_and_free(zanshin_new_change(handle, req.as_ptr(), req.len())) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "new_change must succeed with the empty identity");
-    let missing = env
-        .data_as_mutation_result()
-        .expect("MutationResult")
-        .identity_missing()
-        .expect("a committed operation with no identity carries identity_missing");
-    assert!(missing.name() && missing.email());
+    // Story 9.32: the fact rides `Envelope.warnings` as its registered code.
+    let warnings: Vec<(String, String)> = env
+        .warnings()
+        .expect("a committed operation with no identity warns")
+        .iter()
+        .map(|w| (w.code().unwrap_or("").to_owned(), w.message().unwrap_or("").to_owned()))
+        .collect();
+    assert_eq!(
+        warnings,
+        [(
+            zanshin_ffi::envelope::JJ_IDENTITY_MISSING.to_owned(),
+            "Name and email not configured. Until configured, your commits will be created with the empty \
+             identity, and can't be pushed to remotes."
+                .to_owned()
+        )]
+    );
 
     // SAFETY: `handle` is live and closed exactly once.
     let close = unsafe { read_and_free(zanshin_repo_close(handle)) };

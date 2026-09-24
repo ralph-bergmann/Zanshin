@@ -20,7 +20,8 @@ use jj_lib::repo::Repo as _;
 use jj_lib::revset::{RevsetExtensions, UserRevsetExpression};
 
 use crate::commit_meta::LogMetaIndex;
-use crate::revset::{evaluate_revset, immutable_expression, parse_revset_with, revset_config};
+use crate::revset::{evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, revset_config};
+use crate::warning::{self, WarningKind, Warnings};
 use crate::{CommitId, CommitMeta, Repo, RevsetError};
 
 /// The jj CLI's default `revsets.log-graph-prioritize` (`cli/src/config/revsets.toml` at
@@ -107,17 +108,22 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMet
 /// before this point). Everything that can only fail while LOADING the disambiguation
 /// index — symbol resolution included — is a warning: the CLI keeps rendering with
 /// full-index prefixes rather than failing the command
-/// (`cli/src/commit_templater.rs:2231-2243`, pinned by jj's own
-/// `cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.42.0, where
-/// `revsets.short-prefixes = 'missing'` warns and still prints the whole log).
-fn short_prefix_index<'c>(ctx: &'c IdPrefixContext, repo_dyn: &dyn jj_lib::repo::Repo) -> IdPrefixIndex<'c> {
+/// (`cli/src/commit_templater.rs:2203-2216` @ v0.44.0, pinned by jj's own
+/// `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`, where
+/// `revsets.short-prefixes = 'missing'` warns and still prints the whole log). The warning is
+/// `jj.short_prefixes_failed`: the CLI's "Failed to load short-prefixes index" and the
+/// failure's source chain, without the template-position rendering (Story 9.32).
+fn short_prefix_index<'c>(
+    ctx: &'c IdPrefixContext,
+    repo_dyn: &dyn jj_lib::repo::Repo,
+    sink: &mut Warnings,
+) -> IdPrefixIndex<'c> {
     match ctx.populate(repo_dyn) {
         Ok(index) => index,
         Err(e) => {
-            tracing::warn!(
-                error = %e,
-                "short-prefixes disambiguation index unavailable; falling back to full-index prefixes"
-            );
+            let mut lines = vec!["Failed to load short-prefixes index".to_owned()];
+            lines.extend(warning::error_chain_lines(&e));
+            sink.push(WarningKind::ShortPrefixesFailed, lines.join("\n"));
             IdPrefixIndex::empty()
         }
     }
@@ -140,7 +146,10 @@ fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext 
 /// carrying its `jj log`-parity metadata.
 ///
 /// Pipeline (jj CLI v0.42.0 `cli/src/commands/log.rs`): parse every expression against ONE
-/// builtin-alias map, intersect `prioritize` with `revset` as user expressions BEFORE
+/// builtin-alias map — `short_prefixes` first, where the CLI parses `revsets.short-prefixes`
+/// (its command environment, before the command's own revsets), each parse's diagnostics
+/// warning under the CLI's context line (Story 9.32) — intersect `prioritize` with `revset` as
+/// user expressions BEFORE
 /// resolution (an out-of-set prioritised id would make `TopoGroupedGraph` panic), evaluate
 /// against the head-resolved repo, build the per-call metadata indexes, then
 /// `TopoGroupedGraph::new(set.stream_graph(), |id| id)` with `prioritize_branch` for every
@@ -158,6 +167,7 @@ fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext 
 ///   per-item stream failure.
 pub(crate) fn walk_graph(
     repo: &Repo,
+    sink: &mut Warnings,
     revset: &str,
     prioritize: &str,
     short_prefixes: &str,
@@ -167,13 +177,20 @@ pub(crate) fn walk_graph(
     //    everything against the ONE alias map it feeds. Parsing needs no loaded operation,
     //    so a syntax error costs no `load_at_head` I/O.
     let config = crate::config::load(repo)?;
-    let parse_config = revset_config(&config)?;
-    let log = parse_revset_with(repo, &parse_config, revset)?;
-    let prio = parse_revset_with(repo, &parse_config, prioritize)?.intersection(&log);
+    let parse_config = revset_config(&config, sink)?;
+    let immutable = immutable_expression(repo.workspace(), &parse_config, sink)?;
     let short = (!short_prefixes.is_empty())
-        .then(|| parse_revset_with(repo, &parse_config, short_prefixes))
+        .then(|| {
+            parse_diagnosed(
+                repo.workspace(),
+                &parse_config,
+                (short_prefixes, "In `revsets.short-prefixes`"),
+                sink,
+            )
+        })
         .transpose()?;
-    let immutable = immutable_expression(repo.workspace(), &parse_config)?;
+    let log = parse_revset_with(repo, &parse_config, revset, sink)?;
+    let prio = parse_revset_with(repo, &parse_config, prioritize, sink)?.intersection(&log);
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
@@ -192,7 +209,7 @@ pub(crate) fn walk_graph(
     let meta = LogMetaIndex::new(
         repo_dyn,
         repo.workspace().workspace_name(),
-        short_prefix_index(&prefix_ctx, repo_dyn),
+        short_prefix_index(&prefix_ctx, repo_dyn, sink),
         immutable_set.containing_fn(),
     );
 

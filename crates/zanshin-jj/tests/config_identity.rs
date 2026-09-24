@@ -31,7 +31,7 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture, FixtureHandle};
 use zanshin_jj::{
-    convert_colocated, convert_import, resolve_revset, Backend, ChangeId, IdentityMissing, MutateError, Repo, RepoError,
+    convert_colocated, convert_import, resolve_revset, Backend, ChangeId, MutateError, Repo, RepoError, WarningKind,
 };
 
 /// Sets (or, for `None`, removes) one process environment variable.
@@ -78,10 +78,28 @@ fn head_facts(root: &Path) -> ((String, String), (String, String)) {
 }
 
 /// Creates a NEW change on `@` — its author is exactly the settings' signature — and returns
-/// what the call reported about the identity.
-fn new_change_on_wc(repo: &mut Repo) -> Option<IdentityMissing> {
+/// what the call warned about the identity (Story 9.32).
+fn new_change_on_wc(repo: &mut Repo) -> Vec<String> {
     let wc: Vec<ChangeId> = resolve_revset(repo, "@").expect("@ resolves");
-    repo.new_change(&wc).expect("new_change").identity_missing
+    repo.new_change(&wc).expect("new_change");
+    identity_warnings(repo)
+}
+
+/// The messages of the `jj.identity_missing` warnings the last verb collected.
+fn identity_warnings(repo: &mut Repo) -> Vec<String> {
+    repo.take_warnings()
+        .into_iter()
+        .filter(|w| w.kind == WarningKind::IdentityMissing)
+        .map(|w| w.message)
+        .collect()
+}
+
+/// The CLI's identity warning for `not_configured` (`cli_util.rs:2397-2401` @ v0.44.0).
+fn identity_message(not_configured: &str) -> String {
+    format!(
+        "{not_configured} Until configured, your commits will be created with the empty identity, and can't be \
+         pushed to remotes."
+    )
 }
 
 fn author(root: &Path) -> (String, String) {
@@ -239,9 +257,8 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
 fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHandle, Repo) {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).expect("open with the user identity");
-    assert_eq!(
-        new_change_on_wc(&mut repo),
-        None,
+    assert!(
+        new_change_on_wc(&mut repo).is_empty(),
         "a configured identity reports nothing"
     );
     let (commit_author, (op_user, op_host)) = head_facts(&fx.path);
@@ -275,43 +292,46 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
     new_change_on_wc(&mut repo);
     assert_eq!(author(&fx.path), pair("Cy", "cy@example.com"));
 
-    // No identity anywhere: the commit is created with it, and the call says so.
+    // No identity anywhere: the commit is created with it, and the call warns — the CLI's three
+    // variants (Story 9.32).
     set_jj_config(&config_file(tmp, "empty.toml", ""));
+    let both_missing = vec![identity_message("Name and email not configured.")];
     assert_eq!(
         new_change_on_wc(&mut repo),
-        Some(IdentityMissing {
-            name: true,
-            email: true
-        }),
-        "a committed operation with the empty identity reports both fields"
+        both_missing,
+        "a committed operation with the empty identity warns about both fields"
     );
     assert_eq!(author(&fx.path), pair("", ""), "never a placeholder");
+    set_jj_config(&config_file(
+        tmp,
+        "email-only.toml",
+        "[user]\nemail = \"e@example.com\"\n",
+    ));
+    assert_eq!(new_change_on_wc(&mut repo), [identity_message("Name not configured.")]);
+    set_jj_config(&config_file(tmp, "name-only.toml", "[user]\nname = \"N\"\n"));
+    assert_eq!(new_change_on_wc(&mut repo), [identity_message("Email not configured.")]);
+    set_jj_config(&config_file(tmp, "empty.toml", ""));
     // The shared committed path (`finish_or_no_op_at`: bookmark + git verbs) and `describe`.
-    let both_missing = Some(IdentityMissing {
-        name: true,
-        email: true,
-    });
-    let created = repo
-        .bookmark_create(&["empty-identity".to_owned()], None)
+    repo.bookmark_create(&["empty-identity".to_owned()], None)
         .expect("bookmark_create commits");
-    assert_eq!(created.identity_missing, both_missing, "bookmark_create");
+    assert_eq!(identity_warnings(&mut repo), both_missing, "bookmark_create");
     let wc = resolve_revset(&repo, "@").expect("@ resolves").swap_remove(0);
-    let described = repo.describe(wc, "described anonymously").expect("describe commits");
-    assert_eq!(described.identity_missing, both_missing, "describe");
-    let no_op = repo
-        .bookmark_delete(&["exact:no-such-bookmark".to_owned()])
+    repo.describe(wc, "described anonymously").expect("describe commits");
+    assert_eq!(identity_warnings(&mut repo), both_missing, "describe");
+    repo.bookmark_delete(&["exact:no-such-bookmark".to_owned()])
         .expect("matching nothing is a success");
-    assert_eq!(
-        no_op.identity_missing, None,
-        "a call that commits nothing reports nothing"
+    assert!(
+        identity_warnings(&mut repo).is_empty(),
+        "a call that commits nothing never reaches the finish, so it never warns"
     );
-    // `file track` / `file untrack` ALWAYS commit, yet report nothing: the CLI commits their raw
-    // transaction and never reaches `finish_transaction`, where its warning lives (Story 9.22).
+    // `file track` / `file untrack` ALWAYS commit, yet never warn about it: the CLI commits their
+    // raw transaction and never reaches `finish_transaction`, where its warning lives (Story 9.22).
     let nothing = ["no-such-path".to_owned()];
-    let tracked = repo.file_track(&nothing, false).expect("file_track commits");
-    assert_eq!(tracked.mutation.identity_missing, None, "file_track");
-    let untracked = repo.file_untrack(&nothing).expect("file_untrack commits");
-    assert_eq!(untracked.mutation.identity_missing, None, "file_untrack");
+    repo.file_track(&nothing, false).expect("file_track commits");
+    assert!(identity_warnings(&mut repo).is_empty(), "file_track");
+    repo.file_untrack(&nothing).expect("file_untrack commits");
+    assert!(identity_warnings(&mut repo).is_empty(), "file_untrack");
+    the_precondition_finish_warns_about_the_identity_too(tmp);
 
     // JJ_USER / JJ_EMAIL (EnvOverrides) beat every file.
     set_jj_config(user_file);
@@ -322,6 +342,44 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
     set_env("JJ_USER", None);
     set_env("JJ_EMAIL", None);
     (fx, repo)
+}
+
+/// The CLI's identity warning lives in `finish_transaction`, so the pre-verb snapshot's own
+/// finishes warn too: a Git ref moved outside a COLOCATED workspace makes the precondition's
+/// `import git refs` commit — one warning — before the verb's own finish warns again.
+fn the_precondition_finish_warns_about_the_identity_too(tmp: &Path) {
+    let dir = tmp.join("colocated-identity");
+    fs::create_dir_all(&dir).unwrap();
+    let git = |args: &[&str]| {
+        let status = Command::new("git")
+            .args(["-c", "user.name=Git", "-c", "user.email=git@example.com"])
+            .args(args)
+            .current_dir(&dir)
+            .status()
+            .expect("git runs");
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "--initial-branch=main"]);
+    fs::write(dir.join("README.md"), "hello").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-m", "initial"]);
+    convert_colocated(&dir).expect("convert");
+    let mut repo = Repo::open(&dir).expect("open");
+    repo.status().expect("settle the colocated state");
+    let _ = repo.take_warnings();
+
+    let both = identity_message("Name and email not configured.");
+    assert_eq!(
+        new_change_on_wc(&mut repo),
+        std::slice::from_ref(&both),
+        "no ref moved: the verb's finish only"
+    );
+    git(&["branch", "moved-outside"]);
+    assert_eq!(
+        new_change_on_wc(&mut repo),
+        [both.clone(), both],
+        "`import git refs` finished first, then the verb"
+    );
 }
 
 /// A repo-level override applies to THAT repo only; a secondary workspace reads the repo

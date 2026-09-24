@@ -10,6 +10,7 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'file_ops.dart' show SnapshotStats, decodeSnapshotStatsInternal;
 import 'git.dart' show GitExportFailure, GitImportResult, decodeExportFailuresInternal, decodeGitImportResultInternal;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.26's implicit pre-verb snapshot: the
 // `zanshin_snapshot` adapter (the CLI's `jj util snapshot`), the `Precondition` /
@@ -25,24 +26,14 @@ Uint8List zanshinSnapshot(int rawHandle) => readToken(zanshin_snapshot(rawHandle
 
 // ── Dart models ──────────────────────────────────────────────────────────────
 
-/// Facts from the colocated Git bookkeeping the jj CLI runs when it finishes a
-/// transaction (mirrors `zanshin_jj::FinishFacts`) — warnings there, never
-/// errors.
+/// The refs the colocated Git export could not write when the jj CLI finished a
+/// transaction (mirrors `zanshin_jj::FinishFacts`) — a warning there, never an
+/// error; also reported as `jj.git_export_failed` warnings.
 final class FinishFacts {
   const FinishFacts({
-    required this.workingCopyBecameImmutable,
-    required this.gitHeadUpdateFailed,
     required this.exportFailedBookmarks,
     required this.exportFailedTags,
   });
-
-  /// The transaction left `@` inside the immutable set, so a new, empty `@` was
-  /// created on top of it (the CLI's "The working-copy commit became immutable").
-  final bool workingCopyBecameImmutable;
-
-  /// Git HEAD could not be moved to `@`'s parent (e.g. a concurrent
-  /// `git checkout`); the next snapshot imports the actual HEAD.
-  final bool gitHeadUpdateFailed;
 
   /// Bookmarks the colocated export could not write to Git.
   final List<GitExportFailure> exportFailedBookmarks;
@@ -57,6 +48,8 @@ final class FinishFacts {
 /// Every envelope of a snapshotting verb carries one, on success AND on error; on
 /// an error it is PARTIAL — every field up to the failing step is filled, the
 /// rest keep their defaults. `RepoHandle.lastPrecondition` holds the latest.
+/// The CLI's pure notes (`@` was immutable, `.jjconflict` files present, …) are
+/// not fields: they are the call's warnings (Story 9.32).
 final class Precondition {
   const Precondition({
     required this.wasSnapshotTaken,
@@ -65,11 +58,10 @@ final class Precondition {
     required this.gitHeadReset,
     required this.gitHeadRebased,
     required this.snapshotRebased,
-    required this.workingCopyImmutableNewCommit,
     required this.gitRefs,
     required this.gitRefsRebased,
-    required this.jjconflictFilesPresent,
     required this.finish,
+    this.warnings = const [],
   });
 
   /// Whether the head operation changed during the precondition — an operation
@@ -92,10 +84,6 @@ final class Precondition {
   /// Descendants rebased onto the snapshotted `@`; saturates at 4294967295.
   final int snapshotRebased;
 
-  /// The snapshot found `@` immutable and created a new `@` on top of it instead
-  /// of rewriting it.
-  final bool workingCopyImmutableNewCommit;
-
   /// The `import git refs` step's outcome. Non-null exactly when the step RAN
   /// (colocated workspaces), even when it changed nothing.
   final GitImportResult? gitRefs;
@@ -104,13 +92,13 @@ final class Precondition {
   /// 4294967295.
   final int gitRefsRebased;
 
-  /// The snapshotted tree has a top-level entry named `.jjconflict…` — the CLI's
-  /// colocated warning. The snapshot proceeds regardless.
-  final bool jjconflictFilesPresent;
-
-  /// The Git HEAD resets and ref exports that ran inside the precondition;
-  /// `null` when every fact is at its default.
+  /// The ref exports that failed inside the precondition; `null` when none did.
   final FinishFacts? finish;
+
+  /// The call's warnings (Story 9.32) when this report is the result of
+  /// `RepoHandle.snapshot`, in the CLI's print order; empty when there were
+  /// none, and always empty on the report `RepoHandle.lastPrecondition` holds.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoders ─────────────────────────────────────────────────────────────────
@@ -119,14 +107,14 @@ final class Precondition {
 FinishFacts? decodeFinishFactsInternal(fbs.FinishFacts? f) => f == null
     ? null
     : FinishFacts(
-        workingCopyBecameImmutable: f.workingCopyBecameImmutable,
-        gitHeadUpdateFailed: f.gitHeadUpdateFailed,
         exportFailedBookmarks: decodeExportFailuresInternal(f.exportFailedBookmarks),
         exportFailedTags: decodeExportFailuresInternal(f.exportFailedTags),
       );
 
 /// Rebuild a [Precondition]; an ABSENT table is `null` (null for absence).
-Precondition? decodePreconditionInternal(fbs.Precondition? p) => p == null
+/// [warnings] are the enclosing envelope's — only `zanshin_snapshot`'s decode
+/// passes any.
+Precondition? decodePreconditionInternal(fbs.Precondition? p, {List<ZanshinWarning> warnings = const []}) => p == null
     ? null
     : Precondition(
         wasSnapshotTaken: p.wasSnapshotTaken,
@@ -135,14 +123,13 @@ Precondition? decodePreconditionInternal(fbs.Precondition? p) => p == null
         gitHeadReset: p.gitHeadReset,
         gitHeadRebased: p.gitHeadRebased,
         snapshotRebased: p.snapshotRebased,
-        workingCopyImmutableNewCommit: p.workingCopyImmutableNewCommit,
         gitRefs: switch (p.gitRefs) {
           final fbs.GitImportResult r => decodeGitImportResultInternal(r),
           null => null,
         },
         gitRefsRebased: p.gitRefsRebased,
-        jjconflictFilesPresent: p.jjconflictFilesPresent,
         finish: decodeFinishFactsInternal(p.finish),
+        warnings: warnings,
       );
 
 /// The `Envelope.precondition` of ANY envelope — ok or error — or `null` when
@@ -173,6 +160,6 @@ Precondition decodeSnapshotEnvelopeInternal(Uint8List bytes) {
   }
   // Rust always writes the report on success, so its absence is a corrupt
   // buffer — refused rather than guessed.
-  return decodePreconditionInternal(env.precondition) ??
+  return decodePreconditionInternal(env.precondition, warnings: decodeEnvelopeWarningsInternal(env)) ??
       (throw const ZanshinFfiException('ffi.unknown', 'snapshot envelope carries no precondition'));
 }

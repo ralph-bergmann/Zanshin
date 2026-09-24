@@ -363,11 +363,17 @@ fn file_show_skips_a_symlink_with_the_clis_own_wording() {
     let out = repo
         .file_show(Some(t.change), &["link".to_owned()])
         .expect("a symlink is skipped, not a refusal");
+    let warnings = repo.take_warnings();
 
     assert!(out.files.is_empty(), "a symlink yields no content");
     assert_eq!(out.skipped.len(), 1);
     assert_eq!(out.skipped[0].path, "link");
     assert_eq!(out.skipped[0].reason, "Path 'link' exists but is not a file.");
+    // Story 9.32: the same sentence as the CLI's warning; the single-path fast path prints no
+    // unmatched-paths warning.
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::PathNotAFile);
+    assert_eq!(warnings[0].message, out.skipped[0].reason);
 }
 
 #[test]

@@ -87,6 +87,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::op_support::start_repo_transaction;
 use crate::repo::creation_error;
+use crate::warning::Warnings;
 use crate::wc_ops::is_colocated_git_workspace;
 use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 
@@ -334,26 +335,26 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 
 /// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1331-1342` @
 /// v0.44.0): the implicit snapshot every verb runs first ([`crate::snapshot::snapshot_impl`]),
-/// under the Git import/export lock, on the repo the refs step left behind. Its report is not
-/// surfaced — the conversion verbs return a [`Repo`], and the CLI only prints it.
+/// under the Git import/export lock, on the repo the refs step left behind. Its report and its
+/// warnings are not surfaced — the conversion verbs return a [`Repo`], and the CLI only prints
+/// them; `sink` is the conversion's throwaway collector (the creation verbs' warnings are
+/// Story 9.33's).
 fn maybe_snapshot(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
-    config: &StackedConfig,
-    knobs: &snapshot::Knobs,
+    (config, knobs): (&StackedConfig, &snapshot::Knobs),
     colocated: bool,
+    sink: &mut Warnings,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
     let lock = snapshot::lock_git_import_export(workspace, colocated).map_err(convert_failed)?;
-    let (repo, _stats) = snapshot::snapshot_impl(
-        workspace,
-        repo,
+    let ctx = snapshot::StepCtx {
         config,
         knobs,
         colocated,
-        &lock,
-        &mut crate::Precondition::default(),
-    )
-    .map_err(precondition_error)?;
+        lock: &lock,
+    };
+    let (repo, _stats) = snapshot::snapshot_impl(workspace, repo, &ctx, &mut crate::Precondition::default(), sink)
+        .map_err(precondition_error)?;
     Ok(repo)
 }
 
@@ -477,17 +478,20 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path) -> Result<(), RepoEr
 /// gitdir POINTER file) reaches `convert_colocated` too, and `workspace_path == git_repo_path`
 /// (D5) is a colocated request `convert_import` honours.
 fn external_arm(workspace: &mut Workspace, repo: &Arc<ReadonlyRepo>) -> Result<(), RepoError> {
+    // The conversion's warnings are collected and dropped: the creation verbs' warnings (and
+    // their return shape) are Story 9.33's.
+    let mut sink = Warnings::default();
     let colocated = is_colocated_git_workspace(workspace);
     let config = config::load_for_workspace(workspace)?;
     let repo = init_git_refs(repo, workspace.workspace_name(), colocated, &config)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let knobs = snapshot::Knobs::read(workspace, &config).map_err(precondition_error)?;
-    let repo = maybe_snapshot(workspace, repo, &config, &knobs, colocated)?;
+    let knobs = snapshot::Knobs::read(workspace, &config, &mut sink).map_err(precondition_error)?;
+    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, &mut sink)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if colocated {
         return Ok(());
     }
-    import_head_into_destination(workspace, &repo, &knobs)
+    import_head_into_destination(workspace, &repo, &knobs, &mut sink)
 }
 
 /// The CLI's non-colocated head import (`init.rs:260-270`): import HEAD, check `@` out onto the
@@ -499,6 +503,7 @@ fn import_head_into_destination(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
     knobs: &snapshot::Knobs,
+    sink: &mut Warnings,
 ) -> Result<(), RepoError> {
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(repo, &workspace_name);
@@ -518,7 +523,7 @@ fn import_head_into_destination(
         colocated: false,
         _lock: &lock,
     };
-    mutate::finish_transaction(workspace, tx, "import git head", &ctx).map_err(convert_failed)?;
+    mutate::finish_transaction(workspace, tx, "import git head", &ctx, sink).map_err(convert_failed)?;
     Ok(())
 }
 

@@ -42,41 +42,41 @@ use crate::watcher::{Watcher, WatcherError, WatcherEvent};
 fn map_repo_err(e: RepoError) -> FfiErrorObj {
     match e {
         RepoError::PathNotFound { path } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_PATH_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotARepo { path } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REPO_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::InitFailed { reason } | RepoError::CloneFailed { reason } | RepoError::Backend(reason) => {
             FfiErrorObj {
-                precondition: None,
+                report: None,
                 code: JJ_JJ_LIB_ERROR.to_owned(),
                 context: Some(reason),
             }
         }
         RepoError::ConvertFailed { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CONVERT_FAILED.to_owned(),
             context: Some(reason),
         },
         RepoError::AlreadyJjRepo { path } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_ALREADY_JJ_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotAGitRepo { path } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
         // Story 9.27: the effective config stack the workspace is opened/created with could
         // not be read — the same `jj.config_error` every read verb already reports.
         RepoError::Config { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -113,94 +113,94 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     match e {
         MutateError::Precondition(e) => map_precondition_err(e),
         MutateError::ChangeNotFound { id } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
         },
         MutateError::InvalidInput { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some(reason),
         },
         MutateError::Immutable { commit_id } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_IMMUTABLE.to_owned(),
             context: Some(commit_id),
         },
         MutateError::Config { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::NothingToUndo => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NOTHING_TO_UNDO.to_owned(),
             context: None,
         },
         MutateError::RemoteNotFound { name } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REMOTE_NOT_FOUND.to_owned(),
             context: Some(name),
         },
         MutateError::NetworkError { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::RemoteExists { name } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REMOTE_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::RemoteNonstandardConfig { name } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REMOTE_NONSTANDARD_CONFIG.to_owned(),
             context: Some(name),
         },
         // No `context`: this variant names no path and no remote — the fault is the whole
         // workspace's backend, which the code already says.
         MutateError::NotAGitRepo => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: None,
         },
         MutateError::RevsetParseError { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REVSET_PARSE_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::RevsetResolutionError { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
             context: Some(reason),
         },
         MutateError::BookmarkExists { name } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_BOOKMARK_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::BookmarkTrackedRemoteExists { name } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_BOOKMARK_TRACKED_REMOTE_EXISTS.to_owned(),
             context: Some(name),
         },
         MutateError::NoWorkingCopy => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NO_WORKING_COPY.to_owned(),
             context: None,
         },
         MutateError::ConcurrentWorkingCopy => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
             context: None,
         },
         MutateError::PathsNotIgnored { paths } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_PATH_NOT_IGNORED.to_owned(),
             context: Some(paths.join("\n")),
         },
         MutateError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -323,7 +323,7 @@ fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned
 
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: JJ_DETECT_FAILED.to_owned(),
         context: Some(e.to_string()),
     }
@@ -354,7 +354,12 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
             suggested_kind,
         },
     );
-    finish_envelope(b, fbs::Payload::RepoDetect, Some(detect.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::RepoDetect,
+        Some(detect.as_union_value()),
+        &crate::envelope::CallReport::default(),
+    )
 }
 
 // ── RepoSession: warm loader + watcher owner (ADR-0002:34) ───────────────────
@@ -403,7 +408,7 @@ impl RepoSession {
 
 fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: WATCHER_IO_ERROR.to_owned(),
         context: Some(e.to_string()),
     }
@@ -577,7 +582,7 @@ pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) ->
             1 => Some(Backend::Git),
             _ => {
                 return Err(FfiErrorObj {
-                    precondition: None,
+                    report: None,
                     code: FFI_INVALID_ARGUMENT.to_owned(),
                     context: Some(format!("backend discriminant {backend} is not 0 (native) or 1 (git)")),
                 })
@@ -654,7 +659,7 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         if handle == 0 {
             return Err(FfiErrorObj {
-                precondition: None,
+                report: None,
                 code: FFI_INVALID_HANDLE.to_owned(),
                 context: None,
             });

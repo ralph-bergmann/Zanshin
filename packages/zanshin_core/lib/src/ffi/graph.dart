@@ -10,6 +10,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of the GraphSlice wire contract: the
 // `zanshin_graph_slice` FFI adapter (Story 4.6), the models, and the decoder.
@@ -334,13 +335,17 @@ final class GraphRow {
 
 /// A slice of the lane-assigned commit graph, in stream (`jj log`) order.
 final class GraphSlice {
-  const GraphSlice({required this.rows, required this.totalRows});
+  const GraphSlice({required this.rows, required this.totalRows, this.warnings = const []});
 
   /// Rows in stream order.
   final List<GraphRow> rows;
 
   /// Total row count; equals `rows.length` under WIP return-all semantics.
   final int totalRows;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -380,6 +385,7 @@ GraphSlice _decodeGraphSliceEnvelope(Uint8List bytes) {
   return GraphSlice(
     rows: payload.rows?.map(_mapRow).toList() ?? const [],
     totalRows: payload.totalRows,
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

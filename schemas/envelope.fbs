@@ -820,34 +820,21 @@ table MutationResult {
   new_change_ids: [string];
   abandoned_change_ids: [string];
   working_copy_change_id: string;
-  /// Which identity fields were empty when this call committed an operation — the jj CLI's
-  /// "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
-  /// configured and on every call that committed nothing; the UI turns a present value into
-  /// the "set your identity" prompt. Never a refusal.
-  identity_missing: IdentityMissing;
-  /// What the CLI's `finish_transaction` reported while committing this call's operation
-  /// (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
-  /// nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
+  /// The refs the colocated export could not write while the CLI's `finish_transaction`
+  /// committed this call's operation (Story 9.26) — the data behind its `jj.git_export_failed`
+  /// warnings. ABSENT when both lists are empty — always on a call that committed nothing, and
+  /// for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it. The finish's other
+  /// facts (an empty identity, a `@` that became immutable, a Git HEAD that could not be reset,
+  /// skipped checkout files) ride `Envelope.warnings` only (Story 9.32).
   finish: FinishFacts;
 }
 
-/// The colocated Git bookkeeping the CLI runs while it finishes a transaction
-/// (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
-/// `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
-/// empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
-/// `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
-/// lists are the refs the colocated export could not write.
+/// The refs the colocated Git export could not write while the CLI finished a transaction
+/// (`finish_transaction`, Story 9.26) — a warning there (`jj.git_export_failed` in
+/// `Envelope.warnings`), the data here, never an error envelope.
 table FinishFacts {
-  working_copy_became_immutable: bool;
-  git_head_update_failed: bool;
   export_failed_bookmarks: [GitExportFailure];
   export_failed_tags: [GitExportFailure];
-}
-
-/// `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
-table IdentityMissing {
-  name: bool;
-  email: bool;
 }
 
 /// One path an operation could not process, with the verbatim reason.
@@ -1253,12 +1240,11 @@ table UntrackResult {
 /// snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
 /// `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
 /// "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
-/// `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
-/// on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
-/// PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
-/// `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
-/// resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
-/// The three rebased counts saturate at 4294967295.
+/// `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape — PRESENT exactly when
+/// the step ran (colocated workspaces), even when it changed nothing. `finish`: the ref exports
+/// inside the precondition, merged; ABSENT when both lists are empty. The three rebased counts
+/// saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
+/// refused files, …) ride `Envelope.warnings` (Story 9.32).
 ///
 /// On an error envelope it is PARTIAL: every fact up to the failing step.
 table Precondition {
@@ -1268,10 +1254,8 @@ table Precondition {
   git_head_reset: bool;
   git_head_rebased: uint;
   snapshot_rebased: uint;
-  working_copy_immutable_new_commit: bool;
   git_refs: GitImportResult;
   git_refs_rebased: uint;
-  jjconflict_files_present: bool;
   finish: FinishFacts;
 }
 
@@ -1398,6 +1382,16 @@ union Payload {
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
 
+/// One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
+/// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
+/// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
+/// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
+/// tooltips only; nothing parses it.
+table Warning {
+  code: string;
+  message: string;
+}
+
 /// Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 /// ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -1418,11 +1412,18 @@ union Payload {
 /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
 /// its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
 /// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+///
+/// `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
+/// envelope AND on an error envelope (then everything warned before the failure). ABSENT when
+/// the call had nothing to warn about — every reader treats absent as an empty list — and
+/// therefore on every symbol that cannot warn, and on the pre-serialised `internal.panic`
+/// fallback. Success without caveat is `ok` with no warnings; there is no severity field.
 table Envelope {
   ok: bool;
   error: FfiError;
   data: Payload;
   precondition: Precondition;
+  warnings: [Warning];
 }
 
 root_type Envelope;

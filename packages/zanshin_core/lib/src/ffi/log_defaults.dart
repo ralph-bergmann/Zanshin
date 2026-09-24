@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ final class LogDefaults {
     required this.logGraphPrioritize,
     required this.shortPrefixes,
     required this.syntheticElided,
+    this.warnings = const [],
   });
 
   /// `revsets.log` — the revset `jj log` shows without `-r`.
@@ -53,6 +55,10 @@ final class LogDefaults {
 
   /// `ui.log-synthetic-elided-nodes` — render elided ancestry as synthetic rows.
   final bool syntheticElided;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -80,12 +86,13 @@ LogDefaults _decodeLogDefaultsEnvelope(Uint8List bytes) {
       'expected LogDefaults payload, got ${env.dataType}',
     );
   }
-  return _mapLogDefaults(payload);
+  return _mapLogDefaults(payload, decodeEnvelopeWarningsInternal(env));
 }
 
-LogDefaults _mapLogDefaults(fbs.LogDefaults d) => LogDefaults(
+LogDefaults _mapLogDefaults(fbs.LogDefaults d, List<ZanshinWarning> warnings) => LogDefaults(
   log: d.log ?? '',
   logGraphPrioritize: d.logGraphPrioritize ?? '',
   shortPrefixes: d.shortPrefixes ?? '',
   syntheticElided: d.syntheticElided,
+  warnings: warnings,
 );

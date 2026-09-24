@@ -201,11 +201,19 @@ fn git_import_reports_a_reserved_namespace_ref_as_failed_without_writing_an_oper
     let before = head_op_id(&mut repo);
 
     let result = repo.git_import().expect("a failed ref is not an error");
+    let warnings = repo.take_warnings();
 
     assert_eq!(
         result.failed_ref_names,
         vec!["refs/remotes/git/stolen".to_owned()],
         "the only record that a ref could not be synced must ride the payload"
+    );
+    // Story 9.32: `print_failed_git_import`'s block, even though nothing was written.
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::GitImportFailed);
+    assert_eq!(
+        warnings[0].message,
+        "Failed to import some Git refs:\n  refs/remotes/git/stolen"
     );
     assert_eq!(
         result.mutation.new_op_id.0, before,
@@ -417,6 +425,8 @@ fn git_export_reports_a_conflicting_ref_name_as_a_failure_and_still_succeeds() {
     let mut repo = Repo::open(tmp.path()).expect("reopen");
     let before = head_op_id(&mut repo);
     let result = repo.git_export().expect("a failed ref is not an error");
+    // Taken right away: the op-log reads below are verbs of their own and start a fresh list.
+    let warnings = repo.take_warnings();
 
     // A PARTLY-failed export still exported something, so it must still write the CLI's own
     // operation — a failure list is not a refusal (module doc's second invariant).
@@ -435,6 +445,15 @@ fn git_export_reports_a_conflicting_ref_name_as_a_failure_and_still_succeeds() {
         failure.reason.contains(": "),
         "the reason must be the FLATTENED source chain, not just the top-level Display: {:?}",
         failure.reason
+    );
+
+    // Story 9.32: the CLI's `print_git_export_stats` block for the same failure — the ONLY
+    // warning, since the verb itself (not a colocated finish) ran the export.
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::GitExportFailed);
+    assert_eq!(
+        warnings[0].message,
+        format!("Failed to export some bookmarks:\n  foo/bar@git: {}", failure.reason)
     );
 
     // The other bookmark still exported — a failure does not abort the run.

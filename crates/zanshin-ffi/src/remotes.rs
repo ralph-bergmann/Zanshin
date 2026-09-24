@@ -22,7 +22,7 @@ fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
     match e {
         RemoteError::Precondition(e) => map_precondition_err(e),
         RemoteError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -35,7 +35,7 @@ fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
 /// strings are built before its table; the `remotes` vector and `Remotes` table
 /// come after the loop. No kind match — a `Remote` is just plain strings, one of
 /// which (`push_url`) is null-for-absence and stays ABSENT rather than `""`.
-fn remotes_to_envelope(remotes: &[Remote], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn remotes_to_envelope(remotes: &[Remote], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(remotes.len());
     for r in remotes {
@@ -54,7 +54,7 @@ fn remotes_to_envelope(remotes: &[Remote], precondition: Option<&zanshin_jj::Pre
     }
     let vec = b.create_vector(&offsets);
     let rems_off = fbs::Remotes::create(&mut b, &fbs::RemotesArgs { remotes: Some(vec) });
-    finish_envelope(b, fbs::Payload::Remotes, Some(rems_off.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::Remotes, Some(rems_off.as_union_value()), report)
 }
 
 /// List the configured git remotes of the repo identified by `handle`.
@@ -115,7 +115,7 @@ mod tests {
                 push_url: Some("ssh://user:s3cr3t@example.com/r.git".to_owned()),
             },
         ];
-        let buf = remotes_to_envelope(&remotes, None);
+        let buf = remotes_to_envelope(&remotes, &crate::envelope::CallReport::default());
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Remotes);
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn remotes_to_envelope_empty_roundtrips() {
-        let buf = remotes_to_envelope(&[], None);
+        let buf = remotes_to_envelope(&[], &crate::envelope::CallReport::default());
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Remotes);

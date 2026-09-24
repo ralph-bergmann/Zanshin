@@ -36,7 +36,7 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
         FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -176,7 +176,7 @@ fn file_type_to_fbs(t: FileType) -> fbs::FileType {
 ///
 /// Children before parents (`FlatBuffers` requirement): each entry's string is built before
 /// its table, and the vector and `FileList` table come after the loop.
-fn file_list_to_envelope(entries: &[FileEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn file_list_to_envelope(entries: &[FileEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let offsets: Vec<_> = entries
         .iter()
@@ -195,11 +195,11 @@ fn file_list_to_envelope(entries: &[FileEntry], precondition: Option<&zanshin_jj
         .collect();
     let vec = b.create_vector(&offsets);
     let list = fbs::FileList::create(&mut b, &fbs::FileListArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::FileList, Some(list.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::FileList, Some(list.as_union_value()), report)
 }
 
 /// Serialise a [`FileContents`] into a finished `Envelope<FileContents>` buffer.
-fn file_contents_to_envelope(contents: &FileContents, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn file_contents_to_envelope(contents: &FileContents, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let file_offs: Vec<_> = contents
         .files
@@ -241,16 +241,11 @@ fn file_contents_to_envelope(contents: &FileContents, precondition: Option<&zans
             skipped: Some(skipped),
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::FileContents,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::FileContents, Some(table.as_union_value()), report)
 }
 
 /// Serialise `&[AnnotationLine]` into a finished `Envelope<FileAnnotation>` buffer.
-fn file_annotation_to_envelope(lines: &[AnnotationLine], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn file_annotation_to_envelope(lines: &[AnnotationLine], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = lines
         .iter()
@@ -272,12 +267,7 @@ fn file_annotation_to_envelope(lines: &[AnnotationLine], precondition: Option<&z
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::FileAnnotation::create(&mut b, &fbs::FileAnnotationArgs { lines: Some(vec) });
-    finish_envelope(
-        b,
-        fbs::Payload::FileAnnotation,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::FileAnnotation, Some(table.as_union_value()), report)
 }
 
 /// Serialise a [`FileSearch`] into a finished `Envelope<FileSearch>` buffer.
@@ -287,7 +277,7 @@ fn file_annotation_to_envelope(lines: &[AnnotationLine], precondition: Option<&z
 ///
 /// The `skipped` loop is the same shape as `file_contents_to_envelope`'s, though the two
 /// carry different reason sets (search reports only unreadable blobs).
-fn file_search_to_envelope(search: &FileSearch, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn file_search_to_envelope(search: &FileSearch, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = search
         .matches
@@ -331,7 +321,7 @@ fn file_search_to_envelope(search: &FileSearch, precondition: Option<&zanshin_jj
             skipped: Some(skipped),
         },
     );
-    finish_envelope(b, fbs::Payload::FileSearch, Some(table.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::FileSearch, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -622,7 +612,7 @@ mod tests {
             },
         ];
 
-        let buf = file_list_to_envelope(&entries, None);
+        let buf = file_list_to_envelope(&entries, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::FileList);
@@ -665,7 +655,7 @@ mod tests {
             }],
         };
 
-        let buf = file_contents_to_envelope(&contents, None);
+        let buf = file_contents_to_envelope(&contents, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileContents);
         let payload = env.data_as_file_contents().expect("FileContents payload");
@@ -702,7 +692,7 @@ mod tests {
             },
         ];
 
-        let buf = file_annotation_to_envelope(&lines, None);
+        let buf = file_annotation_to_envelope(&lines, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileAnnotation);
         let payload = env.data_as_file_annotation().expect("FileAnnotation payload");
@@ -740,7 +730,7 @@ mod tests {
             skipped: vec![],
         };
 
-        let buf = file_search_to_envelope(&search, None);
+        let buf = file_search_to_envelope(&search, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::FileSearch);
         let payload = env.data_as_file_search().expect("FileSearch payload");
@@ -782,7 +772,7 @@ mod tests {
             }],
         };
 
-        let buf = file_search_to_envelope(&search, None);
+        let buf = file_search_to_envelope(&search, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         let payload = env.data_as_file_search().expect("FileSearch payload");
         assert_eq!(payload.matches().expect("matches present").len(), 1);
@@ -798,25 +788,31 @@ mod tests {
     #[test]
     fn empty_results_still_produce_ok_envelopes() {
         for (buf, expected) in [
-            (file_list_to_envelope(&[], None), fbs::Payload::FileList),
+            (
+                file_list_to_envelope(&[], &crate::envelope::CallReport::default()),
+                fbs::Payload::FileList,
+            ),
             (
                 file_contents_to_envelope(
                     &FileContents {
                         files: vec![],
                         skipped: vec![],
                     },
-                    None,
+                    &crate::envelope::CallReport::default(),
                 ),
                 fbs::Payload::FileContents,
             ),
-            (file_annotation_to_envelope(&[], None), fbs::Payload::FileAnnotation),
+            (
+                file_annotation_to_envelope(&[], &crate::envelope::CallReport::default()),
+                fbs::Payload::FileAnnotation,
+            ),
             (
                 file_search_to_envelope(
                     &FileSearch {
                         matches: vec![],
                         skipped: vec![],
                     },
-                    None,
+                    &crate::envelope::CallReport::default(),
                 ),
                 fbs::Payload::FileSearch,
             ),

@@ -26,7 +26,7 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
-use zanshin_jj::{convert_colocated, ChangeId, PreconditionError, Repo};
+use zanshin_jj::{convert_colocated, ChangeId, PreconditionError, Repo, WarningKind};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // SAFETY: every test calls `pin_env()` FIRST; the `LazyLock` blocks them all until this
@@ -308,9 +308,14 @@ fn an_immutable_at_gets_a_new_commit_and_git_head_follows() {
     let (old_at, _) = at(&root);
     write(&root, "edit.txt", "edited\n");
 
-    let report = repo.snapshot().expect("snapshot");
+    repo.snapshot().expect("snapshot");
 
-    assert!(report.working_copy_immutable_new_commit);
+    let kinds: Vec<WarningKind> = repo.take_warnings().into_iter().map(|w| w.kind).collect();
+    assert_eq!(
+        kinds,
+        [WarningKind::WorkingCopyImmutable],
+        "the HEAD reset itself succeeded"
+    );
     let (_new_at, new_parent) = at(&root);
     assert_eq!(new_parent, old_at.id().hex(), "the new @ is on top of the old one");
     assert_eq!(
@@ -320,7 +325,7 @@ fn an_immutable_at_gets_a_new_commit_and_git_head_follows() {
     );
 }
 
-/// "`.jjconflict` files present": the flag is set and the snapshot proceeds.
+/// "`.jjconflict` files present": the warning is recorded and the snapshot proceeds.
 #[test]
 fn a_jjconflict_entry_is_reported_and_the_snapshot_proceeds() {
     let tmp = TempDir::new().expect("tempdir");
@@ -329,8 +334,36 @@ fn a_jjconflict_entry_is_reported_and_the_snapshot_proceeds() {
 
     let report = repo.snapshot().expect("snapshot proceeds");
 
-    assert!(report.jjconflict_files_present);
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::JjconflictFilesPresent);
+    assert_eq!(
+        warnings[0].message,
+        "The working copy contains '.jjconflict' files. These files are used by `jj` internally and should not \
+         be present in the working copy."
+    );
     assert!(report.was_snapshot_taken);
+}
+
+/// The pre-verb `import git refs` step warns about a Git ref it cannot read (Story 9.32): a ref
+/// under the reserved `refs/remotes/git/` namespace — the `git_sync.rs` recipe — makes a plain
+/// READ carry `jj.git_import_failed`, the CLI's `print_git_import_stats` block, and nothing else.
+#[test]
+fn the_pre_verb_refs_import_warns_about_a_ref_it_cannot_import() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    let head = git(&["rev-parse", "HEAD"], &root);
+    git(&["update-ref", "refs/remotes/git/stolen", &head], &root);
+
+    repo.status().expect("a failed ref is not an error");
+
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::GitImportFailed);
+    assert_eq!(
+        warnings[0].message,
+        "Failed to import some Git refs:\n  refs/remotes/git/stolen"
+    );
 }
 
 /// A dirty edit in a colocated workspace: `snapshot working copy`, and the change is exported
@@ -751,7 +784,8 @@ fn git_export_writes_nothing_in_a_colocated_workspace() {
 }
 
 /// A finish whose Git HEAD reset cannot take `HEAD.lock` (a concurrent `git` holds it) is a
-/// WARNING in the CLI (`try_reset_git_head`): the verb succeeds and the fact rides `finish`.
+/// WARNING in the CLI (`try_reset_git_head`): the verb succeeds and warns
+/// `jj.git_head_update_failed` (Story 9.32).
 #[test]
 fn a_held_head_lock_makes_the_head_reset_a_reported_warning() {
     let tmp = TempDir::new().expect("tempdir");
@@ -766,8 +800,17 @@ fn a_held_head_lock_makes_the_head_reset_a_reported_warning() {
 
     fs::remove_file(&head_lock).expect("release HEAD.lock");
     let result = result.expect("the verb succeeds");
-    let finish = result.finish.expect("a warning was reported");
-    assert!(finish.git_head_update_failed);
+    assert!(result.finish.is_none(), "no export failed: the finish carries no data");
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::GitHeadUpdateFailed);
+    assert!(
+        warnings[0]
+            .message
+            .starts_with("Failed to update Git HEAD ref\nCaused by"),
+        "the error, then `print_error_sources`: {}",
+        warnings[0].message
+    );
     assert_eq!(git(&["rev-parse", "HEAD"], &root), head_before, "HEAD was not moved");
 }
 
@@ -791,4 +834,13 @@ fn a_failed_bookmark_export_is_reported_in_finish() {
         finish.export_failed_bookmarks
     );
     assert_eq!(git(&["rev-parse", "refs/heads/foo"], &root), target);
+    // Story 9.32: `print_git_export_stats`' block — the data above, rendered as the CLI does.
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::GitExportFailed);
+    let failure = &finish.export_failed_bookmarks[0];
+    assert_eq!(
+        warnings[0].message,
+        format!("Failed to export some bookmarks:\n  foo/bar@git: {}", failure.reason)
+    );
 }

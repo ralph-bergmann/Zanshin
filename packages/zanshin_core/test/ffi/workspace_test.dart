@@ -109,7 +109,7 @@ void main() {
         data: fbs.WorkspaceRootObjectBuilder(root: '/repos/second'),
       ).toBytes();
 
-      expect(decodeWorkspaceRootEnvelope(bytes), '/repos/second');
+      expect(decodeWorkspaceRootEnvelope(bytes).path, '/repos/second');
     });
 
     test('throws ffi.unknown when the payload carries no root', () {

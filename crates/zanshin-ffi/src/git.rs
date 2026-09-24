@@ -185,19 +185,14 @@ pub(crate) fn build_git_import_result<'a>(
 }
 
 /// Serialise a [`GitImportResult`] into a finished `Envelope<GitImportResult>` buffer.
-fn git_import_result_to_envelope(r: &GitImportResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn git_import_result_to_envelope(r: &GitImportResult, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let table = build_git_import_result(&mut b, r);
-    finish_envelope(
-        b,
-        fbs::Payload::GitImportResult,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::GitImportResult, Some(table.as_union_value()), report)
 }
 
 /// Serialise a [`GitExportResult`] into a finished `Envelope<GitExportResult>` buffer.
-fn git_export_result_to_envelope(r: &GitExportResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn git_export_result_to_envelope(r: &GitExportResult, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let bookmarks = build_export_failures(&mut b, &r.failed_bookmarks);
@@ -210,12 +205,7 @@ fn git_export_result_to_envelope(r: &GitExportResult, precondition: Option<&zans
             failed_tags: Some(tags),
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::GitExportResult,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::GitExportResult, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -573,7 +563,6 @@ mod tests {
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
-            identity_missing: None,
         }
     }
 
@@ -599,7 +588,7 @@ mod tests {
             failed_ref_names: vec!["refs/remotes/git/main".to_owned()],
         };
 
-        let buf = git_import_result_to_envelope(&r, None);
+        let buf = git_import_result_to_envelope(&r, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::GitImportResult);
@@ -652,7 +641,7 @@ mod tests {
             failed_tags: Vec::new(),
         };
 
-        let buf = git_export_result_to_envelope(&r, None);
+        let buf = git_export_result_to_envelope(&r, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::GitExportResult);
         let p = env.data_as_git_export_result().expect("GitExportResult payload");
@@ -683,7 +672,7 @@ mod tests {
             num_rewritten: 0,
             failed_ref_names: Vec::new(),
         };
-        let import_buf = git_import_result_to_envelope(&import, None);
+        let import_buf = git_import_result_to_envelope(&import, &crate::envelope::CallReport::default());
         let env = verified(&import_buf);
         assert!(env.ok(), "an empty import is a success, not an error");
         assert_eq!(env.data_type(), fbs::Payload::GitImportResult);
@@ -693,7 +682,7 @@ mod tests {
             failed_bookmarks: Vec::new(),
             failed_tags: Vec::new(),
         };
-        let export_buf = git_export_result_to_envelope(&export, None);
+        let export_buf = git_export_result_to_envelope(&export, &crate::envelope::CallReport::default());
         let env = verified(&export_buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::GitExportResult);

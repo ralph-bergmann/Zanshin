@@ -26,7 +26,7 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     convert_colocated, Backend, ChangeId, MutateError, PreconditionError, Repo, SnapshotStats, StaleCause,
-    UntrackedPath, UntrackedReason,
+    UntrackedPath, UntrackedReason, WarningKind,
 };
 
 /// Env pin + two leaked process-lifetime dirs (the `tests/convert.rs` pattern):
@@ -255,8 +255,8 @@ fn track_untracked_file_writes_one_track_op_and_records_it_in_the_wc_state() {
     assert_eq!(result.snapshot_stats, SnapshotStats::default());
     assert!(result.mutation.new_change_ids.is_empty());
     assert!(
-        result.mutation.identity_missing.is_none(),
-        "the pinned identity is complete"
+        repo.take_warnings().is_empty(),
+        "the pinned identity is complete (and track never reaches the finish's identity check)"
     );
     // GH #8298: the view's `@` is untouched; only the working-copy state learned the path.
     assert!(at_paths(&fx.root).is_empty(), "@ keeps its pre-call tree");
@@ -281,6 +281,15 @@ fn track_file_over_the_limit_writes_the_op_but_leaves_it_untracked() {
             "a.bin",
             UntrackedReason::FileTooLarge { size: 20, max_size: 10 }
         )]
+    );
+    // Story 9.32: ONE size warning, from the MERGED stats — the pre-verb snapshot refused the
+    // same file, but `file track` prints only `print_track_snapshot_stats`.
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::SnapshotFilesRefused);
+    assert_eq!(
+        warnings[0].message,
+        "Refused to snapshot some files:\n  a.bin: 20.0B (20 bytes); the maximum size allowed is 10.0B (10 bytes)"
     );
 }
 
@@ -660,12 +669,25 @@ fn untrack_in_a_colocated_workspace_reports_a_failed_bookmark_export() {
     let result = repo
         .file_untrack(&strings(&["c.log"]))
         .expect("a failed ref is not an error");
+    // Taken right away: the op-log read below is a verb of its own and starts a fresh list.
+    let warnings = repo.take_warnings();
 
     assert_eq!(head_op_description(&mut repo), "untrack paths");
     assert_eq!(result.failed_bookmarks.len(), 1, "{:?}", result.failed_bookmarks);
     assert_eq!(result.failed_bookmarks[0].name, "foo/bar");
     assert_eq!(result.failed_bookmarks[0].remote, "git");
     assert!(result.failed_tags.is_empty(), "{:?}", result.failed_tags);
+    // Story 9.32: `export_working_copy_changes_to_git`'s `print_git_export_stats` block — the
+    // only warning of this call (every path matched, nothing left untracked).
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::GitExportFailed);
+    assert_eq!(
+        warnings[0].message,
+        format!(
+            "Failed to export some bookmarks:\n  foo/bar@git: {}",
+            result.failed_bookmarks[0].reason
+        )
+    );
 }
 
 /// A native (non-git) backend: no git export is attempted and the op is written.
@@ -875,6 +897,22 @@ fn untrack_reports_what_the_post_reset_snapshot_left_untracked() {
             "big.bin",
             UntrackedReason::FileTooLarge { size: 20, max_size: 10 }
         )]
+    );
+    // Story 9.32: the CLI's `untrack` sequence — the pre-verb snapshot's stats (`workspace_helper`)
+    // refuse `big.bin` first, then `print_snapshot_stats(&stats)` of the post-reset snapshot
+    // refuses it again; no export (not colocated) and no unmatched path lie between them.
+    let refused =
+        "Refused to snapshot some files:\n  big.bin: 20.0B (20 bytes); the maximum size allowed is 10.0B (10 bytes)";
+    let warnings = repo.take_warnings();
+    assert_eq!(
+        warnings
+            .iter()
+            .map(|w| (w.kind, w.message.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (WarningKind::SnapshotFilesRefused, refused),
+            (WarningKind::SnapshotFilesRefused, refused)
+        ]
     );
     assert_eq!(at_paths(&fx.root), strings(&[".gitignore", "d.txt"]));
 }

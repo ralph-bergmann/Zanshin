@@ -437,6 +437,53 @@ fn every_wrapper_works_at_repo_scope() {
         .is_empty());
 }
 
+/// A missing repo config directory that cannot be deleted (it holds a file jj did not write)
+/// is a `failed` entry AND the CLI's "Failed to delete …" warning on the envelope (Story 9.32).
+#[test]
+fn gc_delete_warns_about_a_directory_it_cannot_delete() {
+    use fbs::RequestKind as K;
+    let (tmp, root) = workspace();
+    let path_bytes = call(
+        zanshin_config_path,
+        Some(&path_req(&fields(K::ConfigPath, Some(root.as_str())))),
+    );
+    let file = ok(&path_bytes)
+        .data_as_config_path_result()
+        .unwrap()
+        .paths()
+        .unwrap()
+        .get(0)
+        .to_owned();
+    let dir = Path::new(&file).parent().unwrap().to_str().unwrap().to_owned();
+    fs::remove_dir_all(tmp.path().join("ws")).unwrap();
+    fs::write(Path::new(&dir).join("user-note.txt"), "keep me").unwrap();
+
+    let bytes = call(
+        zanshin_config_gc_delete,
+        Some(&gc_delete_req(K::ConfigGcDelete, Some(&[dir.as_str()]))),
+    );
+
+    let env = ok(&bytes);
+    let failed = env.data_as_config_gc_result().unwrap().failed().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed.get(0).config_dir(), Some(dir.as_str()));
+    let reason = failed.get(0).reason().unwrap();
+    let warnings: Vec<(&str, &str)> = env
+        .warnings()
+        .expect("the warning rides the envelope")
+        .iter()
+        .map(|w| (w.code().unwrap(), w.message().unwrap()))
+        .collect();
+    assert_eq!(
+        warnings,
+        [(
+            "jj.config_gc_delete_failed",
+            format!("Failed to delete {dir}: {reason}").as_str()
+        )]
+    );
+    assert!(Path::new(&dir).exists());
+}
+
 #[test]
 fn verb_refusals_carry_their_codes() {
     use fbs::RequestKind as K;

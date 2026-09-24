@@ -15,20 +15,17 @@ import 'package:zanshin_core/src/ffi/file_ops.dart' show FileTooLarge;
 import 'package:zanshin_core/src/ffi/git.dart' show GitRefUpdateKind;
 import 'package:zanshin_core/src/ffi/mutate.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
 fbs.FinishFactsObjectBuilder finishFacts() => fbs.FinishFactsObjectBuilder(
-  workingCopyBecameImmutable: true,
-  gitHeadUpdateFailed: true,
   exportFailedBookmarks: [fbs.GitExportFailureObjectBuilder(name: 'foo', remote: 'git', reason: 'Failed to set')],
   exportFailedTags: [fbs.GitExportFailureObjectBuilder(name: 'v1', remote: 'git', reason: 'Tag clash')],
 );
 
 void expectFinishDecoded(FinishFacts? f) {
   expect(f, isNotNull);
-  expect(f!.workingCopyBecameImmutable, isTrue);
-  expect(f.gitHeadUpdateFailed, isTrue);
-  expect(f.exportFailedBookmarks.single.name, 'foo');
+  expect(f!.exportFailedBookmarks.single.name, 'foo');
   expect(f.exportFailedBookmarks.single.remote, 'git');
   expect(f.exportFailedBookmarks.single.reason, 'Failed to set');
   expect(f.exportFailedTags.single.name, 'v1');
@@ -52,7 +49,6 @@ fbs.PreconditionObjectBuilder fullPrecondition() => fbs.PreconditionObjectBuilde
   gitHeadReset: true,
   gitHeadRebased: 3,
   snapshotRebased: 4,
-  workingCopyImmutableNewCommit: true,
   gitRefs: fbs.GitImportResultObjectBuilder(
     mutation: fbs.MutationResultObjectBuilder(newOpId: 'op-refs', workingCopyChangeId: 'qpvuntsm'),
     changedBookmarks: [
@@ -64,7 +60,6 @@ fbs.PreconditionObjectBuilder fullPrecondition() => fbs.PreconditionObjectBuilde
     failedRefNames: ['refs/remotes/git/x'],
   ),
   gitRefsRebased: 5,
-  jjconflictFilesPresent: true,
   finish: finishFacts(),
 );
 
@@ -77,7 +72,6 @@ void expectFullPreconditionDecoded(Precondition p) {
   expect(p.gitHeadReset, isTrue);
   expect(p.gitHeadRebased, 3);
   expect(p.snapshotRebased, 4);
-  expect(p.workingCopyImmutableNewCommit, isTrue);
   expect(p.gitRefs, isNotNull);
   expect(p.gitRefs!.mutation.newOpId, 'op-refs');
   expect(p.gitRefs!.changedBookmarks.single.name, 'main');
@@ -87,17 +81,44 @@ void expectFullPreconditionDecoded(Precondition p) {
   expect(p.gitRefs!.numRewritten, 2);
   expect(p.gitRefs!.failedRefNames, ['refs/remotes/git/x']);
   expect(p.gitRefsRebased, 5);
-  expect(p.jjconflictFilesPresent, isTrue);
   expectFinishDecoded(p.finish);
 }
 
-Uint8List snapshotOk(fbs.PreconditionObjectBuilder? precondition) =>
-    fbs.EnvelopeObjectBuilder(ok: true, precondition: precondition).toBytes();
+Uint8List snapshotOk(fbs.PreconditionObjectBuilder? precondition, {List<fbs.WarningObjectBuilder>? warnings}) =>
+    fbs.EnvelopeObjectBuilder(ok: true, precondition: precondition, warnings: warnings).toBytes();
 
 void main() {
   group('Precondition decoders', () {
     test('a snapshot envelope decodes every Precondition field', () {
       expectFullPreconditionDecoded(decodeSnapshotEnvelope(snapshotOk(fullPrecondition())));
+    });
+
+    test("a snapshot envelope's warnings ride the Precondition it returns (Story 9.32)", () {
+      // The two former bools (`@` was immutable, `.jjconflict` files present) are
+      // warnings now — reachable only by their codes.
+      final Precondition p = decodeSnapshotEnvelope(
+        snapshotOk(
+          fbs.PreconditionObjectBuilder(wasSnapshotTaken: true),
+          warnings: [
+            fbs.WarningObjectBuilder(code: ZanshinWarningCode.workingCopyImmutable, message: 'immutable'),
+            fbs.WarningObjectBuilder(code: ZanshinWarningCode.jjconflictFilesPresent, message: 'jjconflict'),
+          ],
+        ),
+      );
+
+      expect(p.warnings.map((w) => w.code), ['jj.working_copy_immutable', 'jj.jjconflict_files_present']);
+      expect(p.gitRefs?.warnings ?? const <ZanshinWarning>[], isEmpty);
+    });
+
+    test('the report decodeEnvelopePrecondition reads carries no warnings', () {
+      // `lastPrecondition` is unchanged by Story 9.32: the envelope's warnings
+      // belong to the command's own result, not to the report the choke point keeps.
+      final Uint8List bytes = snapshotOk(
+        fbs.PreconditionObjectBuilder(wasSnapshotTaken: true),
+        warnings: [fbs.WarningObjectBuilder(code: ZanshinWarningCode.workingCopyImmutable, message: 'm')],
+      );
+
+      expect(decodeEnvelopePrecondition(bytes)!.warnings, isEmpty);
     });
 
     test('absent optional tables decode as null and the rest as defaults', () {
@@ -110,11 +131,10 @@ void main() {
       expect(p.gitHeadReset, isFalse);
       expect(p.gitHeadRebased, 0);
       expect(p.snapshotRebased, 0);
-      expect(p.workingCopyImmutableNewCommit, isFalse);
       expect(p.gitRefs, isNull, reason: 'null for absence: the refs import did not run');
       expect(p.gitRefsRebased, 0);
-      expect(p.jjconflictFilesPresent, isFalse);
-      expect(p.finish, isNull, reason: 'null for absence: every finish fact at its default');
+      expect(p.finish, isNull, reason: 'null for absence: no export failed');
+      expect(p.warnings, isEmpty, reason: 'an absent warnings vector reads as []');
     });
 
     test('an ok snapshot envelope without a report is refused, not guessed', () {

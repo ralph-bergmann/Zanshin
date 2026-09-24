@@ -681,7 +681,21 @@ fn walk_graph_unresolvable_short_prefixes_degrades_to_full_index_prefixes() {
     // jj's own cli/tests/test_log_command.rs::test_log_bad_short_prefixes @ v0.42.0:
     // `revsets.short-prefixes = 'missing'` warns and still renders the whole log at exit 0.
     let degraded = collect_nodes_with(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "nonexistent-bookmark-xyz");
+    // Story 9.32: the CLI's warning, with the resolution failure as its source chain.
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::ShortPrefixesFailed);
+    assert!(
+        warnings[0].message.starts_with("Failed to load short-prefixes index\n")
+            && warnings[0].message.contains("nonexistent-bookmark-xyz"),
+        "{}",
+        warnings[0].message
+    );
     let disabled = collect_nodes_with(&mut repo, "all()", DEFAULT_GRAPH_PRIORITIZE, "");
+    assert!(
+        repo.take_warnings().is_empty(),
+        "disabled disambiguation warns about nothing"
+    );
 
     assert_eq!(degraded.len(), 5, "the call succeeds with the full row set");
     assert_eq!(degraded.len(), disabled.len());

@@ -165,19 +165,14 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         working_copy_change_id: zanshin_jj::ChangeId(String::new()),
-        identity_missing: Some(zanshin_jj::IdentityMissing {
-            name: true,
-            email: false,
-        }),
         finish: Some(sample_finish_facts()),
     }
 }
 
-/// Names every `FinishFacts` field by its public path (Story 9.26).
+/// Names every `FinishFacts` field by its public path (Story 9.26; the two flags moved to the
+/// warning channel in Story 9.32).
 fn sample_finish_facts() -> zanshin_jj::FinishFacts {
     zanshin_jj::FinishFacts {
-        working_copy_became_immutable: false,
-        git_head_update_failed: false,
         export_failed_bookmarks: vec![zanshin_jj::GitExportFailure {
             name: String::new(),
             remote: String::new(),
@@ -918,10 +913,8 @@ fn sample_precondition() -> zanshin_jj::Precondition {
         git_head_reset: false,
         git_head_rebased: 0,
         snapshot_rebased: 0,
-        working_copy_immutable_new_commit: false,
         git_refs: Some(sample_git_import_result()),
         git_refs_rebased: 0,
-        jjconflict_files_present: false,
         finish: Some(sample_finish_facts()),
     }
 }
@@ -998,7 +991,10 @@ fn story_9_28_surface_resolves() {
     use zanshin_jj::{ConfigCmdError as E, ConfigScope, ConfigValueSource};
 
     _ = zanshin_jj::config_list
-        as fn(Option<&Path>, &zanshin_jj::ConfigListQuery) -> Result<Vec<zanshin_jj::ConfigEntry>, E>;
+        as fn(
+            Option<&Path>,
+            &zanshin_jj::ConfigListQuery,
+        ) -> Result<zanshin_jj::Warned<Vec<zanshin_jj::ConfigEntry>>, E>;
     _ = zanshin_jj::config_get as fn(Option<&Path>, &str) -> Result<String, E>;
     _ = zanshin_jj::config_path as fn(Option<&Path>, ConfigScope) -> Result<Vec<PathBuf>, E>;
     _ = zanshin_jj::config_set
@@ -1008,7 +1004,7 @@ fn story_9_28_surface_resolves() {
         as fn(Option<&Path>, ConfigScope, Option<&Path>) -> Result<zanshin_jj::ConfigFileText, E>;
     _ = zanshin_jj::config_file_write as fn(Option<&Path>, &Path, &str) -> Result<(), E>;
     _ = zanshin_jj::config_gc_list as fn() -> Result<Vec<zanshin_jj::MissingRepoConfig>, E>;
-    _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> Result<zanshin_jj::ConfigGcResult, E>;
+    _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> Result<zanshin_jj::Warned<zanshin_jj::ConfigGcResult>, E>;
 
     _ = zanshin_jj::ConfigEntry {
         name: String::new(),
@@ -1032,6 +1028,7 @@ fn story_9_28_surface_resolves() {
             }),
         }),
         precondition: None,
+        warnings: vec![],
     };
     _ = zanshin_jj::ConfigFileText {
         path: PathBuf::new(),
@@ -1076,4 +1073,76 @@ fn story_9_28_surface_resolves() {
         E::from(zanshin_jj::ConfigError::Load { reason: "c".into() }).to_string(),
         "config error: c"
     );
+}
+
+/// Story 9.32: the warning channel — `Warning`, every `WarningKind` (matched EXHAUSTIVELY, so a
+/// variant added or removed breaks this test at compile time), `Warned`, and
+/// `Repo::take_warnings`.
+#[test]
+fn story_9_32_warning_surface_resolves() {
+    use zanshin_jj::WarningKind as K;
+
+    let warning = zanshin_jj::Warning {
+        kind: K::IdentityMissing,
+        message: String::new(),
+    };
+    let warned = zanshin_jj::Warned {
+        value: (),
+        warnings: vec![warning.clone()],
+    };
+    assert_eq!(warned.warnings, [warning]);
+    let every = [
+        K::IdentityMissing,
+        K::WorkingCopyImmutable,
+        K::JjconflictFilesPresent,
+        K::GitHeadUpdateFailed,
+        K::GitExportFailed,
+        K::GitImportFailed,
+        K::SnapshotFilesRefused,
+        K::SnapshotPathsNotUtf8,
+        K::CheckoutFilesSkipped,
+        K::PathsUnmatched,
+        K::ConfigAliasInvalid,
+        K::ConfigAliasRedefined,
+        K::RevsetDiagnostic,
+        K::ShortPrefixesFailed,
+        K::RemoteUrlDuplicate,
+        K::BookmarkTargetEmpty,
+        K::BookmarkNamesUnmatched,
+        K::AbsorbPathSkipped,
+        K::PathAccessDenied,
+        K::PathNotAFile,
+        K::ConfigWorkingCopyAuthor,
+        K::ConfigGcDeleteFailed,
+        K::ConfigNothingListed,
+    ];
+    for kind in every {
+        match kind {
+            K::IdentityMissing
+            | K::WorkingCopyImmutable
+            | K::JjconflictFilesPresent
+            | K::GitHeadUpdateFailed
+            | K::GitExportFailed
+            | K::GitImportFailed
+            | K::SnapshotFilesRefused
+            | K::SnapshotPathsNotUtf8
+            | K::CheckoutFilesSkipped
+            | K::PathsUnmatched
+            | K::ConfigAliasInvalid
+            | K::ConfigAliasRedefined
+            | K::RevsetDiagnostic
+            | K::ShortPrefixesFailed
+            | K::RemoteUrlDuplicate
+            | K::BookmarkTargetEmpty
+            | K::BookmarkNamesUnmatched
+            | K::AbsorbPathSkipped
+            | K::PathAccessDenied
+            | K::PathNotAFile
+            | K::ConfigWorkingCopyAuthor
+            | K::ConfigGcDeleteFailed
+            | K::ConfigNothingListed => {}
+        }
+    }
+    assert_eq!(every.len(), 23);
+    _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }

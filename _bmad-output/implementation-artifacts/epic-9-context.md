@@ -4,73 +4,85 @@
 
 ## Goal
 
-Build the full jj operation surface as typed, verb-level operations in `zanshin-jj` — everything beyond the WIP-minimal write subset (`describe`/`new`/`edit`/`abandon`/`undo`/`git fetch`) that shipped earlier. Each verb is a whole transaction composed Rust-side against jj-lib and lifted through `zanshin-ffi` and (optionally) the MCP server, so a caller — the Dart worker or an AI agent — names the verb and never composes primitives. The outcome is operation parity with the jj CLI's meaningful verb set: 69 operations were mapped and feasibility-verified against the pinned jj release, tiered cheap → medium → thick. This epic supersedes the deferred advanced/rare mutation stubs (split/squash/rebase, bookmark CRUD) and picks up the deferred requirements for conflict ops, `git push`, op-restore/op-diff, and settings access. Until it lands, anything past the four essential mutations forces the user out to the jj CLI. Scheduling is the product owner's call; stories are at backlog granularity and full acceptance criteria are authored per story when one is scheduled.
+Build the jj CLI's operation set as typed verb-level calls in `zanshin-jj` — each a whole transaction composed Rust-side over jj-lib, lifted through `zanshin-ffi` (optionally MCP) — and close the CLI-parity gaps around them (config stack, implicit snapshot/Git import, warnings, no-op handling, undo stack), so a user can switch between the jj CLI and Zanshin on one repo without noticing. Stories are backlog-granular; ACs or a spec are authored when scheduled.
 
 ## Stories
 
-- Story 9.0: Bump `jj-lib` 0.41.0 → 0.42.0 (precursor, already executed)
-- Story 9.0a: Bump `jj-lib` to latest (0.42.0 → 0.44.0) plus pins that track it (precursor)
-- Story 9.1: Operation-support layer (`op_support.rs`)
-- Story 9.2: `eval_revset` generic read primitive + direct `View` read helpers
-- Story 9.3: Content ops — `restore`, `absorb`
-- Story 9.4: File reads — `file list`, `show`, `annotate`, `search`
-- Story 9.5: Git local sync + remote config — `git import`/`export`, `git remote add`/`remove`/`rename`/`set-url`
-- Story 9.6: Read views — `show`, `evolog`, `interdiff`
-- Story 9.7: Workspace reads — `workspace list`, `workspace root`
-- Story 9.8: Bookmark CRUD (cheap) — `bookmark create`, `delete`
+- Story 9.0: Bump jj-lib to 0.42.0 (done)
+- Story 9.0a: Bump jj-lib to 0.44.0
+- Story 9.1: Operation-support layer
+- Story 9.2: `eval_revset` + `View` read helpers
+- Story 9.3: `restore`, `absorb`
+- Story 9.4: `file list`/`show`/`annotate`/`search`
+- Story 9.5: `git import`/`export`, `git remote` config
+- Story 9.6: `show`, `evolog`, `interdiff`
+- Story 9.7: `workspace list`/`root`
+- Story 9.8: `bookmark create`/`delete`
 - Story 9.9: `metaedit`, `duplicate`, `fix`
-- Story 9.10: Working-copy movement — `next`, `prev`
-- Story 9.11: Bookmark tracking — `bookmark set`, `forget`, `track`, `untrack`
-- Story 9.12: Operation edits — `op restore`, `op revert`
-- Story 9.13: `file chmod`; `workspace forget`, `workspace rename`
+- Story 9.10: `next`, `prev`
+- Story 9.11: `bookmark set`/`forget`/`track`/`untrack`
+- Story 9.12: `op restore`, `op revert`
+- Story 9.13: `file chmod`; `workspace forget`/`rename`
 - Story 9.14: `simplify-parents`
-- Story 9.15: `squash`, `split` (partial-file)
+- Story 9.15: `squash`, `split`
 - Story 9.16: `rebase`, `parallelize`, `arrange`
-- Story 9.17: `commit`, `resolve`, `diffedit` (GUI-editor-backed conflict ops)
+- Story 9.17: `commit`, `resolve`, `diffedit`
 - Story 9.18: `revert`
-- Story 9.19: Bookmark thick + `bookmark list` filters — `move`, `advance`, `rename`
+- Story 9.19: `bookmark move`/`advance`/`rename` + list filters
 - Story 9.20: `git push`, `git clone`, `git init`
-- Story 9.21: Operation-log surface — `op log`, `op show`, `op diff`, `op abandon`, `redo`
-- Story 9.22: `file track`, `file untrack` (locked-working-copy lifecycle)
-- Story 9.23: `workspace add`, `workspace update-stale`
+- Story 9.21: `op log`/`show`/`diff`/`abandon`, `redo`
+- Story 9.22: `file track`/`untrack`
+- Story 9.23: `workspace add`/`update-stale`
+- Story 9.24: Remote-change poll
+- Story 9.25: Log revset input (needs refinement)
+- Story 9.26: Implicit snapshot + Git import before every verb
+- Story 9.27: Open with the effective config stack
+- Story 9.28: `config` surface
+- Story 9.29: Bookmark tracking state
+- Story 9.30: `git fetch` CLI parity
+- Story 9.31: Drop-action capability query
+- Story 9.32: Warning channel on every envelope
+- Story 9.33: Creation paths report warnings
+- Story 9.34: Snapshot knobs read after HEAD import
+- Story 9.35: Dart keeps precondition/warnings on errors
+- Story 9.36: Login-shell environment at Finder launch
+- Story 9.37: Secure-config fix-ups at command start
+- Story 9.38: `edit` of current `@` is a no-op
+- Story 9.39: `undo` stack (v0.44.0)
+- Story 9.40: No-change verbs write no operation
+- Story 9.41: `--when.commands` scopes per verb
 
 ## Requirements & Constraints
 
-- Functional coverage: advanced mutations (`split`/`squash`/`rebase`), rare mutations (`duplicate`/`restore`/`backout`), bookmark ops (create/move/delete/track/untrack/forget), conflict reporting + resolve-after-edit, `git push` with progress reporting, op-restore and op-diff, and settings access (user identity, signing key, defaults).
-- Reliability invariants re-asserted **per verb**: no data loss; all jj access via `zanshin-jj` → jj-lib; never shell out to the `jj` binary; never parse its text output; every Zanshin-initiated mutation must be visible and reversible in the op log, indistinguishable from a CLI-initiated one.
-- **The jj CLI's observable behavior is the semantic reference** — which verbs exist, their preconditions, refusal/error conditions, argument arity, op-log effect, default revset/config resolution. Read it as prior art from the local jj checkout at the pinned tag. Replicate *what* the CLI does, not *how*: the GUI/headless backend replaces the terminal UX entirely (no TUI, `$EDITOR`, pager, prompts, or templated stdout). When the CLI refuses, surface an equivalent error rather than inventing a friendlier outcome.
-- **Pass user-facing parameters through; never decide for the user.** Where the CLI leaves a path, revset, destination, or flag to the user, the typed verb and its FFI/MCP surface pass it through so the UI can offer the choice. A default the CLI itself applies may be surfaced as an editable pre-fill — never as a silent, baked-in substitution.
-- Definition of done per verb is the full surfacing chain: `.fbs` schema → typed `zanshin-jj` op (transaction Rust-side) → `zanshin-ffi` `extern "C"` + codegen → Dart worker command → optional MCP tool → tests. Tests mean a `zanshin-jj` integration test **plus** an FFI-path Dart test (needed for coverage attribution of each `extern "C"` fn), FlatBuffers verification, and a green coverage ratchet.
-- Wire schemas are edited in place during WIP — no `_v2` tables, no in-wire schema version.
-- Pin currency is a precondition: the jj-lib bump lands as its own reviewed change before any operation work, and the local jj reference tag used for CLI prior-art reading moves in lockstep.
+- **CLI observable behaviour at the pinned tag is the spec:** verbs, preconditions, refusals and their order, defaults, op-log effect (descriptions byte-identical), every on-disk side effect. Terminal UX (TUI, `$EDITOR`, pager, prompts, text, hints) is not ported.
+- **Backend exposes, UI decides:** pass parameters through, no hidden defaults (a CLI default may be an editable pre-fill), return candidates where the CLI would prompt. Absence is `null`.
+- jj access only via jj-lib; never shell out to `jj` or parse its text.
+- Pure reads write no operation beyond the shared snapshot precondition; a verb that changes nothing writes no operation and returns the pre-call head op id.
+- Done per verb = `.fbs` (edited in place) → `zanshin-jj` → `extern "C"` + committed codegen → Dart worker command → optional MCP → Rust tests + a real-cdylib `zanshin_core` test per extern fn; `docs/ffi-abi.md` and error registry updated; `cargo make test` green incl. coverage ratchet.
+- Never regenerate fixtures (no remote bookmarks — build that state in-test); pin `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*` in env guards.
 
 ## Technical Decisions
 
-- **Verb-level granularity is forced, not stylistic.** Every jj write runs snapshot → start transaction → mutate a borrowed `MutableRepo` → rebase descendants → commit → finish. The load-bearing intermediates are borrowed handles or hold on-disk locks, and the write path panics if rewrites are outstanding — so a transaction cannot be driven step-by-step across FFI. Whole, curated, typed transactions are the only representable unit. Only owned id/value blobs and opaque registry handles cross the boundary.
-- **One surface, two consumers.** The same typed operation is lifted to Flutter over FFI and called directly by the MCP server. Orchestration is written once; composition never moves into a consumer.
-- **A shared operation-support layer** re-ports the orchestration that lives in the CLI binary and is absent from jj-lib: the immutable-heads / rewritability guard, insert-location resolution for `-A`/`-B`/`--onto`, description combination with trailers, and the selected-tree plumbing that replaces the CLI's interactive hunk selector. Bounded and shared, not a per-verb rewrite.
-- **Read side** = named composed views + one generic `eval_revset` joker + direct `View` reads. The revset primitive stays lazy and streamed (never collected), cancellable mid-walk; bookmark/tag/head/working-copy listing reads straight off the view, which is cheaper than a revset. Short-prefix id resolution requires the id-prefix context wired into the symbol resolver. **As built (Story 9.2):** the primitive is a visitor — `Repo::eval_revset(&str, impl FnMut(Change) -> ControlFlow<()>)` — because the evaluated revset borrows the repo the call loads; laziness, no-collect and mid-walk cancellation are preserved. The View reads are `list_tags`/`list_heads`/`list_working_copies`, all `zanshin-jj`-only; no FFI/MCP surfacing yet, so the raw-joker-to-MCP question below is still open.
-- **Preserve the three-stage revset error taxonomy** (parse vs. resolution vs. evaluation) in the bridge error enum, mapped into the project's dotted `<domain>.<reason>` codes — so "unknown revision X, did you mean…" stays distinguishable from a syntax error.
-- **Thickness is dominated by plumbing, not invention.** Only about four operations (`revert`, `split`, `arrange`, `parallelize`) have zero library helper and are genuine algorithm ports; several feared ops (`absorb`, `restore`, `fix`, `file annotate`) are cheap library wraps. Verbs that "feel" thick because of interactivity are backend-medium once the GUI supplies the selection.
-- **Config-derived defaults come from the existing per-operation layered config loader**, rebuilt per call and never cached — default revsets and tool configuration resolve the way the CLI would, rather than from Rust constants.
-- Some verbs perform writes **outside** the transaction (repo-config rewrites for remote remove/rename, workspace metadata) — follow the established remotes-story pattern rather than forcing them into the transaction.
-- Networked / long-running verbs (`push`, `clone`, `fetch`) reuse the established typed progress-callback pattern.
-- Verb granularity tracks the CLI verb set and is re-evaluated at each pin bump; new upstream verbs get added as they appear.
+- **Verb granularity is forced:** borrowed jj-lib handles and on-disk locks prevent driving a transaction across FFI; only owned ids/blobs and opaque handles cross. One surface serves Flutter and MCP.
+- **Operation-support layer** re-ports CLI-only orchestration: rewritability guard, `-o`/`-A`/`-B` location + loop check, message combination, selected-tree plumbing. Only `revert`/`split`/`arrange`/`parallelize` are real algorithm ports.
+- **Reads:** named views + `eval_revset` (lazy, cancellable visitor; crate-only) + direct `View` reads; parse/resolution/evaluation errors stay distinct.
+- **Per-verb precondition = CLI start-up:** colocated → import Git HEAD → snapshot → import refs, under jj's git import/export lock, each writing only on change. Not for the CLI's no-snapshot commands or detect/open/init/clone/convert; loop-free with the watcher.
+- **Settings = the CLI's full config stack**, resolved with the verb's CLI command name; no hardcoded identity, no `.gitconfig`; reload on change. Config writes are file edits via one `ConfigFile` helper family, no operation.
+- **Refusals** reuse `<domain>.<reason>` codes with the CLI message verbatim; **CLI warnings** become `warnings: [{code, message}]` on ok and error envelopes; status lines stay typed facts.
+- **One pure `plan_*` fn per verb**, shared by the verb and the drop-action preview (advisory; the verb's refusal wins).
+- Network verbs reuse the typed progress callback; the login-shell environment is resolved at start-up and passed as an explicit map (never `set_var`).
 
 ## UX & Interaction Patterns
 
-- **Interactive verbs take a GUI-supplied selection.** `squash`, `split`, `commit`, `diffedit`, and `resolve` accept a caller-built selected tree id; the backend wraps it and never spawns an editor. Expose these as context+apply pairs so the UI can fetch what it needs to render the diff/merge view, then apply the user's selection.
-- **Ambiguity is resolved by the UI, not by a prompt.** Where the CLI would prompt (e.g. multiple `next`/`prev` targets), the backend returns the candidate set and the GUI picks.
-- `arrange` exposes only a headless apply-a-plan entry point; the CLI's terminal UI is replaced by the GUI's own interaction.
-- Consistent posture: the backend classifies and offers; the UI decides.
+- Interactive verbs take a GUI-supplied tree id (context + apply); no editor spawn; `arrange` is headless.
+- Drag-and-drop: drop on a commit = onto, on an edge = after + before; menu shows available verbs, refused ones greyed with reason.
+- Remote badge counts upstream-changed bookmarks, never commits; timers are UI-side. Warning codes let the UI offer remedies without parsing text.
 
 ## Cross-Story Dependencies
 
-- The pin bumps (9.0, 9.0a) precede every operation story. 9.1 (operation-support layer) **blocks all of Tier C** and is also needed by `duplicate` (9.9) for location computation. Work proceeds Tier A → B → C by thickness.
-- 9.2 extends the existing revset read work; the thick verbs' target/destination resolution builds on it.
-- The epic reuses the established mutation module and FFI mutation-surface patterns from the earlier write-path epic rather than introducing new ones; it supersedes that epic's deferred split/squash/rebase and bookmark-CRUD stubs.
-- Bookmark work is deliberately split across three tiers (create/delete → set/forget/track/untrack → move/advance/rename + list filters); later stories build on the earlier ones' target-setting helpers.
-- The op-log stories extend past the existing single-step undo into full restore/revert/redo-stack semantics.
-- Git interop stories build on the existing remotes-read work; remote config rewrites mirror its outside-the-transaction file-write pattern.
-- **Interactive verbs cannot be validated end-to-end from this repo** — they need the Flutter diff/merge editor (out of scope here) to supply the selected tree id; the backend can only test the apply half.
-- MCP exposure cross-cuts the MCP epic's write-tools story. Two open scoping questions to settle when scheduling: whether every mutation verb gets an MCP tool immediately or reads plus a core mutation subset ship first, and whether MCP gets the raw `eval_revset` primitive or only named views.
+- 9.0/9.0a first (`../jj` reference tag moves with the pin); 9.1 blocks Tier C, 9.9 and 9.31; Tier A → B → C.
+- 9.27 → 9.28; 9.22 + 9.27 → 9.26 → 9.34; 9.26–9.28 → 9.41; 9.37 uses 9.27's refresh; 9.25 writes via 9.28's helper.
+- 9.32 → 9.33, 9.35; 9.36/9.37/9.39 emit through it.
+- 9.31 shares plan fns with 9.3/9.6/9.9/9.15/9.16/9.18 — first to land creates them.
+- 9.24 poll / 9.29 distances / 9.30 fetch (import-options helper shared with 9.5); 9.11/9.19 build on 9.8; 9.39 ↔ 9.21, 9.40.
+- Interactive verbs can't be tested end-to-end here. MCP cross-cut open: which verbs first; raw `eval_revset` or named views.

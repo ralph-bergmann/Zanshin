@@ -8,7 +8,9 @@
 //! sequence, the colocated rows, the three stale causes) is pinned in
 //! `crates/zanshin-jj/tests/snapshot_*.rs`; what is tested here is the envelope: the report on a
 //! read, on a mutation, on `zanshin_snapshot` itself (ok with NO `data`), and on an ERROR
-//! envelope — and its ABSENCE on the symbols that run no precondition (AC-3).
+//! envelope — and its ABSENCE on the symbols that run no precondition (AC-3). Since Story 9.32
+//! the same holds for `Envelope.warnings`: a precondition verb's warnings cross on the ok AND
+//! the error arm.
 //!
 //! Repos are built in-test through `zanshin_jj` (a regular dependency of this crate): the rows
 //! need files on disk, which the committed fixtures do not model.
@@ -37,7 +39,10 @@ use zanshin_ffi::repo::{zanshin_absorb, zanshin_describe, zanshin_repo_close, za
 use zanshin_ffi::snapshot::zanshin_snapshot;
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
-use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_STALE_WORKING_COPY};
+use zanshin_ffi::{
+    FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ALIAS_INVALID, JJ_CONFIG_ERROR, JJ_GIT_EXPORT_FAILED,
+    JJ_INVALID_INPUT, JJ_STALE_WORKING_COPY, JJ_WORKING_COPY_IMMUTABLE,
+};
 use zanshin_jj::{Backend, ChangeId, Repo};
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -80,6 +85,17 @@ unsafe fn read_and_free(token: *mut ZanshinBuf) -> Vec<u8> {
 
 fn parse_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
     fb_root::<fbs::Envelope>(bytes).expect("FlatBuffers Verifier must pass for a well-formed Envelope")
+}
+
+/// `Envelope.warnings` as `(code, message)` pairs — `[]` when the field is absent.
+fn warnings_of(env: &fbs::Envelope<'_>) -> Vec<(String, String)> {
+    env.warnings()
+        .map(|v| {
+            v.iter()
+                .map(|w| (w.code().unwrap_or("").to_owned(), w.message().unwrap_or("").to_owned()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn c_path(path: &Path) -> CString {
@@ -218,6 +234,36 @@ fn a_wrong_typed_knob_is_jj_config_error_with_a_partial_report() {
         err.context()
     );
     assert!(!env.precondition().expect("partial report").was_snapshot_taken());
+    close_handle(handle);
+}
+
+/// `zanshin_snapshot` builds its own error arm; the warnings collected before the failure ride
+/// it (Story 9.32): the bad `[fileset-aliases]` entry loads (and warns) before the wrong-typed
+/// size knob refuses.
+#[test]
+fn a_snapshot_error_envelope_carries_the_warnings_collected_before_the_failure() {
+    let (_tmp, root) = fresh_repo();
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.max-new-file-size = true\n[fileset-aliases]\n'bad(' = 'x'\n",
+    )
+    .expect("config");
+    let handle = open_handle(&root);
+
+    let bytes = snapshot(handle);
+
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CONFIG_ERROR));
+    assert!(env.precondition().is_some(), "the partial report rides along");
+    let warnings = warnings_of(&env);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].0, "jj.config_alias_invalid");
+    assert!(
+        warnings[0].1.starts_with("Failed to load `fileset-aliases.bad(`: "),
+        "{}",
+        warnings[0].1
+    );
     close_handle(handle);
 }
 
@@ -538,11 +584,11 @@ fn every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm() {
     close_handle(handle);
 }
 
-/// `MutationResult.finish` present: a `describe` that moves `@` INTO the immutable set makes the
-/// CLI's `finish_transaction` create a new `@` on top ("The working-copy commit became
-/// immutable…"), which rides the wire as `finish.working_copy_became_immutable`.
+/// A `describe` that moves `@` INTO the immutable set makes the CLI's `finish_transaction` create
+/// a new `@` on top ("The working-copy commit became immutable…"), which rides the wire as a
+/// `jj.working_copy_immutable` warning (Story 9.32) — `finish` stays absent: nothing to export.
 #[test]
-fn a_mutation_that_makes_at_immutable_reports_it_in_finish() {
+fn a_mutation_that_makes_at_immutable_warns_on_the_envelope() {
     let (_tmp, root) = fresh_repo();
     fs::write(
         root.join(".jj").join("repo").join("config.toml"),
@@ -563,11 +609,14 @@ fn a_mutation_that_makes_at_immutable_reports_it_in_finish() {
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
     let m = env.data_as_mutation_result().expect("MutationResult payload");
-    let finish = m.finish().expect("a non-default finish is written");
-    assert!(finish.working_copy_became_immutable());
-    assert!(!finish.git_head_update_failed());
-    assert_eq!(finish.export_failed_bookmarks().map_or(0, |v| v.len()), 0);
-    assert_eq!(finish.export_failed_tags().map_or(0, |v| v.len()), 0);
+    assert!(m.finish().is_none(), "no export ran outside colocation");
+    assert_eq!(
+        warnings_of(&env),
+        [(
+            JJ_WORKING_COPY_IMMUTABLE.to_owned(),
+            "The working-copy commit became immutable; a new commit has been created on top of it.".to_owned()
+        )]
+    );
     assert_ne!(
         m.working_copy_change_id(),
         Some(wc.as_str()),
@@ -635,6 +684,70 @@ fn a_colocated_export_failure_rides_finish_export_failed_bookmarks() {
         "{:?}",
         failed.iter().map(|f| f.name()).collect::<Vec<_>>()
     );
+    // Story 9.32: the same failure as the CLI's warning block, under its code — after the
+    // verb body's own "Target revision is empty." (`@` is empty), the CLI's print order.
+    let warnings = warnings_of(&env);
+    let codes: Vec<&str> = warnings.iter().map(|(code, _)| code.as_str()).collect();
+    assert_eq!(codes, ["jj.bookmark_target_empty", JJ_GIT_EXPORT_FAILED]);
+    assert!(
+        warnings[1]
+            .1
+            .starts_with("Failed to export some bookmarks:\n  foo/bar@git: "),
+        "{}",
+        warnings[1].1
+    );
+    close_handle(handle);
+}
+
+/// Story 9.32's outermost witness: a precondition verb's warning — a bad `[revset-aliases]`
+/// entry, recorded while the pre-verb snapshot loads its knobs — crosses on the ok envelope AND,
+/// next to the partial precondition, on the error envelope of a verb that then refuses.
+#[test]
+fn a_precondition_warning_crosses_on_the_ok_and_the_error_arm() {
+    let (_tmp, root) = fresh_repo();
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'bad(' = 'x'\n",
+    )
+    .expect("config");
+    let handle = open_handle(&root);
+    let expect_alias_warning = |env: &fbs::Envelope<'_>, arm: &str| {
+        let warnings = warnings_of(env);
+        assert_eq!(warnings.len(), 1, "{arm}: {warnings:?}");
+        assert_eq!(warnings[0].0, JJ_CONFIG_ALIAS_INVALID, "{arm}");
+        assert!(
+            warnings[0].1.starts_with("Failed to load `revset-aliases.bad(`: "),
+            "{arm}: {}",
+            warnings[0].1
+        );
+    };
+
+    // SAFETY: handle is live.
+    let ok = unsafe { read_and_free(zanshin_status(handle)) };
+    let env = parse_envelope(&ok);
+    assert!(env.ok());
+    expect_alias_warning(&env, "ok arm");
+
+    let root_change = {
+        let repo = Repo::open(&root).expect("open");
+        zanshin_jj::resolve_revset(&repo, "root()")
+            .expect("root")
+            .swap_remove(0)
+            .0
+    };
+    let change_id = CString::new(root_change).expect("no NUL");
+    let description = CString::new("x").expect("no NUL");
+    // SAFETY: handle is live; both C strings are alive for the call.
+    let err = unsafe { read_and_free(zanshin_describe(handle, change_id.as_ptr(), description.as_ptr())) };
+    let env = parse_envelope(&err);
+    assert!(!env.ok());
+    assert_eq!(
+        env.error().and_then(|e| e.code()),
+        Some(JJ_INVALID_INPUT),
+        "root refuses"
+    );
+    assert!(env.precondition().is_some(), "the report rides the error arm");
+    expect_alias_warning(&env, "error arm");
     close_handle(handle);
 }
 
@@ -694,6 +807,10 @@ fn symbols_that_run_no_precondition_never_carry_the_field() {
         let env = parse_envelope(bytes);
         assert!(env.ok(), "{name}: {:?}", env.error().and_then(|e| e.code()));
         assert!(env.precondition().is_none(), "{name} runs no precondition");
+        assert!(
+            env.warnings().is_none(),
+            "{name} warns about nothing: the field is absent"
+        );
     }
     // …and none of them snapshotted: the dirty file is still unrecorded.
     assert!(parse_envelope(&snapshot(handle))

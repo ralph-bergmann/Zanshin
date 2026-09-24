@@ -46,7 +46,7 @@ fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
         CommitViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -114,7 +114,7 @@ fn read_revision_ref(
             commit.ok_or_else(|| missing_field(&format!("{field}.id")))?.to_owned(),
         )))),
         other => Err(FfiErrorObj {
-            precondition: None,
+            report: None,
             code: FFI_INVALID_ARGUMENT.to_owned(),
             context: Some(format!("unknown {field} revision ref: {other:?}")),
         }),
@@ -201,7 +201,7 @@ fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffReques
 /// Children before parents (`FlatBuffers` requirement): each entry's nested `Change` and its
 /// `[FileChange]` vector are complete before the `ShowEntry` table opens, and the outer vector
 /// and `ShowView` table come after the loop.
-fn show_view_to_envelope(entries: &[ShowEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = entries
         .iter()
@@ -219,14 +219,14 @@ fn show_view_to_envelope(entries: &[ShowEntry], precondition: Option<&zanshin_jj
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::ShowView::create(&mut b, &fbs::ShowViewArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::ShowView, Some(table.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::ShowView, Some(table.as_union_value()), report)
 }
 
 /// Serialise `&[EvologEntry]` into a finished `Envelope<EvologView>` buffer.
 ///
 /// `operation_id` is written only when present: null-for-absence is the wire form of "the walk
 /// emitted this entry from its flush tail", i.e. the evolution may be truncated.
-fn evolog_view_to_envelope(entries: &[EvologEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn evolog_view_to_envelope(entries: &[EvologEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(2048);
     let offsets: Vec<_> = entries
         .iter()
@@ -247,14 +247,14 @@ fn evolog_view_to_envelope(entries: &[EvologEntry], precondition: Option<&zanshi
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::EvologView::create(&mut b, &fbs::EvologViewArgs { entries: Some(vec) });
-    finish_envelope(b, fbs::Payload::EvologView, Some(table.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::EvologView, Some(table.as_union_value()), report)
 }
 
 /// Serialise an [`InterdiffView`] into a finished `Envelope<InterdiffView>` buffer.
 ///
 /// `base_has_conflicts` rides alongside the change list rather than replacing it: a conflicted
 /// rebase base is a fact about the comparison, never a refusal.
-fn interdiff_view_to_envelope(view: &InterdiffView, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn interdiff_view_to_envelope(view: &InterdiffView, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let vec = file_changes_vector(&mut b, &view.file_changes);
     let table = fbs::InterdiffView::create(
@@ -264,12 +264,7 @@ fn interdiff_view_to_envelope(view: &InterdiffView, precondition: Option<&zanshi
             base_has_conflicts: view.base_has_conflicts,
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::InterdiffView,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::InterdiffView, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -578,7 +573,7 @@ mod tests {
             ],
         }];
 
-        let buf = show_view_to_envelope(&entries, None);
+        let buf = show_view_to_envelope(&entries, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::ShowView);
@@ -619,7 +614,7 @@ mod tests {
             },
         ];
 
-        let buf = evolog_view_to_envelope(&entries, None);
+        let buf = evolog_view_to_envelope(&entries, &crate::envelope::CallReport::default());
         let env = verified(&buf);
         assert_eq!(env.data_type(), fbs::Payload::EvologView);
         let view = env.data_as_evolog_view().expect("EvologView payload");
@@ -657,7 +652,7 @@ mod tests {
                     }],
                     base_has_conflicts,
                 },
-                None,
+                &crate::envelope::CallReport::default(),
             );
             let env = verified(&buf);
             assert_eq!(env.data_type(), fbs::Payload::InterdiffView);
@@ -677,15 +672,21 @@ mod tests {
     #[test]
     fn empty_results_still_produce_ok_envelopes() {
         for (buf, expected) in [
-            (show_view_to_envelope(&[], None), fbs::Payload::ShowView),
-            (evolog_view_to_envelope(&[], None), fbs::Payload::EvologView),
+            (
+                show_view_to_envelope(&[], &crate::envelope::CallReport::default()),
+                fbs::Payload::ShowView,
+            ),
+            (
+                evolog_view_to_envelope(&[], &crate::envelope::CallReport::default()),
+                fbs::Payload::EvologView,
+            ),
             (
                 interdiff_view_to_envelope(
                     &InterdiffView {
                         file_changes: Vec::new(),
                         base_has_conflicts: false,
                     },
-                    None,
+                    &crate::envelope::CallReport::default(),
                 ),
                 fbs::Payload::InterdiffView,
             ),

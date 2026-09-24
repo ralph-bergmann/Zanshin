@@ -11,6 +11,7 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal, decodeMutationResultInternal;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.5's six `jj git` sync + remote-config
 // verbs: the adapters (import/export/remote add/remove/rename/set-url), the two
@@ -178,6 +179,7 @@ final class GitImportResult {
     required this.abandonedChangeIds,
     required this.numRewritten,
     required this.failedRefNames,
+    this.warnings = const [],
   });
 
   /// The shared mutation contract: op id (the PRE-CALL head when nothing needed
@@ -204,8 +206,13 @@ final class GitImportResult {
   /// Git ref names the import could not read. A failed ref is NEVER an error —
   /// the CLI warns and exits 0 — and nothing in the repository state lets a caller
   /// re-derive this list afterwards. A name under `refs/remotes/git/` is the
-  /// reserved-namespace case.
+  /// reserved-namespace case. Also reported as a `jj.git_import_failed` warning.
   final List<String> failedRefNames;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none, and always empty on the precondition's nested
+  /// `gitRefs`. The nested [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
 }
 
 /// One remote ref a `git export` could not write to git (mirrors
@@ -230,6 +237,7 @@ final class GitExportResult {
     required this.mutation,
     required this.failedBookmarks,
     required this.failedTags,
+    this.warnings = const [],
   });
 
   /// The shared mutation contract: op id (the PRE-CALL head when git already
@@ -243,6 +251,10 @@ final class GitExportResult {
   /// Tags that could not be exported — only ever `@git` tags, since git has no
   /// remote tags.
   final List<GitExportFailure> failedTags;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none. The nested [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ──────────────────────────────────────────────────────────────────
@@ -263,18 +275,23 @@ GitImportResult _decodeGitImportResultEnvelope(Uint8List bytes) {
   if (payload is! fbs.GitImportResult) {
     throw ZanshinFfiException('ffi.unknown', 'expected GitImportResult payload, got ${env.dataType}');
   }
-  return decodeGitImportResultInternal(payload);
+  return decodeGitImportResultInternal(payload, warnings: decodeEnvelopeWarningsInternal(env));
 }
 
 /// Rebuild a [GitImportResult] from its table — shared by `gitImport` and the
-/// Story 9.26 precondition report's `gitRefs`.
-GitImportResult decodeGitImportResultInternal(fbs.GitImportResult payload) => GitImportResult(
+/// Story 9.26 precondition report's `gitRefs`. [warnings] are the enclosing
+/// envelope's — only `gitImport`'s top-level decode passes any.
+GitImportResult decodeGitImportResultInternal(
+  fbs.GitImportResult payload, {
+  List<ZanshinWarning> warnings = const [],
+}) => GitImportResult(
   mutation: decodeMutationResultInternal(payload.mutation),
   changedBookmarks: _refUpdates(payload.changedBookmarks),
   changedTags: _refUpdates(payload.changedTags),
   abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
   numRewritten: payload.numRewritten,
   failedRefNames: payload.failedRefNames?.toList() ?? const [],
+  warnings: warnings,
 );
 
 /// Decode a `GitExportResult` `Envelope` buffer into a [GitExportResult].
@@ -297,6 +314,7 @@ GitExportResult _decodeGitExportResultEnvelope(Uint8List bytes) {
     mutation: decodeMutationResultInternal(payload.mutation),
     failedBookmarks: decodeExportFailuresInternal(payload.failedBookmarks),
     failedTags: decodeExportFailuresInternal(payload.failedTags),
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

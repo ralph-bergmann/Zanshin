@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -66,17 +67,18 @@ final class Bookmark {
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
 
-/// Decode a `Bookmarks` `Envelope` buffer into a list of [Bookmark]s.
+/// Decode a `Bookmarks` `Envelope` buffer into a list of [Bookmark]s that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
 /// go through `ZanshinWorker.bookmarks`.
 @visibleForTesting
-List<Bookmark> decodeBookmarksEnvelope(Uint8List bytes) => _decodeBookmarksEnvelope(bytes);
+WarnedList<Bookmark> decodeBookmarksEnvelope(Uint8List bytes) => _decodeBookmarksEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<Bookmark> decodeBookmarksEnvelopeInternal(Uint8List bytes) => _decodeBookmarksEnvelope(bytes);
+WarnedList<Bookmark> decodeBookmarksEnvelopeInternal(Uint8List bytes) => _decodeBookmarksEnvelope(bytes);
 
-List<Bookmark> _decodeBookmarksEnvelope(Uint8List bytes) {
+WarnedList<Bookmark> _decodeBookmarksEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
     final fbs.FfiError? e = env.error;
@@ -89,7 +91,7 @@ List<Bookmark> _decodeBookmarksEnvelope(Uint8List bytes) {
       'expected Bookmarks payload, got ${env.dataType}',
     );
   }
-  return payload.bookmarks?.map(_mapBookmark).toList() ?? const [];
+  return WarnedList(payload.bookmarks?.map(_mapBookmark).toList() ?? const [], decodeEnvelopeWarningsInternal(env));
 }
 
 Bookmark _mapBookmark(fbs.Bookmark b) => Bookmark(

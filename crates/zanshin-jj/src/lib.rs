@@ -48,6 +48,7 @@ pub(crate) mod revset;
 pub(crate) mod snapshot;
 pub(crate) mod status;
 pub(crate) mod view;
+pub(crate) mod warning;
 pub(crate) mod wc_ops;
 pub(crate) mod workspace;
 
@@ -67,7 +68,7 @@ pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
-pub use mutate::{AbsorbResult, IdentityMissing, MutateError, MutationResult, SkippedPath};
+pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, Repo, RepoError};
@@ -75,6 +76,7 @@ pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
 pub use view::{Tag, TagKind, ViewError, WorkingCopy};
+pub use warning::{Warned, Warning, WarningKind};
 pub use wc_ops::{SnapshotStats, TrackResult, UntrackResult, UntrackedPath, UntrackedReason};
 pub use workspace::{WorkspaceEntry, WorkspaceError};
 

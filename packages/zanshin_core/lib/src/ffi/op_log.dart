@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -66,17 +67,18 @@ final class Operation {
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
 
-/// Decode an `OpLog` `Envelope` buffer into a list of [Operation]s.
+/// Decode an `OpLog` `Envelope` buffer into a list of [Operation]s that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
 /// go through `ZanshinWorker.opLog`.
 @visibleForTesting
-List<Operation> decodeOpLogEnvelope(Uint8List bytes) => _decodeOpLogEnvelope(bytes);
+WarnedList<Operation> decodeOpLogEnvelope(Uint8List bytes) => _decodeOpLogEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<Operation> decodeOpLogEnvelopeInternal(Uint8List bytes) => _decodeOpLogEnvelope(bytes);
+WarnedList<Operation> decodeOpLogEnvelopeInternal(Uint8List bytes) => _decodeOpLogEnvelope(bytes);
 
-List<Operation> _decodeOpLogEnvelope(Uint8List bytes) {
+WarnedList<Operation> _decodeOpLogEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
     final fbs.FfiError? e = env.error;
@@ -89,7 +91,10 @@ List<Operation> _decodeOpLogEnvelope(Uint8List bytes) {
       'expected OpLog payload, got ${env.dataType}',
     );
   }
-  return payload.operations?.map(_mapOperation).toList() ?? const [];
+  return WarnedList(
+    payload.operations?.map(_mapOperation).toList() ?? const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
 }
 
 Operation _mapOperation(fbs.Operation o) => Operation(

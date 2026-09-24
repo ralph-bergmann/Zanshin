@@ -349,8 +349,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_file_write(
 
 /// `jj config gc`, half 2: delete the requested directories that are still missing repo config
 /// directories; any other request, and every per-directory failure, rides
-/// `ConfigGcResult.failed` (the CLI warns and continues). The arguments cross as a
-/// `ConfigGcDeleteRequest` buffer.
+/// `ConfigGcResult.failed` (the CLI warns and continues — a directory that could not be deleted
+/// also warns `jj.config_gc_delete_failed`). The arguments cross as a `ConfigGcDeleteRequest`
+/// buffer.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -416,7 +417,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_get(
 ///
 /// The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
 /// (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
-/// `ConfigListResult` (lowest layer first; empty is a result). Writes nothing.
+/// `ConfigListResult` (lowest layer first; empty is a result — and then warns
+/// `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -472,8 +474,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_path(
 /// (the CLI's prompt). Comments and formatting survive; the config write itself writes no
 /// operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
 /// first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
-/// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition`, and
-/// `ConfigSetResult.working_copy_author` is present iff `@`'s author differs from the new value.
+/// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
+/// that snapshot's warnings, and `ConfigSetResult.working_copy_author` is present iff `@`'s
+/// author differs from the new value (then warning `jj.config_working_copy_author` too).
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -1865,7 +1868,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_show(
 /// clean tree with unchanged refs writes no operation and reports `was_snapshot_taken = false`.
 ///
 /// Returns an ok `FlatBuffers` `Envelope` with NO `data` and `precondition` set on success; an
-/// error envelope carries the PARTIAL `precondition` up to the failing step.
+/// error envelope carries the PARTIAL `precondition` up to the failing step. Both carry the
+/// call's warnings (Story 9.32).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -2163,6 +2167,8 @@ const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 
 const int Envelope_VT_PRECONDITION = 12;
 
+const int Envelope_VT_WARNINGS = 14;
+
 const int EvologEntry_VT_OPERATION_ID = 8;
 
 const int EvologEntry_VT_PREDECESSOR_COMMIT_IDS = 6;
@@ -2197,13 +2203,9 @@ const int FileTooLarge_VT_SIZE = 4;
 
 const int FileTrackRequest_VT_INCLUDE_IGNORED = 8;
 
-const int FinishFacts_VT_EXPORT_FAILED_BOOKMARKS = 8;
+const int FinishFacts_VT_EXPORT_FAILED_BOOKMARKS = 4;
 
-const int FinishFacts_VT_EXPORT_FAILED_TAGS = 10;
-
-const int FinishFacts_VT_GIT_HEAD_UPDATE_FAILED = 6;
-
-const int FinishFacts_VT_WORKING_COPY_BECAME_IMMUTABLE = 4;
+const int FinishFacts_VT_EXPORT_FAILED_TAGS = 6;
 
 const int GitExportResult_VT_FAILED_BOOKMARKS = 6;
 
@@ -2303,9 +2305,7 @@ const int MissingRepoConfig_VT_REPO_PATH = 6;
 
 const int MutationResult_VT_ABANDONED_CHANGE_IDS = 8;
 
-const int MutationResult_VT_FINISH = 14;
-
-const int MutationResult_VT_IDENTITY_MISSING = 12;
+const int MutationResult_VT_FINISH = 12;
 
 const int MutationResult_VT_NEW_CHANGE_IDS = 6;
 
@@ -2329,17 +2329,13 @@ const int Precondition_VT_GIT_HEAD_REBASED = 12;
 
 const int Precondition_VT_GIT_HEAD_RESET = 10;
 
-const int Precondition_VT_GIT_REFS = 18;
+const int Precondition_VT_GIT_REFS = 16;
 
-const int Precondition_VT_GIT_REFS_REBASED = 20;
-
-const int Precondition_VT_JJCONFLICT_FILES_PRESENT = 22;
+const int Precondition_VT_GIT_REFS_REBASED = 18;
 
 const int Precondition_VT_SNAPSHOT_REBASED = 14;
 
 const int Precondition_VT_WAS_SNAPSHOT_TAKEN = 4;
-
-const int Precondition_VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT = 16;
 
 const int Progress_VT_OPERATION = 6;
 

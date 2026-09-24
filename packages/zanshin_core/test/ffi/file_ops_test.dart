@@ -11,7 +11,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/file_ops.dart';
-import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
 fbs.MutationResultObjectBuilder mutation() => fbs.MutationResultObjectBuilder(
@@ -19,15 +19,18 @@ fbs.MutationResultObjectBuilder mutation() => fbs.MutationResultObjectBuilder(
   newChangeIds: const <String>[],
   abandonedChangeIds: const <String>[],
   workingCopyChangeId: 'qpvuntsm',
-  // The verbs never SET it (the CLI's track/untrack skip finish_transaction), but the wire
-  // field exists on the shared table, so the decoder must still carry it.
-  identityMissing: fbs.IdentityMissingObjectBuilder(name: true, email: false),
 );
 
-void expectIdentityMissingDecoded(MutationResult m) {
-  expect(m.identityMissing, isNotNull);
-  expect(m.identityMissing!.name, isTrue);
-  expect(m.identityMissing!.email, isFalse);
+/// The envelope warnings both verbs can carry (Story 9.32) — the refused-file
+/// snapshot note first, then the unmatched-paths note, as untrack emits them.
+List<fbs.WarningObjectBuilder> warnings() => [
+  fbs.WarningObjectBuilder(code: ZanshinWarningCode.snapshotFilesRefused, message: 'refused'),
+  fbs.WarningObjectBuilder(code: ZanshinWarningCode.pathsUnmatched, message: 'unmatched'),
+];
+
+void expectWarningsDecoded(List<ZanshinWarning> w) {
+  expect(w.map((x) => x.code), ['jj.snapshot_files_refused', 'jj.paths_unmatched']);
+  expect(w.map((x) => x.message), ['refused', 'unmatched']);
 }
 
 /// A `SnapshotStats` carrying one entry per union arm plus one invalid-UTF-8 name.
@@ -97,13 +100,15 @@ void main() {
         ok: true,
         dataType: fbs.PayloadTypeId.TrackResult,
         data: fbs.TrackResultObjectBuilder(mutation: mutation(), numRebased: 0, snapshotStats: stats()),
+        warnings: warnings(),
       ).toBytes();
 
       final TrackResult result = decodeTrackResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, 'op1');
       expect(result.mutation.workingCopyChangeId, 'qpvuntsm');
-      expectIdentityMissingDecoded(result.mutation);
+      expectWarningsDecoded(result.warnings);
+      expect(result.mutation.warnings, isEmpty);
       expect(result.numRebased, 0);
       expectBothArms(result.snapshotStats);
     });
@@ -120,11 +125,13 @@ void main() {
           failedBookmarks: [fbs.GitExportFailureObjectBuilder(name: 'foo', remote: 'git', reason: 'Failed to set')],
           failedTags: const <fbs.GitExportFailureObjectBuilder>[],
         ),
+        warnings: warnings(),
       ).toBytes();
 
       final UntrackResult result = decodeUntrackResultEnvelope(bytes);
 
-      expectIdentityMissingDecoded(result.mutation);
+      expectWarningsDecoded(result.warnings);
+      expect(result.mutation.warnings, isEmpty);
       expect(result.numRebased, 2);
       expect(result.unmatchedPaths, ['nope.txt']);
       expectBothArms(result.snapshotStats);

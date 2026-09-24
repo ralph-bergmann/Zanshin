@@ -50,7 +50,7 @@ pub unsafe fn handle_drop<T>(ptr: *mut T) {
 pub fn validate_handle<T>(ptr: *mut c_void) -> Result<*mut T, FfiErrorObj> {
     if ptr.is_null() {
         return Err(FfiErrorObj {
-            precondition: None,
+            report: None,
             code: FFI_INVALID_HANDLE.to_owned(),
             context: None,
         });

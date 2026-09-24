@@ -35,12 +35,12 @@
 //!   reaches `jj_lib::revset::parse_string_expression` unchanged. Consequence worth saying
 //!   loudly: a BARE pattern is a GLOB, so deleting a bookmark whose name contains `*`, `?` or
 //!   `[` needs `exact:"…"`.
-//! - **No terminal UX.** "Target revision is empty.", "Created N bookmarks pointing to …",
-//!   "Deleted N bookmarks.", "No bookmarks to delete." and
-//!   `warn_unmatched_local_bookmarks`' "No matching bookmarks for names: …"
-//!   (`bookmark/mod.rs:185-203`) are all stdout/stderr chatter. The machine-readable
-//!   equivalent of the last two is already in the contract: an unchanged `new_op_id` means
-//!   nothing happened.
+//! - **No terminal UX.** "Created N bookmarks pointing to …", "Deleted N bookmarks." and
+//!   "No bookmarks to delete." are stdout chatter; the machine-readable equivalent of the last
+//!   one is already in the contract: an unchanged `new_op_id` means nothing happened. The two
+//!   WARNINGS — "Target revision is empty." and `warn_unmatched_local_bookmarks`' "No matching
+//!   bookmarks for names: …" (`bookmark/mod.rs:185-203`) — ride the call's warnings as
+//!   `jj.bookmark_target_empty` / `jj.bookmark_names_unmatched` (Story 9.32).
 
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
@@ -52,6 +52,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, finish_or_no_op_at, flatten_chain, MutateError, MutationResult};
 use crate::snapshot::VerbContext;
+use crate::warning::WarningKind;
 use crate::ChangeId;
 
 /// Turns caller-supplied names into jj-lib `RefNameBuf`s, refusing the two arities the CLI
@@ -120,13 +121,13 @@ fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
 /// `parse_union_name_patterns`, minus its `ui` diagnostics printing.
 ///
 /// A bare word is a GLOB, not an exact name (`jj_lib::revset`'s `expect_string_expression`
-/// lowers an identifier or quoted string to `StringPattern::glob`).
-fn union_matcher(patterns: &[String]) -> Result<StringMatcher, MutateError> {
-    // jj-lib reports non-fatal parse DIAGNOSTICS (deprecations, redundant syntax) through
-    // this sink; the CLI prints them (`revset_util.rs:317-337` hands them to `ui`). Dropped
-    // here for the same reason every other CLI status line in this module is: they are
-    // terminal chatter, not part of the machine contract, and the GUI has no stderr. They
-    // are advisory only — a pattern that parses at all is used exactly as parsed.
+/// lowers an identifier or quoted string to `StringPattern::glob`) — though a glob without
+/// metacharacters IS exact, which is what [`StringExpression::exact_strings`] then reports.
+fn union_expression(patterns: &[String]) -> Result<StringExpression, MutateError> {
+    // The CLI prints this sink's DIAGNOSTICS through `print_parse_diagnostics`
+    // (`revset_util.rs:317-337`), a `ui.warning_*` site. Dropped here because jj-lib 0.44
+    // emits no diagnostic for string patterns, so the sink always stays empty (the "Not
+    // ported / out of scope" entry of `docs/rust-error-codes.md` § Warning Codes).
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());
     for pattern in patterns {
@@ -135,7 +136,7 @@ fn union_matcher(patterns: &[String]) -> Result<StringMatcher, MutateError> {
         })?;
         expressions.push(expression);
     }
-    Ok(StringExpression::union_all(expressions).to_matcher())
+    Ok(StringExpression::union_all(expressions))
 }
 
 /// Renders `names` the way the CLI's op-log descriptions do: `RefName::as_symbol()`, joined
@@ -166,6 +167,9 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 /// Description: `create bookmark {names} pointing to commit {id}` with `names` joined `", "`
 /// in argument order and `id` the FULL commit hex (`create.rs:123-131`).
 ///
+/// A target that is empty and undescribed (`Commit::is_discardable`) warns
+/// `jj.bookmark_target_empty` after both guards passed (`create.rs:84-86`, Story 9.32).
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `names` is empty, or a name is the empty string.
@@ -179,7 +183,7 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn create(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     names: &[String],
     revision: Option<&ChangeId>,
 ) -> Result<MutationResult, MutateError> {
@@ -192,17 +196,16 @@ pub(crate) fn create(
     // loading the head again. See that function's doc for why a second load would be wrong.
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
-    let target_id = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
-        .map_err(|e| mutate::res(e, revision))?
-        .id()
-        .clone();
+    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
+        .map_err(|e| mutate::res(e, revision))?;
+    let target_id = target.id().clone();
 
     let description = format!(
         "create bookmark {names} pointing to commit {id}",
         names = join_symbols(&ref_names),
         id = target_id.hex(),
     );
-    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx| {
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
         // Both guards for EVERY name run before ANY write, and returning `Err` from here
         // drops the transaction unwritten — so a refusal creates nothing, not even the
         // names that precede the offender. The CLI reaches the same observable outcome by
@@ -221,6 +224,9 @@ pub(crate) fn create(
                     name: name.as_str().to_owned(),
                 });
             }
+        }
+        if pollster::block_on(target.is_discardable(tx.repo())).map_err(mutate::be)? {
+            sink.push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
         }
         for name in &ref_names {
             tx.repo_mut()
@@ -254,6 +260,10 @@ pub(crate) fn create(
 /// Description: `delete bookmark {names}` with the MATCHED names joined `", "` in VIEW
 /// (lexicographic) order (`delete.rs:79-89`).
 ///
+/// An EXACT pattern — a bare name without glob metacharacters included — that names no local
+/// bookmark warns `jj.bookmark_names_unmatched`, before the no-op check, exactly where the CLI
+/// warns (`delete.rs:63`, Story 9.32).
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `patterns` is empty, or a pattern does not parse.
@@ -261,7 +271,7 @@ pub(crate) fn create(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn delete(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     patterns: &[String],
 ) -> Result<MutationResult, MutateError> {
     if patterns.is_empty() {
@@ -269,7 +279,8 @@ pub(crate) fn delete(
             reason: "bookmark delete requires at least one name pattern".to_owned(),
         });
     }
-    let matcher = union_matcher(patterns)?;
+    let expression = union_expression(patterns)?;
+    let matcher = expression.to_matcher();
 
     // ONE head load, as in `create`: the description names the MATCHED bookmarks, so the
     // view has to be read before the transaction opens, and the transaction then starts
@@ -282,9 +293,22 @@ pub(crate) fn delete(
         .local_bookmarks_matching(&matcher)
         .map(|(name, _)| name.to_owned())
         .collect();
+    // `warn_unmatched_local_bookmarks` (`bookmark/mod.rs:185-203`).
+    let unmatched: Vec<String> = expression
+        .exact_strings()
+        .map(RefName::new)
+        .filter(|name| readonly.view().get_local_bookmark(name).is_absent())
+        .map(|name| name.as_symbol().to_string())
+        .collect();
+    if !unmatched.is_empty() {
+        ctx.warnings.push(
+            WarningKind::BookmarkNamesUnmatched,
+            format!("No matching bookmarks for names: {}", unmatched.join(", ")),
+        );
+    }
 
     let description = format!("delete bookmark {}", join_symbols(&doomed));
-    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx| {
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, _sink| {
         for name in &doomed {
             tx.repo_mut().set_local_bookmark_target(name, RefTarget::absent());
         }
@@ -295,7 +319,14 @@ pub(crate) fn delete(
 
 #[cfg(test)]
 mod tests {
-    use super::{join_symbols, union_matcher, validate_names};
+    use jj_lib::str_util::StringMatcher;
+
+    use super::{join_symbols, union_expression, validate_names};
+
+    /// The matcher `delete` filters with.
+    fn union_matcher(patterns: &[String]) -> Result<StringMatcher, MutateError> {
+        union_expression(patterns).map(|expression| expression.to_matcher())
+    }
     use crate::MutateError;
 
     /// The two arity refusals the CLI makes at clap level, which have to become wire-level

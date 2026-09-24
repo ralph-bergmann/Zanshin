@@ -10,6 +10,7 @@ import 'change.dart' show Change, mapChangeTable;
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
 import 'status.dart' show FileChange, mapFileChangeTable;
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.6's three commit READ views: the
 // adapters (show/evolog/interdiff), their models, and their decoders.
@@ -224,7 +225,7 @@ final class ShowEntry {
 
 /// What `interdiff` reports (mirrors `zanshin_jj::InterdiffView`).
 final class InterdiffView {
-  const InterdiffView({required this.fileChanges, required this.baseHasConflicts});
+  const InterdiffView({required this.fileChanges, required this.baseHasConflicts, this.warnings = const []});
 
   /// Per-path changes `to` makes that `from` does not, in jj's own diff order. No
   /// `renamed`/`copied` entry is ever produced — `interdiff` passes no copy
@@ -244,6 +245,10 @@ final class InterdiffView {
   /// `getChange`. It describes the TREE, not the filtered result: a `paths`
   /// filter matching nothing still leaves it set.
   final bool baseHasConflicts;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// One step of a change's evolution (mirrors `zanshin_jj::EvologEntry`).
@@ -279,23 +284,24 @@ final class EvologEntry {
 
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
-/// Decode a `ShowView` `Envelope` buffer into a `List<ShowEntry>`.
+/// Decode a `ShowView` `Envelope` buffer into a `List<ShowEntry>` that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.show`.
 @visibleForTesting
-List<ShowEntry> decodeShowViewEnvelope(Uint8List bytes) => _decodeShowViewEnvelope(bytes);
+WarnedList<ShowEntry> decodeShowViewEnvelope(Uint8List bytes) => _decodeShowViewEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<ShowEntry> decodeShowViewEnvelopeInternal(Uint8List bytes) => _decodeShowViewEnvelope(bytes);
+WarnedList<ShowEntry> decodeShowViewEnvelopeInternal(Uint8List bytes) => _decodeShowViewEnvelope(bytes);
 
-List<ShowEntry> _decodeShowViewEnvelope(Uint8List bytes) {
+WarnedList<ShowEntry> _decodeShowViewEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.ShowView) {
     throw ZanshinFfiException('ffi.unknown', 'expected ShowView payload, got ${env.dataType}');
   }
-  return payload.entries?.map(_mapShowEntry).toList() ?? const [];
+  return WarnedList(payload.entries?.map(_mapShowEntry).toList() ?? const [], decodeEnvelopeWarningsInternal(env));
 }
 
 ShowEntry _mapShowEntry(fbs.ShowEntry e) => ShowEntry(
@@ -303,23 +309,24 @@ ShowEntry _mapShowEntry(fbs.ShowEntry e) => ShowEntry(
   fileChanges: e.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
 );
 
-/// Decode an `EvologView` `Envelope` buffer into a `List<EvologEntry>`.
+/// Decode an `EvologView` `Envelope` buffer into a `List<EvologEntry>` that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.evolog`.
 @visibleForTesting
-List<EvologEntry> decodeEvologViewEnvelope(Uint8List bytes) => _decodeEvologViewEnvelope(bytes);
+WarnedList<EvologEntry> decodeEvologViewEnvelope(Uint8List bytes) => _decodeEvologViewEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<EvologEntry> decodeEvologViewEnvelopeInternal(Uint8List bytes) => _decodeEvologViewEnvelope(bytes);
+WarnedList<EvologEntry> decodeEvologViewEnvelopeInternal(Uint8List bytes) => _decodeEvologViewEnvelope(bytes);
 
-List<EvologEntry> _decodeEvologViewEnvelope(Uint8List bytes) {
+WarnedList<EvologEntry> _decodeEvologViewEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.EvologView) {
     throw ZanshinFfiException('ffi.unknown', 'expected EvologView payload, got ${env.dataType}');
   }
-  return payload.entries?.map(_mapEvologEntry).toList() ?? const [];
+  return WarnedList(payload.entries?.map(_mapEvologEntry).toList() ?? const [], decodeEnvelopeWarningsInternal(env));
 }
 
 EvologEntry _mapEvologEntry(fbs.EvologEntry e) => EvologEntry(
@@ -349,6 +356,7 @@ InterdiffView _decodeInterdiffViewEnvelope(Uint8List bytes) {
   return InterdiffView(
     fileChanges: payload.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
     baseHasConflicts: payload.baseHasConflicts,
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

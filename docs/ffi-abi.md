@@ -59,12 +59,33 @@ Envelope {
   data_type:    Payload        // union discriminant (NONE when ok == false)
   data:         Payload        // union value (absent when ok == false)
   precondition: Precondition?  // the pre-verb snapshot's report (Story 9.26), ok OR error
+  warnings:     [Warning]?     // the call's CLI warnings (Story 9.32), ok OR error
 }
+
+Warning { code: string; message: string; }
 ```
 
 **Success:** `ok = true`, `data` holds the concrete payload variant.  
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
 holds human-readable detail. See `docs/rust-error-codes.md` for the full registry.
+
+### `warnings` — the CLI's `Warning:` blocks as coded facts (Story 9.32)
+
+Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.44.0's
+`ui.warning_*` output for the same call, one `Warning` per CLI block, in the CLI's print
+order (config-load warnings, the pre-verb snapshot and imports, the verb body,
+`finish_transaction`). `code` is one of the registered `jj.*` warning codes
+(`docs/rust-error-codes.md` § Warning Codes); `message` is the CLI's text, verbatim,
+without the `Warning: ` heading and without hints. A warning never changes the
+outcome: it rides the ok envelope AND the error envelope (a precondition that warned
+before the verb refused keeps its warnings next to the error). The vector is
+**absent** when there is nothing to warn about — every reader treats that as an empty
+list — and never appears on `PANIC_FALLBACK_ENVELOPE`, whose bytes are unchanged.
+Success without a caveat is `ok` with no warnings; there is no success code and no
+severity. Config-load warnings are recorded once per call. On the Dart side every
+`ZanshinWorker` / `RepoHandle` command result exposes them as `warnings`
+(`List<ZanshinWarning>`), decoded by one shared helper; a list result is a
+`WarnedList<E>`; payloads nested in another payload carry none.
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
@@ -80,8 +101,9 @@ operations, exactly as `jj log` does. `zanshin_snapshot` runs it alone (the CLI'
 Whenever the verb's pre-verb snapshot ran, the envelope — ok **and** error —
 carries the report in `Envelope.precondition`: the facts the CLI prints before a command runs
 (`was_snapshot_taken`, the snapshot's untracked paths, the head/refs import
-outcome and rebased counts, the `.jjconflict` warning, and the Git HEAD
-reset / ref export facts as `finish`). On an error it is PARTIAL — every field
+outcome and rebased counts, and the ref export failures as `finish`). The pure
+notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD reset —
+are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, convert, detect, close, `zanshin_log_defaults`,
 `zanshin_workspace_root`, the infrastructure symbols, async events, and every
@@ -100,8 +122,10 @@ Every mutation whose CLI verb ends in `tx.finish` (all but `zanshin_file_track` 
 `_untrack`, which the CLI commits through the locked working copy) likewise runs the
 CLI's `finish_transaction`: in a
 colocated workspace it resets Git HEAD to `@`'s parent and exports the refs, and
-if `@` became immutable it creates a new `@` on top. Those facts ride
-`MutationResult.finish` (absent when all are at their default).
+if `@` became immutable it creates a new `@` on top. The refs the export could not
+write ride `MutationResult.finish` (absent when none failed); `@` becoming immutable,
+a failed HEAD reset, the export failures themselves and an empty identity are
+`Envelope.warnings` (Story 9.32).
 
 `Payload` has **35** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
@@ -433,14 +457,16 @@ or no `# Errors` block.
 Every symbol not marked `→ char *` or `→ void` returns `ZanshinBuf *` — the
 never-null token described under *Token contract*.
 
-**`MutationResult.identity_missing` (Story 9.27).** Every `MutationResult` — top-level,
-or nested in `AbsorbResult` / `GitImportResult` / `GitExportResult` — carries an optional
-`IdentityMissing { name: bool; email: bool; }` table: PRESENT iff the call committed an
-operation while `user.name` and/or `user.email` was empty in the effective config stack
-(the jj CLI's post-transaction "Name and email not configured" warning, as a fact), ABSENT
-when both are configured and on every call that committed nothing. It is never a refusal:
-the commit was created with the empty identity, exactly as the CLI creates it; the UI turns
-a present table into its "set your identity" prompt.
+**The empty-identity note (Stories 9.27 → 9.32).** A call whose `finish_transaction`
+committed an operation while `user.name` and/or `user.email` was empty in the effective
+config stack carries a `jj.identity_missing` entry in `Envelope.warnings` — the jj CLI's
+post-transaction "Name and email not configured." block (or its name-only / email-only
+variant), verbatim. Story 9.27's `MutationResult.identity_missing` table
+(`IdentityMissing { name, email }`) is gone: the warning is the fact's only carrier. It
+is never a refusal: the commit was created with the empty identity, exactly as the CLI
+creates it; nothing is emitted when both are configured or when the call committed nothing
+(and not for `zanshin_file_track` / `_untrack`, whose CLI verbs skip the finish). The
+pre-verb snapshot's own import finishes warn too, as the CLI's do.
 
 ---
 
@@ -826,9 +852,9 @@ return-all; windowing is deferred past WIP).
   (full-index prefix lengths) — the CLI's toggle semantic, deliberately unlike
   `prioritize`, where a blank expression is a parse error. A **PARSE** failure of
   the expression is a hard error; everything that can only fail while LOADING the
-  disambiguation index — symbol resolution included — logs a `tracing::warn!` and
-  degrades to full-index prefixes rather than failing the call, exactly as the CLI
-  does (pinned by jj's `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`
+  disambiguation index — symbol resolution included — is a `jj.short_prefixes_failed`
+  warning (Story 9.32) and degrades to full-index prefixes rather than failing the
+  call, exactly as the CLI does (pinned by jj's `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`
   @ v0.44.0: `revsets.short-prefixes = 'missing'` warns and still prints the whole
   log). So an unknown bookmark in `short_prefixes` succeeds; an unknown bookmark in
   `revset` or `prioritize` is `jj.revset_resolution_error`.
@@ -1053,7 +1079,8 @@ normally no repo or workspace file exists there yet, but `--when.repositories` /
 snapshotting call (see *`precondition`* above) re-derives them first when a stack file
 or the environment changed. There is
 no hardcoded identity and no `.gitconfig` fallback: an empty identity is jj-lib's
-default and is reported per mutation as `MutationResult.identity_missing`.
+default and is reported per committing call as the `jj.identity_missing` warning
+(Story 9.32).
 
 **Re-read per call (ADR-0002 extended to config).** Nothing is cached: config
 files change externally and the op-heads watcher does not cover them, so a file
@@ -1096,8 +1123,9 @@ The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
 - **Table level → error.** A layer whose `revset-aliases` key is not a table
   fails the call with `jj.config_error` (`cli/src/config.rs:943-953`).
 - **Entry level → warn and continue.** A single entry with a non-string value or
-  a declaration jj-lib's parser rejects logs a `tracing::warn!`, is skipped, and
-  the call succeeds with every other alias loaded (`cli/src/config.rs:964-977`).
+  a declaration jj-lib's parser rejects is skipped with a `jj.config_alias_invalid`
+  warning (Story 9.32), and the call succeeds with every other alias loaded
+  (`cli/src/config.rs:964-977`).
   A malformed alias DEFINITION is not caught at load time at all — it surfaces
   as `jj.revset_parse_error` when the alias is used.
 

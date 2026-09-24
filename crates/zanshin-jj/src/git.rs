@@ -301,7 +301,8 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 ///
 /// The stats are projected AFTER the commit, from the resulting view. They are returned on
 /// the NO-OP path too: a run where every pending ref failed changes nothing yet must still
-/// report `failed_ref_names`.
+/// report `failed_ref_names` — and warn `jj.git_import_failed`, right after the import and
+/// before the finish, where the CLI prints it (`import.rs:60`, Story 9.32).
 ///
 /// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No import
 /// needed in colocated workspaces.", `cli/src/commands/git/import.rs:46-50` @ v0.44.0): the
@@ -314,7 +315,7 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 ///   is malformed, or the immutable-set expression could not be resolved.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn git_import(workspace: &mut Workspace, ctx: &VerbContext) -> Result<GitImportResult, MutateError> {
+pub(crate) fn git_import(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result<GitImportResult, MutateError> {
     if ctx.colocated {
         return Ok(GitImportResult {
             changed_bookmarks: Vec::new(),
@@ -326,11 +327,13 @@ pub(crate) fn git_import(workspace: &mut Workspace, ctx: &VerbContext) -> Result
         });
     }
     let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, "import git refs", ctx, |tx| {
+    let immutable = Arc::clone(&ctx.immutable);
+    let finished = mutate::finish_or_no_op(workspace, "import git refs", ctx, |tx, sink| {
         pollster::block_on(git::import_head(tx.repo_mut())).map_err(map_import_err)?;
         let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &import_options)).map_err(map_import_err)?;
+        sink.extend(crate::warning::git_import_failed(&stats));
         // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
-        let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+        let resolved = resolve_immutable(tx.base_repo().as_ref(), &immutable)?;
         pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
             &resolved,
             &RebaseOptions::default(),
@@ -425,7 +428,9 @@ pub(crate) fn project_failures(
 /// it takes the plain [`crate::mutate::finish_or_no_op`] shape.
 ///
 /// Refs that could not be written are carried in [`GitExportResult::failed_bookmarks`] /
-/// `failed_tags`, never as an `Err`: the CLI warns and exits 0 (`git_util.rs:468-506`).
+/// `failed_tags`, never as an `Err`: the CLI warns and exits 0 (`git_util.rs:468-506`) — AFTER
+/// the finish (`export.rs:50-51`), which is where `jj.git_export_failed` is recorded
+/// (Story 9.32).
 ///
 /// In a COLOCATED workspace it returns before any transaction, as the CLI does ("No export
 /// needed in colocated workspaces.", `cli/src/commands/git/export.rs:41-46` @ v0.44.0) — even
@@ -436,7 +441,7 @@ pub(crate) fn project_failures(
 /// - [`MutateError::NotAGitRepo`] — the workspace has no git backend.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn git_export(workspace: &mut Workspace, ctx: &VerbContext) -> Result<GitExportResult, MutateError> {
+pub(crate) fn git_export(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result<GitExportResult, MutateError> {
     if ctx.colocated {
         return Ok(GitExportResult {
             failed_bookmarks: Vec::new(),
@@ -444,10 +449,11 @@ pub(crate) fn git_export(workspace: &mut Workspace, ctx: &VerbContext) -> Result
             mutation: colocated_no_op(workspace)?,
         });
     }
-    let finished = mutate::finish_or_no_op(workspace, "export git refs", ctx, |tx| {
+    let finished = mutate::finish_or_no_op(workspace, "export git refs", ctx, |tx, _sink| {
         git::export_refs(tx.repo_mut()).map_err(map_export_err)
     })?;
     let stats = finished.value;
+    ctx.warnings.extend(crate::warning::git_export_failed(&stats));
     Ok(GitExportResult {
         failed_bookmarks: project_failures(&stats.failed_bookmarks),
         failed_tags: project_failures(&stats.failed_tags),
@@ -466,6 +472,11 @@ pub(crate) fn git_export(workspace: &mut Workspace, ctx: &VerbContext) -> Result
 ///
 /// Description: `"add git remote {name}"` (`add.rs:63`).
 ///
+/// Every OTHER remote whose fetch or push URL equals the new fetch or push URL (a missing push
+/// URL meaning the fetch URL, as in Git) warns `jj.remote_url_duplicate` — exact string
+/// equality only, and never the URL itself, which may carry credentials
+/// (`warn_if_remote_url_matches`, `add.rs:75-119`, Story 9.32).
+///
 /// # Errors
 ///
 /// - [`MutateError::RemoteExists`] — `name` already has a configured remote.
@@ -476,16 +487,57 @@ pub(crate) fn git_export(workspace: &mut Workspace, ctx: &VerbContext) -> Result
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_add(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     name: &str,
     url: &str,
     push_url: Option<&str>,
 ) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
-    let finished = mutate::finish_or_no_op(workspace, &format!("add git remote {name}"), ctx, |tx| {
-        git::add_remote(tx.repo_mut(), &remote, url, push_url).map_err(map_remote_mgmt_err)
+    let finished = mutate::finish_or_no_op(workspace, &format!("add git remote {name}"), ctx, |tx, sink| {
+        git::add_remote(tx.repo_mut(), &remote, url, push_url).map_err(map_remote_mgmt_err)?;
+        warn_if_remote_url_matches(tx.repo(), &remote, url, push_url, sink)
     })?;
     Ok(finished.mutation)
+}
+
+/// The CLI's `warn_if_remote_url_matches` (`cli/src/commands/git/remote/add.rs:75-119` @
+/// v0.44.0): one `jj.remote_url_duplicate` per other remote already using the new fetch or push
+/// URL. Remotes that do not load are ignored, as there.
+///
+/// # Errors
+///
+/// - [`MutateError::NotAGitRepo`] — the workspace has no git backend.
+fn warn_if_remote_url_matches(
+    repo: &dyn jj_lib::repo::Repo,
+    new_remote: &jj_lib::ref_name::RemoteName,
+    new_fetch_url: &str,
+    new_push_url: Option<&str>,
+    sink: &mut crate::warning::Warnings,
+) -> Result<(), MutateError> {
+    let git_repo = git::get_git_repo(repo.store()).map_err(|_| MutateError::NotAGitRepo)?;
+    // Git uses the fetch URL for push when no push URL is configured.
+    let new_push_url = new_push_url.unwrap_or(new_fetch_url);
+    for remote_name in git_repo.remote_names() {
+        if remote_name.as_ref() == new_remote.as_str() {
+            continue;
+        }
+        let Some(Ok(remote)) = git_repo.try_find_remote_without_url_rewrite(&*remote_name) else {
+            continue;
+        };
+        let fetch = remote.url(gix::remote::Direction::Fetch).map(gix::Url::to_bstring);
+        let push = remote.url(gix::remote::Direction::Push).map(gix::Url::to_bstring);
+        if [fetch, push]
+            .iter()
+            .flatten()
+            .any(|remote_url| remote_url == new_fetch_url || remote_url == new_push_url)
+        {
+            sink.push(
+                crate::warning::WarningKind::RemoteUrlDuplicate,
+                format!("Remote {remote_name} already uses the same URL."),
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Removes a git remote and forgets its bookmarks (Story 9.5) — the CLI's
@@ -519,7 +571,7 @@ pub(crate) fn git_remote_add(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_remove(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     name: &str,
 ) -> Result<MutationResult, MutateError> {
     let remote: RemoteNameBuf = name.into();
@@ -527,10 +579,15 @@ pub(crate) fn git_remote_remove(
     // malformed `config-id`, an unreadable file, invalid TOML — refuses before anything at
     // all is mutated, exactly as the CLI's start-up-parsed repo layer does.
     let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &format!("remove git remote {name}"), ctx, move |tx| {
-        git::remove_remote(tx.repo_mut(), &remote).map_err(map_remote_mgmt_err)?;
-        crate::config::remove_remote_from_repo_config(config_file, name).map_err(mutate::cfg)
-    })?;
+    let finished = mutate::finish_or_no_op(
+        workspace,
+        &format!("remove git remote {name}"),
+        ctx,
+        move |tx, _sink| {
+            git::remove_remote(tx.repo_mut(), &remote).map_err(map_remote_mgmt_err)?;
+            crate::config::remove_remote_from_repo_config(config_file, name).map_err(mutate::cfg)
+        },
+    )?;
     Ok(finished.mutation)
 }
 
@@ -564,7 +621,7 @@ pub(crate) fn git_remote_remove(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_remote_rename(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     old_name: &str,
     new_name: &str,
 ) -> Result<MutationResult, MutateError> {
@@ -573,7 +630,7 @@ pub(crate) fn git_remote_rename(
     let description = format!("rename git remote {old_name} to {new_name}");
     // Resolved AND LOADED before the transaction opens — see `git_remote_remove`.
     let config_file = crate::config::existing_repo_config_file(workspace).map_err(mutate::cfg)?;
-    let finished = mutate::finish_or_no_op(workspace, &description, ctx, move |tx| {
+    let finished = mutate::finish_or_no_op(workspace, &description, ctx, move |tx, _sink| {
         git::rename_remote(tx.repo_mut(), &old, &new).map_err(map_remote_mgmt_err)?;
         crate::config::rename_remote_in_repo_config(config_file, old_name, new_name).map_err(mutate::cfg)
     })?;

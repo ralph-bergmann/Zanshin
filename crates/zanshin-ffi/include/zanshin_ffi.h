@@ -271,17 +271,11 @@ typedef struct {
 
 #define MutationResult_VT_ABANDONED_CHANGE_IDS 8
 
-#define MutationResult_VT_IDENTITY_MISSING 12
+#define MutationResult_VT_FINISH 12
 
-#define MutationResult_VT_FINISH 14
+#define FinishFacts_VT_EXPORT_FAILED_BOOKMARKS 4
 
-#define FinishFacts_VT_WORKING_COPY_BECAME_IMMUTABLE 4
-
-#define FinishFacts_VT_GIT_HEAD_UPDATE_FAILED 6
-
-#define FinishFacts_VT_EXPORT_FAILED_BOOKMARKS 8
-
-#define FinishFacts_VT_EXPORT_FAILED_TAGS 10
+#define FinishFacts_VT_EXPORT_FAILED_TAGS 6
 
 #define SkippedPath_VT_REASON 6
 
@@ -371,13 +365,9 @@ typedef struct {
 
 #define Precondition_VT_SNAPSHOT_REBASED 14
 
-#define Precondition_VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT 16
+#define Precondition_VT_GIT_REFS 16
 
-#define Precondition_VT_GIT_REFS 18
-
-#define Precondition_VT_GIT_REFS_REBASED 20
-
-#define Precondition_VT_JJCONFLICT_FILES_PRESENT 22
+#define Precondition_VT_GIT_REFS_REBASED 18
 
 #define ConfigEntry_VT_SOURCE 8
 
@@ -396,6 +386,8 @@ typedef struct {
 #define ConfigGcResult_VT_FAILED 6
 
 #define Envelope_VT_PRECONDITION 12
+
+#define Envelope_VT_WARNINGS 14
 
 /**
  * Build-stamp version string.
@@ -711,7 +703,8 @@ ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t le
  *
  * The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
  * (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
- * `ConfigListResult` (lowest layer first; empty is a result). Writes nothing.
+ * `ConfigListResult` (lowest layer first; empty is a result — and then warns
+ * `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -786,8 +779,9 @@ ZanshinBuf *zanshin_config_path(const uint8_t *data, uintptr_t len);
  * (the CLI's prompt). Comments and formatting survive; the config write itself writes no
  * operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
  * first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
- * dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition`, and
- * `ConfigSetResult.working_copy_author` is present iff `@`'s author differs from the new value.
+ * dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
+ * that snapshot's warnings, and `ConfigSetResult.working_copy_author` is present iff `@`'s
+ * author differs from the new value (then warning `jj.config_working_copy_author` too).
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -897,8 +891,9 @@ ZanshinBuf *zanshin_config_gc_list(const uint8_t *data, uintptr_t len);
 /**
  * `jj config gc`, half 2: delete the requested directories that are still missing repo config
  * directories; any other request, and every per-directory failure, rides
- * `ConfigGcResult.failed` (the CLI warns and continues). The arguments cross as a
- * `ConfigGcDeleteRequest` buffer.
+ * `ConfigGcResult.failed` (the CLI warns and continues — a directory that could not be deleted
+ * also warns `jj.config_gc_delete_failed`). The arguments cross as a `ConfigGcDeleteRequest`
+ * buffer.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -2203,7 +2198,8 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * clean tree with unchanged refs writes no operation and reports `was_snapshot_taken = false`.
  *
  * Returns an ok `FlatBuffers` `Envelope` with NO `data` and `precondition` set on success; an
- * error envelope carries the PARTIAL `precondition` up to the failing step.
+ * error envelope carries the PARTIAL `precondition` up to the failing step. Both carry the
+ * call's warnings (Story 9.32).
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

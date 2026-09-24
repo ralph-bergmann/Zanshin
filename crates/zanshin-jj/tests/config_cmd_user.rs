@@ -34,6 +34,7 @@ fn user_rows(root: Option<&Path>) -> Vec<(String, String, Option<PathBuf>)> {
     };
     config_list(root, &query)
         .expect("list")
+        .value
         .into_iter()
         .inspect(|e| assert_eq!(e.source, ConfigValueSource::User))
         .map(|e| (e.name, e.value, e.path))

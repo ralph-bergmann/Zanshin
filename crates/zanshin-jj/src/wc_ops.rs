@@ -35,7 +35,6 @@ use jj_lib::git;
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::{Matcher, NothingMatcher, PrefixMatcher};
 use jj_lib::merge::Merge;
-use jj_lib::merged_tree::MergedTree;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::repo_path::{RepoPath, RepoPathBuf, RepoPathUiConverter};
 use jj_lib::transaction::Transaction;
@@ -45,6 +44,7 @@ use jj_lib::workspace::Workspace;
 use crate::git::{map_export_err, project_failures, GitExportFailure};
 use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
 use crate::snapshot::VerbContext;
+use crate::warning::{self, Load, Warnings};
 
 // ── Result types ─────────────────────────────────────────────────────────────────
 
@@ -192,13 +192,20 @@ pub(crate) fn merge_track_stats(
 /// effective `[fileset-aliases]` and a ROOT path converter, so a relative path in it means
 /// "relative to the workspace root", never to some process CWD.
 ///
+/// The `[fileset-aliases]` load's warnings are recorded once per call into `sink` (Story 9.32).
+///
 /// # Errors
 ///
 /// - [`MutateError::Config`] — the key is not a string, a `[fileset-aliases]` layer is not a
 ///   table, or the expression does not parse (the reason names `snapshot.auto-track`).
-pub(crate) fn auto_tracking_matcher(config: &StackedConfig) -> Result<Box<dyn Matcher>, MutateError> {
+pub(crate) fn auto_tracking_matcher(
+    config: &StackedConfig,
+    sink: &mut Warnings,
+) -> Result<Box<dyn Matcher>, MutateError> {
     let pattern = crate::config::snapshot_auto_track(config).map_err(cfg)?;
-    let aliases_map: FilesetAliasesMap = crate::revset::build_aliases_map(config, "fileset-aliases").map_err(cfg)?;
+    let (aliases_map, warnings): (FilesetAliasesMap, _) =
+        crate::revset::build_aliases_map(config, "fileset-aliases").map_err(cfg)?;
+    sink.record_load(Load::FilesetAliases, warnings);
     let path_converter = RepoPathUiConverter::Fs {
         cwd: PathBuf::new(),
         base: PathBuf::new(),
@@ -392,10 +399,12 @@ fn saturate(n: usize) -> u32 {
 /// Starts tracking the paths matching `paths` in the working copy (Story 9.22) — the port of
 /// `cmd_file_track` @ v0.44.0. See [`crate::Repo::file_track`] for the contract.
 ///
-/// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock.
+/// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock. The
+/// only warning is the MERGED stats' size refusals (`print_track_snapshot_stats` prints no
+/// invalid-UTF-8 list), recorded after the commit where the CLI prints them (Story 9.32).
 pub(crate) fn file_track(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     paths: &[String],
     include_ignored: bool,
 ) -> Result<TrackResult, MutateError> {
@@ -415,6 +424,10 @@ pub(crate) fn file_track(
     // The pre-verb snapshot's reasons win for paths the track snapshot merely did not ask for
     // (`print_track_snapshot_stats`).
     let stats = merge_track_stats(ctx.auto_stats.clone(), track_stats);
+    ctx.warnings.extend(warning::snapshot_files_refused(
+        workspace.workspace_root(),
+        &stats.untracked_paths,
+    ));
     Ok(TrackResult {
         mutation,
         num_rebased: saturate(num_rebased),
@@ -425,22 +438,12 @@ pub(crate) fn file_track(
 /// What `file untrack`'s transaction body hands back to the verb.
 struct UntrackOutcome {
     num_rebased: usize,
-    unmatched_paths: Vec<String>,
+    /// The explicit `paths` with no entry in the pre-call `@` tree — `print_unmatched_explicit_paths`
+    /// (`cli/src/cli_util.rs:3323-3347` @ v0.44.0), in request order, duplicates kept, each in its
+    /// NORMALISED repo-path form (the CLI formats the parsed path too, so `nope/` reports `nope`).
+    unmatched_paths: Vec<RepoPathBuf>,
     stats: working_copy::SnapshotStats,
     export: Option<git::GitExportStats>,
-}
-
-/// The explicit `paths` with no entry in `wc_tree` — `print_unmatched_explicit_paths`
-/// (`cli/src/cli_util.rs:3323-3347` @ v0.44.0), in request order, duplicates kept, each in its
-/// NORMALISED repo-path form (the CLI formats the parsed path too, so `nope/` reports `nope`).
-fn unmatched_explicit_paths(paths: &[RepoPathBuf], wc_tree: &MergedTree) -> Result<Vec<String>, MutateError> {
-    let mut unmatched = Vec::new();
-    for path in paths {
-        if pollster::block_on(wc_tree.path_value(path)).map_err(be)?.is_absent() {
-            unmatched.push(path.as_internal_file_string().to_owned());
-        }
-    }
-    Ok(unmatched)
 }
 
 /// The body of `cmd_file_untrack` between the lock and the commit (`untrack.rs:62-111`).
@@ -464,7 +467,11 @@ fn untrack_in_tx(
     // Computed BEFORE the reset and the colocated export (the CLI prints it after `finish`,
     // from the same pre-call tree): a read failure here must not leave the git index and refs
     // rewritten with no operation written.
-    let unmatched_paths = unmatched_explicit_paths(paths, &wc_tree)?;
+    let unmatched_paths = warning::unmatched_paths(paths, &[&wc_tree])
+        .map_err(be)?
+        .into_iter()
+        .cloned()
+        .collect();
     pollster::block_on(locked_wc.reset(&new_commit)).map_err(be)?;
     // Snapshot again so a matched path that is NOT ignored — and would therefore be re-added by
     // the next snapshot — is refused now rather than silently coming back.
@@ -508,21 +515,35 @@ fn untrack_in_tx(
 /// v0.44.0. See [`crate::Repo::file_untrack`] for the contract.
 ///
 /// Every refusal that needs no lock (paths, config, ignore files) happens BEFORE the lock.
+/// Warnings in the CLI's order (Story 9.32): the colocated export's failures inside the
+/// transaction, then — after the commit — the unmatched paths and the post-`reset` snapshot's
+/// stats.
 pub(crate) fn file_untrack(
     workspace: &mut Workspace,
-    config: &StackedConfig,
+    ctx: &mut VerbContext,
     paths: &[String],
 ) -> Result<UntrackResult, MutateError> {
     let paths = parse_paths(workspace, paths, "file untrack")?;
     let matcher = prefix_matcher(&paths);
-    let auto_tracking = auto_tracking_matcher(config)?;
-    let options = snapshot_options(workspace, config, auto_tracking.as_ref())?;
+    let auto_tracking = auto_tracking_matcher(&ctx.config, &mut ctx.warnings)?;
+    let options = snapshot_options(workspace, &ctx.config, auto_tracking.as_ref())?;
     let colocated = is_colocated_git_workspace(workspace);
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let sink = &mut ctx.warnings;
     let (outcome, mutation) =
         mutate::commit_with_locked_wc(workspace, &readonly, "untrack paths", |tx, locked_wc, wc_commit| {
-            untrack_in_tx(tx, locked_wc, wc_commit, matcher.as_ref(), &options, colocated, &paths)
+            let outcome = untrack_in_tx(tx, locked_wc, wc_commit, matcher.as_ref(), &options, colocated, &paths)?;
+            if let Some(export) = &outcome.export {
+                sink.extend(warning::git_export_failed(export));
+            }
+            Ok(outcome)
         })?;
+    let root = workspace.workspace_root();
+    sink.extend(warning::paths_unmatched(
+        root,
+        &outcome.unmatched_paths.iter().collect::<Vec<_>>(),
+    ));
+    sink.extend(warning::snapshot_stats(root, &outcome.stats));
     let (failed_bookmarks, failed_tags) = outcome.export.map_or_else(Default::default, |stats| {
         (
             project_failures(&stats.failed_bookmarks),
@@ -532,7 +553,11 @@ pub(crate) fn file_untrack(
     Ok(UntrackResult {
         mutation,
         num_rebased: saturate(outcome.num_rebased),
-        unmatched_paths: outcome.unmatched_paths,
+        unmatched_paths: outcome
+            .unmatched_paths
+            .iter()
+            .map(|path| path.as_internal_file_string().to_owned())
+            .collect(),
         snapshot_stats: project_stats(&outcome.stats),
         failed_bookmarks,
         failed_tags,

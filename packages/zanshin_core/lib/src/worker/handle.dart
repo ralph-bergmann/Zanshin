@@ -14,7 +14,8 @@ import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
-import '../ffi/workspace.dart' show WorkspaceEntry;
+import '../ffi/warning.dart' show WarnedList;
+import '../ffi/workspace.dart' show WorkspaceEntry, WorkspaceRootResult;
 import 'isolate.dart';
 import 'responses.dart';
 
@@ -29,6 +30,9 @@ import 'responses.dart';
 ///   [ZanshinWorker.cloneRepo].
 /// - Closed explicitly via [close], or implicitly when GC runs the
 ///   Dart [Finalizer] (belt-and-suspenders).
+///
+/// Every command's result exposes the call's `warnings` (Story 9.32), exactly
+/// as the [ZanshinWorker] method it forwards to; [close] carries none.
 ///
 /// The `NativeFinalizer` rule in project-context applies to wrappers whose
 /// callback is a C function pointer. This class frees a resource across the
@@ -159,7 +163,7 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.jj_lib_error`).
-  Future<List<Operation>> opLog({int limit = -1}) {
+  Future<WarnedList<Operation>> opLog({int limit = -1}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -171,7 +175,7 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.jj_lib_error`).
-  Future<List<Bookmark>> bookmarks() {
+  Future<WarnedList<Bookmark>> bookmarks() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -183,7 +187,7 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.jj_lib_error`).
-  Future<List<Remote>> remotes() {
+  Future<WarnedList<Remote>> remotes() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -400,7 +404,7 @@ final class RepoHandle {
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.change_not_found`, `jj.invalid_input`,
   /// `jj.jj_lib_error`).
-  Future<List<FileEntry>> fileList({String? revision, List<String> paths = const <String>[]}) {
+  Future<WarnedList<FileEntry>> fileList({String? revision, List<String> paths = const <String>[]}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -449,7 +453,7 @@ final class RepoHandle {
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`,
   /// `jj.change_not_found`, `jj.jj_lib_error`).
-  Future<List<AnnotationLine>> fileAnnotate({required String path, String? revision}) {
+  Future<WarnedList<AnnotationLine>> fileAnnotate({required String path, String? revision}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -678,7 +682,7 @@ final class RepoHandle {
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
   /// `jj.config_error`, `jj.jj_lib_error`).
-  Future<List<ShowEntry>> show({String? revset, int? limit}) {
+  Future<WarnedList<ShowEntry>> show({String? revset, int? limit}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -716,7 +720,7 @@ final class RepoHandle {
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.revset_parse_error`, `jj.revset_resolution_error`,
   /// `jj.config_error`, `jj.jj_lib_error`).
-  Future<List<EvologEntry>> evolog({String? revset, int? limit}) {
+  Future<WarnedList<EvologEntry>> evolog({String? revset, int? limit}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -786,7 +790,7 @@ final class RepoHandle {
   /// This read writes no operation of its own. Throws [StateError] synchronously if the
   /// handle is already [_closed]; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.jj_lib_error`).
-  Future<List<WorkspaceEntry>> workspaces() {
+  Future<WarnedList<WorkspaceEntry>> workspaces() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -814,7 +818,7 @@ final class RepoHandle {
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
   /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`).
-  Future<String> workspaceRoot({String? name}) {
+  Future<WorkspaceRootResult> workspaceRoot({String? name}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }

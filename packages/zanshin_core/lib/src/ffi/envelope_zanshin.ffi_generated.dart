@@ -6315,20 +6315,17 @@ class MutationResult {
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   String? get workingCopyChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
-  ///  Which identity fields were empty when this call committed an operation — the jj CLI's
-  ///  "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
-  ///  configured and on every call that committed nothing; the UI turns a present value into
-  ///  the "set your identity" prompt. Never a refusal.
-  IdentityMissing? get identityMissing => IdentityMissing.reader.vTableGetNullable(_bc, _bcOffset, 12);
-
-  ///  What the CLI's `finish_transaction` reported while committing this call's operation
-  ///  (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
-  ///  nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
-  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 14);
+  ///  The refs the colocated export could not write while the CLI's `finish_transaction`
+  ///  committed this call's operation (Story 9.26) — the data behind its `jj.git_export_failed`
+  ///  warnings. ABSENT when both lists are empty — always on a call that committed nothing, and
+  ///  for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it. The finish's other
+  ///  facts (an empty identity, a `@` that became immutable, a Git HEAD that could not be reset,
+  ///  skipped checkout files) ride `Envelope.warnings` only (Story 9.32).
+  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
-    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, identityMissing: ${identityMissing}, finish: ${finish}}';
+    return 'MutationResult{newOpId: ${newOpId}, newChangeIds: ${newChangeIds}, abandonedChangeIds: ${abandonedChangeIds}, workingCopyChangeId: ${workingCopyChangeId}, finish: ${finish}}';
   }
 }
 
@@ -6345,7 +6342,7 @@ class MutationResultBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(5);
   }
 
   int addNewOpIdOffset(int? offset) {
@@ -6368,13 +6365,8 @@ class MutationResultBuilder {
     return fbBuilder.offset;
   }
 
-  int addIdentityMissingOffset(int? offset) {
-    fbBuilder.addOffset(4, offset);
-    return fbBuilder.offset;
-  }
-
   int addFinishOffset(int? offset) {
-    fbBuilder.addOffset(5, offset);
+    fbBuilder.addOffset(4, offset);
     return fbBuilder.offset;
   }
 
@@ -6388,7 +6380,6 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _newChangeIds;
   final List<String>? _abandonedChangeIds;
   final String? _workingCopyChangeId;
-  final IdentityMissingObjectBuilder? _identityMissing;
   final FinishFactsObjectBuilder? _finish;
 
   MutationResultObjectBuilder({
@@ -6396,13 +6387,11 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
     List<String>? newChangeIds,
     List<String>? abandonedChangeIds,
     String? workingCopyChangeId,
-    IdentityMissingObjectBuilder? identityMissing,
     FinishFactsObjectBuilder? finish,
   }) : _newOpId = newOpId,
        _newChangeIds = newChangeIds,
        _abandonedChangeIds = abandonedChangeIds,
        _workingCopyChangeId = workingCopyChangeId,
-       _identityMissing = identityMissing,
        _finish = finish;
 
   /// Finish building, and store into the [fbBuilder].
@@ -6418,15 +6407,13 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
     final int? workingCopyChangeIdOffset = _workingCopyChangeId == null
         ? null
         : fbBuilder.writeString(_workingCopyChangeId!);
-    final int? identityMissingOffset = _identityMissing?.getOrCreateOffset(fbBuilder);
     final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(6);
+    fbBuilder.startTable(5);
     fbBuilder.addOffset(0, newOpIdOffset);
     fbBuilder.addOffset(1, newChangeIdsOffset);
     fbBuilder.addOffset(2, abandonedChangeIdsOffset);
     fbBuilder.addOffset(3, workingCopyChangeIdOffset);
-    fbBuilder.addOffset(4, identityMissingOffset);
-    fbBuilder.addOffset(5, finishOffset);
+    fbBuilder.addOffset(4, finishOffset);
     return fbBuilder.endTable();
   }
 
@@ -6439,12 +6426,9 @@ class MutationResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  The colocated Git bookkeeping the CLI runs while it finishes a transaction
-///  (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
-///  `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
-///  empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
-///  `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
-///  lists are the refs the colocated export could not write.
+///  The refs the colocated Git export could not write while the CLI finished a transaction
+///  (`finish_transaction`, Story 9.26) — a warning there (`jj.git_export_failed` in
+///  `Envelope.warnings`), the data here, never an error envelope.
 class FinishFacts {
   FinishFacts._(this._bc, this._bcOffset);
   factory FinishFacts(List<int> bytes) {
@@ -6457,16 +6441,14 @@ class FinishFacts {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  bool get workingCopyBecameImmutable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
-  bool get gitHeadUpdateFailed => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
   List<GitExportFailure>? get exportFailedBookmarks =>
-      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 8);
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 4);
   List<GitExportFailure>? get exportFailedTags =>
-      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 10);
+      const fb.ListReader<GitExportFailure>(GitExportFailure.reader).vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'FinishFacts{workingCopyBecameImmutable: ${workingCopyBecameImmutable}, gitHeadUpdateFailed: ${gitHeadUpdateFailed}, exportFailedBookmarks: ${exportFailedBookmarks}, exportFailedTags: ${exportFailedTags}}';
+    return 'FinishFacts{exportFailedBookmarks: ${exportFailedBookmarks}, exportFailedTags: ${exportFailedTags}}';
   }
 }
 
@@ -6483,26 +6465,16 @@ class FinishFactsBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
-  }
-
-  int addWorkingCopyBecameImmutable(bool? workingCopyBecameImmutable) {
-    fbBuilder.addBool(0, workingCopyBecameImmutable);
-    return fbBuilder.offset;
-  }
-
-  int addGitHeadUpdateFailed(bool? gitHeadUpdateFailed) {
-    fbBuilder.addBool(1, gitHeadUpdateFailed);
-    return fbBuilder.offset;
+    fbBuilder.startTable(2);
   }
 
   int addExportFailedBookmarksOffset(int? offset) {
-    fbBuilder.addOffset(2, offset);
+    fbBuilder.addOffset(0, offset);
     return fbBuilder.offset;
   }
 
   int addExportFailedTagsOffset(int? offset) {
-    fbBuilder.addOffset(3, offset);
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -6512,19 +6484,13 @@ class FinishFactsBuilder {
 }
 
 class FinishFactsObjectBuilder extends fb.ObjectBuilder {
-  final bool? _workingCopyBecameImmutable;
-  final bool? _gitHeadUpdateFailed;
   final List<GitExportFailureObjectBuilder>? _exportFailedBookmarks;
   final List<GitExportFailureObjectBuilder>? _exportFailedTags;
 
   FinishFactsObjectBuilder({
-    bool? workingCopyBecameImmutable,
-    bool? gitHeadUpdateFailed,
     List<GitExportFailureObjectBuilder>? exportFailedBookmarks,
     List<GitExportFailureObjectBuilder>? exportFailedTags,
-  }) : _workingCopyBecameImmutable = workingCopyBecameImmutable,
-       _gitHeadUpdateFailed = gitHeadUpdateFailed,
-       _exportFailedBookmarks = exportFailedBookmarks,
+  }) : _exportFailedBookmarks = exportFailedBookmarks,
        _exportFailedTags = exportFailedTags;
 
   /// Finish building, and store into the [fbBuilder].
@@ -6536,92 +6502,9 @@ class FinishFactsObjectBuilder extends fb.ObjectBuilder {
     final int? exportFailedTagsOffset = _exportFailedTags == null
         ? null
         : fbBuilder.writeList(_exportFailedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(4);
-    fbBuilder.addBool(0, _workingCopyBecameImmutable);
-    fbBuilder.addBool(1, _gitHeadUpdateFailed);
-    fbBuilder.addOffset(2, exportFailedBookmarksOffset);
-    fbBuilder.addOffset(3, exportFailedTagsOffset);
-    return fbBuilder.endTable();
-  }
-
-  /// Convenience method to serialize to byte list.
-  @override
-  Uint8List toBytes([String? fileIdentifier]) {
-    final fbBuilder = fb.Builder(deduplicateTables: false);
-    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
-    return fbBuilder.buffer;
-  }
-}
-
-///  `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
-class IdentityMissing {
-  IdentityMissing._(this._bc, this._bcOffset);
-  factory IdentityMissing(List<int> bytes) {
-    final rootRef = fb.BufferContext.fromBytes(bytes);
-    return reader.read(rootRef, 0);
-  }
-
-  static const fb.Reader<IdentityMissing> reader = _IdentityMissingReader();
-
-  final fb.BufferContext _bc;
-  final int _bcOffset;
-
-  bool get name => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
-  bool get email => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
-
-  @override
-  String toString() {
-    return 'IdentityMissing{name: ${name}, email: ${email}}';
-  }
-}
-
-class _IdentityMissingReader extends fb.TableReader<IdentityMissing> {
-  const _IdentityMissingReader();
-
-  @override
-  IdentityMissing createObject(fb.BufferContext bc, int offset) => IdentityMissing._(bc, offset);
-}
-
-class IdentityMissingBuilder {
-  IdentityMissingBuilder(this.fbBuilder);
-
-  final fb.Builder fbBuilder;
-
-  void begin() {
     fbBuilder.startTable(2);
-  }
-
-  int addName(bool? name) {
-    fbBuilder.addBool(0, name);
-    return fbBuilder.offset;
-  }
-
-  int addEmail(bool? email) {
-    fbBuilder.addBool(1, email);
-    return fbBuilder.offset;
-  }
-
-  int finish() {
-    return fbBuilder.endTable();
-  }
-}
-
-class IdentityMissingObjectBuilder extends fb.ObjectBuilder {
-  final bool? _name;
-  final bool? _email;
-
-  IdentityMissingObjectBuilder({
-    bool? name,
-    bool? email,
-  }) : _name = name,
-       _email = email;
-
-  /// Finish building, and store into the [fbBuilder].
-  @override
-  int finish(fb.Builder fbBuilder) {
-    fbBuilder.startTable(2);
-    fbBuilder.addBool(0, _name);
-    fbBuilder.addBool(1, _email);
+    fbBuilder.addOffset(0, exportFailedBookmarksOffset);
+    fbBuilder.addOffset(1, exportFailedTagsOffset);
     return fbBuilder.endTable();
   }
 
@@ -9419,12 +9302,11 @@ class UntrackResultObjectBuilder extends fb.ObjectBuilder {
 ///  snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
 ///  `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
 ///  "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
-///  `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
-///  on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
-///  PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
-///  `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
-///  resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
-///  The three rebased counts saturate at 4294967295.
+///  `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape — PRESENT exactly when
+///  the step ran (colocated workspaces), even when it changed nothing. `finish`: the ref exports
+///  inside the precondition, merged; ABSENT when both lists are empty. The three rebased counts
+///  saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
+///  refused files, …) ride `Envelope.warnings` (Story 9.32).
 ///
 ///  On an error envelope it is PARTIAL: every fact up to the failing step.
 class Precondition {
@@ -9445,15 +9327,13 @@ class Precondition {
   bool get gitHeadReset => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
   int get gitHeadRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 12, 0);
   int get snapshotRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 14, 0);
-  bool get workingCopyImmutableNewCommit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
-  GitImportResult? get gitRefs => GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 18);
-  int get gitRefsRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
-  bool get jjconflictFilesPresent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 22, false);
-  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 24);
+  GitImportResult? get gitRefs => GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 16);
+  int get gitRefsRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
+  FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 20);
 
   @override
   String toString() {
-    return 'Precondition{wasSnapshotTaken: ${wasSnapshotTaken}, snapshotStats: ${snapshotStats}, gitHeadImported: ${gitHeadImported}, gitHeadReset: ${gitHeadReset}, gitHeadRebased: ${gitHeadRebased}, snapshotRebased: ${snapshotRebased}, workingCopyImmutableNewCommit: ${workingCopyImmutableNewCommit}, gitRefs: ${gitRefs}, gitRefsRebased: ${gitRefsRebased}, jjconflictFilesPresent: ${jjconflictFilesPresent}, finish: ${finish}}';
+    return 'Precondition{wasSnapshotTaken: ${wasSnapshotTaken}, snapshotStats: ${snapshotStats}, gitHeadImported: ${gitHeadImported}, gitHeadReset: ${gitHeadReset}, gitHeadRebased: ${gitHeadRebased}, snapshotRebased: ${snapshotRebased}, gitRefs: ${gitRefs}, gitRefsRebased: ${gitRefsRebased}, finish: ${finish}}';
   }
 }
 
@@ -9470,7 +9350,7 @@ class PreconditionBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(9);
   }
 
   int addWasSnapshotTaken(bool? wasSnapshotTaken) {
@@ -9503,28 +9383,18 @@ class PreconditionBuilder {
     return fbBuilder.offset;
   }
 
-  int addWorkingCopyImmutableNewCommit(bool? workingCopyImmutableNewCommit) {
-    fbBuilder.addBool(6, workingCopyImmutableNewCommit);
-    return fbBuilder.offset;
-  }
-
   int addGitRefsOffset(int? offset) {
-    fbBuilder.addOffset(7, offset);
+    fbBuilder.addOffset(6, offset);
     return fbBuilder.offset;
   }
 
   int addGitRefsRebased(int? gitRefsRebased) {
-    fbBuilder.addUint32(8, gitRefsRebased);
-    return fbBuilder.offset;
-  }
-
-  int addJjconflictFilesPresent(bool? jjconflictFilesPresent) {
-    fbBuilder.addBool(9, jjconflictFilesPresent);
+    fbBuilder.addUint32(7, gitRefsRebased);
     return fbBuilder.offset;
   }
 
   int addFinishOffset(int? offset) {
-    fbBuilder.addOffset(10, offset);
+    fbBuilder.addOffset(8, offset);
     return fbBuilder.offset;
   }
 
@@ -9540,10 +9410,8 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
   final bool? _gitHeadReset;
   final int? _gitHeadRebased;
   final int? _snapshotRebased;
-  final bool? _workingCopyImmutableNewCommit;
   final GitImportResultObjectBuilder? _gitRefs;
   final int? _gitRefsRebased;
-  final bool? _jjconflictFilesPresent;
   final FinishFactsObjectBuilder? _finish;
 
   PreconditionObjectBuilder({
@@ -9553,10 +9421,8 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
     bool? gitHeadReset,
     int? gitHeadRebased,
     int? snapshotRebased,
-    bool? workingCopyImmutableNewCommit,
     GitImportResultObjectBuilder? gitRefs,
     int? gitRefsRebased,
-    bool? jjconflictFilesPresent,
     FinishFactsObjectBuilder? finish,
   }) : _wasSnapshotTaken = wasSnapshotTaken,
        _snapshotStats = snapshotStats,
@@ -9564,10 +9430,8 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
        _gitHeadReset = gitHeadReset,
        _gitHeadRebased = gitHeadRebased,
        _snapshotRebased = snapshotRebased,
-       _workingCopyImmutableNewCommit = workingCopyImmutableNewCommit,
        _gitRefs = gitRefs,
        _gitRefsRebased = gitRefsRebased,
-       _jjconflictFilesPresent = jjconflictFilesPresent,
        _finish = finish;
 
   /// Finish building, and store into the [fbBuilder].
@@ -9576,18 +9440,16 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
     final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
     final int? gitRefsOffset = _gitRefs?.getOrCreateOffset(fbBuilder);
     final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(9);
     fbBuilder.addBool(0, _wasSnapshotTaken);
     fbBuilder.addOffset(1, snapshotStatsOffset);
     fbBuilder.addBool(2, _gitHeadImported);
     fbBuilder.addBool(3, _gitHeadReset);
     fbBuilder.addUint32(4, _gitHeadRebased);
     fbBuilder.addUint32(5, _snapshotRebased);
-    fbBuilder.addBool(6, _workingCopyImmutableNewCommit);
-    fbBuilder.addOffset(7, gitRefsOffset);
-    fbBuilder.addUint32(8, _gitRefsRebased);
-    fbBuilder.addBool(9, _jjconflictFilesPresent);
-    fbBuilder.addOffset(10, finishOffset);
+    fbBuilder.addOffset(6, gitRefsOffset);
+    fbBuilder.addUint32(7, _gitRefsRebased);
+    fbBuilder.addOffset(8, finishOffset);
     return fbBuilder.endTable();
   }
 
@@ -10589,6 +10451,93 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
+///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
+///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
+///  line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
+///  tooltips only; nothing parses it.
+class Warning {
+  Warning._(this._bc, this._bcOffset);
+  factory Warning(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Warning> reader = _WarningReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get code => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'Warning{code: ${code}, message: ${message}}';
+  }
+}
+
+class _WarningReader extends fb.TableReader<Warning> {
+  const _WarningReader();
+
+  @override
+  Warning createObject(fb.BufferContext bc, int offset) => Warning._(bc, offset);
+}
+
+class WarningBuilder {
+  WarningBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addCodeOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WarningObjectBuilder extends fb.ObjectBuilder {
+  final String? _code;
+  final String? _message;
+
+  WarningObjectBuilder({
+    String? code,
+    String? message,
+  }) : _code = code,
+       _message = message;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? codeOffset = _code == null ? null : fbBuilder.writeString(_code!);
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, codeOffset);
+    fbBuilder.addOffset(1, messageOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Root FlatBuffers type for every fallible FFI call that returns composite data.
 ///
 ///  ok == true  → data is set to the concrete Payload variant; error is absent.
@@ -10609,6 +10558,12 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
 ///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
 ///  its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
 ///  `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+///
+///  `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
+///  envelope AND on an error envelope (then everything warned before the failure). ABSENT when
+///  the call had nothing to warn about — every reader treats absent as an empty list — and
+///  therefore on every symbol that cannot warn, and on the pre-serialised `internal.panic`
+///  fallback. Success without caveat is `ok` with no warnings; there is no severity field.
 class Envelope {
   Envelope._(this._bc, this._bcOffset);
   factory Envelope(List<int> bytes) {
@@ -10703,10 +10658,11 @@ class Envelope {
   }
 
   Precondition? get precondition => Precondition.reader.vTableGetNullable(_bc, _bcOffset, 12);
+  List<Warning>? get warnings => const fb.ListReader<Warning>(Warning.reader).vTableGetNullable(_bc, _bcOffset, 14);
 
   @override
   String toString() {
-    return 'Envelope{ok: ${ok}, error: ${error}, dataType: ${dataType}, data: ${data}, precondition: ${precondition}}';
+    return 'Envelope{ok: ${ok}, error: ${error}, dataType: ${dataType}, data: ${data}, precondition: ${precondition}, warnings: ${warnings}}';
   }
 }
 
@@ -10723,7 +10679,7 @@ class EnvelopeBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addOk(bool? ok) {
@@ -10751,6 +10707,11 @@ class EnvelopeBuilder {
     return fbBuilder.offset;
   }
 
+  int addWarningsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -10762,6 +10723,7 @@ class EnvelopeObjectBuilder extends fb.ObjectBuilder {
   final PayloadTypeId? _dataType;
   final dynamic _data;
   final PreconditionObjectBuilder? _precondition;
+  final List<WarningObjectBuilder>? _warnings;
 
   EnvelopeObjectBuilder({
     bool? ok,
@@ -10769,11 +10731,13 @@ class EnvelopeObjectBuilder extends fb.ObjectBuilder {
     PayloadTypeId? dataType,
     dynamic data,
     PreconditionObjectBuilder? precondition,
+    List<WarningObjectBuilder>? warnings,
   }) : _ok = ok,
        _error = error,
        _dataType = dataType,
        _data = data,
-       _precondition = precondition;
+       _precondition = precondition,
+       _warnings = warnings;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -10781,12 +10745,16 @@ class EnvelopeObjectBuilder extends fb.ObjectBuilder {
     final int? errorOffset = _error?.getOrCreateOffset(fbBuilder);
     final int? dataOffset = _data?.getOrCreateOffset(fbBuilder);
     final int? preconditionOffset = _precondition?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(5);
+    final int? warningsOffset = _warnings == null
+        ? null
+        : fbBuilder.writeList(_warnings!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(6);
     fbBuilder.addBool(0, _ok);
     fbBuilder.addOffset(1, errorOffset);
     fbBuilder.addUint8(2, _dataType?.value);
     fbBuilder.addOffset(3, dataOffset);
     fbBuilder.addOffset(4, preconditionOffset);
+    fbBuilder.addOffset(5, warningsOffset);
     return fbBuilder.endTable();
   }
 

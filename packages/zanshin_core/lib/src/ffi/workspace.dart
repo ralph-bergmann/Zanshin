@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.7's two workspace READ verbs: the
 // adapters (workspaceList / workspaceRoot), the list-row model, and the two
@@ -77,25 +78,41 @@ final class WorkspaceEntry {
   final String? root;
 }
 
+/// The result of `workspaceRoot` (Story 9.32): the absolute root path plus the
+/// call's warnings.
+final class WorkspaceRootResult {
+  const WorkspaceRootResult({required this.path, this.warnings = const []});
+
+  /// Absolute path of the named workspace's root directory.
+  final String path;
+
+  /// The call's warnings, in the CLI's print order; empty when there were none.
+  final List<ZanshinWarning> warnings;
+}
+
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
-/// Decode a `WorkspaceList` `Envelope` buffer into a `List<WorkspaceEntry>`.
+/// Decode a `WorkspaceList` `Envelope` buffer into a `List<WorkspaceEntry>` that
+/// also carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.workspaceList`.
 @visibleForTesting
-List<WorkspaceEntry> decodeWorkspaceListEnvelope(Uint8List bytes) => _decodeWorkspaceListEnvelope(bytes);
+WarnedList<WorkspaceEntry> decodeWorkspaceListEnvelope(Uint8List bytes) => _decodeWorkspaceListEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<WorkspaceEntry> decodeWorkspaceListEnvelopeInternal(Uint8List bytes) => _decodeWorkspaceListEnvelope(bytes);
+WarnedList<WorkspaceEntry> decodeWorkspaceListEnvelopeInternal(Uint8List bytes) => _decodeWorkspaceListEnvelope(bytes);
 
-List<WorkspaceEntry> _decodeWorkspaceListEnvelope(Uint8List bytes) {
+WarnedList<WorkspaceEntry> _decodeWorkspaceListEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.WorkspaceList) {
     throw ZanshinFfiException('ffi.unknown', 'expected WorkspaceList payload, got ${env.dataType}');
   }
-  return payload.entries?.map(_mapWorkspaceEntry).toList() ?? const [];
+  return WarnedList(
+    payload.entries?.map(_mapWorkspaceEntry).toList() ?? const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
 }
 
 WorkspaceEntry _mapWorkspaceEntry(fbs.WorkspaceEntry e) => WorkspaceEntry(
@@ -106,17 +123,18 @@ WorkspaceEntry _mapWorkspaceEntry(fbs.WorkspaceEntry e) => WorkspaceEntry(
   root: e.root,
 );
 
-/// Decode a `WorkspaceRoot` `Envelope` buffer into the absolute root path.
+/// Decode a `WorkspaceRoot` `Envelope` buffer into the absolute root path and
+/// the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.workspaceRoot`.
 @visibleForTesting
-String decodeWorkspaceRootEnvelope(Uint8List bytes) => _decodeWorkspaceRootEnvelope(bytes);
+WorkspaceRootResult decodeWorkspaceRootEnvelope(Uint8List bytes) => _decodeWorkspaceRootEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-String decodeWorkspaceRootEnvelopeInternal(Uint8List bytes) => _decodeWorkspaceRootEnvelope(bytes);
+WorkspaceRootResult decodeWorkspaceRootEnvelopeInternal(Uint8List bytes) => _decodeWorkspaceRootEnvelope(bytes);
 
-String _decodeWorkspaceRootEnvelope(Uint8List bytes) {
+WorkspaceRootResult _decodeWorkspaceRootEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.WorkspaceRoot) {
@@ -129,7 +147,7 @@ String _decodeWorkspaceRootEnvelope(Uint8List bytes) {
     // malformed buffer, not a modellable state.
     throw const ZanshinFfiException('ffi.unknown', 'WorkspaceRoot payload is missing its root');
   }
-  return root;
+  return WorkspaceRootResult(path: root, warnings: decodeEnvelopeWarningsInternal(env));
 }
 
 /// Parse [bytes] as an `Envelope` and throw [ZanshinFfiException] when it is not ok.

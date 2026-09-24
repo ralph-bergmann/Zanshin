@@ -9,6 +9,7 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'precondition.dart' show Precondition, decodeEnvelopePreconditionInternal;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.28's config surface — the CLI's
 // `jj config list/get/path/set/unset/edit/gc`: the nine request builders and
@@ -102,29 +103,80 @@ final class WorkingCopyAuthor {
 
 /// Outcome of a successful `configSet`.
 final class ConfigSetResult {
-  const ConfigSetResult({required this.path, required this.workingCopyAuthor, required this.precondition});
+  const ConfigSetResult({
+    required this.path,
+    required this.workingCopyAuthor,
+    required this.precondition,
+    this.warnings = const [],
+  });
 
   /// The file written.
   final String path;
 
   /// Present iff `user.name`/`user.email` was set and `@`'s author differs
-  /// (change it with `jj metaedit --update-author`).
+  /// (change it with `jj metaedit --update-author`); the same fact is the
+  /// `jj.config_working_copy_author` entry of [warnings].
   final WorkingCopyAuthor? workingCopyAuthor;
 
   /// The report of the working-copy snapshot the identity check ran; `null`
   /// when it did not run.
   final Precondition? precondition;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order — the identity
+  /// check's snapshot warnings, then the working-copy-author note; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
+}
+
+/// The result of `configGet` (Story 9.32): the value text plus the call's
+/// warnings.
+final class ConfigGetResult {
+  const ConfigGetResult({required this.value, this.warnings = const []});
+
+  /// The value: a string's raw text, anything else as TOML text.
+  final String value;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
+}
+
+/// The result of `configUnset` (Story 9.32): the file written plus the call's
+/// warnings.
+final class ConfigUnsetResult {
+  const ConfigUnsetResult({required this.path, this.warnings = const []});
+
+  /// The file written.
+  final String path;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
+}
+
+/// The result of `configFileWrite` (Story 9.32) — it writes the file and
+/// returns nothing else, so only the call's warnings.
+final class ConfigFileWriteResult {
+  const ConfigFileWriteResult({this.warnings = const []});
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// A config file's text, as `configFileRead` returns it.
 final class ConfigFileText {
-  const ConfigFileText({required this.path, required this.text});
+  const ConfigFileText({required this.path, required this.text, this.warnings = const []});
 
   /// The file.
   final String path;
 
   /// Its exact contents.
   final String text;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// A repo config directory whose recorded repo no longer exists.
@@ -151,13 +203,17 @@ final class ConfigGcFailure {
 
 /// What `configGcDelete` did.
 final class ConfigGcResult {
-  const ConfigGcResult({required this.deleted, required this.failed});
+  const ConfigGcResult({required this.deleted, required this.failed, this.warnings = const []});
 
   /// The directories deleted.
   final List<String> deleted;
 
   /// The requested directories that were not deleted.
   final List<ConfigGcFailure> failed;
+
+  /// The call's warnings (Story 9.32) — one `jj.config_gc_delete_failed` per
+  /// directory whose removal failed; empty when there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────
@@ -285,31 +341,46 @@ Uint8List zanshinConfigGcDelete(List<String> configDirs) {
 
 /// Decode a `ConfigListResult` envelope. Exposed for decode-contract tests.
 @visibleForTesting
-List<ConfigEntry> decodeConfigListEnvelope(Uint8List bytes) => decodeConfigListEnvelopeInternal(bytes);
+WarnedList<ConfigEntry> decodeConfigListEnvelope(Uint8List bytes) => decodeConfigListEnvelopeInternal(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<ConfigEntry> decodeConfigListEnvelopeInternal(Uint8List bytes) {
-  final fbs.ConfigListResult p = _payload<fbs.ConfigListResult>(bytes);
-  return p.entries
-          ?.map(
-            (e) => ConfigEntry(
-              name: e.name ?? '',
-              value: e.value ?? '',
-              source: _source(e.source),
-              path: e.path,
-              overridden: e.overridden,
-            ),
-          )
-          .toList() ??
-      const [];
+WarnedList<ConfigEntry> decodeConfigListEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final fbs.ConfigListResult p = _payload<fbs.ConfigListResult>(env);
+  return WarnedList(
+    p.entries
+            ?.map(
+              (e) => ConfigEntry(
+                name: e.name ?? '',
+                value: e.value ?? '',
+                source: _source(e.source),
+                path: e.path,
+                overridden: e.overridden,
+              ),
+            )
+            .toList() ??
+        const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
 }
 
-/// Decode a `ConfigGetResult` envelope into the value text.
-String decodeConfigGetEnvelopeInternal(Uint8List bytes) => _payload<fbs.ConfigGetResult>(bytes).value ?? '';
+/// Decode a `ConfigGetResult` envelope into the value text and the warnings.
+ConfigGetResult decodeConfigGetEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  return ConfigGetResult(
+    value: _payload<fbs.ConfigGetResult>(env).value ?? '',
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
 
-/// Decode a `ConfigPathResult` envelope into its paths.
-List<String> decodeConfigPathEnvelopeInternal(Uint8List bytes) =>
-    _payload<fbs.ConfigPathResult>(bytes).paths?.toList() ?? const [];
+/// Decode a `ConfigPathResult` envelope into its paths and the warnings.
+WarnedList<String> decodeConfigPathEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  return WarnedList(
+    _payload<fbs.ConfigPathResult>(env).paths?.toList() ?? const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
+}
 
 /// Decode a `ConfigSetResult` envelope, the envelope's `precondition` included.
 /// Exposed for decode-contract tests.
@@ -318,42 +389,59 @@ ConfigSetResult decodeConfigSetEnvelope(Uint8List bytes) => decodeConfigSetEnvel
 
 /// Internal decoder used by production code in `isolate.dart`.
 ConfigSetResult decodeConfigSetEnvelopeInternal(Uint8List bytes) {
-  final fbs.ConfigSetResult p = _payload<fbs.ConfigSetResult>(bytes);
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final fbs.ConfigSetResult p = _payload<fbs.ConfigSetResult>(env);
   final fbs.WorkingCopyAuthor? a = p.workingCopyAuthor;
   return ConfigSetResult(
     path: p.path ?? '',
     workingCopyAuthor: a == null ? null : WorkingCopyAuthor(name: a.name ?? '', email: a.email ?? ''),
     precondition: decodeEnvelopePreconditionInternal(bytes),
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 
-/// Decode a `ConfigUnsetResult` envelope into the file written.
-String decodeConfigUnsetEnvelopeInternal(Uint8List bytes) => _payload<fbs.ConfigUnsetResult>(bytes).path ?? '';
+/// Decode a `ConfigUnsetResult` envelope into the file written and the warnings.
+ConfigUnsetResult decodeConfigUnsetEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  return ConfigUnsetResult(
+    path: _payload<fbs.ConfigUnsetResult>(env).path ?? '',
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
 
 /// Decode a `ConfigFileText` envelope.
 ConfigFileText decodeConfigFileTextEnvelopeInternal(Uint8List bytes) {
-  final fbs.ConfigFileText p = _payload<fbs.ConfigFileText>(bytes);
-  return ConfigFileText(path: p.path ?? '', text: p.text ?? '');
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final fbs.ConfigFileText p = _payload<fbs.ConfigFileText>(env);
+  return ConfigFileText(path: p.path ?? '', text: p.text ?? '', warnings: decodeEnvelopeWarningsInternal(env));
 }
 
-/// Check a no-payload `zanshin_config_file_write` envelope.
-void decodeConfigFileWriteEnvelopeInternal(Uint8List bytes) => _okEnvelope(bytes);
+/// Decode a no-payload `zanshin_config_file_write` envelope into its warnings.
+ConfigFileWriteResult decodeConfigFileWriteEnvelopeInternal(Uint8List bytes) =>
+    ConfigFileWriteResult(warnings: decodeEnvelopeWarningsInternal(_okEnvelope(bytes)));
 
 /// Decode a `ConfigGcList` envelope.
-List<MissingRepoConfig> decodeConfigGcListEnvelopeInternal(Uint8List bytes) =>
+WarnedList<MissingRepoConfig> decodeConfigGcListEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  return WarnedList(
     _payload<fbs.ConfigGcList>(
-      bytes,
-    ).missing?.map((m) => MissingRepoConfig(configDir: m.configDir ?? '', repoPath: m.repoPath ?? '')).toList() ??
-    const [];
+          env,
+        ).missing?.map((m) => MissingRepoConfig(configDir: m.configDir ?? '', repoPath: m.repoPath ?? '')).toList() ??
+        const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
+}
 
 /// Decode a `ConfigGcResult` envelope.
 ConfigGcResult decodeConfigGcResultEnvelopeInternal(Uint8List bytes) {
-  final fbs.ConfigGcResult p = _payload<fbs.ConfigGcResult>(bytes);
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final fbs.ConfigGcResult p = _payload<fbs.ConfigGcResult>(env);
   return ConfigGcResult(
     deleted: p.deleted?.toList() ?? const [],
     failed:
         p.failed?.map((f) => ConfigGcFailure(configDir: f.configDir ?? '', reason: f.reason ?? '')).toList() ??
         const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 
@@ -367,9 +455,8 @@ ConfigValueSource _source(fbs.ConfigValueSource s) => switch (s) {
   fbs.ConfigValueSource.EnvOverrides => ConfigValueSource.envOverrides,
 };
 
-/// The ok envelope's payload as [T]; an error envelope throws [ZanshinFfiException].
-T _payload<T>(Uint8List bytes) {
-  final fbs.Envelope env = _okEnvelope(bytes);
+/// The ok [env]'s payload as [T]; a different payload throws [ZanshinFfiException].
+T _payload<T>(fbs.Envelope env) {
   final Object? payload = env.data;
   if (payload is! T) {
     throw ZanshinFfiException('ffi.unknown', 'expected $T payload, got ${env.dataType}');

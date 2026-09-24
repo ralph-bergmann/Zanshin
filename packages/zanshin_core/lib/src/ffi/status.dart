@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ final class WorkingCopyStatus {
     required this.files,
     required this.workingCopyChangeId,
     required this.parentChangeId,
+    this.warnings = const [],
   });
 
   /// Files changed between the working copy (@) and its parent (@-).
@@ -37,6 +39,10 @@ final class WorkingCopyStatus {
 
   /// Change id of the parent commit in jj reverse-hex display form.
   final String parentChangeId;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// A single file changed between @ and @-.
@@ -102,6 +108,7 @@ WorkingCopyStatus _decodeStatusEnvelope(Uint8List bytes) {
     files: _mapFiles(payload),
     workingCopyChangeId: payload.workingCopyChangeId ?? '',
     parentChangeId: payload.parentChangeId ?? '',
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

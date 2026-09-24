@@ -10,6 +10,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ final class Change {
     required this.conflictedPaths,
     required this.isAnonymous,
     required this.divergent,
+    this.warnings = const [],
   });
 
   /// Stable jj change identifier in reverse-hex form (e.g. `"qpvuntsm…"`).
@@ -118,6 +120,10 @@ final class Change {
 
   /// `true` when this change id resolves to more than one visible commit.
   final bool divergent;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none, and always empty on a change nested in another payload.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -150,7 +156,7 @@ Change _decodeChangeEnvelope(Uint8List bytes) {
       'expected Change payload, got ${env.dataType}',
     );
   }
-  return mapChangeTable(payload);
+  return mapChangeTable(payload, warnings: decodeEnvelopeWarningsInternal(env));
 }
 
 /// Map a generated `Change` TABLE into the Dart model.
@@ -158,8 +164,9 @@ Change _decodeChangeEnvelope(Uint8List bytes) {
 /// Library-internal: the `Change` table is nested inside other payloads since
 /// Story 9.6 (`ShowEntry.change`, `EvologEntry.change`), and both this file's
 /// top-level decoder and `commit_views.dart` go through this one mapper — so a
-/// field added to `Change` cannot be wired into one decoder only.
-Change mapChangeTable(fbs.Change payload) => Change(
+/// field added to `Change` cannot be wired into one decoder only. [warnings] are
+/// the enclosing envelope's — only the top-level decode passes any.
+Change mapChangeTable(fbs.Change payload, {List<ZanshinWarning> warnings = const []}) => Change(
   id: payload.id ?? '',
   commitId: payload.commitId ?? '',
   parents: payload.parents?.toList() ?? const [],
@@ -171,6 +178,7 @@ Change mapChangeTable(fbs.Change payload) => Change(
   conflictedPaths: payload.conflictedPaths?.toList() ?? const [],
   isAnonymous: payload.isAnonymous,
   divergent: payload.divergent,
+  warnings: warnings,
 );
 
 Signature _mapSignature(fbs.Signature? sig) => Signature(

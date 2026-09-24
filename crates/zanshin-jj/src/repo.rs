@@ -107,7 +107,8 @@ pub enum Backend {
 ///
 /// Every verb whose CLI counterpart snapshots first (`workspace_helper`) runs the same implicit
 /// snapshot + colocated Git import before it does anything else (Story 9.26); its report is
-/// [`Repo::take_precondition`].
+/// [`Repo::take_precondition`], and the warnings the call collected — the CLI's `ui.warning_*`
+/// lines, precondition and verb alike — are [`Repo::take_warnings`] (Story 9.32).
 pub struct Repo {
     workspace: Workspace,
     settings: UserSettings,
@@ -115,6 +116,9 @@ pub struct Repo {
     stack_fingerprint: crate::config::StackFingerprint,
     /// The last precondition's report, until [`Repo::take_precondition`] takes it.
     pending_precondition: Option<crate::Precondition>,
+    /// The last verb's warnings, until [`Repo::take_warnings`] takes them. Reset at the start of
+    /// every verb that runs the precondition.
+    pending_warnings: crate::warning::Warnings,
 }
 
 impl std::fmt::Debug for Repo {
@@ -178,6 +182,7 @@ impl Repo {
             settings,
             stack_fingerprint,
             pending_precondition: None,
+            pending_warnings: crate::warning::Warnings::default(),
         })
     }
 
@@ -218,6 +223,12 @@ impl Repo {
     ///    `import git refs` (colocated) or the snapshot alone.
     /// 4. The report is stored for [`Repo::take_precondition`] — a PARTIAL one when a later
     ///    step failed — and the lock is released.
+    /// 5. On success, the snapshot's stats warn (`print_snapshot_stats`, which `workspace_helper`
+    ///    prints right after the snapshot) — unless `warn_stats` is `false`: `file track` prints
+    ///    only its MERGED stats (`workspace_helper_with_stats`).
+    ///
+    /// The call's warning collector starts fresh here (Story 9.32); on success it moves into the
+    /// returned context, on failure it stays for [`Repo::take_warnings`].
     ///
     /// No caching, debouncing or "did anything change" heuristic: the trigger is the verb
     /// call, exactly like the CLI. A precondition that finds nothing to do writes no
@@ -226,15 +237,23 @@ impl Repo {
     /// # Errors
     ///
     /// Any [`crate::PreconditionError`].
-    fn precondition(&mut self) -> Result<crate::snapshot::VerbContext, crate::PreconditionError> {
+    fn precondition(&mut self, warn_stats: bool) -> Result<crate::snapshot::VerbContext, crate::PreconditionError> {
         let refreshed = self.refresh_settings();
         self.pending_precondition = Some(crate::Precondition::default());
+        self.pending_warnings = crate::warning::Warnings::default();
         refreshed?;
         let config = crate::config::load(self)?;
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace);
-        let knobs = crate::snapshot::Knobs::read(&self.workspace, &config)?;
+        let knobs = crate::snapshot::Knobs::read(&self.workspace, &config, &mut self.pending_warnings)?;
         let mut report = crate::Precondition::default();
-        let result = crate::snapshot::run(&mut self.workspace, &config, &knobs, colocated, &mut report);
+        let result = crate::snapshot::run(
+            &mut self.workspace,
+            &config,
+            &knobs,
+            colocated,
+            &mut report,
+            &mut self.pending_warnings,
+        );
         self.pending_precondition = Some(report);
         let auto_stats = match result {
             Err(stale @ crate::PreconditionError::StaleWorkingCopy { .. }) => {
@@ -247,7 +266,41 @@ impl Repo {
             }
             other => other?,
         };
-        Ok(crate::snapshot::VerbContext::new(config, knobs, colocated, auto_stats))
+        if warn_stats {
+            self.pending_warnings.extend(crate::warning::snapshot_stats(
+                self.workspace.workspace_root(),
+                &auto_stats,
+            ));
+        }
+        Ok(crate::snapshot::VerbContext::new(
+            config,
+            knobs,
+            colocated,
+            auto_stats,
+            std::mem::take(&mut self.pending_warnings),
+        ))
+    }
+
+    /// Runs the precondition, then `verb` with its context — and keeps the call's warnings for
+    /// [`Repo::take_warnings`] on EVERY path: a failed precondition, a failed verb, a success.
+    fn with_verb<T, E: From<crate::PreconditionError>>(
+        &mut self,
+        verb: impl FnOnce(&mut Self, &mut crate::snapshot::VerbContext) -> Result<T, E>,
+    ) -> Result<T, E> {
+        self.with_verb_stats(true, verb)
+    }
+
+    /// [`Repo::with_verb`] with the precondition's snapshot-stats warnings switched by
+    /// `warn_stats` (see [`Repo::precondition`]).
+    fn with_verb_stats<T, E: From<crate::PreconditionError>>(
+        &mut self,
+        warn_stats: bool,
+        verb: impl FnOnce(&mut Self, &mut crate::snapshot::VerbContext) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut ctx = self.precondition(warn_stats)?;
+        let result = verb(self, &mut ctx);
+        self.pending_warnings = std::mem::take(&mut ctx.warnings);
+        result
     }
 
     /// Snapshots the working copy — and, in a colocated workspace, imports the Git HEAD and
@@ -264,8 +317,7 @@ impl Repo {
     /// Any [`crate::PreconditionError`]; the partial report stays available through
     /// [`Repo::take_precondition`].
     pub fn snapshot(&mut self) -> Result<crate::Precondition, crate::PreconditionError> {
-        self.precondition()?;
-        Ok(self.take_precondition().unwrap_or_default())
+        self.with_verb(|repo, _ctx| Ok(repo.take_precondition().unwrap_or_default()))
     }
 
     /// Takes the report the last precondition left behind (Story 9.26), leaving `None`.
@@ -277,6 +329,23 @@ impl Repo {
     #[must_use]
     pub fn take_precondition(&mut self) -> Option<crate::Precondition> {
         self.pending_precondition.take()
+    }
+
+    /// Takes the warnings the last precondition-running verb left (Story 9.32), leaving the list
+    /// empty.
+    ///
+    /// The jj CLI's `ui.warning_*` output for that call, as coded facts in its print order: the
+    /// config-load warnings, the pre-verb snapshot's and imports', the verb body's, and the
+    /// transaction finish's. The list is reset ONLY where a verb runs the precondition: such a
+    /// verb starts a fresh list and leaves it behind — on success AND on failure (then
+    /// everything up to the failure). Verbs that do not snapshot ([`Repo::workspace_root`],
+    /// [`Repo::resolve_workspace_root`], [`Repo::log_defaults`]) neither reset nor add to it, so
+    /// a take after one of them returns whatever an earlier verb left untaken. A caller takes
+    /// the list after each precondition-running verb, as the FFI layer does for every envelope
+    /// it builds for one.
+    #[must_use]
+    pub fn take_warnings(&mut self) -> Vec<crate::Warning> {
+        self.pending_warnings.take()
     }
 
     /// Returns the working-copy status: files changed between `@` and `@-`.
@@ -291,8 +360,7 @@ impl Repo {
     /// working-copy commit, [`crate::StatusError::Precondition`] if the pre-verb snapshot
     /// failed, or [`crate::StatusError::Backend`] on jj-lib failure.
     pub fn status(&mut self) -> Result<crate::Status, crate::StatusError> {
-        self.precondition()?;
-        crate::status::working_copy_status(&self.workspace)
+        self.with_verb(|repo, _ctx| crate::status::working_copy_status(&repo.workspace))
     }
 
     /// Returns full metadata for the change identified by `id` (jj reverse-hex form).
@@ -306,8 +374,7 @@ impl Repo {
     /// - [`crate::ChangeError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn get_change(&mut self, id: &crate::ChangeId) -> Result<crate::Change, crate::ChangeError> {
-        self.precondition()?;
-        crate::change::get_change(&self.workspace, id)
+        self.with_verb(|repo, _ctx| crate::change::get_change(&repo.workspace, id))
     }
 
     /// Returns the operation log in reverse-chronological order (most-recent first, root op last).
@@ -322,8 +389,7 @@ impl Repo {
     ///   jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn op_log(&mut self, limit: Option<usize>) -> Result<Vec<crate::Operation>, crate::OpLogError> {
-        self.precondition()?;
-        crate::op_log::op_log(self.workspace(), limit)
+        self.with_verb(|repo, _ctx| crate::op_log::op_log(repo.workspace(), limit))
     }
 
     /// Lists local + tracked-remote bookmarks, sorted by name then kind (FR-JJ-8).
@@ -338,8 +404,7 @@ impl Repo {
     ///   jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_bookmarks(&mut self) -> Result<Vec<crate::Bookmark>, crate::BookmarkError> {
-        self.precondition()?;
-        crate::bookmarks::list_bookmarks(self.workspace())
+        self.with_verb(|repo, _ctx| crate::bookmarks::list_bookmarks(repo.workspace()))
     }
 
     /// Lists local + tracked-remote tags, sorted by name then kind (ADR-0003 §5).
@@ -356,8 +421,7 @@ impl Repo {
     ///   reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_tags(&mut self) -> Result<Vec<crate::Tag>, crate::ViewError> {
-        self.precondition()?;
-        crate::view::list_tags(self.workspace())
+        self.with_verb(|repo, _ctx| crate::view::list_tags(repo.workspace()))
     }
 
     /// Lists the repo's visible head commits, sorted by hex commit id (ADR-0003 §5).
@@ -373,8 +437,7 @@ impl Repo {
     ///   as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_heads(&mut self) -> Result<Vec<crate::CommitId>, crate::ViewError> {
-        self.precondition()?;
-        crate::view::list_heads(self.workspace())
+        self.with_verb(|repo, _ctx| crate::view::list_heads(repo.workspace()))
     }
 
     /// Lists every workspace of this repo with its working-copy commit id (ADR-0003 §5).
@@ -389,8 +452,7 @@ impl Repo {
     ///   as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_working_copies(&mut self) -> Result<Vec<crate::WorkingCopy>, crate::ViewError> {
-        self.precondition()?;
-        crate::view::list_working_copies(self.workspace())
+        self.with_verb(|repo, _ctx| crate::view::list_working_copies(repo.workspace()))
     }
 
     /// Lists configured git remotes with their fetch/push URLs, sorted by name (FR-JJ-9).
@@ -408,8 +470,7 @@ impl Repo {
     ///   reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_remotes(&mut self) -> Result<Vec<crate::Remote>, crate::RemoteError> {
-        self.precondition()?;
-        crate::remotes::list_remotes(self.workspace())
+        self.with_verb(|repo, _ctx| crate::remotes::list_remotes(repo.workspace()))
     }
 
     /// Returns the effective `jj log` defaults of this repo (Story 4.9): the values the
@@ -450,7 +511,7 @@ impl Repo {
     ///
     /// Entries come in jj-lib's own `entries_matching` (tree) order. Like the CLI, this verb
     /// has NO refusals for the paths themselves: a path matching nothing simply contributes
-    /// no entry, where the CLI prints a trailing warning. Subtrees are visited recursively
+    /// no entry and warns `jj.paths_unmatched` (Story 9.32). Subtrees are visited recursively
     /// and never yielded — except a subtree that CONFLICTS with a non-tree, which is emitted
     /// as one [`crate::FileType::Conflict`] entry and not descended into.
     ///
@@ -471,8 +532,9 @@ impl Repo {
         revision: Option<crate::ChangeId>,
         paths: &[String],
     ) -> Result<Vec<crate::FileEntry>, crate::FileError> {
-        self.precondition()?;
-        crate::file::file_list(self.workspace(), revision.as_ref(), paths)
+        self.with_verb(|repo, ctx| {
+            crate::file::file_list(repo.workspace(), &mut ctx.warnings, revision.as_ref(), paths)
+        })
     }
 
     /// Reads the contents of the files selected by `paths` in a revision (Story 9.4) — the
@@ -521,8 +583,7 @@ impl Repo {
         revision: Option<crate::ChangeId>,
         paths: &[String],
     ) -> Result<crate::FileContents, crate::FileError> {
-        self.precondition()?;
-        crate::file::file_show(self, revision.as_ref(), paths)
+        self.with_verb(|repo, ctx| crate::file::file_show(repo, &mut ctx.warnings, revision.as_ref(), paths))
     }
 
     /// Annotates one file line by line (Story 9.4) — the CLI's `jj file annotate`.
@@ -562,8 +623,7 @@ impl Repo {
         revision: Option<crate::ChangeId>,
         path: &str,
     ) -> Result<Vec<crate::AnnotationLine>, crate::FileError> {
-        self.precondition()?;
-        crate::file::file_annotate(self.workspace(), revision.as_ref(), path)
+        self.with_verb(|repo, _ctx| crate::file::file_annotate(repo.workspace(), revision.as_ref(), path))
     }
 
     /// Searches the files of a revision for `pattern` (Story 9.4) — the CLI's
@@ -606,8 +666,16 @@ impl Repo {
         paths: &[String],
         name_only: bool,
     ) -> Result<crate::FileSearch, crate::FileError> {
-        self.precondition()?;
-        crate::file::file_search(self.workspace(), revision.as_ref(), pattern, paths, name_only)
+        self.with_verb(|repo, ctx| {
+            crate::file::file_search(
+                repo.workspace(),
+                &mut ctx.warnings,
+                revision.as_ref(),
+                pattern,
+                paths,
+                name_only,
+            )
+        })
     }
 
     /// Streams the commit graph of `revset` — one [`crate::GraphNode`] per commit, children
@@ -661,8 +729,9 @@ impl Repo {
         short_prefixes: &str,
         visit: impl FnMut(crate::GraphNode) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
-        self.precondition()?;
-        crate::graph::walk_graph(self, revset, prioritize, short_prefixes, visit)
+        self.with_verb(|repo, ctx| {
+            crate::graph::walk_graph(repo, &mut ctx.warnings, revset, prioritize, short_prefixes, visit)
+        })
     }
 
     /// Streams the commits `revset` denotes through `visit`, one [`crate::Change`] per commit
@@ -712,8 +781,7 @@ impl Repo {
         revset: &str,
         visit: impl FnMut(crate::Change) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
-        self.precondition()?;
-        crate::revset::eval_revset(self, revset, visit)
+        self.with_verb(|repo, ctx| crate::revset::eval_revset(repo, &mut ctx.warnings, revset, visit))
     }
 
     /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
@@ -743,8 +811,7 @@ impl Repo {
         change_id: crate::ChangeId,
         description: &str,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::mutate::describe(self.workspace_mut(), &ctx, &change_id, description)
+        self.with_verb(|repo, ctx| crate::mutate::describe(repo.workspace_mut(), ctx, &change_id, description))
     }
 
     /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit
@@ -761,8 +828,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn new_change(&mut self, parents: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::mutate::new_change(self.workspace_mut(), &ctx, parents)
+        self.with_verb(|repo, ctx| crate::mutate::new_change(repo.workspace_mut(), ctx, parents))
     }
 
     /// Switches the working copy to `change_id` without creating a new commit
@@ -785,8 +851,7 @@ impl Repo {
     // implementation only needs to borrow it, but the public API takes ownership.
     #[allow(clippy::needless_pass_by_value)]
     pub fn edit(&mut self, change_id: crate::ChangeId) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::mutate::edit(self.workspace_mut(), &ctx, &change_id)
+        self.with_verb(|repo, ctx| crate::mutate::edit(repo.workspace_mut(), ctx, &change_id))
     }
 
     /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
@@ -810,8 +875,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn abandon(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::mutate::abandon(self.workspace_mut(), &ctx, change_ids)
+        self.with_verb(|repo, ctx| crate::mutate::abandon(repo.workspace_mut(), ctx, change_ids))
     }
 
     /// Reverts the last operation, one step back from the current head (FR-JJ-14a).
@@ -833,8 +897,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn undo(&mut self) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::op_log::undo(self.workspace_mut(), &ctx)
+        self.with_verb(|repo, ctx| crate::op_log::undo(repo.workspace_mut(), ctx))
     }
 
     /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
@@ -881,10 +944,11 @@ impl Repo {
         remote_name: &str,
         progress: &crate::ProgressFn,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
         // WHY the two fields rather than the accessors: disjoint field borrows, so the
         // workspace can be borrowed mutably next to the settings.
-        crate::remotes::git_fetch(&mut self.workspace, &self.settings, remote_name, &ctx, progress)
+        self.with_verb(|repo, ctx| {
+            crate::remotes::git_fetch(&mut repo.workspace, &repo.settings, remote_name, ctx, progress)
+        })
     }
 
     /// Reloads the workspace from disk so a freshly-written git config is visible.
@@ -962,8 +1026,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_import(&mut self) -> Result<crate::GitImportResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::git::git_import(self.workspace_mut(), &ctx)
+        self.with_verb(|repo, ctx| crate::git::git_import(repo.workspace_mut(), ctx))
     }
 
     /// Writes jj's bookmarks and tags back to the backing git repo (Story 9.5) — the CLI's
@@ -990,8 +1053,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_export(&mut self) -> Result<crate::GitExportResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::git::git_export(self.workspace_mut(), &ctx)
+        self.with_verb(|repo, ctx| crate::git::git_export(repo.workspace_mut(), ctx))
     }
 
     /// Registers a new git remote (Story 9.5) — the CLI's `jj git remote add`.
@@ -1029,8 +1091,8 @@ impl Repo {
         url: &str,
         push_url: Option<&str>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        let result = crate::git::git_remote_add(self.workspace_mut(), &ctx, name, url, push_url);
+        let result =
+            self.with_verb(|repo, ctx| crate::git::git_remote_add(repo.workspace_mut(), ctx, name, url, push_url));
         self.reload_after_config_write(result)
     }
 
@@ -1076,8 +1138,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_remote_remove(&mut self, name: &str) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        let result = crate::git::git_remote_remove(self.workspace_mut(), &ctx, name);
+        let result = self.with_verb(|repo, ctx| crate::git::git_remote_remove(repo.workspace_mut(), ctx, name));
         self.reload_after_config_write(result)
     }
 
@@ -1126,8 +1187,8 @@ impl Repo {
         old_name: &str,
         new_name: &str,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        let result = crate::git::git_remote_rename(self.workspace_mut(), &ctx, old_name, new_name);
+        let result =
+            self.with_verb(|repo, ctx| crate::git::git_remote_rename(repo.workspace_mut(), ctx, old_name, new_name));
         self.reload_after_config_write(result)
     }
 
@@ -1169,8 +1230,8 @@ impl Repo {
         url: Option<&str>,
         push_url: Option<&str>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        self.precondition()?;
-        let result = crate::git::git_remote_set_url(self.workspace_mut(), name, url, push_url);
+        let result =
+            self.with_verb(|repo, _ctx| crate::git::git_remote_set_url(repo.workspace_mut(), name, url, push_url));
         self.reload_after_config_write(result)
     }
 
@@ -1232,8 +1293,7 @@ impl Repo {
         revset: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<crate::ShowEntry>, crate::CommitViewError> {
-        self.precondition()?;
-        crate::commit_views::show(self, revset, limit)
+        self.with_verb(|repo, ctx| crate::commit_views::show(repo, &mut ctx.warnings, revset, limit))
     }
 
     /// Walks the evolution of the changes `revset` denotes (Story 9.6) — the CLI's `jj evolog`.
@@ -1276,8 +1336,7 @@ impl Repo {
         revset: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<crate::EvologEntry>, crate::CommitViewError> {
-        self.precondition()?;
-        crate::commit_views::evolog(self, revset, limit)
+        self.with_verb(|repo, ctx| crate::commit_views::evolog(repo, &mut ctx.warnings, revset, limit))
     }
 
     /// Compares what two revisions each CHANGE, with the parent difference factored out
@@ -1306,7 +1365,7 @@ impl Repo {
     /// paths); an empty-STRING entry is the repository root, which prefixes everything, so
     /// `paths = [""]` matches all paths just as `paths = []` does. The fileset DSL is terminal
     /// input language and is not parsed here. A filter that matches nothing yields an empty
-    /// list, where the CLI prints a warning.
+    /// list and warns `jj.paths_unmatched` (Story 9.32).
     ///
     /// NO `Renamed`/`Copied` entry is ever produced: the CLI's `show_inter_diff` passes
     /// `CopyRecords::default()`, and that asymmetry with [`Repo::show`] is reproduced
@@ -1344,8 +1403,9 @@ impl Repo {
         to: Option<crate::RevisionRef>,
         paths: &[String],
     ) -> Result<crate::InterdiffView, crate::CommitViewError> {
-        self.precondition()?;
-        crate::commit_views::interdiff(self.workspace(), from.as_ref(), to.as_ref(), paths)
+        self.with_verb(|repo, ctx| {
+            crate::commit_views::interdiff(repo.workspace(), &mut ctx.warnings, from.as_ref(), to.as_ref(), paths)
+        })
     }
 
     /// Lists every workspace with its working-copy commit and root directory (Story 9.7) — the
@@ -1374,8 +1434,7 @@ impl Repo {
     ///   be read; the jj-lib reason is forwarded as a string. No path failure reaches this.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_workspaces(&mut self) -> Result<Vec<crate::WorkspaceEntry>, crate::WorkspaceError> {
-        self.precondition()?;
-        crate::workspace::list_workspaces(self.workspace())
+        self.with_verb(|repo, _ctx| crate::workspace::list_workspaces(repo.workspace()))
     }
 
     /// Returns a workspace's root directory (Story 9.7) — the CLI's `jj workspace root [--name]`.
@@ -1459,8 +1518,7 @@ impl Repo {
         names: &[String],
         revision: Option<&crate::ChangeId>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::bookmark_ops::create(self.workspace_mut(), &ctx, names, revision)
+        self.with_verb(|repo, ctx| crate::bookmark_ops::create(repo.workspace_mut(), ctx, names, revision))
     }
 
     /// Deletes the local bookmarks matching `patterns` (Story 9.8) — the CLI's
@@ -1490,8 +1548,7 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn bookmark_delete(&mut self, patterns: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::bookmark_ops::delete(self.workspace_mut(), &ctx, patterns)
+        self.with_verb(|repo, ctx| crate::bookmark_ops::delete(repo.workspace_mut(), ctx, patterns))
     }
 
     /// Gives the paths matching `paths` in one commit the content they have in another
@@ -1510,12 +1567,9 @@ impl Repo {
     /// `restore_descendants` reparents children (preserving their content) instead of
     /// rebasing them.
     ///
-    /// A path that matches NOTHING in the two trees being compared is silently a no-op here,
-    /// where the CLI prints a warning (`print_unmatched_explicit_paths`). That divergence is
-    /// deliberate: [`crate::MutationResult`] has no warning channel, and adding one would
-    /// change the payload of all six already-shipped mutation verbs. The GUI can detect the
-    /// case itself — an unmatched filter leaves the destination tree unchanged, which this
-    /// call reports as the no-op described above.
+    /// A path that matches NOTHING in the two trees being compared warns `jj.paths_unmatched`,
+    /// the CLI's `print_unmatched_explicit_paths` (Story 9.32); an unmatched filter also leaves
+    /// the destination tree unchanged, which this call reports as the no-op described below.
     ///
     /// If the resulting tree already equals the destination's, NO operation is written and
     /// the returned `new_op_id` is the pre-call op-log head — the CLI's own
@@ -1554,16 +1608,17 @@ impl Repo {
         paths: &[String],
         restore_descendants: bool,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::mutate::restore(
-            self.workspace_mut(),
-            &ctx,
-            from.as_ref(),
-            into.as_ref(),
-            changes_in.as_ref(),
-            paths,
-            restore_descendants,
-        )
+        self.with_verb(|repo, ctx| {
+            crate::mutate::restore(
+                repo.workspace_mut(),
+                ctx,
+                from.as_ref(),
+                into.as_ref(),
+                changes_in.as_ref(),
+                paths,
+                restore_descendants,
+            )
+        })
     }
 
     /// Moves each hunk of `from` into the closest commit in `destinations` where the
@@ -1582,19 +1637,14 @@ impl Repo {
     /// `paths` behaves exactly as for [`Repo::restore`], empty-string entry included. Hunks
     /// that cannot be attributed unambiguously stay in the source; paths jj-lib refuses to
     /// split are reported in [`crate::AbsorbResult::skipped_paths`] instead of failing the
-    /// call — the CLI prints one warning per entry. If nothing is absorbable, NO operation is
-    /// written and `rewritten_change_ids` is empty.
+    /// call, and each warns `jj.absorb_path_skipped` — the CLI prints one warning per entry. If
+    /// nothing is absorbable, NO operation is written and `rewritten_change_ids` is empty.
     ///
-    /// Two CLI warnings have NO counterpart on the error path, because an `Err` carries no
-    /// payload:
-    ///
-    /// - **Skipped paths are lost on a refusal.** They are computed before the rewritability
-    ///   guard — the CLI's own order (`absorb.rs:154-158` warns, then `:160-162` checks) — but
-    ///   an [`crate::MutateError::Immutable`] return discards them, so a caller sees the
-    ///   refusal where a CLI user would ALSO have seen "Skipping <path>: <reason>". Surfacing
-    ///   them would require an error variant carrying data, which no verb in this crate has.
-    /// - **An explicitly named path that matches nothing is silent** — see [`Repo::restore`]
-    ///   for why.
+    /// The skipped-path warnings are recorded BEFORE the rewritability guard — the CLI's own
+    /// order (`absorb.rs:154-158` warns, then `:160-162` checks) — so a
+    /// [`crate::MutateError::Immutable`] refusal still carries them through
+    /// [`Repo::take_warnings`], as does an explicitly named path that matches nothing
+    /// (`jj.paths_unmatched`, Story 9.32).
     ///
     /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
     ///
@@ -1625,15 +1675,17 @@ impl Repo {
         destinations: Option<&str>,
         paths: &[String],
     ) -> Result<crate::AbsorbResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        // WHY the literal: it is the CLI's own clap default for `--into`
-        // (`cli/src/commands/absorb.rs:64` @ v0.44.0), and it is an ALIAS — `config.rs`'s
-        // builtin layer defines `'mutable()' = '~immutable()'`, which a user's config may
-        // replace. The default is therefore a pre-filled, user-editable value that resolves
-        // through the effective config layer, never a hardcoded commit set.
-        let destinations =
-            crate::revset::parse_revset(self, destinations.unwrap_or("mutable()")).map_err(crate::mutate::rev)?;
-        crate::mutate::absorb(self.workspace_mut(), &ctx, from.as_ref(), &destinations, paths)
+        self.with_verb(|repo, ctx| {
+            // WHY the literal: it is the CLI's own clap default for `--into`
+            // (`cli/src/commands/absorb.rs:64` @ v0.44.0), and it is an ALIAS — `config.rs`'s
+            // builtin layer defines `'mutable()' = '~immutable()'`, which a user's config may
+            // replace. The default is therefore a pre-filled, user-editable value that resolves
+            // through the effective config layer, never a hardcoded commit set.
+            let destinations =
+                crate::revset::parse_revset(repo, destinations.unwrap_or("mutable()"), &mut ctx.warnings)
+                    .map_err(crate::mutate::rev)?;
+            crate::mutate::absorb(repo.workspace_mut(), ctx, from.as_ref(), &destinations, paths)
+        })
     }
 
     /// Starts tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
@@ -1680,8 +1732,10 @@ impl Repo {
         paths: &[String],
         include_ignored: bool,
     ) -> Result<crate::TrackResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::wc_ops::file_track(self.workspace_mut(), &ctx, paths, include_ignored)
+        // `workspace_helper_with_stats`: only the MERGED stats warn (see `wc_ops::file_track`).
+        self.with_verb_stats(false, |repo, ctx| {
+            crate::wc_ops::file_track(repo.workspace_mut(), ctx, paths, include_ignored)
+        })
     }
 
     /// Stops tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
@@ -1704,7 +1758,8 @@ impl Repo {
     /// [`crate::UntrackResult::failed_bookmarks`] / `failed_tags`, never as an error.
     ///
     /// A path that matched nothing in `@` is reported in
-    /// [`crate::UntrackResult::unmatched_paths`] (the CLI's warning), not refused.
+    /// [`crate::UntrackResult::unmatched_paths`] and warns `jj.paths_unmatched` (the CLI's
+    /// warning, Story 9.32), not refused.
     ///
     /// # Errors
     ///
@@ -1724,8 +1779,7 @@ impl Repo {
     ///   an unreadable ignore file, the git index update, commit).
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn file_untrack(&mut self, paths: &[String]) -> Result<crate::UntrackResult, crate::MutateError> {
-        let ctx = self.precondition()?;
-        crate::wc_ops::file_untrack(self.workspace_mut(), &ctx.config, paths)
+        self.with_verb(|repo, ctx| crate::wc_ops::file_untrack(repo.workspace_mut(), ctx, paths))
     }
 
     /// Opens an existing jj workspace rooted at `path`.
@@ -1741,8 +1795,8 @@ impl Repo {
     ///
     /// The workspace is opened with the settings the CLI would use: Default → System → `EnvBase`
     /// → User → Repo → Workspace → `EnvOverrides`. An EMPTY identity is not an error — jj-lib
-    /// defaults `user.name`/`user.email` to `""`, and each mutation reports it through
-    /// [`crate::MutationResult::identity_missing`].
+    /// defaults `user.name`/`user.email` to `""`, and each committed mutation warns
+    /// `jj.identity_missing` through [`Repo::take_warnings`] (Story 9.32).
     pub fn open(path: &Path) -> Result<Self, RepoError> {
         // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
         // every workspace's root RELATIVE to the `repo_path` the store was loaded with. Resolving

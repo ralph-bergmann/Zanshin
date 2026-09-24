@@ -21,7 +21,7 @@ fn map_op_log_err(e: OpLogError) -> FfiErrorObj {
     match e {
         OpLogError::Precondition(e) => map_precondition_err(e),
         OpLogError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -33,7 +33,7 @@ fn map_op_log_err(e: OpLogError) -> FfiErrorObj {
 /// Children before parents (`FlatBuffers` requirement): for each `Operation`, its
 /// strings and `parent_ids` vector are built before its table; the `operations`
 /// vector and `OpLog` table are built after the loop.
-fn op_log_to_envelope(ops: &[Operation], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn op_log_to_envelope(ops: &[Operation], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut op_offsets = Vec::with_capacity(ops.len());
     for op in ops {
@@ -66,7 +66,7 @@ fn op_log_to_envelope(ops: &[Operation], precondition: Option<&zanshin_jj::Preco
             operations: Some(ops_vec),
         },
     );
-    finish_envelope(b, fbs::Payload::OpLog, Some(oplog_off.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::OpLog, Some(oplog_off.as_union_value()), report)
 }
 
 /// Read the operation log of the repo identified by `handle`.
@@ -162,7 +162,7 @@ mod tests {
         );
 
         let ops = vec![multi_parent.clone(), non_root.clone(), root_op.clone()];
-        let buf = op_log_to_envelope(&ops, None);
+        let buf = op_log_to_envelope(&ops, &crate::envelope::CallReport::default());
 
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok(), "envelope must be ok");

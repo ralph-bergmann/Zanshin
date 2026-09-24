@@ -11,7 +11,10 @@
 //! required fields → the verb's own codes (no handle rung).
 //!
 //! Only `zanshin_config_set` can carry `Envelope.precondition` — iff its `user.name` /
-//! `user.email` working-copy check ran the snapshot (the CLI's `check_wc_author`).
+//! `user.email` working-copy check ran the snapshot (the CLI's `check_wc_author`). Three can
+//! carry `Envelope.warnings` (Story 9.32): `zanshin_config_set` (that snapshot's warnings, then
+//! `jj.config_working_copy_author`), `zanshin_config_list` (`jj.config_nothing_listed`) and
+//! `zanshin_config_gc_delete` (`jj.config_gc_delete_failed`).
 
 use std::path::PathBuf;
 
@@ -21,7 +24,7 @@ use zanshin_jj::{ConfigCmdError, ConfigListQuery, ConfigScope, ConfigValueSource
 
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, missing_field, ok_empty, reject_null_request,
-    FfiErrorObj, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
+    CallReport, FfiErrorObj, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
     JJ_CONFIG_PATH_NOT_FOUND, JJ_CONFIG_WOULD_DELETE_TABLE, JJ_CONFIG_WOULD_OVERWRITE, JJ_INVALID_INPUT,
     JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
@@ -74,7 +77,7 @@ fn read_list_request(data: *const u8, len: usize) -> Result<ListReq, FfiErrorObj
     };
     if scope.is_some() && req.include_defaults() {
         return Err(FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some("include_defaults cannot be used with a scope".to_owned()),
         });
@@ -258,7 +261,7 @@ pub(crate) fn map_config_cmd_err(e: ConfigCmdError) -> FfiErrorObj {
         ConfigCmdError::NoConfigPath { reason } => (JJ_CONFIG_PATH_NOT_FOUND, reason),
     };
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -291,7 +294,7 @@ fn string_vector<'a>(
     b.create_vector(&offsets)
 }
 
-fn list_to_envelope(entries: &[zanshin_jj::ConfigEntry]) -> Vec<u8> {
+fn list_to_envelope(entries: &[zanshin_jj::ConfigEntry], report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let rows: Vec<_> = entries
         .iter()
@@ -313,24 +316,34 @@ fn list_to_envelope(entries: &[zanshin_jj::ConfigEntry]) -> Vec<u8> {
         .collect();
     let rows = b.create_vector(&rows);
     let table = fbs::ConfigListResult::create(&mut b, &fbs::ConfigListResultArgs { entries: Some(rows) });
-    finish_envelope(b, fbs::Payload::ConfigListResult, Some(table.as_union_value()), None)
+    finish_envelope(b, fbs::Payload::ConfigListResult, Some(table.as_union_value()), report)
 }
 
 fn get_to_envelope(value: &str) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
     let value = b.create_string(value);
     let table = fbs::ConfigGetResult::create(&mut b, &fbs::ConfigGetResultArgs { value: Some(value) });
-    finish_envelope(b, fbs::Payload::ConfigGetResult, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::ConfigGetResult,
+        Some(table.as_union_value()),
+        &CallReport::default(),
+    )
 }
 
 fn path_to_envelope(paths: &[PathBuf]) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let paths = string_vector(&mut b, paths.iter().map(|p| path_str(p).into_owned()));
     let table = fbs::ConfigPathResult::create(&mut b, &fbs::ConfigPathResultArgs { paths: Some(paths) });
-    finish_envelope(b, fbs::Payload::ConfigPathResult, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::ConfigPathResult,
+        Some(table.as_union_value()),
+        &CallReport::default(),
+    )
 }
 
-fn set_to_envelope(r: &zanshin_jj::ConfigSetResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn set_to_envelope(r: &zanshin_jj::ConfigSetResult, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let path = b.create_string(&path_str(&r.path));
     // Written iff `Some`: null for absence.
@@ -352,19 +365,19 @@ fn set_to_envelope(r: &zanshin_jj::ConfigSetResult, precondition: Option<&zanshi
             working_copy_author: author,
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigSetResult,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::ConfigSetResult, Some(table.as_union_value()), report)
 }
 
 fn unset_to_envelope(path: &std::path::Path) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
     let path = b.create_string(&path_str(path));
     let table = fbs::ConfigUnsetResult::create(&mut b, &fbs::ConfigUnsetResultArgs { path: Some(path) });
-    finish_envelope(b, fbs::Payload::ConfigUnsetResult, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::ConfigUnsetResult,
+        Some(table.as_union_value()),
+        &CallReport::default(),
+    )
 }
 
 fn file_text_to_envelope(t: &zanshin_jj::ConfigFileText) -> Vec<u8> {
@@ -378,7 +391,12 @@ fn file_text_to_envelope(t: &zanshin_jj::ConfigFileText) -> Vec<u8> {
             text: Some(text),
         },
     );
-    finish_envelope(b, fbs::Payload::ConfigFileText, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::ConfigFileText,
+        Some(table.as_union_value()),
+        &CallReport::default(),
+    )
 }
 
 fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig]) -> Vec<u8> {
@@ -399,10 +417,15 @@ fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig]) -> Vec<u8> {
         .collect();
     let rows = b.create_vector(&rows);
     let table = fbs::ConfigGcList::create(&mut b, &fbs::ConfigGcListArgs { missing: Some(rows) });
-    finish_envelope(b, fbs::Payload::ConfigGcList, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::ConfigGcList,
+        Some(table.as_union_value()),
+        &CallReport::default(),
+    )
 }
 
-fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult) -> Vec<u8> {
+fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let deleted = string_vector(&mut b, r.deleted.iter().map(|p| path_str(p).into_owned()));
     let failed: Vec<_> = r
@@ -428,7 +451,7 @@ fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult) -> Vec<u8> {
             failed: Some(failed),
         },
     );
-    finish_envelope(b, fbs::Payload::ConfigGcResult, Some(table.as_union_value()), None)
+    finish_envelope(b, fbs::Payload::ConfigGcResult, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -438,7 +461,8 @@ fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult) -> Vec<u8> {
 ///
 /// The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
 /// (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
-/// `ConfigListResult` (lowest layer first; empty is a result). Writes nothing.
+/// `ConfigListResult` (lowest layer first; empty is a result — and then warns
+/// `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -461,7 +485,7 @@ pub unsafe extern "C" fn zanshin_config_list(data: *const u8, len: usize) -> *mu
     vec_into_token(catch(|| {
         let req = read_list_request(data, len)?;
         zanshin_jj::config_list(req.root.as_deref(), &req.query)
-            .map(|entries| list_to_envelope(&entries))
+            .map(|listed| list_to_envelope(&listed.value, &CallReport::warnings(listed.warnings)))
             .map_err(map_config_cmd_err)
     }))
 }
@@ -534,8 +558,9 @@ pub unsafe extern "C" fn zanshin_config_path(data: *const u8, len: usize) -> *mu
 /// (the CLI's prompt). Comments and formatting survive; the config write itself writes no
 /// operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
 /// first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
-/// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition`, and
-/// `ConfigSetResult.working_copy_author` is present iff `@`'s author differs from the new value.
+/// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
+/// that snapshot's warnings, and `ConfigSetResult.working_copy_author` is present iff `@`'s
+/// author differs from the new value (then warning `jj.config_working_copy_author` too).
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -565,9 +590,13 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
             &req.value,
             req.path.as_deref(),
         );
+        let report = CallReport {
+            precondition: outcome.precondition,
+            warnings: outcome.warnings,
+        };
         match outcome.result {
-            Ok(r) => Ok(set_to_envelope(&r, outcome.precondition.as_ref())),
-            Err(e) => Err(map_config_cmd_err(e).with_precondition(outcome.precondition)),
+            Ok(r) => Ok(set_to_envelope(&r, &report)),
+            Err(e) => Err(map_config_cmd_err(e).with_report(report)),
         }
     }))
 }
@@ -688,8 +717,9 @@ pub unsafe extern "C" fn zanshin_config_gc_list(data: *const u8, len: usize) -> 
 
 /// `jj config gc`, half 2: delete the requested directories that are still missing repo config
 /// directories; any other request, and every per-directory failure, rides
-/// `ConfigGcResult.failed` (the CLI warns and continues). The arguments cross as a
-/// `ConfigGcDeleteRequest` buffer.
+/// `ConfigGcResult.failed` (the CLI warns and continues — a directory that could not be deleted
+/// also warns `jj.config_gc_delete_failed`). The arguments cross as a `ConfigGcDeleteRequest`
+/// buffer.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -706,7 +736,7 @@ pub unsafe extern "C" fn zanshin_config_gc_delete(data: *const u8, len: usize) -
     vec_into_token(catch(|| {
         let dirs = read_gc_delete_request(data, len)?;
         zanshin_jj::config_gc_delete(&dirs)
-            .map(|r| gc_result_to_envelope(&r))
+            .map(|r| gc_result_to_envelope(&r.value, &CallReport::warnings(r.warnings)))
             .map_err(map_config_cmd_err)
     }))
 }
@@ -792,13 +822,16 @@ mod tests {
 
     #[test]
     fn builders_write_every_field_and_null_for_absence() {
-        let list = list_to_envelope(&[zanshin_jj::ConfigEntry {
-            name: "a.b".into(),
-            value: "1".into(),
-            source: ConfigValueSource::EnvBase,
-            path: None,
-            overridden: true,
-        }]);
+        let list = list_to_envelope(
+            &[zanshin_jj::ConfigEntry {
+                name: "a.b".into(),
+                value: "1".into(),
+                source: ConfigValueSource::EnvBase,
+                path: None,
+                overridden: true,
+            }],
+            &crate::envelope::CallReport::default(),
+        );
         let entry = envelope(&list)
             .data_as_config_list_result()
             .unwrap()
@@ -817,7 +850,7 @@ mod tests {
                 path: "/f".into(),
                 working_copy_author: None,
             },
-            None,
+            &crate::envelope::CallReport::default(),
         );
         let env = envelope(&set);
         assert!(env.precondition().is_none());
@@ -835,15 +868,29 @@ mod tests {
             .get(0);
         assert_eq!((row.config_dir(), row.repo_path()), (Some("/c"), Some("/r")));
 
-        let result = gc_result_to_envelope(&zanshin_jj::ConfigGcResult {
-            deleted: vec![PathBuf::from("/d")],
-            failed: vec![zanshin_jj::ConfigGcFailure {
-                config_dir: "/f".into(),
-                reason: "why".into(),
-            }],
-        });
-        let r = envelope(&result).data_as_config_gc_result().unwrap();
+        let result = gc_result_to_envelope(
+            &zanshin_jj::ConfigGcResult {
+                deleted: vec![PathBuf::from("/d")],
+                failed: vec![zanshin_jj::ConfigGcFailure {
+                    config_dir: "/f".into(),
+                    reason: "why".into(),
+                }],
+            },
+            &crate::envelope::CallReport::warnings(vec![zanshin_jj::Warning {
+                kind: zanshin_jj::WarningKind::ConfigGcDeleteFailed,
+                message: "Failed to delete /f: why".into(),
+            }]),
+        );
+        let env = envelope(&result);
+        let r = env.data_as_config_gc_result().unwrap();
         assert_eq!(r.deleted().unwrap().get(0), "/d");
         assert_eq!(r.failed().unwrap().get(0).reason(), Some("why"));
+        // Story 9.32: a handle-less verb's warnings ride the envelope — no precondition.
+        assert!(env.precondition().is_none());
+        let warning = env.warnings().expect("warnings present").get(0);
+        assert_eq!(
+            (warning.code(), warning.message()),
+            (Some("jj.config_gc_delete_failed"), Some("Failed to delete /f: why"))
+        );
     }
 }

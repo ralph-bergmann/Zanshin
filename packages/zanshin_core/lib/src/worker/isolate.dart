@@ -39,6 +39,7 @@ import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
 import '../ffi/status.dart' as repo_ffi_status;
+import '../ffi/warning.dart';
 import '../ffi/workspace.dart' as repo_ffi_workspace;
 
 import 'commands.dart';
@@ -60,6 +61,15 @@ typedef _WorkerInit = (SendPort, SendPort, SendPort, bool, bool);
 ///
 /// Spawn via [ZanshinWorker.start]; shut down via [close]. The worker owns all
 /// FFI handles for app lifetime — raw pointers never leave the worker (Model A).
+///
+/// Every command's result exposes the call's `warnings` (Story 9.32) — the jj
+/// CLI's `Warning: …` blocks as [ZanshinWarning]s, in the CLI's print order,
+/// empty when there were none. A list result is a [WarnedList]; a result that
+/// was a bare `String` or `void` is a small class carrying the value and the
+/// warnings. Four kinds of member carry none: [openRepo], [initRepo], [cloneRepo]
+/// and [convert] (their return shape belongs to Story 9.33, and nothing warns
+/// there yet); [closeRepo] and [close] (lifecycle, no CLI counterpart); and
+/// [events] (a stream, not a command).
 class ZanshinWorker {
   ZanshinWorker._({
     required this._commandPort,
@@ -595,7 +605,7 @@ class ZanshinWorker {
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
   /// The close-guard [StateError] is delivered synchronously by [RepoHandle.opLog].
-  Future<List<repo_ffi_op_log.Operation>> opLog(int handleId, int limit) async {
+  Future<WarnedList<repo_ffi_op_log.Operation>> opLog(int handleId, int limit) async {
     final Uint8List bytes = await send(
       OpLogCommand(commandId: _correlator.allocateId(), handleId: handleId, limit: limit),
     );
@@ -610,7 +620,7 @@ class ZanshinWorker {
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
   /// The close-guard [StateError] is delivered synchronously by [RepoHandle.bookmarks].
-  Future<List<repo_ffi_bookmarks.Bookmark>> bookmarks(int handleId) async {
+  Future<WarnedList<repo_ffi_bookmarks.Bookmark>> bookmarks(int handleId) async {
     final Uint8List bytes = await send(
       BookmarksCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
@@ -625,7 +635,7 @@ class ZanshinWorker {
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
   /// The close-guard [StateError] is delivered synchronously by [RepoHandle.remotes].
-  Future<List<repo_ffi_remotes.Remote>> remotes(int handleId) async {
+  Future<WarnedList<repo_ffi_remotes.Remote>> remotes(int handleId) async {
     final Uint8List bytes = await send(
       RemotesCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
@@ -875,7 +885,7 @@ class ZanshinWorker {
   /// `jj.change_not_found`, `jj.invalid_input`). Completes with a [StateError]
   /// after [close]; the close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.fileList].
-  Future<List<repo_ffi_file.FileEntry>> fileList(
+  Future<WarnedList<repo_ffi_file.FileEntry>> fileList(
     int handleId, {
     String? revision,
     List<String> paths = const <String>[],
@@ -921,7 +931,7 @@ class ZanshinWorker {
   /// `jj.path_not_found`, `jj.not_a_file`, `jj.change_not_found`). Completes with a
   /// [StateError] after [close]; the close-guard [StateError] is delivered
   /// synchronously by [RepoHandle.fileAnnotate].
-  Future<List<repo_ffi_file.AnnotationLine>> fileAnnotate(
+  Future<WarnedList<repo_ffi_file.AnnotationLine>> fileAnnotate(
     int handleId, {
     required String path,
     String? revision,
@@ -1115,7 +1125,7 @@ class ZanshinWorker {
   /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`).
   /// Completes with a [StateError] after [close]; the close-guard [StateError] is
   /// delivered synchronously by [RepoHandle.show].
-  Future<List<repo_ffi_commit_views.ShowEntry>> show(int handleId, {String? revset, int? limit}) async {
+  Future<WarnedList<repo_ffi_commit_views.ShowEntry>> show(int handleId, {String? revset, int? limit}) async {
     // WHY here and not only in the adapter: the adapter runs in the WORKER
     // isolate, where a throw is caught by the dispatch loop and comes back as
     // `internal.dispatch_error` — not as the [ArgumentError] this method and
@@ -1146,7 +1156,7 @@ class ZanshinWorker {
   /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`).
   /// Completes with a [StateError] after [close]; the close-guard [StateError] is
   /// delivered synchronously by [RepoHandle.evolog].
-  Future<List<repo_ffi_commit_views.EvologEntry>> evolog(int handleId, {String? revset, int? limit}) async {
+  Future<WarnedList<repo_ffi_commit_views.EvologEntry>> evolog(int handleId, {String? revset, int? limit}) async {
     // WHY here and not only in the adapter: the adapter runs in the WORKER
     // isolate, where a throw is caught by the dispatch loop and comes back as
     // `internal.dispatch_error` — not as the [ArgumentError] this method and
@@ -1223,7 +1233,7 @@ class ZanshinWorker {
   /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
   /// close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.workspaces].
-  Future<List<repo_ffi_workspace.WorkspaceEntry>> workspaces(int handleId) async {
+  Future<WarnedList<repo_ffi_workspace.WorkspaceEntry>> workspaces(int handleId) async {
     final Uint8List bytes = await send(
       WorkspaceListCommand(commandId: _correlator.allocateId(), handleId: handleId),
     );
@@ -1241,7 +1251,8 @@ class ZanshinWorker {
   /// operation — not even on a refusal.
   ///
   /// Sends a [WorkspaceRootCommand] via [send] and decodes the returned
-  /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path.
+  /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path and the call's
+  /// warnings.
   ///
   /// Throws [ArgumentError] if [name] contains an interior NUL (U+0000). Throws
   /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
@@ -1249,7 +1260,7 @@ class ZanshinWorker {
   /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`). Completes with a
   /// [StateError] after [close]; the close-guard [StateError] is delivered
   /// synchronously by [RepoHandle.workspaceRoot].
-  Future<String> workspaceRoot(int handleId, {String? name}) async {
+  Future<repo_ffi_workspace.WorkspaceRootResult> workspaceRoot(int handleId, {String? name}) async {
     // WHY here and not only in the adapter: the adapter runs in the WORKER
     // isolate, where a throw is caught by the dispatch loop and comes back as
     // `internal.dispatch_error` — not as the [ArgumentError] this method and
@@ -1401,7 +1412,7 @@ class ZanshinWorker {
   /// operation and reports `wasSnapshotTaken == false`.
   ///
   /// Sends a [SnapshotCommand] via [send] and decodes the report from the
-  /// returned envelope's `precondition`.
+  /// returned envelope's `precondition`, carrying the envelope's warnings.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`). Completes
@@ -1425,7 +1436,7 @@ class ZanshinWorker {
   /// [--include-overridden]` — every value of the effective stack with its
   /// source, lowest layer first. A [scope] together with [includeDefaults] is
   /// refused (`jj.invalid_input`).
-  Future<List<repo_ffi_config.ConfigEntry>> configList({
+  Future<WarnedList<repo_ffi_config.ConfigEntry>> configList({
     String? workspaceRoot,
     String? name,
     repo_ffi_config.ConfigScope? scope,
@@ -1447,8 +1458,9 @@ class ZanshinWorker {
     return repo_ffi_config.decodeConfigListEnvelopeInternal(bytes);
   }
 
-  /// `jj config get NAME` — a string unquoted, anything else as TOML text.
-  Future<String> configGet(String name, {String? workspaceRoot}) async {
+  /// `jj config get NAME` — a string unquoted, anything else as TOML text
+  /// (with the call's warnings).
+  Future<repo_ffi_config.ConfigGetResult> configGet(String name, {String? workspaceRoot}) async {
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
     rejectInteriorNul(name, 'name');
     final Uint8List bytes = await send(
@@ -1459,7 +1471,7 @@ class ZanshinWorker {
 
   /// `jj config path --user|--repo|--workspace`. Repo / workspace scope CREATES
   /// the secure config directory and id file when missing (the CLI's side effect).
-  Future<List<String>> configPath(repo_ffi_config.ConfigScope scope, {String? workspaceRoot}) async {
+  Future<WarnedList<String>> configPath(repo_ffi_config.ConfigScope scope, {String? workspaceRoot}) async {
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
     final Uint8List bytes = await send(
       ConfigPathCommand(commandId: _correlator.allocateId(), workspaceRoot: workspaceRoot, scope: scope),
@@ -1495,8 +1507,9 @@ class ZanshinWorker {
     return repo_ffi_config.decodeConfigSetEnvelopeInternal(bytes);
   }
 
-  /// `jj config unset --<scope> NAME`; returns the file written.
-  Future<String> configUnset(
+  /// `jj config unset --<scope> NAME`; returns the file written (and the
+  /// call's warnings).
+  Future<repo_ffi_config.ConfigUnsetResult> configUnset(
     repo_ffi_config.ConfigScope scope,
     String name, {
     String? workspaceRoot,
@@ -1539,17 +1552,21 @@ class ZanshinWorker {
 
   /// `jj config edit`, editor half 2: replaces the file's text — refused with
   /// `jj.config_parse_error` (nothing written) unless [text] is valid TOML.
-  Future<void> configFileWrite(String path, String text, {String? workspaceRoot}) async {
+  Future<repo_ffi_config.ConfigFileWriteResult> configFileWrite(
+    String path,
+    String text, {
+    String? workspaceRoot,
+  }) async {
     rejectInteriorNuls([path, text], 'path/text');
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
     final Uint8List bytes = await send(
       ConfigFileWriteCommand(commandId: _correlator.allocateId(), workspaceRoot: workspaceRoot, path: path, text: text),
     );
-    repo_ffi_config.decodeConfigFileWriteEnvelopeInternal(bytes);
+    return repo_ffi_config.decodeConfigFileWriteEnvelopeInternal(bytes);
   }
 
   /// `jj config gc`, half 1: the repo config directories whose repo is gone.
-  Future<List<repo_ffi_config.MissingRepoConfig>> configGcList() async {
+  Future<WarnedList<repo_ffi_config.MissingRepoConfig>> configGcList() async {
     final Uint8List bytes = await send(ConfigGcListCommand(commandId: _correlator.allocateId()));
     return repo_ffi_config.decodeConfigGcListEnvelopeInternal(bytes);
   }

@@ -21,7 +21,7 @@ fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
     match e {
         BookmarkError::Precondition(e) => map_precondition_err(e),
         BookmarkError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -33,7 +33,7 @@ fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
 /// Children before parents (`FlatBuffers` requirement): for each `Bookmark`, its
 /// strings are built before its table; the `bookmarks` vector and `Bookmarks` table
 /// come after the loop. `remote_name` is only created for `Remote` entries.
-fn bookmarks_to_envelope(bookmarks: &[Bookmark], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn bookmarks_to_envelope(bookmarks: &[Bookmark], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let mut offsets = Vec::with_capacity(bookmarks.len());
     for bm in bookmarks {
@@ -56,7 +56,7 @@ fn bookmarks_to_envelope(bookmarks: &[Bookmark], precondition: Option<&zanshin_j
     }
     let vec = b.create_vector(&offsets);
     let bms_off = fbs::Bookmarks::create(&mut b, &fbs::BookmarksArgs { bookmarks: Some(vec) });
-    finish_envelope(b, fbs::Payload::Bookmarks, Some(bms_off.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::Bookmarks, Some(bms_off.as_union_value()), report)
 }
 
 /// List local + tracked-remote bookmarks of the repo identified by `handle`.
@@ -120,7 +120,10 @@ mod tests {
             },
         );
 
-        let buf = bookmarks_to_envelope(&[local.clone(), remote.clone()], None);
+        let buf = bookmarks_to_envelope(
+            &[local.clone(), remote.clone()],
+            &crate::envelope::CallReport::default(),
+        );
 
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok(), "envelope must be ok");
@@ -152,7 +155,7 @@ mod tests {
 
     #[test]
     fn bookmarks_to_envelope_empty_roundtrips() {
-        let buf = bookmarks_to_envelope(&[], None);
+        let buf = bookmarks_to_envelope(&[], &crate::envelope::CallReport::default());
         let env = fb_root::<fbs::Envelope>(&buf).expect("verifier must pass");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::Bookmarks);

@@ -40,7 +40,8 @@ use jj_lib::store::Store;
 use jj_lib::str_util::StringPattern;
 use jj_lib::workspace::Workspace;
 
-use crate::op_support::{build_matcher, resolve_or_wc, ResolveError};
+use crate::op_support::{build_matcher, parse_prefixes, resolve_or_wc, ResolveError};
+use crate::warning::{self, WarningKind, Warnings};
 use crate::{ChangeId, CommitId, SkippedPath};
 
 /// What a tree entry IS, mirroring the CLI's `TreeEntry.file_type` keyword
@@ -309,8 +310,8 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 /// Ports `cli/src/commands/file/list.rs::cmd_file_list` @ v0.44.0: resolve the revision,
 /// take its tree, build the matcher, walk `entries_matching`. The CLI has NO refusals here
 /// at all — a path matching nothing only produces a trailing warning
-/// (`print_unmatched_explicit_paths`), which this API has no channel for and therefore
-/// reports as an entry simply not appearing.
+/// (`print_unmatched_explicit_paths`), recorded into `sink` as `jj.paths_unmatched`
+/// (Story 9.32).
 ///
 /// # Errors
 ///
@@ -322,6 +323,7 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_list(
     workspace: &Workspace,
+    sink: &mut Warnings,
     revision: Option<&ChangeId>,
     paths: &[String],
 ) -> Result<Vec<FileEntry>, FileError> {
@@ -336,8 +338,30 @@ pub(crate) fn file_list(
             out.push(entry);
         }
     }
+    warn_unmatched(workspace, sink, paths, &tree)?;
     Ok(out)
 }
+
+/// `print_unmatched_explicit_paths(…, [&tree])` over the explicit `paths` — the trailing
+/// warning every multi-entry file read prints (Story 9.32).
+///
+/// # Errors
+///
+/// - [`FileError::InvalidInput`] — an entry is not a valid repo path.
+/// - [`FileError::Backend`] — a tree read failed.
+fn warn_unmatched(
+    workspace: &Workspace,
+    sink: &mut Warnings,
+    paths: &[String],
+    tree: &jj_lib::merged_tree::MergedTree,
+) -> Result<(), FileError> {
+    let explicit = parse_prefixes(paths).map_err(|reason| FileError::InvalidInput { reason })?;
+    warning::warn_unmatched_paths(sink, workspace.workspace_root(), &explicit, &[tree]).map_err(be)
+}
+
+/// What [`render_entry`] makes of one tree value: the file, or the path it skipped together with
+/// the warning the CLI prints for it — `None` for the two cases the CLI `panic!`s on instead.
+type Rendered = Result<ShownFile, (SkippedPath, Option<WarningKind>)>;
 
 /// Renders one materialized tree value into either a [`ShownFile`] or a [`SkippedPath`].
 fn render_entry(
@@ -346,7 +370,7 @@ fn render_entry(
     value: MergedTreeValue,
     labels: &ConflictLabels,
     options: &ConflictMaterializeOptions,
-) -> Result<Result<ShownFile, SkippedPath>, FileError> {
+) -> Result<Rendered, FileError> {
     let display = path.as_internal_file_string().to_owned();
     let materialized = pollster::block_on(materialize_tree_value(store, path, value, labels)).map_err(be)?;
     let shown = |content: Vec<u8>, conflict: bool| ShownFile {
@@ -356,9 +380,14 @@ fn render_entry(
     };
     // WHY the CLI's exact sentences: they are what a jj user sees for these paths, and a
     // GUI showing the same wording needs no translation table (NFR-R-2).
-    let skipped = |reason: String| SkippedPath {
-        path: display.clone(),
-        reason,
+    let skipped = |reason: String, kind: Option<WarningKind>| {
+        (
+            SkippedPath {
+                path: display.clone(),
+                reason,
+            },
+            kind,
+        )
     };
     Ok(match materialized {
         MaterializedTreeValue::File(mut file) => {
@@ -370,18 +399,20 @@ fn render_entry(
             true,
         )),
         MaterializedTreeValue::OtherConflict { id, labels } => Ok(shown(id.describe(&labels).into_bytes(), true)),
-        MaterializedTreeValue::Symlink { .. } | MaterializedTreeValue::GitSubmodule(_) => {
-            Err(skipped(format!("Path '{display}' exists but is not a file.")))
-        }
-        MaterializedTreeValue::AccessDenied(e) => {
-            Err(skipped(format!("Path '{display}' exists but access is denied: {e}")))
-        }
+        MaterializedTreeValue::Symlink { .. } | MaterializedTreeValue::GitSubmodule(_) => Err(skipped(
+            format!("Path '{display}' exists but is not a file."),
+            Some(WarningKind::PathNotAFile),
+        )),
+        MaterializedTreeValue::AccessDenied(e) => Err(skipped(
+            format!("Path '{display}' exists but access is denied: {e}"),
+            Some(WarningKind::PathAccessDenied),
+        )),
         // The CLI `panic!`s on both; a library must not abort the process on a path a
         // caller could in principle reach, so each becomes a SkippedPath naming what it is
-        // — the call still succeeds for the remaining paths.
+        // — the call still succeeds for the remaining paths. No warning: the CLI prints none.
         // `entries_matching` never yields either, and the single-path branch guards absent.
-        MaterializedTreeValue::Absent => Err(skipped(format!("Path '{display}' is absent."))),
-        MaterializedTreeValue::Tree(_) => Err(skipped(format!("Path '{display}' is a directory."))),
+        MaterializedTreeValue::Absent => Err(skipped(format!("Path '{display}' is absent."), None)),
+        MaterializedTreeValue::Tree(_) => Err(skipped(format!("Path '{display}' is a directory."), None)),
     })
 }
 
@@ -396,6 +427,10 @@ fn render_entry(
 /// conflict needs `ConflictMaterializeOptions.marker_style`, which is the repo's effective
 /// `ui.conflict-marker-style` — re-read per call, never cached, never a Rust constant.
 ///
+/// Warnings (Story 9.32), in the CLI's order: one per skipped path as it is rendered
+/// (`jj.path_access_denied` / `jj.path_not_a_file` — the CLI's own sentences), then — on the
+/// multi-entry branch only — `jj.paths_unmatched`.
+///
 /// # Errors
 ///
 /// - [`FileError::InvalidInput`] — `paths` is empty (the CLI marks FILESETS `required`), or
@@ -409,6 +444,7 @@ fn render_entry(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_show(
     repo: &crate::Repo,
+    sink: &mut Warnings,
     revision: Option<&ChangeId>,
     paths: &[String],
 ) -> Result<FileContents, FileError> {
@@ -433,9 +469,14 @@ pub(crate) fn file_show(
         files: Vec::new(),
         skipped: Vec::new(),
     };
-    let mut push = |rendered: Result<ShownFile, SkippedPath>| match rendered {
+    let mut push = |rendered: Rendered, sink: &mut Warnings| match rendered {
         Ok(file) => out.files.push(file),
-        Err(skipped) => out.skipped.push(skipped),
+        Err((skipped, kind)) => {
+            if let Some(kind) = kind {
+                sink.push(kind, skipped.reason.clone());
+            }
+            out.skipped.push(skipped);
+        }
     };
 
     // Fast path for a single entry — the CLI's `get_single_path` branch, which is also the
@@ -449,7 +490,7 @@ pub(crate) fn file_show(
             });
         }
         if !value.is_tree() {
-            push(render_entry(&store, &path, value, tree.labels(), &options)?);
+            push(render_entry(&store, &path, value, tree.labels(), &options)?, sink);
             return Ok(out);
         }
     }
@@ -457,8 +498,9 @@ pub(crate) fn file_show(
     let matcher = build_matcher(paths).map_err(|reason| FileError::InvalidInput { reason })?;
     for (path, value) in tree.entries_matching(matcher.as_ref()) {
         let value = value.map_err(be)?;
-        push(render_entry(&store, &path, value, tree.labels(), &options)?);
+        push(render_entry(&store, &path, value, tree.labels(), &options)?, sink);
     }
+    warn_unmatched(repo.workspace(), sink, paths, &tree)?;
     Ok(out)
 }
 
@@ -611,6 +653,9 @@ fn collect_matches(
 /// result shape, so each file still contributes its first matching line. That is a superset
 /// of the CLI's output, which prints only the path.
 ///
+/// Warnings (Story 9.32): `jj.path_access_denied` per unreadable blob as it is reached, then
+/// `jj.paths_unmatched`.
+///
 /// # Errors
 ///
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
@@ -620,6 +665,7 @@ fn collect_matches(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_search(
     workspace: &Workspace,
+    sink: &mut Warnings,
     revision: Option<&ChangeId>,
     pattern: &str,
     paths: &[String],
@@ -659,10 +705,11 @@ pub(crate) fn file_search(
             // (`search.rs:109-115`), so it gets a SkippedPath rather than silence. The
             // sentence is search's own — `file show`'s wording is a different verb's
             // contract and must not be reused here (NFR-R-2).
-            MaterializedTreeValue::AccessDenied(e) => skipped.push(SkippedPath {
-                reason: format!("Skipping '{display}' due to permission error: {e}"),
-                path: display,
-            }),
+            MaterializedTreeValue::AccessDenied(e) => {
+                let reason = format!("Skipping '{display}' due to permission error: {e}");
+                sink.push(WarningKind::PathAccessDenied, reason.clone());
+                skipped.push(SkippedPath { reason, path: display });
+            }
             // Silently not searched — CLI parity (`search.rs:134, :159-160`). `Absent` and
             // `Tree` are `panic!`s the walk cannot actually produce.
             MaterializedTreeValue::Symlink { .. }
@@ -672,6 +719,7 @@ pub(crate) fn file_search(
             | MaterializedTreeValue::Tree(_) => {}
         }
     }
+    warn_unmatched(workspace, sink, paths, &tree)?;
     Ok(FileSearch { matches: out, skipped })
 }
 
@@ -691,7 +739,7 @@ mod tests {
     #[test]
     fn a_head_that_no_longer_loads_is_a_backend_error() {
         let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
-        let result = super::file_list(repo.workspace(), None, &[]);
+        let result = super::file_list(repo.workspace(), &mut crate::warning::Warnings::default(), None, &[]);
         assert!(matches!(result, Err(FileError::Backend(_))), "{result:?}");
     }
 
@@ -708,7 +756,12 @@ mod tests {
             "ui.conflict-marker-style = \"bogus\"\n",
         )
         .expect("repo config");
-        let result = super::file_show(&repo, None, &["a.txt".to_owned()]);
+        let result = super::file_show(
+            &repo,
+            &mut crate::warning::Warnings::default(),
+            None,
+            &["a.txt".to_owned()],
+        );
         assert!(
             matches!(&result, Err(FileError::Config { reason }) if reason.contains("conflict-marker-style")),
             "{result:?}"
@@ -774,7 +827,8 @@ mod tests {
                 .reverse_hex(),
         );
 
-        let search = super::file_search(&workspace, Some(&change), "needle", &[], false)
+        let mut sink = crate::warning::Warnings::default();
+        let search = super::file_search(&workspace, &mut sink, Some(&change), "needle", &[], false)
             .expect("an unreadable blob is not an error — the call SUCCEEDS");
 
         let paths: Vec<&str> = search.matches.iter().map(|m| m.path.as_str()).collect();
@@ -793,6 +847,83 @@ mod tests {
              (\"Path '…' exists but access is denied: …\"); got: {}",
             search.skipped[0].reason
         );
+        // Story 9.32: the CLI's `ui.warning_default()` line for the same path, as a coded fact.
+        let warnings = sink.take();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].kind, crate::WarningKind::PathAccessDenied);
+        assert_eq!(warnings[0].message, search.skipped[0].reason);
+    }
+
+    /// `render_entry` pairs every `SkippedPath` it makes with the warning the CLI prints for it
+    /// (Story 9.32): an unreadable blob carries `jj.path_access_denied` with `jj file show`'s own
+    /// sentence, while the two arms the CLI `panic!`s on (absent, directory) carry none.
+    ///
+    /// Inline for the reason given on the search witness above: only the `testing`-gated
+    /// `SecretBackend` raises `AccessDenied`, and it cannot be reached through [`crate::Repo`].
+    #[test]
+    fn render_entry_pairs_each_skipped_path_with_the_clis_warning() {
+        use jj_lib::conflicts::{ConflictMarkerStyle, ConflictMaterializeOptions};
+        use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
+        use jj_lib::merge::{Merge, MergedTreeValue};
+        use jj_lib::repo::Repo as _;
+        use jj_lib::secret_backend::SecretBackend;
+        use jj_lib::workspace::Workspace;
+        use test_helpers::{add_commit_with_entries, extract_fixture, Entry};
+
+        test_helpers::pin_test_env();
+        let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+        let commit_hex = add_commit_with_entries(
+            &fx.path,
+            &[],
+            &[("secret.txt", Entry::File("hidden\n"))],
+            "one unreadable blob",
+        );
+        SecretBackend::adopt_git_repo(&fx.path);
+        let mut factories = default_backend_factories();
+        factories.add_backend(
+            SecretBackend::name(),
+            Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
+        );
+        let workspace = Workspace::load(
+            &test_helpers::test_settings(),
+            &fx.path,
+            &factories,
+            &default_working_copy_factories(),
+        )
+        .expect("the secret-backend workspace loads");
+        let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load_at_head");
+        let store = readonly.store().clone();
+        let commit_id = jj_lib::backend::CommitId::try_from_hex(&commit_hex).expect("hex commit id");
+        let tree = store.get_commit(&commit_id).expect("commit").tree();
+        let options = ConflictMaterializeOptions {
+            marker_style: ConflictMarkerStyle::Diff,
+            marker_len: None,
+            merge: store.merge_options().clone(),
+        };
+        let render = |path: &str, value: MergedTreeValue| {
+            let path = super::parse_path(path).expect("valid path");
+            super::render_entry(&store, &path, value, tree.labels(), &options)
+                .expect("renders")
+                .expect_err("a skipped path")
+        };
+
+        let secret = super::parse_path("secret.txt").expect("valid path");
+        let value = pollster::block_on(tree.path_value(&secret)).expect("path value");
+        let (skipped, kind) = render("secret.txt", value);
+        assert_eq!(kind, Some(crate::WarningKind::PathAccessDenied));
+        assert!(
+            skipped
+                .reason
+                .starts_with("Path 'secret.txt' exists but access is denied: "),
+            "{}",
+            skipped.reason
+        );
+
+        let (absent, kind) = render("gone.txt", Merge::absent());
+        assert_eq!((absent.reason.as_str(), kind), ("Path 'gone.txt' is absent.", None));
+        let dir = Merge::normal(TreeValue::Tree(store.empty_tree_id().clone()));
+        let (tree_skip, kind) = render("dir", dir);
+        assert_eq!((tree_skip.reason.as_str(), kind), ("Path 'dir' is a directory.", None));
     }
 
     /// The shared resolver's two outcomes must keep landing in the two DIFFERENT read

@@ -6,14 +6,14 @@
 //!
 //! The pre-verb snapshot itself lives in `zanshin-jj` (`Repo::precondition`), so MCP inherits it
 //! by calling the same verbs; this module only serialises its report. `Envelope.precondition`
-//! is written by `envelope.rs::finish_envelope` / `err_with_precondition`, which call
+//! is written by `envelope.rs::finish_envelope` / `err_with_report`, which call
 //! [`build_precondition`] — no payload builder builds it itself.
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
 use zanshin_jj::{FinishFacts, Precondition};
 
-use crate::envelope::{catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle};
+use crate::envelope::{catch, finish_envelope, map_precondition_err, session_from_handle, CallReport};
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 use crate::file_ops::build_snapshot_stats;
@@ -30,8 +30,6 @@ pub(crate) fn build_finish_facts<'a>(
     fbs::FinishFacts::create(
         b,
         &fbs::FinishFactsArgs {
-            working_copy_became_immutable: f.working_copy_became_immutable,
-            git_head_update_failed: f.git_head_update_failed,
             export_failed_bookmarks: Some(bookmarks),
             export_failed_tags: Some(tags),
         },
@@ -56,19 +54,17 @@ pub(crate) fn build_precondition<'a>(
             git_head_reset: p.git_head_reset,
             git_head_rebased: p.git_head_rebased,
             snapshot_rebased: p.snapshot_rebased,
-            working_copy_immutable_new_commit: p.working_copy_immutable_new_commit,
             git_refs,
             git_refs_rebased: p.git_refs_rebased,
-            jjconflict_files_present: p.jjconflict_files_present,
             finish,
         },
     )
 }
 
 /// `zanshin_snapshot`'s success: `ok` with NO `data` and the report as `Envelope.precondition`
-/// (there is no `Payload` member for it).
-fn snapshot_to_envelope(p: &Precondition, _pending: Option<&Precondition>) -> Vec<u8> {
-    finish_envelope(FlatBufferBuilder::with_capacity(256), fbs::Payload::NONE, None, Some(p))
+/// (there is no `Payload` member for it), plus the call's warnings.
+fn snapshot_to_envelope(report: &CallReport) -> Vec<u8> {
+    finish_envelope(FlatBufferBuilder::with_capacity(256), fbs::Payload::NONE, None, report)
 }
 
 /// Snapshot the working copy of the repo referenced by `handle` — and, in a colocated
@@ -81,7 +77,8 @@ fn snapshot_to_envelope(p: &Precondition, _pending: Option<&Precondition>) -> Ve
 /// clean tree with unchanged refs writes no operation and reports `was_snapshot_taken = false`.
 ///
 /// Returns an ok `FlatBuffers` `Envelope` with NO `data` and `precondition` set on success; an
-/// error envelope carries the PARTIAL `precondition` up to the failing step.
+/// error envelope carries the PARTIAL `precondition` up to the failing step. Both carry the
+/// call's warnings (Story 9.32).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -107,15 +104,27 @@ pub unsafe extern "C" fn zanshin_snapshot(handle: u64) -> *mut ZanshinBuf {
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
+        // `Repo::snapshot` hands its report out ITSELF, so the shared `precondition_envelope`
+        // tail (which takes it off the repo) does not fit: the report is the ok value here.
         let result = session.repo.snapshot();
-        precondition_envelope(&mut session.repo, result, map_precondition_err, snapshot_to_envelope)
+        let warnings = session.repo.take_warnings();
+        match result {
+            Ok(precondition) => Ok(snapshot_to_envelope(&CallReport {
+                precondition: Some(precondition),
+                warnings,
+            })),
+            Err(e) => Err(map_precondition_err(e).with_report(CallReport {
+                precondition: session.repo.take_precondition(),
+                warnings,
+            })),
+        }
     });
     vec_into_token(buf)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::envelope::{err_with_precondition, finish_envelope};
+    use crate::envelope::{err_with_report, finish_envelope, CallReport};
     use crate::envelope_generated::zanshin::ffi as fbs;
     use flatbuffers::{FlatBufferBuilder, VerifierOptions};
     use zanshin_jj::{
@@ -153,7 +162,6 @@ mod tests {
             git_head_reset: true,
             git_head_rebased: 3,
             snapshot_rebased: 5,
-            working_copy_immutable_new_commit: true,
             git_refs: Some(GitImportResult {
                 mutation: MutationResult {
                     finish: None,
@@ -161,7 +169,6 @@ mod tests {
                     new_change_ids: Vec::new(),
                     abandoned_change_ids: Vec::new(),
                     working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
-                    identity_missing: None,
                 },
                 changed_bookmarks: vec![GitRefUpdate {
                     name: "main".to_owned(),
@@ -180,10 +187,7 @@ mod tests {
                 failed_ref_names: vec!["refs/remotes/git/x".to_owned()],
             }),
             git_refs_rebased: 7,
-            jjconflict_files_present: true,
             finish: Some(FinishFacts {
-                working_copy_became_immutable: true,
-                git_head_update_failed: true,
                 export_failed_bookmarks: vec![export_failure("foo/bar", "r1")],
                 export_failed_tags: vec![export_failure("t1", "r2")],
             }),
@@ -221,9 +225,7 @@ mod tests {
         assert!(p.git_head_reset());
         assert_eq!(p.git_head_rebased(), 3);
         assert_eq!(p.snapshot_rebased(), 5);
-        assert!(p.working_copy_immutable_new_commit());
         assert_eq!(p.git_refs_rebased(), 7);
-        assert!(p.jjconflict_files_present());
 
         let stats = p.snapshot_stats().expect("snapshot_stats present");
         let untracked: Vec<_> = stats.untracked().expect("untracked present").iter().collect();
@@ -250,8 +252,6 @@ mod tests {
         assert_eq!(strings(refs.failed_ref_names()), ["refs/remotes/git/x"]);
 
         let finish = p.finish().expect("finish present");
-        assert!(finish.working_copy_became_immutable());
-        assert!(finish.git_head_update_failed());
         let failed_bookmarks: Vec<_> = finish.export_failed_bookmarks().expect("bookmarks").iter().collect();
         assert_eq!(failed_bookmarks.len(), 1);
         assert_export_failure(&failed_bookmarks[0], "foo/bar", "r1");
@@ -267,19 +267,18 @@ mod tests {
     /// Every `Precondition` field survives the wire, on the ok path AND the error path.
     #[test]
     fn a_full_precondition_round_trips_through_both_envelope_arms() {
-        let p = full_precondition();
+        let report = CallReport {
+            precondition: Some(full_precondition()),
+            warnings: Vec::new(),
+        };
 
-        let ok = finish_envelope(
-            FlatBufferBuilder::with_capacity(256),
-            fbs::Payload::NONE,
-            None,
-            Some(&p),
-        );
+        let ok = finish_envelope(FlatBufferBuilder::with_capacity(256), fbs::Payload::NONE, None, &report);
         let env = envelope(&ok);
         assert!(env.ok());
         assert_full_precondition(&env.precondition().expect("ok-arm precondition"));
+        assert!(env.warnings().is_none(), "no warnings: absent");
 
-        let err = err_with_precondition("jj.config_error", Some("k"), Some(&p));
+        let err = err_with_report("jj.config_error", Some("k"), Some(&report));
         let env = envelope(&err);
         assert!(!env.ok());
         assert_eq!(env.error().and_then(|e| e.code()), Some("jj.config_error"));

@@ -21,7 +21,7 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 fn map_config_err(e: ConfigError) -> FfiErrorObj {
     match e {
         ConfigError::Load { reason } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -46,7 +46,12 @@ fn log_defaults_to_envelope(defaults: &LogDefaults) -> Vec<u8> {
             synthetic_elided: defaults.synthetic_elided,
         },
     );
-    finish_envelope(b, fbs::Payload::LogDefaults, Some(payload.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::LogDefaults,
+        Some(payload.as_union_value()),
+        &crate::envelope::CallReport::default(),
+    )
 }
 
 /// Read the effective `jj log` defaults of the repo identified by `handle`.

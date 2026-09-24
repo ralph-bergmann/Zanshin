@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::{StreamExt as _, TryStreamExt as _};
-use jj_lib::config::StackedConfig;
+use jj_lib::config::{ConfigSource, StackedConfig};
 use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo::Repo as _;
@@ -19,6 +19,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::change::change_from_commit;
 use crate::config::ConfigError;
+use crate::warning::{self, Load, Warning, WarningKind, Warnings};
 use crate::{Change, ChangeId, Repo};
 
 /// The jj CLI's default `revsets.log` (`cli/src/config/revsets.toml` at v0.42.0) — the
@@ -87,8 +88,9 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
         .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
-    // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`).
-    let parsed = parse_revset(repo, expr)?;
+    // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`). This oracle
+    //    has no warning channel, so its parse warnings are dropped.
+    let parsed = parse_revset(repo, expr, &mut Warnings::default())?;
     let set = evaluate_revset(repo_dyn, &parsed)?;
 
     // 3. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
@@ -140,14 +142,15 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
 ///   partial output on `Err`.
 pub(crate) fn eval_revset(
     repo: &Repo,
+    sink: &mut Warnings,
     revset: &str,
     mut visit: impl FnMut(Change) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
     // 1. Effective config ONCE per walk (never cached — Story 4.9), then parse against the
     //    alias map it feeds. Parsing needs no loaded operation.
     let config = crate::config::load(repo)?;
-    let parse_config = revset_config(&config)?;
-    let parsed = parse_revset_with(repo, &parse_config, revset)?;
+    let parse_config = revset_config(&config, sink)?;
+    let parsed = parse_revset_with(repo, &parse_config, revset, sink)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors `resolve_revset` above).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
@@ -180,16 +183,21 @@ pub(crate) fn eval_revset(
 ///
 /// Convenience wrapper over [`parse_revset_with`] for call sites that parse a single
 /// expression; a call site parsing several (the graph walk) loads the config and builds the
-/// map once, then calls [`parse_revset_with`] directly.
+/// map once, then calls [`parse_revset_with`] directly. The alias load's warnings and the
+/// parse diagnostics land in `sink` (Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
 /// - [`RevsetError::Config`] — the repo's jj config is malformed or unreadable.
-pub(crate) fn parse_revset(repo: &Repo, expr: &str) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+pub(crate) fn parse_revset(
+    repo: &Repo,
+    expr: &str,
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let config = crate::config::load(repo)?;
-    let parse_config = revset_config(&config)?;
-    parse_revset_with(repo, &parse_config, expr)
+    let parse_config = revset_config(&config, sink)?;
+    parse_revset_with(repo, &parse_config, expr, sink)
 }
 
 /// The config-derived inputs of a revset parse, read off ONE effective stack: the alias map
@@ -199,22 +207,56 @@ pub(crate) struct RevsetConfig {
     user_email: String,
 }
 
-/// Reads [`RevsetConfig`] out of a loaded stack.
+/// Reads [`RevsetConfig`] out of a loaded stack — the CLI's `load_revset_aliases`
+/// (`cli/src/cli_util.rs:3415-3423` @ v0.44.0): the alias map, then the builtin-redefinition
+/// check. Their warnings are recorded once per call into `sink` (Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a layer's `revset-aliases` is not a table, or `user.email` is
 ///   not a string.
-pub(crate) fn revset_config(config: &StackedConfig) -> Result<RevsetConfig, ConfigError> {
+pub(crate) fn revset_config(config: &StackedConfig, sink: &mut Warnings) -> Result<RevsetConfig, ConfigError> {
+    let (aliases_map, mut warnings) = build_aliases_map(config, "revset-aliases")?;
+    warnings.extend(redefined_builtins(config));
+    sink.record_load(Load::RevsetAliases, warnings);
     Ok(RevsetConfig {
-        aliases_map: build_aliases_map(config, "revset-aliases")?,
+        aliases_map,
         user_email: crate::config::user_email(config)?,
     })
 }
 
+/// The CLI's `warn_user_redefined_builtin` (`cli/src/revset_util.rs:154-180` @ v0.44.0): one
+/// [`WarningKind::ConfigAliasRedefined`] per non-builtin layer that redefines one of the three
+/// mutability builtins.
+fn redefined_builtins(config: &StackedConfig) -> Vec<Warning> {
+    const CHECKED: [&str; 3] = ["mutable()", "immutable()", "builtin_immutable_heads()"];
+    let mut out = Vec::new();
+    for layer in config
+        .layers()
+        .iter()
+        .skip_while(|layer| layer.source == ConfigSource::Default)
+    {
+        let Ok(Some(table)) = layer.look_up_table("revset-aliases") else {
+            continue;
+        };
+        for decl in CHECKED.iter().filter(|decl| table.contains_key(decl)) {
+            out.push(warning::local(
+                WarningKind::ConfigAliasRedefined,
+                format!("Redefining `revset-aliases.{decl}` is not recommended; redefine `immutable_heads()` instead."),
+            ));
+        }
+    }
+    out
+}
+
+/// The context line the CLI prints above a user revset's parse diagnostics
+/// (`cli/src/cli_util.rs:1851` @ v0.44.0).
+pub(crate) const IN_REVSET_EXPRESSION: &str = "In revset expression";
+
 /// Parses `expr` in this workspace's revset context (`parse_config`'s aliases and user email,
 /// the workspace name for `@`, a `git`-default ignored remote). Pure parsing — no symbol is
-/// resolved yet, so the result is independent of any loaded operation.
+/// resolved yet, so the result is independent of any loaded operation. Its diagnostics land in
+/// `sink` under the CLI's "In revset expression" (Story 9.32).
 ///
 /// # Errors
 ///
@@ -223,20 +265,42 @@ pub(crate) fn parse_revset_with(
     repo: &Repo,
     parse_config: &RevsetConfig,
     expr: &str,
+    sink: &mut Warnings,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    parse_revset_in(repo.workspace(), parse_config, expr)
+    parse_diagnosed(repo.workspace(), parse_config, (expr, IN_REVSET_EXPRESSION), sink)
 }
 
-/// [`parse_revset_with`] for a caller that holds a bare [`Workspace`] — the conversion verbs'
-/// pre-verb snapshot runs before any [`Repo`] exists (Story 9.26).
+/// Parses `expr` and records its diagnostics under `context` — the CLI's `revset::parse`
+/// followed by `print_parse_diagnostics(ui, context, …)`, which prints only after a
+/// SUCCESSFUL parse. `(expr, context)` travel as one pair.
 ///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
-pub(crate) fn parse_revset_in(
+pub(crate) fn parse_diagnosed(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    (expr, context): (&str, &str),
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    let mut diagnostics = RevsetDiagnostics::new();
+    let parsed = parse_revset_in(workspace, parse_config, expr, &mut diagnostics)?;
+    sink.extend(warning::parse_diagnostics(context, &diagnostics));
+    Ok(parsed)
+}
+
+/// Parses `expr` for a caller that holds a bare [`Workspace`], collecting jj-lib's parse
+/// diagnostics into `diagnostics` — the conversion verbs' pre-verb snapshot runs before any
+/// [`Repo`] exists (Story 9.26).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+fn parse_revset_in(
     workspace: &Workspace,
     parse_config: &RevsetConfig,
     expr: &str,
+    diagnostics: &mut RevsetDiagnostics,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     // Parse context — every borrowed local is declared before `context` so it outlives it.
     let fileset_aliases = FilesetAliasesMap::new();
@@ -294,8 +358,7 @@ pub(crate) fn parse_revset_in(
         workspace: Some(workspace_ctx),
     };
 
-    let mut diagnostics = RevsetDiagnostics::new();
-    revset::parse(&mut diagnostics, expr, &context).map_err(|e| RevsetError::ParseError { reason: e.to_string() })
+    revset::parse(diagnostics, expr, &context).map_err(|e| RevsetError::ParseError { reason: e.to_string() })
 }
 
 /// Resolves the symbols of a parsed expression against `repo_dyn` without evaluating it.
@@ -360,9 +423,11 @@ pub(crate) fn evaluate_revset<'r>(
 ///   all aborts the load (`cli/src/config.rs:943-953` returns `ConfigGetError::Type`).
 ///   Skipping it would silently fall back to the builtin aliases — the one behaviour this
 ///   story exists to prevent.
-/// - **The ENTRY level warns and continues** (`cli/src/config.rs:964-977`): a non-string
-///   value or a declaration jj-lib's parser rejects is logged and skipped, and every other
-///   alias still loads. One messy entry must not take down the whole table.
+/// - **The ENTRY level warns and continues** (`cli/src/config.rs:1009-1032` @ v0.44.0): a
+///   non-string value or a declaration jj-lib's parser rejects is skipped with a
+///   [`WarningKind::ConfigAliasInvalid`] carrying the CLI's "Failed to load `{table}.{decl}`: …"
+///   (Story 9.32), and every other alias still loads. One messy entry must not take down the
+///   whole table. The warnings are RETURNED; the caller records them once per call.
 ///
 /// jj-lib does not check the DEFINITION (`dsl_util.rs:594-597`), so a malformed `defn`
 /// surfaces later still, when the alias is substituted.
@@ -373,12 +438,13 @@ pub(crate) fn evaluate_revset<'r>(
 pub(crate) fn build_aliases_map<P>(
     config: &StackedConfig,
     table_name: &'static str,
-) -> Result<AliasesMap<P, String>, ConfigError>
+) -> Result<(AliasesMap<P, String>, Vec<Warning>), ConfigError>
 where
     P: AliasDeclarationParser + Default,
     P::Error: std::fmt::Display,
 {
     let mut map = AliasesMap::<P, String>::new();
+    let mut warnings = Vec::new();
     for layer in config.layers() {
         let table = match layer.look_up_table(table_name) {
             Ok(Some(table)) => table,
@@ -404,22 +470,22 @@ where
                 ),
                 None => (item.as_str(), None),
             };
-            let Some(definition) = definition else {
-                let found = item.type_name();
-                tracing::warn!(
-                    table = table_name,
-                    alias = decl,
-                    found,
-                    "alias is neither a string nor a table with a `definition` string key; skipped"
-                );
-                continue;
+            let failure = match definition {
+                Some(definition) => map.insert(decl, definition, doc).err().map(|e| e.to_string()),
+                None => Some(format!(
+                    "Expected a string or a table with a `definition` string key, but is {}",
+                    item.type_name()
+                )),
             };
-            if let Err(e) = map.insert(decl, definition, doc) {
-                tracing::warn!(table = table_name, alias = decl, error = %e, "failed to load alias; skipped");
+            if let Some(reason) = failure {
+                warnings.push(warning::local(
+                    WarningKind::ConfigAliasInvalid,
+                    format!("Failed to load `{table_name}.{decl}`: {reason}"),
+                ));
             }
         }
     }
-    Ok(map)
+    Ok((map, warnings))
 }
 
 /// Builds the CLI's immutable-set expression, `::(immutable_heads() | root())`.
@@ -430,13 +496,34 @@ where
 /// for user-written revsets. Both denote the same set, but mirroring the in-code form is
 /// what lets Story 4.9's config override of `immutable_heads()` flow through unchanged.
 ///
+/// Like `parse_immutable_heads_expression`, it parses the alias's DEFINITION text, so a parse
+/// diagnostic points into the definition exactly as the CLI's does; the diagnostics are
+/// recorded once per call under "In `revset-aliases.immutable_heads()`" (Story 9.32). Should
+/// the 0-arity alias be missing (the builtin layer always defines it), the call expression is
+/// parsed instead and jj-lib names the problem.
+///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
 pub(crate) fn immutable_expression(
     workspace: &Workspace,
     parse_config: &RevsetConfig,
+    sink: &mut Warnings,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
-    let heads = parse_revset_in(workspace, parse_config, "immutable_heads()")?;
+    let definition = parse_config
+        .aliases_map
+        .get_function("immutable_heads", 0)
+        .map(|(_, _, definition, _)| definition.clone());
+    let mut diagnostics = RevsetDiagnostics::new();
+    let heads = parse_revset_in(
+        workspace,
+        parse_config,
+        definition.as_deref().unwrap_or("immutable_heads()"),
+        &mut diagnostics,
+    )?;
+    sink.record_load(
+        Load::ImmutableHeads,
+        warning::parse_diagnostics("In `revset-aliases.immutable_heads()`", &diagnostics),
+    );
     Ok(heads.union(&RevsetExpression::root()).ancestors())
 }

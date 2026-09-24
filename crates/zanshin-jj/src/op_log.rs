@@ -141,7 +141,7 @@ pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<
 ///   refusal to undo a merge operation, rather than silently picking one parent.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn undo(workspace: &mut Workspace, ctx: &VerbContext) -> Result<MutationResult, MutateError> {
+pub(crate) fn undo(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let head_op = readonly.operation().clone();
     let parent_ids = head_op.parent_ids();

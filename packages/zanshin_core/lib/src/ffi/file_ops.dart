@@ -10,6 +10,7 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'git.dart' show GitExportFailure, decodeExportFailuresInternal;
 import 'mutate.dart' show MutationResult, decodeMutationResultInternal;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.22's two working-copy tracking verbs:
 // the request builders and adapters (fileTrack / fileUntrack), the payload models
@@ -105,7 +106,12 @@ final class SnapshotStats {
 
 /// Outcome of a successful `fileTrack` (mirrors `zanshin_jj::TrackResult`).
 final class TrackResult {
-  const TrackResult({required this.mutation, required this.numRebased, required this.snapshotStats});
+  const TrackResult({
+    required this.mutation,
+    required this.numRebased,
+    required this.snapshotStats,
+    this.warnings = const [],
+  });
 
   /// The shared mutation contract. An operation (`track paths`) is ALWAYS
   /// written; `workingCopyChangeId` is the pre-call `@` — the tracked paths live
@@ -118,6 +124,10 @@ final class TrackResult {
 
   /// What the track snapshot left untracked.
   final SnapshotStats snapshotStats;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none. The nested [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
 }
 
 /// Outcome of a successful `fileUntrack` (mirrors `zanshin_jj::UntrackResult`).
@@ -129,6 +139,7 @@ final class UntrackResult {
     required this.snapshotStats,
     required this.failedBookmarks,
     required this.failedTags,
+    this.warnings = const [],
   });
 
   /// The shared mutation contract. An operation (`untrack paths`) is ALWAYS
@@ -152,6 +163,10 @@ final class UntrackResult {
   /// Tags the colocated git export could not write; empty outside a colocated
   /// workspace.
   final List<GitExportFailure> failedTags;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none. The nested [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoders ─────────────────────────────────────────────────────────────────
@@ -176,6 +191,7 @@ TrackResult _decodeTrackResultEnvelope(Uint8List bytes) {
     mutation: decodeMutationResultInternal(payload.mutation),
     numRebased: payload.numRebased,
     snapshotStats: decodeSnapshotStatsInternal(payload.snapshotStats),
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 
@@ -202,6 +218,7 @@ UntrackResult _decodeUntrackResultEnvelope(Uint8List bytes) {
     snapshotStats: decodeSnapshotStatsInternal(payload.snapshotStats),
     failedBookmarks: decodeExportFailuresInternal(payload.failedBookmarks),
     failedTags: decodeExportFailuresInternal(payload.failedTags),
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

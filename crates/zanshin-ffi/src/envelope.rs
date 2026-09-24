@@ -191,6 +191,91 @@ pub const GRAPH_DANGLING_EDGE: &str = "graph.dangling_edge";
 /// as `WatcherEvent { kind: WatchError }`, never this code).
 pub const WATCHER_IO_ERROR: &str = "watcher.io_error";
 
+// ── Warning codes (Story 9.32) ───────────────────────────────────────────────
+//
+// The codes `Envelope.warnings` carries — one per `zanshin_jj::WarningKind`, registered in the
+// "Warning Codes" section of `docs/rust-error-codes.md`. Same single-emission-point rule as the
+// error codes: the strings exist only here, and [`warning_code`] is the one mapping.
+
+/// Warning: an operation was committed with an empty `user.name` and/or `user.email`.
+pub const JJ_IDENTITY_MISSING: &str = "jj.identity_missing";
+/// Warning: `@` was immutable, so a new `@` was created on top of it (snapshot or finish).
+pub const JJ_WORKING_COPY_IMMUTABLE: &str = "jj.working_copy_immutable";
+/// Warning: a colocated snapshot found top-level `.jjconflict*` entries.
+pub const JJ_JJCONFLICT_FILES_PRESENT: &str = "jj.jjconflict_files_present";
+/// Warning: Git HEAD could not be moved to `@`'s parent.
+pub const JJ_GIT_HEAD_UPDATE_FAILED: &str = "jj.git_head_update_failed";
+/// Warning: bookmarks or tags the Git export could not write.
+pub const JJ_GIT_EXPORT_FAILED: &str = "jj.git_export_failed";
+/// Warning: Git refs the import could not read.
+pub const JJ_GIT_IMPORT_FAILED: &str = "jj.git_import_failed";
+/// Warning: new files over `snapshot.max-new-file-size` stayed untracked.
+pub const JJ_SNAPSHOT_FILES_REFUSED: &str = "jj.snapshot_files_refused";
+/// Warning: paths skipped because their names are not valid UTF-8.
+pub const JJ_SNAPSHOT_PATHS_NOT_UTF8: &str = "jj.snapshot_paths_not_utf8";
+/// Warning: working-copy updates skipped because of conflicting on-disk changes.
+pub const JJ_CHECKOUT_FILES_SKIPPED: &str = "jj.checkout_files_skipped";
+/// Warning: explicitly named paths that match no entry.
+pub const JJ_PATHS_UNMATCHED: &str = "jj.paths_unmatched";
+/// Warning: a `[revset-aliases]` / `[fileset-aliases]` entry that does not load.
+pub const JJ_CONFIG_ALIAS_INVALID: &str = "jj.config_alias_invalid";
+/// Warning: a config layer redefines `mutable()`, `immutable()` or `builtin_immutable_heads()`.
+pub const JJ_CONFIG_ALIAS_REDEFINED: &str = "jj.config_alias_redefined";
+/// Warning: a revset parsed with a diagnostic.
+pub const JJ_REVSET_DIAGNOSTIC: &str = "jj.revset_diagnostic";
+/// Warning: the short-prefixes disambiguation index could not be loaded.
+pub const JJ_SHORT_PREFIXES_FAILED: &str = "jj.short_prefixes_failed";
+/// Warning: another remote already uses the URL just added.
+pub const JJ_REMOTE_URL_DUPLICATE: &str = "jj.remote_url_duplicate";
+/// Warning: a bookmark was created on an empty, undescribed revision.
+pub const JJ_BOOKMARK_TARGET_EMPTY: &str = "jj.bookmark_target_empty";
+/// Warning: exact names given to `bookmark delete` that match no local bookmark.
+pub const JJ_BOOKMARK_NAMES_UNMATCHED: &str = "jj.bookmark_names_unmatched";
+/// Warning: a path `absorb` could not split.
+pub const JJ_ABSORB_PATH_SKIPPED: &str = "jj.absorb_path_skipped";
+/// Warning: a path whose content could not be read.
+pub const JJ_PATH_ACCESS_DENIED: &str = "jj.path_access_denied";
+/// Warning: a path that exists but is not a file.
+pub const JJ_PATH_NOT_A_FILE: &str = "jj.path_not_a_file";
+/// Warning: `user.name`/`user.email` was set but `@`'s author stays the old one.
+pub const JJ_CONFIG_WORKING_COPY_AUTHOR: &str = "jj.config_working_copy_author";
+/// Warning: a missing repo config directory could not be deleted.
+pub const JJ_CONFIG_GC_DELETE_FAILED: &str = "jj.config_gc_delete_failed";
+/// Warning: `config list` found nothing to list.
+pub const JJ_CONFIG_NOTHING_LISTED: &str = "jj.config_nothing_listed";
+
+/// The registered code of a warning kind (Story 9.32) — the one mapping from
+/// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
+#[must_use]
+pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
+    use zanshin_jj::WarningKind as K;
+    match kind {
+        K::IdentityMissing => JJ_IDENTITY_MISSING,
+        K::WorkingCopyImmutable => JJ_WORKING_COPY_IMMUTABLE,
+        K::JjconflictFilesPresent => JJ_JJCONFLICT_FILES_PRESENT,
+        K::GitHeadUpdateFailed => JJ_GIT_HEAD_UPDATE_FAILED,
+        K::GitExportFailed => JJ_GIT_EXPORT_FAILED,
+        K::GitImportFailed => JJ_GIT_IMPORT_FAILED,
+        K::SnapshotFilesRefused => JJ_SNAPSHOT_FILES_REFUSED,
+        K::SnapshotPathsNotUtf8 => JJ_SNAPSHOT_PATHS_NOT_UTF8,
+        K::CheckoutFilesSkipped => JJ_CHECKOUT_FILES_SKIPPED,
+        K::PathsUnmatched => JJ_PATHS_UNMATCHED,
+        K::ConfigAliasInvalid => JJ_CONFIG_ALIAS_INVALID,
+        K::ConfigAliasRedefined => JJ_CONFIG_ALIAS_REDEFINED,
+        K::RevsetDiagnostic => JJ_REVSET_DIAGNOSTIC,
+        K::ShortPrefixesFailed => JJ_SHORT_PREFIXES_FAILED,
+        K::RemoteUrlDuplicate => JJ_REMOTE_URL_DUPLICATE,
+        K::BookmarkTargetEmpty => JJ_BOOKMARK_TARGET_EMPTY,
+        K::BookmarkNamesUnmatched => JJ_BOOKMARK_NAMES_UNMATCHED,
+        K::AbsorbPathSkipped => JJ_ABSORB_PATH_SKIPPED,
+        K::PathAccessDenied => JJ_PATH_ACCESS_DENIED,
+        K::PathNotAFile => JJ_PATH_NOT_A_FILE,
+        K::ConfigWorkingCopyAuthor => JJ_CONFIG_WORKING_COPY_AUTHOR,
+        K::ConfigGcDeleteFailed => JJ_CONFIG_GC_DELETE_FAILED,
+        K::ConfigNothingListed => JJ_CONFIG_NOTHING_LISTED,
+    }
+}
+
 /// Pre-serialised, input-free `internal.panic` `Envelope` buffer.
 ///
 /// Last-resort backstop for [`catch`]: returned only if building a normal error `Envelope`
@@ -202,25 +287,56 @@ const PANIC_FALLBACK_ENVELOPE: &[u8] = &[
     0, 0, 0, 105, 110, 116, 101, 114, 110, 97, 108, 46, 112, 97, 110, 105, 99, 0, 0,
 ];
 
+/// The call-level facts every verb envelope carries beside its payload or its error: the
+/// (possibly partial) pre-verb snapshot report (Story 9.26) and the call's warnings in the CLI's
+/// print order (Story 9.32), written as `Envelope.precondition` / `Envelope.warnings`. The
+/// `Default` is a call with neither — both fields then stay ABSENT on the wire.
+#[derive(Debug, Default)]
+pub struct CallReport {
+    /// The pre-verb snapshot report; `None` for a symbol that runs no precondition.
+    pub precondition: Option<zanshin_jj::Precondition>,
+    /// The call's warnings; empty writes no `warnings` vector.
+    pub warnings: Vec<zanshin_jj::Warning>,
+}
+
+impl CallReport {
+    /// The report of a handle-less verb, which runs no precondition: only its warnings.
+    #[must_use]
+    pub fn warnings(warnings: Vec<zanshin_jj::Warning>) -> Self {
+        Self {
+            precondition: None,
+            warnings,
+        }
+    }
+
+    /// Takes what the last verb left on `repo`: its precondition report and its warnings.
+    pub fn take(repo: &mut zanshin_jj::Repo) -> Self {
+        Self {
+            precondition: repo.take_precondition(),
+            warnings: repo.take_warnings(),
+        }
+    }
+}
+
 /// Rust-side mirror of the `FlatBuffers` `FfiError` table (`schemas/envelope.fbs`).
 ///
 /// `code` — dotted `<domain>.<reason>` string (see `docs/rust-error-codes.md`).
 /// `context` — optional human-readable detail; user data goes here, never in `code`.
-/// `precondition` — the (possibly partial) pre-verb snapshot report of a verb that runs it
-/// (Story 9.26), written as `Envelope.precondition` on the error envelope; `None` everywhere
-/// else. Boxed so the `Err` side of every wrapper's `Result` stays small.
+/// `report` — the precondition report and warnings of the verb that failed (Stories 9.26 and
+/// 9.32), written as `Envelope.precondition` / `Envelope.warnings` on the error envelope; `None`
+/// everywhere else. Boxed so the `Err` side of every wrapper's `Result` stays small.
 #[derive(Debug)]
 pub struct FfiErrorObj {
     pub code: String,
     pub context: Option<String>,
-    pub precondition: Option<Box<zanshin_jj::Precondition>>,
+    pub report: Option<Box<CallReport>>,
 }
 
 impl FfiErrorObj {
-    /// Attaches the pre-verb snapshot report the verb left behind (Story 9.26).
+    /// Attaches the report the failed verb left behind (Stories 9.26 and 9.32).
     #[must_use]
-    pub fn with_precondition(mut self, precondition: Option<zanshin_jj::Precondition>) -> Self {
-        self.precondition = precondition.map(Box::new);
+    pub fn with_report(mut self, report: CallReport) -> Self {
+        self.report = Some(Box::new(report));
         self
     }
 }
@@ -245,13 +361,13 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
     FfiErrorObj {
         code: code.to_owned(),
         context: Some(context),
-        precondition: None,
+        report: None,
     }
 }
 
-/// The tail of every wrapper whose verb runs the pre-verb snapshot (Story 9.26): takes the report
-/// the verb left on `repo` and stamps it onto BOTH outcomes — the ok envelope through `build`,
-/// the error envelope through [`FfiErrorObj::with_precondition`].
+/// The tail of every wrapper whose verb runs the pre-verb snapshot (Stories 9.26 and 9.32):
+/// takes the report and the warnings the verb left on `repo` and stamps them onto BOTH outcomes
+/// — the ok envelope through `build`, the error envelope through [`FfiErrorObj::with_report`].
 ///
 /// # Errors
 /// - Whatever `map_err` makes of the verb's error, carrying the (partial) report.
@@ -259,12 +375,12 @@ pub(crate) fn precondition_envelope<T, E>(
     repo: &mut zanshin_jj::Repo,
     result: Result<T, E>,
     map_err: impl FnOnce(E) -> FfiErrorObj,
-    build: impl FnOnce(&T, Option<&zanshin_jj::Precondition>) -> Vec<u8>,
+    build: impl FnOnce(&T, &CallReport) -> Vec<u8>,
 ) -> Result<Vec<u8>, FfiErrorObj> {
-    let precondition = repo.take_precondition();
+    let report = CallReport::take(repo);
     match result {
-        Ok(value) => Ok(build(&value, precondition.as_ref())),
-        Err(e) => Err(map_err(e).with_precondition(precondition)),
+        Ok(value) => Ok(build(&value, &report)),
+        Err(e) => Err(map_err(e).with_report(report)),
     }
 }
 
@@ -282,7 +398,7 @@ pub(crate) fn precondition_envelope<T, E>(
 pub(crate) fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
     if data.is_null() {
         return Err(FfiErrorObj {
-            precondition: None,
+            report: None,
             code: FFI_NULL_POINTER.to_owned(),
             context: None,
         });
@@ -293,7 +409,7 @@ pub(crate) fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
 /// The `ffi.invalid_argument` error a failed request-buffer verification produces.
 pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(e.to_string()),
     }
@@ -324,7 +440,7 @@ pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::Reque
         return Ok(());
     }
     Err(FfiErrorObj {
-        precondition: None,
+        report: None,
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(format!("request kind mismatch: expected {expected:?}, got {actual:?}")),
     })
@@ -339,7 +455,7 @@ pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::Reque
 /// unchanged.
 pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: JJ_INVALID_INPUT.to_owned(),
         context: Some(format!("{field} is required")),
     }
@@ -372,7 +488,7 @@ pub(crate) unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut Repo
     // (Box<RepoSession>) in zanshin_repo_open/init/clone/convert; single-isolate model
     // (AD-2) guarantees no concurrent access.
     unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
-        precondition: None,
+        report: None,
         code: FFI_INVALID_HANDLE.to_owned(),
         context: None,
     })
@@ -393,6 +509,7 @@ pub fn ok_empty() -> Vec<u8> {
             data_type: fbs::Payload::NONE,
             data: None,
             precondition: None,
+            warnings: None,
         },
     );
     b.finish(envelope, None);
@@ -419,6 +536,7 @@ pub fn ok_repo_handle(handle: u64, session_id: u64) -> Vec<u8> {
             data_type: fbs::Payload::RepoHandle,
             data: Some(h.as_union_value()),
             precondition: None,
+            warnings: None,
         },
     );
     b.finish(envelope, None);
@@ -445,18 +563,7 @@ pub(crate) fn build_mutation_result<'a>(
     let abandoned_vec = b.create_vector(&abandoned_offs);
     let new_op_id_off = b.create_string(&r.new_op_id.0);
     let working_copy_change_id_off = b.create_string(&r.working_copy_change_id.0);
-    // Written iff `Some`: an ABSENT table is the wire's "identity configured / nothing
-    // committed" — never a table of two `false`s (null for absence).
-    let identity_missing_off = r.identity_missing.map(|m| {
-        fbs::IdentityMissing::create(
-            b,
-            &fbs::IdentityMissingArgs {
-                name: m.name,
-                email: m.email,
-            },
-        )
-    });
-    // Written iff `Some` — the same null-for-absence rule (Story 9.26).
+    // Written iff `Some`: null for absence (Story 9.26).
     let finish_off = r.finish.as_ref().map(|f| crate::snapshot::build_finish_facts(b, f));
     fbs::MutationResult::create(
         b,
@@ -465,7 +572,6 @@ pub(crate) fn build_mutation_result<'a>(
             new_change_ids: Some(new_change_vec),
             abandoned_change_ids: Some(abandoned_vec),
             working_copy_change_id: Some(working_copy_change_id_off),
-            identity_missing: identity_missing_off,
             finish: finish_off,
         },
     )
@@ -477,14 +583,14 @@ pub(crate) fn build_mutation_result<'a>(
 /// mutation wrappers and Story 9.3's `zanshin_restore` (`repo.rs`), not owned by one noun
 /// file.
 #[must_use]
-pub fn ok_mutation_result(r: &zanshin_jj::MutationResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+pub fn ok_mutation_result(r: &zanshin_jj::MutationResult, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let mutation_result = build_mutation_result(&mut b, r);
     finish_envelope(
         b,
         fbs::Payload::MutationResult,
         Some(mutation_result.as_union_value()),
-        precondition,
+        report,
     )
 }
 
@@ -498,7 +604,7 @@ pub fn ok_mutation_result(r: &zanshin_jj::MutationResult, precondition: Option<&
 /// `source_change_id` is written only when present: null-for-absence is the wire form of
 /// "jj-lib abandoned the source, or nothing moved".
 #[must_use]
-pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let rewritten_offs: Vec<_> = r.rewritten_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
@@ -534,7 +640,7 @@ pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult, precondition: Option<&zans
         b,
         fbs::Payload::AbsorbResult,
         Some(absorb_result.as_union_value()),
-        precondition,
+        report,
     )
 }
 
@@ -565,6 +671,7 @@ pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str) -> Vec<u
             data_type: fbs::Payload::Diagnostics,
             data: Some(diag.as_union_value()),
             precondition: None,
+            warnings: None,
         },
     );
     b.finish(envelope, None);
@@ -578,15 +685,20 @@ pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str) -> Vec<u
 /// exactly one construction site, so no noun can introduce a second spelling of it.
 ///
 /// `data` is `None` only for `zanshin_snapshot`, whose success carries no payload (Story 9.26).
-/// `precondition` is the report of a verb that ran the pre-verb snapshot, written as
-/// `Envelope.precondition`; every other builder passes `None`, which writes no field.
+/// `report` is written as `Envelope.precondition` (a verb that ran the pre-verb snapshot) and
+/// `Envelope.warnings` (Story 9.32); a builder with neither passes `&CallReport::default()`,
+/// which writes neither field.
 pub(crate) fn finish_envelope(
     mut b: FlatBufferBuilder<'_>,
     data_type: fbs::Payload,
     data: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
-    precondition: Option<&zanshin_jj::Precondition>,
+    report: &CallReport,
 ) -> Vec<u8> {
-    let precondition = precondition.map(|p| crate::snapshot::build_precondition(&mut b, p));
+    let precondition = report
+        .precondition
+        .as_ref()
+        .map(|p| crate::snapshot::build_precondition(&mut b, p));
+    let warnings = build_warnings(&mut b, &report.warnings);
     let envelope = fbs::Envelope::create(
         &mut b,
         &fbs::EnvelopeArgs {
@@ -595,32 +707,56 @@ pub(crate) fn finish_envelope(
             data_type,
             data,
             precondition,
+            warnings,
         },
     );
     b.finish(envelope, None);
     b.finished_data().to_vec()
 }
 
+/// Builds `Envelope.warnings` — `None` for an empty list, so a call without warnings writes no
+/// field (null for absence; it also keeps [`PANIC_FALLBACK_ENVELOPE`] byte-identical).
+fn build_warnings<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    warnings: &[zanshin_jj::Warning],
+) -> Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::Warning<'a>>>>> {
+    if warnings.is_empty() {
+        return None;
+    }
+    let offsets: Vec<_> = warnings
+        .iter()
+        .map(|w| {
+            let code = b.create_string(warning_code(w.kind));
+            let message = b.create_string(&w.message);
+            fbs::Warning::create(
+                b,
+                &fbs::WarningArgs {
+                    code: Some(code),
+                    message: Some(message),
+                },
+            )
+        })
+        .collect();
+    Some(b.create_vector(&offsets))
+}
+
 /// Build an error `Envelope` and return the finished buffer.
 ///
 /// Sets `ok = false`, `data_type = Payload::NONE`, and populates `FfiError { code, context }`.
 /// `code` must be a dotted `<domain>.<reason>` string (see `docs/rust-error-codes.md`).
-/// User-visible detail belongs in `context`, never in `code`. Writes no `precondition` — see
-/// [`err_with_precondition`].
+/// User-visible detail belongs in `context`, never in `code`. Writes no `precondition` and no
+/// `warnings` — see [`err_with_report`].
 #[must_use]
 pub fn err(code: &str, context: Option<&str>) -> Vec<u8> {
-    err_with_precondition(code, context, None)
+    err_with_report(code, context, None)
 }
 
-/// [`err`] carrying the (partial) pre-verb snapshot report of the verb that failed (Story 9.26)
-/// as `Envelope.precondition`. With `None` it builds exactly [`err`]'s bytes — which is what
-/// keeps [`PANIC_FALLBACK_ENVELOPE`] byte-identical.
+/// [`err`] carrying the report of the verb that failed — its (partial) pre-verb snapshot report
+/// as `Envelope.precondition` (Story 9.26) and its warnings as `Envelope.warnings` (Story 9.32).
+/// With `None` (or an empty report) it builds exactly [`err`]'s bytes — which is what keeps
+/// [`PANIC_FALLBACK_ENVELOPE`] byte-identical.
 #[must_use]
-pub fn err_with_precondition(
-    code: &str,
-    context: Option<&str>,
-    precondition: Option<&zanshin_jj::Precondition>,
-) -> Vec<u8> {
+pub fn err_with_report(code: &str, context: Option<&str>, report: Option<&CallReport>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let code_off = b.create_string(code);
     let ctx_off = context.map(|c| b.create_string(c));
@@ -631,7 +767,13 @@ pub fn err_with_precondition(
             context: ctx_off,
         },
     );
-    let precondition = precondition.map(|p| crate::snapshot::build_precondition(&mut b, p));
+    let precondition = report
+        .and_then(|r| r.precondition.as_ref())
+        .map(|p| crate::snapshot::build_precondition(&mut b, p));
+    let warnings = match report {
+        Some(r) => build_warnings(&mut b, &r.warnings),
+        None => None,
+    };
     let envelope = fbs::Envelope::create(
         &mut b,
         &fbs::EnvelopeArgs {
@@ -640,6 +782,7 @@ pub fn err_with_precondition(
             data_type: fbs::Payload::NONE,
             data: None,
             precondition,
+            warnings,
         },
     );
     b.finish(envelope, None);
@@ -670,7 +813,7 @@ where
 {
     match catch_unwind(f) {
         Ok(Ok(buf)) => buf,
-        Ok(Err(e)) => err_never_unwind(&e.code, e.context.as_deref(), e.precondition.as_deref()),
+        Ok(Err(e)) => err_never_unwind(&e.code, e.context.as_deref(), e.report.as_deref()),
         Err(panic) => err_never_unwind(INTERNAL_PANIC, Some(&panic_message(panic.as_ref())), None),
     }
 }
@@ -682,10 +825,9 @@ where
 /// `err` ever panics, fall back to the pre-serialised [`PANIC_FALLBACK_ENVELOPE`]. The only
 /// remaining failure mode is allocation failure, which aborts the process rather than
 /// unwinding — so no panic can cross the C ABI through this path.
-fn err_never_unwind(code: &str, context: Option<&str>, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
-    let precondition = std::panic::AssertUnwindSafe(precondition);
-    catch_unwind(|| err_with_precondition(code, context, *precondition))
-        .unwrap_or_else(|_| PANIC_FALLBACK_ENVELOPE.to_vec())
+fn err_never_unwind(code: &str, context: Option<&str>, report: Option<&CallReport>) -> Vec<u8> {
+    let report = std::panic::AssertUnwindSafe(report);
+    catch_unwind(|| err_with_report(code, context, *report)).unwrap_or_else(|_| PANIC_FALLBACK_ENVELOPE.to_vec())
 }
 
 fn panic_message(p: &(dyn Any + Send)) -> String {
@@ -746,9 +888,8 @@ mod tests {
                 zanshin_jj::ChangeId("zsuskuln".to_owned()),
             ],
             working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
-            identity_missing: None,
         };
-        let buf = ok_mutation_result(&r, None);
+        let buf = ok_mutation_result(&r, &CallReport::default());
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert!(env.error().is_none());
@@ -766,23 +907,152 @@ mod tests {
             Some(vec!["rlvkpnrz", "zsuskuln"])
         );
         assert_eq!(mr.working_copy_change_id(), Some("qpvuntsm"));
-        assert!(mr.identity_missing().is_none(), "None must be ABSENT on the wire");
+        assert!(mr.finish().is_none(), "None must be ABSENT on the wire");
+        assert!(env.warnings().is_none(), "no warnings: the field is ABSENT");
     }
 
-    #[test]
-    fn a_missing_identity_is_written_as_the_identity_missing_table() {
-        for (name, email) in [(true, true), (true, false), (false, true)] {
-            let r = zanshin_jj::MutationResult {
-                identity_missing: Some(zanshin_jj::IdentityMissing { name, email }),
-                ..sample_mutation_result()
-            };
-            let buf = ok_mutation_result(&r, None);
-            let mr = verified_envelope(&buf)
-                .data_as_mutation_result()
-                .expect("MutationResult payload must be present");
-            let missing = mr.identity_missing().expect("Some must be present on the wire");
-            assert_eq!((missing.name(), missing.email()), (name, email));
+    fn warning(kind: zanshin_jj::WarningKind, message: &str) -> zanshin_jj::Warning {
+        zanshin_jj::Warning {
+            kind,
+            message: message.to_owned(),
         }
+    }
+
+    fn wire_warnings(env: &fbs::Envelope<'_>) -> Vec<(String, String)> {
+        env.warnings()
+            .map(|v| {
+                v.iter()
+                    .map(|w| (w.code().unwrap_or("").to_owned(), w.message().unwrap_or("").to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Story 9.32: the ok arm writes the report's warnings in order, each under its registered
+    /// code; the precondition rides along untouched.
+    #[test]
+    fn the_ok_arm_writes_the_warnings_in_order_under_their_codes() {
+        let report = CallReport {
+            precondition: Some(zanshin_jj::Precondition::default()),
+            warnings: vec![
+                warning(zanshin_jj::WarningKind::ConfigAliasInvalid, "first"),
+                warning(zanshin_jj::WarningKind::IdentityMissing, "second"),
+            ],
+        };
+        let buf = ok_mutation_result(&sample_mutation_result(), &report);
+        let env = verified_envelope(&buf);
+        assert!(env.precondition().is_some());
+        assert_eq!(
+            wire_warnings(&env),
+            [
+                ("jj.config_alias_invalid".to_owned(), "first".to_owned()),
+                ("jj.identity_missing".to_owned(), "second".to_owned()),
+            ]
+        );
+    }
+
+    /// Story 9.32: the error arm carries the warnings too — a refusal keeps what was warned
+    /// before it — and `catch` forwards them from the `FfiErrorObj`.
+    #[test]
+    fn the_error_arm_writes_the_warnings_too() {
+        let buf = catch(|| {
+            Err(FfiErrorObj {
+                report: None,
+                code: JJ_IMMUTABLE.to_owned(),
+                context: Some("abc".to_owned()),
+            }
+            .with_report(CallReport::warnings(vec![warning(
+                zanshin_jj::WarningKind::PathsUnmatched,
+                "No matching entries for paths: x",
+            )])))
+        });
+        let env = verified_envelope(&buf);
+        assert!(!env.ok());
+        assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_IMMUTABLE));
+        assert!(env.precondition().is_none(), "a handle-less report has no precondition");
+        assert_eq!(
+            wire_warnings(&env),
+            [(
+                "jj.paths_unmatched".to_owned(),
+                "No matching entries for paths: x".to_owned()
+            )]
+        );
+    }
+
+    /// An EMPTY report writes exactly `err`'s bytes: absent means empty, on both arms.
+    #[test]
+    fn an_empty_report_writes_no_warnings_field() {
+        assert_eq!(
+            err_with_report("jj.x", None, Some(&CallReport::default())),
+            err("jj.x", None)
+        );
+    }
+
+    /// Every `WarningKind` maps to exactly its registry string (`docs/rust-error-codes.md`
+    /// § Warning Codes — the same literals as Dart's `ZanshinWarningCode`), so a typo'd or
+    /// swapped constant fails here, and no two kinds share a code.
+    #[test]
+    fn every_warning_kind_has_its_registered_code() {
+        use zanshin_jj::WarningKind as K;
+        // The registry, literally. No wildcard arm: a new `WarningKind` does not compile here
+        // until its registry string is written down.
+        fn registered(kind: K) -> &'static str {
+            match kind {
+                K::IdentityMissing => "jj.identity_missing",
+                K::WorkingCopyImmutable => "jj.working_copy_immutable",
+                K::JjconflictFilesPresent => "jj.jjconflict_files_present",
+                K::GitHeadUpdateFailed => "jj.git_head_update_failed",
+                K::GitExportFailed => "jj.git_export_failed",
+                K::GitImportFailed => "jj.git_import_failed",
+                K::SnapshotFilesRefused => "jj.snapshot_files_refused",
+                K::SnapshotPathsNotUtf8 => "jj.snapshot_paths_not_utf8",
+                K::CheckoutFilesSkipped => "jj.checkout_files_skipped",
+                K::PathsUnmatched => "jj.paths_unmatched",
+                K::ConfigAliasInvalid => "jj.config_alias_invalid",
+                K::ConfigAliasRedefined => "jj.config_alias_redefined",
+                K::RevsetDiagnostic => "jj.revset_diagnostic",
+                K::ShortPrefixesFailed => "jj.short_prefixes_failed",
+                K::RemoteUrlDuplicate => "jj.remote_url_duplicate",
+                K::BookmarkTargetEmpty => "jj.bookmark_target_empty",
+                K::BookmarkNamesUnmatched => "jj.bookmark_names_unmatched",
+                K::AbsorbPathSkipped => "jj.absorb_path_skipped",
+                K::PathAccessDenied => "jj.path_access_denied",
+                K::PathNotAFile => "jj.path_not_a_file",
+                K::ConfigWorkingCopyAuthor => "jj.config_working_copy_author",
+                K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
+                K::ConfigNothingListed => "jj.config_nothing_listed",
+            }
+        }
+        let kinds = [
+            K::IdentityMissing,
+            K::WorkingCopyImmutable,
+            K::JjconflictFilesPresent,
+            K::GitHeadUpdateFailed,
+            K::GitExportFailed,
+            K::GitImportFailed,
+            K::SnapshotFilesRefused,
+            K::SnapshotPathsNotUtf8,
+            K::CheckoutFilesSkipped,
+            K::PathsUnmatched,
+            K::ConfigAliasInvalid,
+            K::ConfigAliasRedefined,
+            K::RevsetDiagnostic,
+            K::ShortPrefixesFailed,
+            K::RemoteUrlDuplicate,
+            K::BookmarkTargetEmpty,
+            K::BookmarkNamesUnmatched,
+            K::AbsorbPathSkipped,
+            K::PathAccessDenied,
+            K::PathNotAFile,
+            K::ConfigWorkingCopyAuthor,
+            K::ConfigGcDeleteFailed,
+            K::ConfigNothingListed,
+        ];
+        for kind in kinds {
+            assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
+        }
+        let codes: std::collections::BTreeSet<&str> = kinds.iter().map(|k| registered(*k)).collect();
+        assert_eq!(codes.len(), kinds.len(), "one code per kind");
     }
 
     fn sample_mutation_result() -> zanshin_jj::MutationResult {
@@ -792,7 +1062,6 @@ mod tests {
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
-            identity_missing: None,
         }
     }
 
@@ -811,7 +1080,7 @@ mod tests {
                 reason: "Is a symlink".to_owned(),
             }],
         };
-        let buf = ok_absorb_result(&r, None);
+        let buf = ok_absorb_result(&r, &CallReport::default());
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::AbsorbResult);
@@ -844,7 +1113,7 @@ mod tests {
             num_rebased: 0,
             skipped_paths: Vec::new(),
         };
-        let buf = ok_absorb_result(&r, None);
+        let buf = ok_absorb_result(&r, &CallReport::default());
         let env = verified_envelope(&buf);
         let ar = env
             .data_as_absorb_result()
@@ -911,7 +1180,7 @@ mod tests {
     fn catch_err_closure_returns_error_envelope() {
         let buf = catch(|| {
             Err(FfiErrorObj {
-                precondition: None,
+                report: None,
                 code: "ffi.invalid_handle".to_owned(),
                 context: Some("handle was zero".to_owned()),
             })
@@ -971,6 +1240,7 @@ mod tests {
         let e = env.error().expect("fallback must carry an error");
         assert_eq!(e.code(), Some(INTERNAL_PANIC));
         assert!(e.context().is_none());
+        assert!(env.warnings().is_none(), "the panic fallback never carries warnings");
     }
 
     #[test]

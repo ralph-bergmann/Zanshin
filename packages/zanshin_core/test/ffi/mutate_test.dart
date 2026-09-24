@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/mutate.dart';
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
 void main() {
@@ -115,27 +116,31 @@ void main() {
       expect(result.abandonedChangeIds, isEmpty);
       expect(result.newOpId, equals('ghi789'));
       expect(result.workingCopyChangeId, equals('qpvuntsm'));
-      expect(result.identityMissing, isNull, reason: 'an absent table is null, not two falses');
+      expect(result.warnings, isEmpty, reason: 'an absent warnings vector reads as []');
     });
 
-    // ── identity_missing (Story 9.27) ─────────────────────────────────────────
+    // ── Envelope warnings (Story 9.32) ────────────────────────────────────────
 
-    test('decodes a present identityMissing table field by field', () {
+    test('decodes the envelope warnings in wire order', () {
+      // The identity note (Story 9.27's former `identityMissing` table) is a
+      // warning now: the only place the fact still crosses.
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.MutationResult,
-        data: fbs.MutationResultObjectBuilder(
-          newOpId: 'op1',
-          workingCopyChangeId: 'qpvuntsm',
-          identityMissing: fbs.IdentityMissingObjectBuilder(name: true, email: false),
-        ),
+        data: fbs.MutationResultObjectBuilder(newOpId: 'op1', workingCopyChangeId: 'qpvuntsm'),
+        warnings: [
+          fbs.WarningObjectBuilder(code: ZanshinWarningCode.configAliasInvalid, message: 'first'),
+          fbs.WarningObjectBuilder(code: ZanshinWarningCode.identityMissing, message: 'second'),
+        ],
       ).toBytes();
 
-      final IdentityMissing? missing = decodeMutationResultEnvelope(bytes).identityMissing;
+      final MutationResult result = decodeMutationResultEnvelope(bytes);
 
-      expect(missing, isNotNull);
-      expect(missing!.name, isTrue);
-      expect(missing.email, isFalse);
+      expect(result.warnings, const [
+        ZanshinWarning(code: 'jj.config_alias_invalid', message: 'first'),
+        ZanshinWarning(code: 'jj.identity_missing', message: 'second'),
+      ]);
+      expect(() => result.warnings.add(const ZanshinWarning(code: 'x', message: 'y')), throwsUnsupportedError);
     });
   });
 
@@ -183,21 +188,28 @@ void main() {
             newChangeIds: const [],
             abandonedChangeIds: const [],
             workingCopyChangeId: 'qpvuntsm',
-            identityMissing: fbs.IdentityMissingObjectBuilder(name: false, email: true),
           ),
           rewrittenChangeIds: ['rlvkpnrz', 'zsuskuln'],
           sourceChangeId: 'kkmpptxz',
           numRebased: 3,
           skippedPaths: [fbs.SkippedPathObjectBuilder(path: 'dir/link', reason: 'Is a symlink')],
         ),
+        warnings: [
+          fbs.WarningObjectBuilder(
+            code: ZanshinWarningCode.absorbPathSkipped,
+            message: 'Skipping dir/link: Is a symlink',
+          ),
+        ],
       ).toBytes();
 
       final AbsorbResult result = decodeAbsorbResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, equals('op99'));
       expect(result.mutation.workingCopyChangeId, equals('qpvuntsm'));
-      expect(result.mutation.identityMissing?.name, isFalse);
-      expect(result.mutation.identityMissing?.email, isTrue);
+      expect(result.warnings, const [
+        ZanshinWarning(code: 'jj.absorb_path_skipped', message: 'Skipping dir/link: Is a symlink'),
+      ]);
+      expect(result.mutation.warnings, isEmpty, reason: 'a nested payload carries no warnings of its own');
       expect(result.rewrittenChangeIds, equals(['rlvkpnrz', 'zsuskuln']));
       expect(result.sourceChangeId, equals('kkmpptxz'));
       expect(result.numRebased, equals(3));
@@ -221,7 +233,7 @@ void main() {
 
       expect(result.rewrittenChangeIds, isEmpty);
       expect(result.sourceChangeId, isNull);
-      expect(result.mutation.identityMissing, isNull, reason: 'an absent table decodes as null');
+      expect(result.warnings, isEmpty, reason: 'an absent warnings vector reads as []');
       expect(result.numRebased, equals(0));
       expect(result.skippedPaths, isEmpty);
       expect(result.mutation.newChangeIds, isEmpty);

@@ -168,13 +168,17 @@ pub struct ConfigSetResult {
 
 /// [`config_set`]'s outcome: the result, and the report of the working-copy snapshot the
 /// CLI's `check_wc_author` runs for `user.name`/`user.email` — `Some` iff that snapshot ran,
-/// on success AND on failure (then possibly partial).
+/// on success AND on failure (then possibly partial) — and the call's warnings (Story 9.32).
 #[derive(Debug)]
 pub struct ConfigSetOutcome {
     /// The verb's result.
     pub result: Result<ConfigSetResult, ConfigCmdError>,
     /// The snapshot report, when the snapshot ran.
     pub precondition: Option<crate::Precondition>,
+    /// The call's warnings, on success AND on failure, in the CLI's order: the snapshot's
+    /// (config loads, snapshot, imports), then `jj.config_working_copy_author` when `@`'s author
+    /// stays the old one.
+    pub warnings: Vec<crate::Warning>,
 }
 
 /// A config file's text, as [`config_file_read`] returns it.
@@ -298,14 +302,18 @@ fn display_paths(paths: &[PathBuf]) -> String {
 
 /// `jj config list` — every value of the effective stack with its source (the CLI's
 /// `resolved_config_values`), lowest layer first, filtered as the CLI filters. An empty list is
-/// a result, not an error.
+/// a result, not an error — it warns `jj.config_nothing_listed` with the CLI's "No matching config
+/// key for: …" / "No config to list." (`list.rs:116-123`, Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`ConfigCmdError::PathNotFound`] / [`ConfigCmdError::NotARepo`] — bad `workspace_root`.
 /// - [`ConfigCmdError::Config`] — the stack does not load.
 /// - [`ConfigCmdError::Parse`] — `query.name` is not a TOML dotted key.
-pub fn config_list(workspace_root: Option<&Path>, query: &ConfigListQuery) -> Result<Vec<ConfigEntry>, ConfigCmdError> {
+pub fn config_list(
+    workspace_root: Option<&Path>,
+    query: &ConfigListQuery,
+) -> Result<crate::Warned<Vec<ConfigEntry>>, ConfigCmdError> {
     list_with(&ConfigEnv::from_env(), workspace_root, query)
 }
 
@@ -423,12 +431,14 @@ pub fn config_gc_list() -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
 
 /// `jj config gc`, half 2: deletes those of `dirs` that are still missing repo config
 /// directories; every other request, and every per-directory failure, rides
-/// [`ConfigGcResult::failed`] (the CLI warns and continues).
+/// [`ConfigGcResult::failed`]. A directory that could not be DELETED also warns
+/// `jj.config_gc_delete_failed` (the CLI's "Failed to delete …", `gc.rs:80-84`, Story 9.32); a
+/// request that is not a missing repo config directory has no CLI counterpart and is data only.
 ///
 /// # Errors
 ///
 /// As [`config_gc_list`].
-pub fn config_gc_delete(dirs: &[PathBuf]) -> Result<ConfigGcResult, ConfigCmdError> {
+pub fn config_gc_delete(dirs: &[PathBuf]) -> Result<crate::Warned<ConfigGcResult>, ConfigCmdError> {
     gc_delete_with(&ConfigEnv::from_env(), dirs)
 }
 
@@ -661,15 +671,11 @@ fn list_with(
     env: &ConfigEnv,
     root: Option<&Path>,
     query: &ConfigListQuery,
-) -> Result<Vec<ConfigEntry>, ConfigCmdError> {
+) -> Result<crate::Warned<Vec<ConfigEntry>>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     let settings = startup(env, ws.as_ref(), "config list")?;
-    let prefix = query
-        .name
-        .as_deref()
-        .map(parse_name)
-        .transpose()?
-        .unwrap_or_else(ConfigNamePathBuf::root);
+    let name = query.name.as_deref().map(parse_name).transpose()?;
+    let prefix = name.clone().unwrap_or_else(ConfigNamePathBuf::root);
     let mut values = resolved_config_values(settings.config(), &prefix);
     // The default layer could be excluded beforehand, but not the scope filter: shadowing is
     // computed over every layer first (the CLI's own note).
@@ -681,7 +687,17 @@ fn list_with(
     if !query.include_overridden {
         values.retain(|v| !v.is_overridden);
     }
-    Ok(values
+    let warnings = if values.is_empty() {
+        // The CLI's note on stderr explaining why the output is empty (`list.rs:116-123`).
+        let message = name.map_or_else(
+            || "No config to list.".to_owned(),
+            |name| format!("No matching config key for: {name}"),
+        );
+        vec![crate::warning::local(crate::WarningKind::ConfigNothingListed, message)]
+    } else {
+        Vec::new()
+    };
+    let value = values
         .into_iter()
         .map(|v| ConfigEntry {
             name: v.name.to_string(),
@@ -690,7 +706,8 @@ fn list_with(
             path: v.path,
             overridden: v.is_overridden,
         })
-        .collect())
+        .collect();
+    Ok(crate::Warned { value, warnings })
 }
 
 fn get_with(env: &ConfigEnv, root: Option<&Path>, name: &str) -> Result<String, ConfigCmdError> {
@@ -736,6 +753,7 @@ fn set_with(
     path: Option<&Path>,
 ) -> ConfigSetOutcome {
     let mut precondition = None;
+    let mut warnings = Vec::new();
     let result = (|| -> Result<ConfigSetResult, ConfigCmdError> {
         let ws = resolve_workspace(root)?;
         startup(env, ws.as_ref(), "config set")?;
@@ -743,10 +761,21 @@ fn set_with(
         let value = parse_value_or_bare_string(value_text)?;
         let file_path = select_file(env, ws.as_ref(), scope, path)?;
         let working_copy_author = if let (Some(field), Some(ws)) = (author_field(&name), &ws) {
-            check_wc_author(&ws.workspace_root, field, &value, &mut precondition)
+            check_wc_author(&ws.workspace_root, field, &value, (&mut precondition, &mut warnings))
         } else {
             None
         };
+        if let Some(author) = &working_copy_author {
+            // `warn_wc_author` (`cli/src/commands/config/set.rs:120-127` @ v0.44.0).
+            warnings.push(crate::warning::local(
+                crate::WarningKind::ConfigWorkingCopyAuthor,
+                format!(
+                    "This setting will only impact future commits.\nThe author of the working copy will stay \
+                     \"{} <{}>\".\nTo change the working copy author, use \"jj metaedit --update-author\".",
+                    author.name, author.email
+                ),
+            ));
+        }
         let mut file = config::load_config_file(scope.source(), &file_path)?;
         file.set_value(&name, value)
             .map_err(|e| ConfigCmdError::WouldOverwrite {
@@ -758,7 +787,11 @@ fn set_with(
             working_copy_author,
         })
     })();
-    ConfigSetOutcome { result, precondition }
+    ConfigSetOutcome {
+        result,
+        precondition,
+        warnings,
+    }
 }
 
 /// Which author field a `user.name` / `user.email` write changes.
@@ -780,15 +813,18 @@ fn author_field(name: &ConfigNamePathBuf) -> Option<AuthorField> {
 
 /// The CLI's `check_wc_author` (`cli/src/commands/config/set.rs:94-113` @ v0.44.0): load and
 /// SNAPSHOT the workspace (its `workspace_helper`; any failure → skip silently), then compare
-/// `@`'s author field with the new value — a non-string value always differs.
+/// `@`'s author field with the new value — a non-string value always differs. The snapshot's
+/// report and warnings land in `out`, on success AND on failure.
 fn check_wc_author(
     workspace_root: &Path,
     field: AuthorField,
     value: &ConfigValue,
-    precondition: &mut Option<crate::Precondition>,
+    (precondition, warnings): (&mut Option<crate::Precondition>, &mut Vec<crate::Warning>),
 ) -> Option<WorkingCopyAuthor> {
     let mut repo = crate::Repo::open(workspace_root).ok()?;
-    let Ok(report) = repo.snapshot() else {
+    let snapshot = repo.snapshot();
+    *warnings = repo.take_warnings();
+    let Ok(report) = snapshot else {
         *precondition = repo.take_precondition();
         return None;
     };
@@ -940,16 +976,23 @@ fn gc_list_with(env: &ConfigEnv) -> Result<Vec<MissingRepoConfig>, ConfigCmdErro
     find_missing_repo_configs(&gc_root(env)?)
 }
 
-fn gc_delete_with(env: &ConfigEnv, dirs: &[PathBuf]) -> Result<ConfigGcResult, ConfigCmdError> {
+fn gc_delete_with(env: &ConfigEnv, dirs: &[PathBuf]) -> Result<crate::Warned<ConfigGcResult>, ConfigCmdError> {
     let missing = find_missing_repo_configs(&gc_root(env)?)?;
     let mut result = ConfigGcResult::default();
+    let mut warnings = Vec::new();
     for m in missing.iter().filter(|m| dirs.contains(&m.config_dir)) {
         match secure_config::remove_repo_config_dir(&m.config_dir) {
             Ok(()) => result.deleted.push(m.config_dir.clone()),
-            Err(e) => result.failed.push(ConfigGcFailure {
-                config_dir: m.config_dir.clone(),
-                reason: e.to_string(),
-            }),
+            Err(e) => {
+                warnings.push(crate::warning::local(
+                    crate::WarningKind::ConfigGcDeleteFailed,
+                    format!("Failed to delete {}: {e}", m.config_dir.display()),
+                ));
+                result.failed.push(ConfigGcFailure {
+                    config_dir: m.config_dir.clone(),
+                    reason: e.to_string(),
+                });
+            }
         }
     }
     for dir in dirs.iter().filter(|d| !missing.iter().any(|m| &m.config_dir == *d)) {
@@ -958,7 +1001,10 @@ fn gc_delete_with(env: &ConfigEnv, dirs: &[PathBuf]) -> Result<ConfigGcResult, C
             reason: "not a missing repo config directory".to_owned(),
         });
     }
-    Ok(result)
+    Ok(crate::Warned {
+        value: result,
+        warnings,
+    })
 }
 
 #[cfg(test)]
@@ -1215,7 +1261,7 @@ mod tests {
             .result
             .expect("repo set");
 
-        let rows = list_with(&env, Some(&root), &query()).unwrap();
+        let rows = list_with(&env, Some(&root), &query()).unwrap().value;
         for (name, value, source) in [
             ("ui.editor", "\"vi\"", ConfigValueSource::EnvBase),
             ("user.name", "\"x\"", ConfigValueSource::EnvOverrides),
@@ -1232,14 +1278,14 @@ mod tests {
             include_overridden: true,
             ..query()
         };
-        let with_overridden = list_with(&env, Some(&root), &with_overridden).unwrap();
+        let with_overridden = list_with(&env, Some(&root), &with_overridden).unwrap().value;
         assert!(names(&with_overridden).contains(&("user.email", "'user@x'", ConfigValueSource::User, true)));
 
         let defaults = ConfigListQuery {
             include_defaults: true,
             ..query()
         };
-        let defaults = list_with(&env, Some(&root), &defaults).unwrap();
+        let defaults = list_with(&env, Some(&root), &defaults).unwrap().value;
         assert!(defaults.iter().any(|r| r.source == ConfigValueSource::Default));
 
         let repo_only = ConfigListQuery {
@@ -1247,7 +1293,7 @@ mod tests {
             include_defaults: true,
             ..query()
         };
-        let repo_only = list_with(&env, Some(&root), &repo_only).unwrap();
+        let repo_only = list_with(&env, Some(&root), &repo_only).unwrap().value;
         assert_eq!(
             names(&repo_only),
             [("user.email", "\"repo@x\"", ConfigValueSource::Repo, false)]
@@ -1262,10 +1308,22 @@ mod tests {
             ..query()
         };
         let prefixed = list_with(&env, Some(&root), &prefixed).unwrap();
+        assert!(prefixed.warnings.is_empty(), "{:?}", prefixed.warnings);
         assert_eq!(
-            names(&prefixed),
+            names(&prefixed.value),
             [("revsets.log", "'@'", ConfigValueSource::User, false)]
         );
+
+        // Story 9.32: a prefix matching nothing warns with the CLI's note.
+        let nothing = ConfigListQuery {
+            name: Some("nope".to_owned()),
+            ..query()
+        };
+        let nothing = list_with(&env, Some(&root), &nothing).unwrap();
+        assert!(nothing.value.is_empty());
+        assert_eq!(nothing.warnings.len(), 1, "{:?}", nothing.warnings);
+        assert_eq!(nothing.warnings[0].kind, crate::WarningKind::ConfigNothingListed);
+        assert_eq!(nothing.warnings[0].message, "No matching config key for: nope");
 
         let bad = ConfigListQuery {
             name: Some("a..b".to_owned()),
@@ -1534,7 +1592,7 @@ mod tests {
             scope: Some(ConfigScope::Repo),
             ..query()
         };
-        let rows = list_with(&env, Some(&root), &repo_only).unwrap();
+        let rows = list_with(&env, Some(&root), &repo_only).unwrap().value;
         assert_eq!(names(&rows), [("user.name", "'R'", ConfigValueSource::Repo, false)]);
 
         let default_user = user_file(tmp.path());
@@ -1584,12 +1642,23 @@ mod tests {
         assert_eq!(dirs, expected);
         assert!(missing.iter().all(|m| m.repo_path.ends_with(".jj/repo")));
 
-        let result = gc_delete_with(&env, &[kept.clone(), gone.clone(), busy.clone()]).unwrap();
+        let crate::Warned {
+            value: result,
+            warnings,
+        } = gc_delete_with(&env, &[kept.clone(), gone.clone(), busy.clone()]).unwrap();
         assert_eq!(result.deleted, std::slice::from_ref(&gone));
         let failed: Vec<&Path> = result.failed.iter().map(|f| f.config_dir.as_path()).collect();
         assert_eq!(failed, [busy.as_path(), kept.as_path()]);
         assert_eq!(result.failed[1].reason, "not a missing repo config directory");
         assert!(!gone.exists() && busy.exists() && kept.exists());
+        // Story 9.32: only the REAL delete failure warns (the CLI's "Failed to delete …"); the
+        // not-missing request has no CLI counterpart and stays data.
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].kind, crate::WarningKind::ConfigGcDeleteFailed);
+        assert_eq!(
+            warnings[0].message,
+            format!("Failed to delete {}: {}", busy.display(), result.failed[0].reason)
+        );
     }
 
     #[test]
@@ -1640,7 +1709,7 @@ mod tests {
              [[--scope]]\n--when.commands = [\"log\"]\nfoo.baz = 2\n",
         );
         assert_eq!(get_with(&env, None, "foo.bar").unwrap(), "1");
-        let rows = list_with(&env, None, &query()).unwrap();
+        let rows = list_with(&env, None, &query()).unwrap().value;
         assert!(rows.iter().any(|r| r.name == "foo.bar"));
         assert!(rows.iter().all(|r| r.name != "foo.baz"));
     }

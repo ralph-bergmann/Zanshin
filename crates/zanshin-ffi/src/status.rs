@@ -23,12 +23,12 @@ fn map_status_err(e: StatusError) -> FfiErrorObj {
     match e {
         StatusError::Precondition(e) => map_precondition_err(e),
         StatusError::NoWorkingCopy => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_NO_WORKING_COPY.to_owned(),
             context: None,
         },
         StatusError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -74,7 +74,7 @@ pub(crate) fn file_changes_vector<'a>(
 }
 
 /// Serialise `&Status` into a finished `FlatBuffers` `Envelope<Status>` buffer.
-fn status_to_envelope(status: &Status, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn status_to_envelope(status: &Status, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
 
     // 1)+2) Build the FileChange vector, then the two change-id strings.
@@ -93,7 +93,7 @@ fn status_to_envelope(status: &Status, precondition: Option<&zanshin_jj::Precond
     );
 
     // 4) Envelope — plain finish (NOT size-prefixed; length rides in ZanshinBuf.len).
-    finish_envelope(b, fbs::Payload::Status, Some(status_off.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::Status, Some(status_off.as_union_value()), report)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ mod tests {
             parent_change_id: ChangeId("zzzzzzzz".to_owned()),
         };
 
-        let buf = status_to_envelope(&status, None);
+        let buf = status_to_envelope(&status, &crate::envelope::CallReport::default());
         let env = fb_root::<fbs::Envelope>(&buf).expect("Verifier must pass");
 
         assert!(env.ok(), "envelope ok must be true");

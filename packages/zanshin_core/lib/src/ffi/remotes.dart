@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
@@ -50,17 +51,18 @@ final class Remote {
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
 
-/// Decode a `Remotes` `Envelope` buffer into a list of [Remote]s.
+/// Decode a `Remotes` `Envelope` buffer into a list of [Remote]s that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls
 /// go through `ZanshinWorker.remotes`.
 @visibleForTesting
-List<Remote> decodeRemotesEnvelope(Uint8List bytes) => _decodeRemotesEnvelope(bytes);
+WarnedList<Remote> decodeRemotesEnvelope(Uint8List bytes) => _decodeRemotesEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<Remote> decodeRemotesEnvelopeInternal(Uint8List bytes) => _decodeRemotesEnvelope(bytes);
+WarnedList<Remote> decodeRemotesEnvelopeInternal(Uint8List bytes) => _decodeRemotesEnvelope(bytes);
 
-List<Remote> _decodeRemotesEnvelope(Uint8List bytes) {
+WarnedList<Remote> _decodeRemotesEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
     final fbs.FfiError? e = env.error;
@@ -73,7 +75,7 @@ List<Remote> _decodeRemotesEnvelope(Uint8List bytes) {
       'expected Remotes payload, got ${env.dataType}',
     );
   }
-  return payload.remotes?.map(_mapRemote).toList() ?? const [];
+  return WarnedList(payload.remotes?.map(_mapRemote).toList() ?? const [], decodeEnvelopeWarningsInternal(env));
 }
 
 Remote _mapRemote(fbs.Remote r) => Remote(

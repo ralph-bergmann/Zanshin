@@ -133,7 +133,7 @@ pub(crate) fn build_snapshot_stats<'a>(
 }
 
 /// Serialise a [`TrackResult`] into a finished `Envelope<TrackResult>` buffer.
-fn track_result_to_envelope(r: &TrackResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn track_result_to_envelope(r: &TrackResult, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let stats = build_snapshot_stats(&mut b, &r.snapshot_stats);
@@ -145,11 +145,11 @@ fn track_result_to_envelope(r: &TrackResult, precondition: Option<&zanshin_jj::P
             snapshot_stats: Some(stats),
         },
     );
-    finish_envelope(b, fbs::Payload::TrackResult, Some(table.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::TrackResult, Some(table.as_union_value()), report)
 }
 
 /// Serialise an [`UntrackResult`] into a finished `Envelope<UntrackResult>` buffer.
-fn untrack_result_to_envelope(r: &UntrackResult, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn untrack_result_to_envelope(r: &UntrackResult, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
     let mutation = build_mutation_result(&mut b, &r.mutation);
     let unmatched: Vec<_> = r.unmatched_paths.iter().map(|p| b.create_string(p)).collect();
@@ -168,12 +168,7 @@ fn untrack_result_to_envelope(r: &UntrackResult, precondition: Option<&zanshin_j
             failed_tags: Some(tags),
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::UntrackResult,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::UntrackResult, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────

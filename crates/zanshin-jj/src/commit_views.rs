@@ -382,11 +382,12 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn show(
     repo: &crate::Repo,
+    sink: &mut crate::warning::Warnings,
     revset: Option<&str>,
     limit: Option<usize>,
 ) -> Result<Vec<ShowEntry>, CommitViewError> {
     // Parse first: a syntax error costs no `load_at_head` I/O (the `eval_revset` ordering).
-    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@")).map_err(rev)?;
+    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
 
     // Re-resolve to head ONCE (ADR-0002); every read below is taken from this snapshot.
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
@@ -435,10 +436,11 @@ pub(crate) fn show(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn evolog(
     repo: &crate::Repo,
+    sink: &mut crate::warning::Warnings,
     revset: Option<&str>,
     limit: Option<usize>,
 ) -> Result<Vec<EvologEntry>, CommitViewError> {
-    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@")).map_err(rev)?;
+    let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
 
     // Start set: commit ids, not change ids — `walk_predecessors` walks the operation log by
@@ -501,6 +503,10 @@ pub(crate) fn evolog(
 /// reports whether that rebased tree is conflicted; the change list is still returned, because a
 /// conflicted base is a fact about the comparison, not a refusal.
 ///
+/// An explicitly named path absent from all four trees the CLI checks (both sides and both
+/// parent trees, to account for deletions) warns `jj.paths_unmatched` before the diff
+/// (`interdiff.rs:99-110`, Story 9.32).
+///
 /// # Errors
 ///
 /// - [`CommitViewError::InvalidInput`] — BOTH `from` and `to` are absent, a `paths` entry is
@@ -516,6 +522,7 @@ pub(crate) fn evolog(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn interdiff(
     workspace: &Workspace,
+    sink: &mut crate::warning::Warnings,
     from: Option<&RevisionRef>,
     to: Option<&RevisionRef>,
     paths: &[String],
@@ -533,6 +540,21 @@ pub(crate) fn interdiff(
     let name = workspace.workspace_name();
     let from_commit = resolve_side(repo_dyn, name, from)?;
     let to_commit = resolve_side(repo_dyn, name, to)?;
+    let explicit =
+        crate::op_support::parse_prefixes(paths).map_err(|reason| CommitViewError::InvalidInput { reason })?;
+    let parent_trees = pollster::block_on(async {
+        Ok::<_, CommitViewError>((
+            from_commit.parent_tree(repo_dyn).await.map_err(be)?,
+            to_commit.parent_tree(repo_dyn).await.map_err(be)?,
+        ))
+    })?;
+    crate::warning::warn_unmatched_paths(
+        sink,
+        workspace.workspace_root(),
+        &explicit,
+        &[&parent_trees.0, &from_commit.tree(), &parent_trees.1, &to_commit.tree()],
+    )
+    .map_err(be)?;
 
     pollster::block_on(async {
         let from_tree =

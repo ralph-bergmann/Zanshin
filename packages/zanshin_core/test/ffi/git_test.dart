@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/git.dart';
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
 /// A literal NUL (U+0000), the character every adapter must refuse in a
@@ -59,7 +60,6 @@ void main() {
             newChangeIds: const <String>[],
             abandonedChangeIds: const <String>[],
             workingCopyChangeId: 'qpvuntsm',
-            identityMissing: fbs.IdentityMissingObjectBuilder(name: false, email: true),
           ),
           changedBookmarks: [
             fbs.GitRefUpdateObjectBuilder(
@@ -88,14 +88,21 @@ void main() {
           // The reserved-namespace case the CLI hints about.
           failedRefNames: ['refs/remotes/git/stolen'],
         ),
+        warnings: [
+          fbs.WarningObjectBuilder(
+            code: ZanshinWarningCode.gitImportFailed,
+            message: 'Failed to import some Git refs:\n  refs/remotes/git/stolen',
+          ),
+        ],
       ).toBytes();
 
       final GitImportResult result = decodeGitImportResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, equals('op99'));
       expect(result.mutation.workingCopyChangeId, equals('qpvuntsm'));
-      expect(result.mutation.identityMissing?.name, isFalse);
-      expect(result.mutation.identityMissing?.email, isTrue);
+      expect(result.warnings.single.code, equals('jj.git_import_failed'));
+      expect(result.warnings.single.message, equals('Failed to import some Git refs:\n  refs/remotes/git/stolen'));
+      expect(result.mutation.warnings, isEmpty, reason: 'a nested payload carries no warnings of its own');
       expect(result.changedBookmarks.map((u) => u.name), equals(['main', 'feature']));
       expect(result.changedBookmarks.first.remote, equals('origin'));
       expect(result.changedBookmarks.first.kind, equals(GitRefUpdateKind.created));
@@ -120,7 +127,7 @@ void main() {
       final GitImportResult result = decodeGitImportResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, isEmpty);
-      expect(result.mutation.identityMissing, isNull, reason: 'an absent table decodes as null');
+      expect(result.warnings, isEmpty, reason: 'an absent warnings vector reads as []');
       expect(result.changedBookmarks, isEmpty);
       expect(result.changedTags, isEmpty);
       expect(result.abandonedChangeIds, isEmpty);
@@ -168,7 +175,6 @@ void main() {
             newChangeIds: const <String>[],
             abandonedChangeIds: const <String>[],
             workingCopyChangeId: 'qpvuntsm',
-            identityMissing: fbs.IdentityMissingObjectBuilder(name: true, email: true),
           ),
           failedBookmarks: [
             fbs.GitExportFailureObjectBuilder(
@@ -179,13 +185,19 @@ void main() {
           ],
           failedTags: const <fbs.GitExportFailureObjectBuilder>[],
         ),
+        warnings: [
+          fbs.WarningObjectBuilder(
+            code: ZanshinWarningCode.gitExportFailed,
+            message: 'Failed to export some bookmarks:\n  foo/bar@git: Failed to set: reference already exists',
+          ),
+        ],
       ).toBytes();
 
       final GitExportResult result = decodeGitExportResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, equals('op7'));
-      expect(result.mutation.identityMissing?.name, isTrue);
-      expect(result.mutation.identityMissing?.email, isTrue);
+      expect(result.warnings.map((w) => w.code), equals(['jj.git_export_failed']));
+      expect(result.mutation.warnings, isEmpty);
       expect(result.failedBookmarks, hasLength(1));
       expect(result.failedBookmarks.single.name, equals('foo/bar'));
       expect(result.failedBookmarks.single.remote, equals('git'));

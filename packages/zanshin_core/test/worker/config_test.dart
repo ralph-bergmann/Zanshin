@@ -90,7 +90,7 @@ void main() {
       expect(identity.precondition, isNotNull, reason: 'the CLI check_wc_author snapshot');
       expect(identity.workingCopyAuthor?.name, 'Zanshin');
 
-      expect(await worker.configGet('revsets.log', workspaceRoot: root), '@');
+      expect((await worker.configGet('revsets.log', workspaceRoot: root)).value, '@');
       // `user.name` is shadowed by the pinned `JJ_USER` (EnvOverrides), hence includeOverridden.
       final List<ConfigEntry> rows = await worker.configList(
         workspaceRoot: root,
@@ -100,7 +100,7 @@ void main() {
       expect(rows.map((r) => r.name), containsAll(['revsets.log', 'user.name']));
       expect(rows.every((r) => r.source == ConfigValueSource.repo && r.path == file), isTrue);
 
-      expect(await worker.configUnset(ConfigScope.repo, 'revsets.log', workspaceRoot: root, path: file), file);
+      expect((await worker.configUnset(ConfigScope.repo, 'revsets.log', workspaceRoot: root, path: file)).path, file);
       await expectLater(
         worker.configUnset(ConfigScope.repo, 'nope', workspaceRoot: root),
         ffiError('jj.config_not_found'),
@@ -113,8 +113,13 @@ void main() {
         worker.configFileWrite(file, '[user\nname = ', workspaceRoot: root),
         ffiError('jj.config_parse_error'),
       );
-      await worker.configFileWrite(file, "revsets.log = 'root()'\n", workspaceRoot: root);
-      expect(await worker.configGet('revsets.log', workspaceRoot: root), 'root()');
+      final ConfigFileWriteResult written = await worker.configFileWrite(
+        file,
+        "revsets.log = 'root()'\n",
+        workspaceRoot: root,
+      );
+      expect(written.warnings, isEmpty);
+      expect((await worker.configGet('revsets.log', workspaceRoot: root)).value, 'root()');
     });
 
     test('user_scope_has_no_path_under_the_pinned_env', () async {

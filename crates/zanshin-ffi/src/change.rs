@@ -26,12 +26,12 @@ fn map_change_err(e: ChangeError) -> FfiErrorObj {
     match e {
         ChangeError::Precondition(e) => map_precondition_err(e),
         ChangeError::NotFound { id } => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
         },
         ChangeError::Backend(reason) => FfiErrorObj {
-            precondition: None,
+            report: None,
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -118,11 +118,11 @@ pub(crate) fn change_offset<'a>(
 }
 
 /// Serialise `&Change` into a finished `FlatBuffers` `Envelope<Change>` buffer.
-fn change_to_envelope(change: &Change, precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn change_to_envelope(change: &Change, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let change_off = change_offset(&mut b, change);
 
-    finish_envelope(b, fbs::Payload::Change, Some(change_off.as_union_value()), precondition)
+    finish_envelope(b, fbs::Payload::Change, Some(change_off.as_union_value()), report)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ mod tests {
             false, // is_anonymous
         );
 
-        let buf = change_to_envelope(&change, None);
+        let buf = change_to_envelope(&change, &crate::envelope::CallReport::default());
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
 
         assert!(env.ok(), "envelope ok must be true");
@@ -289,7 +289,7 @@ mod tests {
             true,  // is_anonymous
         );
 
-        let buf = change_to_envelope(&change, None);
+        let buf = change_to_envelope(&change, &crate::envelope::CallReport::default());
         let env = fb_root::<fbs::Envelope>(&buf).expect("FlatBuffers Verifier must pass");
         assert!(env.ok());
 

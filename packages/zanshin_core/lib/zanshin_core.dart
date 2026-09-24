@@ -11,15 +11,20 @@ export 'src/ffi/config.dart'
     show
         ConfigEntry,
         ConfigFileText,
+        ConfigFileWriteResult,
         ConfigGcFailure,
         ConfigGcResult,
+        ConfigGetResult,
         ConfigScope,
         ConfigSetResult,
+        ConfigUnsetResult,
         ConfigValueSource,
         MissingRepoConfig,
         WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
+export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
+export 'src/ffi/workspace.dart' show WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;

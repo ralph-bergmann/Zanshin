@@ -84,10 +84,12 @@ void main() {
     test('workspace_root_defaults_to_the_current_workspace', () async {
       final RepoHandle handle = await worker.initRepo(repoPath, backend: 0);
 
-      final String root = await handle.workspaceRoot();
+      final WorkspaceRootResult root = await handle.workspaceRoot();
+
+      expect(root.warnings, isEmpty, reason: 'nothing to warn about on a fresh repo');
 
       expect(
-        Directory(root).resolveSymbolicLinksSync(),
+        Directory(root.path).resolveSymbolicLinksSync(),
         tempDir.resolveSymbolicLinksSync(),
       );
 
@@ -119,8 +121,8 @@ void main() {
       // The current workspace's OWN name goes through the store, so it succeeds
       // here (the path was just recorded) - the name still had to cross.
       expect(
-        await handle.workspaceRoot(name: 'default'),
-        await handle.workspaceRoot(),
+        (await handle.workspaceRoot(name: 'default')).path,
+        (await handle.workspaceRoot()).path,
         reason: 'the named and default paths agree when the recorded path resolves',
       );
 
@@ -170,7 +172,7 @@ void main() {
       );
 
       // (c) the no-name path reads the loader alone, so it still answers.
-      expect(await handle.workspaceRoot(), isNotEmpty);
+      expect((await handle.workspaceRoot()).path, isNotEmpty);
 
       await handle.close();
     });

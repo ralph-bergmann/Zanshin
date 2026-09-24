@@ -162,7 +162,7 @@ pub(crate) fn watcher_event_to_envelope(session_id: u64, event: &WatcherEvent) -
         b,
         fbs::Payload::WatcherEvent,
         Some(watcher_event.as_union_value()),
-        None,
+        &crate::envelope::CallReport::default(),
     )
 }
 
@@ -188,7 +188,12 @@ pub(crate) fn progress_to_envelope(session_id: u64, operation: &str, progress: f
             message: Some(message_off),
         },
     );
-    finish_envelope(b, fbs::Payload::Progress, Some(progress_table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::Progress,
+        Some(progress_table.as_union_value()),
+        &crate::envelope::CallReport::default(),
+    )
 }
 
 #[cfg(test)]

@@ -24,6 +24,7 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     Backend, ChangeId, PreconditionError, Repo, RevisionRef, StaleCause, StatusError, UntrackedPath, UntrackedReason,
+    WarningKind,
 };
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
@@ -130,6 +131,7 @@ fn a_clean_tree_writes_no_operation() {
     assert!(!report.git_head_imported);
     assert!(report.finish.is_none());
     assert_eq!(raw_ops(&fx.root).len(), before);
+    assert!(repo.take_warnings().is_empty(), "a clean call warns about nothing");
 }
 
 /// "File edited outside Zanshin (non-colocated)": one `snapshot working copy` operation, flagged
@@ -178,6 +180,15 @@ fn a_new_file_over_the_limit_stays_untracked_and_writes_nothing() {
         }]
     );
     assert_eq!(raw_ops(&fx.root).len(), before);
+    // Story 9.32: `print_snapshot_stats`' warning, verbatim minus heading and hint; the typed
+    // stats above stay the data.
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::SnapshotFilesRefused);
+    assert_eq!(
+        warnings[0].message,
+        "Refused to snapshot some files:\n  big.bin: 20.0B (20 bytes); the maximum size allowed is 10.0B (10 bytes)"
+    );
 }
 
 /// "`snapshot.auto-track = "none()"`": a new file stays untracked as `FileNotAutoTracked`.
@@ -198,6 +209,10 @@ fn auto_track_none_leaves_a_new_file_untracked() {
         }]
     );
     assert_eq!(raw_ops(&fx.root).len(), before);
+    assert!(
+        repo.take_warnings().is_empty(),
+        "a file that is merely not auto-tracked is never warned about (`build_untracked_reason_message`)"
+    );
 }
 
 /// "`@` immutable": the snapshot creates a NEW commit on top of `@` instead of rewriting it.
@@ -210,7 +225,13 @@ fn an_immutable_at_gets_a_new_commit_on_top() {
 
     let report = repo.snapshot().expect("snapshot");
 
-    assert!(report.working_copy_immutable_new_commit);
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::WorkingCopyImmutable);
+    assert_eq!(
+        warnings[0].message,
+        "The working-copy commit is immutable; a new commit has been created on top of it."
+    );
     let new_at = at_commit(&fx.root);
     assert_ne!(new_at.id(), old_at.id());
     assert_eq!(
@@ -301,6 +322,7 @@ fn workspace_root_and_log_defaults_never_snapshot() {
 
     assert_eq!(raw_ops(&fx.root).len(), before, "no precondition ran");
     assert!(repo.take_precondition().is_none(), "and none left a report");
+    assert!(repo.take_warnings().is_empty(), "nor any warning");
     assert!(at_paths(&fx.root).is_empty());
 }
 
@@ -374,9 +396,14 @@ fn a_jjconflict_entry_is_not_reported_outside_a_colocated_workspace() {
     let mut repo = Repo::open(&fx.root).expect("open");
     write(&fx.root, ".jjconflict-base-0", "x");
 
-    let report = repo.snapshot().expect("snapshot");
+    repo.snapshot().expect("snapshot");
 
-    assert!(!report.jjconflict_files_present);
+    assert!(
+        repo.take_warnings()
+            .iter()
+            .all(|w| w.kind != WarningKind::JjconflictFilesPresent),
+        "the `.jjconflict` warning is colocated-only"
+    );
 }
 
 // ── Stale working copies ─────────────────────────────────────────────────────────

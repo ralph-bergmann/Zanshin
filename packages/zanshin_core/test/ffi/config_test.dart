@@ -49,7 +49,7 @@ void main() {
     expect(
       decodeConfigGetEnvelopeInternal(
         ok(fbs.PayloadTypeId.ConfigGetResult, fbs.ConfigGetResultObjectBuilder(value: 'A B')),
-      ),
+      ).value,
       'A B',
     );
     expect(
@@ -61,7 +61,7 @@ void main() {
     expect(
       decodeConfigUnsetEnvelopeInternal(
         ok(fbs.PayloadTypeId.ConfigUnsetResult, fbs.ConfigUnsetResultObjectBuilder(path: '/f')),
-      ),
+      ).path,
       '/f',
     );
     final ConfigFileText text = decodeConfigFileTextEnvelopeInternal(
@@ -88,7 +88,7 @@ void main() {
     );
     expect(gc.deleted, ['/d']);
     expect((gc.failed.single.configDir, gc.failed.single.reason), ('/f', 'why'));
-    decodeConfigFileWriteEnvelopeInternal(ok(fbs.PayloadTypeId.NONE, null));
+    expect(decodeConfigFileWriteEnvelopeInternal(ok(fbs.PayloadTypeId.NONE, null)).warnings, isEmpty);
   });
 
   test('set carries the working-copy author and the precondition, both null for absence', () {

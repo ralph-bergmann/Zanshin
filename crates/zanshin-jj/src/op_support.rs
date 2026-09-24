@@ -84,9 +84,10 @@ use crate::revset::{immutable_expression, resolve_expression, revset_config};
 pub(crate) fn immutable_user_expression(
     workspace: &Workspace,
     config: &StackedConfig,
+    sink: &mut crate::warning::Warnings,
 ) -> Result<Arc<UserRevsetExpression>, MutateError> {
-    let parse_config = revset_config(config).map_err(cfg)?;
-    immutable_expression(workspace, &parse_config).map_err(cfg)
+    let parse_config = revset_config(config, sink).map_err(cfg)?;
+    immutable_expression(workspace, &parse_config, sink).map_err(cfg)
 }
 
 /// Resolves the immutable expression's symbols against `repo`.
@@ -643,11 +644,20 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
     if paths.is_empty() {
         return Ok(Box::new(jj_lib::matchers::EverythingMatcher));
     }
-    let mut prefixes = Vec::with_capacity(paths.len());
-    for path in paths {
-        prefixes.push(RepoPathBuf::from_internal_string(path.clone()).map_err(|e| format!("invalid path: {e}"))?);
-    }
-    Ok(Box::new(jj_lib::matchers::PrefixMatcher::new(prefixes)))
+    Ok(Box::new(jj_lib::matchers::PrefixMatcher::new(parse_prefixes(paths)?)))
+}
+
+/// The entries of `paths` as repo paths — [`build_matcher`]'s prefixes, and the EXPLICIT paths
+/// the CLI's `print_unmatched_explicit_paths` checks (Story 9.32). Empty for an empty list.
+///
+/// # Errors
+///
+/// As [`build_matcher`].
+pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, String> {
+    paths
+        .iter()
+        .map(|path| RepoPathBuf::from_internal_string(path.clone()).map_err(|e| format!("invalid path: {e}")))
+        .collect()
 }
 
 // ── §6 Transaction opening ────────────────────────────────────────────────────────
@@ -729,7 +739,8 @@ mod tests {
     fn immutable_at_head(path: &Path) -> (Arc<ReadonlyRepo>, Arc<ResolvedRevsetExpression>) {
         let repo = Repo::open(path).expect("fixture opens");
         let config = crate::config::load(&repo).expect("config loads");
-        let expr = immutable_user_expression(repo.workspace(), &config).expect("builtin immutable_heads() parses");
+        let expr = immutable_user_expression(repo.workspace(), &config, &mut crate::warning::Warnings::default())
+            .expect("builtin immutable_heads() parses");
         let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head");
         let resolved = resolve_immutable(readonly.as_ref(), &expr).expect("immutable set resolves");
         (readonly, resolved)

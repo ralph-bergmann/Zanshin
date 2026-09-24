@@ -10752,8 +10752,7 @@ pub mod zanshin {
             pub const VT_NEW_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
             pub const VT_ABANDONED_CHANGE_IDS: ::flatbuffers::VOffsetT = 8;
             pub const VT_WORKING_COPY_CHANGE_ID: ::flatbuffers::VOffsetT = 10;
-            pub const VT_IDENTITY_MISSING: ::flatbuffers::VOffsetT = 12;
-            pub const VT_FINISH: ::flatbuffers::VOffsetT = 14;
+            pub const VT_FINISH: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -10767,9 +10766,6 @@ pub mod zanshin {
                 let mut builder = MutationResultBuilder::new(_fbb);
                 if let Some(x) = args.finish {
                     builder.add_finish(x);
-                }
-                if let Some(x) = args.identity_missing {
-                    builder.add_identity_missing(x);
                 }
                 if let Some(x) = args.working_copy_change_id {
                     builder.add_working_copy_change_id(x);
@@ -10830,25 +10826,12 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(MutationResult::VT_WORKING_COPY_CHANGE_ID, None)
                 }
             }
-            /// Which identity fields were empty when this call committed an operation — the jj CLI's
-            /// "Name and email not configured" warning as a fact (Story 9.27). ABSENT when both are
-            /// configured and on every call that committed nothing; the UI turns a present value into
-            /// the "set your identity" prompt. Never a refusal.
-            #[inline]
-            pub fn identity_missing(&self) -> Option<IdentityMissing<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<IdentityMissing>>(
-                        MutationResult::VT_IDENTITY_MISSING,
-                        None,
-                    )
-                }
-            }
-            /// What the CLI's `finish_transaction` reported while committing this call's operation
-            /// (Story 9.26). ABSENT when every fact is at its default — always on a call that committed
-            /// nothing, and for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it.
+            /// The refs the colocated export could not write while the CLI's `finish_transaction`
+            /// committed this call's operation (Story 9.26) — the data behind its `jj.git_export_failed`
+            /// warnings. ABSENT when both lists are empty — always on a call that committed nothing, and
+            /// for `zanshin_file_track` / `zanshin_file_untrack`, which never reach it. The finish's other
+            /// facts (an empty identity, a `@` that became immutable, a Git HEAD that could not be reset,
+            /// skipped checkout files) ride `Envelope.warnings` only (Story 9.32).
             #[inline]
             pub fn finish(&self) -> Option<FinishFacts<'a>> {
                 // Safety:
@@ -10872,7 +10855,6 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("new_change_ids", Self::VT_NEW_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("abandoned_change_ids", Self::VT_ABANDONED_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("working_copy_change_id", Self::VT_WORKING_COPY_CHANGE_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<IdentityMissing>>("identity_missing", Self::VT_IDENTITY_MISSING, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
      .finish();
                 Ok(())
@@ -10885,7 +10867,6 @@ pub mod zanshin {
             pub abandoned_change_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub working_copy_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub identity_missing: Option<::flatbuffers::WIPOffset<IdentityMissing<'a>>>,
             pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
         }
         impl<'a> Default for MutationResultArgs<'a> {
@@ -10896,7 +10877,6 @@ pub mod zanshin {
                     new_change_ids: None,
                     abandoned_change_ids: None,
                     working_copy_change_id: None,
-                    identity_missing: None,
                     finish: None,
                 }
             }
@@ -10942,13 +10922,6 @@ pub mod zanshin {
                 );
             }
             #[inline]
-            pub fn add_identity_missing(&mut self, identity_missing: ::flatbuffers::WIPOffset<IdentityMissing<'b>>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<IdentityMissing>>(
-                    MutationResult::VT_IDENTITY_MISSING,
-                    identity_missing,
-                );
-            }
-            #[inline]
             pub fn add_finish(&mut self, finish: ::flatbuffers::WIPOffset<FinishFacts<'b>>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<FinishFacts>>(MutationResult::VT_FINISH, finish);
@@ -10975,7 +10948,6 @@ pub mod zanshin {
                 ds.field("new_change_ids", &self.new_change_ids());
                 ds.field("abandoned_change_ids", &self.abandoned_change_ids());
                 ds.field("working_copy_change_id", &self.working_copy_change_id());
-                ds.field("identity_missing", &self.identity_missing());
                 ds.field("finish", &self.finish());
                 ds.finish()
             }
@@ -10983,12 +10955,9 @@ pub mod zanshin {
         pub enum FinishFactsOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// The colocated Git bookkeeping the CLI runs while it finishes a transaction
-        /// (`finish_transaction`, Story 9.26) — warnings there, facts here, never an error envelope.
-        /// `working_copy_became_immutable`: the transaction left `@` inside the immutable set, so a new,
-        /// empty `@` was created on top of it. `git_head_update_failed`: Git HEAD could not be moved to
-        /// `@`'s parent (a concurrent `git checkout`); the next snapshot imports the actual HEAD. The two
-        /// lists are the refs the colocated export could not write.
+        /// The refs the colocated Git export could not write while the CLI finished a transaction
+        /// (`finish_transaction`, Story 9.26) — a warning there (`jj.git_export_failed` in
+        /// `Envelope.warnings`), the data here, never an error envelope.
         pub struct FinishFacts<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -11004,10 +10973,8 @@ pub mod zanshin {
         }
 
         impl<'a> FinishFacts<'a> {
-            pub const VT_WORKING_COPY_BECAME_IMMUTABLE: ::flatbuffers::VOffsetT = 4;
-            pub const VT_GIT_HEAD_UPDATE_FAILED: ::flatbuffers::VOffsetT = 6;
-            pub const VT_EXPORT_FAILED_BOOKMARKS: ::flatbuffers::VOffsetT = 8;
-            pub const VT_EXPORT_FAILED_TAGS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_EXPORT_FAILED_BOOKMARKS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EXPORT_FAILED_TAGS: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -11025,33 +10992,9 @@ pub mod zanshin {
                 if let Some(x) = args.export_failed_bookmarks {
                     builder.add_export_failed_bookmarks(x);
                 }
-                builder.add_git_head_update_failed(args.git_head_update_failed);
-                builder.add_working_copy_became_immutable(args.working_copy_became_immutable);
                 builder.finish()
             }
 
-            #[inline]
-            pub fn working_copy_became_immutable(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(FinishFacts::VT_WORKING_COPY_BECAME_IMMUTABLE, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn git_head_update_failed(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(FinishFacts::VT_GIT_HEAD_UPDATE_FAILED, Some(false))
-                        .unwrap()
-                }
-            }
             #[inline]
             pub fn export_failed_bookmarks(
                 &self,
@@ -11087,12 +11030,6 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<bool>(
-                        "working_copy_became_immutable",
-                        Self::VT_WORKING_COPY_BECAME_IMMUTABLE,
-                        false,
-                    )?
-                    .visit_field::<bool>("git_head_update_failed", Self::VT_GIT_HEAD_UPDATE_FAILED, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitExportFailure>>,
                     >>("export_failed_bookmarks", Self::VT_EXPORT_FAILED_BOOKMARKS, false)?
@@ -11104,8 +11041,6 @@ pub mod zanshin {
             }
         }
         pub struct FinishFactsArgs<'a> {
-            pub working_copy_became_immutable: bool,
-            pub git_head_update_failed: bool,
             pub export_failed_bookmarks: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitExportFailure<'a>>>,
@@ -11121,8 +11056,6 @@ pub mod zanshin {
             #[inline]
             fn default() -> Self {
                 FinishFactsArgs {
-                    working_copy_became_immutable: false,
-                    git_head_update_failed: false,
                     export_failed_bookmarks: None,
                     export_failed_tags: None,
                 }
@@ -11134,19 +11067,6 @@ pub mod zanshin {
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
         impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FinishFactsBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_working_copy_became_immutable(&mut self, working_copy_became_immutable: bool) {
-                self.fbb_.push_slot::<bool>(
-                    FinishFacts::VT_WORKING_COPY_BECAME_IMMUTABLE,
-                    working_copy_became_immutable,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_git_head_update_failed(&mut self, git_head_update_failed: bool) {
-                self.fbb_
-                    .push_slot::<bool>(FinishFacts::VT_GIT_HEAD_UPDATE_FAILED, git_head_update_failed, false);
-            }
             #[inline]
             pub fn add_export_failed_bookmarks(
                 &mut self,
@@ -11189,126 +11109,8 @@ pub mod zanshin {
         impl ::core::fmt::Debug for FinishFacts<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("FinishFacts");
-                ds.field("working_copy_became_immutable", &self.working_copy_became_immutable());
-                ds.field("git_head_update_failed", &self.git_head_update_failed());
                 ds.field("export_failed_bookmarks", &self.export_failed_bookmarks());
                 ds.field("export_failed_tags", &self.export_failed_tags());
-                ds.finish()
-            }
-        }
-        pub enum IdentityMissingOffset {}
-        #[derive(Copy, Clone, PartialEq)]
-
-        /// `MutationResult.identity_missing`: which of `user.name` / `user.email` is empty.
-        pub struct IdentityMissing<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
-
-        impl<'a> ::flatbuffers::Follow<'a> for IdentityMissing<'a> {
-            type Inner = IdentityMissing<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
-
-        impl<'a> IdentityMissing<'a> {
-            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
-            pub const VT_EMAIL: ::flatbuffers::VOffsetT = 6;
-
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                IdentityMissing { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args IdentityMissingArgs,
-            ) -> ::flatbuffers::WIPOffset<IdentityMissing<'bldr>> {
-                let mut builder = IdentityMissingBuilder::new(_fbb);
-                builder.add_email(args.email);
-                builder.add_name(args.name);
-                builder.finish()
-            }
-
-            #[inline]
-            pub fn name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe { self._tab.get::<bool>(IdentityMissing::VT_NAME, Some(false)).unwrap() }
-            }
-            #[inline]
-            pub fn email(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe { self._tab.get::<bool>(IdentityMissing::VT_EMAIL, Some(false)).unwrap() }
-            }
-        }
-
-        impl ::flatbuffers::Verifiable for IdentityMissing<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<bool>("name", Self::VT_NAME, false)?
-                    .visit_field::<bool>("email", Self::VT_EMAIL, false)?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct IdentityMissingArgs {
-            pub name: bool,
-            pub email: bool,
-        }
-        impl<'a> Default for IdentityMissingArgs {
-            #[inline]
-            fn default() -> Self {
-                IdentityMissingArgs {
-                    name: false,
-                    email: false,
-                }
-            }
-        }
-
-        pub struct IdentityMissingBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> IdentityMissingBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_name(&mut self, name: bool) {
-                self.fbb_.push_slot::<bool>(IdentityMissing::VT_NAME, name, false);
-            }
-            #[inline]
-            pub fn add_email(&mut self, email: bool) {
-                self.fbb_.push_slot::<bool>(IdentityMissing::VT_EMAIL, email, false);
-            }
-            #[inline]
-            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> IdentityMissingBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                IdentityMissingBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<IdentityMissing<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
-
-        impl ::core::fmt::Debug for IdentityMissing<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("IdentityMissing");
-                ds.field("name", &self.name());
-                ds.field("email", &self.email());
                 ds.finish()
             }
         }
@@ -15868,12 +15670,11 @@ pub mod zanshin {
         /// snapshot`'s own flag). `snapshot_stats`: what the snapshot could not record.
         /// `git_head_imported`: an `import git head` operation was written; `git_head_reset`: the CLI's
         /// "Reset the working copy parent to the new Git HEAD." (a previous HEAD existed).
-        /// `working_copy_immutable_new_commit`: `@` was immutable, so the snapshot created a new commit
-        /// on top of it. `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape —
-        /// PRESENT exactly when the step ran (colocated workspaces), even when it changed nothing.
-        /// `jjconflict_files_present`: the colocated `.jjconflict` warning. `finish`: the Git HEAD
-        /// resets and ref exports inside the precondition, merged; ABSENT when all at their defaults.
-        /// The three rebased counts saturate at 4294967295.
+        /// `git_refs`: the `import git refs` step, in `zanshin_git_import`'s shape — PRESENT exactly when
+        /// the step ran (colocated workspaces), even when it changed nothing. `finish`: the ref exports
+        /// inside the precondition, merged; ABSENT when both lists are empty. The three rebased counts
+        /// saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
+        /// refused files, …) ride `Envelope.warnings` (Story 9.32).
         ///
         /// On an error envelope it is PARTIAL: every fact up to the failing step.
         pub struct Precondition<'a> {
@@ -15897,11 +15698,9 @@ pub mod zanshin {
             pub const VT_GIT_HEAD_RESET: ::flatbuffers::VOffsetT = 10;
             pub const VT_GIT_HEAD_REBASED: ::flatbuffers::VOffsetT = 12;
             pub const VT_SNAPSHOT_REBASED: ::flatbuffers::VOffsetT = 14;
-            pub const VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_GIT_REFS: ::flatbuffers::VOffsetT = 18;
-            pub const VT_GIT_REFS_REBASED: ::flatbuffers::VOffsetT = 20;
-            pub const VT_JJCONFLICT_FILES_PRESENT: ::flatbuffers::VOffsetT = 22;
-            pub const VT_FINISH: ::flatbuffers::VOffsetT = 24;
+            pub const VT_GIT_REFS: ::flatbuffers::VOffsetT = 16;
+            pub const VT_GIT_REFS_REBASED: ::flatbuffers::VOffsetT = 18;
+            pub const VT_FINISH: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -15925,8 +15724,6 @@ pub mod zanshin {
                 if let Some(x) = args.snapshot_stats {
                     builder.add_snapshot_stats(x);
                 }
-                builder.add_jjconflict_files_present(args.jjconflict_files_present);
-                builder.add_working_copy_immutable_new_commit(args.working_copy_immutable_new_commit);
                 builder.add_git_head_reset(args.git_head_reset);
                 builder.add_git_head_imported(args.git_head_imported);
                 builder.add_was_snapshot_taken(args.was_snapshot_taken);
@@ -15999,17 +15796,6 @@ pub mod zanshin {
                 }
             }
             #[inline]
-            pub fn working_copy_immutable_new_commit(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(Precondition::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
             pub fn git_refs(&self) -> Option<GitImportResult<'a>> {
                 // Safety:
                 // Created from valid Table for this object
@@ -16027,17 +15813,6 @@ pub mod zanshin {
                 unsafe {
                     self._tab
                         .get::<u32>(Precondition::VT_GIT_REFS_REBASED, Some(0))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn jjconflict_files_present(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(Precondition::VT_JJCONFLICT_FILES_PRESENT, Some(false))
                         .unwrap()
                 }
             }
@@ -16070,18 +15845,12 @@ pub mod zanshin {
                     .visit_field::<bool>("git_head_reset", Self::VT_GIT_HEAD_RESET, false)?
                     .visit_field::<u32>("git_head_rebased", Self::VT_GIT_HEAD_REBASED, false)?
                     .visit_field::<u32>("snapshot_rebased", Self::VT_SNAPSHOT_REBASED, false)?
-                    .visit_field::<bool>(
-                        "working_copy_immutable_new_commit",
-                        Self::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT,
-                        false,
-                    )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<GitImportResult>>(
                         "git_refs",
                         Self::VT_GIT_REFS,
                         false,
                     )?
                     .visit_field::<u32>("git_refs_rebased", Self::VT_GIT_REFS_REBASED, false)?
-                    .visit_field::<bool>("jjconflict_files_present", Self::VT_JJCONFLICT_FILES_PRESENT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
                     .finish();
                 Ok(())
@@ -16094,10 +15863,8 @@ pub mod zanshin {
             pub git_head_reset: bool,
             pub git_head_rebased: u32,
             pub snapshot_rebased: u32,
-            pub working_copy_immutable_new_commit: bool,
             pub git_refs: Option<::flatbuffers::WIPOffset<GitImportResult<'a>>>,
             pub git_refs_rebased: u32,
-            pub jjconflict_files_present: bool,
             pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
         }
         impl<'a> Default for PreconditionArgs<'a> {
@@ -16110,10 +15877,8 @@ pub mod zanshin {
                     git_head_reset: false,
                     git_head_rebased: 0,
                     snapshot_rebased: 0,
-                    working_copy_immutable_new_commit: false,
                     git_refs: None,
                     git_refs_rebased: 0,
-                    jjconflict_files_present: false,
                     finish: None,
                 }
             }
@@ -16157,14 +15922,6 @@ pub mod zanshin {
                     .push_slot::<u32>(Precondition::VT_SNAPSHOT_REBASED, snapshot_rebased, 0);
             }
             #[inline]
-            pub fn add_working_copy_immutable_new_commit(&mut self, working_copy_immutable_new_commit: bool) {
-                self.fbb_.push_slot::<bool>(
-                    Precondition::VT_WORKING_COPY_IMMUTABLE_NEW_COMMIT,
-                    working_copy_immutable_new_commit,
-                    false,
-                );
-            }
-            #[inline]
             pub fn add_git_refs(&mut self, git_refs: ::flatbuffers::WIPOffset<GitImportResult<'b>>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<GitImportResult>>(Precondition::VT_GIT_REFS, git_refs);
@@ -16173,14 +15930,6 @@ pub mod zanshin {
             pub fn add_git_refs_rebased(&mut self, git_refs_rebased: u32) {
                 self.fbb_
                     .push_slot::<u32>(Precondition::VT_GIT_REFS_REBASED, git_refs_rebased, 0);
-            }
-            #[inline]
-            pub fn add_jjconflict_files_present(&mut self, jjconflict_files_present: bool) {
-                self.fbb_.push_slot::<bool>(
-                    Precondition::VT_JJCONFLICT_FILES_PRESENT,
-                    jjconflict_files_present,
-                    false,
-                );
             }
             #[inline]
             pub fn add_finish(&mut self, finish: ::flatbuffers::WIPOffset<FinishFacts<'b>>) {
@@ -16211,13 +15960,8 @@ pub mod zanshin {
                 ds.field("git_head_reset", &self.git_head_reset());
                 ds.field("git_head_rebased", &self.git_head_rebased());
                 ds.field("snapshot_rebased", &self.snapshot_rebased());
-                ds.field(
-                    "working_copy_immutable_new_commit",
-                    &self.working_copy_immutable_new_commit(),
-                );
                 ds.field("git_refs", &self.git_refs());
                 ds.field("git_refs_rebased", &self.git_refs_rebased());
-                ds.field("jjconflict_files_present", &self.jjconflict_files_present());
                 ds.field("finish", &self.finish());
                 ds.finish()
             }
@@ -17759,6 +17503,138 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum WarningOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
+        /// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
+        /// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
+        /// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
+        /// tooltips only; nothing parses it.
+        pub struct Warning<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Warning<'a> {
+            type Inner = Warning<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Warning<'a> {
+            pub const VT_CODE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Warning { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WarningArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Warning<'bldr>> {
+                let mut builder = WarningBuilder::new(_fbb);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.code {
+                    builder.add_code(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn code(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Warning::VT_CODE, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Warning::VT_MESSAGE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Warning<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("code", Self::VT_CODE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WarningArgs<'a> {
+            pub code: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WarningArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WarningArgs {
+                    code: None,
+                    message: None,
+                }
+            }
+        }
+
+        pub struct WarningBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WarningBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_code(&mut self, code: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Warning::VT_CODE, code);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Warning::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WarningBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WarningBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Warning<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Warning<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Warning");
+                ds.field("code", &self.code());
+                ds.field("message", &self.message());
+                ds.finish()
+            }
+        }
         pub enum EnvelopeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -17782,6 +17658,12 @@ pub mod zanshin {
         /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff
         /// its `user.name`/`user.email` working-copy check ran the snapshot (Story 9.28).
         /// `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+        ///
+        /// `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
+        /// envelope AND on an error envelope (then everything warned before the failure). ABSENT when
+        /// the call had nothing to warn about — every reader treats absent as an empty list — and
+        /// therefore on every symbol that cannot warn, and on the pre-serialised `internal.panic`
+        /// fallback. Success without caveat is `ok` with no warnings; there is no severity field.
         pub struct Envelope<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -17802,6 +17684,7 @@ pub mod zanshin {
             pub const VT_DATA_TYPE: ::flatbuffers::VOffsetT = 8;
             pub const VT_DATA: ::flatbuffers::VOffsetT = 10;
             pub const VT_PRECONDITION: ::flatbuffers::VOffsetT = 12;
+            pub const VT_WARNINGS: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -17813,6 +17696,9 @@ pub mod zanshin {
                 args: &'args EnvelopeArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Envelope<'bldr>> {
                 let mut builder = EnvelopeBuilder::new(_fbb);
+                if let Some(x) = args.warnings {
+                    builder.add_warnings(x);
+                }
                 if let Some(x) = args.precondition {
                     builder.add_precondition(x);
                 }
@@ -17873,6 +17759,17 @@ pub mod zanshin {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<Precondition>>(Envelope::VT_PRECONDITION, None)
+                }
+            }
+            #[inline]
+            pub fn warnings(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Warning<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Warning>>,
+                    >>(Envelope::VT_WARNINGS, None)
                 }
             }
             #[inline]
@@ -18408,188 +18305,51 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<bool>("ok", Self::VT_OK, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<FfiError>>("error", Self::VT_ERROR, false)?
-                    .visit_union::<Payload, _>(
-                        "data_type",
-                        Self::VT_DATA_TYPE,
-                        "data",
-                        Self::VT_DATA,
-                        false,
-                        |key, v, pos| match key {
-                            Payload::RepoHandle => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoHandle>>(
-                                    "Payload::RepoHandle",
-                                    pos,
-                                ),
-                            Payload::Diagnostics => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<Diagnostics>>(
-                                    "Payload::Diagnostics",
-                                    pos,
-                                ),
-                            Payload::Status => {
-                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Status>>("Payload::Status", pos)
-                            }
-                            Payload::Change => {
-                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Change>>("Payload::Change", pos)
-                            }
-                            Payload::OpLog => {
-                                v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpLog>>("Payload::OpLog", pos)
-                            }
-                            Payload::Bookmarks => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Bookmarks>>(
-                                "Payload::Bookmarks",
-                                pos,
-                            ),
-                            Payload::Remotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Remotes>>(
-                                "Payload::Remotes",
-                                pos,
-                            ),
-                            Payload::RepoDetect => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoDetect>>(
-                                    "Payload::RepoDetect",
-                                    pos,
-                                ),
-                            Payload::WatcherEvent => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WatcherEvent>>(
-                                    "Payload::WatcherEvent",
-                                    pos,
-                                ),
-                            Payload::Progress => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Progress>>(
-                                "Payload::Progress",
-                                pos,
-                            ),
-                            Payload::GraphSlice => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GraphSlice>>(
-                                    "Payload::GraphSlice",
-                                    pos,
-                                ),
-                            Payload::LogDefaults => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<LogDefaults>>(
-                                    "Payload::LogDefaults",
-                                    pos,
-                                ),
-                            Payload::MutationResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<MutationResult>>(
-                                    "Payload::MutationResult",
-                                    pos,
-                                ),
-                            Payload::AbsorbResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<AbsorbResult>>(
-                                    "Payload::AbsorbResult",
-                                    pos,
-                                ),
-                            Payload::FileList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileList>>(
-                                "Payload::FileList",
-                                pos,
-                            ),
-                            Payload::FileContents => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileContents>>(
-                                    "Payload::FileContents",
-                                    pos,
-                                ),
-                            Payload::FileAnnotation => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileAnnotation>>(
-                                    "Payload::FileAnnotation",
-                                    pos,
-                                ),
-                            Payload::FileSearch => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<FileSearch>>(
-                                    "Payload::FileSearch",
-                                    pos,
-                                ),
-                            Payload::GitImportResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GitImportResult>>(
-                                    "Payload::GitImportResult",
-                                    pos,
-                                ),
-                            Payload::GitExportResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<GitExportResult>>(
-                                    "Payload::GitExportResult",
-                                    pos,
-                                ),
-                            Payload::ShowView => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ShowView>>(
-                                "Payload::ShowView",
-                                pos,
-                            ),
-                            Payload::EvologView => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<EvologView>>(
-                                    "Payload::EvologView",
-                                    pos,
-                                ),
-                            Payload::InterdiffView => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<InterdiffView>>(
-                                    "Payload::InterdiffView",
-                                    pos,
-                                ),
-                            Payload::WorkspaceList => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceList>>(
-                                    "Payload::WorkspaceList",
-                                    pos,
-                                ),
-                            Payload::WorkspaceRoot => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRoot>>(
-                                    "Payload::WorkspaceRoot",
-                                    pos,
-                                ),
-                            Payload::TrackResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<TrackResult>>(
-                                    "Payload::TrackResult",
-                                    pos,
-                                ),
-                            Payload::UntrackResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<UntrackResult>>(
-                                    "Payload::UntrackResult",
-                                    pos,
-                                ),
-                            Payload::ConfigListResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigListResult>>(
-                                    "Payload::ConfigListResult",
-                                    pos,
-                                ),
-                            Payload::ConfigGetResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGetResult>>(
-                                    "Payload::ConfigGetResult",
-                                    pos,
-                                ),
-                            Payload::ConfigPathResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigPathResult>>(
-                                    "Payload::ConfigPathResult",
-                                    pos,
-                                ),
-                            Payload::ConfigSetResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigSetResult>>(
-                                    "Payload::ConfigSetResult",
-                                    pos,
-                                ),
-                            Payload::ConfigUnsetResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigUnsetResult>>(
-                                    "Payload::ConfigUnsetResult",
-                                    pos,
-                                ),
-                            Payload::ConfigFileText => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigFileText>>(
-                                    "Payload::ConfigFileText",
-                                    pos,
-                                ),
-                            Payload::ConfigGcList => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcList>>(
-                                    "Payload::ConfigGcList",
-                                    pos,
-                                ),
-                            Payload::ConfigGcResult => v
-                                .verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcResult>>(
-                                    "Payload::ConfigGcResult",
-                                    pos,
-                                ),
-                            _ => Ok(()),
-                        },
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<Precondition>>(
-                        "precondition",
-                        Self::VT_PRECONDITION,
-                        false,
-                    )?
-                    .finish();
+     .visit_field::<bool>("ok", Self::VT_OK, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<FfiError>>("error", Self::VT_ERROR, false)?
+     .visit_union::<Payload, _>("data_type", Self::VT_DATA_TYPE, "data", Self::VT_DATA, false, |key, v, pos| {
+        match key {
+          Payload::RepoHandle => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoHandle>>("Payload::RepoHandle", pos),
+          Payload::Diagnostics => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Diagnostics>>("Payload::Diagnostics", pos),
+          Payload::Status => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Status>>("Payload::Status", pos),
+          Payload::Change => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Change>>("Payload::Change", pos),
+          Payload::OpLog => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpLog>>("Payload::OpLog", pos),
+          Payload::Bookmarks => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Bookmarks>>("Payload::Bookmarks", pos),
+          Payload::Remotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Remotes>>("Payload::Remotes", pos),
+          Payload::RepoDetect => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RepoDetect>>("Payload::RepoDetect", pos),
+          Payload::WatcherEvent => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WatcherEvent>>("Payload::WatcherEvent", pos),
+          Payload::Progress => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Progress>>("Payload::Progress", pos),
+          Payload::GraphSlice => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GraphSlice>>("Payload::GraphSlice", pos),
+          Payload::LogDefaults => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<LogDefaults>>("Payload::LogDefaults", pos),
+          Payload::MutationResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<MutationResult>>("Payload::MutationResult", pos),
+          Payload::AbsorbResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<AbsorbResult>>("Payload::AbsorbResult", pos),
+          Payload::FileList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileList>>("Payload::FileList", pos),
+          Payload::FileContents => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileContents>>("Payload::FileContents", pos),
+          Payload::FileAnnotation => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileAnnotation>>("Payload::FileAnnotation", pos),
+          Payload::FileSearch => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FileSearch>>("Payload::FileSearch", pos),
+          Payload::GitImportResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitImportResult>>("Payload::GitImportResult", pos),
+          Payload::GitExportResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitExportResult>>("Payload::GitExportResult", pos),
+          Payload::ShowView => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ShowView>>("Payload::ShowView", pos),
+          Payload::EvologView => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<EvologView>>("Payload::EvologView", pos),
+          Payload::InterdiffView => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<InterdiffView>>("Payload::InterdiffView", pos),
+          Payload::WorkspaceList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceList>>("Payload::WorkspaceList", pos),
+          Payload::WorkspaceRoot => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRoot>>("Payload::WorkspaceRoot", pos),
+          Payload::TrackResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<TrackResult>>("Payload::TrackResult", pos),
+          Payload::UntrackResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<UntrackResult>>("Payload::UntrackResult", pos),
+          Payload::ConfigListResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigListResult>>("Payload::ConfigListResult", pos),
+          Payload::ConfigGetResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGetResult>>("Payload::ConfigGetResult", pos),
+          Payload::ConfigPathResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigPathResult>>("Payload::ConfigPathResult", pos),
+          Payload::ConfigSetResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigSetResult>>("Payload::ConfigSetResult", pos),
+          Payload::ConfigUnsetResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigUnsetResult>>("Payload::ConfigUnsetResult", pos),
+          Payload::ConfigFileText => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigFileText>>("Payload::ConfigFileText", pos),
+          Payload::ConfigGcList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcList>>("Payload::ConfigGcList", pos),
+          Payload::ConfigGcResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcResult>>("Payload::ConfigGcResult", pos),
+          _ => Ok(()),
+        }
+     })?
+     .visit_field::<::flatbuffers::ForwardsUOffset<Precondition>>("precondition", Self::VT_PRECONDITION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Warning>>>>("warnings", Self::VT_WARNINGS, false)?
+     .finish();
                 Ok(())
             }
         }
@@ -18599,6 +18359,9 @@ pub mod zanshin {
             pub data_type: Payload,
             pub data: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
             pub precondition: Option<::flatbuffers::WIPOffset<Precondition<'a>>>,
+            pub warnings: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Warning<'a>>>>,
+            >,
         }
         impl<'a> Default for EnvelopeArgs<'a> {
             #[inline]
@@ -18609,6 +18372,7 @@ pub mod zanshin {
                     data_type: Payload::NONE,
                     data: None,
                     precondition: None,
+                    warnings: None,
                 }
             }
         }
@@ -18643,6 +18407,16 @@ pub mod zanshin {
                     Envelope::VT_PRECONDITION,
                     precondition,
                 );
+            }
+            #[inline]
+            pub fn add_warnings(
+                &mut self,
+                warnings: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Warning<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Envelope::VT_WARNINGS, warnings);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EnvelopeBuilder<'a, 'b, A> {
@@ -18917,6 +18691,7 @@ pub mod zanshin {
                     }
                 };
                 ds.field("precondition", &self.precondition());
+                ds.field("warnings", &self.warnings());
                 ds.finish()
             }
         }

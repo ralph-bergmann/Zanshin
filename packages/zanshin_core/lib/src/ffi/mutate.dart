@@ -11,6 +11,7 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'precondition.dart' show FinishFacts, decodeFinishFactsInternal;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of the whole mutation surface: the Story 6.5
 // adapters (describe/new_change/edit/abandon/undo/git_fetch), Story 9.3's two
@@ -169,8 +170,8 @@ final class MutationResult {
     required this.newChangeIds,
     required this.abandonedChangeIds,
     required this.workingCopyChangeId,
-    required this.identityMissing,
     required this.finish,
+    this.warnings = const [],
   });
 
   /// Id of the operation this mutation committed.
@@ -196,48 +197,34 @@ final class MutationResult {
   /// Change id of the working-copy commit (`@`) after this mutation.
   final String workingCopyChangeId;
 
-  /// Which identity fields were empty when this call committed an operation —
-  /// the jj CLI's "Name and email not configured" warning as a fact
-  /// (Story 9.27). `null` when both are configured, and on every call that
-  /// committed nothing. The commit was still created, with the empty identity;
-  /// the UI turns a non-null value into its "set your identity" prompt.
-  final IdentityMissing? identityMissing;
-
-  /// The colocated Git bookkeeping this mutation's commit ran — the jj CLI's
-  /// `finish_transaction` warnings as facts (Story 9.26). `null` when every fact
-  /// is at its default, and always outside a colocated workspace unless `@`
-  /// became immutable.
+  /// The colocated Git export failures this mutation's commit hit — the jj
+  /// CLI's `finish_transaction` export report as data (Story 9.26). `null` when
+  /// nothing failed to export, and always outside a colocated workspace. Every
+  /// other `finish_transaction` caveat (the empty-identity note, `@` becoming
+  /// immutable, a failed Git HEAD update) is one of the [warnings].
   final FinishFacts? finish;
-}
 
-/// Which of `user.name` / `user.email` was empty
-/// (mirrors `zanshin_jj::IdentityMissing`).
-final class IdentityMissing {
-  const IdentityMissing({required this.name, required this.email});
-
-  /// `user.name` is empty.
-  final bool name;
-
-  /// `user.email` is empty.
-  final bool email;
+  /// The call's warnings (Story 9.32), in the CLI's print order — empty when
+  /// there were none, and always empty on a result nested in another payload
+  /// (the enclosing result carries them).
+  final List<ZanshinWarning> warnings;
 }
 
 /// Rebuild a [MutationResult] from its table — the ONE spelling every payload
 /// that nests the shared mutation contract decodes through. An absent table is
-/// an empty contract, not a crash.
-MutationResult decodeMutationResultInternal(fbs.MutationResult? m) => MutationResult(
+/// an empty contract, not a crash. [warnings] are the enclosing envelope's —
+/// only a top-level `MutationResult` decode passes any.
+MutationResult decodeMutationResultInternal(
+  fbs.MutationResult? m, {
+  List<ZanshinWarning> warnings = const [],
+}) => MutationResult(
   newOpId: m?.newOpId ?? '',
   newChangeIds: m?.newChangeIds?.toList() ?? const [],
   abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
   workingCopyChangeId: m?.workingCopyChangeId ?? '',
-  identityMissing: decodeIdentityMissingInternal(m?.identityMissing),
   finish: decodeFinishFactsInternal(m?.finish),
+  warnings: warnings,
 );
-
-/// Rebuilds the nested `IdentityMissing` table; an ABSENT table is `null`
-/// (null for absence), never a value of two `false`s.
-IdentityMissing? decodeIdentityMissingInternal(fbs.IdentityMissing? m) =>
-    m == null ? null : IdentityMissing(name: m.name, email: m.email);
 
 /// One path `absorb` could not split, with jj-lib's verbatim reason
 /// (mirrors `zanshin_jj::SkippedPath`).
@@ -260,6 +247,7 @@ final class AbsorbResult {
     required this.sourceChangeId,
     required this.numRebased,
     required this.skippedPaths,
+    this.warnings = const [],
   });
 
   /// The shared mutation contract: op id (the PRE-CALL head when nothing was
@@ -285,9 +273,14 @@ final class AbsorbResult {
   /// figure for the UI, never something a decision should key off.
   final int numRebased;
 
-  /// Paths jj-lib refused to split. The CLI prints one warning per entry; the
-  /// remaining paths still absorb.
+  /// Paths jj-lib refused to split. The CLI prints one warning per entry — each
+  /// is also a `jj.absorb_path_skipped` entry of [warnings]; the remaining paths
+  /// still absorb.
   final List<SkippedPath> skippedPaths;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none. The nested [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -315,7 +308,7 @@ MutationResult _decodeMutationResultEnvelope(Uint8List bytes) {
       'expected MutationResult payload, got ${env.dataType}',
     );
   }
-  return decodeMutationResultInternal(payload);
+  return decodeMutationResultInternal(payload, warnings: decodeEnvelopeWarningsInternal(env));
 }
 
 /// Decode an `AbsorbResult` `Envelope` buffer into an [AbsorbResult].
@@ -350,5 +343,6 @@ AbsorbResult _decodeAbsorbResultEnvelope(Uint8List bytes) {
     numRebased: payload.numRebased,
     skippedPaths:
         payload.skippedPaths?.map((p) => SkippedPath(path: p.path ?? '', reason: p.reason ?? '')).toList() ?? const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

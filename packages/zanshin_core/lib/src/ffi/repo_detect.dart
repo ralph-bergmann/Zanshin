@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../worker/responses.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'warning.dart';
 
 /// Dart-domain classification returned by [decodeRepoDetectEnvelope].
 ///
@@ -34,11 +35,16 @@ class RepoDetectResult {
     required this.kind,
     this.suggestedRoot,
     this.suggestedKind,
+    this.warnings = const [],
   });
 
   final RepoKind kind;
   final String? suggestedRoot;
   final RepoKind? suggestedKind;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// Decodes a raw `Envelope<RepoDetect>` buffer into a [RepoDetectResult].
@@ -74,6 +80,7 @@ RepoDetectResult _decodeRepoDetectEnvelope(Uint8List bytes) {
     kind: _mapRepoKind(payload.kind),
     suggestedRoot: suggestedRoot,
     suggestedKind: suggestedRoot != null ? _mapRepoKind(payload.suggestedKind) : null,
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

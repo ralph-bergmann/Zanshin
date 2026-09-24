@@ -44,7 +44,7 @@ fn map_workspace_err(e: WorkspaceError) -> FfiErrorObj {
         WorkspaceError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
-        precondition: None,
+        report: None,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -90,7 +90,7 @@ fn read_workspace_root_request(data: *const u8, len: usize) -> Result<WorkspaceR
 /// table, and the outer vector and `WorkspaceList` table come after the loop. `root` is written
 /// only when present — null-for-absence is the wire form of "this workspace's path cannot be
 /// reported", which is never an error here.
-fn workspace_list_to_envelope(entries: &[WorkspaceEntry], precondition: Option<&zanshin_jj::Precondition>) -> Vec<u8> {
+fn workspace_list_to_envelope(entries: &[WorkspaceEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let offsets: Vec<_> = entries
         .iter()
@@ -112,12 +112,7 @@ fn workspace_list_to_envelope(entries: &[WorkspaceEntry], precondition: Option<&
         .collect();
     let vec = b.create_vector(&offsets);
     let table = fbs::WorkspaceList::create(&mut b, &fbs::WorkspaceListArgs { entries: Some(vec) });
-    finish_envelope(
-        b,
-        fbs::Payload::WorkspaceList,
-        Some(table.as_union_value()),
-        precondition,
-    )
+    finish_envelope(b, fbs::Payload::WorkspaceList, Some(table.as_union_value()), report)
 }
 
 /// Serialise one resolved workspace root into a finished `Envelope<WorkspaceRoot>` buffer.
@@ -128,7 +123,12 @@ fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let root_off = b.create_string(&root.to_string_lossy());
     let table = fbs::WorkspaceRoot::create(&mut b, &fbs::WorkspaceRootArgs { root: Some(root_off) });
-    finish_envelope(b, fbs::Payload::WorkspaceRoot, Some(table.as_union_value()), None)
+    finish_envelope(
+        b,
+        fbs::Payload::WorkspaceRoot,
+        Some(table.as_union_value()),
+        &crate::envelope::CallReport::default(),
+    )
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -252,7 +252,10 @@ mod tests {
 
     #[test]
     fn workspace_list_writes_present_and_absent_roots_in_order() {
-        let buf = workspace_list_to_envelope(&[entry("default", Some("/tmp/ws")), entry("second", None)], None);
+        let buf = workspace_list_to_envelope(
+            &[entry("default", Some("/tmp/ws")), entry("second", None)],
+            &crate::envelope::CallReport::default(),
+        );
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::WorkspaceList);
@@ -272,7 +275,7 @@ mod tests {
 
     #[test]
     fn workspace_list_empty_roundtrips() {
-        let buf = workspace_list_to_envelope(&[], None);
+        let buf = workspace_list_to_envelope(&[], &crate::envelope::CallReport::default());
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         let payload = env.data_as_workspace_list().expect("expected WorkspaceList payload");

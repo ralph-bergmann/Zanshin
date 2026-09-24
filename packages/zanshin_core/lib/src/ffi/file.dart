@@ -9,6 +9,7 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'mutate.dart' show SkippedPath;
 import 'request_bytes.dart';
+import 'warning.dart';
 
 // This file owns the Dart half of Story 9.4's four `jj file` READ verbs: the
 // adapters (list/show/annotate/search), their models, and their decoders.
@@ -178,7 +179,7 @@ final class ShownFile {
 
 /// The result of `fileShow` (mirrors `zanshin_jj::FileContents`).
 final class FileContents {
-  const FileContents({required this.files, required this.skipped});
+  const FileContents({required this.files, required this.skipped, this.warnings = const []});
 
   /// One entry per rendered file, in jj's own tree order.
   final List<ShownFile> files;
@@ -188,6 +189,10 @@ final class FileContents {
   /// (`"Path '…' is absent."`, `"Path '…' is a directory."`). A skipped path does
   /// not fail the call.
   final List<SkippedPath> skipped;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// One annotated line of a file (mirrors `zanshin_jj::AnnotationLine`).
@@ -244,7 +249,7 @@ final class SearchMatch {
 
 /// The result of `fileSearch` (mirrors `zanshin_jj::FileSearch`).
 final class FileSearch {
-  const FileSearch({required this.matches, required this.skipped});
+  const FileSearch({required this.matches, required this.skipped, this.warnings = const []});
 
   /// One entry per matching line, in jj's own tree order then line order.
   final List<SearchMatch> matches;
@@ -256,39 +261,48 @@ final class FileSearch {
   /// does not fail the call; without this list "nothing matched" and "a blob
   /// was unreadable" would be indistinguishable.
   final List<SkippedPath> skipped;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order; empty when
+  /// there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
-/// Decode a `FileList` `Envelope` buffer into a `List<FileEntry>`.
+/// Decode a `FileList` `Envelope` buffer into a `List<FileEntry>` that also
+/// carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.fileList`.
 @visibleForTesting
-List<FileEntry> decodeFileListEnvelope(Uint8List bytes) => _decodeFileListEnvelope(bytes);
+WarnedList<FileEntry> decodeFileListEnvelope(Uint8List bytes) => _decodeFileListEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<FileEntry> decodeFileListEnvelopeInternal(Uint8List bytes) => _decodeFileListEnvelope(bytes);
+WarnedList<FileEntry> decodeFileListEnvelopeInternal(Uint8List bytes) => _decodeFileListEnvelope(bytes);
 
-List<FileEntry> _decodeFileListEnvelope(Uint8List bytes) {
+WarnedList<FileEntry> _decodeFileListEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.FileList) {
     throw ZanshinFfiException('ffi.unknown', 'expected FileList payload, got ${env.dataType}');
   }
+  final List<ZanshinWarning> warnings = decodeEnvelopeWarningsInternal(env);
   final List<fbs.FileEntry>? entries = payload.entries;
   if (entries == null) {
-    return const [];
+    return WarnedList(const [], warnings);
   }
-  return List.generate(entries.length, (i) {
-    final fbs.FileEntry e = entries[i];
-    return FileEntry(
-      path: e.path ?? '',
-      fileType: _mapFileType(e.fileType),
-      executable: e.executable,
-      conflictSideCount: e.conflictSideCount,
-    );
-  });
+  return WarnedList(
+    List.generate(entries.length, (i) {
+      final fbs.FileEntry e = entries[i];
+      return FileEntry(
+        path: e.path ?? '',
+        fileType: _mapFileType(e.fileType),
+        executable: e.executable,
+        conflictSideCount: e.conflictSideCount,
+      );
+    }),
+    warnings,
+  );
 }
 
 /// Decode a `FileContents` `Envelope` buffer into a [FileContents].
@@ -314,37 +328,43 @@ FileContents _decodeFileContentsEnvelope(Uint8List bytes) {
             .toList() ??
         const [],
     skipped: payload.skipped?.map((s) => SkippedPath(path: s.path ?? '', reason: s.reason ?? '')).toList() ?? const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 
-/// Decode a `FileAnnotation` `Envelope` buffer into a `List<AnnotationLine>`.
+/// Decode a `FileAnnotation` `Envelope` buffer into a `List<AnnotationLine>`
+/// that also carries the call's warnings.
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
 /// through `ZanshinWorker.fileAnnotate`.
 @visibleForTesting
-List<AnnotationLine> decodeFileAnnotationEnvelope(Uint8List bytes) => _decodeFileAnnotationEnvelope(bytes);
+WarnedList<AnnotationLine> decodeFileAnnotationEnvelope(Uint8List bytes) => _decodeFileAnnotationEnvelope(bytes);
 
 /// Internal decoder used by production code in `isolate.dart`.
-List<AnnotationLine> decodeFileAnnotationEnvelopeInternal(Uint8List bytes) => _decodeFileAnnotationEnvelope(bytes);
+WarnedList<AnnotationLine> decodeFileAnnotationEnvelopeInternal(Uint8List bytes) =>
+    _decodeFileAnnotationEnvelope(bytes);
 
-List<AnnotationLine> _decodeFileAnnotationEnvelope(Uint8List bytes) {
+WarnedList<AnnotationLine> _decodeFileAnnotationEnvelope(Uint8List bytes) {
   final fbs.Envelope env = _okEnvelope(bytes);
   final Object? payload = env.data;
   if (payload is! fbs.FileAnnotation) {
     throw ZanshinFfiException('ffi.unknown', 'expected FileAnnotation payload, got ${env.dataType}');
   }
-  return payload.lines
-          ?.map(
-            (l) => AnnotationLine(
-              commitId: l.commitId ?? '',
-              changeId: l.changeId ?? '',
-              originalLineNumber: l.originalLineNumber,
-              content: _bytes(l.content),
-              originFound: l.originFound,
-            ),
-          )
-          .toList() ??
-      const [];
+  return WarnedList(
+    payload.lines
+            ?.map(
+              (l) => AnnotationLine(
+                commitId: l.commitId ?? '',
+                changeId: l.changeId ?? '',
+                originalLineNumber: l.originalLineNumber,
+                content: _bytes(l.content),
+                originFound: l.originFound,
+              ),
+            )
+            .toList() ??
+        const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
 }
 
 /// Decode a `FileSearch` `Envelope` buffer into a [FileSearch].
@@ -379,6 +399,7 @@ FileSearch _decodeFileSearchEnvelope(Uint8List bytes) {
             .toList() ??
         const [],
     skipped: payload.skipped?.map((s) => SkippedPath(path: s.path ?? '', reason: s.reason ?? '')).toList() ?? const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
   );
 }
 

@@ -22,7 +22,7 @@ use tempfile::TempDir;
 use zanshin_jj::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
     config_set, config_unset, resolve_revset, Backend, ConfigCmdError, ConfigListQuery, ConfigScope, ConfigValueSource,
-    Repo, RepoError,
+    Repo, RepoError, WarningKind,
 };
 
 /// The process-lifetime `$XDG_CONFIG_HOME` — LEAKED so it outlives every test (see
@@ -100,7 +100,9 @@ fn repo_scope_round_trip_writes_the_secure_file_and_no_operation() {
         "the read side sees the same file"
     );
 
-    let rows = config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap();
+    let listed = config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap();
+    assert!(listed.warnings.is_empty(), "{:?}", listed.warnings);
+    let rows = listed.value;
     assert_eq!(rows.len(), 1);
     assert_eq!(
         (rows[0].name.as_str(), rows[0].value.as_str(), rows[0].source),
@@ -112,7 +114,12 @@ fn repo_scope_round_trip_writes_the_secure_file_and_no_operation() {
         config_unset(Some(&root), ConfigScope::Repo, "revsets.log", None).unwrap(),
         written.path
     );
-    assert!(config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap().is_empty());
+    let empty = config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap();
+    assert!(empty.value.is_empty());
+    // Story 9.32: the CLI's stderr note explaining the empty output.
+    assert_eq!(empty.warnings.len(), 1, "{:?}", empty.warnings);
+    assert_eq!(empty.warnings[0].kind, WarningKind::ConfigNothingListed);
+    assert_eq!(empty.warnings[0].message, "No config to list.");
     assert!(matches!(
         config_unset(Some(&root), ConfigScope::Repo, "nope", None),
         Err(ConfigCmdError::NotFound { .. })
@@ -153,7 +160,7 @@ fn workspace_scope_and_the_editor_halves() {
     assert_eq!(fs::read_to_string(&read.path).unwrap(), read.text, "untouched");
 
     config_file_write(Some(&root), &read.path, "[revsets]\nlog = 'root()'\n").expect("write");
-    let rows = config_list(Some(&root), &scoped(ConfigScope::Workspace)).unwrap();
+    let rows = config_list(Some(&root), &scoped(ConfigScope::Workspace)).unwrap().value;
     assert_eq!(rows[0].source, ConfigValueSource::Workspace);
     assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "root()");
     assert!(matches!(
@@ -194,6 +201,14 @@ fn identity_writes_reload_the_handle_and_report_the_working_copy_author() {
         .working_copy_author
         .expect("@ was authored by \"\"");
     assert_eq!((fact.name.as_str(), fact.email.as_str()), ("", ""));
+    // Story 9.32: `warn_wc_author`'s three lines, verbatim.
+    assert_eq!(set.warnings.len(), 1, "{:?}", set.warnings);
+    assert_eq!(set.warnings[0].kind, WarningKind::ConfigWorkingCopyAuthor);
+    assert_eq!(
+        set.warnings[0].message,
+        "This setting will only impact future commits.\nThe author of the working copy will stay \" <>\".\n\
+         To change the working copy author, use \"jj metaedit --update-author\"."
+    );
     let report = set.precondition.expect("the snapshot ran");
     assert!(!report.was_snapshot_taken, "a clean @: nothing to snapshot");
 
@@ -209,6 +224,12 @@ fn identity_writes_reload_the_handle_and_report_the_working_copy_author() {
     assert_eq!(head(&root).0, op, "no snapshot for other keys");
 
     let set = config_set(Some(&root), ConfigScope::Repo, "user.name", "Reloaded", None);
+    assert!(
+        set.warnings
+            .iter()
+            .all(|w| w.kind != WarningKind::ConfigWorkingCopyAuthor),
+        "same author: no warning"
+    );
     assert!(set.result.expect("set").working_copy_author.is_none(), "same author");
     assert!(set.precondition.expect("ran").was_snapshot_taken);
     assert_ne!(head(&root).0, op, "the snapshot operation, as in the CLI");
@@ -349,7 +370,8 @@ fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     assert_eq!(mine.repo_path, root.join(".jj").join("repo"));
 
     let result = config_gc_delete(std::slice::from_ref(&dir)).expect("delete");
-    assert_eq!(result.deleted, std::slice::from_ref(&dir));
-    assert!(result.failed.is_empty());
+    assert_eq!(result.value.deleted, std::slice::from_ref(&dir));
+    assert!(result.value.failed.is_empty());
+    assert!(result.warnings.is_empty());
     assert!(!dir.exists());
 }

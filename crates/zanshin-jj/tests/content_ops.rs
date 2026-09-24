@@ -706,6 +706,7 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
     let result = repo
         .absorb(Some(s), None, &[])
         .expect("a skipped path is a warning in the CLI, not a failure");
+    let warnings = repo.take_warnings();
 
     let skipped: Vec<(String, String)> = result
         .skipped_paths
@@ -717,6 +718,10 @@ fn absorb_reports_a_path_jj_lib_refuses_to_split_with_its_verbatim_reason() {
         vec![("conflicted.txt".to_owned(), "Is a conflict".to_owned())],
         "the (path, reason) pair is forwarded verbatim from jj-lib"
     );
+    // Story 9.32: the CLI's one warning per skipped path (`absorb.rs:155-158`).
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::AbsorbPathSkipped);
+    assert_eq!(warnings[0].message, "Skipping conflicted.txt: Is a conflict");
     assert!(result.rewritten_change_ids.is_empty());
     assert_eq!(head_op_id(&mut repo), before_op);
 }
@@ -755,6 +760,42 @@ fn absorb_keeps_absorbing_the_other_paths_when_one_is_skipped() {
     );
     let mut repo = Repo::open(&fx.path).expect("fixture reopens");
     assert_absorb_op(&mut repo, &result, 1);
+}
+
+/// A skip and an `Immutable` refusal in ONE call (Story 9.32): the CLI prints its per-path
+/// "Skipping …" warning before `check_rewritable` refuses the destinations, so the warning
+/// survives the refusal — it rides the error arm through [`Repo::take_warnings`].
+#[test]
+fn absorb_keeps_its_skipped_path_warning_when_the_destination_is_immutable() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+    let merge = add_conflicted_merge_with_extra_files(&fx.path, &[("clean.txt", "c1\n")]);
+    let s = add_commit_with_files(
+        &fx.path,
+        &[&merge],
+        &[("conflicted.txt", "resolved\n"), ("clean.txt", "c2\n")],
+        "source",
+    );
+    let s = change_id_of(&fx.path, &s);
+    // Tagging the merge makes both sides immutable, so `clean.txt`'s destination — the side
+    // that introduced it — is refused once `into` is widened past the `mutable()` default.
+    set_tag(&fx.path, "v1", &[&merge]);
+    let mut repo = Repo::open(&fx.path).expect("fixture opens");
+    let before_op = head_op_id(&mut repo);
+
+    let err = repo
+        .absorb(Some(s), Some("all()"), &[])
+        .expect_err("the destination is immutable");
+    let warnings = repo.take_warnings();
+
+    assert!(
+        matches!(err, MutateError::Immutable { .. }),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, zanshin_jj::WarningKind::AbsorbPathSkipped);
+    assert_eq!(warnings[0].message, "Skipping conflicted.txt: Is a conflict");
+    assert_eq!(head_op_id(&mut repo), before_op);
 }
 
 #[test]

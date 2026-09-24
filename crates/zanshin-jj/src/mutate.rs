@@ -17,7 +17,8 @@
 //! the on-disk edits, exactly as after the CLI's `workspace_helper`. Every verb whose CLI
 //! counterpart ends in `tx.finish` commits through [`finish_transaction`], the port of the CLI's
 //! `finish_transaction`: the became-immutable new `@`, the colocated Git HEAD reset and ref
-//! export under the Git import/export lock, the commit, and the working-copy checkout. The
+//! export under the Git import/export lock, the commit, the working-copy checkout and — since
+//! Story 9.32 — the CLI's finish warnings, recorded into the call's [`Warnings`]. The
 //! locked-working-copy lifecycle — [`lock_working_copy`] and [`commit_with_locked_wc`] (Story
 //! 9.22) — is the raw-transaction shape `file track`/`file untrack` use instead.
 
@@ -33,7 +34,6 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
-use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
 use jj_lib::working_copy::LockedWorkingCopy;
 use jj_lib::workspace::{LockedWorkspace, Workspace};
@@ -42,6 +42,7 @@ use crate::git::{map_export_err, project_failures};
 use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
 use crate::snapshot::{lock_git_import_export, FinishFacts, GitImportExportLock, VerbContext};
+use crate::warning::{self, WarningKind, Warnings};
 use crate::ChangeId;
 
 /// Outcome of a successful mutation (FR-JJ-10a).
@@ -84,45 +85,16 @@ pub struct MutationResult {
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
     pub working_copy_change_id: ChangeId,
-    /// Which identity fields were EMPTY in the settings this call's operation was written
-    /// with — the CLI's post-transaction "Name and email not configured" warning
-    /// (`cli/src/cli_util.rs:2387-2415` @ v0.44.0), as a fact (Story 9.27).
-    ///
-    /// `Some` only when this call COMMITTED an operation and `user.name` and/or `user.email`
-    /// is empty: the CLI's warning lives in `finish_transaction`, which it skips when nothing
-    /// changed, so every no-op result (see [`MutationResult::new_op_id`]) carries `None`. A
-    /// verb that always commits (e.g. [`crate::Repo::git_fetch`]) reports it every time.
-    /// [`crate::Repo::file_track`] and [`crate::Repo::file_untrack`] never report it: the CLI
-    /// commits their raw transaction and never reaches `finish_transaction`. An
-    /// empty identity is never refused and never replaced by a placeholder — commits are
-    /// created with it, exactly as the CLI creates them.
-    pub identity_missing: Option<IdentityMissing>,
-    /// What the CLI's `finish_transaction` reported while committing this call's operation
-    /// (Story 9.26): a `@` that became immutable, a Git HEAD that could not be reset, refs the
-    /// colocated export could not write. `None` when every fact is at its default — always for
-    /// a result that wrote no operation, and for [`crate::Repo::file_track`] /
+    /// The refs the colocated export could not write while the CLI's `finish_transaction`
+    /// committed this call's operation (Story 9.26) — the data behind its
+    /// `jj.git_export_failed` warnings. `None` when both lists are empty — always for a result
+    /// that wrote no operation, and for [`crate::Repo::file_track`] /
     /// [`crate::Repo::file_untrack`], which never reach `finish_transaction`.
+    ///
+    /// The finish's other facts — a `@` that became immutable, a Git HEAD that could not be
+    /// reset, an empty identity, skipped checkout files — are warnings only (Story 9.32): see
+    /// [`crate::Repo::take_warnings`].
     pub finish: Option<FinishFacts>,
-}
-
-/// The identity fields a committed operation found empty — see
-/// [`MutationResult::identity_missing`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IdentityMissing {
-    /// `user.name` is empty.
-    pub name: bool,
-    /// `user.email` is empty.
-    pub email: bool,
-}
-
-/// The CLI's `missing_user_name || missing_user_mail` check over `settings` — `None` when
-/// both are configured.
-pub(crate) fn identity_missing(settings: &UserSettings) -> Option<IdentityMissing> {
-    let missing = IdentityMissing {
-        name: settings.user_name().is_empty(),
-        email: settings.user_email().is_empty(),
-    };
-    (missing.name || missing.email).then_some(missing)
 }
 
 /// Errors returned by [`crate::Repo::describe`], [`crate::Repo::new_change`],
@@ -442,6 +414,23 @@ fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
     crate::op_support::build_matcher(paths).map_err(|reason| MutateError::InvalidInput { reason })
 }
 
+/// Records `print_unmatched_explicit_paths` over `trees` for the explicit `paths` (Story 9.32).
+/// Runs after [`build_matcher`] validated them, so a parse failure cannot occur here.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — an entry is not a valid repo path.
+/// - [`MutateError::Backend`] — a tree read failed.
+fn warn_unmatched(
+    workspace: &Workspace,
+    sink: &mut Warnings,
+    paths: &[String],
+    trees: &[&jj_lib::merged_tree::MergedTree],
+) -> Result<(), MutateError> {
+    let explicit = crate::op_support::parse_prefixes(paths).map_err(|reason| MutateError::InvalidInput { reason })?;
+    warning::warn_unmatched_paths(sink, workspace.workspace_root(), &explicit, trees).map_err(be)
+}
+
 /// Wraps [`crate::op_support::resolve_or_wc`] in this module's error type: `id`, or — when
 /// it is `None` — the workspace's `@` (the CLI's `RevisionArg::AT` default).
 fn resolve_or_wc(
@@ -504,14 +493,14 @@ pub(crate) struct Finish {
     pub(crate) repo: Arc<ReadonlyRepo>,
     /// `@` after the finish — `None` only when the workspace is gone from the view.
     pub(crate) wc_commit: Option<Commit>,
-    /// The warnings the CLI prints while finishing, as facts.
+    /// The refs the colocated export could not write.
     pub(crate) facts: FinishFacts,
 }
 
 /// Resets Git HEAD to `wc_commit`'s parent and the index to its tree — the CLI's
 /// `try_reset_git_head` (`cli/src/cli_util.rs:2673-2695` @ v0.44.0). A failure to MOVE the HEAD
-/// ref (a concurrent `git checkout`) is a warning there, so it is a fact here; the next snapshot
-/// imports whatever HEAD actually is.
+/// ref (a concurrent `git checkout`) is a warning there, so it is a `jj.git_head_update_failed`
+/// warning here (Story 9.32); the next snapshot imports whatever HEAD actually is.
 ///
 /// # Errors
 ///
@@ -519,12 +508,12 @@ pub(crate) struct Finish {
 pub(crate) fn try_reset_git_head(
     mut_repo: &mut MutableRepo,
     wc_commit: &Commit,
-    facts: &mut FinishFacts,
+    sink: &mut Warnings,
 ) -> Result<(), MutateError> {
     match pollster::block_on(git::reset_head(mut_repo, wc_commit)) {
         Ok(()) => Ok(()),
-        Err(git::GitResetHeadError::UpdateHeadRef(_)) => {
-            facts.git_head_update_failed = true;
+        Err(e @ git::GitResetHeadError::UpdateHeadRef(_)) => {
+            sink.extend([warning::git_head_update_failed(&e)]);
             Ok(())
         }
         Err(e) => Err(MutateError::Backend(flatten_chain(&e))),
@@ -532,14 +521,20 @@ pub(crate) fn try_reset_git_head(
 }
 
 /// Exports jj's refs to Git and records the refs that could not be written — the CLI's
-/// `export_refs` + `print_git_export_stats` pair inside `finish_transaction`.
+/// `export_refs` + `print_git_export_stats` pair inside `finish_transaction`: the failures as
+/// data in `facts`, the CLI's two warnings in `sink` (Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`MutateError::NotAGitRepo`] / [`MutateError::Backend`] — see
 ///   [`crate::git::map_export_err`].
-pub(crate) fn export_refs_into(mut_repo: &mut MutableRepo, facts: &mut FinishFacts) -> Result<(), MutateError> {
+pub(crate) fn export_refs_into(
+    mut_repo: &mut MutableRepo,
+    facts: &mut FinishFacts,
+    sink: &mut Warnings,
+) -> Result<(), MutateError> {
     let stats = git::export_refs(mut_repo).map_err(map_export_err)?;
+    sink.extend(warning::git_export_failed(&stats));
     facts
         .export_failed_bookmarks
         .extend(project_failures(&stats.failed_bookmarks));
@@ -577,6 +572,12 @@ fn wc_is_immutable(
 /// 4. `@` is checked out ALWAYS when it exists, even if it did not move: the CLI's
 ///    `update_working_copy` calls `Workspace::check_out` unconditionally, which (re)records the
 ///    working copy at the new operation.
+/// 5. The identity check: an empty `user.name`/`user.email` in the settings the operation was
+///    written with warns (`cli_util.rs:2387-2415`) — only here, so every caller that commits
+///    through this function warns and nothing else does.
+///
+/// Its warnings land in `sink` in the CLI's print order: became-immutable, the HEAD reset, the
+/// export failures, the skipped checkout files, the identity (Story 9.32).
 ///
 /// The old `@` whose tree `check_out` verifies the working copy against is read from
 /// `tx.base_repo()`, as in the CLI.
@@ -591,6 +592,7 @@ pub(crate) fn finish_transaction(
     mut tx: Transaction,
     description: &str,
     ctx: &FinishCtx<'_>,
+    sink: &mut Warnings,
 ) -> Result<Finish, MutateError> {
     let workspace_name = workspace.workspace_name().to_owned();
     let get_wc_commit = |repo: &dyn jj_lib::repo::Repo| -> Result<Option<Commit>, MutateError> {
@@ -615,7 +617,7 @@ pub(crate) fn finish_transaction(
             tx.repo_mut()
                 .set_wc_commit(workspace_name.clone(), new_wc_commit.id().clone())
                 .map_err(be)?;
-            facts.working_copy_became_immutable = true;
+            sink.push(WarningKind::WorkingCopyImmutable, warning::WC_BECAME_IMMUTABLE);
             Some(new_wc_commit)
         }
         other => other,
@@ -623,25 +625,26 @@ pub(crate) fn finish_transaction(
 
     if ctx.colocated {
         if let Some(wc_commit) = &maybe_new_wc_commit {
-            try_reset_git_head(tx.repo_mut(), wc_commit, &mut facts)?;
+            try_reset_git_head(tx.repo_mut(), wc_commit, sink)?;
         }
-        export_refs_into(tx.repo_mut(), &mut facts)?;
+        export_refs_into(tx.repo_mut(), &mut facts, sink)?;
     }
 
     let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
 
     if let Some(new_wc_commit) = &maybe_new_wc_commit {
         let old_tree = maybe_old_wc_commit.as_ref().map(Commit::tree);
-        pollster::block_on(workspace.check_out(new_repo.op_id().clone(), old_tree.as_ref(), new_wc_commit)).map_err(
-            |e| {
+        let stats = pollster::block_on(workspace.check_out(new_repo.op_id().clone(), old_tree.as_ref(), new_wc_commit))
+            .map_err(|e| {
                 MutateError::Backend(format!(
                     "Failed to check out commit {}: {}",
                     new_wc_commit.id().hex(),
                     flatten_chain(&e)
                 ))
-            },
-        )?;
+            })?;
+        sink.extend(warning::checkout_files_skipped(stats.skipped_files));
     }
+    sink.extend(warning::identity_missing(new_repo.settings()));
     Ok(Finish {
         repo: new_repo,
         wc_commit: maybe_new_wc_commit,
@@ -660,7 +663,7 @@ pub(crate) fn finish_verb(
     workspace: &mut Workspace,
     tx: Transaction,
     description: &str,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
 ) -> Result<Finish, MutateError> {
     let lock = lock_git_import_export(workspace, ctx.colocated)?;
     finish_transaction(
@@ -672,11 +675,12 @@ pub(crate) fn finish_verb(
             colocated: ctx.colocated,
             _lock: &lock,
         },
+        &mut ctx.warnings,
     )
 }
 
-/// The shared mutation contract out of a [`Finish`]: the committed op id, `@`'s change id, the
-/// identity check and the finish facts.
+/// The shared mutation contract out of a [`Finish`]: the committed op id, `@`'s change id and
+/// the finish facts.
 ///
 /// # Errors
 ///
@@ -695,7 +699,6 @@ pub(crate) fn mutation_result(
         new_change_ids,
         abandoned_change_ids,
         working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
-        identity_missing: identity_missing(finish.repo.settings()),
         finish: finish.facts.clone().into_option(),
     })
 }
@@ -719,7 +722,7 @@ pub(crate) fn mutation_result(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn describe(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     change_id: &ChangeId,
     description: &str,
 ) -> Result<MutationResult, MutateError> {
@@ -764,7 +767,7 @@ pub(crate) fn describe(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn new_change(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     parents: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
     if parents.is_empty() {
@@ -820,7 +823,7 @@ pub(crate) fn new_change(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn edit(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     change_id: &ChangeId,
 ) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
@@ -857,7 +860,7 @@ pub(crate) fn edit(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn abandon(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     change_ids: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
     if change_ids.is_empty() {
@@ -942,7 +945,8 @@ pub(crate) fn abandon(
 ///
 /// `readonly` is the SAME head-resolved repo the (now dropped) transaction started from, so
 /// the op-log head is unchanged and `@` cannot have moved: nothing is checked out, `@` is only
-/// read. `finish` is `None` — the CLI's `finish_transaction` never ran.
+/// read. `finish` is `None` — the CLI's `finish_transaction` never ran, so neither did its
+/// warnings (the identity check included).
 ///
 /// `pub(crate)` so [`crate::git`]'s verbs — and `git_remote_set_url`, which never opens a
 /// transaction at all — and the precondition's refs import build the same shape instead of a
@@ -966,7 +970,6 @@ pub(crate) fn no_op_result(
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
         working_copy_change_id: ChangeId(wc.change_id().reverse_hex()),
-        identity_missing: None,
         finish: None,
     })
 }
@@ -1027,11 +1030,11 @@ pub(crate) struct Finished<T> {
 pub(crate) fn finish_or_no_op<T, F>(
     workspace: &mut Workspace,
     description: &str,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     work: F,
 ) -> Result<Finished<T>, MutateError>
 where
-    F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
+    F: FnOnce(&mut Transaction, &mut Warnings) -> Result<T, MutateError>,
 {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     finish_or_no_op_at(workspace, readonly, description, ctx, work)
@@ -1049,6 +1052,9 @@ where
 /// On the no-op path [`no_op_result`] returns the PRE-CALL op-log head, so a caller sees
 /// byte-identical op-log state — the same signal jj itself gives.
 ///
+/// `work` records the warnings the CLI prints inside the transaction (before `tx.finish`) into
+/// the call's collector it is handed (Story 9.32).
+///
 /// WHY the head-resolved repo is a PARAMETER rather than something this function loads:
 /// the CLI does exactly one load per invocation, and a verb whose description quotes the
 /// repo (a target's commit hex, the names a pattern matched) has to read the head BEFORE
@@ -1061,15 +1067,15 @@ pub(crate) fn finish_or_no_op_at<T, F>(
     workspace: &mut Workspace,
     readonly: Arc<ReadonlyRepo>,
     description: &str,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     work: F,
 ) -> Result<Finished<T>, MutateError>
 where
-    F: FnOnce(&mut Transaction) -> Result<T, MutateError>,
+    F: FnOnce(&mut Transaction, &mut Warnings) -> Result<T, MutateError>,
 {
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let value = work(&mut tx)?;
+    let value = work(&mut tx, &mut ctx.warnings)?;
     if !tx.repo().has_changes() {
         drop(tx);
         let mutation = no_op_result(&workspace_name, &readonly)?;
@@ -1183,9 +1189,8 @@ where
             abandoned_change_ids: Vec::new(),
             working_copy_change_id: ChangeId(new_wc.change_id().reverse_hex()),
             // WHY `None`: `track`/`untrack` commit the raw transaction and never reach
-            // `finish_transaction`, the only place the CLI prints "Name and email not
-            // configured" (`cli/src/cli_util.rs:2387-2415` @ v0.44.0).
-            identity_missing: None,
+            // `finish_transaction` — so they never warn about the identity either, the CLI's
+            // "Name and email not configured" living there (`cli/src/cli_util.rs:2387-2415`).
             finish: None,
         },
     ))
@@ -1214,6 +1219,10 @@ where
 /// There is NO interactive/hunk selection (epics.md:5536 scopes this to whole files); `@` is
 /// the working-copy commit the pre-verb snapshot has just brought up to date (Story 9.26).
 ///
+/// An explicitly named path that matches nothing in either tree warns
+/// (`jj.paths_unmatched`, `restore.rs:174-179`) after the rewritability guard and before the
+/// no-op check, where the CLI prints it (Story 9.32).
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`, or a `paths`
@@ -1233,7 +1242,7 @@ where
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn restore(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     from: Option<&ChangeId>,
     into: Option<&ChangeId>,
     changes_in: Option<&ChangeId>,
@@ -1279,6 +1288,7 @@ pub(crate) fn restore(
         Diff::new(to_commit.conflict_label(), conflict_label_for_commits(&from_commits)),
         matcher.as_ref(),
     )?;
+    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&to_tree, &from_tree])?;
     if selected.tree().tree_ids() == to_commit.tree_ids() {
         drop(tx);
         return no_op_result(&workspace_name, &readonly);
@@ -1327,10 +1337,10 @@ pub(crate) fn restore(
 /// the CLI's own `tx.finish` refuses to write when `!tx.repo().has_changes()`
 /// (`cli_util.rs:2792-2795`). `AbsorbResult::rewritten_change_ids` is then empty.
 ///
-/// Two CLI WARNINGS have no counterpart here, because an `Err` carries no payload:
-/// `skipped_paths` is computed before the rewritability guard (as in the CLI, `absorb.rs:154-158`
-/// vs `:160-162`) but is DISCARDED when that guard refuses, and an explicitly named path that
-/// matches nothing is silently a no-op rather than a warning. See [`crate::Repo::absorb`].
+/// Warnings in the CLI's order (Story 9.32): an explicitly named path that matches nothing in
+/// the source tree (`jj.paths_unmatched`, `absorb.rs:102-107`), then one `jj.absorb_path_skipped`
+/// per path jj-lib refused to split (`:155-158`) — BEFORE the rewritability guard, so a refusal's
+/// error envelope still carries them — then the finish's.
 ///
 /// # Errors
 ///
@@ -1348,7 +1358,7 @@ pub(crate) fn restore(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn absorb(
     workspace: &mut Workspace,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     from: Option<&ChangeId>,
     destinations: &Arc<UserRevsetExpression>,
     paths: &[String],
@@ -1360,6 +1370,7 @@ pub(crate) fn absorb(
     let source_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
     let resolved_destinations = resolve_expression(tx.repo(), destinations).map_err(rev)?;
     let matcher = build_matcher(paths)?;
+    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&source_commit.tree()])?;
 
     // The CLI splits BEFORE opening its transaction. Splitting inside a transaction that is
     // dropped on refusal is observably identical (nothing is committed either way); the
@@ -1381,6 +1392,15 @@ pub(crate) fn absorb(
             reason: reason.clone(),
         })
         .collect();
+    for (path, reason) in &selected.skipped_paths {
+        ctx.warnings.push(
+            WarningKind::AbsorbPathSkipped,
+            format!(
+                "Skipping {}: {reason}",
+                warning::ui_path(workspace.workspace_root(), path)
+            ),
+        );
+    }
     // CLI parity (`absorb.rs:160-162`): the guard runs over the split's TARGETS, which are
     // discovered by annotation — not over anything the caller named. An empty target set is
     // trivially rewritable and falls through to the no-op path below.
@@ -1568,7 +1588,9 @@ mod tests {
     fn a_checkout_over_a_working_copy_behind_at_fails_the_finish() {
         let (_tmp, mut repo, head) = at_rewritten_without_checkout();
         let config = crate::config::load(&repo).expect("config");
-        let immutable = crate::op_support::immutable_user_expression(repo.workspace(), &config).expect("immutable set");
+        let mut sink = crate::warning::Warnings::default();
+        let immutable =
+            crate::op_support::immutable_user_expression(repo.workspace(), &config, &mut sink).expect("immutable set");
         let lock = crate::snapshot::lock_git_import_export(repo.workspace(), false).expect("no lock needed");
         let workspace_name = repo.workspace().workspace_name().to_owned();
         let tx = crate::op_support::start_repo_transaction(&head, &workspace_name);
@@ -1578,7 +1600,7 @@ mod tests {
             _lock: &lock,
         };
 
-        let err = super::finish_transaction(repo.workspace_mut(), tx, "test", &ctx)
+        let err = super::finish_transaction(repo.workspace_mut(), tx, "test", &ctx, &mut sink)
             .err()
             .expect("the checkout must fail");
 

@@ -256,7 +256,7 @@ pub(crate) fn git_fetch(
     workspace: &mut Workspace,
     settings: &UserSettings,
     remote_name: &str,
-    ctx: &VerbContext,
+    ctx: &mut VerbContext,
     progress: &ProgressFn,
 ) -> Result<MutationResult, MutateError> {
     let remote_buf: RemoteNameBuf = remote_name.into();
@@ -309,6 +309,9 @@ pub(crate) fn git_fetch(
         })?;
 
     let stats = pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
+    // `print_git_import_stats`, right after the import (`fetch.rs:247-248`, Story 9.32). The
+    // failed ref NAMES have no payload here (deferred to Story 9.30's fetch rework).
+    ctx.warnings.extend(crate::warning::git_import_failed(&stats));
     let abandoned_change_ids = crate::git::project_abandoned(&stats);
 
     // A descendant pass BEFORE the commit, because `import_refs` calls
