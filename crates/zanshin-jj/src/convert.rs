@@ -84,8 +84,11 @@
 //!    reported even when the step then writes no operation;
 //! 2. colocated only: `jj.git_export_failed` — refs that step's export could not write
 //!    (`init.rs:311-312`);
-//! 3. the config-load warnings (alias tables, builtin redefinitions, `immutable_heads()`
-//!    diagnostics) the CLI prints while building the workspace command (`cli_util.rs:936-966`);
+//! 3. the start-up environment's warnings (alias tables, builtin redefinitions,
+//!    `immutable_heads()` diagnostics), loaded where the CLI's `for_workable_repo` builds the
+//!    workspace command (`init.rs:252`, `cli_util.rs:936-966`): after the refs step, before
+//!    `.jj/.gitignore` and the snapshot — which reads its snapshot knobs itself, inside the
+//!    snapshot step, after the colocated `import git head` (Story 9.34);
 //! 4. the implicit snapshot's own warnings, as every verb's precondition reports them — its
 //!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does;
 //! 5. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
@@ -430,11 +433,13 @@ fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), Rep
 /// Its report is `report.precondition` — `Some` from the moment this starts, PARTIAL when a step
 /// fails, `was_snapshot_taken` computed as the verb precondition computes it — and its warnings
 /// land in `report.warnings`: the snapshot's own, then, on success only, the snapshot stats
-/// (`print_snapshot_stats`, printed after `snapshot_impl`).
+/// (`print_snapshot_stats`, printed after `snapshot_impl`). The snapshot step reads the snapshot
+/// knobs itself, after the colocated `import git head` (Story 9.34), so a wrong-typed knob fails
+/// the conversion with that operation reported in the partial report, as the CLI has written it.
 fn maybe_snapshot(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
-    (config, knobs): (&StackedConfig, &snapshot::Knobs),
+    (config, env): (&StackedConfig, &snapshot::CommandEnv),
     colocated: bool,
     report: &mut ConversionReport,
 ) -> Result<Arc<ReadonlyRepo>, RepoError> {
@@ -442,7 +447,7 @@ fn maybe_snapshot(
     let lock = snapshot::lock_git_import_export(workspace, colocated).map_err(convert_failed)?;
     let ctx = snapshot::StepCtx {
         config,
-        knobs,
+        env,
         colocated,
         lock: &lock,
     };
@@ -567,17 +572,20 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
     external_arm(&mut workspace, &repo, report)
 }
 
-/// The CLI's External-arm steps after `init_external_git`, in its order: refs op,
-/// `.jj/.gitignore`, `maybe_snapshot`, the `trunk()` alias, and — non-colocated only — the head
-/// op. Colocation is read with the CLI's own check rather than assumed: it is normally true for
-/// [`convert_colocated`] and false for [`convert_import`], but a linked git worktree (`.git` a
-/// gitdir POINTER file) reaches `convert_colocated` too, and `workspace_path == git_repo_path`
-/// (D5) is a colocated request `convert_import` honours.
+/// The CLI's External-arm steps after `init_external_git`, in its order (`init.rs:244-272`):
+/// refs op, the start-up environment (`for_workable_repo`), `.jj/.gitignore`, `maybe_snapshot`,
+/// the `trunk()` alias, and — non-colocated only — the head op. Colocation is read with the CLI's
+/// own check rather than assumed: it is normally true for [`convert_colocated`] and false for
+/// [`convert_import`], but a linked git worktree (`.git` a gitdir POINTER file) reaches
+/// `convert_colocated` too, and `workspace_path == git_repo_path` (D5) is a colocated request
+/// `convert_import` honours.
 ///
 /// Every step reports into `report` as it runs (Story 9.33), so a failure keeps what came
-/// before it: the refs step's warnings, the config-load warnings `Knobs::read` records where the
-/// CLI's `for_workable_repo` prints them, `maybe_snapshot`'s report and warnings, and — non-
-/// colocated only — the head import's finish.
+/// before it: the refs step's warnings, the start-up environment's warnings (recorded where the
+/// CLI's `for_workable_repo` prints them, `init.rs:252`), `maybe_snapshot`'s report and
+/// warnings — PARTIAL when its snapshot step refuses a wrong-typed snapshot knob after the
+/// colocated `import git head` (Story 9.34) — and — non-colocated only — the head import's
+/// finish.
 fn external_arm(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
@@ -592,14 +600,14 @@ fn external_arm(
         &config,
         &mut report.warnings,
     )?;
+    let env = snapshot::CommandEnv::load(workspace, &config, &mut report.warnings).map_err(precondition_error)?;
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
-    let knobs = snapshot::Knobs::read(workspace, &config, &mut report.warnings).map_err(precondition_error)?;
-    let repo = maybe_snapshot(workspace, repo, (&config, &knobs), colocated, report)?;
+    let repo = maybe_snapshot(workspace, repo, (&config, &env), colocated, report)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if colocated {
         return Ok(());
     }
-    import_head_into_destination(workspace, &repo, &knobs, &mut report.warnings)
+    import_head_into_destination(workspace, &repo, &env, &mut report.warnings)
 }
 
 /// The CLI's non-colocated head import (`init.rs:260-270`): import HEAD, check `@` out onto the
@@ -610,7 +618,7 @@ fn external_arm(
 fn import_head_into_destination(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
-    knobs: &snapshot::Knobs,
+    env: &snapshot::CommandEnv,
     sink: &mut Warnings,
 ) -> Result<(), RepoError> {
     let workspace_name = workspace.workspace_name().to_owned();
@@ -627,7 +635,7 @@ fn import_head_into_destination(
     }
     let lock = snapshot::lock_git_import_export(workspace, false).map_err(convert_failed)?;
     let ctx = mutate::FinishCtx {
-        immutable: &knobs.immutable,
+        immutable: &env.immutable,
         colocated: false,
         _lock: &lock,
     };

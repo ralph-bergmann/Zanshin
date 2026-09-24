@@ -446,6 +446,26 @@ fn auto_update_stale_still_refuses_until_the_recovery_lands() {
     assert_stale(&err, StaleCause::Stale);
 }
 
+/// Story 9.34: the snapshot knobs are read at the top of the snapshot step, BEFORE the
+/// working-copy lock and the stale check (`cli_util.rs:2065-2079` @ v0.44.0), so a stale working
+/// copy with a wrong-typed knob refuses on the knob, as in the CLI.
+#[test]
+fn a_wrong_typed_knob_wins_over_a_stale_working_copy() {
+    let fx = git_fx("snapshot.max-new-file-size = true\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let at = at_commit(&fx.root).id().hex();
+    let _ = test_helpers::rewrite_commit_files(&fx.root, &at, &[("elsewhere.txt", "x")]);
+    let before = raw_ops(&fx.root).len();
+
+    let err = repo.snapshot().expect_err("the knob refuses first");
+
+    assert!(
+        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        "{err:?}"
+    );
+    assert_eq!(raw_ops(&fx.root).len(), before, "no operation");
+}
+
 /// Writes an UNPUBLISHED operation from the current head that describes `@`, and finishes the
 /// working copy at it — the state a CLI leaves behind between writing an operation and
 /// publishing it.

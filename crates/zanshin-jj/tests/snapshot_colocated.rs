@@ -412,18 +412,117 @@ fn a_held_git_import_export_lock_is_waited_for() {
     releaser.join().expect("releaser");
 }
 
-/// "Wrong-typed knob": refused BEFORE the lock — a verb against a held lock returns the config
-/// fault without waiting, and writes nothing.
+/// Story 9.34, the double fault "Git HEAD moved outside AND a wrong-typed snapshot knob": the CLI
+/// reads the snapshot knobs inside `snapshot_working_copy` (`cli_util.rs:2065-2070` @ v0.44.0),
+/// AFTER its lock and its `import git head` — so it writes that operation, then fails. Zanshin
+/// leaves the same op log, and the partial report says so.
 #[test]
-fn a_wrong_typed_knob_is_refused_before_the_lock() {
+fn a_wrong_typed_knob_fails_after_the_head_import_like_the_cli() {
     let tmp = TempDir::new().expect("tempdir");
-    let (root, repo) = colocated(&tmp);
+    let (root, mut repo) = colocated(&tmp);
     fs::write(
         root.join(".jj").join("repo").join("config.toml"),
         "snapshot.max-new-file-size = true\n",
     )
     .expect("repo config");
     let before = descriptions(&root).len();
+    git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
+
+    let err = repo.snapshot().expect_err("the snapshot step refuses the knob");
+
+    assert!(
+        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        "{err:?}"
+    );
+    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    let report = repo.take_precondition().expect("partial report");
+    assert!(report.git_head_imported);
+    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+    assert!(report.git_refs.is_none(), "the refs step never ran");
+}
+
+/// Story 9.34: the snapshot knobs are read under the Git import/export lock, so a verb with a
+/// wrong-typed knob WAITS for a concurrent holder like any other verb, and only then refuses.
+#[test]
+fn a_wrong_typed_knob_is_refused_only_once_the_held_lock_is_free() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.max-new-file-size = true\n",
+    )
+    .expect("repo config");
+    let before = descriptions(&root).len();
+    let cli_lock = jj_lib::lock::FileLock::lock(lock_path(&root)).expect("hold the CLI's lock");
+    let hold = Duration::from_millis(400);
+    // Started BEFORE the releaser exists, so the lock is released no earlier than `hold` later.
+    let started = Instant::now();
+    let releaser = thread::spawn(move || {
+        thread::sleep(hold);
+        drop(cli_lock);
+    });
+
+    let err = repo.snapshot().expect_err("the knob refuses once the lock is free");
+
+    assert!(started.elapsed() >= hold, "the verb waited for the lock");
+    assert!(
+        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        "{err:?}"
+    );
+    releaser.join().expect("releaser");
+    assert_eq!(
+        descriptions(&root).len(),
+        before,
+        "Git HEAD did not move: nothing written"
+    );
+    let report = repo.take_precondition().expect("partial report");
+    assert!(!report.git_head_imported, "Git HEAD did not move");
+    assert!(!report.was_snapshot_taken, "nothing was written before the failure");
+    assert!(repo.take_warnings().is_empty(), "no warning before the refusal");
+}
+
+/// Story 9.34: `snapshot.auto-track` is read with the other snapshot knobs, inside the snapshot
+/// step (`cli_util.rs:2065-2067` @ v0.44.0) — AFTER `import git head`, so a wrong-typed value
+/// leaves that operation in the op log, as in the CLI.
+#[test]
+fn a_wrong_typed_auto_track_fails_after_the_head_import_like_the_cli() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, mut repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.auto-track = 5\n",
+    )
+    .expect("repo config");
+    let before = descriptions(&root).len();
+    git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
+
+    let err = repo.snapshot().expect_err("the snapshot step refuses the knob");
+
+    assert!(
+        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.auto-track")),
+        "{err:?}"
+    );
+    assert_eq!(new_descriptions(&root, before), ["import git head"]);
+    let report = repo.take_precondition().expect("partial report");
+    assert!(report.git_head_imported);
+    assert!(report.was_snapshot_taken, "an operation WAS written before the failure");
+}
+
+/// The `[fileset-aliases]` table is part of the start-up environment (`cli_util.rs:938` @
+/// v0.44.0), loaded BEFORE the lock: a layer whose `fileset-aliases` is not a table refuses
+/// WITHOUT waiting for a concurrent holder and writes nothing — not even the head import a Git
+/// HEAD moved outside would otherwise cause.
+#[test]
+fn a_non_table_fileset_aliases_is_refused_before_the_lock() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "fileset-aliases = 42\n",
+    )
+    .expect("repo config");
+    let before = descriptions(&root).len();
+    git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
     let held = jj_lib::lock::FileLock::lock(lock_path(&root)).expect("hold the lock");
 
     let (tx, rx) = mpsc::channel();
@@ -433,15 +532,50 @@ fn a_wrong_typed_knob_is_refused_before_the_lock() {
     });
     let result = rx
         .recv_timeout(Duration::from_secs(10))
-        .expect("the config fault must not wait for the lock");
+        .expect("the start-up refusal must not wait for the lock");
 
     assert!(
-        matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("snapshot.max-new-file-size")),
+        matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("fileset-aliases")),
         "{result:?}"
     );
     drop(held);
     worker.join().expect("worker");
-    assert_eq!(descriptions(&root).len(), before);
+    assert_eq!(descriptions(&root).len(), before, "no operation at all");
+}
+
+/// The start-up environment stays BEFORE the lock (`workspace_helper_with_stats` builds it
+/// first, `cli_util.rs:477` @ v0.44.0): a bad `immutable_heads()` alias refuses WITHOUT waiting
+/// for a concurrent holder and writes nothing — not even the head import a Git HEAD moved outside
+/// would otherwise cause, exactly as the CLI leaves it.
+#[test]
+fn a_bad_immutable_heads_alias_is_refused_before_the_lock() {
+    let tmp = TempDir::new().expect("tempdir");
+    let (root, repo) = colocated(&tmp);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n",
+    )
+    .expect("repo config");
+    let before = descriptions(&root).len();
+    git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
+    let held = jj_lib::lock::FileLock::lock(lock_path(&root)).expect("hold the lock");
+
+    let (tx, rx) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        let mut repo = repo;
+        tx.send(repo.snapshot().map(drop)).expect("send");
+    });
+    let result = rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the start-up refusal must not wait for the lock");
+
+    assert!(
+        matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("bogus_function")),
+        "{result:?}"
+    );
+    drop(held);
+    worker.join().expect("worker");
+    assert_eq!(descriptions(&root).len(), before, "no operation at all");
 }
 
 /// A malformed Git import option fails where the CLI reads it — at the START of the refs step

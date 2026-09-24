@@ -15,18 +15,32 @@
 //! Each step is a port of its CLI namesake, minus the terminal output; every fact the CLI would
 //! have printed rides [`Precondition`] instead — its status lines as typed fields, its
 //! `ui.warning_*` lines as the call's [`crate::Warning`]s (Story 9.32). The ports operate on a
-//! `&mut Workspace`, a loaded `Arc<ReadonlyRepo>` and [`Knobs`] read from the effective config, so
-//! the verb precondition and the conversion verbs (`do_init`'s `maybe_snapshot` point) share one
-//! implementation.
+//! `&mut Workspace`, a loaded `Arc<ReadonlyRepo>`, the effective config and the [`CommandEnv`]
+//! built from it, so the verb precondition and the conversion verbs (`do_init`'s `maybe_snapshot`
+//! point) share one implementation.
+//!
+//! Every config value is read where the CLI reads it (Story 9.34), so a fault in one leaves the op
+//! log the CLI leaves:
+//!
+//! - the start-up environment ([`CommandEnv`]: the alias tables and the `immutable_heads()` parse)
+//!   BEFORE the Git import/export lock — `workspace_helper_with_stats` builds it first
+//!   (`cli_util.rs:477`);
+//! - the snapshot knobs (`snapshot.auto-track`, the ignore files, `snapshot.max-new-file-size`)
+//!   at the top of [`snapshot_working_copy`] — AFTER `import git head`, before the working-copy
+//!   lock and the stale check (`cli_util.rs:2065-2070`);
+//! - the Git import options at the top of [`import_git_refs`] (`cli_util.rs:1434-1437`);
+//! - `snapshot.auto-update-stale` only on a stale working copy ([`crate::Repo`], `cli_util.rs:499`).
+//!
+//! `immutable_heads()` is parsed with the start-up environment but RESOLVED only where a step
+//! needs it (`cli_util.rs:2105-2108`).
 
 use std::sync::Arc;
 
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
+use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::git;
-use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::lock::FileLock;
-use jj_lib::matchers::{Matcher, NothingMatcher};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::OpStoreError;
@@ -34,13 +48,13 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::RebaseOptions;
-use jj_lib::working_copy::{self, LockedWorkingCopy, SnapshotOptions, WorkingCopyFreshness};
+use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
 use jj_lib::workspace::Workspace;
 
 use crate::git::GitExportFailure;
 use crate::mutate::{self, flatten_chain, MutateError};
 use crate::op_support::start_repo_transaction;
-use crate::warning::{self, WarningKind, Warnings};
+use crate::warning::{self, Load, WarningKind, Warnings};
 use crate::wc_ops::{self, SnapshotStats};
 use crate::GitImportResult;
 
@@ -162,10 +176,13 @@ pub enum PreconditionError {
         /// Full hex id of the operation the repo was loaded at.
         repo_op_id: String,
     },
-    /// The effective config could not be read, or a knob the snapshot reads has the wrong type
-    /// (the key is named). The snapshot knobs and `immutable_heads()` are refused before the
-    /// Git import/export lock is taken; a malformed Git import option only inside the refs
-    /// step, after the head import and the snapshot committed (as in the CLI).
+    /// The effective config could not be read, or a value a step reads has the wrong type (the
+    /// key is named). Each is refused where the CLI reads it: the start-up environment (the
+    /// alias tables, the `immutable_heads()` parse) before the Git import/export lock is taken;
+    /// the snapshot knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`) at the start of
+    /// the snapshot step, after the head import; a malformed Git import option at the start of
+    /// the refs step, after the head import and the snapshot. Operations committed before the
+    /// fault stay, as in the CLI, and the partial [`Precondition`] says so.
     #[error("config error: {reason}")]
     Config {
         /// Human-readable failure, naming the file or the config key.
@@ -240,70 +257,51 @@ pub(crate) fn lock_git_import_export(
     Ok(GitImportExportLock { _lock: lock })
 }
 
-// ── Knobs ────────────────────────────────────────────────────────────────────────
+// ── The start-up environment ─────────────────────────────────────────────────────
 
-/// The snapshot knobs — `snapshot.auto-track`, `snapshot.max-new-file-size`, the ignore files
-/// and `immutable_heads()` — read and type-checked up front, BEFORE the lock, so a wrong-typed
-/// knob refuses without waiting for a concurrent holder.
+/// The part of the CLI's `WorkspaceCommandEnvironment::new` (`cli/src/cli_util.rs:936-966` @
+/// v0.44.0) the precondition ports: the `[fileset-aliases]` table, then the `[revset-aliases]`
+/// table (with its builtin redefinitions) and the `immutable_heads()` parse.
 ///
-/// Two groups of config values are deliberately NOT here, because the CLI reads them later:
-/// the Git import options (`git.*` plus `remotes.<name>.auto-track-bookmarks`) are read inside
-/// the `import git refs` step, after `import git head` and `snapshot working copy` committed
-/// (`cli_util.rs:1434-1437` @ v0.44.0), and `snapshot.auto-update-stale` only on a stale working
-/// copy (`cli_util.rs:499`), so [`crate::Repo`] does the same on that error path.
-pub(crate) struct Knobs {
-    auto_tracking: Box<dyn Matcher>,
-    max_new_file_size: u64,
-    base_ignores: Arc<GitIgnoreFile>,
-    /// `::(immutable_heads() | root())` as the effective config defines it.
+/// Built BEFORE the Git import/export lock, as `workspace_helper_with_stats` builds it (`:477`),
+/// so a bad `immutable_heads()` alias refuses without waiting for a concurrent holder and writes
+/// nothing. The snapshot knobs are deliberately NOT here: [`snapshot_working_copy`] reads them
+/// where the CLI does, after `import git head` (Story 9.34).
+pub(crate) struct CommandEnv {
+    /// `::(immutable_heads() | root())` as the effective config defines it — parsed here,
+    /// resolved only where a step needs it.
     pub(crate) immutable: Arc<UserRevsetExpression>,
 }
 
-impl Knobs {
-    /// Reads the snapshot knobs off `config` for `workspace`. The Git import options are not
-    /// read here — [`import_git_refs`] reads them where the CLI does.
+impl CommandEnv {
+    /// Builds the start-up environment off `config` for `workspace`. Its warnings — the fileset
+    /// and revset alias tables, the builtin redefinitions, the `immutable_heads()` diagnostics —
+    /// land in `sink` in the CLI's order (`cli_util.rs:938-939`, `:964`), once per call (Story
+    /// 9.32).
     ///
-    /// The config-load warnings — the fileset and revset alias tables, the builtin
-    /// redefinitions, the `immutable_heads()` diagnostics — land in `sink` in the CLI's order
-    /// (`WorkspaceCommandEnvironment::new`), once per call (Story 9.32).
+    /// The `[fileset-aliases]` table is loaded here for its warnings and its refusal only: the
+    /// snapshot step's `snapshot.auto-track` parse loads it again, silently
+    /// ([`Warnings::record_load`] is record-once).
     ///
     /// # Errors
     ///
-    /// - [`PreconditionError::Config`] — a knob has the wrong type, `snapshot.auto-track` does
-    ///   not parse, or the `immutable_heads()` alias does not parse.
-    /// - [`PreconditionError::Backend`] — an ignore file could not be read.
-    pub(crate) fn read(
+    /// - [`PreconditionError::Config`] — an alias table is not a table, the effective config is
+    ///   malformed, or the `immutable_heads()` alias does not parse.
+    pub(crate) fn load(
         workspace: &Workspace,
         config: &StackedConfig,
         sink: &mut Warnings,
     ) -> Result<Self, PreconditionError> {
-        let auto_tracking = wc_ops::auto_tracking_matcher(config, sink)?;
-        let max_new_file_size = crate::config::snapshot_max_new_file_size(config)?;
-        let base_ignores = wc_ops::base_ignores(workspace)?;
+        let (_, warnings): (FilesetAliasesMap, _) = crate::revset::build_aliases_map(config, "fileset-aliases")?;
+        sink.record_load(Load::FilesetAliases, warnings);
         let immutable = crate::op_support::immutable_user_expression(workspace, config, sink)?;
-        Ok(Self {
-            auto_tracking,
-            max_new_file_size,
-            base_ignores,
-            immutable,
-        })
-    }
-
-    /// The CLI's `snapshot_options_with_start_tracking_matcher` over the auto-track matcher.
-    fn snapshot_options(&self) -> SnapshotOptions<'_> {
-        SnapshotOptions {
-            base_ignores: Arc::clone(&self.base_ignores),
-            progress: None,
-            start_tracking_matcher: self.auto_tracking.as_ref(),
-            force_tracking_matcher: &NothingMatcher,
-            max_new_file_size: self.max_new_file_size,
-        }
+        Ok(Self { immutable })
     }
 }
 
 /// What a verb carries out of a successful precondition: the effective config it was read
-/// from, the knobs a verb reuses rather than re-reading, the pre-verb snapshot's raw stats, and
-/// the call's warning collector (Story 9.32).
+/// from, the parsed immutable set a verb reuses rather than re-parsing, the pre-verb snapshot's
+/// raw stats, and the call's warning collector (Story 9.32).
 pub(crate) struct VerbContext {
     /// The effective config stack the precondition read.
     pub(crate) config: StackedConfig,
@@ -319,17 +317,17 @@ pub(crate) struct VerbContext {
 }
 
 impl VerbContext {
-    /// Assembles the context from the knobs the precondition consumed.
+    /// Assembles the context from the start-up environment the precondition built.
     pub(crate) fn new(
         config: StackedConfig,
-        knobs: Knobs,
+        env: CommandEnv,
         colocated: bool,
         auto_stats: working_copy::SnapshotStats,
         warnings: Warnings,
     ) -> Self {
         Self {
             config,
-            immutable: knobs.immutable,
+            immutable: env.immutable,
             colocated,
             auto_stats,
             warnings,
@@ -340,7 +338,8 @@ impl VerbContext {
 // ── The precondition ─────────────────────────────────────────────────────────────
 
 /// Takes the lock, loads the head and runs [`snapshot_locked`] — the body of the CLI's
-/// `workspace_helper_with_stats` after its knobs are known.
+/// `workspace_helper_with_stats` after its start-up environment `env` is built (`cli_util.rs:477`,
+/// before the lock).
 ///
 /// Fills `report` and `sink` as it goes, so a failure leaves the partial facts behind. Returns
 /// jj-lib's raw snapshot stats, which `file track` merges into its own
@@ -348,12 +347,12 @@ impl VerbContext {
 ///
 /// # Errors
 ///
-/// Anything [`snapshot_impl`] returns, and [`PreconditionError::Backend`] for the lock or the
-/// head load.
+/// Anything [`snapshot_impl`] returns — a wrong-typed snapshot knob included, refused after the
+/// head import — and [`PreconditionError::Backend`] for the lock or the head load.
 pub(crate) fn run(
     workspace: &mut Workspace,
     config: &StackedConfig,
-    knobs: &Knobs,
+    env: &CommandEnv,
     colocated: bool,
     report: &mut Precondition,
     sink: &mut Warnings,
@@ -362,7 +361,7 @@ pub(crate) fn run(
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(|e| backend(&e))?;
     let ctx = StepCtx {
         config,
-        knobs,
+        env,
         colocated,
         lock: &lock,
     };
@@ -405,16 +404,20 @@ pub(crate) fn snapshot_locked(
 /// Git HEAD, then snapshot, then import the Git refs; otherwise the snapshot alone.
 ///
 /// `ctx.lock` must be the held [`GitImportExportLock`]; every step runs under it. `ctx.config` is
-/// the effective stack the refs step reads the Git import options from — inside that step,
-/// after the head import and the snapshot committed, exactly where the CLI reads them. The
-/// steps' warnings land in `sink` in the CLI's print order (Story 9.32).
+/// the effective stack the steps read their own values from, each exactly where the CLI reads
+/// it (Story 9.34): the snapshot knobs at the start of the snapshot step, after the head import;
+/// the Git import options at the start of the refs step, after the head import and the snapshot
+/// committed. The steps' warnings land in `sink` in the CLI's print order (Story 9.32).
 ///
 /// # Errors
 ///
 /// - [`PreconditionError::StaleWorkingCopy`] — see [`StaleCause`].
-/// - [`PreconditionError::Config`] — the immutable set could not be resolved, or (colocated) a
-///   Git import option is malformed; the operations written before the refs step stay.
-/// - [`PreconditionError::Backend`] — any underlying jj-lib failure.
+/// - [`PreconditionError::Config`] — a snapshot knob has the wrong type or
+///   `snapshot.auto-track` does not parse, the immutable set could not be resolved, or
+///   (colocated) a Git import option is malformed; the operations written before the failing
+///   step stay.
+/// - [`PreconditionError::Backend`] — an ignore file could not be read, or any other underlying
+///   jj-lib failure.
 pub(crate) fn snapshot_impl(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -454,10 +457,11 @@ fn snapshot_steps(
 
 /// What every step needs besides the workspace and the repo.
 pub(crate) struct StepCtx<'a> {
-    /// The effective config stack — the refs step reads the Git import options off it.
+    /// The effective config stack — the snapshot step reads the snapshot knobs and the refs
+    /// step the Git import options off it.
     pub(crate) config: &'a StackedConfig,
-    /// The snapshot knobs, read up front.
-    pub(crate) knobs: &'a Knobs,
+    /// The start-up environment, built before the lock.
+    pub(crate) env: &'a CommandEnv,
     /// Whether the working copy is shared with a Git work tree.
     pub(crate) colocated: bool,
     /// The held Git import/export lock every step runs under.
@@ -467,7 +471,7 @@ pub(crate) struct StepCtx<'a> {
 impl StepCtx<'_> {
     fn finish_ctx(&self) -> mutate::FinishCtx<'_> {
         mutate::FinishCtx {
-            immutable: &self.knobs.immutable,
+            immutable: &self.env.immutable,
             colocated: self.colocated,
             _lock: self.lock,
         }
@@ -523,12 +527,20 @@ fn import_git_head(
 
 /// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2058-2231` @ v0.44.0).
 ///
-/// Locks the working copy, settles its freshness ([`handle_stale_working_copy`]), snapshots,
-/// and — only when the tree changed — writes `snapshot working copy` (`is_snapshot = true`):
-/// `@` rewritten with the new tree, or, when `@` is immutable, a NEW commit on top of it. In a
-/// colocated workspace the change is exported to Git inside the same transaction. The working
-/// copy is ALWAYS finished at the resulting operation, which writes nothing when neither the
-/// tree state nor the operation id changed (`local_working_copy.rs:2922-2948` @ 0.44.0).
+/// First reads the snapshot knobs off `ctx.config`, exactly where the CLI does (`:2065-2070`,
+/// Story 9.34): `snapshot.auto-track` ([`wc_ops::auto_tracking_matcher`]), then the ignore files
+/// and `snapshot.max-new-file-size` ([`wc_ops::snapshot_options`]). That is after a colocated
+/// `import git head` committed — which a wrong-typed knob therefore leaves in the op log, as in
+/// the CLI — and before the working-copy lock and the stale check, so a stale working copy with a
+/// wrong-typed knob refuses on the knob.
+///
+/// Then locks the working copy, settles its freshness ([`handle_stale_working_copy`]),
+/// snapshots, and — only when the tree changed — writes `snapshot working copy`
+/// (`is_snapshot = true`): `@` rewritten with the new tree, or, when `@` is immutable, a NEW
+/// commit on top of it. In a colocated workspace the change is exported to Git inside the same
+/// transaction. The working copy is ALWAYS finished at the resulting operation, which writes
+/// nothing when neither the tree state nor the operation id changed
+/// (`local_working_copy.rs:2922-2948` @ 0.44.0).
 fn snapshot_working_copy(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -538,7 +550,8 @@ fn snapshot_working_copy(
     sink: &mut Warnings,
 ) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
     let workspace_name = workspace.workspace_name().to_owned();
-    let options = ctx.knobs.snapshot_options();
+    let auto_tracking = wc_ops::auto_tracking_matcher(ctx.config, sink)?;
+    let options = wc_ops::snapshot_options(workspace, ctx.config, auto_tracking.as_ref())?;
     let mut locked_ws = pollster::block_on(workspace.start_working_copy_mutation()).map_err(|e| backend(&e))?;
     let Some((mut repo, wc_commit)) =
         handle_stale_working_copy(locked_ws.locked_wc(), Arc::clone(&repo), &workspace_name)?
@@ -578,7 +591,7 @@ fn commit_snapshot(
     let mut tx = start_repo_transaction(repo, workspace_name);
     tx.set_is_snapshot(true);
     let wc_immutable = {
-        let immutable = crate::op_support::resolve_immutable(tx.repo(), &ctx.knobs.immutable)?;
+        let immutable = crate::op_support::resolve_immutable(tx.repo(), &ctx.env.immutable)?;
         let set = immutable
             .intersection(&RevsetExpression::commit(wc_commit.id().clone()))
             .evaluate(tx.repo())
@@ -671,7 +684,7 @@ fn import_git_refs(
         return Ok(repo);
     }
 
-    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &ctx.knobs.immutable)?;
+    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &ctx.env.immutable)?;
     let mut num_rebased = 0_usize;
     pollster::block_on(
         tx.repo_mut()

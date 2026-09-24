@@ -896,7 +896,10 @@ pub unsafe extern "C" fn zanshin_describe(
 /// - `jj.invalid_input` — the parsed `parents` list is empty.
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+///   `import git head`), and the partial `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1033,7 +1036,10 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 /// - `jj.invalid_input` — the head operation has more than one parent (a
 ///   divergent-write merge op).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+///   `import git head`), and the partial `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

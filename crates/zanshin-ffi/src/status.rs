@@ -106,7 +106,9 @@ fn status_to_envelope(status: &Status, report: &crate::envelope::CallReport) -> 
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.no_working_copy` — the workspace has no working-copy commit (@).
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
-///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.

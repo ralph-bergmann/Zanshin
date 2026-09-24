@@ -238,6 +238,59 @@ fn a_wrong_typed_knob_is_jj_config_error_with_a_partial_report() {
     close_handle(handle);
 }
 
+/// Runs `git` in `dir`, panicking on failure. Fixture setup only.
+fn git(args: &[&str], dir: &Path) {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git spawns");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Story 9.34's outermost witness of the double fault "Git HEAD moved outside AND a wrong-typed
+/// snapshot knob": the pre-verb snapshot reads the knob where the CLI does — after its colocated
+/// `import git head` committed — so the error envelope's partial report names that operation.
+#[test]
+fn a_wrong_typed_knob_after_a_git_commit_outside_reports_the_head_import_on_the_error_arm() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let root = tmp.path().canonicalize().expect("canonical root");
+    git(&["init", "-q", "--initial-branch=main"], &root);
+    git(&["config", "user.email", "test@zanshin.test"], &root);
+    git(&["config", "user.name", "Fixture"], &root);
+    git(&["commit", "-q", "--allow-empty", "-m", "initial"], &root);
+    drop(zanshin_jj::convert_colocated(&root).result.expect("convert"));
+    let handle = open_handle(&root);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.max-new-file-size = true\n",
+    )
+    .expect("config");
+    git(&["commit", "-q", "--allow-empty", "-m", "outside"], &root);
+
+    let bytes = snapshot(handle);
+
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    let err = env.error().expect("error");
+    assert_eq!(err.code(), Some(JJ_CONFIG_ERROR));
+    assert!(
+        err.context().is_some_and(|c| c.contains("snapshot.max-new-file-size")),
+        "{:?}",
+        err.context()
+    );
+    let p = env.precondition().expect("the partial report rides the error envelope");
+    assert!(p.git_head_imported(), "the head import ran before the knob was read");
+    assert!(p.was_snapshot_taken(), "an operation WAS written before the failure");
+    assert!(p.git_refs().is_none(), "the refs step never ran");
+    close_handle(handle);
+}
+
 /// `zanshin_snapshot` builds its own error arm; the warnings collected before the failure ride
 /// it (Story 9.32): the bad `[fileset-aliases]` entry loads (and warns) before the wrong-typed
 /// size knob refuses.

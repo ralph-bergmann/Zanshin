@@ -705,8 +705,8 @@ pub(crate) fn mutation_result(
 
 /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
 ///
-/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
-/// snapshot ([`crate::snapshot::Knobs`]); the target is refused if it falls
+/// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
+/// snapshot ([`crate::snapshot::CommandEnv`]); the target is refused if it falls
 /// inside it, mirroring the CLI's `check_rewritable` in `jj describe`
 /// (`cli/src/commands/describe.rs:101` @ v0.44.0).
 ///
@@ -804,8 +804,8 @@ pub(crate) fn new_change(
 
 /// Switches the working copy to `change_id` without creating a new commit (FR-JJ-10a).
 ///
-/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
-/// snapshot ([`crate::snapshot::Knobs`]); the target is refused if it falls
+/// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
+/// snapshot ([`crate::snapshot::CommandEnv`]); the target is refused if it falls
 /// inside it, mirroring the CLI's `check_rewritable` in `jj edit`
 /// (`cli/src/commands/edit.rs:63` @ v0.44.0).
 ///
@@ -843,8 +843,8 @@ pub(crate) fn edit(
 /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
 /// bookmarks that pointed only at the abandoned commits (FR-JJ-10a).
 ///
-/// `ctx.immutable` is the repo's effective immutable-set expression, read by the pre-verb
-/// snapshot ([`crate::snapshot::Knobs`]); a target inside it is refused,
+/// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
+/// snapshot ([`crate::snapshot::CommandEnv`]); a target inside it is refused,
 /// mirroring the CLI's `check_rewritable` in `jj abandon`
 /// (`cli/src/commands/abandon.rs:85` @ v0.44.0).
 ///

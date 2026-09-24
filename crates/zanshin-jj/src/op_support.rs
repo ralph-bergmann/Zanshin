@@ -70,9 +70,10 @@ use crate::revset::{immutable_expression, resolve_expression, revset_config};
 /// exactly as it does for the CLI — the guard reads the effective config, never a Rust
 /// constant.
 ///
-/// Built off an already-loaded stack for a bare [`Workspace`], so the pre-verb snapshot's knobs
-/// ([`crate::snapshot::Knobs`], Story 9.26) — and the conversion verbs, which have no
-/// [`crate::Repo`] yet — read it from the one config load every verb makes.
+/// Built off an already-loaded stack for a bare [`Workspace`], so the pre-verb snapshot's
+/// start-up environment ([`crate::snapshot::CommandEnv`], Stories 9.26 / 9.34) — and the
+/// conversion verbs, which have no [`crate::Repo`] yet — read it from the one config load every
+/// verb makes.
 ///
 /// # Errors
 ///

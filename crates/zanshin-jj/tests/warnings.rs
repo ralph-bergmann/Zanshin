@@ -531,3 +531,28 @@ fn warnings_ride_the_error_arm_too() {
         "the fileset aliases load before the size knob is read"
     );
 }
+
+/// Story 9.34: the revset-alias table loads with the start-up environment, BEFORE the snapshot
+/// knobs are read (`cli_util.rs:939` vs `:2068-2070` @ v0.44.0), so a bad `[revset-aliases]` entry
+/// warns even when a wrong-typed size knob then refuses — as the CLI prints it.
+#[test]
+fn a_revset_alias_warning_precedes_a_wrong_typed_knob() {
+    let fx = git_fx("snapshot.max-new-file-size = true\n[revset-aliases]\n'bad(' = 'x'\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    let err = repo.status().expect_err("a wrong-typed knob refuses");
+
+    assert!(
+        matches!(
+            &err,
+            zanshin_jj::StatusError::Precondition(PreconditionError::Config { reason })
+                if reason.contains("snapshot.max-new-file-size")
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        kinds(&repo.take_warnings()),
+        [WarningKind::ConfigAliasInvalid],
+        "the revset aliases load before the size knob is read"
+    );
+}

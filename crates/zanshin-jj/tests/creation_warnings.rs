@@ -2,16 +2,18 @@
 
 //! Story 9.33 witnesses: the creation paths — `Repo::init`, `Repo::clone`, `convert_colocated`,
 //! `convert_import` — report what the jj CLI @ v0.44.0 prints on the same flows, in its order,
-//! on success AND on failure, plus the conversion's snapshot report.
+//! on success AND on failure, plus the conversion's snapshot report. Story 9.34 adds the
+//! conversions' config read points: the start-up environment before the snapshot, the snapshot
+//! knobs inside it.
 //!
 //! # Why one test in its own binary
 //!
 //! The identity rows need `JJ_USER` / `JJ_EMAIL` REMOVED (an empty identity), the others need
-//! them set, the refs-step failure needs a user config file and the late-failure row a broken
-//! `XDG_CONFIG_HOME`. All of these are process-global, so — the `tests/config_identity.rs`
-//! idiom — this file holds exactly ONE `#[test]` that walks the I/O matrix in sequence,
-//! changing the environment between phases. `JJ_CONFIG` is `""` except for the one phase that
-//! repoints it at a file of its own — never unset: that would re-enable discovery of the
+//! them set, the refs-step failure and the Story 9.34 rows need a user config file and the
+//! late-failure row a broken `XDG_CONFIG_HOME`. All of these are process-global, so — the
+//! `tests/config_identity.rs` idiom — this file holds exactly ONE `#[test]` that walks the I/O
+//! matrix in sequence, changing the environment between phases. `JJ_CONFIG` is `""` except for the phases that
+//! repoint it at a file of their own — never unset: that would re-enable discovery of the
 //! developer's real config — and `XDG_CONFIG_HOME` points into a temp dir, so the secure repo
 //! config root is ours.
 //!
@@ -125,6 +127,9 @@ fn creation_paths_report_what_the_cli_prints() {
     a_jjconflict_entry_is_reported_by_the_colocated_conversion();
     a_snapshot_failure_keeps_a_partial_report();
     a_refs_step_failure_reports_no_snapshot(tmp.path());
+    a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp.path());
+    a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp.path());
+    a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp.path());
     a_late_failure_keeps_the_report(tmp.path(), &xdg);
 }
 
@@ -474,6 +479,87 @@ fn a_refs_step_failure_reports_no_snapshot(tmp: &Path) {
     assert!(outcome.precondition.is_none(), "the snapshot never started");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+}
+
+/// Story 9.34: the conversion reads its snapshot knobs where the CLI does — inside
+/// `maybe_snapshot`'s snapshot step (`cli_util.rs:2065-2070`), after the colocated
+/// `import git head` — so a wrong-typed `snapshot.max-new-file-size` fails with the PARTIAL
+/// snapshot report naming that operation, and the rollback removes `.jj/`.
+fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) {
+    let user = tmp.join("bad-size.toml");
+    fs::write(&user, "snapshot.max-new-file-size = true\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let dir = TempDir::new().unwrap();
+    git_with_commit(dir.path());
+    let outcome = convert_colocated(dir.path());
+    set_env("JJ_CONFIG", Some(""));
+
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!("a wrong-typed size knob fails the snapshot step: {:?}", outcome.result);
+    };
+    assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
+    let precondition = outcome.precondition.expect("the snapshot started");
+    assert!(
+        precondition.git_head_imported,
+        "the head import ran before the knob was read"
+    );
+    assert!(precondition.was_snapshot_taken, "the head import moved the head");
+    assert!(precondition.git_refs.is_none(), "the snapshot's refs import never ran");
+    assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+}
+
+/// Story 9.34: the conversion's start-up environment stays at the CLI's `for_workable_repo`
+/// point (`git/init.rs:252`), BEFORE `maybe_snapshot`: a bad `immutable_heads()` alias fails with
+/// no snapshot report, and `.jj/` is rolled back.
+fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) {
+    let user = tmp.join("bad-immutable.toml");
+    fs::write(&user, "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let dir = TempDir::new().unwrap();
+    git_with_commit(dir.path());
+    let outcome = convert_colocated(dir.path());
+    set_env("JJ_CONFIG", Some(""));
+
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!(
+            "a bad immutable_heads() alias fails the start-up environment: {:?}",
+            outcome.result
+        );
+    };
+    assert!(reason.contains("bogus_function"), "{reason}");
+    assert!(outcome.precondition.is_none(), "the snapshot never started");
+    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+}
+
+/// Story 9.34, the non-colocated arm: `convert_import`'s snapshot (no Git head import there)
+/// reads its knobs inside the snapshot step too, so a wrong-typed `snapshot.max-new-file-size`
+/// fails with a PARTIAL report that records no operation, and the rollback removes `.jj/`.
+fn a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp: &Path) {
+    let user = tmp.join("bad-size-import.toml");
+    fs::write(&user, "snapshot.max-new-file-size = true\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let src = TempDir::new().unwrap();
+    git_with_commit(src.path());
+    let parent = TempDir::new().unwrap();
+    let dst = parent.path().join("dst");
+    let outcome = convert_import(src.path(), &dst);
+    set_env("JJ_CONFIG", Some(""));
+
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!("a wrong-typed size knob fails the snapshot step: {:?}", outcome.result);
+    };
+    assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
+    let precondition = outcome.precondition.expect("the snapshot started");
+    assert!(
+        !precondition.git_head_imported,
+        "the non-colocated snapshot imports no head"
+    );
+    assert!(
+        !precondition.was_snapshot_taken,
+        "nothing was written before the failure"
+    );
+    assert!(!dst.join(".jj").exists(), "the failed conversion is rolled back");
 }
 
 /// A conversion that fails AFTER its snapshot (the `trunk()` alias cannot be written, as in

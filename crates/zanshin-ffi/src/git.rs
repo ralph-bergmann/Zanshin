@@ -272,7 +272,10 @@ pub unsafe extern "C" fn zanshin_git_import(handle: u64) -> *mut ZanshinBuf {
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+///   `import git head`), and the partial `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -322,7 +325,10 @@ pub unsafe extern "C" fn zanshin_git_export(handle: u64) -> *mut ZanshinBuf {
 /// - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+///   `import git head`), and the partial `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -515,7 +521,10 @@ pub unsafe extern "C" fn zanshin_git_remote_rename(
 ///   remote; the name in `context`.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+///   `import git head`), and the partial `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

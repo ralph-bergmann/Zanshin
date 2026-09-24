@@ -347,7 +347,9 @@ fn file_search_to_envelope(search: &FileSearch, report: &crate::envelope::CallRe
 ///   the CLI's `-r` default `@`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
-///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -448,7 +450,9 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
 ///   submodule, or a conflict with a non-file side); the path in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
-///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -496,7 +500,9 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
 ///   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
-///   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+///   `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

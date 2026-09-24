@@ -435,7 +435,10 @@ char *zanshin_ffi_version(void);
  * - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
  *   a tracked remote bookmark; the name in `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -480,7 +483,10 @@ ZanshinBuf *zanshin_bookmark_create(uint64_t handle,
  * - `jj.invalid_input` — `names` is empty (or absent from the buffer), or a pattern does not
  *   parse; jj-lib's reason in `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -504,7 +510,9 @@ ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
@@ -531,7 +539,9 @@ ZanshinBuf *zanshin_bookmarks(uint64_t handle);
  * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
  * - `jj.change_not_found` — no change for the given id (malformed, absent, or hidden-only).
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
@@ -685,7 +695,9 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
  *   jj-lib's own ambiguity wording in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1018,7 +1030,9 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  *   the CLI's `-r` default `@`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1101,7 +1115,9 @@ ZanshinBuf *zanshin_file_show(uint64_t handle,
  * - `jj.not_a_file` — `path` exists but is not a regular file (a directory, a symlink, a
  *   submodule, or a conflict with a non-file side); the path in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1140,7 +1156,9 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
  *   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1178,7 +1196,9 @@ ZanshinBuf *zanshin_file_search(uint64_t handle,
  *   string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
  *   root); refused before the working copy is locked.
  * - `jj.config_error` — the repo's effective jj config no longer reads, or
- *   `snapshot.max-new-file-size` has the wrong type (the key in `context`); nothing is written.
+ *   `snapshot.max-new-file-size` has the wrong type (the key in `context`). Operations the
+ *   pre-verb snapshot committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`); the partial `precondition` says which.
  * - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
@@ -1224,7 +1244,9 @@ ZanshinBuf *zanshin_file_track(uint64_t handle, const uint8_t *data, uintptr_t l
  *   string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
  *   root); refused before the working copy is locked.
  * - `jj.config_error` — the repo's effective jj config no longer reads, `snapshot.auto-track` is
- *   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type; nothing is written.
+ *   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type. Operations the
+ *   pre-verb snapshot committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`); the partial `precondition` says which.
  * - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
@@ -1302,7 +1324,10 @@ ZanshinBuf *zanshin_git_import(uint64_t handle);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1344,7 +1369,10 @@ ZanshinBuf *zanshin_git_export(uint64_t handle);
  * - `jj.remote_exists` — `name` already has a configured remote; the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1502,7 +1530,10 @@ ZanshinBuf *zanshin_git_remote_rename(uint64_t handle, const char *old_name, con
  *   remote; the name in `context`.
  * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1642,7 +1673,9 @@ void zanshin_logging_init(void);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
@@ -1663,7 +1696,9 @@ ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
@@ -1952,7 +1987,10 @@ ZanshinBuf *zanshin_describe(uint64_t handle, const char *change_id, const char 
  * - `jj.invalid_input` — the parsed `parents` list is empty.
  * - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -2061,7 +2099,10 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  * - `jj.invalid_input` — the head operation has more than one parent (a
  *   divergent-write merge op).
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written.
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+ *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
+ *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
+ *   `import git head`), and the partial `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -2245,11 +2286,14 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
  *   in `context`. Nothing is written.
- * - `jj.config_error` — the effective jj config no longer reads, or a knob the snapshot reads
- *   has the wrong type (the key in `context`). The snapshot knobs and `immutable_heads()` are
- *   refused before the Git import/export lock; `snapshot.auto-update-stale` is checked only on
- *   a stale working copy, and the Git import options only inside the refs step — after the
- *   head import and the snapshot, whose operations stay (as in the CLI).
+ * - `jj.config_error` — the effective jj config no longer reads, or a value the snapshot reads
+ *   has the wrong type (the key in `context`). Each is refused where the CLI reads it (Story
+ *   9.34): the start-up environment (the alias tables, the `immutable_heads()` parse) before the
+ *   Git import/export lock, writing nothing; the snapshot knobs (`snapshot.auto-track`,
+ *   `snapshot.max-new-file-size`) after the head import; the Git import options inside the refs
+ *   step, after the head import and the snapshot; `snapshot.auto-update-stale` only on a stale
+ *   working copy. Operations committed before the fault stay, as in the CLI; the partial
+ *   `precondition` says which.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; jj-lib's message in `context`.
  *
  * # Safety
@@ -2271,7 +2315,9 @@ ZanshinBuf *zanshin_snapshot(uint64_t handle);
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.no_working_copy` — the workspace has no working-copy commit (@).
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
@@ -2302,7 +2348,9 @@ ZanshinBuf *zanshin_status(uint64_t handle);
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
- *   unreadable or a knob it reads wrongly typed (the key in `context`); nothing is written.
+ *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
+ *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
+ *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — `load_at_head` failed, i.e. the VIEW half could not be read; detail in

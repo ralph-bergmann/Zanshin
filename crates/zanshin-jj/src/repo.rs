@@ -231,13 +231,19 @@ impl Repo {
     /// (Story 9.26) — `cli/src/cli_util.rs:472-516` @ v0.44.0.
     ///
     /// 1. [`Repo::refresh_settings`], so the snapshot runs with the current config stack.
-    /// 2. The snapshot knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`, the ignore
-    ///    files) and `immutable_heads()` are read and type-checked — BEFORE the lock. The Git
-    ///    import options are read inside the refs step, where the CLI reads them
-    ///    (`cli_util.rs:1434-1437`), so a malformed one fails after the earlier steps committed.
+    /// 2. The CLI's start-up environment ([`crate::snapshot::CommandEnv`]: the fileset and
+    ///    revset alias tables, the `immutable_heads()` parse) is built — BEFORE the lock, as
+    ///    `workspace_helper_with_stats` builds it (`cli_util.rs:477`), so a bad
+    ///    `immutable_heads()` alias refuses without waiting and writes nothing.
     /// 3. Colocated workspaces take jj's `git_import_export.lock` (blocking), then the head is
     ///    loaded and `snapshot_impl` runs: `import git head`, `snapshot working copy`,
-    ///    `import git refs` (colocated) or the snapshot alone.
+    ///    `import git refs` (colocated) or the snapshot alone. Each step reads its own config
+    ///    where the CLI does (Story 9.34): the snapshot knobs (`snapshot.auto-track`, the ignore
+    ///    files, `snapshot.max-new-file-size`) at the start of the snapshot step, AFTER the head
+    ///    import (`cli_util.rs:2065-2070`); the Git import options at the start of the refs step
+    ///    (`cli_util.rs:1434-1437`). A fault in either fails after the earlier steps committed,
+    ///    and their operations stay, as in the CLI. `snapshot.auto-update-stale` is read only on
+    ///    a stale working copy (`cli_util.rs:499`).
     /// 4. The report is stored for [`Repo::take_precondition`] — a PARTIAL one when a later
     ///    step failed — and the lock is released.
     /// 5. On success, the snapshot's stats warn (`print_snapshot_stats`, which `workspace_helper`
@@ -261,12 +267,12 @@ impl Repo {
         refreshed?;
         let config = crate::config::load(self)?;
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace);
-        let knobs = crate::snapshot::Knobs::read(&self.workspace, &config, &mut self.pending_warnings)?;
+        let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
         let mut report = crate::Precondition::default();
         let result = crate::snapshot::run(
             &mut self.workspace,
             &config,
-            &knobs,
+            &env,
             colocated,
             &mut report,
             &mut self.pending_warnings,
@@ -291,7 +297,7 @@ impl Repo {
         }
         Ok(crate::snapshot::VerbContext::new(
             config,
-            knobs,
+            env,
             colocated,
             auto_stats,
             std::mem::take(&mut self.pending_warnings),

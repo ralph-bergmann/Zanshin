@@ -84,11 +84,14 @@ fn snapshot_to_envelope(report: &CallReport) -> Vec<u8> {
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.stale_working_copy` — the working copy is stale; `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
 ///   in `context`. Nothing is written.
-/// - `jj.config_error` — the effective jj config no longer reads, or a knob the snapshot reads
-///   has the wrong type (the key in `context`). The snapshot knobs and `immutable_heads()` are
-///   refused before the Git import/export lock; `snapshot.auto-update-stale` is checked only on
-///   a stale working copy, and the Git import options only inside the refs step — after the
-///   head import and the snapshot, whose operations stay (as in the CLI).
+/// - `jj.config_error` — the effective jj config no longer reads, or a value the snapshot reads
+///   has the wrong type (the key in `context`). Each is refused where the CLI reads it (Story
+///   9.34): the start-up environment (the alias tables, the `immutable_heads()` parse) before the
+///   Git import/export lock, writing nothing; the snapshot knobs (`snapshot.auto-track`,
+///   `snapshot.max-new-file-size`) after the head import; the Git import options inside the refs
+///   step, after the head import and the snapshot; `snapshot.auto-update-stale` only on a stale
+///   working copy. Operations committed before the fault stay, as in the CLI; the partial
+///   `precondition` says which.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; jj-lib's message in `context`.
 ///
 /// # Safety

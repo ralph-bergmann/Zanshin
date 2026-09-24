@@ -196,7 +196,9 @@ fn untrack_result_to_envelope(r: &UntrackResult, report: &crate::envelope::CallR
 ///   string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
 ///   root); refused before the working copy is locked.
 /// - `jj.config_error` — the repo's effective jj config no longer reads, or
-///   `snapshot.max-new-file-size` has the wrong type (the key in `context`); nothing is written.
+///   `snapshot.max-new-file-size` has the wrong type (the key in `context`). Operations the
+///   pre-verb snapshot committed before the fault stay, as in the CLI (colocated:
+///   `import git head`); the partial `precondition` says which.
 /// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
@@ -251,7 +253,9 @@ pub unsafe extern "C" fn zanshin_file_track(handle: u64, data: *const u8, len: u
 ///   string or escapes the workspace (parsed like the CLI's path argument, cwd = the workspace
 ///   root); refused before the working copy is locked.
 /// - `jj.config_error` — the repo's effective jj config no longer reads, `snapshot.auto-track` is
-///   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type; nothing is written.
+///   not a valid fileset, or `snapshot.max-new-file-size` has the wrong type. Operations the
+///   pre-verb snapshot committed before the fault stay, as in the CLI (colocated:
+///   `import git head`); the partial `precondition` says which.
 /// - `jj.no_working_copy` — the workspace has no `@` in the head view; no `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.

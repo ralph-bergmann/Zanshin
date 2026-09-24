@@ -12,6 +12,7 @@ warnings: [oversized]
 deferred:
   - summary: >-
       A wrong-typed snapshot knob is refused before the head import, while the CLI refuses after it (decision for Ralph).
+      RESOLVED 2026-09-24 by Story 9.34 (the snapshot knobs are now read after the head import, as in the CLI).
     evidence: |-
       The matrix row "Wrong-typed knob: refused before the lock" makes Zanshin read snapshot.* and immutable_heads() before
       git_import_export.lock. The CLI reads the snapshot knobs inside snapshot_working_copy, i.e. after its lock and its
@@ -172,7 +173,7 @@ Colocated workspace unless stated. "op" = one entry in `jj op log`.
 | Zanshin's own op → watcher → refresh | after any row above | zero further ops | N/A |
 | `.jjconflict` files present | user `git checkout`ed a conflicted commit | flag set; snapshot proceeds | N/A |
 | Watchman configured, daemon unavailable | `fsmonitor.backend="watchman"` | snapshot fails as in the CLI | `jj.jj_lib_error` with jj-lib's message |
-| Wrong-typed knob | `snapshot.max-new-file-size = true` | refused before the lock | `jj.config_error` (key) |
+| Wrong-typed knob | `snapshot.max-new-file-size = true` | refused before the lock (2026-09-24, Story 9.34: superseded — the CLI reads the snapshot knobs after `import git head`; only the start-up environment is refused before the lock) | `jj.config_error` (key) |
 | Native backend | `init_simple` workspace | middle step only; no lock, no git steps | N/A |
 
 </intent-contract>
@@ -565,7 +566,7 @@ Op-log parity of the precondition itself, checked by the parity layer against `v
 **Precondition sequence** (`Repo::precondition`):
 1. `refresh_settings()?` (the 9.27 hook).
 2. `pending_precondition = None`.
-3. Read EVERY knob: `snapshot.auto-update-stale`, `snapshot.auto-track` matcher, `snapshot.max-new-file-size`, `git_import_options` (incl. auto-track-bookmarks), and the immutable expression. A wrong type is `PreconditionError::Config` naming the key, raised before the lock (matrix row).
+3. Read EVERY knob: `snapshot.auto-update-stale`, `snapshot.auto-track` matcher, `snapshot.max-new-file-size`, `git_import_options` (incl. auto-track-bookmarks), and the immutable expression. A wrong type is `PreconditionError::Config` naming the key, raised before the lock (matrix row). (2026-09-24, Story 9.34: superseded — only the start-up environment is read before the lock; the snapshot knobs are read inside the snapshot step, after `import git head`.)
 4. `colocated = wc_ops::is_colocated_git_workspace`, then lock (colocated only; `FileLock::lock` blocks; a lock failure is `Backend("Failed to take lock for Git import/export: …")`).
 5. `load_at_head`.
 6. `snapshot_impl` (head import, then snapshot, then refs import).
@@ -606,6 +607,7 @@ On `StaleWorkingCopy` with `snapshot.auto-update-stale = true` the result is the
   - The witness forces the query to fail deterministically (dedicated test binary; e.g. `WATCHMAN_SOCK` pointed at a nonexistent socket, whether or not `watchman` is installed) and asserts identical ops and stats.
   - The row's error column (`jj.jj_lib_error` with jj-lib's message) is witnessed separately by a snapshot jj-lib DOES fail. Example: a new file with mode 000 → `jj.jj_lib_error` carrying jj-lib's message, with no op written.
 - **Wrong-typed knob "refused before the lock".**
+  - 2026-09-24, Story 9.34: superseded — the CLI reads the snapshot knobs after `import git head`; only the start-up environment is refused before the lock.
   - The matrix wins: all knobs are read before the lock. Witness: hold the lock in another thread; the verb returns `jj.config_error` without waiting (bounded `recv_timeout`); no op is written.
   - Known consequence: the CLI reads the snapshot knobs AFTER its lock and head import. So in the double fault "HEAD moved outside AND a wrong-typed snapshot knob", the CLI writes `import git head` before failing, and Zanshin does not. This is recorded as a deferred decision for Ralph and is not otherwise observable.
 
