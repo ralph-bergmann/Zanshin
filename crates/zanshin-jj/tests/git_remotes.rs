@@ -901,8 +901,12 @@ fn an_unwritable_repo_config_aborts_the_transaction_after_the_git_config_edit() 
     let (tmp, _remote_dir, url) = git_workspace();
     let mut repo = Repo::open(tmp.path()).expect("open");
     repo.git_remote_add("origin", &url, None).expect("add");
-    let before = head_op_id(&mut repo);
     let config_path = write_pinned_repo_config(tmp.path());
+    // Story 9.37: the next verb's start-up fix-up MIGRATES the legacy file (a fresh, writable
+    // secure file; the legacy path becomes a symlink to it), so the migration runs first and the
+    // chmod — which follows the symlink — lands on the file the remote writer saves.
+    repo.snapshot().expect("the snapshot migrates the legacy repo config");
+    let before = head_op_id(&mut repo);
     fs::set_permissions(&config_path, fs::Permissions::from_mode(0o444)).expect("chmod");
 
     let err = repo

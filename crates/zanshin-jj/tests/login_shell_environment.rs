@@ -30,7 +30,7 @@ fn script(path: &Path, body: &str) {
 }
 
 fn user_name() -> String {
-    config_get(None, "user.name").expect("user.name is set")
+    config_get(None, "user.name").result.expect("user.name is set")
 }
 
 /// The fake `git` ran with the shell's variables minus the locale jj-lib pins; `what` names the
@@ -102,7 +102,10 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     // Before: the process environment.
     assert_eq!(user_name(), "Test User");
     assert!(
-        matches!(config_get(None, "test.marker"), Err(ConfigCmdError::NotFound { .. })),
+        matches!(
+            config_get(None, "test.marker").result,
+            Err(ConfigCmdError::NotFound { .. })
+        ),
         "JJ_CONFIG=\"\" disables user-config discovery"
     );
 
@@ -111,7 +114,7 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     // After: the login shell's — its identity, its XDG user config…
     assert_eq!(user_name(), "Shell User");
     assert_eq!(
-        config_get(None, "test.marker").expect("the XDG user config"),
+        config_get(None, "test.marker").result.expect("the XDG user config"),
         "from-xdg"
     );
     // …its PATH picks the `git` a fetch and a clone run, with the shell's variables minus the

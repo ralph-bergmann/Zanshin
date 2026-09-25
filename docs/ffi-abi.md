@@ -84,18 +84,32 @@ list — and never appears on `PANIC_FALLBACK_ENVELOPE`, whose bytes are unchang
 Success without a caveat is `ok` with no warnings; there is no success code and no
 severity. Config-load warnings are recorded once per call. On the Dart side every
 `ZanshinWorker` / `RepoHandle` command result exposes them as `warnings`
-(`List<ZanshinWarning>`), decoded by one shared helper — except `openRepo` (opening
-warns about nothing), `closeRepo` / `close` (lifecycle) and `events` (a stream, not a
-command); a list result is a `WarnedList<E>`; payloads nested in another payload carry
-none. The creations (Story 9.33) — `zanshin_repo_init` / `_clone` / `_convert` — carry the
-creating call's warnings on the `RepoHandle` ok envelope AND on every error envelope
-(including `watcher.io_error` after a successful creation); in Dart `initRepo`,
-`cloneRepo` and `convert` return a `CreatedRepoHandle` (a `RepoHandle` subtype, so
-existing callers compile unchanged) exposing them as `warnings`; a refused creation
-throws `ZanshinFfiException` exposing them as its `warnings` (e.g.
-`jj.clone_cleanup_failed`, which only an error envelope carries). `zanshin_repo_open`
-carries none. On every error envelope — handle-scoped, handle-less or creation — Dart
-reads the warnings the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
+(`List<ZanshinWarning>`), decoded by one shared helper — except `closeRepo` / `close`
+(lifecycle) and `events` (a stream, not a command); a list result is a `WarnedList<E>`;
+payloads nested in another payload carry none. The creations (Story 9.33) —
+`zanshin_repo_init` / `_clone` / `_convert` — carry the creating call's warnings on the
+`RepoHandle` ok envelope AND on every error envelope (including `watcher.io_error` after a
+successful creation); in Dart `initRepo`, `cloneRepo` and `convert` return a
+`CreatedRepoHandle` (a `RepoHandle` subtype, so existing callers compile unchanged)
+exposing them as `warnings`; a refused creation throws `ZanshinFfiException` exposing them
+as its `warnings` (e.g. `jj.clone_cleanup_failed`, which only an error envelope carries).
+On every error envelope — handle-scoped, handle-less or creation — Dart reads the warnings
+the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
+
+**The start-up secure-config fix-up (Story 9.37).** At the start of every command the jj CLI
+runs jj-lib's `SecureConfig::maybe_load_config` for the repo, then the workspace config
+layer: a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` is migrated into
+`<config_dir>/jj/{repos,workspaces}/<id>/` (the legacy path becomes a symlink), a moved
+repo's `metadata.binpb` is re-pointed, a copied repo's config is forked under a new id, a
+missing secure directory is regenerated. Zanshin runs the very same function wherever it
+plays a command's start-up — `zanshin_repo_open`, every symbol that runs the pre-verb
+snapshot (see *`precondition`* below), and the `zanshin_config_*` wrappers given a
+`workspace_root` (not the `gc` pair) — and its notices (`jj.config_migrated`,
+`jj.config_copied`, `jj.config_regenerated`) are the call's FIRST warnings, on the ok AND
+the error envelope. `zanshin_repo_open` answers like a creation: the `RepoHandle` ok
+envelope, the refusal and a late `watcher.io_error` all carry them; in Dart `openRepo`
+returns an `OpenedRepoHandle` (a `RepoHandle` subtype) exposing them as `warnings`. The
+notices are one-shot — the next call finds nothing left to fix.
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
@@ -202,7 +216,13 @@ ZanshinBuf* zanshin_config_<verb>(const uint8_t* data, uintptr_t len);
 They are handle-less on purpose: a stack only the workspace LOAD refuses (a
 wrong-typed `git.*` key) makes `zanshin_repo_open` fail, and the config verbs are
 how the user repairs it — exactly as the CLI's config commands never load the
-workspace.
+workspace. With a `workspace_root`, every one of them but the `gc` pair still starts
+like a CLI command (Story 9.37): the secure-config fix-up runs for the repo, then the
+workspace layer — inside the start-up stack load, or ALONE for the two `edit` halves,
+which load no stack — so a legacy repo config is migrated (a copied repo's config
+forked, a missing secure directory regenerated) even by a call that then refuses, and
+its `jj.config_migrated` / `jj.config_copied` / `jj.config_regenerated` notices are the
+envelope's first warnings, ok or error.
 
 `zanshin_environment_adopt` (Story 9.36) uses the same two-parameter shape: the app
 calls it once at start-up, before any worker or repo exists, so there is no handle to
@@ -428,7 +448,7 @@ or no `# Errors` block.
 
 | Symbol | Args | Request table | Success payload | Error codes | Story |
 |--------|------|---------------|-----------------|-------------|-------|
-| `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a |
+| `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a (+9.37) |
 | `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
 | `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
 | `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
@@ -469,13 +489,13 @@ or no `# Errors` block.
 | `zanshin_git_remote_remove` | `(uint64_t handle, const char *name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_rename` | `(uint64_t handle, const char *old_name, const char *new_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_set_url` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteSetUrlRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
-| `zanshin_config_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigListRequest` | `ConfigListResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error` | 9.28 |
-| `zanshin_config_get` | `(const uint8_t *data, uintptr_t len)` | `ConfigGetRequest` | `ConfigGetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_not_found` | 9.28 |
-| `zanshin_config_path` | `(const uint8_t *data, uintptr_t len)` | `ConfigPathRequest` | `ConfigPathResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
-| `zanshin_config_set` | `(const uint8_t *data, uintptr_t len)` | `ConfigSetRequest` | `ConfigSetResult` (+ `precondition` iff the identity check snapshotted) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_overwrite` | 9.28 |
-| `zanshin_config_unset` | `(const uint8_t *data, uintptr_t len)` | `ConfigUnsetRequest` | `ConfigUnsetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_delete_table`, `jj.config_not_found` | 9.28 |
-| `zanshin_config_file_read` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileReadRequest` | `ConfigFileText` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file` | 9.28 |
-| `zanshin_config_file_write` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileWriteRequest` | — (no-payload success) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_ambiguous_file`, `jj.config_parse_error`, `jj.config_error` | 9.28 |
+| `zanshin_config_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigListRequest` | `ConfigListResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error` | 9.28 (+9.37) |
+| `zanshin_config_get` | `(const uint8_t *data, uintptr_t len)` | `ConfigGetRequest` | `ConfigGetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_not_found` | 9.28 (+9.37) |
+| `zanshin_config_path` | `(const uint8_t *data, uintptr_t len)` | `ConfigPathRequest` | `ConfigPathResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found` | 9.28 (+9.37) |
+| `zanshin_config_set` | `(const uint8_t *data, uintptr_t len)` | `ConfigSetRequest` | `ConfigSetResult` (+ `precondition` iff the identity check snapshotted) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_overwrite` | 9.28 (+9.37) |
+| `zanshin_config_unset` | `(const uint8_t *data, uintptr_t len)` | `ConfigUnsetRequest` | `ConfigUnsetResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_parse_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file`, `jj.config_would_delete_table`, `jj.config_not_found` | 9.28 (+9.37) |
+| `zanshin_config_file_read` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileReadRequest` | `ConfigFileText` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `jj.config_path_not_found`, `jj.config_ambiguous_file` | 9.28 (+9.37) |
+| `zanshin_config_file_write` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileWriteRequest` | — (no-payload success) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_ambiguous_file`, `jj.config_parse_error`, `jj.config_error` | 9.28 (+9.37) |
 | `zanshin_config_gc_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcListRequest` | `ConfigGcList` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success, no warnings) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input` | 9.36 |
@@ -1120,9 +1140,14 @@ then flattens `--when` / `[[--scope]]` blocks through
 `jj_lib::config::resolve`. **Read-only by construction:** the CLI reaches the
 repo/workspace layer through `jj_lib::secure_config::SecureConfig`, whose
 `maybe_load_config` writes (creates directories, writes `metadata.binpb`,
-generates a `config-id`, copies configs on repo-move detection, symlinks the
-legacy file away); Zanshin resolves the `config-id` → path indirection by hand
-instead, so nothing on disk is created, migrated or symlinked. Not layered: the
+generates a `config-id`, copies configs on repo-copy detection, symlinks the
+legacy file away); this symbol resolves the `config-id` → path indirection by hand
+instead, so it creates, migrates or symlinks nothing. That write is the CLI's
+start-up fix-up, which Zanshin runs where a command starts — at `zanshin_repo_open`
+and at every snapshotting call (Story 9.37, see *`warnings`* above) — but NOT here:
+`zanshin_log_defaults` runs no fix-up, so it reads the state as of the handle's last
+open or snapshotting call (a repo copied or a secure directory deleted since is fixed
+up only by the next such call). Not layered: the
 `--config`/`--config-file` command-line layer (Zanshin has no command line).
 `config_resolver::resolve` runs with `command: None`, so `--when.commands` scopes
 never match; `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes match

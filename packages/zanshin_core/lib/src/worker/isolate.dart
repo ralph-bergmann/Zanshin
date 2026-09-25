@@ -68,10 +68,11 @@ typedef _WorkerInit = (SendPort, SendPort, SendPort, bool, bool);
 /// was a bare `String` or `void` is a small class carrying the value and the
 /// warnings. The creations — [initRepo], [cloneRepo] and [convert] — return a
 /// [CreatedRepoHandle]: a [RepoHandle] that also carries the creating call's
-/// warnings and, for [convert], its snapshot report (Story 9.33). Three kinds of
-/// member carry none: [openRepo] (opening warns about nothing and runs no
-/// snapshot); [closeRepo] and [close] (lifecycle, no CLI counterpart); and
-/// [events] (a stream, not a command).
+/// warnings and, for [convert], its snapshot report (Story 9.33); [openRepo]
+/// returns an [OpenedRepoHandle] carrying the warnings of the jj CLI's start-up
+/// secure-config fix-up (Story 9.37). Two kinds of member carry none:
+/// [closeRepo] and [close] (lifecycle, no CLI counterpart); and [events] (a
+/// stream, not a command).
 ///
 /// A failed command throws [ZanshinFfiException], which carries the error
 /// envelope's report the same way for every command (Story 9.35): its
@@ -356,14 +357,26 @@ class ZanshinWorker {
 
   /// Open an existing jj repository at [path].
   ///
-  /// Returns a [RepoHandle] with `handleId` as a small dense integer (first
-  /// is `0`). Throws [ZanshinFfiException] on FFI errors (`jj.repo_not_found`
-  /// / `jj.path_not_found`). Throws [StateError] synchronously after [close].
-  Future<RepoHandle> openRepo(String path) async {
+  /// Returns an [OpenedRepoHandle] with `handleId` as a small dense integer
+  /// (first is `0`). Opening runs the jj CLI's start-up secure-config fix-up
+  /// (Story 9.37); its one-shot notices — `jj.config_migrated`,
+  /// `jj.config_copied`, `jj.config_regenerated` — are the handle's `warnings`,
+  /// and ride a refusal's [ZanshinFfiException] too. Throws
+  /// [ZanshinFfiException] on FFI errors (`jj.repo_not_found` /
+  /// `jj.path_not_found`). Throws [StateError] synchronously after [close].
+  Future<OpenedRepoHandle> openRepo(String path) async {
     final WorkerResponse response = await _sendCommand(
       OpenRepoCommand(commandId: _correlator.allocateId(), path: path),
     );
-    return _handleOrThrow(response);
+    switch (response) {
+      case HandleResult(:final handleId, :final bytes):
+        final (:List<ZanshinWarning> warnings, precondition: _) = repo_ffi_precondition.decodeCreationReportInternal(
+          bytes,
+        );
+        return OpenedRepoHandle(this, handleId, warnings: warnings);
+      case BufferResult(:final bytes):
+        throw _envelopeToException(bytes);
+    }
   }
 
   /// Initialise a new jj repository at [path].
@@ -408,11 +421,6 @@ class ZanshinWorker {
     );
     return _createdOrThrow(response);
   }
-
-  RepoHandle _handleOrThrow(WorkerResponse response) => switch (response) {
-    HandleResult(:final handleId) => RepoHandle(this, handleId),
-    BufferResult(:final bytes) => throw _envelopeToException(bytes),
-  };
 
   /// A creation's reply: the [CreatedRepoHandle] with the report its ok
   /// envelope carries (Story 9.33), or the refusal as [ZanshinFfiException].
@@ -1467,7 +1475,12 @@ class ZanshinWorker {
   // repaired through these. Every method throws [ArgumentError] for a string
   // argument with an interior NUL (U+0000) and [ZanshinFfiException] for an FFI
   // error (`jj.config_*`, `jj.path_not_found`, `jj.repo_not_found`, …; see
-  // `docs/ffi-abi.md`).
+  // `docs/ffi-abi.md`). A [workspaceRoot] makes every one of them but the `gc`
+  // pair run the jj CLI's start-up secure-config fix-up first (Story 9.37): it
+  // may migrate a legacy config, fork a copied repo's or regenerate a missing
+  // secure directory on disk, and reports `jj.config_migrated` /
+  // `jj.config_copied` / `jj.config_regenerated` as the call's first warnings,
+  // ok or error.
 
   /// `jj config list [NAME] [--user|--repo|--workspace] [--include-defaults]
   /// [--include-overridden]` — every value of the effective stack with its

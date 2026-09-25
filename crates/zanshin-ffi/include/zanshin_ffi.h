@@ -718,7 +718,9 @@ ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t le
  * The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
  * (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
  * `ConfigListResult` (lowest layer first; empty is a result — and then warns
- * `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing.
+ * `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing but the CLI's start-up
+ * secure-config fix-up (with `workspace_root`; Story 9.37), whose notices are the first
+ * `Envelope.warnings`, on the ok AND the error envelope.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -728,7 +730,8 @@ ZanshinBuf *zanshin_interdiff(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
  * - `jj.config_error` — the stack does not load (a file unreadable or not TOML, a malformed id
- *   file, a wrong-typed start-up key); the path or key in `context`.
+ *   file, a wrong-typed start-up key), or the start-up fix-up failed; the path or key in
+ *   `context`.
  * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
  *
  * # Safety
@@ -743,7 +746,8 @@ ZanshinBuf *zanshin_config_list(const uint8_t *data, uintptr_t len);
  * unquoted, any other value (a table merged into an inline table included) as TOML text.
  *
  * The arguments cross as a `ConfigGetRequest` buffer. Returns an `Envelope` carrying a
- * `ConfigGetResult`. Writes nothing.
+ * `ConfigGetResult`. Writes nothing but the CLI's start-up secure-config fix-up (with
+ * `workspace_root`; Story 9.37), whose notices ride the ok AND the error envelope.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -752,7 +756,8 @@ ZanshinBuf *zanshin_config_list(const uint8_t *data, uintptr_t len);
  * - `jj.invalid_input` — `name` is absent.
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
- * - `jj.config_error` — the stack does not load; the path or key in `context`.
+ * - `jj.config_error` — the stack does not load, or the start-up fix-up failed; the path or key
+ *   in `context`.
  * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
  * - `jj.config_not_found` — no layer sets `name` ("Value not found for <name>").
  *
@@ -766,8 +771,10 @@ ZanshinBuf *zanshin_config_get(const uint8_t *data, uintptr_t len);
  *
  * User: every candidate in the CLI's order, existing or not, creating nothing. Repo /
  * workspace: the secure file, CREATING its config directory, `metadata.binpb` and id file when
- * missing (the CLI's documented side effect; the `config.toml` itself is not created). The
- * arguments cross as a `ConfigPathRequest` buffer; returns a `ConfigPathResult`.
+ * missing (the CLI's documented side effect; the `config.toml` itself is not created). With
+ * `workspace_root`, the CLI's start-up secure-config fix-up runs first (Story 9.37); its
+ * notices ride the ok AND the error envelope. The arguments cross as a `ConfigPathRequest`
+ * buffer; returns a `ConfigPathResult`.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -776,7 +783,8 @@ ZanshinBuf *zanshin_config_get(const uint8_t *data, uintptr_t len);
  * - `jj.invalid_input` — `scope` is `Unspecified`.
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
- * - `jj.config_error` — the stack does not load, or the secure directory could not be created.
+ * - `jj.config_error` — the stack does not load, the start-up fix-up failed, or the secure
+ *   directory could not be created.
  * - `jj.config_path_not_found` — no path can be determined ("No user config path found", …).
  *
  * # Safety
@@ -795,7 +803,9 @@ ZanshinBuf *zanshin_config_path(const uint8_t *data, uintptr_t len);
  * first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
  * dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
  * that snapshot's warnings, and `ConfigSetResult.working_copy_author` is present iff `@`'s
- * author differs from the new value (then warning `jj.config_working_copy_author` too).
+ * author differs from the new value (then warning `jj.config_working_copy_author` too). With
+ * `workspace_root`, the CLI's start-up secure-config fix-up runs before everything else (Story
+ * 9.37); its notices are the envelope's FIRST warnings, ok or error.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -819,7 +829,9 @@ ZanshinBuf *zanshin_config_set(const uint8_t *data, uintptr_t len);
 /**
  * Remove a config value from a file of a scope — the CLI's `jj config unset
  * --user|--repo|--workspace NAME`. File selection and `path` as `zanshin_config_set`; returns
- * a `ConfigUnsetResult` naming the file. No operation is written.
+ * a `ConfigUnsetResult` naming the file. No operation is written. With `workspace_root`, the
+ * CLI's start-up secure-config fix-up runs first (Story 9.37); its notices ride the ok AND the
+ * error envelope.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -842,9 +854,11 @@ ZanshinBuf *zanshin_config_unset(const uint8_t *data, uintptr_t len);
 
 /**
  * `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
- * file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Runs no
- * start-up stack, so a broken config can be read and repaired. The arguments cross as a
- * `ConfigFileReadRequest` buffer; returns a `ConfigFileText`.
+ * file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
+ * start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
+ * starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
+ * the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
+ * returns a `ConfigFileText`.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -853,7 +867,8 @@ ZanshinBuf *zanshin_config_unset(const uint8_t *data, uintptr_t len);
  * - `jj.invalid_input` — `scope` is `Unspecified`.
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
- * - `jj.config_error` — the file could not be created or read, or is not UTF-8.
+ * - `jj.config_error` — the start-up fix-up failed, or the file could not be created or read,
+ *   or is not UTF-8.
  * - `jj.config_path_not_found` — no file of the scope can be determined.
  * - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
  *
@@ -866,7 +881,9 @@ ZanshinBuf *zanshin_config_file_read(const uint8_t *data, uintptr_t len);
  * `jj config edit`, editor half 2: replace a config file's text — only a file
  * `zanshin_config_file_read` can return for some scope of this root, and only after `text`
  * parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
- * `Envelope` with no payload.
+ * `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
+ * start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
+ * envelope.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -878,7 +895,7 @@ ZanshinBuf *zanshin_config_file_read(const uint8_t *data, uintptr_t len);
  * - `jj.config_ambiguous_file` — `path` is not such a file; the allowed files in `context`.
  * - `jj.config_parse_error` — `text` is not valid TOML; span and message in `context`, the file
  *   untouched.
- * - `jj.config_error` — the write failed.
+ * - `jj.config_error` — the start-up fix-up or the write failed.
  *
  * # Safety
  * As `zanshin_config_list`.
@@ -1747,17 +1764,23 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  * or an error `Envelope` on failure. The handle is an opaque integer the Dart caller
  * must pass back to `zanshin_repo_close` when done.
  *
- * Opening runs no snapshot and warns about nothing: neither envelope carries
- * `Envelope.precondition` or `Envelope.warnings` (`open` is not a CLI command; its start-up
- * warnings belong to the start-up-environment port).
+ * Opening plays a CLI command's start-up (Story 9.37): right after the workspace loader, the jj
+ * CLI's secure-config fix-up runs for the repo, then the workspace layer (jj-lib's
+ * `SecureConfig::maybe_load_config`) — a legacy `.jj/repo/config.toml` /
+ * `.jj/workspace-config.toml` is migrated into `<config_dir>/jj/{repos,workspaces}/<id>/`, a
+ * moved repo's metadata re-pointed, a copied repo's config forked, a missing secure directory
+ * regenerated. Each notice is an `Envelope.warnings` entry (`jj.config_migrated`,
+ * `jj.config_copied`, `jj.config_regenerated`) on WHICHEVER envelope answers — the `RepoHandle`
+ * ok envelope, a refusal, or the `watcher.io_error` of an arming that failed after the open.
+ * Opening runs no snapshot: no envelope carries `Envelope.precondition`.
  *
  * # Errors
  * - `jj.path_not_found` — `path` does not exist on disk.
  * - `jj.repo_not_found` — `path` exists but is not a jj repo.
  * - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
  *   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
- *   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value. `context`
- *   names the path or key. Nothing is opened.
+ *   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value — or the
+ *   secure-config fix-up failed. `context` names the path or key. Nothing is opened.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:

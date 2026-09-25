@@ -361,9 +361,12 @@ void main() {
         'jj.config_gc_delete_failed',
         'jj.config_nothing_listed',
         'jj.clone_cleanup_failed',
+        'jj.config_migrated',
+        'jj.config_copied',
+        'jj.config_regenerated',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(25), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(28), reason: 'no code is registered twice');
     });
   });
 

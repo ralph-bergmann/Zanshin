@@ -510,10 +510,10 @@ fn arm_session_with(
     Ok((raw as u64, session_id))
 }
 
-/// The tail of every creation wrapper — init, clone, convert (Story 9.33): arms the created
-/// repo's session and stamps the creating call's report (its warnings, and the conversion's
-/// snapshot report) onto whichever envelope answers — the `RepoHandle` ok envelope, the
-/// refusal, or the `watcher.io_error` of an arming that failed after the creation succeeded.
+/// The tail of every creation wrapper — init, clone, convert (Story 9.33) — and of open (Story
+/// 9.37): arms the repo's session and stamps the call's report (its warnings, and the
+/// conversion's snapshot report) onto whichever envelope answers — the `RepoHandle` ok envelope,
+/// the refusal, or the `watcher.io_error` of an arming that failed after the call succeeded.
 fn creation_envelope(outcome: CreationOutcome) -> Result<Vec<u8>, FfiErrorObj> {
     let report = CallReport {
         precondition: outcome.precondition,
@@ -533,17 +533,23 @@ fn creation_envelope(outcome: CreationOutcome) -> Result<Vec<u8>, FfiErrorObj> {
 /// or an error `Envelope` on failure. The handle is an opaque integer the Dart caller
 /// must pass back to `zanshin_repo_close` when done.
 ///
-/// Opening runs no snapshot and warns about nothing: neither envelope carries
-/// `Envelope.precondition` or `Envelope.warnings` (`open` is not a CLI command; its start-up
-/// warnings belong to the start-up-environment port).
+/// Opening plays a CLI command's start-up (Story 9.37): right after the workspace loader, the jj
+/// CLI's secure-config fix-up runs for the repo, then the workspace layer (jj-lib's
+/// `SecureConfig::maybe_load_config`) — a legacy `.jj/repo/config.toml` /
+/// `.jj/workspace-config.toml` is migrated into `<config_dir>/jj/{repos,workspaces}/<id>/`, a
+/// moved repo's metadata re-pointed, a copied repo's config forked, a missing secure directory
+/// regenerated. Each notice is an `Envelope.warnings` entry (`jj.config_migrated`,
+/// `jj.config_copied`, `jj.config_regenerated`) on WHICHEVER envelope answers — the `RepoHandle`
+/// ok envelope, a refusal, or the `watcher.io_error` of an arming that failed after the open.
+/// Opening runs no snapshot: no envelope carries `Envelope.precondition`.
 ///
 /// # Errors
 /// - `jj.path_not_found` — `path` does not exist on disk.
 /// - `jj.repo_not_found` — `path` exists but is not a jj repo.
 /// - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
 ///   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
-///   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value. `context`
-///   names the path or key. Nothing is opened.
+///   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value — or the
+///   secure-config fix-up failed. `context` names the path or key. Nothing is opened.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -560,9 +566,7 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
     // SAFETY: caller guarantees path is null or a valid NUL-terminated C string.
     let buf = catch(|| {
         let p = unsafe { cstr_to_string(path) }?;
-        let repo = Repo::open(Path::new(&p)).map_err(map_repo_err)?;
-        let (handle, session_id) = arm_session(repo)?;
-        Ok(ok_repo_handle(handle, session_id, &CallReport::default()))
+        creation_envelope(Repo::open_with_report(Path::new(&p)))
     });
     vec_into_token(buf)
 }

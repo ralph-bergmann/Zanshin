@@ -35,6 +35,8 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
         for (name, value) in test_helpers::TEST_ENV {
             env::set_var(name, value);
         }
+        // Story 9.37: the start-up fix-up migrates the legacy repo configs written here.
+        env::set_var("XDG_CONFIG_HOME", test_helpers::leaked_xdg_config_home());
     }
 });
 
@@ -311,9 +313,11 @@ fn an_immutable_at_gets_a_new_commit_and_git_head_follows() {
     repo.snapshot().expect("snapshot");
 
     let kinds: Vec<WarningKind> = repo.take_warnings().into_iter().map(|w| w.kind).collect();
+    // First the verb's start-up fix-up migrating the legacy repo config written after the open
+    // (Story 9.37), then no HEAD-reset failure: the HEAD reset itself succeeded.
     assert_eq!(
         kinds,
-        [WarningKind::WorkingCopyImmutable],
+        [WarningKind::ConfigMigrated, WarningKind::WorkingCopyImmutable],
         "the HEAD reset itself succeeded"
     );
     let (_new_at, new_parent) = at(&root);
@@ -478,7 +482,13 @@ fn a_wrong_typed_knob_is_refused_only_once_the_held_lock_is_free() {
     let report = repo.take_precondition().expect("partial report");
     assert!(!report.git_head_imported, "Git HEAD did not move");
     assert!(!report.was_snapshot_taken, "nothing was written before the failure");
-    assert!(repo.take_warnings().is_empty(), "no warning before the refusal");
+    let kinds: Vec<WarningKind> = repo.take_warnings().into_iter().map(|w| w.kind).collect();
+    assert_eq!(
+        kinds,
+        [WarningKind::ConfigMigrated],
+        "no warning before the refusal but the start-up fix-up's (Story 9.37: the legacy repo \
+         config written after the open is migrated first)"
+    );
 }
 
 /// Story 9.34: `snapshot.auto-track` is read with the other snapshot knobs, inside the snapshot

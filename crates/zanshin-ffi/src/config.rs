@@ -11,10 +11,13 @@
 //! required fields → the verb's own codes (no handle rung).
 //!
 //! Only `zanshin_config_set` can carry `Envelope.precondition` — iff its `user.name` /
-//! `user.email` working-copy check ran the snapshot (the CLI's `check_wc_author`). Three can
-//! carry `Envelope.warnings` (Story 9.32): `zanshin_config_set` (that snapshot's warnings, then
-//! `jj.config_working_copy_author`), `zanshin_config_list` (`jj.config_nothing_listed`) and
-//! `zanshin_config_gc_delete` (`jj.config_gc_delete_failed`).
+//! `user.email` working-copy check ran the snapshot (the CLI's `check_wc_author`). Every wrapper
+//! but the `gc` pair starts, when the request names a workspace root, with the jj CLI's start-up
+//! secure-config fix-up (Story 9.37) and carries its notices (`jj.config_migrated`,
+//! `jj.config_copied`, `jj.config_regenerated`) as its first `Envelope.warnings`, on the ok AND
+//! the error envelope. After them (Story 9.32): `zanshin_config_set` carries its snapshot's
+//! warnings, then `jj.config_working_copy_author`; `zanshin_config_list`
+//! `jj.config_nothing_listed`; and `zanshin_config_gc_delete` `jj.config_gc_delete_failed`.
 
 use std::path::PathBuf;
 
@@ -23,8 +26,8 @@ use tracing::debug;
 use zanshin_jj::{ConfigCmdError, ConfigListQuery, ConfigScope, ConfigValueSource};
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, ok_empty, reject_null_request,
-    CallReport, FfiErrorObj, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request, CallReport,
+    FfiErrorObj, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
     JJ_CONFIG_PATH_NOT_FOUND, JJ_CONFIG_WOULD_DELETE_TABLE, JJ_CONFIG_WOULD_OVERWRITE, JJ_INVALID_INPUT,
     JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
@@ -319,28 +322,18 @@ fn list_to_envelope(entries: &[zanshin_jj::ConfigEntry], report: &CallReport) ->
     finish_envelope(b, fbs::Payload::ConfigListResult, Some(table.as_union_value()), report)
 }
 
-fn get_to_envelope(value: &str) -> Vec<u8> {
+fn get_to_envelope(value: &str, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
     let value = b.create_string(value);
     let table = fbs::ConfigGetResult::create(&mut b, &fbs::ConfigGetResultArgs { value: Some(value) });
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigGetResult,
-        Some(table.as_union_value()),
-        &CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::ConfigGetResult, Some(table.as_union_value()), report)
 }
 
-fn path_to_envelope(paths: &[PathBuf]) -> Vec<u8> {
+fn path_to_envelope(paths: &[PathBuf], report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let paths = string_vector(&mut b, paths.iter().map(|p| path_str(p).into_owned()));
     let table = fbs::ConfigPathResult::create(&mut b, &fbs::ConfigPathResultArgs { paths: Some(paths) });
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigPathResult,
-        Some(table.as_union_value()),
-        &CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::ConfigPathResult, Some(table.as_union_value()), report)
 }
 
 fn set_to_envelope(r: &zanshin_jj::ConfigSetResult, report: &CallReport) -> Vec<u8> {
@@ -368,19 +361,14 @@ fn set_to_envelope(r: &zanshin_jj::ConfigSetResult, report: &CallReport) -> Vec<
     finish_envelope(b, fbs::Payload::ConfigSetResult, Some(table.as_union_value()), report)
 }
 
-fn unset_to_envelope(path: &std::path::Path) -> Vec<u8> {
+fn unset_to_envelope(path: &std::path::Path, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(128);
     let path = b.create_string(&path_str(path));
     let table = fbs::ConfigUnsetResult::create(&mut b, &fbs::ConfigUnsetResultArgs { path: Some(path) });
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigUnsetResult,
-        Some(table.as_union_value()),
-        &CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::ConfigUnsetResult, Some(table.as_union_value()), report)
 }
 
-fn file_text_to_envelope(t: &zanshin_jj::ConfigFileText) -> Vec<u8> {
+fn file_text_to_envelope(t: &zanshin_jj::ConfigFileText, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256 + t.text.len());
     let path = b.create_string(&path_str(&t.path));
     let text = b.create_string(&t.text);
@@ -391,12 +379,25 @@ fn file_text_to_envelope(t: &zanshin_jj::ConfigFileText) -> Vec<u8> {
             text: Some(text),
         },
     );
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigFileText,
-        Some(table.as_union_value()),
-        &CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::ConfigFileText, Some(table.as_union_value()), report)
+}
+
+/// `zanshin_config_file_write`'s ok envelope: no payload, but the call's warnings (Story 9.37).
+fn file_written_to_envelope(report: &CallReport) -> Vec<u8> {
+    finish_envelope(FlatBufferBuilder::with_capacity(128), fbs::Payload::NONE, None, report)
+}
+
+/// A [`zanshin_jj::ConfigOutcome`] as its envelope (Story 9.37): `build` on success, the mapped
+/// refusal otherwise — the outcome's warnings on EITHER.
+fn outcome_to_envelope<T>(
+    outcome: zanshin_jj::ConfigOutcome<T>,
+    build: impl FnOnce(&T, &CallReport) -> Vec<u8>,
+) -> Result<Vec<u8>, FfiErrorObj> {
+    let report = CallReport::warnings(outcome.warnings);
+    match outcome.result {
+        Ok(value) => Ok(build(&value, &report)),
+        Err(e) => Err(map_config_cmd_err(e).with_report(report)),
+    }
 }
 
 fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig]) -> Vec<u8> {
@@ -462,7 +463,9 @@ fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult, report: &CallReport) ->
 /// The arguments cross as a `ConfigListRequest` buffer; `workspace_root` absent = no workspace
 /// (the CLI's `-R` otherwise, never walked up). Returns an `Envelope` carrying a
 /// `ConfigListResult` (lowest layer first; empty is a result — and then warns
-/// `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing.
+/// `jj.config_nothing_listed`, the CLI's stderr note). Writes nothing but the CLI's start-up
+/// secure-config fix-up (with `workspace_root`; Story 9.37), whose notices are the first
+/// `Envelope.warnings`, on the ok AND the error envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -472,7 +475,8 @@ fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult, report: &CallReport) ->
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load (a file unreadable or not TOML, a malformed id
-///   file, a wrong-typed start-up key); the path or key in `context`.
+///   file, a wrong-typed start-up key), or the start-up fix-up failed; the path or key in
+///   `context`.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
 ///
 /// # Safety
@@ -484,9 +488,10 @@ pub unsafe extern "C" fn zanshin_config_list(data: *const u8, len: usize) -> *mu
     debug!(fn_name = "zanshin_config_list");
     vec_into_token(catch(|| {
         let req = read_list_request(data, len)?;
-        zanshin_jj::config_list(req.root.as_deref(), &req.query)
-            .map(|listed| list_to_envelope(&listed.value, &CallReport::warnings(listed.warnings)))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_list(req.root.as_deref(), &req.query),
+            |entries, report| list_to_envelope(entries, report),
+        )
     }))
 }
 
@@ -494,7 +499,8 @@ pub unsafe extern "C" fn zanshin_config_list(data: *const u8, len: usize) -> *mu
 /// unquoted, any other value (a table merged into an inline table included) as TOML text.
 ///
 /// The arguments cross as a `ConfigGetRequest` buffer. Returns an `Envelope` carrying a
-/// `ConfigGetResult`. Writes nothing.
+/// `ConfigGetResult`. Writes nothing but the CLI's start-up secure-config fix-up (with
+/// `workspace_root`; Story 9.37), whose notices ride the ok AND the error envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -503,7 +509,8 @@ pub unsafe extern "C" fn zanshin_config_list(data: *const u8, len: usize) -> *mu
 /// - `jj.invalid_input` — `name` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_error` — the stack does not load; the path or key in `context`.
+/// - `jj.config_error` — the stack does not load, or the start-up fix-up failed; the path or key
+///   in `context`.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
 /// - `jj.config_not_found` — no layer sets `name` ("Value not found for <name>").
 ///
@@ -514,9 +521,10 @@ pub unsafe extern "C" fn zanshin_config_get(data: *const u8, len: usize) -> *mut
     debug!(fn_name = "zanshin_config_get");
     vec_into_token(catch(|| {
         let req = read_get_request(data, len)?;
-        zanshin_jj::config_get(req.root.as_deref(), &req.name)
-            .map(|value| get_to_envelope(&value))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_get(req.root.as_deref(), &req.name),
+            |value, report| get_to_envelope(value, report),
+        )
     }))
 }
 
@@ -524,8 +532,10 @@ pub unsafe extern "C" fn zanshin_config_get(data: *const u8, len: usize) -> *mut
 ///
 /// User: every candidate in the CLI's order, existing or not, creating nothing. Repo /
 /// workspace: the secure file, CREATING its config directory, `metadata.binpb` and id file when
-/// missing (the CLI's documented side effect; the `config.toml` itself is not created). The
-/// arguments cross as a `ConfigPathRequest` buffer; returns a `ConfigPathResult`.
+/// missing (the CLI's documented side effect; the `config.toml` itself is not created). With
+/// `workspace_root`, the CLI's start-up secure-config fix-up runs first (Story 9.37); its
+/// notices ride the ok AND the error envelope. The arguments cross as a `ConfigPathRequest`
+/// buffer; returns a `ConfigPathResult`.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -534,7 +544,8 @@ pub unsafe extern "C" fn zanshin_config_get(data: *const u8, len: usize) -> *mut
 /// - `jj.invalid_input` — `scope` is `Unspecified`.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_error` — the stack does not load, or the secure directory could not be created.
+/// - `jj.config_error` — the stack does not load, the start-up fix-up failed, or the secure
+///   directory could not be created.
 /// - `jj.config_path_not_found` — no path can be determined ("No user config path found", …).
 ///
 /// # Safety
@@ -544,9 +555,10 @@ pub unsafe extern "C" fn zanshin_config_path(data: *const u8, len: usize) -> *mu
     debug!(fn_name = "zanshin_config_path");
     vec_into_token(catch(|| {
         let req = read_path_request(data, len)?;
-        zanshin_jj::config_path(req.root.as_deref(), req.scope)
-            .map(|paths| path_to_envelope(&paths))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_path(req.root.as_deref(), req.scope),
+            |paths, report| path_to_envelope(paths, report),
+        )
     }))
 }
 
@@ -560,7 +572,9 @@ pub unsafe extern "C" fn zanshin_config_path(data: *const u8, len: usize) -> *mu
 /// first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
 /// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
 /// that snapshot's warnings, and `ConfigSetResult.working_copy_author` is present iff `@`'s
-/// author differs from the new value (then warning `jj.config_working_copy_author` too).
+/// author differs from the new value (then warning `jj.config_working_copy_author` too). With
+/// `workspace_root`, the CLI's start-up secure-config fix-up runs before everything else (Story
+/// 9.37); its notices are the envelope's FIRST warnings, ok or error.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -603,7 +617,9 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
 
 /// Remove a config value from a file of a scope — the CLI's `jj config unset
 /// --user|--repo|--workspace NAME`. File selection and `path` as `zanshin_config_set`; returns
-/// a `ConfigUnsetResult` naming the file. No operation is written.
+/// a `ConfigUnsetResult` naming the file. No operation is written. With `workspace_root`, the
+/// CLI's start-up secure-config fix-up runs first (Story 9.37); its notices ride the ok AND the
+/// error envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -626,16 +642,19 @@ pub unsafe extern "C" fn zanshin_config_unset(data: *const u8, len: usize) -> *m
     debug!(fn_name = "zanshin_config_unset");
     vec_into_token(catch(|| {
         let req = read_unset_request(data, len)?;
-        zanshin_jj::config_unset(req.root.as_deref(), req.scope, &req.name, req.path.as_deref())
-            .map(|path| unset_to_envelope(&path))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_unset(req.root.as_deref(), req.scope, &req.name, req.path.as_deref()),
+            |path, report| unset_to_envelope(path, report),
+        )
     }))
 }
 
 /// `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
-/// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Runs no
-/// start-up stack, so a broken config can be read and repaired. The arguments cross as a
-/// `ConfigFileReadRequest` buffer; returns a `ConfigFileText`.
+/// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
+/// start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
+/// starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
+/// the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
+/// returns a `ConfigFileText`.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -644,7 +663,8 @@ pub unsafe extern "C" fn zanshin_config_unset(data: *const u8, len: usize) -> *m
 /// - `jj.invalid_input` — `scope` is `Unspecified`.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_error` — the file could not be created or read, or is not UTF-8.
+/// - `jj.config_error` — the start-up fix-up failed, or the file could not be created or read,
+///   or is not UTF-8.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
 /// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
 ///
@@ -655,16 +675,19 @@ pub unsafe extern "C" fn zanshin_config_file_read(data: *const u8, len: usize) -
     debug!(fn_name = "zanshin_config_file_read");
     vec_into_token(catch(|| {
         let req = read_file_read_request(data, len)?;
-        zanshin_jj::config_file_read(req.root.as_deref(), req.scope, req.path.as_deref())
-            .map(|t| file_text_to_envelope(&t))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_file_read(req.root.as_deref(), req.scope, req.path.as_deref()),
+            file_text_to_envelope,
+        )
     }))
 }
 
 /// `jj config edit`, editor half 2: replace a config file's text — only a file
 /// `zanshin_config_file_read` can return for some scope of this root, and only after `text`
 /// parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
-/// `Envelope` with no payload.
+/// `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
+/// start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
+/// envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -676,7 +699,7 @@ pub unsafe extern "C" fn zanshin_config_file_read(data: *const u8, len: usize) -
 /// - `jj.config_ambiguous_file` — `path` is not such a file; the allowed files in `context`.
 /// - `jj.config_parse_error` — `text` is not valid TOML; span and message in `context`, the file
 ///   untouched.
-/// - `jj.config_error` — the write failed.
+/// - `jj.config_error` — the start-up fix-up or the write failed.
 ///
 /// # Safety
 /// As `zanshin_config_list`.
@@ -685,9 +708,10 @@ pub unsafe extern "C" fn zanshin_config_file_write(data: *const u8, len: usize) 
     debug!(fn_name = "zanshin_config_file_write");
     vec_into_token(catch(|| {
         let req = read_file_write_request(data, len)?;
-        zanshin_jj::config_file_write(req.root.as_deref(), &req.path, &req.text)
-            .map(|()| ok_empty())
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(
+            zanshin_jj::config_file_write(req.root.as_deref(), &req.path, &req.text),
+            |(), report| file_written_to_envelope(report),
+        )
     }))
 }
 

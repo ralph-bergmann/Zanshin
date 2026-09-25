@@ -81,17 +81,38 @@ pub const TEST_ENV: [(&str, &str); 6] = [
     ("JJ_OP_USERNAME", "zanshin"),
 ];
 
-/// Pins [`TEST_ENV`] into the process environment, once per test binary.
+/// A fresh temp dir that stays on disk (`TempDir::keep` — never deleted, not even when the
+/// process exits), for a test binary's `$XDG_CONFIG_HOME`
+/// (Story 9.37): opening a repo and every precondition-running verb run the CLI's start-up
+/// secure-config fix-up, which MIGRATES a legacy `.jj/repo/config.toml` /
+/// `.jj/workspace-config.toml` into `$XDG_CONFIG_HOME/jj/{repos,workspaces}/<id>/` — without
+/// the pin, a test writing such a file would populate the developer's real `~/.config/jj`.
+///
+/// # Panics
+/// Panics if the temp dir cannot be created.
+#[must_use]
+pub fn leaked_xdg_config_home() -> PathBuf {
+    TempDir::new().expect("xdg tempdir").keep()
+}
+
+/// Pins [`TEST_ENV`] into the process environment, once per test binary — plus a
+/// [`leaked_xdg_config_home`] as `$XDG_CONFIG_HOME`, so the secure config store is the test's.
 ///
 /// The one pin helper `zanshin-jj`'s INLINE test modules share, so the lib test binary never
 /// reads the developer's real config; integration-test binaries keep their own `ENV_GUARD`s.
+///
+/// # Panics
+/// Panics if the temp dir cannot be created.
 pub fn pin_test_env() {
     static GUARD: LazyLock<()> = LazyLock::new(|| {
+        let xdg = leaked_xdg_config_home();
         for (name, value) in TEST_ENV {
             // SAFETY: test-only; runs once, before this binary's tests read the environment
             // through jj (the same pattern every `ENV_GUARD` in the suite uses).
             unsafe { std::env::set_var(name, value) };
         }
+        // SAFETY: as above.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &xdg) };
     });
     LazyLock::force(&GUARD);
 }

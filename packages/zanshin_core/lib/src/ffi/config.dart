@@ -122,9 +122,11 @@ final class ConfigSetResult {
   /// when it did not run.
   final Precondition? precondition;
 
-  /// The call's warnings (Story 9.32), in the CLI's print order — the identity
-  /// check's snapshot warnings, then the working-copy-author note; empty when
-  /// there were none.
+  /// The call's warnings (Story 9.32), in the CLI's print order — the start-up
+  /// secure-config fix-up's notices (Story 9.37: `jj.config_migrated`,
+  /// `jj.config_copied`, `jj.config_regenerated`; only with a workspace root),
+  /// the identity check's snapshot warnings, then the working-copy-author note;
+  /// empty when there were none.
   final List<ZanshinWarning> warnings;
 }
 

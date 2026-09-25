@@ -990,19 +990,25 @@ fn story_9_28_surface_resolves() {
     use std::path::{Path, PathBuf};
     use zanshin_jj::{ConfigCmdError as E, ConfigScope, ConfigValueSource};
 
-    _ = zanshin_jj::config_list
-        as fn(
-            Option<&Path>,
-            &zanshin_jj::ConfigListQuery,
-        ) -> Result<zanshin_jj::Warned<Vec<zanshin_jj::ConfigEntry>>, E>;
-    _ = zanshin_jj::config_get as fn(Option<&Path>, &str) -> Result<String, E>;
-    _ = zanshin_jj::config_path as fn(Option<&Path>, ConfigScope) -> Result<Vec<PathBuf>, E>;
+    // Story 9.37: the six verbs that can start with the secure-config fix-up report its warnings
+    // on success AND failure — `ConfigOutcome`.
+    use zanshin_jj::ConfigOutcome as O;
+    _ = zanshin_jj::config_list as fn(Option<&Path>, &zanshin_jj::ConfigListQuery) -> O<Vec<zanshin_jj::ConfigEntry>>;
+    _ = zanshin_jj::config_get as fn(Option<&Path>, &str) -> O<String>;
+    _ = zanshin_jj::config_path as fn(Option<&Path>, ConfigScope) -> O<Vec<PathBuf>>;
     _ = zanshin_jj::config_set
         as fn(Option<&Path>, ConfigScope, &str, &str, Option<&Path>) -> zanshin_jj::ConfigSetOutcome;
-    _ = zanshin_jj::config_unset as fn(Option<&Path>, ConfigScope, &str, Option<&Path>) -> Result<PathBuf, E>;
-    _ = zanshin_jj::config_file_read
-        as fn(Option<&Path>, ConfigScope, Option<&Path>) -> Result<zanshin_jj::ConfigFileText, E>;
-    _ = zanshin_jj::config_file_write as fn(Option<&Path>, &Path, &str) -> Result<(), E>;
+    _ = zanshin_jj::config_unset as fn(Option<&Path>, ConfigScope, &str, Option<&Path>) -> O<PathBuf>;
+    _ = zanshin_jj::config_file_read as fn(Option<&Path>, ConfigScope, Option<&Path>) -> O<zanshin_jj::ConfigFileText>;
+    _ = zanshin_jj::config_file_write as fn(Option<&Path>, &Path, &str) -> O<()>;
+    let outcome: O<()> = zanshin_jj::ConfigOutcome {
+        result: Err(E::NotFound { reason: String::new() }),
+        warnings: vec![zanshin_jj::Warning {
+            kind: zanshin_jj::WarningKind::ConfigMigrated,
+            message: String::new(),
+        }],
+    };
+    assert!(outcome.result.is_err() && outcome.warnings.len() == 1);
     _ = zanshin_jj::config_gc_list as fn() -> Result<Vec<zanshin_jj::MissingRepoConfig>, E>;
     _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> Result<zanshin_jj::Warned<zanshin_jj::ConfigGcResult>, E>;
 
@@ -1116,6 +1122,9 @@ fn story_9_32_warning_surface_resolves() {
         K::ConfigGcDeleteFailed,
         K::ConfigNothingListed,
         K::CloneCleanupFailed,
+        K::ConfigMigrated,
+        K::ConfigCopied,
+        K::ConfigRegenerated,
     ];
     for kind in every {
         match kind {
@@ -1142,10 +1151,13 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigWorkingCopyAuthor
             | K::ConfigGcDeleteFailed
             | K::ConfigNothingListed
-            | K::CloneCleanupFailed => {}
+            | K::CloneCleanupFailed
+            | K::ConfigMigrated
+            | K::ConfigCopied
+            | K::ConfigRegenerated => {}
         }
     }
-    assert_eq!(every.len(), 24);
+    assert_eq!(every.len(), 27);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 
@@ -1170,6 +1182,8 @@ fn story_9_33_creation_outcome_resolves() {
     _ = zanshin_jj::Repo::clone as fn(&str, &Path) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_colocated as fn(&Path) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_import as fn(&Path, &Path) -> zanshin_jj::CreationOutcome;
+    // Story 9.37: open reports its start-up secure-config fix-up in the same shape.
+    _ = zanshin_jj::Repo::open_with_report as fn(&Path) -> zanshin_jj::CreationOutcome;
     let outcome = zanshin_jj::CreationOutcome {
         result: Err(zanshin_jj::RepoError::CloneFailed { reason: String::new() }),
         precondition: Some(zanshin_jj::Precondition::default()),

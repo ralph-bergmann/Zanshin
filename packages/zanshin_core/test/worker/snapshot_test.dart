@@ -35,6 +35,13 @@ void main() {
     late ZanshinWorker worker;
     late Directory tempDir;
 
+    // The Makefile's XDG_CONFIG_HOME pin: the legacy repo config written below is migrated by
+    // the next verb's start-up fix-up (Story 9.37) — refuse before it lands under the
+    // developer's real ~/.config/jj.
+    setUpAll(() {
+      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
+    });
+
     setUp(() async {
       tempDir = Directory.systemTemp.createTempSync('zanshin_snapshot_test_');
       worker = await ZanshinWorker.start();

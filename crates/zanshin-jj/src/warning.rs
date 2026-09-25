@@ -82,6 +82,19 @@ pub enum WarningKind {
     ConfigNothingListed,
     /// A failed clone could not remove what it had created (`git/clone.rs:276-284`, Story 9.33).
     CloneCleanupFailed,
+    /// A legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` was migrated into the secure
+    /// config directory at command start (jj-lib `secure_config.rs:346-351`
+    /// `maybe_migrate_legacy_config`, printed by `load_secure_config`, `cli/src/config.rs:462-464`;
+    /// Story 9.37).
+    ConfigMigrated,
+    /// The repo/workspace was COPIED, so its secure config was forked under a new id
+    /// (`secure_config.rs:273-278` `handle_metadata_path`, printed at `cli/src/config.rs:462-464`;
+    /// Story 9.37).
+    ConfigCopied,
+    /// The secure config directory its id points at was missing and was regenerated empty
+    /// (`secure_config.rs:48-50` `CONFIG_NOT_FOUND`, `maybe_load_config` `:384-391`, printed at
+    /// `cli/src/config.rs:462-464`; Story 9.37).
+    ConfigRegenerated,
 }
 
 /// One warning a call produced (Story 9.32).

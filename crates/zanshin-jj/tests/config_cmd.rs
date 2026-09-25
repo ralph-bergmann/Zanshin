@@ -85,7 +85,7 @@ fn repo_scope_round_trip_writes_the_secure_file_and_no_operation() {
     let (_tmp, root) = workspace(Some(Backend::Git));
     let op = head(&root).0;
 
-    let path = config_path(Some(&root), ConfigScope::Repo).expect("path");
+    let path = config_path(Some(&root), ConfigScope::Repo).result.expect("path");
     assert!(path[0].starts_with(xdg().join("jj").join("repos")), "{path:?}");
     assert!(root.join(".jj").join("repo").join("config-id").exists());
 
@@ -93,16 +93,16 @@ fn repo_scope_round_trip_writes_the_secure_file_and_no_operation() {
     assert!(set.precondition.is_none());
     let written = set.result.expect("set");
     assert_eq!(std::slice::from_ref(&written.path), path.as_slice());
-    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "@");
+    assert_eq!(config_get(Some(&root), "revsets.log").result.unwrap(), "@");
     assert_eq!(
         Repo::open(&root).unwrap().log_defaults().unwrap().log,
         "@",
         "the read side sees the same file"
     );
 
-    let listed = config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap();
+    let listed = config_list(Some(&root), &scoped(ConfigScope::Repo));
     assert!(listed.warnings.is_empty(), "{:?}", listed.warnings);
-    let rows = listed.value;
+    let rows = listed.result.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(
         (rows[0].name.as_str(), rows[0].value.as_str(), rows[0].source),
@@ -111,17 +111,19 @@ fn repo_scope_round_trip_writes_the_secure_file_and_no_operation() {
     assert_eq!(rows[0].path.as_deref(), Some(written.path.as_path()));
 
     assert_eq!(
-        config_unset(Some(&root), ConfigScope::Repo, "revsets.log", None).unwrap(),
+        config_unset(Some(&root), ConfigScope::Repo, "revsets.log", None)
+            .result
+            .unwrap(),
         written.path
     );
-    let empty = config_list(Some(&root), &scoped(ConfigScope::Repo)).unwrap();
-    assert!(empty.value.is_empty());
+    let empty = config_list(Some(&root), &scoped(ConfigScope::Repo));
+    assert!(empty.result.unwrap().is_empty());
     // Story 9.32: the CLI's stderr note explaining the empty output.
     assert_eq!(empty.warnings.len(), 1, "{:?}", empty.warnings);
     assert_eq!(empty.warnings[0].kind, WarningKind::ConfigNothingListed);
     assert_eq!(empty.warnings[0].message, "No config to list.");
     assert!(matches!(
-        config_unset(Some(&root), ConfigScope::Repo, "nope", None),
+        config_unset(Some(&root), ConfigScope::Repo, "nope", None).result,
         Err(ConfigCmdError::NotFound { .. })
     ));
     assert_eq!(head(&root).0, op, "config writes are not repo state: no operation");
@@ -133,38 +135,46 @@ fn tables_refuse_set_and_unset_but_get_prints_them_inline() {
     config_set(Some(&root), ConfigScope::Repo, "revset-aliases.'x()'", "@", None)
         .result
         .expect("set a leaf");
-    let file = config_path(Some(&root), ConfigScope::Repo).unwrap().remove(0);
+    let file = config_path(Some(&root), ConfigScope::Repo).result.unwrap().remove(0);
     let before = fs::read_to_string(&file).unwrap();
     assert!(matches!(
         config_set(Some(&root), ConfigScope::Repo, "revset-aliases", "x", None).result,
         Err(ConfigCmdError::WouldOverwrite { .. })
     ));
     assert!(matches!(
-        config_unset(Some(&root), ConfigScope::Repo, "revset-aliases", None),
+        config_unset(Some(&root), ConfigScope::Repo, "revset-aliases", None).result,
         Err(ConfigCmdError::WouldDeleteTable { .. })
     ));
     assert_eq!(fs::read_to_string(&file).unwrap(), before, "nothing written");
-    let table = config_get(Some(&root), "revset-aliases").unwrap();
+    let table = config_get(Some(&root), "revset-aliases").result.unwrap();
     assert!(table.starts_with('{') && table.contains("\"x()\" = \"@\""), "{table}");
 }
 
 #[test]
 fn workspace_scope_and_the_editor_halves() {
     let (_tmp, root) = workspace(None);
-    let read = config_file_read(Some(&root), ConfigScope::Workspace, None).expect("read");
+    let read = config_file_read(Some(&root), ConfigScope::Workspace, None)
+        .result
+        .expect("read");
     assert!(read.path.starts_with(xdg().join("jj").join("workspaces")));
     assert!(read.text.starts_with("#:schema "), "{:?}", read.text);
 
-    let err = config_file_write(Some(&root), &read.path, "[user\nname = ").unwrap_err();
+    let err = config_file_write(Some(&root), &read.path, "[user\nname = ")
+        .result
+        .unwrap_err();
     assert!(matches!(err, ConfigCmdError::Parse { span: Some(_), .. }), "{err}");
     assert_eq!(fs::read_to_string(&read.path).unwrap(), read.text, "untouched");
 
-    config_file_write(Some(&root), &read.path, "[revsets]\nlog = 'root()'\n").expect("write");
-    let rows = config_list(Some(&root), &scoped(ConfigScope::Workspace)).unwrap().value;
+    config_file_write(Some(&root), &read.path, "[revsets]\nlog = 'root()'\n")
+        .result
+        .expect("write");
+    let rows = config_list(Some(&root), &scoped(ConfigScope::Workspace))
+        .result
+        .unwrap();
     assert_eq!(rows[0].source, ConfigValueSource::Workspace);
-    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "root()");
+    assert_eq!(config_get(Some(&root), "revsets.log").result.unwrap(), "root()");
     assert!(matches!(
-        config_file_write(Some(&root), &root.join("x.toml"), ""),
+        config_file_write(Some(&root), &root.join("x.toml"), "").result,
         Err(ConfigCmdError::AmbiguousFile { .. })
     ));
 }
@@ -174,15 +184,15 @@ fn a_bad_root_refuses_like_repo_open() {
     xdg();
     let tmp = TempDir::new().unwrap();
     assert!(matches!(
-        config_list(Some(&tmp.path().join("nope")), &ConfigListQuery::default()),
+        config_list(Some(&tmp.path().join("nope")), &ConfigListQuery::default()).result,
         Err(ConfigCmdError::PathNotFound { .. })
     ));
     assert!(matches!(
-        config_get(Some(tmp.path()), "user.name"),
+        config_get(Some(tmp.path()), "user.name").result,
         Err(ConfigCmdError::NotARepo { .. })
     ));
     assert!(matches!(
-        config_path(None, ConfigScope::Workspace),
+        config_path(None, ConfigScope::Workspace).result,
         Err(ConfigCmdError::NoConfigPath { .. })
     ));
 }
@@ -276,11 +286,15 @@ fn a_wrong_typed_git_key_blocks_open_but_not_the_config_verbs() {
     );
     assert!(set.precondition.is_none());
     assert_eq!(
-        config_get(Some(&root), "git.abandon-unreachable-commits").unwrap(),
+        config_get(Some(&root), "git.abandon-unreachable-commits")
+            .result
+            .unwrap(),
         "nope"
     );
 
-    config_unset(Some(&root), ConfigScope::Repo, "git.abandon-unreachable-commits", None).expect("unset");
+    config_unset(Some(&root), ConfigScope::Repo, "git.abandon-unreachable-commits", None)
+        .result
+        .expect("unset");
     Repo::open(&root).expect("open works again");
 }
 
@@ -318,6 +332,7 @@ fn copy_tree(from: &Path, to: &Path) {
 fn file_write_through_a_copied_repo_never_reaches_the_original_config() {
     let (_tmp, root) = workspace(None);
     let original = config_file_read(Some(&root), ConfigScope::Repo, None)
+        .result
         .expect("read")
         .path;
     let copy_tmp = TempDir::new().unwrap();
@@ -326,7 +341,7 @@ fn file_write_through_a_copied_repo_never_reaches_the_original_config() {
     let before = fs::read_to_string(&original).unwrap();
 
     assert!(matches!(
-        config_file_write(Some(&copy), &original, "a = 1\n"),
+        config_file_write(Some(&copy), &original, "a = 1\n").result,
         Err(ConfigCmdError::AmbiguousFile { .. })
     ));
     assert_eq!(
@@ -336,11 +351,16 @@ fn file_write_through_a_copied_repo_never_reaches_the_original_config() {
     );
 
     let forked = config_file_read(Some(&copy), ConfigScope::Repo, None)
+        .result
         .expect("read")
         .path;
     assert_ne!(forked, original, "the copy got its own config, as in the CLI");
-    config_file_write(Some(&copy), &forked, "a = 1\n").expect("the copy's own file");
-    config_file_write(Some(&root), &original, "b = 1\n").expect("the original from its own root");
+    config_file_write(Some(&copy), &forked, "a = 1\n")
+        .result
+        .expect("the copy's own file");
+    config_file_write(Some(&root), &original, "b = 1\n")
+        .result
+        .expect("the original from its own root");
     assert_eq!(fs::read_to_string(&forked).unwrap(), "a = 1\n");
 }
 
@@ -353,33 +373,37 @@ fn a_secondary_workspace_shares_the_repo_config() {
     let second_root = fs::canonicalize(&second.path).unwrap();
     assert!(second_root.join(".jj").join("repo").is_file());
 
-    let repo_file = config_path(Some(&second_root), ConfigScope::Repo).expect("path");
+    let repo_file = config_path(Some(&second_root), ConfigScope::Repo).result.expect("path");
     assert_eq!(
         repo_file,
-        config_path(Some(&root), ConfigScope::Repo).unwrap(),
+        config_path(Some(&root), ConfigScope::Repo).result.unwrap(),
         "one repo config"
     );
     assert!(root.join(".jj").join("repo").join("config-id").exists());
     assert_ne!(
-        config_path(Some(&second_root), ConfigScope::Workspace).unwrap(),
-        config_path(Some(&root), ConfigScope::Workspace).unwrap(),
+        config_path(Some(&second_root), ConfigScope::Workspace).result.unwrap(),
+        config_path(Some(&root), ConfigScope::Workspace).result.unwrap(),
         "each workspace has its own"
     );
 
     config_set(Some(&second_root), ConfigScope::Repo, "revsets.log", "@", None)
         .result
         .expect("set");
-    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "@");
-    let read = config_file_read(Some(&second_root), ConfigScope::Repo, None).expect("read");
+    assert_eq!(config_get(Some(&root), "revsets.log").result.unwrap(), "@");
+    let read = config_file_read(Some(&second_root), ConfigScope::Repo, None)
+        .result
+        .expect("read");
     assert_eq!(read.path, repo_file[0]);
-    config_file_write(Some(&second_root), &read.path, "[revsets]\nlog = 'root()'\n").expect("write");
-    assert_eq!(config_get(Some(&root), "revsets.log").unwrap(), "root()");
+    config_file_write(Some(&second_root), &read.path, "[revsets]\nlog = 'root()'\n")
+        .result
+        .expect("write");
+    assert_eq!(config_get(Some(&root), "revsets.log").result.unwrap(), "root()");
 }
 
 #[test]
 fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     let (tmp, root) = workspace(None);
-    let file = config_path(Some(&root), ConfigScope::Repo).unwrap().remove(0);
+    let file = config_path(Some(&root), ConfigScope::Repo).result.unwrap().remove(0);
     let dir = file.parent().unwrap().to_owned();
     fs::remove_dir_all(tmp.path().join("ws")).unwrap();
 

@@ -245,6 +245,15 @@ pub const JJ_CONFIG_GC_DELETE_FAILED: &str = "jj.config_gc_delete_failed";
 pub const JJ_CONFIG_NOTHING_LISTED: &str = "jj.config_nothing_listed";
 /// Warning: a failed clone could not remove what it had created (Story 9.33).
 pub const JJ_CLONE_CLEANUP_FAILED: &str = "jj.clone_cleanup_failed";
+/// Warning: a legacy repo/workspace config file was migrated into the secure config directory
+/// at command start (Story 9.37).
+pub const JJ_CONFIG_MIGRATED: &str = "jj.config_migrated";
+/// Warning: the repo/workspace was copied, so its secure config was forked under a new id at
+/// command start (Story 9.37).
+pub const JJ_CONFIG_COPIED: &str = "jj.config_copied";
+/// Warning: the secure config directory was missing and was regenerated empty at command start
+/// (Story 9.37).
+pub const JJ_CONFIG_REGENERATED: &str = "jj.config_regenerated";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -276,6 +285,9 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigGcDeleteFailed => JJ_CONFIG_GC_DELETE_FAILED,
         K::ConfigNothingListed => JJ_CONFIG_NOTHING_LISTED,
         K::CloneCleanupFailed => JJ_CLONE_CLEANUP_FAILED,
+        K::ConfigMigrated => JJ_CONFIG_MIGRATED,
+        K::ConfigCopied => JJ_CONFIG_COPIED,
+        K::ConfigRegenerated => JJ_CONFIG_REGENERATED,
     }
 }
 
@@ -1049,6 +1061,9 @@ mod tests {
                 K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
                 K::ConfigNothingListed => "jj.config_nothing_listed",
                 K::CloneCleanupFailed => "jj.clone_cleanup_failed",
+                K::ConfigMigrated => "jj.config_migrated",
+                K::ConfigCopied => "jj.config_copied",
+                K::ConfigRegenerated => "jj.config_regenerated",
             }
         }
         let kinds = [
@@ -1076,6 +1091,9 @@ mod tests {
             K::ConfigGcDeleteFailed,
             K::ConfigNothingListed,
             K::CloneCleanupFailed,
+            K::ConfigMigrated,
+            K::ConfigCopied,
+            K::ConfigRegenerated,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

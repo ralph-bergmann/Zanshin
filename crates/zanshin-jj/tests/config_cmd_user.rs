@@ -33,8 +33,8 @@ fn user_rows(root: Option<&Path>) -> Vec<(String, String, Option<PathBuf>)> {
         ..ConfigListQuery::default()
     };
     config_list(root, &query)
+        .result
         .expect("list")
-        .value
         .into_iter()
         .inspect(|e| assert_eq!(e.source, ConfigValueSource::User))
         .map(|e| (e.name, e.value, e.path))
@@ -58,7 +58,7 @@ fn user_scope_matrix() {
 
     // `JJ_CONFIG=""`: no user path at all.
     assert!(matches!(
-        config_path(None, ConfigScope::User),
+        config_path(None, ConfigScope::User).result,
         Err(ConfigCmdError::NoConfigPath { reason }) if reason == "No user config path found"
     ));
 
@@ -67,7 +67,7 @@ fn user_scope_matrix() {
     let dir = tmp.path().join("conf.d");
     set_jj_config(&[&first, &dir]);
     assert_eq!(
-        config_path(None, ConfigScope::User).unwrap(),
+        config_path(None, ConfigScope::User).result.unwrap(),
         [first.clone(), dir.clone()]
     );
     let set = config_set(None, ConfigScope::User, "user.name", "Ralph Bergmann", None);
@@ -77,7 +77,7 @@ fn user_scope_matrix() {
         .ends_with("[user]\nname = \"Ralph Bergmann\"\n"));
 
     // ── round trip: a Zanshin write is what the read path and the listing see ──
-    assert_eq!(config_get(None, "user.name").unwrap(), "Ralph Bergmann");
+    assert_eq!(config_get(None, "user.name").result.unwrap(), "Ralph Bergmann");
     assert_eq!(
         user_rows(None),
         [(
@@ -118,7 +118,9 @@ fn user_scope_matrix() {
         "# written by hand\nui.color = 'never'   # keep me\n\n[user]\nemail = \"r@example.com\"\n",
         "comments and formatting survive"
     );
-    config_unset(None, ConfigScope::User, "user.email", Some(&hand)).expect("unset");
+    config_unset(None, ConfigScope::User, "user.email", Some(&hand))
+        .result
+        .expect("unset");
     assert_eq!(
         fs::read_to_string(&hand).unwrap(),
         "# written by hand\nui.color = 'never'   # keep me\n\n[user]\n",
@@ -143,9 +145,12 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
     // ── a broken user file: the stack verbs refuse, the editor halves repair ──
     fs::write(hand, "[ui\ncolor = ").unwrap();
     for err in [
-        config_list(None, &ConfigListQuery::default()).map(|_| ()).unwrap_err(),
-        config_get(None, "user.name").map(|_| ()).unwrap_err(),
-        config_path(None, ConfigScope::User).map(|_| ()).unwrap_err(),
+        config_list(None, &ConfigListQuery::default())
+            .result
+            .map(|_| ())
+            .unwrap_err(),
+        config_get(None, "user.name").result.map(|_| ()).unwrap_err(),
+        config_path(None, ConfigScope::User).result.map(|_| ()).unwrap_err(),
         config_set(None, ConfigScope::User, "a", "1", Some(first))
             .result
             .map(|_| ())
@@ -156,12 +161,16 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
             "{err}"
         );
     }
-    let read = config_file_read(None, ConfigScope::User, Some(hand)).expect("read the broken file");
+    let read = config_file_read(None, ConfigScope::User, Some(hand))
+        .result
+        .expect("read the broken file");
     assert_eq!(read.text, "[ui\ncolor = ");
     assert!(matches!(
-        config_file_write(None, hand, "[ui\ncolor = "),
+        config_file_write(None, hand, "[ui\ncolor = ").result,
         Err(ConfigCmdError::Parse { .. })
     ));
-    config_file_write(None, hand, "ui.color = 'always'\n").expect("repair");
-    assert_eq!(config_get(None, "ui.color").unwrap(), "always");
+    config_file_write(None, hand, "ui.color = 'always'\n")
+        .result
+        .expect("repair");
+    assert_eq!(config_get(None, "ui.color").result.unwrap(), "always");
 }

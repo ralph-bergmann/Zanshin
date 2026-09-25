@@ -36,6 +36,8 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
         for (name, value) in test_helpers::TEST_ENV {
             env::set_var(name, value);
         }
+        // Story 9.37: the start-up fix-up migrates the legacy repo configs written here.
+        env::set_var("XDG_CONFIG_HOME", test_helpers::leaked_xdg_config_home());
     }
 });
 

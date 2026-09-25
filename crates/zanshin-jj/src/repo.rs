@@ -89,9 +89,9 @@ pub(crate) fn creation_error(e: &WorkspaceInitError, other: impl FnOnce(String) 
 }
 
 /// What a workspace CREATION reports (Story 9.33) — [`Repo::init`], [`Repo::clone`],
-/// [`crate::convert_colocated`] and [`crate::convert_import`] — in [`crate::ConfigSetOutcome`]'s
-/// shape: the result, and what the jj CLI would have printed on the way, on success AND on
-/// failure.
+/// [`crate::convert_colocated`] and [`crate::convert_import`] — and, since Story 9.37, what
+/// [`Repo::open_with_report`] reports, in [`crate::ConfigSetOutcome`]'s shape: the result, and
+/// what the jj CLI would have printed on the way, on success AND on failure.
 #[derive(Debug)]
 pub struct CreationOutcome {
     /// The created workspace, or why it was not created.
@@ -168,17 +168,28 @@ impl Repo {
     /// `Workspace::load`'s body split in two (`jj-lib workspace.rs:410-419`): the loader
     /// resolves `.jj/repo` (following a secondary workspace's FILE indirection) BEFORE the
     /// repo is loaded, so the repo and workspace layers are known when the settings are
-    /// built. The fingerprint is taken FIRST — a change in between costs one redundant
-    /// reload later, never a missed one. The two error mappers let [`Repo::open`] and
-    /// [`Repo::refresh_settings`] share the sequence under their own error types.
+    /// built. Right after the loader, the CLI's start-up secure-config fix-up runs (Story 9.37,
+    /// [`crate::config::fix_up_secure_config`]; its warnings land in `warnings`, on success AND
+    /// on failure), so the fingerprint taken next is POST-fix-up and a migration costs no
+    /// second reload. The fingerprint is taken before the settings — a change in between costs
+    /// one redundant reload later, never a missed one. The two error mappers let
+    /// [`Repo::open_with_report`] and [`Repo::refresh_settings`] share the sequence under their
+    /// own error types.
     fn load_effective<E>(
         root: &Path,
         config_error: impl Fn(crate::ConfigError) -> E,
         load_error: impl Fn(String) -> E,
+        warnings: &mut Vec<crate::Warning>,
     ) -> Result<Self, E> {
         let loader = DefaultWorkspaceLoaderFactory
             .create(root)
             .map_err(|e| load_error(e.to_string()))?;
+        let paths = crate::config::WorkspacePaths {
+            repo_path: loader.repo_path(),
+            workspace_root: loader.workspace_root(),
+        };
+        crate::config::fix_up_secure_config(&crate::config::ConfigEnv::from_env(), paths, warnings)
+            .map_err(&config_error)?;
         let stack_fingerprint =
             crate::config::stack_fingerprint(loader.repo_path(), loader.workspace_root()).map_err(&config_error)?;
         let settings = crate::config::user_settings_for(&*loader).map_err(&config_error)?;
@@ -209,20 +220,34 @@ impl Repo {
     ///
     /// The CLI builds its `UserSettings` per invocation, so an external `jj config set` (or a
     /// Zanshin config edit) takes effect on its very next command; this is the same, at the
-    /// cost of a few `stat`s per verb. [`Repo::precondition`] calls it FIRST, so every verb
-    /// that snapshots sees the current stack.
+    /// cost of one fix-up pass per verb — a load of the raw stack (system, user, repo and
+    /// workspace files parsed) — plus a few `stat`s for the fingerprint. [`Repo::precondition`]
+    /// calls it FIRST, so every verb that snapshots sees the current stack.
+    ///
+    /// Every call starts with the CLI's start-up secure-config fix-up (Story 9.37,
+    /// [`crate::config::fix_up_secure_config`]) — BEFORE the fingerprint comparison, because a
+    /// fix-up may change no stamped file (a regenerated `metadata.binpb`, a re-pointed moved
+    /// repo) and must still run every verb, as in the CLI. Its warnings go to the caller's
+    /// `warnings` (a reload replaces `*self`, collector included); the reload's own fix-up is
+    /// then a no-op.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::Config`] — the changed stack no longer reads (the CLI would
-    ///   fail at start-up); the handle keeps its previous settings.
+    /// - [`crate::MutateError::Config`] — the fix-up failed or the changed stack no longer
+    ///   reads (the CLI would fail at start-up); the handle keeps its previous settings.
     /// - [`crate::MutateError::Backend`] — the workspace could not be reloaded.
-    pub(crate) fn refresh_settings(&mut self) -> Result<(), crate::MutateError> {
+    pub(crate) fn refresh_settings(&mut self, warnings: &mut Vec<crate::Warning>) -> Result<(), crate::MutateError> {
+        let paths = crate::config::WorkspacePaths {
+            repo_path: self.workspace.repo_path(),
+            workspace_root: self.workspace.workspace_root(),
+        };
+        crate::config::fix_up_secure_config(&crate::config::ConfigEnv::from_env(), paths, warnings)
+            .map_err(crate::mutate::cfg)?;
         let current = crate::config::stack_fingerprint(self.workspace.repo_path(), self.workspace.workspace_root())
             .map_err(crate::mutate::cfg)?;
         if current != self.stack_fingerprint {
             let root = self.workspace.workspace_root().to_owned();
-            *self = Self::load_effective(&root, crate::mutate::cfg, crate::mutate::be)?;
+            *self = Self::load_effective(&root, crate::mutate::cfg, crate::mutate::be, warnings)?;
         }
         Ok(())
     }
@@ -230,7 +255,9 @@ impl Repo {
     /// The implicit snapshot every CLI command whose helper is `workspace_helper` runs first
     /// (Story 9.26) — `cli/src/cli_util.rs:472-516` @ v0.44.0.
     ///
-    /// 1. [`Repo::refresh_settings`], so the snapshot runs with the current config stack.
+    /// 1. [`Repo::refresh_settings`] — the CLI's start-up secure-config fix-up (Story 9.37), then
+    ///    the settings re-derived if the stack changed — so the snapshot runs with the current
+    ///    config stack. The fix-up's warnings are the call's FIRST, also when the refresh fails.
     /// 2. The CLI's start-up environment ([`crate::snapshot::CommandEnv`]: the fileset and
     ///    revset alias tables, the `immutable_heads()` parse) is built — BEFORE the lock, as
     ///    `workspace_helper_with_stats` builds it (`cli_util.rs:477`), so a bad
@@ -261,9 +288,11 @@ impl Repo {
     ///
     /// Any [`crate::PreconditionError`].
     fn precondition(&mut self, warn_stats: bool) -> Result<crate::snapshot::VerbContext, crate::PreconditionError> {
-        let refreshed = self.refresh_settings();
+        let mut fix_ups = Vec::new();
+        let refreshed = self.refresh_settings(&mut fix_ups);
         self.pending_precondition = Some(crate::Precondition::default());
         self.pending_warnings = crate::warning::Warnings::default();
+        self.pending_warnings.extend(fix_ups);
         refreshed?;
         let config = crate::config::load(self)?;
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace);
@@ -358,10 +387,11 @@ impl Repo {
     /// empty.
     ///
     /// The jj CLI's `ui.warning_*` output for that call, as coded facts in its print order: the
-    /// config-load warnings, the pre-verb snapshot's and imports', the verb body's, and the
-    /// transaction finish's. The list is reset ONLY where a verb runs the precondition: such a
-    /// verb starts a fresh list and leaves it behind — on success AND on failure (then
-    /// everything up to the failure). Verbs that do not snapshot ([`Repo::workspace_root`],
+    /// start-up secure-config fix-up's (Story 9.37), the config-load warnings, the pre-verb
+    /// snapshot's and imports', the verb body's, and the transaction finish's. The list is reset
+    /// ONLY where a verb runs the precondition: such a verb starts a fresh list and leaves it
+    /// behind — on success AND on failure (then everything up to the failure). Verbs that do not
+    /// snapshot ([`Repo::workspace_root`],
     /// [`Repo::resolve_workspace_root`], [`Repo::log_defaults`]) neither reset nor add to it, so
     /// a take after one of them returns whatever an earlier verb left untaken. A caller takes
     /// the list after each precondition-running verb, as the FFI layer does for every envelope
@@ -1820,7 +1850,48 @@ impl Repo {
     /// → User → Repo → Workspace → `EnvOverrides`. An EMPTY identity is not an error — jj-lib
     /// defaults `user.name`/`user.email` to `""`, and each committed mutation warns
     /// `jj.identity_missing` through [`Repo::take_warnings`] (Story 9.32).
+    ///
+    /// [`Repo::open_with_report`] with its warnings DROPPED (each logged as a
+    /// `tracing::warn!`): opening runs the CLI's start-up secure-config fix-up (Story 9.37), whose
+    /// one-shot notices only [`Repo::open_with_report`] reports. Use [`Repo::open_with_report`]
+    /// wherever they can reach a user.
     pub fn open(path: &Path) -> Result<Self, RepoError> {
+        let outcome = Self::open_with_report(path);
+        crate::warning::log_dropped("Repo::open", outcome.warnings);
+        outcome.result
+    }
+
+    /// Opens an existing jj workspace rooted at `path`, as [`Repo::open`], and reports what the
+    /// jj CLI would have printed on the way (Story 9.37).
+    ///
+    /// Opening plays a CLI command's start-up: right after the loader resolves the repo, the
+    /// CLI's secure-config fix-up runs for the repo, then the workspace layer (jj-lib's
+    /// `SecureConfig::maybe_load_config`, as `load_secure_config` calls it —
+    /// `cli/src/config.rs:447-469` @ v0.44.0): a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` is
+    /// migrated into the secure config directory, a moved repo's metadata re-pointed, a copied
+    /// repo's config forked, a missing secure directory regenerated. Each such notice is one of
+    /// [`CreationOutcome::warnings`] — `jj.config_migrated`, `jj.config_copied`,
+    /// `jj.config_regenerated` — on success AND on failure (a migrated file that then does not
+    /// parse refuses naming the NEW file, and the migration is still reported). Opening runs no
+    /// snapshot: [`CreationOutcome::precondition`] is always `None`.
+    ///
+    /// # Errors
+    ///
+    /// In [`CreationOutcome::result`]: as [`Repo::open`]; a failed fix-up (an unreadable or
+    /// malformed id file, a secure directory that cannot be written) is [`RepoError::Config`].
+    #[must_use = "the outcome carries the result and the warnings"]
+    pub fn open_with_report(path: &Path) -> CreationOutcome {
+        let mut warnings = Vec::new();
+        let result = Self::open_reported(path, &mut warnings);
+        CreationOutcome {
+            result,
+            precondition: None,
+            warnings,
+        }
+    }
+
+    /// [`Repo::open_with_report`]'s open, recording the fix-up's warnings into `warnings`.
+    fn open_reported(path: &Path, warnings: &mut Vec<crate::Warning>) -> Result<Self, RepoError> {
         // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
         // every workspace's root RELATIVE to the `repo_path` the store was loaded with. Resolving
         // here makes `Workspace::repo_path()` canonical, so this handle spells that base the same
@@ -1846,7 +1917,7 @@ impl Repo {
         if !root.join(".jj").is_dir() {
             return Err(RepoError::NotARepo { path: path.to_owned() });
         }
-        Self::load_effective(&root, RepoError::from, RepoError::Backend)
+        Self::load_effective(&root, RepoError::from, RepoError::Backend, warnings)
     }
 
     /// Initialises a new jj workspace at `path`.
@@ -2244,10 +2315,11 @@ mod tests {
         assert_eq!(settings.get_string("fsmonitor.backend").unwrap(), "watchman");
         assert_eq!(settings.get_string("snapshot.max-new-file-size").unwrap(), "5MiB");
 
-        repo.refresh_settings()
+        repo.refresh_settings(&mut Vec::new())
             .expect("an unchanged stack refreshes as a no-op");
         write_repo_config(&fx.path, "[fsmonitor]\nbackend = \"none\"\n");
-        repo.refresh_settings().expect("a changed stack re-derives");
+        repo.refresh_settings(&mut Vec::new())
+            .expect("a changed stack re-derives");
         assert_eq!(
             repo.workspace().settings().get_string("fsmonitor.backend").unwrap(),
             "none"
@@ -2261,12 +2333,54 @@ mod tests {
     fn refresh_refuses_a_stack_broken_after_open() {
         let (fx, mut repo) = open_fixture();
         write_repo_config(&fx.path, "not = = toml\n");
-        let err = repo.refresh_settings().expect_err("invalid TOML must refuse");
+        let err = repo
+            .refresh_settings(&mut Vec::new())
+            .expect_err("invalid TOML must refuse");
         assert!(matches!(err, MutateError::Config { .. }), "got {err:?}");
 
         std::fs::write(fx.path.join(".jj").join("repo").join("config-id"), "bad").unwrap();
-        let err = repo.refresh_settings().expect_err("a malformed config-id must refuse");
+        let err = repo
+            .refresh_settings(&mut Vec::new())
+            .expect_err("a malformed config-id must refuse");
         assert!(matches!(err, MutateError::Config { .. }), "got {err:?}");
+    }
+
+    /// Story 9.37: the start-up fix-up runs BEFORE the fingerprint, so after a migration — at
+    /// open and at verb start — the stored fingerprint equals a fresh one and the next refresh
+    /// reloads nothing. A reload would replace the handle and drop the sentinel report.
+    #[test]
+    fn a_fix_up_leaves_no_redundant_reload_behind() {
+        test_helpers::pin_test_env();
+        let fx = extract_fixture("tiny-3-commits").expect("fixture extracts");
+        write_repo_config(&fx.path, "[test]\nmarker = \"legacy\"\n");
+        let opened = Repo::open_with_report(&fx.path);
+        let kinds: Vec<_> = opened.warnings.iter().map(|w| w.kind).collect();
+        assert_eq!(kinds, [crate::WarningKind::ConfigMigrated]);
+        let mut repo = opened.result.expect("fixture opens");
+        let fresh = |repo: &Repo| {
+            crate::config::stack_fingerprint(repo.workspace.repo_path(), repo.workspace.workspace_root())
+                .expect("fingerprint")
+        };
+        assert_eq!(repo.stack_fingerprint, fresh(&repo), "post-fix-up at open");
+
+        let assert_no_reload = |repo: &mut Repo| {
+            repo.pending_precondition = Some(crate::Precondition::default());
+            let mut warnings = Vec::new();
+            repo.refresh_settings(&mut warnings).expect("refresh");
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert!(repo.pending_precondition.is_some(), "no reload replaced the handle");
+        };
+        assert_no_reload(&mut repo);
+
+        std::fs::write(fx.path.join(".jj").join("workspace-config.toml"), "[test]\nws = true\n")
+            .expect("legacy workspace config written");
+        let mut warnings = Vec::new();
+        repo.refresh_settings(&mut warnings)
+            .expect("the verb-start fix-up migrates");
+        let kinds: Vec<_> = warnings.iter().map(|w| w.kind).collect();
+        assert_eq!(kinds, [crate::WarningKind::ConfigMigrated]);
+        assert_eq!(repo.stack_fingerprint, fresh(&repo), "post-fix-up at verb start");
+        assert_no_reload(&mut repo);
     }
 
     #[test]
@@ -2275,7 +2389,7 @@ mod tests {
         write_repo_config(&fx.path, "[user]\nname = \"Changed\"\n");
         std::fs::remove_file(fx.path.join(".jj").join("working_copy").join("type")).unwrap();
         let err = repo
-            .refresh_settings()
+            .refresh_settings(&mut Vec::new())
             .expect_err("an unloadable workspace must refuse");
         assert!(matches!(err, MutateError::Backend(_)), "got {err:?}");
     }

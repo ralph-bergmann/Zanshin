@@ -26,9 +26,9 @@ import 'responses.dart';
 /// contains only integers.
 ///
 /// Lifecycle:
-/// - Created by [ZanshinWorker.openRepo], or — as a [CreatedRepoHandle] — by
-///   [ZanshinWorker.initRepo] / [ZanshinWorker.cloneRepo] /
-///   [ZanshinWorker.convert].
+/// - Created — as an [OpenedRepoHandle] — by [ZanshinWorker.openRepo], or — as
+///   a [CreatedRepoHandle] — by [ZanshinWorker.initRepo] /
+///   [ZanshinWorker.cloneRepo] / [ZanshinWorker.convert].
 /// - Closed explicitly via [close], or implicitly when GC runs the
 ///   Dart [Finalizer] (belt-and-suspenders).
 ///
@@ -1012,4 +1012,26 @@ final class CreatedRepoHandle extends RepoHandle {
   /// and a creation is not a verb on the handle — it stays `null` until the
   /// first verb runs.
   final Precondition? precondition;
+}
+
+/// A [RepoHandle] fresh from [ZanshinWorker.openRepo], carrying what opening
+/// reported (Story 9.37).
+///
+/// Opening plays a jj CLI command's start-up: the CLI's secure-config fix-up
+/// runs for the repo, then the workspace layer — a legacy config file migrated
+/// into the secure config directory, a copied repo's config forked, a missing
+/// secure directory regenerated. Those one-shot notices are [warnings]; opening
+/// runs no snapshot, so there is no report beyond them.
+///
+/// It IS a [RepoHandle]: a caller that types the result as a plain
+/// [RepoHandle] keeps working unchanged. A refused open throws
+/// [ZanshinFfiException], which carries the same warnings (Story 9.35).
+final class OpenedRepoHandle extends RepoHandle {
+  /// Wrap `handleId` returned by the worker, with the opening call's warnings.
+  OpenedRepoHandle(super._worker, super._handleId, {required this.warnings});
+
+  /// The opening call's warnings, in the jj CLI's print order; empty when
+  /// there were none — `jj.config_migrated`, `jj.config_copied` or
+  /// `jj.config_regenerated`.
+  final List<ZanshinWarning> warnings;
 }

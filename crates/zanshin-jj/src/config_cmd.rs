@@ -13,12 +13,16 @@
 //!
 //! # Per verb, the CLI's steps
 //!
-//! 1. **Start-up stack** — every verb except the two editor halves loads the raw stack (the
-//!    side-effect-free read path of `config.rs`), resolves it with the verb's CLI command name
-//!    and builds `UserSettings` from it, exactly as the CLI's `run_internal` does BEFORE it
-//!    dispatches: a TOML error in any layer or a wrong-typed start-up key (`user.*`,
-//!    `operation.*`, `signing.*`, `debug.*`) refuses with [`ConfigCmdError::Config`] before any
-//!    disk effect.
+//! 1. **Start-up stack** — every verb except the two editor halves loads the raw stack, resolves
+//!    it with the verb's CLI command name and builds `UserSettings` from it, exactly as the CLI's
+//!    `run_internal` does BEFORE it dispatches: a TOML error in any layer or a wrong-typed
+//!    start-up key (`user.*`, `operation.*`, `signing.*`, `debug.*`) refuses with
+//!    [`ConfigCmdError::Config`]. With a workspace root, that load is the CLI's start-up load
+//!    (Story 9.37): the secure-config fix-up (a legacy file migrated, a copied repo's config
+//!    forked, a missing secure directory regenerated — `config.rs`' module doc) runs for the
+//!    repo, then the workspace layer, each right before it loads, and its notices are the verb's
+//!    first warnings ([`ConfigOutcome::warnings`]), on success AND on failure. Without a root
+//!    nothing is fixed up, and `config gc` runs no fix-up either.
 //! 2. **File selection** (`set`, `unset`, the editor halves) — the CLI's `edit_config_file`:
 //!    the scope's existing files, else the CLI's new-file default; more than one candidate, or
 //!    an explicit path that is not one of them, is [`ConfigCmdError::AmbiguousFile`] (the CLI
@@ -31,8 +35,9 @@
 //! `jj config edit` becomes two halves because the GUI replaces `$EDITOR`:
 //! [`config_file_read`] (creates the file as the CLI does before opening the editor) and
 //! [`config_file_write`] (validates the text as TOML BEFORE writing — the CLI's re-edit loop,
-//! with the UI holding the buffer). Neither runs the start-up stack: they are the stand-in for
-//! the user's own editor, the CLI's repair path for a broken config.
+//! with the UI holding the buffer). Neither loads the start-up stack: they are the stand-in for
+//! the user's own editor, the CLI's repair path for a broken config. With a workspace root both
+//! still start with the secure-config fix-up alone, loading no file.
 //!
 //! `jj config gc`'s yes/no prompt likewise becomes [`config_gc_list`] + [`config_gc_delete`].
 
@@ -175,10 +180,31 @@ pub struct ConfigSetOutcome {
     pub result: Result<ConfigSetResult, ConfigCmdError>,
     /// The snapshot report, when the snapshot ran.
     pub precondition: Option<crate::Precondition>,
-    /// The call's warnings, on success AND on failure, in the CLI's order: the snapshot's
-    /// (config loads, snapshot, imports), then `jj.config_working_copy_author` when `@`'s author
-    /// stays the old one.
+    /// The call's warnings, on success AND on failure, in the CLI's order: the start-up
+    /// secure-config fix-up's (Story 9.37), the snapshot's (config loads, snapshot, imports),
+    /// then `jj.config_working_copy_author` when `@`'s author stays the old one.
     pub warnings: Vec<crate::Warning>,
+}
+
+/// What a config verb reports (Story 9.37) — [`config_list`], [`config_get`], [`config_path`],
+/// [`config_unset`], [`config_file_read`] and [`config_file_write`]: the result, and the warnings
+/// the jj CLI would have printed on the way, on success AND on failure. A verb with a workspace
+/// root starts with the CLI's secure-config fix-up, whose one-shot notices
+/// (`jj.config_migrated`, `jj.config_copied`, `jj.config_regenerated`) must survive a refusal —
+/// a `config get` of an unset key right after a migration still reports the migration.
+#[derive(Debug)]
+pub struct ConfigOutcome<T> {
+    /// The verb's result.
+    pub result: Result<T, ConfigCmdError>,
+    /// The call's warnings in the CLI's print order; empty when there were none.
+    pub warnings: Vec<crate::Warning>,
+}
+
+/// Runs a verb body with a fresh warning list and wraps both into its [`ConfigOutcome`].
+fn outcome<T>(body: impl FnOnce(&mut Vec<crate::Warning>) -> Result<T, ConfigCmdError>) -> ConfigOutcome<T> {
+    let mut warnings = Vec::new();
+    let result = body(&mut warnings);
+    ConfigOutcome { result, warnings }
 }
 
 /// A config file's text, as [`config_file_read`] returns it.
@@ -303,18 +329,18 @@ fn display_paths(paths: &[PathBuf]) -> String {
 /// `jj config list` — every value of the effective stack with its source (the CLI's
 /// `resolved_config_values`), lowest layer first, filtered as the CLI filters. An empty list is
 /// a result, not an error — it warns `jj.config_nothing_listed` with the CLI's "No matching config
-/// key for: …" / "No config to list." (`list.rs:116-123`, Story 9.32).
+/// key for: …" / "No config to list." (`list.rs:116-123`, Story 9.32), after the start-up
+/// fix-up's warnings (Story 9.37).
 ///
 /// # Errors
 ///
+/// In [`ConfigOutcome::result`]:
 /// - [`ConfigCmdError::PathNotFound`] / [`ConfigCmdError::NotARepo`] — bad `workspace_root`.
-/// - [`ConfigCmdError::Config`] — the stack does not load.
+/// - [`ConfigCmdError::Config`] — the stack does not load, or the start-up fix-up failed.
 /// - [`ConfigCmdError::Parse`] — `query.name` is not a TOML dotted key.
-pub fn config_list(
-    workspace_root: Option<&Path>,
-    query: &ConfigListQuery,
-) -> Result<crate::Warned<Vec<ConfigEntry>>, ConfigCmdError> {
-    list_with(&ConfigEnv::from_env(), workspace_root, query)
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_list(workspace_root: Option<&Path>, query: &ConfigListQuery) -> ConfigOutcome<Vec<ConfigEntry>> {
+    outcome(|warnings| list_with(&ConfigEnv::from_env(), workspace_root, query, warnings))
 }
 
 /// `jj config get NAME` — a string unquoted, anything else (a table merged into an inline
@@ -322,12 +348,14 @@ pub fn config_list(
 ///
 /// # Errors
 ///
+/// In [`ConfigOutcome::result`]:
 /// - [`ConfigCmdError::PathNotFound`] / [`ConfigCmdError::NotARepo`] — bad `workspace_root`.
-/// - [`ConfigCmdError::Config`] — the stack does not load.
+/// - [`ConfigCmdError::Config`] — the stack does not load, or the start-up fix-up failed.
 /// - [`ConfigCmdError::Parse`] — `name` is not a TOML dotted key.
 /// - [`ConfigCmdError::NotFound`] — no layer sets `name`.
-pub fn config_get(workspace_root: Option<&Path>, name: &str) -> Result<String, ConfigCmdError> {
-    get_with(&ConfigEnv::from_env(), workspace_root, name)
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_get(workspace_root: Option<&Path>, name: &str) -> ConfigOutcome<String> {
+    outcome(|warnings| get_with(&ConfigEnv::from_env(), workspace_root, name, warnings))
 }
 
 /// `jj config path --user|--repo|--workspace` — user: every candidate in the CLI's order,
@@ -337,13 +365,15 @@ pub fn config_get(workspace_root: Option<&Path>, name: &str) -> Result<String, C
 ///
 /// # Errors
 ///
+/// In [`ConfigOutcome::result`]:
 /// - [`ConfigCmdError::PathNotFound`] / [`ConfigCmdError::NotARepo`] — bad `workspace_root`.
-/// - [`ConfigCmdError::Config`] — the stack does not load, or the secure directory could not
-///   be created.
+/// - [`ConfigCmdError::Config`] — the stack does not load, the start-up fix-up failed, or the
+///   secure directory could not be created.
 /// - [`ConfigCmdError::NoConfigPath`] — no path can be determined (no user candidate, or no
 ///   workspace / config directory for repo and workspace scope).
-pub fn config_path(workspace_root: Option<&Path>, scope: ConfigScope) -> Result<Vec<PathBuf>, ConfigCmdError> {
-    path_with(&ConfigEnv::from_env(), workspace_root, scope)
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_path(workspace_root: Option<&Path>, scope: ConfigScope) -> ConfigOutcome<Vec<PathBuf>> {
+    outcome(|warnings| path_with(&ConfigEnv::from_env(), workspace_root, scope, warnings))
 }
 
 /// `jj config set --user|--repo|--workspace NAME VALUE` — `value_text` is a TOML expression,
@@ -375,47 +405,54 @@ pub fn config_set(
 ///
 /// # Errors
 ///
-/// Bad `workspace_root`, [`ConfigCmdError::Config`], [`ConfigCmdError::Parse`],
-/// [`ConfigCmdError::NoConfigPath`], [`ConfigCmdError::AmbiguousFile`],
+/// In [`ConfigOutcome::result`]: bad `workspace_root`, [`ConfigCmdError::Config`],
+/// [`ConfigCmdError::Parse`], [`ConfigCmdError::NoConfigPath`], [`ConfigCmdError::AmbiguousFile`],
 /// [`ConfigCmdError::WouldDeleteTable`], [`ConfigCmdError::NotFound`] (`"<name>" doesn't
 /// exist`). As in the CLI, repo/workspace scope creates the secure directory even when it then
 /// refuses.
+#[must_use = "the outcome carries the result and the warnings"]
 pub fn config_unset(
     workspace_root: Option<&Path>,
     scope: ConfigScope,
     name: &str,
     path: Option<&Path>,
-) -> Result<PathBuf, ConfigCmdError> {
-    unset_with(&ConfigEnv::from_env(), workspace_root, scope, name, path)
+) -> ConfigOutcome<PathBuf> {
+    outcome(|warnings| unset_with(&ConfigEnv::from_env(), workspace_root, scope, name, path, warnings))
 }
 
 /// `jj config edit`, editor half 1: the file the CLI would open, and its exact text. An absent
 /// file is created first with jj-lib's empty document (its `#:schema` header), as the CLI saves
-/// it before starting the editor. Runs no start-up stack, so a broken config can be repaired.
+/// it before starting the editor. Loads no start-up stack, so a broken config can be repaired —
+/// but with a workspace root it starts with the CLI's secure-config fix-up alone (Story 9.37),
+/// whose notices are [`ConfigOutcome::warnings`].
 ///
 /// # Errors
 ///
-/// Bad `workspace_root`, [`ConfigCmdError::NoConfigPath`], [`ConfigCmdError::AmbiguousFile`],
-/// [`ConfigCmdError::Config`] (the file could not be created or read, or is not UTF-8).
+/// In [`ConfigOutcome::result`]: bad `workspace_root`, [`ConfigCmdError::NoConfigPath`],
+/// [`ConfigCmdError::AmbiguousFile`], [`ConfigCmdError::Config`] (the fix-up failed, or the file
+/// could not be created or read, or is not UTF-8).
+#[must_use = "the outcome carries the result and the warnings"]
 pub fn config_file_read(
     workspace_root: Option<&Path>,
     scope: ConfigScope,
     path: Option<&Path>,
-) -> Result<ConfigFileText, ConfigCmdError> {
-    file_read_with(&ConfigEnv::from_env(), workspace_root, scope, path)
+) -> ConfigOutcome<ConfigFileText> {
+    outcome(|warnings| file_read_with(&ConfigEnv::from_env(), workspace_root, scope, path, warnings))
 }
 
 /// `jj config edit`, editor half 2: replaces the file at `path` with `text` — only a file
 /// [`config_file_read`] can return for some scope of this root, and only after `text` parses as
-/// TOML (nothing is written otherwise).
+/// TOML (nothing is written otherwise). Like half 1, it starts with the secure-config fix-up
+/// alone when there is a workspace root (Story 9.37).
 ///
 /// # Errors
 ///
-/// Bad `workspace_root`; [`ConfigCmdError::AmbiguousFile`] (`path` is not such a file; the
-/// allowed files in `candidates`); [`ConfigCmdError::Parse`] (with the span);
-/// [`ConfigCmdError::Config`] (the write failed).
-pub fn config_file_write(workspace_root: Option<&Path>, path: &Path, text: &str) -> Result<(), ConfigCmdError> {
-    file_write_with(&ConfigEnv::from_env(), workspace_root, path, text)
+/// In [`ConfigOutcome::result`]: bad `workspace_root`; [`ConfigCmdError::AmbiguousFile`]
+/// (`path` is not such a file; the allowed files in `candidates`); [`ConfigCmdError::Parse`]
+/// (with the span); [`ConfigCmdError::Config`] (the fix-up or the write failed).
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_file_write(workspace_root: Option<&Path>, path: &Path, text: &str) -> ConfigOutcome<()> {
+    outcome(|warnings| file_write_with(&ConfigEnv::from_env(), workspace_root, path, text, warnings))
 }
 
 /// `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
@@ -474,10 +511,30 @@ fn resolve_workspace(root: Option<&Path>) -> Result<Option<WorkspaceDirs>, Confi
     }))
 }
 
-/// The CLI's start-up: raw stack → resolved with `command` → `UserSettings`.
-fn startup(env: &ConfigEnv, ws: Option<&WorkspaceDirs>, command: &str) -> Result<UserSettings, ConfigCmdError> {
+/// The editor halves' start-up (Story 9.37): the CLI's secure-config fix-up ALONE, loading no
+/// file, so it cannot refuse a stack the halves exist to repair; nothing without a workspace.
+fn fix_up(
+    env: &ConfigEnv,
+    ws: Option<&WorkspaceDirs>,
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<(), ConfigCmdError> {
+    if let Some(ws) = ws {
+        config::fix_up_layers(env, ws.paths(), warnings)?;
+    }
+    Ok(())
+}
+
+/// The CLI's start-up: raw stack → resolved with `command` → `UserSettings`. With `fix_ups` (and
+/// a workspace) the raw load is the CLI's start-up load, secure-config fix-up included
+/// (Story 9.37); its warnings land there, on success AND on failure.
+fn startup(
+    env: &ConfigEnv,
+    ws: Option<&WorkspaceDirs>,
+    command: &str,
+    fix_ups: Option<&mut Vec<crate::Warning>>,
+) -> Result<UserSettings, ConfigCmdError> {
     let paths = ws.map(WorkspaceDirs::paths);
-    let raw = config::load_raw(env, paths)?;
+    let raw = config::load_raw(env, paths, fix_ups)?;
     let resolved = config::resolve_raw(env, paths, &raw, Some(command))?;
     Ok(config::settings_from(resolved)?)
 }
@@ -671,9 +728,10 @@ fn list_with(
     env: &ConfigEnv,
     root: Option<&Path>,
     query: &ConfigListQuery,
-) -> Result<crate::Warned<Vec<ConfigEntry>>, ConfigCmdError> {
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<Vec<ConfigEntry>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config list")?;
+    let settings = startup(env, ws.as_ref(), "config list", Some(warnings))?;
     let name = query.name.as_deref().map(parse_name).transpose()?;
     let prefix = name.clone().unwrap_or_else(ConfigNamePathBuf::root);
     let mut values = resolved_config_values(settings.config(), &prefix);
@@ -687,17 +745,15 @@ fn list_with(
     if !query.include_overridden {
         values.retain(|v| !v.is_overridden);
     }
-    let warnings = if values.is_empty() {
+    if values.is_empty() {
         // The CLI's note on stderr explaining why the output is empty (`list.rs:116-123`).
         let message = name.map_or_else(
             || "No config to list.".to_owned(),
             |name| format!("No matching config key for: {name}"),
         );
-        vec![crate::warning::local(crate::WarningKind::ConfigNothingListed, message)]
-    } else {
-        Vec::new()
-    };
-    let value = values
+        warnings.push(crate::warning::local(crate::WarningKind::ConfigNothingListed, message));
+    }
+    Ok(values
         .into_iter()
         .map(|v| ConfigEntry {
             name: v.name.to_string(),
@@ -706,13 +762,17 @@ fn list_with(
             path: v.path,
             overridden: v.is_overridden,
         })
-        .collect();
-    Ok(crate::Warned { value, warnings })
+        .collect())
 }
 
-fn get_with(env: &ConfigEnv, root: Option<&Path>, name: &str) -> Result<String, ConfigCmdError> {
+fn get_with(
+    env: &ConfigEnv,
+    root: Option<&Path>,
+    name: &str,
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<String, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config get")?;
+    let settings = startup(env, ws.as_ref(), "config get", Some(warnings))?;
     let name = parse_name(name)?;
     // WHY every error is NotFound: `get_value`'s conversion is the identity, so `NotFound` is
     // the only `ConfigGetError` it can return.
@@ -728,9 +788,14 @@ fn get_with(env: &ConfigEnv, root: Option<&Path>, name: &str) -> Result<String, 
     })
 }
 
-fn path_with(env: &ConfigEnv, root: Option<&Path>, scope: ConfigScope) -> Result<Vec<PathBuf>, ConfigCmdError> {
+fn path_with(
+    env: &ConfigEnv,
+    root: Option<&Path>,
+    scope: ConfigScope,
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<Vec<PathBuf>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config path")?;
+    startup(env, ws.as_ref(), "config path", Some(warnings))?;
     let paths: Vec<PathBuf> = if scope == ConfigScope::User {
         config::user_config_candidates(env)
     } else {
@@ -756,7 +821,7 @@ fn set_with(
     let mut warnings = Vec::new();
     let result = (|| -> Result<ConfigSetResult, ConfigCmdError> {
         let ws = resolve_workspace(root)?;
-        startup(env, ws.as_ref(), "config set")?;
+        startup(env, ws.as_ref(), "config set", Some(&mut warnings))?;
         let name = parse_name(name)?;
         let value = parse_value_or_bare_string(value_text)?;
         let file_path = select_file(env, ws.as_ref(), scope, path)?;
@@ -853,9 +918,10 @@ fn unset_with(
     scope: ConfigScope,
     name: &str,
     path: Option<&Path>,
+    warnings: &mut Vec<crate::Warning>,
 ) -> Result<PathBuf, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config unset")?;
+    startup(env, ws.as_ref(), "config unset", Some(warnings))?;
     let name = parse_name(name)?;
     let file_path = select_file(env, ws.as_ref(), scope, path)?;
     let mut file = config::load_config_file(scope.source(), &file_path)?;
@@ -876,8 +942,10 @@ fn file_read_with(
     root: Option<&Path>,
     scope: ConfigScope,
     path: Option<&Path>,
+    warnings: &mut Vec<crate::Warning>,
 ) -> Result<ConfigFileText, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
+    fix_up(env, ws.as_ref(), warnings)?;
     let file_path = select_file(env, ws.as_ref(), scope, path)?;
     if !file_path.exists() {
         config::save_config_file(&config::load_config_file(scope.source(), &file_path)?)?;
@@ -890,8 +958,11 @@ fn file_read_with(
 /// Every file [`config_file_read`] can currently return for some scope of `ws`, with its
 /// source — its selection, side-effect-free: the existing user files, or the CLI's new-file
 /// default only when there are none; the repo and workspace SECURE files, only when their id
-/// file exists (never the legacy fallback, which the CLI would migrate) and their secure dir
-/// records this repo/workspace (never a COPIED repo's original, which the CLI forks first).
+/// file exists (never the legacy fallback) and their secure dir records this repo/workspace
+/// (never a COPIED repo's original). [`file_write_with`] runs the start-up fix-up right before
+/// (Story 9.37), which migrates the legacy file and forks the copy, so these two filters only
+/// matter for a layer that fix-up could not fix — e.g. a copy jj-lib could not fork, such as a
+/// read-only one.
 ///
 /// # Errors
 ///
@@ -911,8 +982,15 @@ fn writable_files(env: &ConfigEnv, ws: Option<&WorkspaceDirs>) -> Result<Vec<(Pa
     Ok(files)
 }
 
-fn file_write_with(env: &ConfigEnv, root: Option<&Path>, path: &Path, text: &str) -> Result<(), ConfigCmdError> {
+fn file_write_with(
+    env: &ConfigEnv,
+    root: Option<&Path>,
+    path: &Path,
+    text: &str,
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<(), ConfigCmdError> {
     let ws = resolve_workspace(root)?;
+    fix_up(env, ws.as_ref(), warnings)?;
     let allowed = writable_files(env, ws.as_ref())?;
     let Some(source) = allowed.iter().find(|(p, _)| p == path).map(|(_, s)| *s) else {
         return Err(ConfigCmdError::AmbiguousFile {
@@ -932,7 +1010,7 @@ fn file_write_with(env: &ConfigEnv, root: Option<&Path>, path: &Path, text: &str
 
 /// `<config_dir>/jj/repos`, after the start-up stack (no workspace).
 fn gc_root(env: &ConfigEnv) -> Result<PathBuf, ConfigCmdError> {
-    startup(env, None, "config gc")?;
+    startup(env, None, "config gc", None)?;
     env.root_config_dir()
         .map(|r| r.join("repos"))
         .ok_or_else(|| ConfigCmdError::NoConfigPath {
@@ -1017,13 +1095,56 @@ mod tests {
     use jj_lib::config::{ConfigLayer, ConfigLoadError, ConfigNamePathBuf, ConfigSource, StackedConfig};
 
     use super::{
-        file_read_with, file_write_with, gc_delete_with, gc_list_with, get_with, is_bare_string, list_with,
-        parse_value_or_bare_string, path_with, resolve_workspace, resolved_config_values, set_with, toml_error,
-        unset_with, ConfigCmdError, ConfigEntry, ConfigListQuery, ConfigScope, ConfigValueSource, WorkspaceDirs,
+        gc_delete_with, gc_list_with, is_bare_string, parse_value_or_bare_string, resolve_workspace,
+        resolved_config_values, set_with, toml_error, ConfigCmdError, ConfigEntry, ConfigListQuery, ConfigScope,
+        ConfigValueSource, WorkspaceDirs,
     };
     use crate::config::{self, ConfigEnv};
 
     const HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
+
+    // The verb bodies take the call's warning sink (Story 9.37); these adapters keep the rows
+    // below at the pre-sink shape — `list_with` hands its sink back as a `Warned`.
+
+    fn list_with(
+        env: &ConfigEnv,
+        root: Option<&Path>,
+        query: &ConfigListQuery,
+    ) -> Result<crate::Warned<Vec<ConfigEntry>>, ConfigCmdError> {
+        let mut warnings = Vec::new();
+        super::list_with(env, root, query, &mut warnings).map(|value| crate::Warned { value, warnings })
+    }
+
+    fn get_with(env: &ConfigEnv, root: Option<&Path>, name: &str) -> Result<String, ConfigCmdError> {
+        super::get_with(env, root, name, &mut Vec::new())
+    }
+
+    fn path_with(env: &ConfigEnv, root: Option<&Path>, scope: ConfigScope) -> Result<Vec<PathBuf>, ConfigCmdError> {
+        super::path_with(env, root, scope, &mut Vec::new())
+    }
+
+    fn unset_with(
+        env: &ConfigEnv,
+        root: Option<&Path>,
+        scope: ConfigScope,
+        name: &str,
+        path: Option<&Path>,
+    ) -> Result<PathBuf, ConfigCmdError> {
+        super::unset_with(env, root, scope, name, path, &mut Vec::new())
+    }
+
+    fn file_read_with(
+        env: &ConfigEnv,
+        root: Option<&Path>,
+        scope: ConfigScope,
+        path: Option<&Path>,
+    ) -> Result<super::ConfigFileText, ConfigCmdError> {
+        super::file_read_with(env, root, scope, path, &mut Vec::new())
+    }
+
+    fn file_write_with(env: &ConfigEnv, root: Option<&Path>, path: &Path, text: &str) -> Result<(), ConfigCmdError> {
+        super::file_write_with(env, root, path, text, &mut Vec::new())
+    }
 
     /// Discovery ON, everything inside `dir`: `<dir>/home` is `$HOME`, `<dir>/cfg` the config
     /// dir; no system layer, no environment.

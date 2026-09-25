@@ -17,16 +17,35 @@
 //! [`stack_fingerprint`] lets [`crate::Repo`] re-derive them when a file of the stack or
 //! the environment changed — the CLI derives its settings per invocation.
 //!
-//! # Reading never writes; only the writer family does
+//! # Reads are side-effect-free — except the CLI's start-up fix-up (Story 9.37)
 //!
-//! Every READ path here is side-effect-free: no directory is created, no file is written,
-//! no `config-id` is generated, nothing is migrated. That stance is unchanged.
+//! Every READ path here — [`load`], [`load_for_workspace`], [`stack_fingerprint`],
+//! [`user_settings_for`], the creation checks — is side-effect-free: no directory is created, no
+//! file is written, no `config-id` is generated, nothing is migrated.
 //!
-//! Everything that DOES write belongs to ONE writer family, built from the same helpers:
-//! [`load_config_file`] / [`save_config_file`] (`ConfigFile::load_or_empty` / `save`, a
-//! `toml_edit` round trip that keeps comments and formatting) and one create-mode secure
-//! resolver, [`SecureLayer::create_path`] (`SecureConfig::load_config` — the only path here that
-//! creates a directory and writes `metadata.binpb` and an id file). Its members:
+//! The one exception is the secure-config fix-up the jj CLI runs at the start of EVERY command:
+//! `load_secure_config` → jj-lib's `SecureConfig::maybe_load_config` for the repo layer, then the
+//! workspace layer (`cli/src/config.rs:447-469`, `:585-593`, `:653-665` @ v0.44.0, called from
+//! `cli_util.rs:4545-4549` / `:4592-4595` after the system and user layers loaded).
+//! [`SecureLayer::fix_up`] calls that very function — never a re-implementation — so its on-disk
+//! effects are the CLI's exactly: a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml`
+//! is migrated into `<config_dir>/jj/{repos,workspaces}/<id>/` (on Unix the legacy file becomes a
+//! symlink to the new one), a MOVED repo's `metadata.binpb` is re-pointed, a COPIED repo's config
+//! is forked under a new id, a missing secure directory is regenerated. Each message jj-lib
+//! returns — the CLI's `Warning:` line — becomes a [`crate::Warning`] whose kind is read off the
+//! id file's state, never off the text. The fix-up runs only where Zanshin plays a CLI command's
+//! start-up: [`crate::Repo::open_with_report`] (and so [`crate::Repo::open`]), the settings
+//! refresh every precondition-running verb starts with, and the `config_*` verbs that take a
+//! workspace root ([`fix_up_secure_config`] inside their start-up load; [`fix_up_layers`] for the
+//! two `edit` halves, which load no stack). Not the creation checks ([`check_startup_stack`],
+//! [`user_settings_for_new_workspace`]: the new workspace has no `.jj/` yet, so the CLI's call is
+//! a no-op there), not `config gc`, not the `&self` reads outside the precondition.
+//!
+//! Apart from that fix-up, everything that writes belongs to ONE writer family, built from the
+//! same helpers: [`load_config_file`] / [`save_config_file`] (`ConfigFile::load_or_empty` /
+//! `save`, a `toml_edit` round trip that keeps comments and formatting) and one create-mode
+//! secure resolver, [`SecureLayer::create_path`] (`SecureConfig::load_config`, which creates the
+//! secure directory, `metadata.binpb` and an id file when none exists). Its members:
 //!
 //! - the general config surface of Story 9.28 (`config_cmd.rs`: `jj config set` / `unset` /
 //!   `edit` / `path` for the user, repo and workspace scope), which selects its file with the
@@ -57,33 +76,25 @@
 //! too — in [`existing_repo_config_file`], before the caller opens its transaction — is what
 //! reproduces that end state.
 //!
-//! # WHY: by hand for READS, `SecureConfig` for the CREATES
+//! # WHY: by hand for READS, `SecureConfig` for the fix-up and the CREATES
 //!
-//! The CLI reaches the repo/workspace layer through `SecureConfig`, whose
-//! `maybe_load_config` WRITES: it creates directories, writes `metadata.binpb`, can
-//! generate a fresh `config-id`, copies configs when it detects a moved/copied repo, and on
-//! Unix replaces the legacy file with a symlink — and it needs a `&mut ChaCha20Rng`. A GUI
-//! backend must not rewrite the user's repo layout while drawing a graph, so on every READ
-//! path the `config-id` → path indirection is resolved here by reading the id and joining the
-//! path. For a repo the CLI has already seen, that yields identical config CONTENT; what is
-//! given up is the CLI's migration and its terminal warning, and Zanshin has no terminal (it
-//! replaces the CLI's UX — NFR-R-2).
+//! `SecureConfig::maybe_load_config` WRITES (see above) and needs a `&mut ChaCha20Rng`, so the
+//! READ paths resolve the `config-id` → path indirection by hand ([`secure_config_path`]): read
+//! the id, join the path. Once the start-up fix-up has run, that is exactly the file the CLI
+//! reads. Between an external change (a repo copied, a secure directory deleted) and the next
+//! fix-up — the next open, precondition-running verb or root-taking config verb — a read-only
+//! accessor ([`crate::Repo::log_defaults`], …) sees the state before the fix-up, as a CLI
+//! command that has not started yet would.
 //!
-//! [`SecureLayer::create_path`] is the one place that calls `SecureConfig::load_config`, and it
-//! does so deliberately: it runs only from a WRITE the CLI performs through the same
-//! create-forcing call (a conversion writing the repo into being, a `config set`/`unset`/`edit`/
-//! `path` at repo or workspace scope), and calling jj-lib reproduces that layout exactly — the `<root>/<id>/` directory, the
-//! `metadata.binpb`, and the atomic `.jj/repo/config-id` write — without re-implementing
-//! `config-id` generation. Writing the legacy `.jj/repo/config.toml` instead would be read
-//! correctly by both tools but would leave the CLI to MIGRATE it on its next run (a new
-//! secure directory, a symlink where the file was, a status line), i.e. a different on-disk
-//! end state than `jj git init` produces.
-//!
-//! One documented exception: `handle_metadata_path` (`secure_config.rs:187-252`) re-points
-//! or COPIES the config when it detects that the repo was moved or copied. Zanshin never
-//! performs that fix-up, so between a repo copy and the next `jj` invocation that repairs
-//! it, the CLI and Zanshin can read different files. Rewriting the user's config store
-//! from a read path is the worse trade — a GUI drawing a graph must not mutate layout.
+//! [`SecureLayer::fix_up`] and [`SecureLayer::create_path`] are the only callers of
+//! `SecureConfig`. The create calls `load_config` deliberately: it runs only from a WRITE the CLI
+//! performs through the same create-forcing call (a conversion writing the repo into being, a
+//! `config set`/`unset`/`edit`/`path` at repo or workspace scope), and calling jj-lib reproduces
+//! that layout exactly — the `<root>/<id>/` directory, the `metadata.binpb`, and the atomic
+//! `.jj/repo/config-id` write — without re-implementing `config-id` generation. Writing the
+//! legacy `.jj/repo/config.toml` instead would be read correctly by both tools but would leave
+//! the CLI to MIGRATE it on its next run (a new secure directory, a symlink where the file was,
+//! a `Warning:` line), i.e. a different on-disk end state than `jj git init` produces.
 //!
 //! # The environment layers, and what is still absent
 //!
@@ -104,7 +115,10 @@
 //! terminal `jj` would.
 //!
 //! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
-//! and `migrate` — its rule list is empty at the pin. `resolve` runs with `command: None`
+//! and `jj_lib::config::migrate` — the CLI's `default_config_migrations()`
+//! (`cli/src/config.rs:879-881` @ v0.44.0) is `vec![]`, so there is no rule to port. Re-check it
+//! at every pin bump, together with `maybe_migrate_legacy_config`'s TODO (jj 0.49 is to stop
+//! migrating the legacy files automatically and only warn). `resolve` runs with `command: None`
 //! (a state the CLI itself produces before a subcommand is known) for every verb except the
 //! config verbs, which pass their CLI command name (`"config set"`, …) through
 //! [`resolve_raw`], so `--when.commands` scopes match there as in the CLI; `--when.hostnames`
@@ -684,12 +698,8 @@ impl SecureLayer {
     /// and the id file when missing and migrating a legacy file — `SecureConfig::load_config`,
     /// the CLI's create-forcing `repo_config_path` / `workspace_config_path`
     /// (`cli/src/config.rs:545-549`, `:616-625` @ v0.44.0). The `config.toml` itself is NOT
-    /// created. `Ok(None)` iff no `<config_dir>` is known — then nothing is written.
-    ///
-    /// `SecureConfig`'s `&mut ChaCha20Rng` is seeded as the CLI seeds it
-    /// (`cli/src/config.rs:411-417`): from `randomness_seed` (`JJ_RANDOMNESS_SEED`) when set,
-    /// else from the OS RNG — drawn here by hand, because `rand::make_rng()`, what the CLI
-    /// passes, `expect`s on OS-RNG failure and nothing reachable from FFI may panic.
+    /// created. `Ok(None)` iff no `<config_dir>` is known — then nothing is written. The RNG is
+    /// [`secure_rng`]'s.
     ///
     /// # Errors
     ///
@@ -699,18 +709,74 @@ impl SecureLayer {
         let Some(root) = self.root_config_dir.as_deref() else {
             return Ok(None);
         };
-        let mut rng = if let Some(seed) = randomness_seed {
-            ChaCha20Rng::seed_from_u64(seed)
-        } else {
-            let mut seed = [0_u8; 32];
-            getrandom::fill(&mut seed).map_err(write_error)?;
-            ChaCha20Rng::from_seed(seed)
-        };
         let loaded = (self.new_secure)(self.dir.clone())
-            .load_config(&mut rng, root)
+            .load_config(&mut secure_rng(randomness_seed)?, root)
             .map_err(write_error)?;
         Ok(loaded.config_file)
     }
+
+    /// The CLI's start-up fix-up of this layer (Story 9.37): jj-lib's own
+    /// `SecureConfig::maybe_load_config`, as `load_secure_config` calls it
+    /// (`cli/src/config.rs:447-469` @ v0.44.0) — it migrates a legacy file, re-points a MOVED
+    /// repo's metadata, forks a COPIED repo's config, regenerates a missing secure directory, or
+    /// does nothing. Every message it returns lands in `sink` as a [`crate::Warning`], jj-lib's
+    /// text verbatim. No `<config_dir>` known → nothing runs, as the CLI's `load_secure_config`
+    /// then returns `None`.
+    ///
+    /// The kind is read off the id file's STATE, never off the message: no id file before →
+    /// [`crate::WarningKind::ConfigMigrated`]; an id afterwards (the new `config.toml`'s directory
+    /// name) that differs → [`crate::WarningKind::ConfigCopied`]; the same id →
+    /// [`crate::WarningKind::ConfigRegenerated`].
+    ///
+    /// # Errors
+    ///
+    /// - [`ConfigError::Load`] — the id file is malformed or unreadable (the read side's
+    ///   path-named refusal, checked BEFORE jj-lib runs, so nothing is written), or jj-lib failed:
+    ///   the CLI's "Failed to determine the secure config for a repo: …".
+    pub(crate) fn fix_up(&self, rng: &mut ChaCha20Rng, sink: &mut Vec<crate::Warning>) -> Result<(), ConfigError> {
+        let Some(root) = self.root_config_dir.as_deref() else {
+            return Ok(());
+        };
+        self.resolved_path()?;
+        let old_id = std::fs::read_to_string(self.dir.join(self.id_file_name)).ok();
+        let loaded = (self.new_secure)(self.dir.clone())
+            .maybe_load_config(rng, root)
+            .map_err(|e| ConfigError::Load {
+                reason: format!("Failed to determine the secure config for a repo: {}", describe(&e)),
+            })?;
+        let new_id = loaded
+            .config_file
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(Path::file_name);
+        for message in loaded.warnings {
+            let kind = match old_id.as_deref() {
+                None => crate::WarningKind::ConfigMigrated,
+                Some(id) if Some(OsStr::new(id)) != new_id => crate::WarningKind::ConfigCopied,
+                Some(_) => crate::WarningKind::ConfigRegenerated,
+            };
+            sink.push(crate::warning::local(kind, message));
+        }
+        Ok(())
+    }
+}
+
+/// The `&mut ChaCha20Rng` `SecureConfig` draws new config ids from, seeded as the CLI seeds its
+/// one `ConfigEnv.rng` (`cli/src/config.rs:411-417` @ v0.44.0): from `randomness_seed`
+/// (`JJ_RANDOMNESS_SEED`) when set, else from the OS RNG — drawn here by hand, because
+/// `rand::make_rng()`, what the CLI uses, `expect`s on OS-RNG failure and nothing reachable from
+/// FFI may panic.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the OS RNG failed.
+fn secure_rng(randomness_seed: Option<u64>) -> Result<ChaCha20Rng, ConfigError> {
+    if let Some(seed) = randomness_seed {
+        return Ok(ChaCha20Rng::seed_from_u64(seed));
+    }
+    let mut seed = [0_u8; 32];
+    getrandom::fill(&mut seed).map_err(write_error)?;
+    Ok(ChaCha20Rng::from_seed(seed))
 }
 
 /// The repo and workspace secure layers, in ascending precedence — the ONE description both
@@ -740,17 +806,28 @@ pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [Secu
 /// without a workspace. A CREATION path then passes the new workspace's paths
 /// ([`user_settings_for_new_workspace`]).
 fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
-    resolve_raw(env, workspace, &load_raw(env, workspace)?, None)
+    resolve_raw(env, workspace, &load_raw(env, workspace, None)?, None)
 }
 
 /// The UNRESOLVED ("raw") stack [`load_with`] resolves — one layer per file, `--when` /
-/// `[[--scope]]` blocks still in place: the CLI's `RawConfig`. Side-effect-free.
+/// `[[--scope]]` blocks still in place: the CLI's `RawConfig`.
+///
+/// Side-effect-free with `fix_ups: None`. With a sink (and a workspace) it is the CLI's start-up
+/// load (Story 9.37): each secure layer is FIXED UP ([`SecureLayer::fix_up`], one RNG for both
+/// layers — the repo draws first) right before it loads, after the system and user layers — so a
+/// broken system/user file refuses before any fix-up, and a broken repo file refuses after the
+/// repo fix-up but before the workspace's. The warnings recorded before a failure stay in the
+/// sink.
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a file is unreadable or not valid TOML, or a `config-id` is
-///   malformed; the path is named.
-pub(crate) fn load_raw(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
+///   malformed; the path is named. With a sink also: a fix-up failed.
+pub(crate) fn load_raw(
+    env: &ConfigEnv,
+    workspace: Option<WorkspacePaths<'_>>,
+    fix_ups: Option<&mut Vec<crate::Warning>>,
+) -> Result<StackedConfig, ConfigError> {
     let mut config = StackedConfig::with_defaults();
     let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
         .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
@@ -763,7 +840,14 @@ pub(crate) fn load_raw(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -
     )?;
     config.add_layer(env_base_layer(env)?);
     add_path_layers(&mut config, ConfigSource::User, &env_user_config_paths(env))?;
+    let mut fix_ups = match (fix_ups, workspace) {
+        (Some(sink), Some(_)) => Some((secure_rng(env.randomness_seed())?, sink)),
+        _ => None,
+    };
     for layer in workspace.map(|paths| secure_layers(env, paths)).into_iter().flatten() {
+        if let Some((rng, sink)) = fix_ups.as_mut() {
+            layer.fix_up(rng, sink)?;
+        }
         add_secure_layer(
             &mut config,
             layer.source,
@@ -775,6 +859,41 @@ pub(crate) fn load_raw(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -
     }
     config.add_layer(env_overrides_layer(env)?);
     Ok(config)
+}
+
+/// The CLI's start-up secure-config fix-up for the workspace at `paths` (Story 9.37): the
+/// start-up load of [`load_raw`] with a fix-up sink, the stack dropped — so it runs in the CLI's
+/// order and refuses where the CLI's start-up does. [`crate::Repo`] runs it before it
+/// fingerprints or derives its settings.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — as [`load_raw`] with a sink.
+pub(crate) fn fix_up_secure_config(
+    env: &ConfigEnv,
+    paths: WorkspacePaths<'_>,
+    sink: &mut Vec<crate::Warning>,
+) -> Result<(), ConfigError> {
+    load_raw(env, Some(paths), Some(sink)).map(drop)
+}
+
+/// The fix-up ALONE — both secure layers, repo first, one RNG — loading no config file: the two
+/// `jj config edit` halves (`config_cmd.rs`), the CLI's repair path for a stack that does not
+/// load, still start with it.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — as [`SecureLayer::fix_up`], or the OS RNG failed.
+pub(crate) fn fix_up_layers(
+    env: &ConfigEnv,
+    paths: WorkspacePaths<'_>,
+    sink: &mut Vec<crate::Warning>,
+) -> Result<(), ConfigError> {
+    let mut rng = secure_rng(env.randomness_seed())?;
+    for layer in secure_layers(env, paths) {
+        layer.fix_up(&mut rng, sink)?;
+    }
+    Ok(())
 }
 
 /// Flattens `--when` / `[[--scope]]` blocks of a [`load_raw`] stack — the CLI's
@@ -1502,10 +1621,10 @@ mod tests {
 
     use super::{
         add_secure_layer, create_repo_config_file, env_base_layer, env_overrides_layer, fingerprint_with,
-        git_import_options, is_valid_config_id, load_repo_config_file, load_with, platform_config_dir,
-        remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path, set_trunk_alias,
-        settings_from, snapshot_auto_track, snapshot_max_new_file_size, stamp, system_config_paths, user_config_paths,
-        user_email, ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML,
+        fix_up_layers, fix_up_secure_config, git_import_options, is_valid_config_id, load_repo_config_file, load_with,
+        platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
+        set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size, stamp, system_config_paths,
+        user_config_paths, user_email, ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -2803,5 +2922,211 @@ fetch-bookmarks = \"main\"
             let err = git_import_options(&stack_with(toml)).expect_err("a wrong-typed key refuses");
             assert!(err.to_string().contains(key), "{key}: {err}");
         }
+    }
+
+    // ── The start-up secure-config fix-up (Story 9.37) ──────────────────────────
+    //
+    // The mechanism over explicit environments — no process env: order, refusals, the no-config-dir
+    // skip and the state-based kinds. The public-API rows live in `tests/secure_config_fixups.rs`.
+
+    /// A workspace at `<tmp>/<name>` whose `.jj/repo` holds `repo_body` as the LEGACY repo config
+    /// (and `.jj` `ws_body` as the legacy workspace config, when given); the env's `<config_dir>` is
+    /// `<tmp>/cfg`. Returns `(env, repo dir, workspace root)`.
+    fn legacy_workspace(
+        tmp: &Path,
+        name: &str,
+        repo_body: &str,
+        ws_body: Option<&str>,
+    ) -> (ConfigEnv, PathBuf, PathBuf) {
+        let root = tmp.join(name);
+        let repo = root.join(".jj").join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("config.toml"), repo_body).unwrap();
+        if let Some(body) = ws_body {
+            std::fs::write(root.join(".jj").join("workspace-config.toml"), body).unwrap();
+        }
+        let env = ConfigEnv {
+            config_dir: Some(tmp.join("cfg")),
+            ..bare_env()
+        };
+        (env, repo, root)
+    }
+
+    fn kinds(warnings: &[crate::Warning]) -> Vec<crate::WarningKind> {
+        warnings.iter().map(|w| w.kind).collect()
+    }
+
+    /// Both legacy files migrate, repo FIRST: each gets its own id and secure file, keeps its
+    /// bytes, and the legacy path becomes a symlink to the new file.
+    #[test]
+    fn the_fix_up_migrates_the_repo_then_the_workspace_layer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "[a]\nb = 1\n", Some("[c]\nd = 2\n"));
+        let mut sink = Vec::new();
+        fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect("the fix-up runs");
+
+        assert_eq!(
+            kinds(&sink),
+            [crate::WarningKind::ConfigMigrated, crate::WarningKind::ConfigMigrated]
+        );
+        let repo_id = std::fs::read_to_string(repo.join("config-id")).expect("repo id");
+        let ws_id = std::fs::read_to_string(root.join(".jj").join("workspace-config-id")).expect("ws id");
+        let repo_file = tmp.path().join("cfg/jj/repos").join(&repo_id).join("config.toml");
+        let ws_file = tmp.path().join("cfg/jj/workspaces").join(&ws_id).join("config.toml");
+        assert_eq!(std::fs::read_to_string(&repo_file).unwrap(), "[a]\nb = 1\n");
+        assert_eq!(std::fs::read_to_string(&ws_file).unwrap(), "[c]\nd = 2\n");
+        assert_eq!(
+            sink[0].message,
+            format!(
+                "Your config file has been migrated from {} to {}. You can edit the new file with `jj config edit`",
+                repo.join("config.toml").display(),
+                repo_file.display()
+            )
+        );
+        assert!(sink[1].message.contains("workspace-config.toml"), "{}", sink[1].message);
+        assert_eq!(std::fs::read_link(repo.join("config.toml")).unwrap(), repo_file);
+
+        let mut again = Vec::new();
+        fix_up_secure_config(&env, paths(&repo, &root), &mut again).expect("a second pass runs");
+        assert!(again.is_empty(), "nothing left to fix: {again:?}");
+    }
+
+    /// The system and user layers load FIRST: a broken user file refuses before any fix-up.
+    #[test]
+    fn a_broken_user_file_refuses_before_any_fix_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "[a]\nb = 1\n", None);
+        let user = tmp.path().join("user.toml");
+        std::fs::write(&user, "not toml [").unwrap();
+        let env = ConfigEnv {
+            jj_config: Some(user.into_os_string()),
+            ..env
+        };
+        let mut sink = Vec::new();
+        let err = fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect_err("the user file refuses");
+        assert!(err.to_string().contains("user.toml"), "{err}");
+        assert!(sink.is_empty());
+        assert!(!repo.join("config-id").exists(), "nothing was migrated");
+        assert!(std::fs::symlink_metadata(repo.join("config.toml")).unwrap().is_file());
+    }
+
+    /// A broken repo file refuses AFTER the repo fix-up (which already migrated it) and BEFORE the
+    /// workspace's; the migration's warning stays in the sink.
+    #[test]
+    fn a_broken_repo_file_refuses_after_its_fix_up_and_before_the_workspace_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "not toml [", Some("[c]\nd = 2\n"));
+        let mut sink = Vec::new();
+        let err = fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect_err("the repo file refuses");
+        assert!(err.to_string().contains("cfg/jj/repos"), "the NEW file is named: {err}");
+        assert_eq!(kinds(&sink), [crate::WarningKind::ConfigMigrated]);
+        assert!(repo.join("config-id").exists());
+        assert!(
+            !root.join(".jj").join("workspace-config-id").exists(),
+            "the workspace was not reached"
+        );
+    }
+
+    /// A malformed id file keeps the read side's path-named refusal, and nothing is written.
+    #[test]
+    fn a_malformed_id_refuses_naming_the_id_file_and_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "", None);
+        std::fs::write(repo.join("config-id"), "xyz").unwrap();
+        let mut sink = Vec::new();
+        let err = fix_up_layers(&env, paths(&repo, &root), &mut sink).expect_err("a malformed id refuses");
+        let reason = err.to_string();
+        assert!(
+            reason.contains("config-id") && reason.contains("invalid config ID"),
+            "{reason}"
+        );
+        assert!(sink.is_empty());
+        assert!(!tmp.path().join("cfg").exists(), "nothing created under <config_dir>");
+    }
+
+    /// No `<config_dir>` known: nothing runs, as the CLI's `load_secure_config` returns `None`.
+    #[test]
+    fn without_a_config_dir_nothing_is_fixed_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "[a]\nb = 1\n", Some(""));
+        let env = ConfigEnv {
+            config_dir: None,
+            ..env
+        };
+        let mut sink = Vec::new();
+        fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect("no fix-up is no error");
+        fix_up_layers(&env, paths(&repo, &root), &mut sink).expect("no fix-up is no error");
+        assert!(sink.is_empty());
+        assert!(!repo.join("config-id").exists());
+        assert!(!root.join(".jj").join("workspace-config-id").exists());
+    }
+
+    /// A jj-lib failure other than a bad id is the CLI's "Failed to determine the secure config
+    /// for a repo" — here a `<config_dir>` that is a regular file, so nothing can be created in it.
+    #[test]
+    fn a_fix_up_that_cannot_write_is_the_clis_secure_config_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "[a]\nb = 1\n", None);
+        std::fs::write(tmp.path().join("cfg"), "a file, not a dir").unwrap();
+        let mut sink = Vec::new();
+        let err = fix_up_layers(&env, paths(&repo, &root), &mut sink).expect_err("an uncreatable dir refuses");
+        assert!(
+            err.to_string()
+                .starts_with("config error: Failed to determine the secure config for a repo: "),
+            "{err}"
+        );
+        assert!(sink.is_empty());
+    }
+
+    /// The kind comes from the id file's STATE: a copy forks under a NEW id (`ConfigCopied`), a
+    /// move re-points the metadata silently, and a deleted secure dir comes back under the SAME
+    /// id (`ConfigRegenerated`).
+    #[test]
+    fn copied_moved_and_regenerated_are_told_apart_by_the_id_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, repo_a, root_a) = legacy_workspace(tmp.path(), "a", "[a]\nb = 1\n", None);
+        fix_up_layers(&env, paths(&repo_a, &root_a), &mut Vec::new()).expect("A migrates");
+        let id_a = std::fs::read_to_string(repo_a.join("config-id")).unwrap();
+        let repos = tmp.path().join("cfg/jj/repos");
+
+        // Copied: B carries A's id while A still exists.
+        let root_b = tmp.path().join("b");
+        let repo_b = root_b.join(".jj").join("repo");
+        std::fs::create_dir_all(&repo_b).unwrap();
+        std::fs::write(repo_b.join("config-id"), &id_a).unwrap();
+        let mut sink = Vec::new();
+        fix_up_layers(&env, paths(&repo_b, &root_b), &mut sink).expect("B forks");
+        assert_eq!(kinds(&sink), [crate::WarningKind::ConfigCopied]);
+        let id_b = std::fs::read_to_string(repo_b.join("config-id")).unwrap();
+        assert_ne!(id_b, id_a);
+        assert_eq!(
+            std::fs::read_to_string(repos.join(&id_b).join("config.toml")).unwrap(),
+            "[a]\nb = 1\n"
+        );
+
+        // Moved: A renamed to C — no warning, the metadata now records C, the id unchanged.
+        let root_c = tmp.path().join("c");
+        std::fs::rename(&root_a, &root_c).unwrap();
+        let repo_c = root_c.join(".jj").join("repo");
+        let mut sink = Vec::new();
+        fix_up_layers(&env, paths(&repo_c, &root_c), &mut sink).expect("C re-points");
+        assert!(sink.is_empty(), "{sink:?}");
+        assert_eq!(std::fs::read_to_string(repo_c.join("config-id")).unwrap(), id_a);
+        let metadata = jj_lib::secure_config::read_metadata(&repos.join(&id_a)).unwrap();
+        assert_eq!(
+            jj_lib::secure_config::metadata_path(&metadata).unwrap(),
+            Some(repo_c.as_path())
+        );
+
+        // Regenerated: C's secure dir deleted — back under the same id, with jj-lib's notice.
+        std::fs::remove_dir_all(repos.join(&id_a)).unwrap();
+        let mut sink = Vec::new();
+        fix_up_layers(&env, paths(&repo_c, &root_c), &mut sink).expect("C regenerates");
+        assert_eq!(kinds(&sink), [crate::WarningKind::ConfigRegenerated]);
+        assert!(sink[0]
+            .message
+            .starts_with("Per-repo config not found. Generating an empty one."));
+        assert!(repos.join(&id_a).join("metadata.binpb").exists());
+        assert_eq!(std::fs::read_to_string(repo_c.join("config-id")).unwrap(), id_a);
     }
 }

@@ -61,8 +61,8 @@ pub use config::{ConfigError, LogDefaults};
 pub use config_cmd::{
     config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
     config_set, config_unset, ConfigCmdError, ConfigEntry, ConfigFileText, ConfigGcFailure, ConfigGcResult,
-    ConfigListQuery, ConfigScope, ConfigSetOutcome, ConfigSetResult, ConfigValueSource, MissingRepoConfig,
-    WorkingCopyAuthor,
+    ConfigListQuery, ConfigOutcome, ConfigScope, ConfigSetOutcome, ConfigSetResult, ConfigValueSource,
+    MissingRepoConfig, WorkingCopyAuthor,
 };
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};

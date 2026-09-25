@@ -33,6 +33,8 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_EMAIL", "zanshin@localhost");
     env::set_var("JJ_OP_HOSTNAME", "localhost");
     env::set_var("JJ_OP_USERNAME", "zanshin");
+    // Story 9.37: the start-up fix-up migrates the legacy repo configs written here.
+    env::set_var("XDG_CONFIG_HOME", test_helpers::leaked_xdg_config_home());
 });
 
 fn pin_env() {

@@ -128,8 +128,11 @@ fn an_environment_is_installed_and_answered_with_no_payload_and_no_warnings() {
 
     // The config stack now reads the installed map — and only it.
     assert_eq!(
-        zanshin_jj::config_get(None, "user.name").expect("user.name"),
+        zanshin_jj::config_get(None, "user.name").result.expect("user.name"),
         "FFI Shell User"
     );
-    assert_eq!(zanshin_jj::config_get(None, "user.email").expect("user.email"), "");
+    assert_eq!(
+        zanshin_jj::config_get(None, "user.email").result.expect("user.email"),
+        ""
+    );
 }

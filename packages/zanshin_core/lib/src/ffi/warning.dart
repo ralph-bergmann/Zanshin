@@ -118,6 +118,20 @@ abstract final class ZanshinWarningCode {
   /// `ZanshinFfiException.warnings` (Story 9.35).
   static const cloneCleanupFailed = 'jj.clone_cleanup_failed';
 
+  /// A legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` was
+  /// migrated into the secure config directory at command start (Story 9.37):
+  /// by `openRepo`, any command that runs the pre-verb snapshot, or a config
+  /// command given a workspace root.
+  static const configMigrated = 'jj.config_migrated';
+
+  /// The repo was copied, so its secure config was forked under a new id at
+  /// command start (Story 9.37).
+  static const configCopied = 'jj.config_copied';
+
+  /// The secure config directory was missing and was regenerated empty at
+  /// command start (Story 9.37).
+  static const configRegenerated = 'jj.config_regenerated';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -150,6 +164,9 @@ abstract final class ZanshinWarningCode {
     configGcDeleteFailed,
     configNothingListed,
     cloneCleanupFailed,
+    configMigrated,
+    configCopied,
+    configRegenerated,
     loginShellUnresolved,
   ];
 }

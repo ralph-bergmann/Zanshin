@@ -677,7 +677,9 @@ fn close(handle: u64) {
     assert!(parse_envelope(&bytes).ok(), "close must succeed");
 }
 
-/// Init and open report nothing: both creation-report fields are ABSENT on the wire.
+/// Init and open report nothing: both creation-report fields are ABSENT on the wire. (Open's
+/// start-up secure-config fix-up finds nothing to fix in a fresh workspace — Story 9.37; its
+/// notices are pinned in `tests/secure_config_ffi.rs`.)
 #[test]
 fn init_and_open_envelopes_carry_no_report() {
     pin_env();
