@@ -9,6 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
 
@@ -372,8 +373,7 @@ GraphSlice decodeGraphSliceEnvelopeInternal(Uint8List bytes) => _decodeGraphSlic
 GraphSlice _decodeGraphSliceEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
-    final fbs.FfiError? e = env.error;
-    throw ZanshinFfiException(e?.code ?? 'ffi.unknown', e?.context);
+    throw decodeEnvelopeErrorInternal(env);
   }
   final Object? payload = env.data;
   if (payload is! fbs.GraphSlice) {

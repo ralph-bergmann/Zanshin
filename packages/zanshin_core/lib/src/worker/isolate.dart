@@ -72,6 +72,10 @@ typedef _WorkerInit = (SendPort, SendPort, SendPort, bool, bool);
 /// member carry none: [openRepo] (opening warns about nothing and runs no
 /// snapshot); [closeRepo] and [close] (lifecycle, no CLI counterpart); and
 /// [events] (a stream, not a command).
+///
+/// A failed command throws [ZanshinFfiException], which carries the error
+/// envelope's report the same way for every command (Story 9.35): its
+/// `warnings` and its `precondition` (the PARTIAL pre-verb snapshot report).
 class ZanshinWorker {
   ZanshinWorker._({
     required this._commandPort,
@@ -389,10 +393,8 @@ class ZanshinWorker {
   /// `jj.identity_missing` once when `user.name`/`user.email` is empty. Its
   /// `precondition` is `null`. The jj CLI's start-up-environment warnings
   /// (alias tables, `immutable_heads()`) are not ported. A refused clone throws
-  /// [ZanshinFfiException]
-  /// WITHOUT its report — including `jj.clone_cleanup_failed`, which only an
-  /// error envelope carries — until Story 9.35 brings the error path's report
-  /// to Dart.
+  /// [ZanshinFfiException] carrying the clone's warnings (Story 9.35) —
+  /// including `jj.clone_cleanup_failed`, which only an error envelope carries.
   Future<CreatedRepoHandle> cloneRepo({
     required String url,
     required String targetPath,
@@ -551,8 +553,7 @@ class ZanshinWorker {
       case BufferResult(:final bytes):
         final env = fbs.Envelope(bytes);
         if (!env.ok) {
-          final fbs.FfiError? err = env.error;
-          throw ZanshinFfiException(err?.code ?? 'ffi.unknown', err?.context);
+          throw repo_ffi_precondition.decodeEnvelopeErrorInternal(env);
         }
       case HandleResult():
         // Should never happen for a close command — no action needed.
@@ -716,9 +717,8 @@ class ZanshinWorker {
   /// `jj.snapshot_files_refused`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.already_jj_repo`,
-  /// `jj.not_a_git_repo`, `jj.convert_failed`) — WITHOUT the failed
-  /// conversion's warnings and partial snapshot report until Story 9.35 brings
-  /// the error path's report to Dart.
+  /// `jj.not_a_git_repo`, `jj.convert_failed`), carrying the failed
+  /// conversion's warnings and its PARTIAL snapshot report (Story 9.35).
   Future<CreatedRepoHandle> convert(String path) async {
     final WorkerResponse response = await _sendCommand(
       ConvertRepoCommand(commandId: _correlator.allocateId(), path: path),
@@ -2347,8 +2347,5 @@ RepoEvent _rawEventToRepoEvent(int handleId, ZanshinRawEvent raw) => switch (raw
   ),
 };
 
-ZanshinFfiException _envelopeToException(Uint8List bytes) {
-  final env = fbs.Envelope(bytes);
-  final fbs.FfiError? err = env.error;
-  return ZanshinFfiException(err?.code ?? 'ffi.unknown', err?.context);
-}
+ZanshinFfiException _envelopeToException(Uint8List bytes) =>
+    repo_ffi_precondition.decodeEnvelopeErrorInternal(fbs.Envelope(bytes));

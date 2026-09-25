@@ -9,6 +9,7 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'git.dart' show GitExportFailure, decodeExportFailuresInternal;
 import 'mutate.dart' show MutationResult, decodeMutationResultInternal;
+import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
 
@@ -226,8 +227,7 @@ UntrackResult _decodeUntrackResultEnvelope(Uint8List bytes) {
 fbs.Envelope _okEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
-    final fbs.FfiError? e = env.error;
-    throw ZanshinFfiException(e?.code ?? 'ffi.unknown', e?.context);
+    throw decodeEnvelopeErrorInternal(env);
   }
   return env;
 }

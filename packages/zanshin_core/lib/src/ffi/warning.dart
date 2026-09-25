@@ -110,8 +110,8 @@ abstract final class ZanshinWarningCode {
   static const configNothingListed = 'jj.config_nothing_listed';
 
   /// A failed clone could not remove what it had created (Story 9.33). Only an
-  /// error envelope carries it, so Dart sees it once Story 9.35 exposes the
-  /// error path's warnings.
+  /// error envelope carries it, so Dart sees it on the thrown
+  /// `ZanshinFfiException.warnings` (Story 9.35).
   static const cloneCleanupFailed = 'jj.clone_cleanup_failed';
 
   /// Every constant above, in registry order.

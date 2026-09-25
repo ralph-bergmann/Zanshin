@@ -5,7 +5,9 @@
 // required — these pin the shared `decodeEnvelopeWarningsInternal` helper
 // (absent → [], order kept, unmodifiable), the `ZanshinWarningCode` registry,
 // and that EVERY top-level decoder surfaces the envelope's warnings, mirroring
-// crates/zanshin-ffi/src/envelope.rs.
+// crates/zanshin-ffi/src/envelope.rs — on the ok arm as the result's `warnings`,
+// on the error arm (Story 9.35) as the thrown `ZanshinFfiException`'s
+// `warnings` and `precondition`.
 
 import 'dart:typed_data';
 
@@ -25,6 +27,7 @@ import 'package:zanshin_core/src/ffi/config.dart'
         decodeConfigPathEnvelopeInternal,
         decodeConfigSetEnvelope,
         decodeConfigUnsetEnvelopeInternal;
+import 'package:zanshin_core/src/ffi/diagnostics.dart' show decodeDiagnosticsEnvelope;
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/file.dart'
     show decodeFileAnnotationEnvelope, decodeFileContentsEnvelope, decodeFileListEnvelope, decodeFileSearchEnvelope;
@@ -41,6 +44,7 @@ import 'package:zanshin_core/src/ffi/repo_detect.dart' show decodeRepoDetectEnve
 import 'package:zanshin_core/src/ffi/status.dart' show decodeStatusEnvelope;
 import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/ffi/workspace.dart' show decodeWorkspaceListEnvelope, decodeWorkspaceRootEnvelope;
+import 'package:zanshin_core/src/worker/responses.dart' show ZanshinFfiException;
 
 /// The two warnings every "carries them" case puts on the wire, in this order.
 const _expected = [
@@ -55,6 +59,49 @@ List<fbs.WarningObjectBuilder> _wire() => [
 /// An ok envelope with [data] of [type], carrying [_expected] unless [warned] is false.
 Uint8List _ok(fbs.PayloadTypeId type, Object? data, {bool warned = true}) =>
     fbs.EnvelopeObjectBuilder(ok: true, dataType: type, data: data, warnings: warned ? _wire() : null).toBytes();
+
+/// An error envelope (`jj.invalid_input`, context `ctx`) carrying a partial
+/// precondition unless [preconditioned] is false and [_expected] unless [warned]
+/// is false; without its `error` table when [coded] is false.
+Uint8List _error({bool preconditioned = true, bool warned = true, bool coded = true}) => fbs.EnvelopeObjectBuilder(
+  ok: false,
+  error: coded ? fbs.FfiErrorObjectBuilder(code: 'jj.invalid_input', context: 'ctx') : null,
+  precondition: preconditioned
+      ? fbs.PreconditionObjectBuilder(
+          wasSnapshotTaken: true,
+          gitHeadImported: true,
+          gitHeadReset: true,
+          gitHeadRebased: 3,
+          snapshotRebased: 4,
+          gitRefsRebased: 5,
+        )
+      : null,
+  warnings: warned ? _wire() : null,
+).toBytes();
+
+/// The exception [_error] stands for, its report included.
+final Matcher _throwsReported = throwsA(
+  isA<ZanshinFfiException>()
+      .having((e) => e.code, 'code', 'jj.invalid_input')
+      .having((e) => e.context, 'context', 'ctx')
+      .having((e) => e.warnings, 'warnings', _expected)
+      .having((e) => e.precondition?.wasSnapshotTaken, 'precondition.wasSnapshotTaken', isTrue)
+      .having((e) => e.precondition?.gitHeadImported, 'precondition.gitHeadImported', isTrue)
+      .having((e) => e.precondition?.gitHeadReset, 'precondition.gitHeadReset', isTrue)
+      .having((e) => e.precondition?.gitHeadRebased, 'precondition.gitHeadRebased', 3)
+      .having((e) => e.precondition?.snapshotRebased, 'precondition.snapshotRebased', 4)
+      .having((e) => e.precondition?.gitRefsRebased, 'precondition.gitRefsRebased', 5)
+      .having((e) => e.precondition?.warnings, 'precondition.warnings', isEmpty),
+);
+
+/// The exception a report-less [_error] stands for.
+final Matcher _throwsBare = throwsA(
+  isA<ZanshinFfiException>()
+      .having((e) => e.code, 'code', 'jj.invalid_input')
+      .having((e) => e.context, 'context', 'ctx')
+      .having((e) => e.warnings, 'warnings', isEmpty)
+      .having((e) => e.precondition, 'precondition', isNull),
+);
 
 /// One decoder under test: its name, the payload it needs, and how to read the
 /// warnings off its result.
@@ -380,6 +427,95 @@ void main() {
 
       expect(warnings, isEmpty);
       expect(precondition, isNull);
+    });
+  });
+
+  // Story 9.35: the error arm keeps the report — every `!env.ok` branch throws
+  // through the one shared `decodeEnvelopeErrorInternal`.
+  group('every top-level decoder throws the error envelope with its report', () {
+    for (final _Case c in _cases) {
+      test('${c.name}: present → on the exception', () {
+        expect(() => c.read(_error()), _throwsReported);
+      });
+
+      test('${c.name}: absent → null and []', () {
+        expect(() => c.read(_error(preconditioned: false, warned: false)), _throwsBare);
+      });
+    }
+
+    test('snapshot: present → on the exception', () {
+      expect(() => decodeSnapshotEnvelope(_error()), _throwsReported);
+    });
+
+    test('snapshot: absent → null and []', () {
+      expect(() => decodeSnapshotEnvelope(_error(preconditioned: false, warned: false)), _throwsBare);
+    });
+
+    test('diagnostics: present → on the exception', () {
+      expect(() => decodeDiagnosticsEnvelope(_error()), _throwsReported);
+    });
+
+    test('diagnostics: absent → null and []', () {
+      expect(() => decodeDiagnosticsEnvelope(_error(preconditioned: false, warned: false)), _throwsBare);
+    });
+
+    test('no error table → ffi.unknown without a context', () {
+      expect(
+        () => decodeStatusEnvelope(_error(preconditioned: false, warned: false, coded: false)),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'ffi.unknown')
+              .having((e) => e.context, 'context', isNull)
+              .having((e) => e.warnings, 'warnings', isEmpty)
+              .having((e) => e.precondition, 'precondition', isNull),
+        ),
+      );
+    });
+
+    // Real envelopes carry one half without the other: a clone refusal has
+    // warnings only, a config_set failure may have a precondition only.
+    test('warnings only → decoded, precondition null', () {
+      expect(
+        () => decodeStatusEnvelope(_error(preconditioned: false)),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.warnings, 'warnings', _expected)
+              .having((e) => e.precondition, 'precondition', isNull),
+        ),
+      );
+    });
+
+    test('precondition only → decoded, warnings []', () {
+      expect(
+        () => decodeStatusEnvelope(_error(warned: false)),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.warnings, 'warnings', isEmpty)
+              .having((e) => e.precondition?.wasSnapshotTaken, 'precondition.wasSnapshotTaken', isTrue)
+              .having((e) => e.precondition?.gitRefsRebased, 'precondition.gitRefsRebased', 5),
+        ),
+      );
+    });
+
+    test("the exception's warnings are unmodifiable", () {
+      final ZanshinFfiException e;
+      try {
+        decodeStatusEnvelope(_error());
+        fail('an error envelope must throw');
+      } on ZanshinFfiException catch (thrown) {
+        e = thrown;
+      }
+
+      expect(() => e.warnings.add(_expected.first), throwsUnsupportedError);
+    });
+
+    test('the positional constructor carries no report', () {
+      const e = ZanshinFfiException('ffi.unknown', 'corrupt');
+
+      expect(e.precondition, isNull);
+      expect(e.warnings, isEmpty);
     });
   });
 }

@@ -8,6 +8,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'mutate.dart' show SkippedPath;
+import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
 
@@ -407,8 +408,7 @@ FileSearch _decodeFileSearchEnvelope(Uint8List bytes) {
 fbs.Envelope _okEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
-    final fbs.FfiError? e = env.error;
-    throw ZanshinFfiException(e?.code ?? 'ffi.unknown', e?.context);
+    throw decodeEnvelopeErrorInternal(env);
   }
   return env;
 }

@@ -8,6 +8,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
 
 /// Build-stamp and log-location diagnostics returned by [zanshin_diagnostics].
@@ -64,8 +65,7 @@ Diagnostics _callDiagnostics() => decodeDiagnosticsEnvelope(readToken(zanshin_di
 Diagnostics decodeDiagnosticsEnvelope(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
-    final fbs.FfiError? err = env.error;
-    throw ZanshinFfiException(err?.code ?? 'ffi.unknown', err?.context);
+    throw decodeEnvelopeErrorInternal(env);
   }
   final Object? payload = env.data;
   if (payload is! fbs.Diagnostics) {

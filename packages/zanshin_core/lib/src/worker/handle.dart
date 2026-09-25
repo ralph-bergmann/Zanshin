@@ -62,7 +62,11 @@ final class RepoHandle {
   /// workspace, imports the Git HEAD and refs, exactly as each jj CLI command
   /// does. That can write operations the caller did not ask for; this is where
   /// the facts the CLI would have printed land. On an error it is PARTIAL — up to
-  /// the failing step.
+  /// the failing step — and, when the error envelope carries one, the same
+  /// report the thrown [ZanshinFfiException.precondition] carries, beside that
+  /// call's [ZanshinFfiException.warnings] (Story 9.35). An error without one
+  /// (e.g. `ffi.invalid_handle`) leaves this at the previous report while the
+  /// exception's is `null`.
   Precondition? get lastPrecondition => _worker.lastPreconditionOf(_handleId);
 
   /// Close the repository on the worker and release the handle table entry.
@@ -951,7 +955,9 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.stale_working_copy` — `"<cause>\n<working_copy_op_id>\n<repo_op_id>"`
-  /// in the context, `jj.config_error`, `jj.jj_lib_error`).
+  /// in the context, `jj.config_error`, `jj.jj_lib_error`). The exception
+  /// carries the PARTIAL report as its `precondition` (whose `warnings` stay
+  /// empty) and the call's warnings as its `warnings` (Story 9.35).
   Future<Precondition> snapshot() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -985,7 +991,8 @@ final class RepoHandle {
 /// plain [RepoHandle] keeps working unchanged.
 ///
 /// Only a SUCCESSFUL creation yields one: a refused creation throws
-/// `ZanshinFfiException` without its report until Story 9.35.
+/// [ZanshinFfiException], which carries the same report — its `warnings` and,
+/// for a conversion, its PARTIAL `precondition` (Story 9.35).
 final class CreatedRepoHandle extends RepoHandle {
   /// Wrap `handleId` returned by the worker, with the creating call's report.
   CreatedRepoHandle(super._worker, super._handleId, {required this.warnings, required this.precondition});

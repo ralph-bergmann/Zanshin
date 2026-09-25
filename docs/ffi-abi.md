@@ -91,9 +91,11 @@ none. The creations (Story 9.33) — `zanshin_repo_init` / `_clone` / `_convert`
 creating call's warnings on the `RepoHandle` ok envelope AND on every error envelope
 (including `watcher.io_error` after a successful creation); in Dart `initRepo`,
 `cloneRepo` and `convert` return a `CreatedRepoHandle` (a `RepoHandle` subtype, so
-existing callers compile unchanged) exposing them as `warnings` — on success only: a
-refused creation throws `ZanshinFfiException` without its warnings (e.g.
-`jj.clone_cleanup_failed`) until Story 9.35. `zanshin_repo_open` carries none.
+existing callers compile unchanged) exposing them as `warnings`; a refused creation
+throws `ZanshinFfiException` exposing them as its `warnings` (e.g.
+`jj.clone_cleanup_failed`, which only an error envelope carries). `zanshin_repo_open`
+carries none. On every error envelope — handle-scoped, handle-less or creation — Dart
+reads the warnings the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
 
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
@@ -122,16 +124,20 @@ the conversion's snapshot report — `jj git init`'s `maybe_snapshot` — iff th
 started, on the ok and the error envelope (after a failure before the re-open it
 describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/`
 in place); Dart exposes it as `CreatedRepoHandle.precondition`, never as
-`lastPrecondition`, because a creation is not a verb on the handle — and only on
-success: a refused creation throws `ZanshinFfiException` without its report until
-Story 9.35.
+`lastPrecondition`, because a creation is not a verb on the handle — and a refused
+conversion's as the thrown `ZanshinFfiException.precondition`. Every error envelope's
+report reaches Dart that way (Story 9.35): the exception's `precondition` (`null` when
+the envelope has none) — when a failed handle-scoped call's error envelope carries one,
+the same report `RepoHandle.lastPrecondition` holds (one without a report leaves
+`lastPrecondition` at the previous report while the exception's is `null`).
 A failed pre-verb snapshot is `jj.stale_working_copy`, `jj.config_error` or
 `jj.jj_lib_error`; every such symbol's row names all three.
 
 `zanshin_config_set` (Story 9.28) is handle-less but runs the snapshot for
 `user.name` / `user.email` with a workspace root — the CLI's `check_wc_author`,
 whose failure it skips silently. Its envelope, ok or error, carries
-`precondition` exactly when that snapshot ran.
+`precondition` exactly when that snapshot ran — in Dart `ConfigSetResult.precondition`
+on success, the thrown `ZanshinFfiException.precondition` on error (Story 9.35).
 
 Every mutation whose CLI verb ends in `tx.finish` (all but `zanshin_file_track` /
 `_untrack`, which the CLI commits through the locked working copy) likewise runs the
@@ -1045,7 +1051,9 @@ GraphSlice {
 - **Row order** is the stream / `jj log` order (topo-grouped, children before
   parents); one `GraphRow` per `Row`, one `GraphRowEdge` per `RowEdge`, verbatim
   strings (no escaping).
-- **Decode contract (Dart).** `!ok` → `ZanshinFfiException(code, context)`;
+- **Decode contract (Dart).** `!ok` → `ZanshinFfiException(code, context)` carrying
+  the envelope's `precondition` and `warnings` (Story 9.35, the shared
+  `decodeEnvelopeErrorInternal`);
   `ok` with a non-`GraphSlice` union variant → `ZanshinFfiException('ffi.unknown')`
   (discriminant guard, same as every other payload decoder). An out-of-range
   `GraphEdgeKind` byte surfaces as the generated `StateError` (cdylib/bindings
@@ -1175,7 +1183,9 @@ The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
 - `ZanshinWorker.logDefaults(handleId)` → `LogDefaults` via
   `decodeLogDefaultsEnvelopeInternal`.
 - `RepoHandle.logDefaults()` — closed-handle guard (`StateError`), delegates.
-- Decode contract: `!ok` → `ZanshinFfiException(code, context)`; `ok` with a
+- Decode contract: `!ok` → `ZanshinFfiException(code, context)` carrying the
+  envelope's `precondition` (always `null` here: this symbol runs no pre-verb
+  snapshot) and `warnings` (Story 9.35); `ok` with a
   non-`LogDefaults` union variant → `ZanshinFfiException('ffi.unknown')`. Absent
   strings coalesce to `''`, so an explicitly empty `short_prefixes` and an
   absent one are indistinguishable Dart-side — Rust always writes all three.

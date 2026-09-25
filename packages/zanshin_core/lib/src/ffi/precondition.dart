@@ -16,7 +16,8 @@ import 'warning.dart';
 // `zanshin_snapshot` adapter (the CLI's `jj util snapshot`), the `Precondition` /
 // `FinishFacts` models every envelope of a snapshotting verb carries, and their
 // decoders. `dart:ffi` stays inside `ffi/` — only the worker isolate calls the
-// adapter.
+// adapter. It also holds `decodeEnvelopeErrorInternal`, the decoder every error
+// envelope goes through (Story 9.35).
 
 // ── FFI adapter ──────────────────────────────────────────────────────────────
 
@@ -97,7 +98,9 @@ final class Precondition {
 
   /// The call's warnings (Story 9.32) when this report is the result of
   /// `RepoHandle.snapshot`, in the CLI's print order; empty when there were
-  /// none, and always empty on the report `RepoHandle.lastPrecondition` holds.
+  /// none, and always empty on the report `RepoHandle.lastPrecondition` holds
+  /// and on a thrown `ZanshinFfiException.precondition` — a failed call's
+  /// warnings are the exception's `warnings` (Story 9.35).
   final List<ZanshinWarning> warnings;
 }
 
@@ -160,6 +163,24 @@ Precondition? decodeEnvelopePreconditionInternal(Uint8List bytes) =>
   return (warnings: decodeEnvelopeWarningsInternal(env), precondition: decodePreconditionInternal(env.precondition));
 }
 
+/// Decode an error envelope (`ok == false`) into the [ZanshinFfiException] it
+/// stands for — the ONE place an exception is built from an `FfiError`, which
+/// every decoder's `!env.ok` branch throws (Story 9.35).
+///
+/// The code and context come from the envelope's `error` (`ffi.unknown` and
+/// `null` when it is absent); the report — the PARTIAL pre-verb snapshot report
+/// and the warnings — rides along exactly as on an ok envelope, `null` / empty
+/// when the envelope has none.
+ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
+  final fbs.FfiError? e = env.error;
+  return ZanshinFfiException.withReport(
+    e?.code ?? 'ffi.unknown',
+    e?.context,
+    precondition: decodePreconditionInternal(env.precondition),
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
+
 /// Decode a `zanshin_snapshot` `Envelope` buffer into its [Precondition].
 ///
 /// Exposed for decode-contract tests with synthetic buffers; production calls go
@@ -171,8 +192,7 @@ Precondition decodeSnapshotEnvelope(Uint8List bytes) => decodeSnapshotEnvelopeIn
 Precondition decodeSnapshotEnvelopeInternal(Uint8List bytes) {
   final env = fbs.Envelope(bytes);
   if (!env.ok) {
-    final fbs.FfiError? e = env.error;
-    throw ZanshinFfiException(e?.code ?? 'ffi.unknown', e?.context);
+    throw decodeEnvelopeErrorInternal(env);
   }
   // Rust always writes the report on success, so its absence is a corrupt
   // buffer — refused rather than guessed.
