@@ -14,7 +14,7 @@ import 'boot_failure.dart';
 typedef SplashVersion = ({String version, String build});
 
 /// How long a boot may take before the splash window appears at all.
-const splashIndicatorDelay = Duration(milliseconds: 200);
+const splashIndicatorDelay = Duration(milliseconds: 250);
 
 /// Once shown, the splash stays at least this long. Well past the point where
 /// it would only blink: it is held long enough to be looked at while the card
