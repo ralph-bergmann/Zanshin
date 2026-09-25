@@ -97,6 +97,12 @@
 //! listing shows is the CLI's. jj reads identity from this stack ONLY — there is no
 //! `.gitconfig` fallback to port.
 //!
+//! Every environment value the stack reads — `HOME`, `XDG_CONFIG_HOME`, `JJ_CONFIG`, the two
+//! env layers' variables, the `--when.env` context — comes from ONE snapshot taken through
+//! `crate::environment` (Story 9.36): the login shell's environment once the app adopted it at
+//! start-up, else the process's. A Zanshin launched from Finder therefore resolves the stack a
+//! terminal `jj` would.
+//!
 //! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
 //! and `migrate` — its rule list is empty at the pin. `resolve` runs with `command: None`
 //! (a state the CLI itself produces before a subcommand is known) for every verb except the
@@ -283,29 +289,42 @@ pub(crate) struct ConfigEnv {
 
 impl ConfigEnv {
     /// Snapshots the environment the way `ConfigEnv::from_environment`
-    /// (`cli/src/config.rs:366-419` @ v0.44.0) does.
+    /// (`cli/src/config.rs:366-419` @ v0.44.0) does — from ONE snapshot of the environment the
+    /// crate's reads see: the login shell's once adopted (Story 9.36), else the process's.
     pub(crate) fn from_env() -> Self {
-        let home_dir = std::env::var_os("HOME").map(PathBuf::from).map(|d| {
+        Self::from_vars(
+            &crate::environment::snapshot(),
+            whoami::hostname().ok(),
+            whoami::username().ok(),
+        )
+    }
+
+    /// [`ConfigEnv::from_env`] over an explicit environment and explicit `whoami` values.
+    fn from_vars(vars: &crate::environment::EnvMap, hostname: Option<String>, username: Option<String>) -> Self {
+        let var = |name: &str| vars.get(OsStr::new(name));
+        let home_dir = var("HOME").map(PathBuf::from).map(|d| {
             // WHY: the CLI canonicalizes $HOME (dunce::canonicalize, == std::fs::canonicalize
             // on Unix) because it may be a symlink and `--when.repositories` compares paths.
             std::fs::canonicalize(&d).unwrap_or(d)
         });
-        let xdg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
-        // WHY: vars_os + filter_map, not vars() — vars() PANICS on a non-Unicode
-        // variable, and nothing reachable from FFI may panic.
-        let environment: HashMap<String, String> = std::env::vars_os()
-            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        let xdg = var("XDG_CONFIG_HOME").map(PathBuf::from);
+        // WHY: only the UTF-8 pairs — the CLI's own filter (`cli/src/config.rs:389-396` @
+        // v0.44.0) silently drops a non-Unicode variable rather than panicking like `vars()`.
+        let environment: HashMap<String, String> = vars
+            .iter()
+            .filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v.to_str()?.to_owned())))
             .collect();
         Self {
             config_dir: platform_config_dir(xdg.as_deref(), home_dir.as_deref()),
-            // WHY `var`, not `var_os`: the CLI reads `env::var("JJ_CONFIG").ok()` (`cli/src/config.rs:386`
-            // @ v0.44.0), so a non-UTF-8 value counts as UNSET there (system layer + discovery on).
-            jj_config: std::env::var("JJ_CONFIG").ok().map(OsString::from),
+            // WHY UTF-8-or-unset: the CLI reads `JJ_CONFIG` as a UTF-8 `var(..).ok()`
+            // (`cli/src/config.rs:386` @ v0.44.0), so a non-UTF-8 value counts as UNSET there
+            // (system layer + discovery on).
+            jj_config: var("JJ_CONFIG").filter(|v| v.to_str().is_some()).cloned(),
             system_config_dir: Some(PathBuf::from("/etc")),
-            hostname: whoami::hostname().ok(),
+            hostname,
             // WHY the `$USER` fallback: the CLI's own (`env_base_layer`), for libcs whose
             // `getpwuid()` does not fully support nsswitch.
-            username: whoami::username().ok().or_else(|| environment.get("USER").cloned()),
+            username: username.or_else(|| environment.get("USER").cloned()),
             environment,
             home_dir,
         }
@@ -352,7 +371,7 @@ fn platform_config_dir(xdg_config_home: Option<&Path>, home_dir: Option<&Path>) 
 /// CLI's `existing_user_config_paths` filter does.
 fn user_config_paths(jj_config: Option<&OsStr>, config_dir: Option<&Path>, home_dir: Option<&Path>) -> Vec<PathBuf> {
     if let Some(paths) = jj_config {
-        return std::env::split_paths(paths)
+        return crate::environment::split_paths(paths)
             .filter(|path| !path.as_os_str().is_empty())
             .collect();
     }
@@ -1534,6 +1553,44 @@ mod tests {
     fn builtin_config_layer_is_valid_toml() {
         let layer = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML);
         assert!(layer.is_ok(), "the builtin layer must parse: {layer:?}");
+    }
+
+    /// Story 9.36: everything `from_env` derives comes from ONE environment snapshot — a
+    /// non-UTF-8 value stays out of `environment`, a non-UTF-8 `JJ_CONFIG` counts as unset (the
+    /// CLI's UTF-8 `var(..).ok()`), and `$USER` backs a missing `whoami` username.
+    #[test]
+    fn the_config_env_is_derived_from_one_environment_snapshot() {
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let snapshot = |vars: &[(&str, OsString)]| -> crate::environment::EnvMap {
+            vars.iter().map(|(k, v)| (OsString::from(k), v.clone())).collect()
+        };
+        let raw = OsString::from_vec(vec![b'x', 0xff]);
+        let vars = snapshot(&[
+            ("HOME", OsString::from("/nonexistent-zanshin-home")),
+            ("XDG_CONFIG_HOME", OsString::from("/xdg")),
+            ("USER", OsString::from("env-user")),
+            ("JJ_CONFIG", raw.clone()),
+            ("RAW", raw),
+        ]);
+        let env = ConfigEnv::from_vars(&vars, Some("host".to_owned()), None);
+        assert_eq!(env.home_dir.as_deref(), Some(Path::new("/nonexistent-zanshin-home")));
+        assert_eq!(env.config_dir.as_deref(), Some(Path::new("/xdg")));
+        assert_eq!(env.jj_config, None, "a non-UTF-8 JJ_CONFIG counts as unset");
+        assert_eq!(env.hostname.as_deref(), Some("host"));
+        assert_eq!(env.username.as_deref(), Some("env-user"), "the $USER fallback");
+        assert_eq!(env.environment.get("USER").map(String::as_str), Some("env-user"));
+        assert!(
+            !env.environment.contains_key("RAW") && !env.environment.contains_key("JJ_CONFIG"),
+            "non-UTF-8 values are dropped: {:?}",
+            env.environment
+        );
+
+        let pinned = snapshot(&[("JJ_CONFIG", OsString::new()), ("USER", OsString::from("env-user"))]);
+        let env = ConfigEnv::from_vars(&pinned, None, Some("whoami-user".to_owned()));
+        assert_eq!(env.jj_config, Some(OsString::new()), "an empty JJ_CONFIG is set");
+        assert_eq!(env.username.as_deref(), Some("whoami-user"), "whoami wins over $USER");
+        assert_eq!((env.home_dir, env.config_dir), (None, None));
     }
 
     // ── snapshot.* readers (Story 9.22) ───────────────────────────────────────

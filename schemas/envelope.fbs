@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -95,7 +95,8 @@ enum RequestKind : ubyte {
   ConfigFileRead,
   ConfigFileWrite,
   ConfigGcList,
-  ConfigGcDelete
+  ConfigGcDelete,
+  EnvironmentAdopt
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -491,6 +492,15 @@ table ConfigGcDeleteRequest {
   config_dirs: [string];
 }
 
+/// Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
+/// environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
+/// scalar has no absent form here): how long the shell may take to print its environment.
+table EnvironmentAdoptRequest {
+  kind: RequestKind;
+  shell: string;
+  timeout_ms: uint;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -519,6 +529,7 @@ table ConfigGcDeleteRequest {
 //   Story 9-28 : ConfigListResult ✓, ConfigGetResult ✓, ConfigPathResult ✓, ConfigSetResult ✓,
 //                ConfigUnsetResult ✓, ConfigFileText ✓, ConfigGcList ✓, ConfigGcResult ✓
 //                (`zanshin_config_file_write` answers ok with no payload)
+//   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload, its warnings only)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1389,7 +1400,8 @@ union Payload {
 /// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 /// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
 /// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-/// tooltips only; nothing parses it.
+/// tooltips only; nothing parses it. The one exception is the Zanshin-only
+/// `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
 table Warning {
   code: string;
   message: string;

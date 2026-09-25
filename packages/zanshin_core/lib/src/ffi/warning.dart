@@ -15,15 +15,18 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 /// without them. [code] is one of the [ZanshinWarningCode] constants; [message]
 /// is the CLI's text for that warning, verbatim (English, without the
 /// `Warning: ` heading and without the CLI's hints), paths rendered relative
-/// to the workspace root.
+/// to the workspace root. The one exception is the Zanshin-only
+/// [ZanshinWarningCode.loginShellUnresolved] (Story 9.36), whose message is
+/// Zanshin's own — no CLI prints it.
 @immutable
 final class ZanshinWarning {
   const ZanshinWarning({required this.code, required this.message});
 
-  /// The registered `jj.*` warning code — one of [ZanshinWarningCode].
+  /// The registered warning code — one of [ZanshinWarningCode].
   final String code;
 
-  /// The jj CLI's warning text for this case, verbatim.
+  /// The jj CLI's warning text for this case, verbatim (Zanshin's own text
+  /// for the Zanshin-only [ZanshinWarningCode.loginShellUnresolved]).
   final String message;
 
   @override
@@ -114,6 +117,12 @@ abstract final class ZanshinWarningCode {
   /// `ZanshinFfiException.warnings` (Story 9.35).
   static const cloneCleanupFailed = 'jj.clone_cleanup_failed';
 
+  /// The login shell's environment could not be read at start-up; the
+  /// environment Zanshin was started with stays in effect (Story 9.36). The one
+  /// Zanshin-only code — no jj CLI prints it — carried only by
+  /// `ZanshinWorker.adoptLoginShellEnvironment`.
+  static const loginShellUnresolved = 'env.login_shell_unresolved';
+
   /// Every constant above, in registry order.
   static const List<String> values = [
     identityMissing,
@@ -140,6 +149,7 @@ abstract final class ZanshinWarningCode {
     configGcDeleteFailed,
     configNothingListed,
     cloneCleanupFailed,
+    loginShellUnresolved,
   ];
 }
 

@@ -14,7 +14,7 @@ use gix::remote::Direction;
 use jj_lib::git;
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitSidebandLineTerminator,
-    GitSubprocessCallback, GitSubprocessOptions, UnexpectedGitBackendError,
+    GitSubprocessCallback, UnexpectedGitBackendError,
 };
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
 use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()
@@ -266,7 +266,7 @@ pub(crate) fn git_fetch(
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
 
-    let subprocess_options = GitSubprocessOptions::from_settings(settings).map_err(mutate::be)?;
+    let subprocess_options = crate::environment::git_subprocess_options(settings).map_err(mutate::be)?;
 
     // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.44.0
     // `git.rs:3032-3047`) — `get_git_backend` is its only fallible step — so the blanket

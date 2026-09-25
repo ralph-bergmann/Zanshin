@@ -22,7 +22,8 @@ use jj_lib::settings::{HumanByteSize, UserSettings};
 use jj_lib::working_copy::{self, UntrackedReason};
 
 /// What a warning is about — one variant per remedy, each the port of one jj CLI
-/// `ui.warning_*` site @ v0.44.0 (Story 9.32). The FFI turns each into its registered `jj.*`
+/// `ui.warning_*` site @ v0.44.0 (Story 9.32), except the Zanshin-only
+/// [`WarningKind::LoginShellUnresolved`] (Story 9.36). The FFI turns each into its registered
 /// warning code (`docs/rust-error-codes.md`, "Warning Codes").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WarningKind {
@@ -82,6 +83,10 @@ pub enum WarningKind {
     ConfigNothingListed,
     /// A failed clone could not remove what it had created (`git/clone.rs:276-284`, Story 9.33).
     CloneCleanupFailed,
+    /// The login shell's environment could not be read at start-up, so the environment Zanshin
+    /// was started with stays in effect (Story 9.36). Zanshin-only — there is no jj CLI site: a
+    /// terminal `jj` simply inherits its shell's environment.
+    LoginShellUnresolved,
 }
 
 /// One warning a call produced (Story 9.32).
@@ -92,7 +97,8 @@ pub struct Warning {
     /// The CLI's text block for this warning, verbatim minus the `Warning: ` heading, hints and
     /// colour: the `ui.warning_*` line(s) plus the detail lines the same site writes right after
     /// it, joined by `\n`. Paths are rendered as the CLI renders them from the workspace root.
-    /// For logs and tooltips only — nothing parses it.
+    /// For logs and tooltips only — nothing parses it. The one exception is the Zanshin-only
+    /// [`WarningKind::LoginShellUnresolved`] (Story 9.36), whose text is Zanshin's own.
     pub message: String,
 }
 

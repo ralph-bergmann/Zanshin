@@ -35,6 +35,7 @@ pub mod change;
 pub mod commit_views;
 pub mod config;
 pub mod diagnostics;
+pub mod environment;
 pub mod events;
 pub mod ffi_strings;
 pub mod file;

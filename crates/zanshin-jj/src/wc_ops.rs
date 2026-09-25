@@ -222,12 +222,22 @@ pub(crate) fn auto_tracking_matcher(
 }
 
 /// The `$XDG_CONFIG_HOME` the CLI's `base_ignores` falls back to: the variable when set and
-/// non-empty, else `<home>/.config` (`cli/src/cli_util.rs:1660-1667` @ v0.44.0).
+/// non-empty, else `<home>/.config` (`cli/src/cli_util.rs:1660-1667` @ v0.44.0). Both variables
+/// are read through `crate::environment` (Story 9.36) — the variable, as in the CLI, only as
+/// UTF-8; `<home>` is a non-empty `$HOME` (what `etcetera::home_dir()` reads in the CLI's own
+/// environment), else `etcetera::home_dir()` itself.
 fn xdg_config_home() -> Option<PathBuf> {
-    if let Some(x) = std::env::var("XDG_CONFIG_HOME").ok().filter(|x| !x.is_empty()) {
+    if let Some(x) = crate::environment::var_os("XDG_CONFIG_HOME")
+        .and_then(|x| x.into_string().ok())
+        .filter(|x| !x.is_empty())
+    {
         return Some(PathBuf::from(x));
     }
-    etcetera::home_dir().ok().map(|home| home.join(".config"))
+    crate::environment::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| etcetera::home_dir().ok())
+        .map(|home| home.join(".config"))
 }
 
 /// The global excludes file a git config names — the CLI's `get_excludes_file_path` closure.

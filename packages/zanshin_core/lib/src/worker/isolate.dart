@@ -15,6 +15,7 @@ import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import '../ffi/environment.dart' as repo_ffi_environment;
 import '../ffi/events.dart'
     show
         RawOpHeadsChangedEvent,
@@ -1617,6 +1618,31 @@ class ZanshinWorker {
     );
     return repo_ffi_config.decodeConfigGcResultEnvelopeInternal(bytes);
   }
+
+  /// Adopts the login shell's environment for every jj environment read (Story
+  /// 9.36): runs [shell] (`null` = the process's `$SHELL`) as a login shell once
+  /// and, from then on, the jj config stack (`JJ_CONFIG`, `XDG_CONFIG_HOME`,
+  /// `JJ_USER`, …) and the `git` subprocess of a fetch or clone see the
+  /// environment a terminal `jj` would — not the minimal one a Finder/Dock launch
+  /// inherits. The app calls it once at start-up, before any repo is opened; a
+  /// call after a successful one is a no-op.
+  ///
+  /// The result's `warnings` are empty on success and hold one
+  /// `env.login_shell_unresolved` when the environment could not be read within
+  /// [timeout] — nothing is adopted then and the environment Zanshin was started
+  /// with stays in effect. A [shell] with an interior NUL, or a [timeout] outside
+  /// `0..0xFFFFFFFF` ms, throws [ArgumentError] before anything is sent.
+  Future<repo_ffi_environment.LoginShellEnvironmentResult> adoptLoginShellEnvironment({
+    String? shell,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    rejectInteriorNul(shell, 'shell');
+    final int timeoutMs = repo_ffi_environment.loginShellTimeoutMillis(timeout);
+    final Uint8List bytes = await send(
+      EnvironmentAdoptCommand(commandId: _correlator.allocateId(), shell: shell, timeoutMs: timeoutMs),
+    );
+    return repo_ffi_environment.decodeLoginShellEnvironmentEnvelopeInternal(bytes);
+  }
 }
 
 // ─── Worker entry point ───────────────────────────────────────────────────────
@@ -2257,6 +2283,10 @@ void _workerEntry(_WorkerInit init) {
 
         case ConfigGcDeleteCommand(:final List<String> configDirs):
           final Uint8List bytes = repo_ffi_config.zanshinConfigGcDelete(configDirs);
+          responseSP.send((commandId, BufferResult(bytes)));
+
+        case EnvironmentAdoptCommand(:final String? shell, :final int timeoutMs):
+          final Uint8List bytes = repo_ffi_environment.zanshinEnvironmentAdopt(shell: shell, timeoutMs: timeoutMs);
           responseSP.send((commandId, BufferResult(bytes)));
 
         case ShutdownCommand():

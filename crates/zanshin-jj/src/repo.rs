@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchRefExpression, GitImportOptions, GitProgress, GitSidebandLineTerminator,
-    GitSubprocessCallback, GitSubprocessOptions,
+    GitSubprocessCallback,
 };
 use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
 use jj_lib::repo::Repo as _;
@@ -2071,7 +2071,7 @@ impl Repo {
             .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
 
         // Step 4: Fetch + import refs using the fresh repo whose GitBackend sees "origin".
-        let subprocess_options = GitSubprocessOptions::from_settings(settings)
+        let subprocess_options = crate::environment::git_subprocess_options(settings)
             .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
 
         // `git.abandon-unreachable-commits` comes from the freshly-initialised workspace's

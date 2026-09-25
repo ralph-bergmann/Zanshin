@@ -29,6 +29,7 @@ import 'package:zanshin_core/src/ffi/config.dart'
         decodeConfigUnsetEnvelopeInternal;
 import 'package:zanshin_core/src/ffi/diagnostics.dart' show decodeDiagnosticsEnvelope;
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import 'package:zanshin_core/src/ffi/environment.dart' show decodeLoginShellEnvironmentEnvelopeInternal;
 import 'package:zanshin_core/src/ffi/file.dart'
     show decodeFileAnnotationEnvelope, decodeFileContentsEnvelope, decodeFileListEnvelope, decodeFileSearchEnvelope;
 import 'package:zanshin_core/src/ffi/file_ops.dart' show decodeTrackResultEnvelope, decodeUntrackResultEnvelope;
@@ -311,6 +312,12 @@ final List<_Case> _cases = [
     data: fbs.ConfigGcResultObjectBuilder.new,
     read: (b) => decodeConfigGcResultEnvelopeInternal(b).warnings,
   ),
+  (
+    name: 'adoptLoginShellEnvironment',
+    type: fbs.PayloadTypeId.NONE,
+    data: () => null,
+    read: (b) => decodeLoginShellEnvironmentEnvelopeInternal(b).warnings,
+  ),
 ];
 
 void main() {
@@ -361,8 +368,9 @@ void main() {
         'jj.config_gc_delete_failed',
         'jj.config_nothing_listed',
         'jj.clone_cleanup_failed',
+        'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(24), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(25), reason: 'no code is registered twice');
     });
   });
 

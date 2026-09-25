@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -54,7 +54,8 @@ enum RequestKind {
   ConfigFileRead(24),
   ConfigFileWrite(25),
   ConfigGcList(26),
-  ConfigGcDelete(27);
+  ConfigGcDelete(27),
+  EnvironmentAdopt(28);
 
   final int value;
   const RequestKind(this.value);
@@ -117,6 +118,8 @@ enum RequestKind {
         return RequestKind.ConfigGcList;
       case 27:
         return RequestKind.ConfigGcDelete;
+      case 28:
+        return RequestKind.EnvironmentAdopt;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -125,7 +128,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 27;
+  static const int maxValue = 28;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -3788,6 +3791,100 @@ class ConfigGcDeleteRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, configDirsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
+///  environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
+///  scalar has no absent form here): how long the shell may take to print its environment.
+class EnvironmentAdoptRequest {
+  EnvironmentAdoptRequest._(this._bc, this._bcOffset);
+  factory EnvironmentAdoptRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<EnvironmentAdoptRequest> reader = _EnvironmentAdoptRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get shell => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get timeoutMs => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+
+  @override
+  String toString() {
+    return 'EnvironmentAdoptRequest{kind: ${kind}, shell: ${shell}, timeoutMs: ${timeoutMs}}';
+  }
+}
+
+class _EnvironmentAdoptRequestReader extends fb.TableReader<EnvironmentAdoptRequest> {
+  const _EnvironmentAdoptRequestReader();
+
+  @override
+  EnvironmentAdoptRequest createObject(fb.BufferContext bc, int offset) => EnvironmentAdoptRequest._(bc, offset);
+}
+
+class EnvironmentAdoptRequestBuilder {
+  EnvironmentAdoptRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addShellOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTimeoutMs(int? timeoutMs) {
+    fbBuilder.addUint32(2, timeoutMs);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class EnvironmentAdoptRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _shell;
+  final int? _timeoutMs;
+
+  EnvironmentAdoptRequestObjectBuilder({
+    RequestKind? kind,
+    String? shell,
+    int? timeoutMs,
+  }) : _kind = kind,
+       _shell = shell,
+       _timeoutMs = timeoutMs;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? shellOffset = _shell == null ? null : fbBuilder.writeString(_shell!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, shellOffset);
+    fbBuilder.addUint32(2, _timeoutMs);
     return fbBuilder.endTable();
   }
 
@@ -10458,7 +10555,8 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
 ///  line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-///  tooltips only; nothing parses it.
+///  tooltips only; nothing parses it. The one exception is the Zanshin-only
+///  `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
 class Warning {
   Warning._(this._bc, this._bcOffset);
   factory Warning(List<int> bytes) {

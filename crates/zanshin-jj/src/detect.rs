@@ -110,7 +110,7 @@ pub fn detect_repo(path: &Path) -> Result<RepoKind, DetectError> {
 /// non-directory path component, or an unsearchable prefix); surfacing it lets the
 /// caller report "could not inspect this path" instead of "not a repository".
 pub fn find_repo_root(start: &Path) -> Result<Option<RepoRoot>, DetectError> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = crate::environment::var_os("HOME").map(PathBuf::from);
     find_repo_root_within(start, home.as_deref())
 }
 

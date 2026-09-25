@@ -1116,6 +1116,7 @@ fn story_9_32_warning_surface_resolves() {
         K::ConfigGcDeleteFailed,
         K::ConfigNothingListed,
         K::CloneCleanupFailed,
+        K::LoginShellUnresolved,
     ];
     for kind in every {
         match kind {
@@ -1142,11 +1143,22 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigWorkingCopyAuthor
             | K::ConfigGcDeleteFailed
             | K::ConfigNothingListed
-            | K::CloneCleanupFailed => {}
+            | K::CloneCleanupFailed
+            | K::LoginShellUnresolved => {}
         }
     }
-    assert_eq!(every.len(), 24);
+    assert_eq!(every.len(), 25);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
+}
+
+/// Story 9.36: the start-up adoption of the login shell's environment — its signature named by
+/// its public path, so a rename or a type change breaks this test at compile time.
+#[test]
+fn story_9_36_login_shell_adoption_resolves() {
+    use std::ffi::OsStr;
+    use std::time::Duration;
+
+    _ = zanshin_jj::adopt_login_shell_environment as fn(Option<&OsStr>, Duration) -> Vec<zanshin_jj::Warning>;
 }
 
 /// Story 9.33: the four creation functions return a `CreationOutcome` — every field named by its

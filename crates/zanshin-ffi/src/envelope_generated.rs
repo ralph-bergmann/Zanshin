@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 27;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 28;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 28] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 29] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -52,6 +52,7 @@ pub mod zanshin {
             RequestKind::ConfigFileWrite,
             RequestKind::ConfigGcList,
             RequestKind::ConfigGcDelete,
+            RequestKind::EnvironmentAdopt,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -65,7 +66,7 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 25 tables the variant name plus `Request` IS the table name.
+        /// named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -106,9 +107,10 @@ pub mod zanshin {
             pub const ConfigFileWrite: Self = Self(25);
             pub const ConfigGcList: Self = Self(26);
             pub const ConfigGcDelete: Self = Self(27);
+            pub const EnvironmentAdopt: Self = Self(28);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 27;
+            pub const ENUM_MAX: u8 = 28;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -138,6 +140,7 @@ pub mod zanshin {
                 Self::ConfigFileWrite,
                 Self::ConfigGcList,
                 Self::ConfigGcDelete,
+                Self::EnvironmentAdopt,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -170,6 +173,7 @@ pub mod zanshin {
                     Self::ConfigFileWrite => Some("ConfigFileWrite"),
                     Self::ConfigGcList => Some("ConfigGcList"),
                     Self::ConfigGcDelete => Some("ConfigGcDelete"),
+                    Self::EnvironmentAdopt => Some("EnvironmentAdopt"),
                     _ => None,
                 }
             }
@@ -6613,6 +6617,159 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("ConfigGcDeleteRequest");
                 ds.field("kind", &self.kind());
                 ds.field("config_dirs", &self.config_dirs());
+                ds.finish()
+            }
+        }
+        pub enum EnvironmentAdoptRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
+        /// environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
+        /// scalar has no absent form here): how long the shell may take to print its environment.
+        pub struct EnvironmentAdoptRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for EnvironmentAdoptRequest<'a> {
+            type Inner = EnvironmentAdoptRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> EnvironmentAdoptRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SHELL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TIMEOUT_MS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                EnvironmentAdoptRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args EnvironmentAdoptRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<EnvironmentAdoptRequest<'bldr>> {
+                let mut builder = EnvironmentAdoptRequestBuilder::new(_fbb);
+                builder.add_timeout_ms(args.timeout_ms);
+                if let Some(x) = args.shell {
+                    builder.add_shell(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(EnvironmentAdoptRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn shell(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(EnvironmentAdoptRequest::VT_SHELL, None)
+                }
+            }
+            #[inline]
+            pub fn timeout_ms(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(EnvironmentAdoptRequest::VT_TIMEOUT_MS, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for EnvironmentAdoptRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("shell", Self::VT_SHELL, false)?
+                    .visit_field::<u32>("timeout_ms", Self::VT_TIMEOUT_MS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct EnvironmentAdoptRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub shell: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub timeout_ms: u32,
+        }
+        impl<'a> Default for EnvironmentAdoptRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                EnvironmentAdoptRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    shell: None,
+                    timeout_ms: 0,
+                }
+            }
+        }
+
+        pub struct EnvironmentAdoptRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EnvironmentAdoptRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(EnvironmentAdoptRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_shell(&mut self, shell: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EnvironmentAdoptRequest::VT_SHELL, shell);
+            }
+            #[inline]
+            pub fn add_timeout_ms(&mut self, timeout_ms: u32) {
+                self.fbb_
+                    .push_slot::<u32>(EnvironmentAdoptRequest::VT_TIMEOUT_MS, timeout_ms, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> EnvironmentAdoptRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                EnvironmentAdoptRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<EnvironmentAdoptRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for EnvironmentAdoptRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("EnvironmentAdoptRequest");
+                ds.field("kind", &self.kind());
+                ds.field("shell", &self.shell());
+                ds.field("timeout_ms", &self.timeout_ms());
                 ds.finish()
             }
         }
@@ -17513,7 +17670,8 @@ pub mod zanshin {
         /// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
         /// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
         /// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-        /// tooltips only; nothing parses it.
+        /// tooltips only; nothing parses it. The one exception is the Zanshin-only
+        /// `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
         pub struct Warning<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

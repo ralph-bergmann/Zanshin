@@ -627,6 +627,33 @@ external ffi.Pointer<ZanshinBuf> zanshin_edit(
   ffi.Pointer<ffi.Char> change_id,
 );
 
+/// Adopt the login shell's environment for every jj environment read (Story 9.36): runs
+/// `<shell> -l -i -c` once (`shell` absent: the process's `$SHELL`), reads its `env -0` dump
+/// within `timeout_ms`, and from then on the jj config stack and the `git` subprocess of a fetch
+/// or clone see that environment — the terminal `jj`'s — instead of the one the app was started
+/// with. Meant for app start-up, before any repo is opened; a second call after a successful one
+/// is a no-op. The arguments cross as an `EnvironmentAdoptRequest` buffer.
+///
+/// Returns an ok `Envelope` with NO `data`. Its `warnings` are empty on success and carry exactly
+/// one `env.login_shell_unresolved` when the environment could not be read — the shell could not
+/// start, exited without printing it, or timed out; nothing is adopted then and the environment
+/// the app was started with stays in effect.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `EnvironmentAdoptRequest`, or its
+/// `kind` is not `EnvironmentAdopt`.
+///
+/// # Safety
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart; Rust only borrows it for the call. The returned token must be freed exactly once via
+/// `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_environment_adopt(
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Register `callback` as the process-global event sink.
 ///
 /// Overwrites any previously registered callback — a worker restart
@@ -2219,7 +2246,7 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 27;
+const int ENUM_MAX_REQUEST_KIND = 28;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -2256,6 +2283,10 @@ const int ENUM_MIN_WATCHER_EVENT_KIND = 0;
 const int Envelope_VT_PRECONDITION = 12;
 
 const int Envelope_VT_WARNINGS = 14;
+
+const int EnvironmentAdoptRequest_VT_SHELL = 6;
+
+const int EnvironmentAdoptRequest_VT_TIMEOUT_MS = 8;
 
 const int EvologEntry_VT_OPERATION_ID = 8;
 

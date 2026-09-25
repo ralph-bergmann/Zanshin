@@ -33,7 +33,7 @@ by contract (two compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 59
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 60
 exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -76,7 +76,10 @@ Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.4
 order (config-load warnings, the pre-verb snapshot and imports, the verb body,
 `finish_transaction`). `code` is one of the registered `jj.*` warning codes
 (`docs/rust-error-codes.md` § Warning Codes); `message` is the CLI's text, verbatim,
-without the `Warning: ` heading and without hints. A warning never changes the
+without the `Warning: ` heading and without hints. The one Zanshin-only code is
+`env.login_shell_unresolved`, which only `zanshin_environment_adopt` carries (Story 9.36):
+the login shell's environment could not be read — a terminal `jj` has no such block, it
+simply inherits its shell's environment. A warning never changes the
 outcome: it rides the ok envelope AND the error envelope (a precondition that warned
 before the verb refused keeps its warnings next to the error). The vector is
 **absent** when there is nothing to warn about — every reader treats that as an empty
@@ -183,7 +186,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Twenty-seven of the 59 exported symbols take their arguments as a **FlatBuffers
+Twenty-eight of the 60 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. Eighteen use the handle-scoped three-parameter shape:
 
@@ -203,6 +206,9 @@ They are handle-less on purpose: a stack only the workspace LOAD refuses (a
 wrong-typed `git.*` key) makes `zanshin_repo_open` fail, and the config verbs are
 how the user repairs it — exactly as the CLI's config commands never load the
 workspace.
+
+`zanshin_environment_adopt` (Story 9.36) uses the same two-parameter shape: the app
+calls it once at start-up, before any repo is opened, so there is no handle to pass.
 
 This section is the whole convention. The per-symbol rustdoc in
 `crates/zanshin-ffi/include/zanshin_ffi.h` does not repeat it.
@@ -235,7 +241,7 @@ answer to `ffi.null_pointer`, which is a different refusal.
 
 ### Reading the buffer (Rust side) — the refusal ladder
 
-All twenty-seven wrappers share one reader shape (worked example:
+All twenty-eight wrappers share one reader shape (worked example:
 `crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
@@ -253,7 +259,9 @@ call). Five distinct refusals sit at five distinct layers:
 The two-parameter `zanshin_config_*` shape has rows 1–4 and **no row 5**: after the
 required fields (row 4 there also refuses `ConfigScope::Unspecified` where a scope
 is required, and `zanshin_config_list`'s scope-plus-`include_defaults` conflict)
-come the verb's own codes.
+come the verb's own codes. `zanshin_environment_adopt` has rows 1–3 only: no field of
+its table is required (an absent `shell` is `$SHELL`; `timeout_ms` is a scalar) and it
+has no refusal of its own — a login shell that cannot be read is a warning, not an error.
 
 Row 4 is the *reader's* own required-field guard, which among the handle-taking
 readers only five have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
@@ -292,7 +300,7 @@ bytes readable at `data`; the reader builds its slice with
 `std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
 larger than the allocation is an out-of-bounds read — undefined behaviour, not a
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
-repeated in every one of the twenty-seven symbols' `# Safety` blocks.
+repeated in every one of the twenty-eight symbols' `# Safety` blocks.
 
 Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
@@ -325,7 +333,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **26** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **27** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -334,7 +342,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 26 tables + 1 shared reuse = the 27
+one caller, and no table is orphaned. 27 tables + 1 shared reuse = the 28
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -352,7 +360,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 25 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 26 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -397,7 +405,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **59** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **60** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -410,7 +418,8 @@ and is deliberately absent from every row.
 
 Rows are grouped by noun: repository lifecycle, repo-state reads, commit views,
 file reads, refs and workspaces, change mutations, bookmarks, working-copy tracking
-and snapshot, git sync, config (Story 9.28), and infrastructure. `—` means "not applicable": no request table, no success payload,
+and snapshot, git sync, config (Story 9.28), the start-up environment (Story 9.36), and
+infrastructure. `—` means "not applicable": no request table, no success payload,
 or no `# Errors` block.
 
 | Symbol | Args | Request table | Success payload | Error codes | Story |
@@ -465,6 +474,7 @@ or no `# Errors` block.
 | `zanshin_config_file_write` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileWriteRequest` | — (no-payload success) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_ambiguous_file`, `jj.config_parse_error`, `jj.config_error` | 9.28 |
 | `zanshin_config_gc_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcListRequest` | `ConfigGcList` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
+| `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success; the outcome is `Envelope.warnings`: none, or one `env.login_shell_unresolved`) | `ffi.null_pointer`, `ffi.invalid_argument` | 9.36 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
 | `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |

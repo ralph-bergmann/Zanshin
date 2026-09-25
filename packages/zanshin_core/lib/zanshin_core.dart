@@ -22,6 +22,7 @@ export 'src/ffi/config.dart'
         MissingRepoConfig,
         WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
+export 'src/ffi/environment.dart' show LoginShellEnvironmentResult;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
 export 'src/ffi/workspace.dart' show WorkspaceRootResult;

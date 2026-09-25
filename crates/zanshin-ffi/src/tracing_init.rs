@@ -36,12 +36,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 
 use tracing::level_filters::{LevelFilter, STATIC_MAX_LEVEL};
+use tracing::Subscriber;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::filter::{FilterExt as _, Targets};
+use tracing_subscriber::layer::{Filter, SubscriberExt};
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
 const LOG_ENV: &str = "ZANSHIN_LOG";
+/// The target jj-lib logs every `git` spawn under — see [`git_subprocess_cap`].
+const GIT_SUBPROCESS_TARGET: &str = "jj_lib::git_subprocess";
 const LOG_DIR_ENV: &str = "ZANSHIN_LOG_DIR"; // explicit log-dir override (tests + ops); wins over $HOME
 const DEFAULT_LEVEL: &str = "info";
 const LOG_SUBDIR: &str = "Library/Logs/Zanshin"; // joined onto $HOME
@@ -70,16 +75,17 @@ fn init_with_dir(dir: &Path) {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(appender)
-                .with_filter(env_filter())
+                .with_filter(file_filter(std::env::var(LOG_ENV).ok()))
         });
 
-        // Console sink: ALWAYS on, everything down to `trace`. See the module docs — the
-        // release-profile cdylib makes a `cfg!(debug_assertions)` gate compile this out, and
-        // `flutter run` forwards native stderr, so this unconditional layer is the live dev
-        // view. WIP deviation from AR-P-5 ("no console in release"); re-gate before ship.
+        // Console sink: ALWAYS on, everything down to `trace` but the capped git-spawn target.
+        // See the module docs — the release-profile cdylib makes a `cfg!(debug_assertions)`
+        // gate compile this out, and `flutter run` forwards native stderr, so this
+        // unconditional layer is the live dev view. WIP deviation from AR-P-5 ("no console in
+        // release"); re-gate before ship.
         let console_layer = tracing_subscriber::fmt::layer()
             .with_writer(std::io::stderr)
-            .with_filter(LevelFilter::TRACE);
+            .with_filter(git_subprocess_cap());
 
         // try_init (not init): idempotent + never panics if a global is already set.
         let _ = tracing_subscriber::registry()
@@ -101,8 +107,22 @@ fn build_file_appender(dir: &Path) -> Option<RollingFileAppender> {
         .ok()
 }
 
-fn env_filter() -> EnvFilter {
-    env_filter_from(std::env::var(LOG_ENV).ok())
+/// The file sink's filter: `ZANSHIN_LOG` (see [`env_filter_from`]), capped by
+/// [`git_subprocess_cap`].
+fn file_filter<S: Subscriber + for<'a> LookupSpan<'a>>(raw: Option<String>) -> impl Filter<S> {
+    env_filter_from(raw).and(git_subprocess_cap())
+}
+
+/// Everything down to `trace`, except [`GIT_SUBPROCESS_TARGET`] at `info` — applied to BOTH sinks.
+// WHY: jj-lib logs every git spawn as `debug!(cmd = ?git_cmd, …)` (`git_subprocess.rs:147` @
+// 0.44.0), and `Command`'s `Debug` prints every variable set via `.envs` as `KEY="value"`. Since
+// Story 9.36 that is the whole adopted login-shell environment — API tokens an rc file exports
+// included — so without this cap every fetch/clone would write them to the always-on console
+// sink and, under `ZANSHIN_LOG=debug`, to the log file.
+fn git_subprocess_cap() -> Targets {
+    Targets::new()
+        .with_default(LevelFilter::TRACE)
+        .with_target(GIT_SUBPROCESS_TARGET, LevelFilter::INFO)
 }
 
 /// Pure: build the level filter from an explicit value (testable without env mutation).
@@ -210,6 +230,44 @@ mod tests {
         );
         tracing::subscriber::with_default(subscriber, body);
         rec.contents()
+    }
+
+    /// Like [`run_scoped`], but with `filter` as a PER-LAYER filter — how both sinks apply theirs.
+    fn run_filtered(
+        filter: impl Filter<tracing_subscriber::Registry> + Send + Sync + 'static,
+        body: impl FnOnce(),
+    ) -> String {
+        let rec = Recorder::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(rec.clone())
+                .with_filter(filter),
+        );
+        tracing::subscriber::with_default(subscriber, body);
+        rec.contents()
+    }
+
+    /// Story 9.36: jj-lib's git-spawn DEBUG line carries the adopted environment, so neither sink
+    /// records it — the file even under `ZANSHIN_LOG=debug` — while its INFO lines and every other
+    /// target's DEBUG lines still get through.
+    #[test]
+    fn git_spawn_debug_lines_reach_neither_sink() {
+        let emit = || {
+            tracing::debug!(target: "jj_lib::git_subprocess", "spawn-debug-line");
+            tracing::info!(target: "jj_lib::git_subprocess", "spawn-info-line");
+            tracing::debug!("other-debug-line");
+        };
+        let file = run_filtered(file_filter(Some("debug".to_owned())), emit);
+        let console = run_filtered(git_subprocess_cap(), emit);
+        for out in [file, console] {
+            assert!(!out.contains("spawn-debug-line"), "{out}");
+            assert!(out.contains("spawn-info-line"), "{out}");
+            assert!(
+                out.contains("other-debug-line"),
+                "only the git-spawn target is capped: {out}"
+            );
+        }
     }
 
     #[test]

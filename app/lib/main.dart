@@ -86,11 +86,19 @@ Future<void> main() async {
 /// Second boot step: the DI graph over the loaded settings (resolved before
 /// the graph so the DI chain stays synchronous — no @asynchronous provider),
 /// then the worker, whose provision listener wires the AppLifecycleListener
-/// for graceful shutdown on macOS, then the app widget.
+/// for graceful shutdown on macOS, then the login shell's environment (Story
+/// 9.36), then the app widget.
 Future<Widget> _startApp(SettingsStore settings) async {
   // ignore: specify_nonobvious_local_variable_types
   final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
-  await mainComponent.worker;
+  final ZanshinWorker worker = await mainComponent.worker;
+  // A Finder/Dock launch inherits launchd's minimal environment; adopt the
+  // login shell's BEFORE the app exists, so no repo is ever opened without it.
+  // On failure the started-with environment stays in effect — logged, not fatal.
+  final LoginShellEnvironmentResult environment = await worker.adoptLoginShellEnvironment();
+  for (final ZanshinWarning warning in environment.warnings) {
+    _log.warning('${warning.code}: ${warning.message}');
+  }
   return mainComponent.zanshinAppFactory.create();
 }
 
