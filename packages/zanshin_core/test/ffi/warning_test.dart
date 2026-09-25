@@ -29,7 +29,6 @@ import 'package:zanshin_core/src/ffi/config.dart'
         decodeConfigUnsetEnvelopeInternal;
 import 'package:zanshin_core/src/ffi/diagnostics.dart' show decodeDiagnosticsEnvelope;
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin_core/src/ffi/environment.dart' show decodeLoginShellEnvironmentEnvelopeInternal;
 import 'package:zanshin_core/src/ffi/file.dart'
     show decodeFileAnnotationEnvelope, decodeFileContentsEnvelope, decodeFileListEnvelope, decodeFileSearchEnvelope;
 import 'package:zanshin_core/src/ffi/file_ops.dart' show decodeTrackResultEnvelope, decodeUntrackResultEnvelope;
@@ -311,12 +310,6 @@ final List<_Case> _cases = [
     type: fbs.PayloadTypeId.ConfigGcResult,
     data: fbs.ConfigGcResultObjectBuilder.new,
     read: (b) => decodeConfigGcResultEnvelopeInternal(b).warnings,
-  ),
-  (
-    name: 'adoptLoginShellEnvironment',
-    type: fbs.PayloadTypeId.NONE,
-    data: () => null,
-    read: (b) => decodeLoginShellEnvironmentEnvelopeInternal(b).warnings,
   ),
 ];
 

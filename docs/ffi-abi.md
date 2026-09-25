@@ -76,10 +76,7 @@ Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.4
 order (config-load warnings, the pre-verb snapshot and imports, the verb body,
 `finish_transaction`). `code` is one of the registered `jj.*` warning codes
 (`docs/rust-error-codes.md` § Warning Codes); `message` is the CLI's text, verbatim,
-without the `Warning: ` heading and without hints. The one Zanshin-only code is
-`env.login_shell_unresolved`, which only `zanshin_environment_adopt` carries (Story 9.36):
-the login shell's environment could not be read — a terminal `jj` has no such block, it
-simply inherits its shell's environment. A warning never changes the
+without the `Warning: ` heading and without hints. A warning never changes the
 outcome: it rides the ok envelope AND the error envelope (a precondition that warned
 before the verb refused keeps its warnings next to the error). The vector is
 **absent** when there is nothing to warn about — every reader treats that as an empty
@@ -208,7 +205,9 @@ how the user repairs it — exactly as the CLI's config commands never load the
 workspace.
 
 `zanshin_environment_adopt` (Story 9.36) uses the same two-parameter shape: the app
-calls it once at start-up, before any repo is opened, so there is no handle to pass.
+calls it once at start-up, before any worker or repo exists, so there is no handle to
+pass — and, being handle-less and cheap (Rust only stores the map), it is called on the
+app's main isolate, not through the worker.
 
 This section is the whole convention. The per-symbol rustdoc in
 `crates/zanshin-ffi/include/zanshin_ffi.h` does not repeat it.
@@ -259,15 +258,18 @@ call). Five distinct refusals sit at five distinct layers:
 The two-parameter `zanshin_config_*` shape has rows 1–4 and **no row 5**: after the
 required fields (row 4 there also refuses `ConfigScope::Unspecified` where a scope
 is required, and `zanshin_config_list`'s scope-plus-`include_defaults` conflict)
-come the verb's own codes. `zanshin_environment_adopt` has rows 1–3 only: no field of
-its table is required (an absent `shell` is `$SHELL`; `timeout_ms` is a scalar) and it
-has no refusal of its own — a login shell that cannot be read is a warning, not an error.
+come the verb's own codes. `zanshin_environment_adopt` has rows 1–4 and nothing after
+them: row 4 refuses an absent or EMPTY `variables` vector (an empty environment is never
+a login shell's — `variables is required`) and an entry whose `name` is absent or empty
+(`variables[<i>].name is required`); an absent `value` is the empty value. A login shell
+that could not be read never reaches Rust: the Dart reader reports it itself.
 
 Row 4 is the *reader's* own required-field guard, which among the handle-taking
 readers only five have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
 and `url`, `git remote set-url`'s `name`, `interdiff`'s `from.id` / `to.id` — the
 `id` inside a present `RevisionRef` union arm), plus the `zanshin_config_*` readers
-above (`name`, `value`, `path`, `text`, a required scope). `interdiff`'s "at least one of from or to" refusal is
+above (`name`, `value`, `path`, `text`, a required scope) and the
+`zanshin_environment_adopt` reader (`variables`, each entry's `name`). `interdiff`'s "at least one of from or to" refusal is
 *not* row 4: an absent side is a legal value there, and the pair is judged by the
 jj layer after row 5. Refusals raised further in — an empty `names` vector, an
 unparseable pattern, a malformed commit-id prefix — likewise come from the jj
@@ -349,7 +351,9 @@ request-buffer symbols.
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
 so they are nested values, never a buffer root: nothing verifies them
 standalone, and they carry no `kind` tag of their own — the tag belongs to the
-request table that owns them.
+request table that owns them. `EnvironmentVariable` (Story 9.36) is the same kind of
+nested helper: the entries of `EnvironmentAdoptRequest`'s `variables` vector, `name` and
+`value` as `[ubyte]` because an environment is not guaranteed UTF-8.
 
 #### The `RequestKind` tag
 
@@ -474,7 +478,7 @@ or no `# Errors` block.
 | `zanshin_config_file_write` | `(const uint8_t *data, uintptr_t len)` | `ConfigFileWriteRequest` | — (no-payload success) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.path_not_found`, `jj.repo_not_found`, `jj.config_ambiguous_file`, `jj.config_parse_error`, `jj.config_error` | 9.28 |
 | `zanshin_config_gc_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcListRequest` | `ConfigGcList` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
-| `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success; the outcome is `Envelope.warnings`: none, or one `env.login_shell_unresolved`) | `ffi.null_pointer`, `ffi.invalid_argument` | 9.36 |
+| `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success, no warnings) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input` | 9.36 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
 | `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |

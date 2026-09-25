@@ -245,9 +245,6 @@ pub const JJ_CONFIG_GC_DELETE_FAILED: &str = "jj.config_gc_delete_failed";
 pub const JJ_CONFIG_NOTHING_LISTED: &str = "jj.config_nothing_listed";
 /// Warning: a failed clone could not remove what it had created (Story 9.33).
 pub const JJ_CLONE_CLEANUP_FAILED: &str = "jj.clone_cleanup_failed";
-/// Warning: the login shell's environment could not be read at start-up; the environment Zanshin
-/// was started with stays in effect (Story 9.36, Zanshin-only).
-pub const ENV_LOGIN_SHELL_UNRESOLVED: &str = "env.login_shell_unresolved";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -279,7 +276,6 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigGcDeleteFailed => JJ_CONFIG_GC_DELETE_FAILED,
         K::ConfigNothingListed => JJ_CONFIG_NOTHING_LISTED,
         K::CloneCleanupFailed => JJ_CLONE_CLEANUP_FAILED,
-        K::LoginShellUnresolved => ENV_LOGIN_SHELL_UNRESOLVED,
     }
 }
 
@@ -1053,7 +1049,6 @@ mod tests {
                 K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
                 K::ConfigNothingListed => "jj.config_nothing_listed",
                 K::CloneCleanupFailed => "jj.clone_cleanup_failed",
-                K::LoginShellUnresolved => "env.login_shell_unresolved",
             }
         }
         let kinds = [
@@ -1081,7 +1076,6 @@ mod tests {
             K::ConfigGcDeleteFailed,
             K::ConfigNothingListed,
             K::CloneCleanupFailed,
-            K::LoginShellUnresolved,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

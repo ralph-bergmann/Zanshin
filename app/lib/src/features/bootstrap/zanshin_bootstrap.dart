@@ -50,8 +50,8 @@ abstract interface class BootWindowHost {
 
 /// Runs the asynchronous boot and opens the app's windows around it.
 ///
-/// The boot (`openSettings` → `startApp`) starts before any window exists and
-/// races [splashIndicatorDelay]:
+/// The boot (`openSettings` alongside `adoptShellEnvironment` → `startApp`)
+/// starts before any window exists and races [splashIndicatorDelay]:
 ///
 /// * the boot wins — the main window is the first and only window, no splash
 ///   object is ever created;
@@ -66,7 +66,12 @@ abstract interface class BootWindowHost {
 /// Timing is driven by [Timer]s alone, never by reading a clock, so the fake
 /// time of a widget test controls it fully.
 class ZanshinBootSequence {
-  ZanshinBootSequence({required this.host, required this.openSettings, required this.startApp});
+  ZanshinBootSequence({
+    required this.host,
+    required this.openSettings,
+    required this.adoptShellEnvironment,
+    required this.startApp,
+  });
 
   /// The window layer this sequence drives.
   final BootWindowHost host;
@@ -74,6 +79,11 @@ class ZanshinBootSequence {
   /// First boot step: the persisted settings, needed by the DI graph and by
   /// the failure page's theme.
   final Future<SettingsStore> Function() openSettings;
+
+  /// Runs alongside [openSettings]: adopts the login shell's environment, so
+  /// that no repo is ever opened without it (Story 9.36). [startApp] waits for
+  /// it; a throw fails the boot like a settings failure.
+  final Future<void> Function() adoptShellEnvironment;
 
   /// Second boot step: builds the DI graph over the loaded settings, starts
   /// the worker and returns the app widget.
@@ -143,12 +153,21 @@ class ZanshinBootSequence {
     _openMainWhenDue();
   }
 
-  /// Both boot steps; the persisted mode is known between them, in time for a
-  /// failure in the second one.
+  /// The boot steps; the persisted mode is known before the app starts, in
+  /// time for a failure in the last one. The login shell's environment is read
+  /// while the settings load, so its time is hidden behind theirs.
   Future<Widget> _load() async {
     log('lade Settings…');
+    var shellPending = true;
+    // `ignore` only keeps an early failure from counting as unhandled while
+    // the settings load: the await below still throws it.
+    final Future<void> shellEnvironment = adoptShellEnvironment().whenComplete(() => shellPending = false)..ignore();
     final SettingsStore settings = await openSettings();
     _persistedMode = settings.value.appearance.themeMode;
+    if (shellPending) {
+      log('lese Shell-Umgebung…');
+    }
+    await shellEnvironment;
     log('starte App…');
     return startApp(settings);
   }

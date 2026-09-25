@@ -2,25 +2,26 @@
 
 //! Story 9.36 witness: once the login shell's environment is adopted, it is what the config stack,
 //! jj-lib's `git` subprocess (fetch AND clone), the snapshot's global git ignore and the
-//! repo-root walk-up see — through the real process-wide store and the public API. The
-//! mechanism's failure rows are pinned inline in `src/environment.rs` (on local stores).
+//! repo-root walk-up see — through the real process-wide store and the public API. The store's
+//! readers and the git-map filter are pinned inline in `src/environment.rs` (on local stores);
+//! reading the login shell is `zanshin_core`'s (Dart) job, so no shell runs here.
 //!
 //! # Why one test in its own binary
 //!
 //! The adoption is write-once and process-wide: after it, every environment read in this binary
-//! sees the adopted map. So this file holds exactly ONE `#[test]` that walks the matrix rows in
-//! order — before, adopt, after, the second call. The fake login shell UNSETS `JJ_CONFIG`
-//! (re-enabling user-config discovery, which is what the XDG row needs), so it also points
-//! `XDG_CONFIG_HOME` and `HOME` into the temp dir: no developer config is ever read.
+//! sees the adopted map. So this file holds exactly ONE `#[test]` that walks the rows in order —
+//! before, adopt, after, the second call. The adopted map is the process environment with the
+//! edits a login shell's rc file could make: it UNSETS `JJ_CONFIG` (re-enabling user-config
+//! discovery, which is what the XDG row needs), so it also points `XDG_CONFIG_HOME` and `HOME`
+//! into the temp dir: no developer config is ever read.
 
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::time::Duration;
 
-use zanshin_jj::{
-    adopt_login_shell_environment, config_get, find_repo_root, Backend, ConfigCmdError, ProgressEvent, Repo,
-};
+use zanshin_jj::{adopt_environment, config_get, find_repo_root, Backend, ConfigCmdError, ProgressEvent, Repo};
 
 /// Writes an executable `#!/bin/sh` script.
 fn script(path: &Path, body: &str) {
@@ -42,16 +43,35 @@ fn git_saw_the_shell_environment(git_env: &Path, what: &str) {
     assert!(!lines.iter().any(|l| l.starts_with("LC_ALL=")), "{what}: {seen}");
 }
 
+/// The login shell's environment as the app would read it: the process environment (which the
+/// shell inherits) with an rc file's edits applied.
+fn login_shell_environment(dir: &Path) -> HashMap<OsString, OsString> {
+    let mut environment: HashMap<OsString, OsString> = std::env::vars_os().collect();
+    environment.remove(&OsString::from("JJ_CONFIG"));
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut shell_path = dir.join("bin").into_os_string();
+    shell_path.push(":");
+    shell_path.push(path);
+    for (name, value) in [
+        ("JJ_USER", OsString::from("Shell User")),
+        ("XDG_CONFIG_HOME", dir.join("xdg").into_os_string()),
+        ("HOME", dir.join("home").into_os_string()),
+        ("LC_ALL", OsString::from("de_DE.UTF-8")),
+        ("LC_MESSAGES", OsString::from("de_DE.UTF-8")),
+        ("ZANSHIN_SENTINEL", OsString::from("1")),
+        ("PATH", shell_path),
+    ] {
+        environment.insert(OsString::from(name), value);
+    }
+    environment
+}
+
 #[test]
 fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let dir = tmp.path().display().to_string();
-    let shell = tmp.path().join("login-shell");
     let process_xdg = tmp.path().join("process-xdg");
     for (name, value) in test_helpers::TEST_ENV.into_iter().chain([
         ("JJ_USER", "Test User"),
-        // The adoption below passes no shell: this `$SHELL` is the one it runs.
-        ("SHELL", shell.to_str().expect("utf-8 temp path")),
         // NOT the adopted one: the global git ignore must come from the shell's.
         ("XDG_CONFIG_HOME", process_xdg.to_str().expect("utf-8 temp path")),
     ]) {
@@ -71,14 +91,6 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
         &tmp.path().join("bin").join("git"),
         &format!("env >> '{}'\nexit 1", git_env.display()),
     );
-    script(
-        &shell,
-        &format!(
-            "unset JJ_CONFIG\nexport JJ_USER='Shell User' XDG_CONFIG_HOME='{dir}/xdg' HOME='{dir}/home' \
-             LC_ALL=de_DE.UTF-8 LC_MESSAGES=de_DE.UTF-8 ZANSHIN_SENTINEL=1 PATH='{dir}/bin':\"$PATH\"\n\
-             exec /bin/sh -c \"$4\""
-        ),
-    );
     // A git-backed workspace with a remote, set up in the process environment.
     let ws = tmp.path().join("ws");
     fs::create_dir_all(&ws).expect("ws dir");
@@ -94,7 +106,7 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
         "JJ_CONFIG=\"\" disables user-config discovery"
     );
 
-    assert!(adopt_login_shell_environment(None, Duration::from_secs(5)).is_empty());
+    adopt_environment(login_shell_environment(tmp.path()));
 
     // After: the login shell's — its identity, its XDG user config…
     assert_eq!(user_name(), "Shell User");
@@ -138,7 +150,10 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
         "the walk stops at the adopted HOME"
     );
 
-    // A second call is a no-op: nothing spawned, no warning, the first map stays.
-    assert!(adopt_login_shell_environment(Some("/nonexistent/shell".as_ref()), Duration::from_secs(5)).is_empty());
+    // A second adoption is a no-op: the first map stays.
+    adopt_environment(HashMap::from([(
+        OsString::from("JJ_USER"),
+        OsString::from("Other User"),
+    )]));
     assert_eq!(user_name(), "Shell User");
 }

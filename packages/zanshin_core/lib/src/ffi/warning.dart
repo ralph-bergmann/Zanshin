@@ -16,8 +16,9 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 /// is the CLI's text for that warning, verbatim (English, without the
 /// `Warning: ` heading and without the CLI's hints), paths rendered relative
 /// to the workspace root. The one exception is the Zanshin-only
-/// [ZanshinWarningCode.loginShellUnresolved] (Story 9.36), whose message is
-/// Zanshin's own — no CLI prints it.
+/// [ZanshinWarningCode.loginShellUnresolved] (Story 9.36): Dart builds it
+/// itself — it never crosses FFI — and its message is Zanshin's own; no CLI
+/// prints it.
 @immutable
 final class ZanshinWarning {
   const ZanshinWarning({required this.code, required this.message});
@@ -119,8 +120,8 @@ abstract final class ZanshinWarningCode {
 
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
-  /// Zanshin-only code — no jj CLI prints it — carried only by
-  /// `ZanshinWorker.adoptLoginShellEnvironment`.
+  /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
+  /// never on an envelope, only in `adoptLoginShellEnvironment`'s result.
   static const loginShellUnresolved = 'env.login_shell_unresolved';
 
   /// Every constant above, in registry order.

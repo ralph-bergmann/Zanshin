@@ -70,6 +70,7 @@ Future<void> main() async {
       await ZanshinBootSequence(
         host: ZanshinWindowHost(windows: AppWindows()),
         openSettings: SettingsStore.open,
+        adoptShellEnvironment: _adoptShellEnvironment,
         startApp: _startApp,
       ).run();
     },
@@ -83,22 +84,25 @@ Future<void> main() async {
   );
 }
 
+/// Runs alongside the settings load (Story 9.36): a Finder/Dock launch inherits
+/// launchd's minimal environment, so the login shell's is adopted before the
+/// app starts and no repo is ever opened without it. On failure the
+/// started-with environment stays in effect — logged, not fatal.
+Future<void> _adoptShellEnvironment() async {
+  final LoginShellEnvironmentResult result = await adoptLoginShellEnvironment();
+  for (final ZanshinWarning warning in result.warnings) {
+    _log.warning('${warning.code}: ${warning.message}');
+  }
+}
+
 /// Second boot step: the DI graph over the loaded settings (resolved before
 /// the graph so the DI chain stays synchronous — no @asynchronous provider),
 /// then the worker, whose provision listener wires the AppLifecycleListener
-/// for graceful shutdown on macOS, then the login shell's environment (Story
-/// 9.36), then the app widget.
+/// for graceful shutdown on macOS, then the app widget.
 Future<Widget> _startApp(SettingsStore settings) async {
   // ignore: specify_nonobvious_local_variable_types
   final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
-  final ZanshinWorker worker = await mainComponent.worker;
-  // A Finder/Dock launch inherits launchd's minimal environment; adopt the
-  // login shell's BEFORE the app exists, so no repo is ever opened without it.
-  // On failure the started-with environment stays in effect — logged, not fatal.
-  final LoginShellEnvironmentResult environment = await worker.adoptLoginShellEnvironment();
-  for (final ZanshinWarning warning in environment.warnings) {
-    _log.warning('${warning.code}: ${warning.message}');
-  }
+  await mainComponent.worker;
   return mainComponent.zanshinAppFactory.create();
 }
 

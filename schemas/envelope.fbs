@@ -492,13 +492,21 @@ table ConfigGcDeleteRequest {
   config_dirs: [string];
 }
 
+/// One variable of the environment `zanshin_environment_adopt` installs (Story 9.36) — a nested
+/// helper table like ChangeIdRef, not a request table. Both sides are `[ubyte]`, not `string`: an
+/// environment is not guaranteed UTF-8, and a non-UTF-8 value must reach the `git` subprocess
+/// byte for byte. `name` is required and non-empty; an absent `value` is the empty value.
+table EnvironmentVariable {
+  name: [ubyte];
+  value: [ubyte];
+}
+
 /// Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
-/// environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
-/// scalar has no absent form here): how long the shell may take to print its environment.
+/// environment (Story 9.36): the environment the app read from the login shell, every variable of
+/// it. `variables` is required and non-empty — an empty environment is never a login shell's.
 table EnvironmentAdoptRequest {
   kind: RequestKind;
-  shell: string;
-  timeout_ms: uint;
+  variables: [EnvironmentVariable];
 }
 
 // ── Payload union ─────────────────────────────────────────────────────────────
@@ -529,7 +537,7 @@ table EnvironmentAdoptRequest {
 //   Story 9-28 : ConfigListResult ✓, ConfigGetResult ✓, ConfigPathResult ✓, ConfigSetResult ✓,
 //                ConfigUnsetResult ✓, ConfigFileText ✓, ConfigGcList ✓, ConfigGcResult ✓
 //                (`zanshin_config_file_write` answers ok with no payload)
-//   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload, its warnings only)
+//   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload and no warnings)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1400,8 +1408,7 @@ union Payload {
 /// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 /// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
 /// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-/// tooltips only; nothing parses it. The one exception is the Zanshin-only
-/// `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
+/// tooltips only; nothing parses it.
 table Warning {
   code: string;
   message: string;

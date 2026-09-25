@@ -1075,22 +1075,6 @@ final class ConfigGcDeleteCommand extends WorkerCommand {
   final List<String> configDirs;
 }
 
-/// Adopt the login shell's environment (Story 9.36) — see
-/// `ZanshinWorker.adoptLoginShellEnvironment`.
-///
-/// HANDLE-FREE, like the config surface: the app sends it once at start-up,
-/// before any repo is opened. The worker calls `zanshinEnvironmentAdopt` and
-/// replies with a `BufferResult` carrying the envelope bytes.
-final class EnvironmentAdoptCommand extends WorkerCommand {
-  const EnvironmentAdoptCommand({required super.commandId, required this.shell, required this.timeoutMs});
-
-  /// The login shell to run; `null` = the process's `$SHELL`.
-  final String? shell;
-
-  /// How long the shell may take to print its environment, in milliseconds.
-  final int timeoutMs;
-}
-
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

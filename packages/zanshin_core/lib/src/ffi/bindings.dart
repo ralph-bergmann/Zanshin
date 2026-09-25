@@ -627,22 +627,22 @@ external ffi.Pointer<ZanshinBuf> zanshin_edit(
   ffi.Pointer<ffi.Char> change_id,
 );
 
-/// Adopt the login shell's environment for every jj environment read (Story 9.36): runs
-/// `<shell> -l -i -c` once (`shell` absent: the process's `$SHELL`), reads its `env -0` dump
-/// within `timeout_ms`, and from then on the jj config stack and the `git` subprocess of a fetch
-/// or clone see that environment — the terminal `jj`'s — instead of the one the app was started
-/// with. Meant for app start-up, before any repo is opened; a second call after a successful one
-/// is a no-op. The arguments cross as an `EnvironmentAdoptRequest` buffer.
+/// Adopt the login shell's environment for every jj environment read (Story 9.36): the app reads
+/// it at start-up (`$SHELL -l -i -c`, an `env -0` dump) and passes every variable in an
+/// `EnvironmentAdoptRequest` buffer — names and values as raw bytes. From then on the jj config
+/// stack and the `git` subprocess of a fetch or clone see that environment — the terminal `jj`'s
+/// — instead of the one the app was started with, which itself is never changed. Meant for app
+/// start-up, before any repo is opened; a call after a successful one is a no-op (the first
+/// environment stays).
 ///
-/// Returns an ok `Envelope` with NO `data`. Its `warnings` are empty on success and carry exactly
-/// one `env.login_shell_unresolved` when the environment could not be read — the shell could not
-/// start, exited without printing it, or timed out; nothing is adopted then and the environment
-/// the app was started with stays in effect.
+/// Returns an ok `Envelope` with NO `data` and no warnings.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as an `EnvironmentAdoptRequest`, or its
 /// `kind` is not `EnvironmentAdopt`.
+/// - `jj.invalid_input` — `variables` is absent or empty, or one of its entries has no `name` or
+/// an empty one; nothing is adopted.
 ///
 /// # Safety
 /// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
@@ -2284,9 +2284,7 @@ const int Envelope_VT_PRECONDITION = 12;
 
 const int Envelope_VT_WARNINGS = 14;
 
-const int EnvironmentAdoptRequest_VT_SHELL = 6;
-
-const int EnvironmentAdoptRequest_VT_TIMEOUT_MS = 8;
+const int EnvironmentAdoptRequest_VT_VARIABLES = 6;
 
 const int EvologEntry_VT_OPERATION_ID = 8;
 

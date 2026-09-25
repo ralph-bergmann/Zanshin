@@ -66,7 +66,7 @@ pub use config_cmd::{
 };
 pub use convert::{convert_colocated, convert_import};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
-pub use environment::adopt_login_shell_environment;
+pub use environment::adopt_environment;
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};

@@ -6620,12 +6620,157 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum EnvironmentVariableOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One variable of the environment `zanshin_environment_adopt` installs (Story 9.36) — a nested
+        /// helper table like ChangeIdRef, not a request table. Both sides are `[ubyte]`, not `string`: an
+        /// environment is not guaranteed UTF-8, and a non-UTF-8 value must reach the `git` subprocess
+        /// byte for byte. `name` is required and non-empty; an absent `value` is the empty value.
+        pub struct EnvironmentVariable<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for EnvironmentVariable<'a> {
+            type Inner = EnvironmentVariable<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> EnvironmentVariable<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                EnvironmentVariable { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args EnvironmentVariableArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<EnvironmentVariable<'bldr>> {
+                let mut builder = EnvironmentVariableBuilder::new(_fbb);
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            EnvironmentVariable::VT_NAME,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn value(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            EnvironmentVariable::VT_VALUE,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for EnvironmentVariable<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "value",
+                        Self::VT_VALUE,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct EnvironmentVariableArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+            pub value: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for EnvironmentVariableArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                EnvironmentVariableArgs {
+                    name: None,
+                    value: None,
+                }
+            }
+        }
+
+        pub struct EnvironmentVariableBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> EnvironmentVariableBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EnvironmentVariable::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EnvironmentVariable::VT_VALUE, value);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> EnvironmentVariableBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                EnvironmentVariableBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<EnvironmentVariable<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for EnvironmentVariable<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("EnvironmentVariable");
+                ds.field("name", &self.name());
+                ds.field("value", &self.value());
+                ds.finish()
+            }
+        }
         pub enum EnvironmentAdoptRequestOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
         /// Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
-        /// environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
-        /// scalar has no absent form here): how long the shell may take to print its environment.
+        /// environment (Story 9.36): the environment the app read from the login shell, every variable of
+        /// it. `variables` is required and non-empty — an empty environment is never a login shell's.
         pub struct EnvironmentAdoptRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -6642,8 +6787,7 @@ pub mod zanshin {
 
         impl<'a> EnvironmentAdoptRequest<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
-            pub const VT_SHELL: ::flatbuffers::VOffsetT = 6;
-            pub const VT_TIMEOUT_MS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_VARIABLES: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -6655,9 +6799,8 @@ pub mod zanshin {
                 args: &'args EnvironmentAdoptRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<EnvironmentAdoptRequest<'bldr>> {
                 let mut builder = EnvironmentAdoptRequestBuilder::new(_fbb);
-                builder.add_timeout_ms(args.timeout_ms);
-                if let Some(x) = args.shell {
-                    builder.add_shell(x);
+                if let Some(x) = args.variables {
+                    builder.add_variables(x);
                 }
                 builder.add_kind(args.kind);
                 builder.finish()
@@ -6675,24 +6818,17 @@ pub mod zanshin {
                 }
             }
             #[inline]
-            pub fn shell(&self) -> Option<&'a str> {
+            pub fn variables(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EnvironmentVariable<'a>>>>
+            {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(EnvironmentAdoptRequest::VT_SHELL, None)
-                }
-            }
-            #[inline]
-            pub fn timeout_ms(&self) -> u32 {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<u32>(EnvironmentAdoptRequest::VT_TIMEOUT_MS, Some(0))
-                        .unwrap()
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EnvironmentVariable>>,
+                    >>(EnvironmentAdoptRequest::VT_VARIABLES, None)
                 }
             }
         }
@@ -6705,24 +6841,27 @@ pub mod zanshin {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
                     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("shell", Self::VT_SHELL, false)?
-                    .visit_field::<u32>("timeout_ms", Self::VT_TIMEOUT_MS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<EnvironmentVariable>>,
+                    >>("variables", Self::VT_VARIABLES, false)?
                     .finish();
                 Ok(())
             }
         }
         pub struct EnvironmentAdoptRequestArgs<'a> {
             pub kind: RequestKind,
-            pub shell: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub timeout_ms: u32,
+            pub variables: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<EnvironmentVariable<'a>>>,
+                >,
+            >,
         }
         impl<'a> Default for EnvironmentAdoptRequestArgs<'a> {
             #[inline]
             fn default() -> Self {
                 EnvironmentAdoptRequestArgs {
                     kind: RequestKind::Unspecified,
-                    shell: None,
-                    timeout_ms: 0,
+                    variables: None,
                 }
             }
         }
@@ -6738,14 +6877,14 @@ pub mod zanshin {
                     .push_slot::<RequestKind>(EnvironmentAdoptRequest::VT_KIND, kind, RequestKind::Unspecified);
             }
             #[inline]
-            pub fn add_shell(&mut self, shell: ::flatbuffers::WIPOffset<&'b str>) {
+            pub fn add_variables(
+                &mut self,
+                variables: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<EnvironmentVariable<'b>>>,
+                >,
+            ) {
                 self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EnvironmentAdoptRequest::VT_SHELL, shell);
-            }
-            #[inline]
-            pub fn add_timeout_ms(&mut self, timeout_ms: u32) {
-                self.fbb_
-                    .push_slot::<u32>(EnvironmentAdoptRequest::VT_TIMEOUT_MS, timeout_ms, 0);
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(EnvironmentAdoptRequest::VT_VARIABLES, variables);
             }
             #[inline]
             pub fn new(
@@ -6768,8 +6907,7 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("EnvironmentAdoptRequest");
                 ds.field("kind", &self.kind());
-                ds.field("shell", &self.shell());
-                ds.field("timeout_ms", &self.timeout_ms());
+                ds.field("variables", &self.variables());
                 ds.finish()
             }
         }
@@ -17670,8 +17808,7 @@ pub mod zanshin {
         /// fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
         /// Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
         /// line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-        /// tooltips only; nothing parses it. The one exception is the Zanshin-only
-        /// `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
+        /// tooltips only; nothing parses it.
         pub struct Warning<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

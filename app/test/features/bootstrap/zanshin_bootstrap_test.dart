@@ -163,6 +163,7 @@ void main() {
       ZanshinBootSequence(
         host: host,
         openSettings: () => settings.future,
+        adoptShellEnvironment: () async {},
         startApp: (_) => app.future,
       ).run(),
     );
@@ -250,6 +251,9 @@ void main() {
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
+    // Let the boot reach the app step first: an error completed before
+    // anything awaits it would count as unhandled.
+    await flush(tester);
     app.completeError(StateError('worker refused to start'));
     await flush(tester);
 
@@ -292,6 +296,7 @@ void main() {
     final app = Completer<Widget>();
     final FakeBootWindowHost host = await startSequence(tester, settings: settings, app: app);
 
+    await flush(tester);
     app.completeError(StateError('worker refused to start'));
     await flush(tester);
 
@@ -340,6 +345,7 @@ void main() {
       ZanshinBootSequence(
         host: host,
         openSettings: () async => store,
+        adoptShellEnvironment: () async {},
         startApp: (_) => app.future,
       ).run().then((_) => finished = true),
     );
@@ -373,6 +379,7 @@ void main() {
     final sequence = ZanshinBootSequence(
       host: host,
       openSettings: () => settings.future,
+      adoptShellEnvironment: () async {},
       startApp: (_) => app.future,
     );
     final seen = <String>[];
@@ -386,6 +393,81 @@ void main() {
 
     expect(seen, <String>['lade Settings…', 'starte App…']);
     expect(sequence.status.value, 'starte App…');
+  });
+
+  testWidgets('the login shell environment is read alongside the settings, and the app starts only after it', (
+    tester,
+  ) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>();
+    final shell = Completer<void>();
+    final app = Completer<Widget>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    final steps = <String>[];
+    final sequence = ZanshinBootSequence(
+      host: host,
+      openSettings: () {
+        steps.add('settings');
+        return settings.future;
+      },
+      adoptShellEnvironment: () {
+        steps.add('shell');
+        return shell.future;
+      },
+      startApp: (_) {
+        steps.add('app');
+        return app.future;
+      },
+    );
+    final seen = <String>[];
+    sequence.status.addListener(() => seen.add(sequence.status.value));
+
+    unawaited(sequence.run());
+    expect(steps, <String>['shell', 'settings'], reason: 'both start at once');
+
+    settings.complete(store);
+    await flush(tester);
+    expect(steps, <String>['shell', 'settings'], reason: 'the app waits for the shell environment');
+    expect(sequence.status.value, 'lese Shell-Umgebung…');
+
+    shell.complete();
+    await flush(tester);
+    expect(steps, <String>['shell', 'settings', 'app']);
+
+    app.complete(const AppMarker());
+    await flush(tester);
+    expect(host.calls, <String>['main']);
+    expect(seen, <String>['lade Settings…', 'lese Shell-Umgebung…', 'starte App…']);
+  });
+
+  testWidgets('a failed shell environment adoption fails the boot like a settings failure', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
+    final settings = Completer<SettingsStore>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    var appStarted = false;
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () => settings.future,
+        adoptShellEnvironment: () async => throw StateError('the shell environment broke'),
+        startApp: (_) async {
+          appStarted = true;
+          return const AppMarker();
+        },
+      ).run(),
+    );
+
+    // The failure lands while the settings still load: it must not count as
+    // unhandled (that would fail this test), only fail the boot once awaited.
+    await flush(tester);
+    settings.complete(store);
+    await flush(tester);
+
+    expect(appStarted, isFalse);
+    expect(host.calls, <String>['main']);
+    expect((host.content! as BootFailure).mode, ThemeMode.dark);
   });
 
   testWidgets('the splash card lays its footer out on the design grid', (tester) async {

@@ -3803,9 +3803,95 @@ class ConfigGcDeleteRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One variable of the environment `zanshin_environment_adopt` installs (Story 9.36) — a nested
+///  helper table like ChangeIdRef, not a request table. Both sides are `[ubyte]`, not `string`: an
+///  environment is not guaranteed UTF-8, and a non-UTF-8 value must reach the `git` subprocess
+///  byte for byte. `name` is required and non-empty; an absent `value` is the empty value.
+class EnvironmentVariable {
+  EnvironmentVariable._(this._bc, this._bcOffset);
+  factory EnvironmentVariable(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<EnvironmentVariable> reader = _EnvironmentVariableReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<int>? get name => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<int>? get value => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'EnvironmentVariable{name: ${name}, value: ${value}}';
+  }
+}
+
+class _EnvironmentVariableReader extends fb.TableReader<EnvironmentVariable> {
+  const _EnvironmentVariableReader();
+
+  @override
+  EnvironmentVariable createObject(fb.BufferContext bc, int offset) => EnvironmentVariable._(bc, offset);
+}
+
+class EnvironmentVariableBuilder {
+  EnvironmentVariableBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addValueOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class EnvironmentVariableObjectBuilder extends fb.ObjectBuilder {
+  final List<int>? _name;
+  final List<int>? _value;
+
+  EnvironmentVariableObjectBuilder({
+    List<int>? name,
+    List<int>? value,
+  }) : _name = name,
+       _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeListUint8(_name!);
+    final int? valueOffset = _value == null ? null : fbBuilder.writeListUint8(_value!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, valueOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_environment_adopt` — the app's start-up adoption of the login shell's
-///  environment (Story 9.36). `shell` absent = the process's `$SHELL`. `timeout_ms` is required (a
-///  scalar has no absent form here): how long the shell may take to print its environment.
+///  environment (Story 9.36): the environment the app read from the login shell, every variable of
+///  it. `variables` is required and non-empty — an empty environment is never a login shell's.
 class EnvironmentAdoptRequest {
   EnvironmentAdoptRequest._(this._bc, this._bcOffset);
   factory EnvironmentAdoptRequest(List<int> bytes) {
@@ -3819,12 +3905,12 @@ class EnvironmentAdoptRequest {
   final int _bcOffset;
 
   RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
-  String? get shell => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  int get timeoutMs => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  List<EnvironmentVariable>? get variables =>
+      const fb.ListReader<EnvironmentVariable>(EnvironmentVariable.reader).vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'EnvironmentAdoptRequest{kind: ${kind}, shell: ${shell}, timeoutMs: ${timeoutMs}}';
+    return 'EnvironmentAdoptRequest{kind: ${kind}, variables: ${variables}}';
   }
 }
 
@@ -3841,7 +3927,7 @@ class EnvironmentAdoptRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(2);
   }
 
   int addKind(RequestKind? kind) {
@@ -3849,13 +3935,8 @@ class EnvironmentAdoptRequestBuilder {
     return fbBuilder.offset;
   }
 
-  int addShellOffset(int? offset) {
+  int addVariablesOffset(int? offset) {
     fbBuilder.addOffset(1, offset);
-    return fbBuilder.offset;
-  }
-
-  int addTimeoutMs(int? timeoutMs) {
-    fbBuilder.addUint32(2, timeoutMs);
     return fbBuilder.offset;
   }
 
@@ -3866,25 +3947,23 @@ class EnvironmentAdoptRequestBuilder {
 
 class EnvironmentAdoptRequestObjectBuilder extends fb.ObjectBuilder {
   final RequestKind? _kind;
-  final String? _shell;
-  final int? _timeoutMs;
+  final List<EnvironmentVariableObjectBuilder>? _variables;
 
   EnvironmentAdoptRequestObjectBuilder({
     RequestKind? kind,
-    String? shell,
-    int? timeoutMs,
+    List<EnvironmentVariableObjectBuilder>? variables,
   }) : _kind = kind,
-       _shell = shell,
-       _timeoutMs = timeoutMs;
+       _variables = variables;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? shellOffset = _shell == null ? null : fbBuilder.writeString(_shell!);
-    fbBuilder.startTable(3);
+    final int? variablesOffset = _variables == null
+        ? null
+        : fbBuilder.writeList(_variables!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
-    fbBuilder.addOffset(1, shellOffset);
-    fbBuilder.addUint32(2, _timeoutMs);
+    fbBuilder.addOffset(1, variablesOffset);
     return fbBuilder.endTable();
   }
 
@@ -10555,8 +10634,7 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
 ///  line(s) plus their detail lines, `\n`-joined, without heading or hints) — for logs and
-///  tooltips only; nothing parses it. The one exception is the Zanshin-only
-///  `env.login_shell_unresolved` (Story 9.36), whose message is Zanshin's own: no CLI prints it.
+///  tooltips only; nothing parses it.
 class Warning {
   Warning._(this._bc, this._bcOffset);
   factory Warning(List<int> bytes) {
