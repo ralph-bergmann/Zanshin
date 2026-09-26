@@ -368,7 +368,7 @@ _Implementing `spec-9-27-effective-user-settings-config-stack.md` surfaced items
 - **`pubspec.lock` drifts on every `dart`/`flutter` resolve** (`vector_math` 2.4.2 → 2.4.3) — unrelated to 9.27, reverted from its diff; the lock wants a deliberate `pub upgrade` commit.
 - **`Repo::git_fetch` and `Repo::describe` write an operation when nothing changed** — **MOVED 2026-09-24 → Story 9.40** (`9-40-no-change-verbs-write-no-operation`; the gate goes into `mutate::finish_verb`). [`crates/zanshin-jj/src/remotes.rs::git_fetch`, `crates/zanshin-jj/src/mutate.rs::describe`; pre-existing, found by the 9.27 review] — the CLI's `jj git fetch` / `jj describe` end in `tx.finish` (`cli/src/commands/git/fetch.rs:254`, `cli/src/commands/describe.rs:262` @ v0.44.0), which prints "Nothing changed." and commits NO operation when `!tx.repo().has_changes()` (`cli/src/cli_util.rs:2790-2795`) — and therefore shows no identity warning. Zanshin commits unconditionally, so `jj op log` gains an entry the CLI would not write, and `MutationResult.identity_missing` (Story 9.27, set iff an operation was committed) fires with it. Op-log parity defect; `git_fetch` is reworked by Story 9.30, `describe` needs its own no-change check.
 - ~~**A Finder/Dock-launched Zanshin does not see the user's shell environment**~~ — **MOVED 2026-09-24 → Story 9.36** (`9-36-finder-launch-login-shell-environment`; **decided 2026-09-24, Ralph: option (a)** — resolve the login-shell env once at start-up). **RESOLVED 2026-09-25 (Story 9.36):** `app/lib/main.dart::_startApp` calls `ZanshinWorker.adoptLoginShellEnvironment()` before the app exists; Rust (`crates/zanshin-jj/src/environment.rs`) runs `$SHELL -l -i -c` once, reads its `env -0` dump under a timeout and adopts it write-once — `ConfigEnv::from_env`, `detect.rs`'s `HOME`, `wc_ops.rs`'s `XDG_CONFIG_HOME` and the fetch/clone `git` subprocess environment read that map; a failed read keeps the started-with environment and warns `env.login_shell_unresolved`. Witnessed by `crates/zanshin-jj/tests/login_shell_environment.rs`. **REDIRECT 2026-09-25 (Ralph):** Dart now reads the shell and Rust only adopts the map — `ZanshinBootSequence` runs the injected `adoptShellEnvironment` step alongside the settings load; `zanshin_core`'s `adoptLoginShellEnvironment()` reads `$SHELL -l -i -c` detached and hands the variables to `zanshin_environment_adopt` → `zanshin_jj::adopt_environment` on the main isolate; the warning is built in Dart. Remaining gaps: the Story 9.36 section below. Original entry: [`crates/zanshin-jj/src/config.rs::ConfigEnv::from_env`; found by the 9.27 review] — the stack reads `JJ_CONFIG`, `XDG_CONFIG_HOME`, `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*`, `VISUAL`/`EDITOR`, `NO_COLOR` exactly as the CLI does, but a GUI app launched by launchd gets a minimal environment, not the login shell's. A user who sets `XDG_CONFIG_HOME` or `JJ_CONFIG` in a shell rc then gets a different config (and identity) in Zanshin than in the terminal `jj`. Product decision for the app bootstrap (e.g. import the login-shell environment once at start-up); not a stack defect.
-- **Three `app/` splash-card layout tests fail at the pre-9.27 baseline** [`app/test/features/bootstrap/zanshin_bootstrap_test.dart`: "an empty status and an unknown version still paint the card", "the splash card lays its footer out on the design grid", "the status line follows its listenable and stays right-aligned" — Expected 524.0, Actual 584.0] — verified identical with every 9.27 change stashed at `677dbf546fc2d19203019b06b6ea1ef431aa64fd`; no `app/` file is touched by 9.27. Keeps `cargo make test` red at `test-flutter` (every other gate step green). UI is Ralph's scope.
+- ~~**Three `app/` splash-card layout tests fail at the pre-9.27 baseline**~~ **RESOLVED 2026-09-26 (console session, at Ralph's request):** the TEST was stale, not the code — Ralph's commit `a50688f` ("update Splash Screen", 2026-09-13) deliberately re-gridded the card from 560×320 to 620×400 (`_statusRight` 524→584, `_footerBaseline` 276→370, `_dotY` 272→366, version/status 12→13 px) and left the test's oracle constants on the old grid; `zanshin_bootstrap_test.dart` now asserts the new grid (no assertion loosened), full `app` suite green. Open for Ralph: `design/assets/SPLASH-SPEC.md` + `zanshin-splash.svg` still describe 560×320. Original entry: [`app/test/features/bootstrap/zanshin_bootstrap_test.dart`: "an empty status and an unknown version still paint the card", "the splash card lays its footer out on the design grid", "the status line follows its listenable and stays right-aligned" — Expected 524.0, Actual 584.0] — verified identical with every 9.27 change stashed at `677dbf546fc2d19203019b06b6ea1ef431aa64fd`; no `app/` file is touched by 9.27. Keeps `cargo make test` red at `test-flutter` (every other gate step green). UI is Ralph's scope.
 
 ## Surfaced 2026-09-23 while implementing Story 9.28 (config surface)
 
@@ -449,7 +449,7 @@ _The deferrals of `spec-9-33-creation-paths-report-identity-snapshot.md` (§ Def
 - **`Repo::init` over a directory that already holds `.git/`** (review pass) [`crates/zanshin-jj/src/repo.rs::Repo::init`; CLI `cli/src/commands/git/init.rs:198-234` @ v0.44.0] — Zanshin creates an internal-git workspace beside the `.git/`; the CLI runs the External flow (default `git.colocate = true`: refs import, snapshot, warnings) or refuses ("Did not create a jj repo because there is an existing Git repo in this directory."). Pre-existing; Story 9.20's init parity. Severity low.
 - **A clone that fails after the CLI's `add git remote` finish lacks that finish's identity warning** (review pass) [`crates/zanshin-jj/src/repo.rs::clone_into`] — the CLI finishes `add git remote origin` (`clone.rs:352`) before fetching, so an empty identity warns even when the fetch fails; Zanshin commits no remote operation. Part of the op-split divergence above (Story 9.20). Severity low.
 - **No end-to-end witness of `jj.clone_cleanup_failed` through `Repo::clone`** (review pass) [`crates/zanshin-jj/src/repo.rs::roll_back_clone`] — pinned at the helper and on a synthetic FFI envelope only. The one fault-free trigger was the data-loss path above, which `spec-clone-rollback-keeps-existing-jj.md` closed (2026-09-24); an end-to-end witness now needs a fault seam (a `.jj/` the clone created that cannot be removed). Severity low.
-- **The `zanshin_core` barrel exports neither `RepoHandle`, `CreatedRepoHandle` nor `Precondition`** (review pass) [`packages/zanshin_core/lib/zanshin_core.dart`] — the app cannot NAME the creation result's types without a `src/` import (inference still exposes `.warnings` / `.precondition`). `RepoHandle` and `Precondition` were already absent. Severity low; export them when the UI first needs the names.
+- **The `zanshin_core` barrel exports neither `RepoHandle`, `CreatedRepoHandle` nor `Precondition`** (review pass) [`packages/zanshin_core/lib/zanshin_core.dart`] — the app cannot NAME the creation result's types without a `src/` import (inference still exposes `.warnings` / `.precondition`). `RepoHandle` and `Precondition` were already absent. Severity low; export them when the UI first needs the names. **Picked up 2026-09-26 by Epic 10** (10.1 / 10.5 / 10.8 / 10.9 each export the types they consume).
 - ~~**A failed creation's warnings are visible nowhere on the Dart side until Story 9.35**~~ — RESOLVED 2026-09-25 (Story 9.35): `_createdOrThrow` / `_handleOrThrow` → `_envelopeToException` go through the shared `decodeEnvelopeErrorInternal`, so a refused `initRepo` / `cloneRepo` / `convert` throws a `ZanshinFfiException` carrying the creation's `warnings` (e.g. `jj.clone_cleanup_failed`) and, for a conversion, its PARTIAL `precondition`; witnessed by `test/worker/error_reports_test.dart::a_failed_conversion_keeps_its_warnings_and_partial_snapshot_report`. (follow-up review) [`packages/zanshin_core/lib/src/worker/isolate.dart::_createdOrThrow`] — before Story 9.33 the conversion's warnings were at least traced (`log_dropped("convert")`); now they ride the error envelope, which Dart turns into a `ZanshinFfiException` of code and context only, so a failed `cloneRepo`'s `jj.clone_cleanup_failed` or a failed `convert`'s refs-step warnings leave no trace in the app (MCP / Rust callers do get them). Story 9.35's scope (creation verbs' error results) closes it. Severity low.
 
 ## Surfaced 2026-09-24 while fixing the clone-rollback data loss (spec-clone-rollback-keeps-existing-jj.md)
@@ -480,7 +480,7 @@ _Implementing `spec-9-35-dart-error-results-keep-precondition-warnings.md` (brid
 
 _The review pass of `spec-9-35-dart-error-results-keep-precondition-warnings.md` (frontmatter `deferred`) deferred one pre-existing item:_
 
-- **The `zanshin_core` barrel does not export `ZanshinFfiException` either** [`packages/zanshin_core/lib/zanshin_core.dart`] — extends the Story 9.33 barrel item above (`RepoHandle`, `CreatedRepoHandle`, `Precondition`): since Story 9.35 the thrown `ZanshinFfiException` carries every failed command's `precondition` and `warnings`, but the app can only name the exception (and the report's `Precondition` type) through a `src/` import. Nothing breaks today (no reference in `app/`). Export them when the UI first reads the error report. Severity low.
+- **The `zanshin_core` barrel does not export `ZanshinFfiException` either** [`packages/zanshin_core/lib/zanshin_core.dart`] — extends the Story 9.33 barrel item above (`RepoHandle`, `CreatedRepoHandle`, `Precondition`): since Story 9.35 the thrown `ZanshinFfiException` carries every failed command's `precondition` and `warnings`, but the app can only name the exception (and the report's `Precondition` type) through a `src/` import. Nothing breaks today (no reference in `app/`). Export them when the UI first reads the error report. Severity low. **Picked up 2026-09-26 by Epic 10** (10.5 exports `ZanshinFfiException` / `Precondition`).
 
 ## Surfaced 2026-09-25 while implementing Story 9.36 (Finder launch sees the login-shell environment)
 
@@ -504,3 +504,257 @@ _Implementing `spec-9-37-secure-config-fixups-every-command.md` left these resid
 - **Every test-binary run leaves its XDG temp dir behind** [`crates/test-helpers/src/lib.rs::leaked_xdg_config_home`, `TempDir::keep`] — one kept dir under `$TMPDIR` per test binary per run (the pinned `$XDG_CONFIG_HOME` must outlive every test thread), plus whatever the fix-ups migrated into it. The OS temp cleaner reclaims them eventually. Severity low.
 - **The UI does not show the fix-up notices yet** [`packages/zanshin_core/lib/src/worker/handle.dart::OpenedRepoHandle.warnings`] — `openRepo`'s warnings (and the config results' / verb results' `jj.config_*` notices) have no consumer in `app/`; a user whose legacy config was migrated is not told. UI is Ralph's scope.
 - ~~**No test pins that the bootstrap adopts BEFORE the app exists**~~ — **RESOLVED 2026-09-25 (Story 9.36 redirect):** the adoption moved into `ZanshinBootSequence` as the injected `adoptShellEnvironment` step (started alongside `openSettings`, awaited before `startApp`); `zanshin_bootstrap_test.dart` pins that `startApp` is not called before it completes, and that its failure fails the boot. Original entry: [`app/lib/main.dart::_startApp`; found by the 9.36 review] — `_startApp` is the private composition root and `zanshin_bootstrap_test.dart` injects its own `startApp`, so dropping the `adoptLoginShellEnvironment()` call, or moving it after `zanshinAppFactory.create()`, would ship with every witness green. Needs a seam (e.g. the adopt-and-log step as a small bootstrap helper the app tests drive). UI/bootstrap wiring is Ralph's call. Severity low.
+
+## Surfaced 2026-09-26 while researching the commit-graph view and authoring Stories 4.10–4.12 / Epic 10 (console session, Ralph)
+
+_Ralph showed a mockup of the main view (commit cards at (row, lane), elbow lines, two-axis scrolling; `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp`) and asked how to build it without a `ListView`, how to virtualize it and how to size the scrollbars before everything is loaded. Research with verified evidence and a tested POC: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` (POC: `app/lib/main4.dart` + `app/lib/src/features/graph_poc/`). That became Stories 4.10–4.12 (graph backend/bridge; Epic 4 reopened) and Epic 10 (the view itself, built by Claude at Ralph's explicit request). The items below fall outside those stories:_
+
+- **The CLI draws at most one missing-edge stub per node; Zanshin emits every `Missing` edge.** Low.
+  - Evidence: `cli/src/commands/log.rs:250-272` @ v0.44.0 keeps only the LAST `Missing` target and appends it after the direct/indirect edges. `crates/zanshin-graph/src/stream.rs:56-60` and `crates/zanshin-graph/src/lane.rs:266-279` keep each `Missing` edge in stream order.
+  - Lanes are unaffected: a `Missing` edge never reserves a lane and never continues the own lane.
+  - But a renderer that draws one stub per `Missing` edge shows more stubs than `jj log` for a node with several out-of-set parents.
+  - Found while verifying the graph research at the pinned tag. Not in the 4.8 parity catalog (`_bmad-output/specs/spec-4-8-log-rows-cli-parity/cli-log-parity.md:71`).
+  - **Follow-up:** collapse the edges in `stream.rs` (parity at the source) or draw one stub per row in the view (Epic 10). Decide together with Story 4.12's choice on whether a `Missing` edge's target id stays on the wire.
+- **No lane cap — `all()` over many long-lived heads can be hundreds of lanes wide.** Low until measured.
+  - Evidence: `crates/zanshin-graph/src/lane.rs:211-220` (slots are cleared, never removed), `:249-251` (each child's continuation keeps its own lane for a parent that has not arrived yet), `:389-396`.
+  - Width is the peak number of concurrently open segments: every branch emitted above its fork point holds a lane down to the fork row.
+  - The committed fixtures peak at lane 3 (`crates/zanshin-graph/tests/stream.rs:388-392`), so this is unmeasured on a real repo. Story 4.11's `lane_count` makes it visible.
+  - Whether the view needs horizontal compaction or a cap is a product decision for Epic 10.
+- **The graph perf numbers come from a loose-object fixture.** Low.
+  - Evidence: `large-10k` has 30,003 loose git objects and no pack (research 2026-09-26). A cold per-commit load costs 25-37 µs in batches of up to 200 ids, but 115-190 µs in longer runs; the cause was not investigated.
+  - Story 4.10's bench runs on the same fixture, so its content-page numbers may not transfer to a packed repo.
+  - **Follow-up:** one run on a `git gc`-packed copy before tuning the page size.
+- **The default `revsets.log` selects every commit on the committed and generated fixtures.** Low.
+  - Evidence: `crates/zanshin-jj/src/revset.rs:33` `DEFAULT_LOG_REVSET`. `cargo xtask gen-fixture` sets local bookmarks only — no tags, no remote bookmarks (`crates/xtask/src/tasks/gen_fixture.rs:263-268`, `:327-332`) — and tiny ships no tags (`crates/zanshin-jj/tests/view.rs:88`). So `trunk()` is `root()` and `builtin_log()` is effectively `all()`.
+  - The research's "the default log grows with mutable work, not with history" is inferred from the definition (`cli/src/config/revsets.toml` @ v0.44.0), not measured.
+  - Every default-revset number taken on these fixtures is an `all()` number.
+- **`--limit` / `--reversed` stay unported, and their revisit trigger disappears if windowing is replaced.** Low; decide when the view offers "oldest first".
+  - Evidence: `_bmad-output/planning-artifacts/epics.md` Story 4.4 "Delivered" note; `_bmad-output/implementation-artifacts/epic-4-context.md:28` says to revisit "when windowing returns".
+  - Story 4.10 proposes replacing row-range windowing with complete geometry. If Ralph accepts, windowing never returns.
+  - `--reversed` is not presentational: the CLI collects the (limited) topo stream and renders `reverse_graph` of it (`cli/src/commands/log.rs:235-239` @ v0.44.0). Those lanes differ from a flipped forward layout, so an "oldest first" view needs its own geometry pass.
+- **Fallback if whole-revset geometry ever gets too big: let the scroll extent grow while rows stream in.** Low; not needed at the 10k baseline.
+  - Evidence: rows are final when emitted (`crates/zanshin-graph/src/lane.rs:149-154`; research §3).
+  - A view could therefore append rows and grow its content height monotonically as the stream delivers them, with the scrollbar thumb shrinking.
+  - Caveat: until the stream ends, dragging to the end means nothing, and "scroll to @" works only once `@`'s row has arrived.
+  - Record it as the escape hatch, not a plan.
+- **`abandon` does not report the bookmarks it deleted** [`packages/zanshin_core/lib/src/ffi/mutate.dart:167-211`; CLI `cli/src/commands/abandon.rs:138-163` @ v0.44.0]
+  - `MutationResult` carries `newOpId`, `newChangeIds`, `abandonedChangeIds`, `workingCopyChangeId`, `finish` and `warnings`, and nothing else.
+  - The CLI diffs the local bookmarks before and after and prints "Deleted bookmarks: …". When a deleted bookmark had tracked remotes, it also prints a push hint.
+  - 10.9 cannot show this fact and must not work it out in Dart. Backend follow-up: a field on the abandon result. Severity low.
+- **The shipped verbs lack CLI parameters that the UI would have to offer** [`packages/zanshin_core/lib/src/worker/handle.dart:228` `describe`, `:242` `newChange`, `:271` `abandon`, `:145` `graphSlice`; CLI @ v0.44.0 `abandon.rs:61`, `:65`; `new.rs:72`, `:76`, `:118`, `:158`; `describe.rs:53-57`; `log.rs:93`, `:143`, `:236`]
+  - `abandon` has no `--retain-bookmarks` and no `--restore-descendants`.
+  - `new` has no `-m`, `--no-edit`, `-A` or `-B`.
+  - `describe` takes one change id where the CLI takes revsets.
+  - `graphSlice` has no `--limit`, no `--reversed` and no path arguments.
+
+  Under the pass-through rule each of these is a backend gap. Epic 10 offers only what the verbs expose (10.9). Severity medium (parity).
+- **No backend path from a file edit to a graph refresh** [`packages/zanshin_core/lib/src/worker/events.dart:17-33`; jj-lib 0.44.0 `lib/src/config/misc.toml:10`, `lib/src/fsmonitor.rs:290`; `handle.dart:961` `snapshot()`]
+  - The watcher reports only op-heads and checkout changes. A file edit writes no operation until something snapshots, so @'s `empty` badge and its content go stale while the user edits.
+  - jj's own answer is `fsmonitor.watchman.register-snapshot-trigger`. It is off by default and runs the `jj` binary. FR-RX-2 (Story 3.10's external-edit test) assumes that trigger.
+  - 10.5 asks Ralph for a UI refresh policy. A Zanshin-side snapshot trigger, such as a debounced `snapshot()` on file events, would be its own backend story. Severity medium.
+- **The UI has no open-project flow** [`app/lib/src/features/projects/home_dialog.dart` lists the mock `kProjects` (`app/lib/src/shared/data/mock_data.dart:377`)] — the graph needs an open `RepoHandle`, and the FR-JJ-17 detect → open/convert UI has no story. Until one exists, 10.5 opens an explicitly given path. Severity medium: it blocks real use, not development.
+- **The running app does not show the real UI** [`app/lib/src/features/app/zanshin_app.dart:26-28`, `:124-149`; `app/lib/src/shared/theme/zanshin_colors.dart:170`]
+  - `ZanshinApp` renders the Yaru test page, and `HomePage` → `AppShell` (mock data) is "temporarily unused".
+  - `context.zc` force-unwraps a `ZanshinColors` extension that the current themes do not register.
+  - Where the graph mounts, and under which theme, is Ralph's call. 10.1 registers `GraphTheme` only in its demo host. Severity low.
+- **The mockup's window chrome has no story** [mockup; the existing mock widgets in `app/lib/src/features/shell/main_nav_rail.dart`, `status_bar.dart` and `window_title_bar.dart`]
+  - The top toolbar (Fetch / Pull / Push / New).
+  - The status bar ("@ feature/new-ui", "repo clean", "142 ops", versions, "⌘K palette").
+  - The nav rail (history / branches / graph / comments / undo / settings).
+
+  "Pull" has no jj verb: `jj git fetch` plus a rebase is not one command, so it needs a decision under the CLI-parity rule. Severity low.
+- **The graph view supersedes the mock UI** [`app/lib/src/features/commits/commit_card.dart` (`BranchPanel`, a `ListView`), `app/lib/src/features/history/history_column.dart` (a `ListView` with lane dots), `app/lib/src/features/branches/branches_panel.dart`, `app/lib/src/shared/data/mock_data.dart`, and `AppShell`'s branch columns (`app/lib/src/features/shell/app_shell.dart:144-164`)] — retiring these is Ralph's call. 10.8 builds a real-data panel modelled on the mock `commit_detail.dart` / `diff_block.dart`, which stay. Severity none.
+- **Ralph's own note (2026-09-26): clean up the demo entry points** [`app/lib/main2.dart`, `main3.dart`, `main4.dart` (the graph POC)] — 10.1 needs one fake-data demo host for visual review, and which file hosts it is part of that cleanup. Severity none.
+- **Story 9.25's backend item 1 is stale** [epics.md Story 9.25 item 1; `packages/zanshin_core/lib/src/worker/isolate.dart:1537-1543`] — it says "No generic repo-config writer exists yet", but Story 9.28 shipped `configSet(ConfigScope.repo, …)`, which 10.7's Save uses. Re-scope 9.25 when it is refined. Severity low.
+- **No capability query without a drop target** [epics.md Story 9.31, Non-goals] — the target-less "what can I do with S" query is marked "own story if wanted". Without it, 10.6's context menu cannot grey out verbs with the CLI's reason. Severity low.
+- **No identity-remedy UI** — a `jj.identity_missing` warning ("set your identity", 9.32's motivating example) has no story. 10.9 only surfaces warnings. Severity low.
+- **No golden-test setup** — the repo has no golden tests, and Inter / JetBrainsMono would need to load in tests. Epic 10's visual review is therefore manual, in the demo host. Add a golden setup only if Ralph wants one. Severity none.
+
+_Added the same day after Ralph's answers and his near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`), while re-planning Epic 10 on it:_
+
+- **The research doc still recommends the mockup reading that the design overrode** [`_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md:7`, `:29`]. Low.
+  - Line 7 cites the mockup as the design input.
+  - The §1 "Nachtrag" recommends keeping `jj log` order, with the time column as labels only.
+  - The HTML design export (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`) supersedes both: its Time layout reorders and packs rows into buckets.
+  - **Follow-up:** add a dated note to the research doc. §1–§5 stay valid for the viewport mechanics, except §5's colour pitfall (colour by opening edge), which is moot under the design's one gray plus gold.
+- **The design sources and the research that Epic 10 cites are not committed** (git status at the re-plan). Low.
+  - Untracked (`??`):
+    - `_bmad-output/implementation-artifacts/design/graph-view.jsx`, `graph-data.js` and `graph.css`;
+    - the research doc `technical-commit-graph-virtualization-research-2026-09-26.md`;
+    - `commit-graph-mockup-2026-09-26.webp`.
+  - Modified and uncommitted (`M`): `design/app.jsx` and `design/JJ Desktop Client.html`. So every APP:line citation also fails to reproduce at HEAD.
+  - Every re-planned Epic 10 story cites these files by file:line.
+  - **Follow-up:** commit them with the re-plan, by explicit path, or drop the mockup. That is Ralph's call.
+- **Epic 10's thin detail panel drops the design's review workflow; no story owns it** [design APP:69-89, :736-757, :804-807, :835-838, :865; GV:475; tweak "Diff mode" APP:7-16]. Low.
+  - The dropped parts:
+    - the "x / N viewed" review meter with Mark all / Reset;
+    - the per-file Viewed state, persisted per change id;
+    - auto-advance to the next unreviewed file;
+    - the Inline/Split and Viewed controls, and the "Diff mode" tweak;
+    - the "Mark as viewed (V)" shortcut.
+  - It reviews diffs that do not exist before Epic 5 (5.6, 5.8). 10.8 ships a plain file list and a "not available yet" diff section, by default reading of Ralph's "the dialogs and popups are not final" (10.8 design question (a)).
+  - **Follow-up:** a story next to Epic 5's diff view, once Ralph has decided the Viewed scope (per change id or per commit id, per repository).
+- **The bookmark list cannot show the design's rows before Story 9.29** [`packages/zanshin_core/lib/src/ffi/bookmarks.dart:26-67`; `handle.dart:183`; design GD:21, GV:242, GV:481-497]. Medium (the designed panel's main use case).
+  - `bookmarks()` returns only local and tracked-remote entries, each with a target change id: no synced or conflicted flag, and no untracked remote rows.
+  - The design's own hidden example, `release/1.5.x@origin`, is an untracked remote bookmark. The panel exists to reveal exactly such rows.
+  - "Synced" cannot be derived by pairing entries: after a local rewrite, both share a change id but point at different commits (9.29's motivation).
+  - 10.14 therefore ships local and remote states only until 9.29 lands.
+  - **Follow-up:** schedule 9.29 before or with 10.14.
+- **The PRD's graph FRs still describe the `jj log` lane model, and FR-GR-4 / NFR-P-2 point at a renumbered item** [`_bmad-output/planning-artifacts/prd.md:234-237`, `:312`]. Low.
+  - FR-GR-1 (pvigier "straight branches" lane assignment) and FR-GR-2 (rows with `lane`, `edges_below`, `color_idx`) describe the lane graph that the re-planned view no longer draws. Epic 10 consumes Story 4.11's layered layout instead.
+  - FR-GR-4's 2026-09-26 amendment (NFR-P-2 refers to it) cites "epics.md Story 10.2 item 7", which the re-plan renumbered.
+  - It also says only a free layout needs every timestamp. In fact every time-based mode does, including the design's fixed Time rows.
+  - **Follow-up:** amend FR-GR-1 / FR-GR-2 in 4.11's re-plan. Re-point FR-GR-4 / NFR-P-2 to the Epic 10 header's "Backend dependencies", and say that every time-based mode needs all timestamps.
+- **Four `deferred-work.md` notes point to Epic 10 stories whose scope moved** [`_bmad-output/implementation-artifacts/deferred-work.md:452`, `:483`, `:555`, `:568`]. Low.
+  - `:452` says "10.1 / 10.5 / 10.8 / 10.9 each export". 10.1 exports nothing any more; the exporters are 10.5, 10.8, 10.9, 10.12 and 10.14.
+  - `:483` still holds (10.5 exports `ZanshinFfiException` / `Precondition`).
+  - `:555` says "10.5 opens an explicitly given path". The real-repo dev host moved to 10.12.
+  - `:568` says 9.28 shipped `configSet(ConfigScope.repo, …)`, "which 10.7's Save uses". The design's toolbar has no Save (see the Save bullet below).
+  - **Follow-up:** re-point these notes.
+- **No executing verb for `jj new --insert-before` / `--insert-after`** [GV:436-437; `packages/zanshin_core/lib/src/worker/handle.dart:242` `newChange(parents)` only; Story 9.31's preview matrix already models `new` at `DropLocation{insert_after, insert_before}`]. Medium (parity; now a designed affordance).
+  - The design's bottom "+" chip on every card ("Insert new change before") needs it. 10.15 ships the chip disabled.
+  - The 2026-09-26 bullet "the shipped verbs lack CLI parameters" already lists `-A`/`-B` as a gap.
+  - **Follow-up:** a `new -A/-B` backend story would complete 9.31's matrix.
+- **No line statistics for files or commits** [`packages/zanshin_core/lib/src/ffi/status.dart:50` `FileChange` = path, kind, fromPath; design APP:804-807, :835-838, :1356-1358]. Low.
+  - The design shows +/− per file and per commit, in the detail panel and in the describe editor.
+  - No API returns line counts, and Epic 5 has no stats story.
+  - 10.8 hides them until a backend exists, e.g. a `jj diff --stat`-like count.
+- **The "shown / total" counter needs `|all()|`** [design GV:223, :304]. Low.
+  - The design's total counts every commit, independent of the revset.
+  - Story 4.10 as written returns `total_rows` for the requested revset only.
+  - An index-only `|all()|` count must be added to 4.10's geometry result, or a separate count call. Otherwise 10.7 shows the shown count only.
+- **Every time-based mode needs every commit's timestamp before layout** [jj-lib 0.44.0 `default_index/readonly.rs:693-696`: generation numbers, no timestamps; design GV:161-172; spike SPEC §2, §4.2]. Medium; it decides the cost of Time and free at 10k–100k.
+  - Time rows depend on each commit's bucket, and the spike's `free` y depends on each commit's time. The index carries no timestamps.
+  - Story 4.10 as written moves timestamps into lazily loaded content.
+  - One of three options must be chosen in 4.10/4.11:
+    - the geometry pass loads every commit, about 1.2 s at 10k, giving back most of 4.10's gain;
+    - a persistent commit-id → timestamp cache (commit-intrinsic, so it never goes stale);
+    - the time-based modes are restricted to small revsets.
+  - Story 10.13's outcome does not remove this; only a Compact-only product would.
+- **What Epic 10 needs from the re-plans of 4.11 and 4.10** [GV:140-225; `spikes/graph-layout-ab/SPEC.md`]. Medium.
+  - **4.11, modes.** All three modes behind a mode enum (compact, time, free), with rows in 1/U units plus `unit` and `rows` (SPEC §3). 10.13 decides which ones the product exposes, but 4.11's build does not wait for it.
+  - **4.11, still open** (the spike does not fix these; each needs Ralph or the re-plan):
+    - blocked-merge routing, which runs behind cards and collinear with the chain and pushes the continuation off its lane (prototype defect 2; SPEC D9, §11.4). The spike's synthetic inputs have many, e.g. 229 blocked merges on `synth-10k` (compact, greedy), so Epic 10's route invariant stays a counted report until this is fixed;
+    - free-mode buses passing behind cards (SPEC D8, §11.1), if free mode ships;
+    - a real source for the hand-set `priority` (SPEC §11.2; a stand-in today);
+    - lane-order stability across reloads (SPEC §11.5): "Min. crossings" is global, so one operation can reshuffle columns.
+  - **4.10, elided counts.** The layout neither outputs Missing edges nor counts elided commits (SPEC §0, §3, D2). So the stub comes from 4.10's Missing edges, and N, if 10.4 design question (a) keeps it, needs a 4.10 geometry field or a separate count call. The prototype's per-parent DFS is O(h) per Missing parent, and jj's bounded Missing walk differs from it.
+  - **Already fixed by the spike**, credited here so the re-plan does not redo them: the Time topological clamp (D1); a loop instead of the `rowOf` recursion (§4.2); no duplicate parent edges (§2, V3); O(n log n) lane packing and O(E log n) blocked checks (§4.3–§4.4); budgeted sifting instead of the factorial / O(E²) optimiser, which also counts crossings of edges that share a node (§4.6, D5).
+  - Also: the mock's `wq` default-revset flag is wrong. jj shows 13 of the 22 commits, with the stub under `vr` (GD:1-2, :17), so `graph-data.js` is not a test oracle for the default revset. The spike's design oracle keeps the mock's flags on purpose; 10.1 records a CLI-faithful variant next to it.
+- **Design chrome and panels outside Epic 10** [APP:135-171, :206-308, :313-350, :956-972, :1054-1080, :1983-2178, :2263-2271]. Low. They are Ralph's UI, and no Epic 10 story covers them:
+  - the window header: Fetch / Pull / Push / New, the system/dark/light theme switch, and a "?" help button with no action;
+  - the status bar: "@ branch", taken from `data.js` BOOKMARKS and stale relative to the graph's @ (APP:957), and a "⌘K palette" hint although no palette exists;
+  - the nav rail, and the placeholder Workstreams / Reviews / Undo Timeline panels;
+  - the Projects (Home) dialog, and the Density tweak;
+  - dead flyout code that is never opened;
+  - App's own Esc handler (APP:2263-2271), which clears the selection of the old column view. That view is no longer mounted (APP:2484).
+
+  The graph's global Esc (GV:541-548) is prototype defect 11, owned by 10.6. This extends the 2026-09-26 bullet "the mockup's window chrome has no story".
+- **The planned revset Save lost its only UI consumer** [Story 9.25; Story 9.28's `configSet(ConfigScope.repo, 'revsets.log', …)`; design GV:240-276]. Low.
+  - The design's revset control has exactly two presets (`jj log`, `all()`), with no free-text field and no Apply/Save.
+  - The first Epic 10 plan's Save to `revsets.log`, and 9.25's presets, Apply and Save, have no UI consumer until Ralph answers 10.7 design question (a).
+  - **Follow-up:** re-scope 9.25 accordingly.
+- **The quick-action list "will later come from user settings"** [GV:356]. Severity none. No settings story exists, and 10.15 ships a static list.
+
+## Surfaced 2026-09-26 while re-planning Stories 4.10–4.12 after the layout A/B (console session, Ralph)
+
+_Ralph decided to run the commit-graph layout in Dart on the worker isolate (`spikes/graph-layout-ab`, README "Review 2026-09-26"), and Stories 4.10–4.12 were re-planned on that. Measurements were taken the same day on a copy of a real 1.4k-commit repo kept outside the repo; only counts and timings are recorded. The items below fall outside the re-planned stories, or update earlier bullets of the 2026-09-26 section:_
+
+- **Status of the earlier 2026-09-26 graph bullets after the re-plan.** Low.
+  - "The graph perf numbers come from a loose-object fixture": now measured. A commit load costs 3.4–4.8 µs packed against ~122 µs loose, and plain git and the jj CLI show the same split. 4.10 item 8 benches a `git gc`-packed copy next to the committed fixture.
+  - "Every time-based mode needs every commit's timestamp": now 4.10 item 4. Loading them per call on request is recommended; a commit-id cache is its open question 1, with a measured trigger.
+  - "What Epic 10 needs from the re-plans of 4.11 and 4.10": covered by 4.10 items 1–4 (parent count, Missing edges, `all_count`, anchors, timestamps) and 4.11 items 5–9 (input builder, priority, stability, kept defects, result view). Two gaps remain: its line "no duplicate parent edges (§2, V3)" under "Already fixed by the spike" is wrong (next bullet), and N has no owner (the bullet after).
+  - "The PRD's graph FRs still describe the `jj log` lane model": FR-GR-1 / FR-GR-2 / FR-GR-5 get dated notes with the re-plan. Re-pointing FR-GR-4 / NFR-P-2 and `project-context.md:14` is 4.10 item 9.
+  - "The CLI draws at most one missing-edge stub per node": moot once 4.12 lands. The topology drops the Missing target id, and the view draws one stub per node (10.4).
+  - "No lane cap": about the pvigier lanes, which 4.12 proposes to remove. The design's packing has its own width: 10–12 lanes on the real repo's `all()`, 15–16 on jj's own history, 134–173 on the synthetic stress inputs. Whether the view needs horizontal compaction stays an Epic 10 question.
+  - "`--limit` / `--reversed` … revisit trigger disappears": it did, because the windowing amendment was accepted. An "oldest first" view would be a layout option (4.11), not a jj pass-through.
+  - `syntheticElided`: the re-plan's Epic 10 fixups stop sending it (10.5 item 2, 10.7 item 9), because the topology call has no synthetic nodes. What `ui.log-synthetic-elided-nodes` means for this view stays 10.4 design question (a).
+- **SPEC §2's "jj never yields duplicate targets" is false on real data.** Medium; it decides whether goldens, recordings and the product agree on merges.
+  - On the real repo's default revset (12 nodes), a merge carries a Direct and an Indirect edge to the same parent.
+  - The stage-2 dumper (`spikes/graph-layout-ab/rust-inputs/src/jj_dump.rs`) keeps the first edge and records the other in its `.meta.json` sidecar (`dropped_duplicate_parents`).
+  - 4.11 item 5 keeps V3 as the engine's validation and puts the rule into the input builders: one layout edge per (child, target) at the first position, `direct` if any duplicate is direct (open question).
+  - **Follow-up:** SPEC §2 and the dumper adopt the rule before 4.11's goldens and 10.1's recordings are made. `tools/fuzz.mjs` should generate repeated targets for the builder's tests.
+- **The elided count N has no owner.** Low; only if 10.4 design question (a) keeps "~ N elided".
+  - N depends on the revset (a parent is hidden relative to what the revset shows), so it is neither topology nor commit-intrinsic content, and 10.11's commit-id cache cannot hold it. It needs an index walk per Missing parent.
+  - 4.10's Non-goals exclude it, and the re-plan's Epic 10 fixups now say "a follow-up count call".
+  - **Follow-up:** if 10.4 (a) keeps N, create a story for an op-pinned count call for the visible nodes, e.g. `elided_counts(operation_id, revset, commit_ids)`.
+- **The spike's dumper is the reference input builder and must move onto the product path.** Low.
+  - `jj_dump.rs` calls `Repo::walk_graph` and computes the `priority` stand-in itself (`assign_priorities`, `rust-inputs/src/input.rs:147`).
+  - 10.1 records its layouts from these dumps until 10.12, and 4.11's end-to-end tests compare the Dart input builder against them.
+  - **Follow-up:** 4.11 item 10. The dumper calls `Repo::graph_topology` (+ `commit_contents` for the sidecar) and computes the classes from its anchors exactly as SPEC §11.2 (amended) and 4.11 item 6 do. Re-record 10.1's recordings after the switch.
+- **Story 9.25 builds on `graphSlice`.** Low.
+  - Evidence: epics.md Story 9.25, Apply evaluates via `graphSlice` and has an "N revisions" line; its open question says Apply "should" reuse `graphSlice` directly.
+  - If 4.12 removes the slice path, Apply evaluates through the topology call and uses its node count.
+  - **Follow-up:** re-scope 9.25 when it is refined.
+- **The worker is one serial isolate for every open repo.** Low until measured.
+  - Every handle's commands and the watcher events share one isolate (`packages/zanshin_core/lib/src/worker/isolate.dart:1674-1708`). A layout, a timestamped topology call on a loose store (~1.2 s at 10k) or any other long synchronous command delays everything queued behind it.
+  - 4.11 item 9 measures a content page queued behind a layout and names a second `Isolate.spawn` layout isolate as the fallback.
+  - **Follow-up:** if the measurement shows stalls that matter, decide between that second isolate and splitting long commands; the same question applies to other slow commands once real repos run in the app.
+- **Zanshin never packs the git store, and loose commits load ~30× slower.** Low.
+  - Measured 2026-09-26: 3.4–4.8 µs per commit load packed, ~122 µs loose.
+  - jj-lib writes new objects loose. Neither jj-lib nor Zanshin runs `git gc` / `jj util gc`, and git's own auto-gc runs only from git commands (e.g. a `git fetch` subprocess).
+  - A repo worked only through Zanshin therefore accumulates loose commits. That slows content pages and every timestamped layout (4.10 item 4), and it is one trigger for 4.10's option (c).
+  - **Follow-up:** measure on a long-lived, Zanshin-only repo. `jj util gc` parity would be an Epic 9 verb, not a background job.
+- **`empty` on merge commits dominates content pages.** Low.
+  - `Commit::is_empty` first asks jj's changed-path index (jj-lib 0.44.0 `commit.rs:160-165`). Only when that index does not cover the commit does it merge the parent trees of a merge: 0.78 ms per merge, measured without one.
+  - On the real repo that is 115 ms of today's 163 ms `collect_lanes(all())`. The CLI's default `jj log` template pays the same (138 ms).
+  - `large-10k` has one merge, so fixture numbers hide this.
+  - **Follow-up:** tune 10.11's page and buffer size on a real repo, not on the fixtures, and measure a content page with a changed-path index present (4.10 item 8). Building one is an Epic 9 verb for CLI parity (`jj debug index-changed-paths`), never a background job.
+- **Real-repo data stays out of git.** None; a standing rule.
+  - The 2026-09-26 real-repo dumps, metadata sidecars (descriptions, authors, bookmarks) and layout outputs live outside the repository.
+  - The spike's `.gitignore` covers `/inputs/`, `/outputs/` and `/viewer/data/`.
+  - 4.10's and 4.12's benches accept a local repo path and record only node counts and timings.
+  - Any new tool that writes real-repo data writes it to a gitignored path or outside the repo.
+
+## Surfaced 2026-09-26 while reviewing the spike viewer: lane order, Free's day axis, jumps and the minimap (console session, Ralph)
+
+_Ralph used the spike viewer (`spikes/graph-layout-ab/viewer/`) on a copy of the real 1.4k-commit repo, kept outside the repo. He asked for four things: a lane order that wastes less space, a day axis in Free, go-to-commit (were jumps tested?) and a minimap for big repos (and how it performs). His current preference is Free, tentatively. The spike built or measured all four the same day. The stories were updated on 2026-09-27: 4.11 items 1, 2 and 11, its Tests and Non-goals, and open questions 8–9; 4.12 item 6; 10.1 item 3; 10.2 items 2 and 9; 10.5 items 2 and 6; 10.6 item 11 and design question (d); 10.13's status note and item 6; and the new Story 10.16. The items below fall outside those updates:_
+
+- **Free's day buckets need a spike change before 4.11's goldens, if 4.11 open question 9 takes them.** Medium; it decides whether goldens, recordings and the product agree on Free's gutter.
+  - The viewer computes each node's clamped day itself, from the timestamps in its bundle. Neither spike implementation emits buckets in `free`, so the proposal has no reference output yet.
+  - **Follow-up:** once Ralph accepts it, write dated amendments:
+    - SPEC §2: `utc_offset_min` is read in free too;
+    - SPEC §3: buckets in free, one `day` bucket per local day of T, the root in none, `start` / `end` in 1/U units;
+    - SPEC §7.3 I5: today "`[]` outside `time`". A free row can hold two days, so their ranges may share a row.
+
+    Implement them in `dart/` and in the Rust reference so that byte identity still holds, extend `tools/compare.mjs`'s I5 check and `tools/fuzz.mjs`, and re-bundle the viewer from the engine's buckets.
+- ~~**`optimized` is still named outside 4.11.**~~ — RESOLVED 2026-09-27 (Ralph dropped `optimized`, 4.11 open question 8): dated notes re-point 10.1 items 10 and 13, 10.5 item 2, 10.12, the Epic 10 header's Lane order tweak and 10.7 design question (f). The Lane order control's label stays open there, because "Compact" collides with the Compact layout. Originally low; it depended on 4.11 open question 8.
+  - These places all assume `optimized`: 10.1 (its recordings "each with greedy and optimized lane order", and the anchoring note that "Min. crossings" is global), 10.5 item 2 (the greedy-then-optimized pair) and the design tweak's label "Min. crossings".
+  - **Follow-up:** once Ralph picks the default, re-point them at `compact` or drop them, and relabel 10.7's Lane order control.
+- **`compact`'s known weaknesses are engine follow-ups, not 4.11 scope.** Low until Ralph adopts `compact`. **Adopted 2026-09-27** as the default (greedy the fallback), so they now concern the default view.
+  - A segment is atomic. A long-lived branch that keeps receiving trunk merges moves as a whole. On the real repo it brings back the pattern of Ralph's screenshot for ~40 pitches (spike README "Lane order review 2026-09-26" §6). Candidate: split segments at quiet stretches.
+  - At 10k+ commits the budget truncates the search. On synth-10k in compact mode it stops inside the first sweep and ends wider than greedy; on synth-100k only the leftmost dozen columns move. Candidates: a larger or time-based budget, or greedy painted first and `compact` swapped in (4.11 open question 8).
+  - Stability under edits (SPEC §11.6): a new commit can re-cut a window. 4.11 item 7's seeded rule covers only `optimized`.
+  - **Follow-up:** each one as a dated SPEC amendment with goldens, after the default is decided.
+- **Go-to-change needs a backend path for anything but full ids.** Low; after 10.6 design question (d).
+  - The viewer searches what its bundle holds: 12-character change-id and commit-id prefixes and the first description line.
+  - In the product, full ids resolve through 4.12's lookups, but descriptions are lazy content (10.11). A description search over the whole revset would load every commit: the same object loads as the timestamps, 6.7 ms on the real repo, 33.6 ms on a packed 10k and ~1.2 s on the loose-object 10k fixture.
+  - CLI parity suggests resolving the input on the worker the way the CLI resolves `-r` (id prefixes with jj's refusal of an ambiguous prefix, bookmarks, `description(...)`), then revealing the result.
+  - **Follow-up:** a backend story once 10.6 (d) is decided. The UI passes the input through and never composes the revset itself (ADR-0003).
+- **With Free as the default, every layout loads every timestamp.** Low; it weighs on 4.10 open question 1. **Free became the default on 2026-09-27 (Ralph)**, so this now applies; 10.13's default is decided, and 4.10's cache question remains.
+  - Compact needs no timestamps; Time and Free need all of them before layout (4.10 item 4).
+  - The default view would pay that on every operation, and Free's buses behind cards (D8; 11–15 horizontal runs on the real `all()`) would become a default-view issue.
+  - **Follow-up:** decide 4.10's cache question together with 10.13's default.
+- **Viewer-only details that no story carries.** None; a record.
+  - Time's bucket labels and the cards' dates are not localised in the viewer (`?lang=` covers Free's gutter only). 10.2 design question (c) decides for both. (2026-09-27: Time is dropped, and (c) is settled for now: localisable labels, English by default. The app-wide language question is in the next section.)
+  - The viewer's merge glyph means "≥ 2 graph edges", a proxy, because its input lacks the parent count. 4.10 item 1's exact `parent_count` fixes that in the product.
+  - Mode switches in the viewer keep the card nearest the centre in place; the product re-centres on @ (10.5).
+  - The viewer's jump and minimap numbers were taken while another agent's Dart work ran on the same machine (about ±0.5 ms of noise), and its minimap raster ran on the page's main thread. 10.6 item 11 and 10.16 re-measure in Flutter.
+
+## Surfaced 2026-09-27 while recording Ralph's product decisions after the spike viewer (console session, Ralph)
+
+_Ralph decided which layout modes and lane orders the product keeps: Free by default plus Compact, and the `compact` order by default plus greedy; Time, Time+gaps and `optimized` are dropped. He kept three viewer details as intended deviations from the design (crossing gaps always on, content fading under the gutter, the pinned current date) and asked for every edge to leave a card's top at the centre. The stories were updated the same day: the Epic 10 header ("Product decisions 2026-09-27") and the Epic List entries of Epics 4 and 10; 4.10's motivation, item 4 and open question 1; 4.11 (a dated note, its motivation, items 2, 8 and 11, its Tests, open questions 3, 4, 7 and 8); 10.1 items 1–4, 10 and 13; 10.2; 10.3 item 13 and design question (b); 10.4 items 1, 4, 10 and 11, its design status and witnesses; 10.5 items 2 and 3 and a witness; 10.7 item 3, design questions (f) and (h) and a witness; 10.11; 10.12 item 3; 10.13 (item 5 and a dated outcome; closed as done on that outcome, Claude's call, while a Flutter confirmation stays Ralph's); and 10.16 item 6 and design questions (c) and (f). The items below fall outside those stories:_
+
+- **Status of the earlier 2026-09-26 graph bullets after the decisions.** None; a record.
+  - "Every time-based mode needs every commit's timestamp before layout": the product is not Compact-only, so it now applies to the default view, Free; 4.10 open question 1 weighs more.
+  - "4.11, modes": the product exposes `free` and `compact`; 4.11's dated note proposes porting only these (Ralph to confirm).
+  - "free-mode buses passing behind cards …, if free mode ships": free ships as the default, so this is a default-view issue (4.11 open question 4).
+  - "lane-order stability across reloads (SPEC §11.5)", with "Min. crossings" global: `optimized` is dropped; `compact`'s stability is SPEC §11.6 and 4.11 open question 8.
+- **English-only app, or translated?** Open; app-wide, not Epic 10's. Low; the app's strings are hard-coded English today with no l10n setup (no ARB files), so the answer decides whether one is added before 10.2's two ARB strings.
+  - For now the graph's labels stay as the viewer has them: formatted per locale, English by default as in the design (`?lang=de` gives "Heute", "Gestern", "24. Sept.").
+  - Ralph is not sure the app should be translated at all: some terms may sound odd in German.
+  - **Follow-up:** Ralph decides; then the app's other strings (his UI) and Epic 10's labels follow one rule.
+- **The spike viewer keeps what the product dropped.** None; a record.
+  - It still offers Time, Time+gaps, the `optimized` order and the crossing-gap toggle, and it draws the branch-off side exit (Ralph: record the top-centre exit, do not update the viewer).
+  - Its screenshots and `tools/lane-metrics.mjs`'s drawn crossing counts are side-exit numbers.
+- **The design export does not show the deviations.** None; a record. They live in epics.md's Epic 10 header, not in `JJ Desktop Client.html`; a later design revision may adopt them.

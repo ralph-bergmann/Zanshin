@@ -58,6 +58,9 @@ scopeBoundary: >
   Flutter UI development (widgets, layout, navigation, theming, UX terminology, accessibility,
   i18n) is explicitly OUT OF SCOPE and is built by the author separately. FRs here describe the
   API surface that a future UI (or MCP client) will consume.
+  Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at
+  Ralph's request, including its own accessibility (VoiceOver semantics); the rest of the Flutter
+  UI stays Ralph's.
 ---
 
 # Product Requirements Document — Zanshin (Backend & Infrastructure)
@@ -71,7 +74,7 @@ scopeBoundary: >
 
 ## 1. Project Context
 
-Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ VCS (Jujutsu)](https://github.com/jj-vcs/jj) with a bundled MCP server binary. This PRD covers everything **except** the Flutter UI itself:
+Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ VCS (Jujutsu)](https://github.com/jj-vcs/jj) with a bundled MCP server binary. This PRD covers everything **except** the Flutter UI itself (*one dated exception, Epic 10 — see below*):
 
 - A Cargo workspace with `zanshin-jj` (jj-lib adapter), `zanshin-ffi` (cdylib bridge), `zanshin-diff` (word-level diff + syntax-highlight), `zanshin-graph` (DAG lane-assignment) and future crates
 - A `zanshin-mcp` Rust binary using `rmcp`, sharing the workspace crates
@@ -79,7 +82,7 @@ Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ 
 - Codesign / notarization / Sparkle-based auto-update / GitHub-Releases automation
 - A minimal Dart-side bootstrap (long-running worker isolate, FFI handle management) — *just enough* for the author's UI to plug in later; no widgets, no layout
 
-The Flutter UI (graph painter widget, diff viewer, navigation, theming, terminology choices, accessibility) is **Ralph's own work, outside this PRD's scope**.
+The Flutter UI (graph painter widget, diff viewer, navigation, theming, terminology choices, accessibility) is **Ralph's own work, outside this PRD's scope**. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
 
 **Authoritative reference documents** (do not duplicate here):
 - Technical research: [`research/technical-zanshin-jj-flutter-dart-hooks-mcp-research-2026-05-15.md`](./research/technical-zanshin-jj-flutter-dart-hooks-mcp-research-2026-05-15.md)
@@ -147,13 +150,13 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - Long-running worker isolate spawned at app start via manual `Isolate.spawn` + SendPort/ReceivePort
 - Worker holds FFI handles for app lifetime
 - Command-bus pattern: UI sends typed messages to worker, worker dispatches FFI calls, returns results / streams events
-- *No widgets, no UI, no navigation* — just the substrate Ralph will plug his Flutter UI into
+- *No widgets, no UI, no navigation* — just the substrate Ralph will plug his Flutter UI into (*exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's*)
 
 ### 3.2 Out of Scope (explicit non-goals)
 
-- **No Flutter widgets, layouts, or navigation.** Ralph builds these separately.
+- **No Flutter widgets, layouts, or navigation.** Ralph builds these separately. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
 - **No UX terminology decision.** JJ-native vs. Git-skin happens in Ralph's UI spec.
-- **No accessibility work.** UI concern, out of this PRD.
+- **No accessibility work.** UI concern, out of this PRD. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view built by Claude at Ralph's request, adds VoiceOver semantics to its own view; the rest stays Ralph's.*
 - **No i18n / l10n.** UI concern.
 - **No Windows / Linux build.** macOS-only.
 - **No Git-only repo support.** Zanshin works against jj-init'd repos (which may use jj's Git backend).
@@ -228,11 +231,11 @@ Adoption, stars, contributors — welcome side-effects, none required.
 ### 4.3 `zanshin-graph` — Commit-Graph Lane Assignment
 | FR | Description | Priority |
 |----|-------------|----------|
-| FR-GR-1 | Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). | P0 |
-| FR-GR-2 | Output: structured data — rows with `lane`, `edges_below`, `color_idx`. Crosses the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). | P0 |
+| FR-GR-1 | Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). (*Amended 2026-09-26 (Ralph, Stories 4.10–4.12; spike `spikes/graph-layout-ab`, `SPEC.md` and `README.md` "Review 2026-09-26"): the commit-graph view (epics.md Epic 10) no longer draws `jj log`'s one-commit-per-row lane graph. It draws the 2026-09-26 design's layered layout: rows shared by several commits (compact = generation depth, time = time buckets, an experimental free mode with time-proportional y), greedy interval lane packing, a budgeted lane-order optimisation, and orthogonal edge routing. The layout is specified in the spike's `SPEC.md` and computed in Dart on `zanshin_core`'s worker isolate (Story 4.11). jj-lib's index supplies the revset's topology (Story 4.10), and no lane assignment runs on it. Whether the pvigier assigner of Stories 4.1–4.9 is removed is Story 4.12's open question.*) (*Decided 2026-09-27 (Ralph, after using the spike viewer on a real 1.4k-commit repo): the product ships the free layout, the default, and compact; time is dropped. The lane order is `compact` (the default: greedy's packing with windowed segment exchanges, spike `SPEC.md` §4.7) or greedy; the budgeted `optimized` order is dropped. See epics.md Epic 10, "Product decisions 2026-09-27".*) | P0 |
+| FR-GR-2 | Output: structured data — rows with `lane`, `edges_below`, `color_idx`. Crosses the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). (*Amended 2026-09-26 (Ralph, Stories 4.10–4.12): the FFI no longer carries lane rows. It carries the topology of the whole revset. Per node, in `jj log` order: the commit and change ids, the view-derived facts (bookmarks, @, immutable, parent count, …) and, on request, the committer timestamp. Per edge: the target node index and jj's kind (Direct, Indirect, Missing). These cross as FlatBuffers scalar vectors with CSR offsets (Story 4.12). The layout's output (per node row, lane and column; per edge route; time buckets; integers only) never crosses the FFI: the worker isolate computes it and hands it to the UI isolate as typed data (Story 4.11). `edges_below` and `color_idx` are gone; the design colours edges by state (one gray plus the gold lineage of @), not by lane.*) | P0 |
 | FR-GR-3 | Full lane-cache computed on repo-open and on every `op_heads` change. | P0 |
-| FR-GR-4 | Render-slice API: given a row range, return the slice of rows in O(slice-size). (*WIP-rework 2026-05-17 / Story 4.4 delivered 2026-08-23: one call returns all lanes for the resolved revset — `zanshin_graph::collect_lanes`; row-range windowing deferred past WIP.*) | P0 |
-| FR-GR-5 | Performance: a 10k-commit repo produces a full lane-cache in < 1s (sub-budget of NFR-P-1's < 2s repo-open). | P0 |
+| FR-GR-4 | Render-slice API: given a row range, return the slice of rows in O(slice-size). (*WIP-rework 2026-05-17 / Story 4.4 delivered 2026-08-23: one call returns all lanes for the resolved revset — `zanshin_graph::collect_lanes`; row-range windowing deferred past WIP.*) (*Amended 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): row-range windowing is replaced, not built — a row's lane depends on the whole prefix, so a window at row k costs O(k). Instead the graph call returns the complete index-only geometry for the whole revset per operation, and card content is loaded lazily per visible page in O(page). Still open (Ralph, 2026-09-26): a fixed row-based layout or a free layout whose vertical spacing follows commit time (decided 2026-09-27, Ralph: the free layout is the default and compact the only row-based mode; time is dropped, so the default layout needs every timestamp); time-based layouts need every commit's committer timestamp, which lives in the commit object, not in jj's index — Story 4.10 loads them per call on request (measured 2026-09-26: 6.7 ms for a real 1.4k-commit repo, 33.6 ms at 10k in a packed store; the earlier ~1.2 s was the loose-object fixture).*) | P0 |
+| FR-GR-5 | Performance: a 10k-commit repo produces a full lane-cache in < 1s (sub-budget of NFR-P-1's < 2s repo-open). (*Amended 2026-09-26 (Ralph, Stories 4.10–4.11): there is no lane-cache any more, so the budget covers the topology call plus the Dart layout. Measured on 2026-09-26: the index-only topology costs 0.44–0.58 µs per commit (0.6–0.8 ms for a real 1.4k-commit repo's `all()`, ~3.3 ms at 10k). The Dart AOT layout takes 0.15–0.62 ms on that repo and 0.9–2.5 ms on the 10k fixture. The time-based modes also need every commit's timestamp, which lives in the commit object, not in jj's index. (2026-09-27: free, a time-based mode, is now the default, so the default layout pays these loads.) Story 4.10 loads them per call on request: 3.4–4.8 µs per commit in a packed store (6.7 ms for that repo, 33.6 ms at 10k), but ~122 µs on the loose-object 10k fixture (~1.2 s). Whether a commit-id cache is added is 4.10's open question. Card content is lazy and outside this budget. The target stays soft in WIP.*) | P0 |
 | FR-GR-6 | Checkpoint-caching for very large repos (kicks in beyond the 10k-commit baseline NFR-P-1 covers). Deferred to a later milestone. | P2 |
 
 ### 4.4 `zanshin-ffi` — FFI Surface (cdylib)
@@ -306,7 +309,7 @@ Adoption, stars, contributors — welcome side-effects, none required.
 | NFR | Target |
 |-----|--------|
 | NFR-P-1 | Repo open (incl. full lane-cache computation, op-log read) for a 10k-commit repo: **< 2s** |
-| NFR-P-2 | `zanshin-graph` render-slice API: O(slice-size), no scan of the full lane-cache per call (*WIP: no lane-cache exists (ADR-0002) and Story 4.4 returns all lanes per call; the O(slice-size) bound returns with windowing in the release phase*) |
+| NFR-P-2 | `zanshin-graph` render-slice API: O(slice-size), no scan of the full lane-cache per call (*WIP: no lane-cache exists (ADR-0002) and Story 4.4 returns all lanes per call; the O(slice-size) bound returns with windowing in the release phase*) (*Amended 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): windowing does not return. The O(slice-size) bound moves to the lazy content call — O(page) per visible page; the geometry is computed whole, index-only, O(rows) once per operation. The fixed-row vs. free-layout caveat of FR-GR-4 applies.*) |
 | NFR-P-3 | `zanshin-diff` output (FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON) for a 5k-line changed file: **< 500ms** |
 | NFR-P-4 | Watcher latency `op_heads → callback`: **< 100ms** (FR-RX-1) |
 | NFR-P-5 | FFI handle creation/destruction overhead: negligible (< 1ms per call) so the long-running-worker pattern stays the right choice |

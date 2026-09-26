@@ -3,6 +3,8 @@
 Zanshin is a macOS Flutter GUI for the Jujutsu (jj) VCS. This repo is the
 **Rust workspace + FFI + MCP server + the pure-Dart bridge** (`packages/zanshin_core`)
 + a minimal Dart bootstrap. The **Flutter UI is out of scope** (separate work).
+Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built
+by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.
 
 ## Canonical rules
 

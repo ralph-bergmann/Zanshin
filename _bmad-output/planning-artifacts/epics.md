@@ -59,11 +59,11 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 #### `zanshin-graph` — Commit-Graph Lane Assignment (Section 4.3)
 
-- **FR-GR-1** (P0): Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style).
-- **FR-GR-2** (P0): Output structured data (rows with `lane`, `edges_below`, `color_idx`), crossing the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON").
+- **FR-GR-1** (P0): Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). (*Amended 2026-09-26 (prd.md): the commit-graph view draws the design's layered layout, computed in Dart on the worker isolate (Story 4.11); jj-lib supplies the topology (4.10).*)
+- **FR-GR-2** (P0): Output structured data (rows with `lane`, `edges_below`, `color_idx`), crossing the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). (*Amended 2026-09-26 (prd.md): the FFI carries the whole revset's topology as scalar vectors + CSR (Stories 4.10, 4.12); the layout never crosses the FFI (4.11).*)
 - **FR-GR-3** (P0): Full lane-cache computed on repo-open and on every `op_heads` change.
-- **FR-GR-4** (P0): Render-slice API: given a row range, return the slice in O(slice-size).
-- **FR-GR-5** (P0): Performance: 10k-commit repo produces full lane-cache in < 1s (sub-budget of NFR-P-1).
+- **FR-GR-4** (P0): Render-slice API: given a row range, return the slice in O(slice-size). (*Amended 2026-09-26 (prd.md): row-range windowing is replaced, not built — the complete index-only topology per operation plus lazy content per visible page (Stories 4.10–4.12).*)
+- **FR-GR-5** (P0): Performance: 10k-commit repo produces full lane-cache in < 1s (sub-budget of NFR-P-1). (*Amended 2026-09-26 (prd.md): the budget covers the topology call plus the Dart layout (Stories 4.10, 4.11).*)
 - **FR-GR-6** (P2): Checkpoint-caching for very large repos (beyond 10k baseline).
 
 #### `zanshin-ffi` — FFI Surface (Section 4.4)
@@ -123,7 +123,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 #### Performance (Section 5.1)
 
 - **NFR-P-1**: Repo open (incl. full lane-cache, op-log read) for a 10k-commit repo: **< 2s**.
-- **NFR-P-2**: `zanshin-graph` render-slice API: O(slice-size), no full-cache scan per call.
+- **NFR-P-2**: `zanshin-graph` render-slice API: O(slice-size), no full-cache scan per call. (*Amended 2026-09-26 (prd.md): no windowing — O(page) moves to the lazy content call; the topology is computed whole, index-only, once per operation.*)
 - **NFR-P-3**: `zanshin-diff` output (FlatBuffers per [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md); was JSON) for a 5k-line changed file: **< 500ms**.
 - **NFR-P-4**: Watcher latency `op_heads → callback`: **< 100ms** (FR-RX-1).
 - **NFR-P-5**: FFI handle create/destroy overhead: **< 1ms** per call.
@@ -234,6 +234,8 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 ### UX Design Requirements
 
 > Not applicable. Per PRD §3.2 and `feedback_scaffolding_scope`, Flutter UI is explicitly OUT OF SCOPE. No UX design document exists. The Dart-side bootstrap (worker isolate, FFI handle management, command bus) is the only Dart-side scope and is captured under FR-FFI / AR-AD-4 / AR-P-3.
+>
+> *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view, is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
 
 ### FR Coverage Map
 
@@ -266,11 +268,11 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 | FR-DF-3 | 5 | structured output, FlatBuffers (ADR-0001) |
 | FR-DF-4 | 5 | diff between any two revisions |
 | FR-DF-5 | 5 | bundled tree-sitter Kern-Set-9 grammars |
-| FR-GR-1 | 4 | lane-assignment algorithm on jj-lib default_index |
-| FR-GR-2 | 4 | FlatBuffers output (lane, edges_below, color_idx) — ADR-0001 |
+| FR-GR-1 | 4 | lane-assignment algorithm on jj-lib default_index — amended 2026-09-26: the design's layered layout in Dart (4.11) |
+| FR-GR-2 | 4 | FlatBuffers output (lane, edges_below, color_idx) — ADR-0001; amended 2026-09-26: topology vectors + CSR (4.10, 4.12) |
 | FR-GR-3 | 4 | full lane-cache on open + op_heads change |
-| FR-GR-4 | 4 | render-slice API O(slice-size) |
-| FR-GR-5 | 4 | 10k-commit lane-cache < 1s |
+| FR-GR-4 | 4 | render-slice API O(slice-size) — amended 2026-09-26: whole-revset topology + lazy content (4.10–4.12) |
+| FR-GR-5 | 4 | 10k-commit lane-cache < 1s — amended 2026-09-26: topology call + Dart layout (4.10, 4.11) |
 | FR-GR-6 | 4 | checkpoint-caching (P2 — story marked deferred post-0.1) |
 | FR-FFI-1 | 1, 3 | cdylib skeleton + re-export wiring (1); substance (3) |
 | FR-FFI-2 | 3 | opaque handle types |
@@ -376,7 +378,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 **User outcome:** A caller (FFI consumer or test) obtains lane data per request (computed on demand, in-memory) and receives a render-slice response (all lanes for the revset). An algorithmic-correctness test on a ~100-commit fixture catches dumb regressions cheaply.
 
-**FRs covered:** FR-GR-1, FR-GR-2, FR-GR-4 (return-all-lanes form, no windowing). FR-GR-3 reduced to "compute on demand" — full persistent lane-cache with op_heads-invalidation is deferred. FR-GR-5 (perf budget) is a soft target only.
+**FRs covered:** FR-GR-1, FR-GR-2, FR-GR-4 (return-all-lanes form, no windowing; all three amended 2026-09-26 for Stories 4.10–4.12, see the Reopened note below). FR-GR-3 reduced to "compute on demand" — full persistent lane-cache with op_heads-invalidation is deferred. FR-GR-5 (perf budget) is a soft target only.
 
 **NFRs:** None enforced in WIP (NFR-P-1 / NFR-P-2 are soft targets).
 
@@ -385,6 +387,25 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 **WIP-rework:** Story 4.5 (10k-commit perf test) deleted — algorithmic-correctness test on ~100-commit fixture absorbed into Story 4.1. Story 4.7 (P2 checkpoint caching) deleted. Story 4.3 (full lane-cache) shrunk to on-demand in-memory. Story 4.4 (render-slice) shrunk to return-all-lanes-for-revset.
 
 **Sequencing:** After Epic 3. Parallelizable with Epics 5 and 6.
+
+**Reopened (2026-09-26, Ralph — console session on the commit-graph view; re-planned the same day after the layout A/B):** three stories form the backend/bridge half of the commit-graph view (Epic 10, UI). The view draws the HTML design's layered layout, not `jj log`'s one-commit-per-row lanes:
+- several commits per row: Compact = generation depth, Time = time buckets, and an experimental Free mode with time-proportional y *(decided 2026-09-27, Ralph, via the spike viewer: the product ships Free, the default, and Compact; Time is dropped. The lane order is `compact`, the default, or greedy; `optimized` is dropped. See Epic 10's "Product decisions 2026-09-27")*;
+- greedy interval lane packing and a lane-order optimisation;
+- orthogonal edge routing.
+
+The stories:
+- **4.10 — topology vs. card content.** A new index-only call returns the whole revset's topology: nodes in `jj log` order, parents with their Direct / Indirect / Missing kinds, the View-derived facts, and, on request for the time-based modes, committer timestamps. A batch content lookup is pinned to that call's operation. `walk_graph` and `zanshin_graph_slice` stay unchanged.
+- **4.11 — the Dart layout engine.** The spike's Dart implementation of `spikes/graph-layout-ab/SPEC.md`, ported into `zanshin_core`'s worker isolate, plus the input builder (priority rule, repeated-target rule) and the layout command. Its result reaches the UI isolate as typed data. The spike's dumper becomes the input builder's Rust reference.
+- **4.12 — the topology wire.** FlatBuffers scalar vectors + CSR for the whole revset, a lazy Dart view, id → index lookups and at most one copy across isolates. It replaces `zanshin_graph_slice`; whether the pvigier lane path goes with it is its open question.
+
+Why:
+- **The layout needs the whole revset before the first frame,** but since 4.8 the only graph call loads every commit object inline. Measured 2026-09-26:
+  - the index-only topology costs 0.44–0.58 µs per commit;
+  - a commit load costs 3.4–4.8 µs in a packed store, but ~122 µs on the loose-object 10k fixture (1.2 s for `all()`);
+  - `empty` costs 0.78 ms per merge commit when no changed-path index covers it. On a real 1.4k-commit repo that is 115 ms of the 163 ms today's call takes.
+- **Where the layout runs was decided by the A/B spike** (Ralph, 2026-09-26): in Dart. Rust is ~3× faster, 1.2–1.9× once Dart uses monomorphic sorts (outside many-lane `optimized`). But both stay far under a frame at realistic sizes: Dart AOT takes 0.15–0.62 ms for that repo's `all()`. And a Dart layout hot-reloads into the running app.
+
+FR-GR-4 / NFR-P-2 were amended on 2026-09-26: no windowing, but complete geometry plus lazy content. FR-GR-1 / FR-GR-2 / FR-GR-5 carry dated amendment notes that point here. Research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Spike: `spikes/graph-layout-ab` (`README.md`, `SPEC.md`).
 
 ---
 
@@ -482,6 +503,80 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 ---
 
+### Epic 10: Commit-Graph View (Flutter UI)
+
+**Goal:** Build the app's main view from the 2026-09-26 HTML design export: `_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`, with sources `graph-view.jsx`, `graph-data.js`, `graph.css`, `app.jsx` and `styles.css`. The export is preliminary but close to final, and it supersedes Ralph's earlier mockup image. The view is the commit graph plus its toolbar, a thin detail panel, a thin bookmark panel and placeholder action popups. It sits on the shipped bridge and on backend Stories 4.10–4.12. The graph:
+- commit cards at positions computed from data, several per row: Compact rows = dependency depth; Time rows = time buckets with a sticky time gutter *(2026-09-27: Free, with a sticky day gutter, replaces Time and is the default; "Product decisions 2026-09-27" below)*; a dot-grid canvas;
+- rounded orthogonal edges behind the cards:
+  - straight, merge, and branch-off with shared buses;
+  - dashed indirect edges;
+  - crossing hops;
+  - the "~ N elided" marker;
+  - the gold lineage of @ and a hover focus path;
+- two-axis scrolling, pan-by-drag and exact scrollbars over 10k–100k commits.
+
+**User outcome:** A user opens a repository and sees the commits of `jj log` (their effective `revsets.log`) or of `all()`. They can:
+- switch between Compact and Time *(2026-09-27: Free, the default, and Compact)*, and change card detail and width;
+- pan and scroll smoothly;
+- hover a card to see its ancestry, click it for details, and double-click it to `jj edit`;
+- run describe, new, abandon and bookmark create/delete from the cards and the panel.
+
+Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend verbs land. When jj re-derives the graph after an operation (Zanshin's own or an external `jj`), the view stays anchored on the same commit.
+
+**Backed by:**
+- The design export above. Every story cites it by file:line.
+- `research/technical-commit-graph-virtualization-research-2026-09-26.md` §1–§5: the viewport mechanics and the §5 pitfalls. They are adapted to several cards per row and to per-node y. The §1 "Nachtrag" recommended keeping `jj log` order; the design did not follow it and reorders and packs rows instead.
+- The POC at `app/lib/src/features/graph_poc/` + `app/lib/main4.dart`.
+- The A/B spike `spikes/graph-layout-ab` (`SPEC.md`): the design's algorithm made scalable and deterministic, in three modes (`compact`, `time`, `free`). Its reference outputs are Epic 10's recorded layouts until 4.11 ships. It also settled where 4.11 runs: in Dart, on `zanshin_core`'s worker isolate, with Rust supplying the jj data (Ralph, 2026-09-26; spike README "Recommendation" and "Review 2026-09-26").
+- Backend:
+  - Story 4.10: the whole revset's index-only topology (timestamps on request) vs. lazy, op-pinned content. The topology includes jj's Missing edges, which draw the elided marker.
+  - Story 4.11: the layout engine in all three modes, in Dart on the worker isolate: rows, columns, route shapes and buckets *(2026-09-27: the product needs `free` and `compact` only)*.
+  - Story 4.12: the topology wire and the lazy Dart view.
+
+  Epic 10 consumes an abstract `GraphLayout`; 10.12 backs it with 4.11's layout result and 4.12's topology view.
+
+**Time layout is an experiment.** Ralph wants commits made at about the same time on parallel branches drawn at the same height, so that both order and time distance are visible. He has not decided between fixed rows (the design) and a free layout whose vertical spacing follows elapsed time.
+- 10.1's contract carries every mode's rows in units of 1/U pitch, the spike's output format. The engine's `free` layout is therefore the same pixel mapping as the design's rows.
+- The one view-side variant, time-sized gaps between Time buckets, is a swappable `VerticalLayout`.
+- Story 10.13 compares the variants on real data and decides which modes the product exposes.
+- 10.13 does not gate 4.11, which is asked to carry all three modes. *(2026-09-27: 4.11's dated note proposes porting only `free` and `compact`.)*
+- Every time-based variant needs every commit's timestamp before layout. 4.10 carries them in the topology call on request (a commit-id cache is its open question 1).
+
+**Product decisions 2026-09-27** (Ralph, console session, after using the spike viewer on a real 1.4k-commit repo; details in the Epic 10 header below):
+- **Layout modes:** Free is the default, Compact the only other mode. Time and Time+gaps are dropped, so the experiment above is decided: free y. Free keeps the day axis in the gutter. Every default layout therefore needs every timestamp.
+- **Lane order:** `compact` is the default, greedy the alternative. `optimized` (the design's "Min. crossings", its default) is dropped.
+- **Intended deviations from the design:** crossing gaps are always on (no Plain, no toggle); content fades as it scrolls under the gutter; the current date stays pinned in the gutter; every edge leaves a card's top at the centre, branch-offs included.
+- **Label language:** the localisable labels stay for now, English by default as in the design. Whether the app is English-only or translated is open.
+- 10.13's outcome is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph.)*
+
+**FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
+- FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
+- Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
+- FR-RX-1 (op_heads → refresh);
+- FR-JJ-8 (bookmarks), FR-JJ-10a and FR-JJ-14a (the shipped mutations and undo), and Story 9.6's `show`.
+
+The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Epic 9 uses it): CLI parameters are pre-filled from the effective config and passed explicitly, never baked in. The layered layout is presentation. What the view shows (which commits and edges, @, bookmarks) and every verb stay CLI-exact.
+
+**Scope note:** This epic is a dated exception to "the Flutter UI is Ralph's" (PRD §3.2; `project-context.md`; `CLAUDE.md`). Story 10.0 recorded it (done). Ralph reviews every story, and the rest of the UI stays his. The design's dialogs, popups and panels are not final. So the card popups (10.15), the detail panel (10.8) and the bookmark panel (10.14) are thin placeholders, unless Ralph exempts one of the panels.
+
+**Sequencing:**
+- 10.0 is done. 10.1 comes first: the viewport, `GraphLayout`, the vertical mapping, the recorded layouts from the spike and the demo host.
+- 10.2, 10.3 and 10.4 run in parallel on recorded layouts.
+- 10.5 can land any time after 10.1. It also declares the ports later stories use: the layout source and the actions runner.
+- 10.13 (the Time-layout lab) follows 10.1, 10.4 and the spike's stages 2–3. It does not gate 4.11. The throwaway viewer inside the spike was built on 2026-09-26; Ralph currently leans to Free (tentative). *Outcome decided 2026-09-27 in the spike viewer (Free by default, plus Compact); a Flutter lab is built only if Ralph asks for one (10.13 item 6).*
+- 10.6 follows 10.3 and 10.4.
+- 10.7 follows 10.2, 10.3, 10.5 and 10.6.
+- 10.8 follows 10.5 and 10.6.
+- 10.9 follows 10.3 and 10.5. Until it lands, 10.6's double-click and 10.8's action row run on a fake actions port.
+- 10.15 follows 10.8 and 10.9.
+- 10.14 follows 10.5, 10.6 and 10.7. Its full row set needs 9.29.
+- 10.11 follows 10.3 and 10.5 on the fake port.
+- 10.12 follows Stories 4.10, 4.11 and 4.12, and brings real data.
+- 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run`, its design question (f)) it needs no backend story.
+- 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
+
+---
+
 ### Cross-Cutting Concerns (no dedicated epic)
 
 These are reviewed in every epic's acceptance criteria rather than implemented once:
@@ -491,7 +586,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
-> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD).
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12.
 
 ---
 
@@ -2695,7 +2790,7 @@ So that FR-RX-1 (< 100 ms budget with 100 ms CI slack), FR-RX-2 (external edit p
 
 ## Epic 4: `zanshin-graph` — DAG Lane Assignment
 
-Compute commit-graph lane assignments for arbitrary jj DAGs and expose render-ready FlatBuffers (ADR-0001) via the FFI surface. Hit the < 1s lane-cache budget (FR-GR-5 / NFR-P-1 sub-budget) on the 10k-commit fixture and provide O(slice-size) render-slice responses.
+Compute commit-graph lane assignments for arbitrary jj DAGs and expose render-ready FlatBuffers (ADR-0001) via the FFI surface. Hit the < 1s lane-cache budget (FR-GR-5 / NFR-P-1 sub-budget) on the 10k-commit fixture and provide O(slice-size) render-slice responses. *(2026-09-26: reopened for Stories 4.10–4.12, which replace the render-slice with the whole revset's topology plus lazy content and move the layout to Dart; see the note before Story 4.10.)*
 
 ### Story 4.1: Lane-assignment algorithm (`lane.rs`)
 
@@ -2892,7 +2987,7 @@ So that subsequent render-slice calls (Story 4.4) are O(slice-size) and the < 2s
 
 > **WIP-rework (2026-05-17):** Drop the windowing/pagination ACs. WIP returns all lanes for the resolved revset in one call. Render-slice with O(slice-size) and viewport optimization return in the release phase, once UI scroll patterns are understood.
 
-> **Delivered (2026-08-23):** `crates/zanshin-graph/src/slice.rs` ships `pub fn collect_lanes(repo: &zanshin_jj::Repo, revset: &str, prioritize: &str) -> Result<Vec<Row>, LaneStreamError>` — a collecting sink over the 4.3 `stream_lanes` stream (re-resolve to head per call, `jj log` order, `finish()` run, both parameters caller pass-throughs). There is no `LaneCache`, no `render_slice`, no `start`/`count`/`limit`/`reversed`, no paging struct and no `total_rows` field: `Vec<Row>` is the return type and the FFI `GraphSlice` builder (4.2) derives `total_rows == rows.len()`. Windowing stays deferred past WIP; a future page composes as an early-exit sink on `stream_lanes`, never a scan over held rows (ADR-0002 AC-4). The CLI's `--limit`/`--reversed` are deliberately NOT passed through (presentation/paging knobs dropped together with windowing; a consumer wanting a prefix uses `stream_lanes` + `Break`) — revisit when windowing returns. Tests: `crates/zanshin-graph/tests/slice.rs` (tiny exact rows + equality with a `stream_lanes` collection for both prioritize values, medium invariants + determinism, empty revset, parse errors incl. blank `prioritize`, resolution errors for either parameter). The `render_slice` ACs below are superseded.
+> **Delivered (2026-08-23):** `crates/zanshin-graph/src/slice.rs` ships `pub fn collect_lanes(repo: &zanshin_jj::Repo, revset: &str, prioritize: &str) -> Result<Vec<Row>, LaneStreamError>` — a collecting sink over the 4.3 `stream_lanes` stream (re-resolve to head per call, `jj log` order, `finish()` run, both parameters caller pass-throughs). There is no `LaneCache`, no `render_slice`, no `start`/`count`/`limit`/`reversed`, no paging struct and no `total_rows` field: `Vec<Row>` is the return type and the FFI `GraphSlice` builder (4.2) derives `total_rows == rows.len()`. Windowing stays deferred past WIP; a future page composes as an early-exit sink on `stream_lanes`, never a scan over held rows (ADR-0002 AC-4). The CLI's `--limit`/`--reversed` are deliberately NOT passed through (presentation/paging knobs dropped together with windowing; a consumer wanting a prefix uses `stream_lanes` + `Break`) — revisit when windowing returns. Tests: `crates/zanshin-graph/tests/slice.rs` (tiny exact rows + equality with a `stream_lanes` collection for both prioritize values, medium invariants + determinism, empty revset, parse errors incl. blank `prioritize`, resolution errors for either parameter). The `render_slice` ACs below are superseded. **2026-09-26 (Ralph):** windowing does not return — FR-GR-4 / NFR-P-2 were amended to the complete topology plus lazy content (Stories 4.10–4.12), and `collect_lanes` itself goes with Story 4.12's decision on the lane path.
 
 As a Rust developer serving paginated graph slices,
 I want `crates/zanshin-graph/src/slice.rs` implementing `LaneCache::render_slice(start: u32, count: u32) -> GraphSlice` in O(slice-size) time,
@@ -3176,6 +3271,700 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 **And** a single bad `[revset-aliases]` entry only warns, and the call still succeeds.
 
 **Out of scope:** template aliases / custom log templates (the GUI replaces the CLI's template UX); fileset aliases; config writing/editing from Zanshin; a settings surface beyond the four values; the `--config`/`--config-file` command-line layer; `user.*` config (Zanshin's commit/operation identity stays pinned in `make_settings`, so a repo's `user.name` can never take over authorship). Known residual, recorded not fixed: `RevsetParseContext.user_email` still comes from that hardcoded identity, so a jj builtin keying off the user's email resolves differently than in the CLI.
+
+---
+
+> **Reopened 2026-09-26 (Ralph, console session on the commit-graph view); re-planned the same day after the layout A/B.**
+>
+> **The view.** Ralph's near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`; Epic 10) lays commits out in rows shared by several commits:
+> - Compact rows are the generation depth, Time rows are time buckets, and an experimental Free mode gives each commit a time-proportional y;
+> - lanes come from greedy interval packing plus a lane-order optimisation;
+> - every edge is one routed orthogonal polyline.
+>
+> That is not the `jj log` lane graph that Stories 4.1–4.9 compute.
+>
+> **Where the layout runs.** The A/B spike `spikes/graph-layout-ab` made the design's algorithm scalable and deterministic (`SPEC.md`). It implemented the algorithm in Rust and in Dart, with byte-identical outputs. Ralph decided on 2026-09-26: Dart, in `zanshin_core`'s worker isolate (spike `README.md`, "Recommendation" and "Review 2026-09-26"). Rust keeps supplying the jj data. The worker is one isolate for every open repo, so a layout delays whatever is queued behind it (4.11 item 9).
+>
+> **What 4.1–4.9 do not give it.** The layout needs the whole revset's topology before the first frame, and since Story 4.8 `walk_graph` loads every commit object inline. Measured 2026-09-26 (release builds, jj-lib 0.44.0):
+> - the index-only topology costs 0.44–0.58 µs per commit;
+> - a commit load costs 3.4–4.8 µs in a packed store, but ~122 µs on the committed loose-object `large-10k` (1.2 s for `all()`);
+> - `empty` costs 0.78 ms per merge commit when no changed-path index covers it. On a real 1.4k-commit repo that is 115 ms of today's 163 ms `collect_lanes(all())`; the precondition's snapshot is another 28 ms.
+>
+> The time-based modes also need every commit's timestamp, which jj's index does not hold.
+>
+> **The three stories** (backend/bridge scope):
+> - **4.10** adds an index-only topology call for the whole revset next to `walk_graph`, with timestamps on request, and a batch content call pinned to its operation. `walk_graph` and `zanshin_graph_slice` stay unchanged; the commit-graph view no longer renders from 4.8's one call.
+> - **4.11** ports the spike's Dart engine into the worker isolate, with its guardrails, the input builder (priority rule, repeated-target rule), goldens and the layout command. The spike's dumper moves onto 4.10's API and stays the input builder's Rust reference.
+> - **4.12** puts the topology on the wire as scalar vectors + CSR, with a lazy Dart view, id → index lookups and one copy across isolates. It replaces `zanshin_graph_slice`; whether the pvigier lane path goes with it is its open question.
+>
+> Row-range windowing (FR-GR-4 / NFR-P-2) is replaced, not built: the PRD was amended on 2026-09-26. FR-GR-1 / FR-GR-2 / FR-GR-5 carry dated amendment notes. The first plan's landing lanes, graph width and segment identity belonged to the lane model and are dropped.
+
+### Story 4.10: Graph topology vs. card content — index-only topology call for the whole revset (timestamps on request) + op-pinned batch content lookup [R/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Re-planned 2026-09-26 after the layout A/B (`spikes/graph-layout-ab`, `README.md` incl. "Review 2026-09-26"; Ralph's decision): the layout runs in Dart on the worker isolate (4.11), so the new call carries the revset's topology instead of lanes. Backend + bridge scope. The topology's wire and lazy Dart view are 4.12, the view is Epic 10. Refined enough to build from; ACs to be written when scheduled. The commit-graph view no longer renders from Story 4.8's one call (Scope 9); `walk_graph` and `zanshin_graph_slice` themselves stay unchanged until 4.12.)*
+
+**Motivation.** The view lays out the whole revset before its first frame (4.11: rows by depth or time bucket, lane packing, lane order). No node's position can be computed from a window. So the layout needs the complete topology of the revset, once per operation.
+- **Topology is cheap, content is not.** Measured 2026-09-26 (release builds, jj-lib 0.44.0; a real 1.4k-commit repo, and `large-10k` both as committed and repacked):
+  - The index-only topology walk costs 0.44–0.58 µs per commit: 0.6–0.8 ms for the real repo's `all()` (1,415 commits), ~3.3 ms at 10k.
+  - Loading a commit object costs 3.4–4.8 µs per commit in a packed store: 6.7 ms for the real repo's `all()`, 33.6 ms for `large-10k` repacked.
+  - On the committed `large-10k` it costs ~122 µs per commit (1.217 s), because all 30,002 of its objects are loose. Plain git (1.55 s loose, 0.14 s packed) and the jj CLI (1.32 s / 0.12 s) show the same split. The cost comes from the object store's layout, not from jj.
+  - `empty` is the expensive field. `Commit::is_empty` first asks jj's changed-path index (jj-lib `commit.rs:160-165`, `is_commit_empty_by_index` `:273-280`). Only when that index does not cover the commit does it load the parents and, for a merge, merge their trees (`:260-271`): 0.78 ms per merge, measured without a changed-path index. The CLI builds one with `jj debug index-changed-paths` (`cli/src/commands/debug/index_changed_paths.rs` @ v0.44.0; jj-lib `DefaultIndexStore::build_changed_path_index_at_operation`, `default_index/store.rs:353`).
+  - Today's `collect_lanes(all())` takes 163 ms on the real repo. About 115 ms of that is `empty` on its 147 merges, and 28 ms is the precondition's snapshot. The CLI's default `jj log` template pays the same merge cost (138 ms), but it prints while it streams.
+- **Since Story 4.8 the topology waits for every commit.** `walk_graph` loads each commit inline for the card metadata (`crates/zanshin-jj/src/graph.rs:233-234`). The CLI loads per row too (`cli/src/commands/log.rs:275` @ v0.44.0). A GUI that lays out the whole revset first cannot afford that.
+- **Timestamps are the exception.** The time-based layout modes (`time`, `free`) need every node's timestamp before layout. *(2026-09-27: Ralph made `free` the default and dropped `time`, so the default layout needs them.)* jj's index holds generation numbers, not timestamps (jj-lib `default_index/readonly.rs:692-696`); the timestamp lives in the commit object. So the timestamp is the one object field the layout needs for the whole revset (Scope 4).
+
+**Split criterion: index/View-derived vs. object-derived.**
+- **View half.** What the index and the operation's View answer. Cheap for every node, but it changes with every operation.
+- **Object half.** What needs the commit object. Loaded only for the visible nodes ± a buffer. It is commit-intrinsic (the commit is content-addressed and its parents are part of it), so the view may cache it by commit id across reloads (10.11).
+
+"Topology" below means the nodes in `jj log` order with their parent edges. The topology call carries topology + view half.
+
+**Scope (backend + bridge).**
+
+1. **Field split** (verified against `crates/zanshin-jj/src/commit_meta.rs:55-98`, `:161-213`). Name the split types in the spec; avoid `CommitView*`, which `commit_views.rs` already uses.
+   - **View half, computed for every node:**
+     - `change_id`;
+     - `change_id_prefix_len` / `commit_id_prefix_len` (`IdPrefixIndex`, `:186-187`), populated once per call over `short_prefixes`;
+     - `change_offset` / `hidden` / `divergent` (`resolve_change_id`, `:171-179`);
+     - `immutable` (`containing_fn`, `:202`);
+     - `bookmarks` / `tags` / `working_copies` / `working_copy` (View maps built once, `:126-153`, `:195-198`);
+     - `root` (`:210`);
+     - **new: `parent_count`,** the commit's real parent count, Missing parents included. 10.1's `parentCountOf` needs it for the merge glyph and the merge tag.
+       - It is index-only. The call evaluates `revset.filtered(RevsetFilterPredicate::ParentCount(2..u32::MAX))` (jj-lib `revset.rs:579`; the `merges()` builtin is the same filter, `:1024`) and iterates it. That yields exactly the revset's merge nodes, with the predicate read from the index entry (`default_index/revset_engine.rs:1303-1308`).
+       - Only on that set does it refine k = 3, 4, … the same way, until a pass is empty. `root()` gets 0, every other node 1. A bare `RevsetExpression::filter(…)` would instead test every visible commit per pass.
+       - The edges cannot give it: a hidden parent can yield several Indirect edges, and a merge can yield two edges to one target (next item).
+   - **Object half:** `author_name` / `author_email`, `committer_timestamp`, `conflict` (tree ids), `empty`, `description_first_line` (`:181-194`, `:203`, `:207`, `:211`).
+   - **Edges are jj facts, verbatim.** Direct / Indirect / Missing, in `TopoGroupedGraph`'s stream order, deduplicated and pruned by jj-lib only.
+     - That includes repeated targets. On a real repo's default revset, a merge carries a Direct and an Indirect edge to the same parent: its second parent is hidden and descends from the first.
+     - So the spike's SPEC §2 premise ("jj never yields duplicate targets, so V3 holds") is false. Normalising them is layout input (4.11 Scope 5), not topology.
+   - **No synthetic "(elided revisions)" nodes.** The view draws Indirect edges dashed and has no synthetic nodes (10.1 item 2, 10.4). So the topology is `walk_graph`'s raw graph:
+     - this call has no `synthetic_elided` parameter and no "meta absent iff synthetic" rule. Both stay on `zanshin_graph_slice`, unchanged;
+     - what `ui.log-synthetic-elided-nodes` means for this view is 10.4 design question (a).
+   - **The change id needs one extra index-only pass.** Today it is read off the loaded commit (`:185`).
+     - jj-lib's `Index` trait has no commit → change-id accessor (`index.rs:101-165` @ 0.44.0), and the composite index's per-entry access is crate-private (`default_index/composite.rs:106-109`, `:131`).
+     - The call therefore runs one `Revset::commit_change_ids()` pass (index-only, `default_index/revset_engine.rs:168-180`) into a commit id → change id map: O(nodes) memory, one pass per call.
+   - **`all_count` = `|all()|`** for 10.7's "shown / total" (GV:223). It is counted by iterating `all()`'s positions (index-only), never with `Revset::count_estimate` (see Tests).
+   - **"Index-only" means per node, not per call.** Evaluating `immutable_heads()`, the default `short_prefixes` and a `trunk()` anchor loads the ≤ 7 `trunk()` candidates once per call:
+     - `trunk()` is `latest(...)` (`cli/src/config/revsets.toml` @ v0.44.0), and `Latest` loads each candidate (`revset_engine.rs:1226-1228`);
+     - a user alias with filter predicates loads more.
+
+     That is correct, and still per call.
+
+2. **Topology call = the command.** New `Repo::graph_topology(&mut self, …) -> Result<GraphTopology, RevsetError>` (names in the spec), next to `walk_graph`.
+   - **Shared setup, `walk_graph` untouched.** Factor the setup both need into a private helper: `parse_revset_with` for `revset` and `prioritize`, `prioritize ∩ revset`, `load_at_head`, `TopoGroupedGraph` (`crates/zanshin-jj/src/graph.rs:197-223`). `walk_graph`, `stream_lanes`, `collect_lanes` and `zanshin_graph_slice` keep their signatures, their per-row commit load and their full rows. 4.12 removes that path whole, or keeps it whole (its open question 1). So this story changes no existing wire, caller or test.
+   - **Parameters,** all caller pass-throughs (FR-JJ-17): `revset`, `prioritize`, `short_prefixes` (as `walk_graph`), the priority `anchors` (item 3) and `with_timestamps` (item 4). Rust bakes in no default for any of them.
+   - **Precondition.** It runs the pre-verb precondition exactly ONCE through `with_verb` (`repo.rs:338`, as `Repo::walk_graph` does at `:785-787`), like the CLI's one `jj log`. The precondition is Story 9.26's implicit snapshot + colocated import, the settings refresh, and Story 9.37's secure-config fix-ups.
+   - **Result:**
+     - the `operation_id` of the operation that its own `load_at_head` loaded (`graph.rs:201`), after the precondition's snapshot if that wrote one. It is a `zanshin_jj::OperationId` (`op_log.rs:26`);
+     - the nodes in `jj log` order, each with its commit id and view half;
+     - per node its edges as (target node index, kind). A Missing edge has no target;
+     - `all_count`, the anchors, and the timestamps when requested.
+
+     Details:
+     - Targets are resolved to node indices after the complete pass. A non-Missing target outside the node set is `graph.dangling_edge`, as in `walk_graph`.
+     - The operation id comes back in the `Ok` value, not through a side channel. `take_precondition()` / `take_warnings()` (`repo.rs:382`, `:400`) are side channels because their facts must survive an `Err`. The operation id exists only on success.
+   - **Not in this story:** the spike's detached dumper (`spikes/graph-layout-ab/rust-inputs/src/jj_dump.rs`) moves to `graph_topology` in 4.11 (its item 10), together with the priority rule it needs.
+
+3. **Priority anchors** (for 4.11's priority rule; SPEC §11.2).
+   - `anchors` is an ordered list of caller-supplied revsets and a required parameter; Rust has no default. `zanshin_core` exports the editable pre-fill `["trunk()", "present(@)"]` as a documented constant, and the caller passes it explicitly (4.11 item 9).
+   - Each anchor is intersected with the revset as a user expression before resolution (like `prioritize`, `graph.rs:198`) and evaluated once. The result is, per anchor, the node indices it selects, in `jj log` order. An empty list is valid.
+   - The rule that turns anchors into priority classes (first-parent chains) is Dart (4.11), so it changes with a hot reload. Rust only resolves the revsets, which it must do: `trunk()` follows the user's `[revset-aliases]` (Story 4.9).
+   - A malformed anchor fails the way `revset` does (`jj.revset_parse_error` / `jj.revset_resolution_error`).
+
+4. **Timestamps for the time-based modes** (open question 1).
+   - **`with_timestamps: bool`.** The caller sets it for `time` and `free`; `compact` never pays for it *(2026-09-27: `free` is the default and `time` is dropped, so every default layout sets it)*. When set, each non-root node carries its committer timestamp (epoch ms), from `store.get_commit_async`: the object load only, never `is_empty`. The root carries none (SPEC §2: `ts_ms` is null for the root; null for absence).
+   - **Recommended: loaded per call (option (b)).** Every timestamped call pays the object loads:
+     - 6.7 ms for the real repo's `all()` (1,399 of its 1,414 non-root commits are packed);
+     - 33.6 ms for `large-10k` packed;
+     - ~1.2 s for the committed loose fixture.
+
+     The loads run inside the synchronous topology call on the worker, the one isolate that serves every open repo's commands and events (4.11 item 9, worker occupancy). The handle stays free of state, so `project-context.md`'s "the repo handle is … not a state cache" (`:232-233`) and "Don't reintroduce a materialized lane cache" (`:698-699`) stay true.
+   - **Alternatives considered:**
+     - (a) always carry timestamps. Compact pays too: +33.6 ms packed / +1.2 s loose at 10k;
+     - (b) **the flag, loaded per call (recommended);**
+     - (c) the flag + a per-handle commit id → timestamp cache on `zanshin_jj::Repo`. Commits are content-addressed, so an entry never goes stale, and after the first call only commits not seen before load.
+       - It saves at most the per-call cost above: ~7 ms per reload on the real repo, ~34 ms at 10k packed; only loose stores gain ~1.2 s.
+       - It costs Rust state on the handle, an ADR-0002 Addendum clause, the bound question (unbounded, or an LRU of a few `all()`s; ~0.5–1 MB at 10k), a cache witness, and dated notes at the "not a state cache" sites (Scope 9).
+       - **Trigger:** adopt it when item 8's bench or a real repo shows a first timestamped topology call above ~50 ms on a packed store, or when loose commits accumulate (Zanshin never packs; deferred-work);
+     - (d) a Dart-side cache in the worker, plus an op-pinned timestamp call for the misses. No Rust state, but worker state (4.11 item 9 otherwise has none), and a second call on every reload that has misses. Only the missing ids travel to Rust: all of them on the first call, ~45 B per id as hex;
+     - (e) time/free only below a node count;
+     - (f) lay out without timestamps and relayout when they arrive. The layout jumps under the user. Rejected.
+   - **Committer, not author.** The committer timestamp is what `jj log` shows and what the spike's inputs use. Switching is open question 2.
+
+5. **Content call = the render loop, pinned.** New `Repo::commit_contents(&self, operation_id, commit_ids) -> Vec<CommitContent>`.
+   - **Shape.** It takes `&self` like `Repo::log_defaults` (`repo.rs:548`), so the type system rules out the precondition.
+     - It calls `repo_loader().load_operation(..)` + `load_at(&op)` (jj-lib 0.44.0 `repo.rs:764-767`, `:732-735`), then per id `store.get_commit_async` + the object half.
+     - It returns one entry per requested id, in request order.
+   - **Proposed framing (open question 3): the continuation of the topology call's `jj log`**, i.e. the CLI's per-row `get_commit_async`. So it:
+     - runs no precondition, no snapshot, no import, no config load and no 9.37 fix-up;
+     - writes no operation and no op head;
+     - leaves `take_precondition()` / `take_warnings()` untouched;
+     - carries no `precondition` and no `warnings` on its envelope (add it to `Envelope`'s no-precondition list in `schemas/envelope.fbs`).
+   - **Closest CLI analog.** `jj --at-op=<id> log`, where `--at-op` implies `--ignore-working-copy` (`cli/src/cli_util.rs:3696-3697`, `:3744-3745`, `:754-766` @ v0.44.0).
+     - But that is a command of its own, and it does run start-up config resolution with the secure-config fix-ups (`:4543-4552`).
+     - Which of the two a content page is, is open question 3.
+   - **Why pinned rather than at head.**
+     - `load_at_head` is not write-free. It prunes ancestor op heads, and with divergent heads it publishes a "reconcile divergent operations" merge (jj-lib `op_heads_store.rs:147-161`, `repo.rs:706-729`).
+     - `load_at` writes no operation and no op head. Like any load, it may build and write the operation's index files if they are missing (`default_index/store.rs:519-560`).
+     - The ids the caller passes are exactly the ids that operation indexed.
+   - **Page cost** (to confirm in item 8).
+     - Per id: one commit load (3.4–4.8 µs packed, ~122 µs loose) plus `empty`. Without a changed-path index covering the commit, `empty` loads the parents and, for a merge, merges their trees (0.78 ms per merge); with one, it is an index lookup.
+     - The store's 100-entry LRU absorbs most parent loads, because a parent is usually a neighbouring card.
+     - So a page of 60 ids costs well under 1 ms without merges, and a few ms with several.
+   - **ADR impact.** This departs from ADR-0002 §2, "reads re-resolve to head" (`docs/adr/0002-repository-state-model-warm-loader-reload-per-operation.md:36`).
+     - An ADR-0002 Addendum records the pinned read: a read that answers at a caller-supplied operation is pinned, not re-resolved, and returns commit-intrinsic values only (open question 4). With (c) it also records that commit-intrinsic values keyed by commit id are not repo state.
+     - It goes next to the existing `## Addendum 2026-09-23` (`:98`), never by rewriting accepted text.
+
+6. **Content error contract, in check order.**
+   - (a) **Operation id: full-length hex only.** Prefixes are not resolved; the caller got the full id from the topology call.
+     - Empty or non-hex → `jj.invalid_input` with the CLI's `OpsetResolutionError::InvalidIdPrefix` text, `Operation ID "<x>" is not a valid hexadecimal prefix` (jj-lib `op_walk.rs:79-81`).
+     - Wrong length → `jj.invalid_input`.
+     - Not `op_walk::resolve_op_for_load`: it accepts prefixes and `@`/`-`/`+` expressions, and it resolves `@` against the op heads (`op_walk.rs:91-109`).
+   - (b) **Vanished operation.** `load_operation` returns `OpStoreError::ObjectNotFound` when the operation was abandoned and gc'd, e.g. by `jj op abandon` + `jj util gc`.
+     - That maps to the CLI's `No operation ID matching "<id>"`. It is `NoSuchOperation` (`op_walk.rs:83-84`), which the CLI reaches through `resolve_single_op_from_store` (`:187-199`).
+     - The code is a new `jj.operation_not_found` or a reused one (open question 5).
+   - (c) **Commit ids.** Full ids only.
+     - Empty, non-hex, or not `store.commit_id_length()` bytes → `jj.invalid_input`.
+     - Valid hex that the pinned operation's index does not carry (`index().has_id`, jj-lib `index.rs:119`) → `jj.change_not_found`, with the hex in `context`. This follows the Epic 9 follow-up I precedent for a `CommitIdRef` "which no INDEXED commit carries" (`docs/rust-error-codes.md:48`).
+   - (d) **The load itself** (`get_commit_async`, `is_empty`'s parent loads) → `jj.jj_lib_error`.
+     - The index check before the load is what separates (c) from (d).
+     - `get_commit_async` answers `ObjectNotFound` both for an id that never existed and for an object deleted from the store.
+   - **Not errors:**
+     - An empty id list is ok, with an empty result.
+     - A head that moved after the topology call. The call answers at the pinned operation, and the values are commit-intrinsic anyway. The caller re-requests the layout on the watcher's `OpHeadsChanged` event (Stories 3.5 + 3.6).
+   - **Own snapshots.** The returned `operation_id` also lets the caller recognise the event its own snapshot caused: op heads are files named by operation id (jj-lib `simple_op_heads_store.rs:79-80`).
+
+7. **Surface in this story.**
+   - **Content call, full stack.** A new `extern "C"` over a request buffer:
+     - a new request table `CommitContentsRequest { kind, operation_id, commit_ids: [string] }` with its `RequestKind` member `CommitContents` appended (`envelope.fbs:70-100`; names in the spec). `ChangeIdList` (`:105-108`) is the only id-list request table today, and it carries change ids;
+     - the `RequestKind` doc's "For the other 26 tables" count (`:62`) becomes 27;
+     - the payload appended to the `Payload` union (`:1366-1403`);
+     - `cargo make codegen` and `docs/ffi-abi.md`;
+     - the `docs/rust-error-codes.md` "also emitted" clauses, plus the new code row and its `envelope.rs` constant if open question 5 says so.
+   - **Content call, Dart:**
+     - `ZanshinWorker` / `RepoHandle.commitContents(...)`, with a worker command and a `CommitContent` model;
+     - a decoder that throws on a missing required field instead of reintroducing the `?? ''` coercions (`graph.dart:406`, `:413`, `:418-419`, `:432`);
+     - interior-NUL guards, like every list argument.
+   - **Topology: Rust API only.** `Repo::graph_topology` reaches the FFI and Dart in 4.12. Until then `zanshin_graph_slice` is the FFI graph path, unchanged.
+   - **The one-call path stays until 4.12, unused by the view.** The commit-graph view composes the topology call with `commit_contents` at the returned operation. `app/lib` and `crates/zanshin-mcp` call neither `graphSlice` nor `collect_lanes` (verified). A test oracle that wants the CLI's full row composes the two calls the same way.
+
+8. **Re-measure.** The numbers in the docs are stale since 4.8, and the committed fixture is unrepresentative.
+   - **Bench.** A new `crates/zanshin-ffi/benches/graph_topology.rs` (`[[bench]] harness = false`).
+     - zanshin-ffi reaches `zanshin-jj` and the FlatBuffers builder, and its `crate-type` includes `lib` (`crates/zanshin-ffi/Cargo.toml:19`).
+     - Benches are excluded from coverage (`docs/coverage.md`).
+   - **Stores:**
+     - `medium` and `large-10k` as committed (loose);
+     - a `git gc`-packed copy of `large-10k`, made by the bench setup in a temp dir;
+     - optionally a local real repo, passed by path. Only its node count and timings are recorded, never its name or data.
+   - **What it measures:**
+     - the topology call total, and the precondition's share;
+     - the topology with timestamps, per call. These numbers decide option (c)'s trigger (item 4);
+     - the `all_count`, anchor and `parent_count` passes;
+     - content pages of 60 and 200 ids, with and without merges, and with and without a changed-path index (built in the temp copy through jj-lib's `build_changed_path_index_at_operation`). The pinned `load_operation` + `load_at` share per page is broken out; it is the trigger in the Non-goals for memoising the pinned repo;
+     - topology + contents for every id (the old full cost).
+   - **Recording.** The numbers go into the spec, with the store kind stated for each.
+   - **Fix the stale ~3 ms / ~27 µs claims:**
+     - `crates/zanshin-jj/benches/graph_blueprint.rs:18-19` (label it topology-only);
+     - `_bmad-output/implementation-artifacts/epic-4-context.md:26`;
+     - `_bmad-output/project-context.md:13` and `:694-699`;
+     - `_bmad-output/planning-artifacts/architecture.md:444`;
+     - ADR-0002 `:3`, `:40`, `:89`, `:95`, through the Addendum of item 5.
+   - **Also answered.** The same numbers answer the graph half of the open item "the cost of the per-verb precondition on a GUI refresh is unmeasured" (`_bmad-output/implementation-artifacts/deferred-work.md:394`).
+
+9. **Doc sweep.**
+   - **4.8's one call.** Add dated notes, in the house pattern of 9.34's note on the 9.26 matrix row:
+     - at 4.8's "renders from ONE `zanshin_graph_slice` call" / "no second FFI call is needed" (Story 4.8's user story and first AC);
+     - at "exactly ONE graph function" (`docs/ffi-abi.md:886-890`).
+
+     The note says: the commit-graph view renders from the topology call plus the op-pinned content call (Stories 4.10–4.12); the slice keeps its one-call rows until 4.12 decides its fate.
+   - **The pinned read against the rules.** In the same change as the ADR-0002 Addendum (item 5), add dated notes that point at it:
+     - `_bmad-output/project-context.md:232-233` ("not a state cache — reads re-resolve to head"), the canonical ruleset;
+     - ADR-0002 `:87` (AD-2, "reads re-resolve to head");
+     - `crates/zanshin-jj/src/repo.rs:118-119` (`Repo`'s doc);
+     - `crates/zanshin-ffi/src/repo.rs:695`, then regenerate `crates/zanshin-ffi/include/zanshin_ffi.h` (`:1894`).
+
+     With (c), also the "nothing is retained across calls" docs: `crates/zanshin-jj/src/repo.rs:750` and the new call's own doc.
+   - **Re-point the amendment notes.** FR-GR-4's note (`prd.md:237`; NFR-P-2's note at `:312` refers to it) and `project-context.md:14` end in "a free layout needs every row's committer timestamp in the geometry pass, which the index does not carry (epics.md Story 10.2 item 7)". Two things are stale:
+     - Epic 10's re-plan renumbered 10.2, so item 7 is now "Clock";
+     - every time-based mode needs the timestamps, not only free.
+
+     Point them at this story's item 4 and at the Epic 10 header's "Backend dependencies".
+   - **Not here:** the slice's "windowing deferred" statements. They are false since the PRD amendment, but they document the path 4.12 removes or rewrites, so they move to 4.12 item 8.
+
+**Relation to FR-GR-4 / NFR-P-2.** The PRD amendment of 2026-09-26 replaces row-range windowing with complete geometry per operation plus lazy content in O(page). This story implements it.
+- With the layout in Dart (4.11), the complete part is the topology: index-only, O(nodes), once per operation.
+- Only the time-based modes add the object loads of item 4.
+
+**Tests.**
+- **`crates/zanshin-jj/tests/graph.rs`:**
+  - **Split equivalence.** View half + object half equal `walk_graph`'s `CommitMeta` for every node on tiny + medium. Use the independent `get_change` oracle too, as `crates/zanshin-ffi/tests/graph_ffi.rs:549` does.
+  - **Topology.** Node order and edges equal `walk_graph`'s stream verbatim: kinds, order, and Missing edges without a target. Every target index names the right node.
+  - **Repeated target,** constructed in-test: a merge whose second parent is outside the revset and descends from the first. Both edges are kept.
+  - **`parent_count`** equals `parent_ids().len()` of the loaded commit for every node; the test's oracle loads commits. The medium fixture's octopus merge gives 3 or more, and `root()` gives 0.
+  - **`all_count`** equals `|all()|` as the oracle counts it, and differs from the node count on a narrowed revset.
+  - **Anchors:**
+    - `trunk()` selects `root()` on the fixtures, which have no remote bookmarks;
+    - `present(@)` selects @;
+    - an anchor outside the revset selects nothing, and an empty list yields no anchors;
+    - a malformed anchor fails with `jj.revset_parse_error`.
+  - **Timestamps.** Absent when not requested. When requested, each non-root node's equals the loaded commit's committer timestamp, and the root has none.
+  - **Which calls load commits.** After open, remove the git object of a commit that is neither `@`, `@-` nor a `trunk()` candidate. Then:
+    - the topology call without timestamps succeeds;
+    - with timestamps it fails with `jj.jj_lib_error` (option (b) loads every node; under (c) this case changes with the decision);
+    - the content call for that id fails with `jj.jj_lib_error`. The index still answers `has_id`, so it is not `change_not_found`;
+    - content for a child of that commit fails too, because `is_empty` loads the parent.
+
+    This is the topology call's counterpart of `walk_graph_mid_stream_store_failure_returns_jj_lib_error` (`tests/graph.rs:479`), which keeps pinning `walk_graph`'s per-row load.
+  - **Operation id.** It equals the head after the call's own precondition.
+  - **Pinned reads write nothing.** Edit a working-copy file, and make an external commit that moves head. Then:
+    - the content call writes no operation, leaves `take_precondition()` at `None`, and returns the unchanged values;
+    - the next topology call snapshots and sees both changes.
+  - **Error ladder.** Every case of Scope 6: an unparsable, prefix or unknown operation id; a malformed or unindexed commit id; an empty list.
+  - **Divergent op heads** stay unmerged by the content call, if test-helpers can construct them.
+- **Unchanged.** `walk_graph`'s tests (`crates/zanshin-jj/tests/{graph,warnings}.rs`), `zanshin-graph`'s tests and `crates/zanshin-ffi/tests/graph_ffi.rs` pass without edits: the path they pin does not change.
+- **FFI:**
+  - A new integration file for the content wrapper. Ladder: null data, wrong `RequestKind`, zero handle, an interior NUL in an id. Its envelope carries no precondition and no warnings.
+  - `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`: `EXPECTED_EXPORTS` 60 → 61 (`:37`).
+- **`zanshin_core`:**
+  - Decode-contract tests for the content payload, including that a missing required field throws.
+  - A real-cdylib worker test that calls the new extern (e.g. in `test/worker/graph_test.dart`). The extern-coverage guard (`Makefile.toml:562-589`) credits an extern only through a `zanshin_core` test.
+- **API pins.** `crates/zanshin-jj/tests/api_stability.rs` pins the split types, `GraphTopology` and both new methods.
+- **Coverage ratchet.** It measures Rust lines only. Changed files must not drop, and new files reach the 80 % floor. The bench lives in `benches/`, never inline in `src/`.
+- **`count_estimate` quirk.** Use it for no count here.
+  - In production it counts exactly (jj-lib `default_index/revset_engine.rs:196-213`).
+  - jj-lib's `testing` feature makes it return `(10, None)` from ten commits on. `zanshin-jj`'s dev-dependencies switch that feature on (`crates/zanshin-jj/Cargo.toml:34`), and resolver 2 unifies it into every crate that the same `cargo test` run builds.
+  - The Dart tests' cdylib is built without it, so the same code would count differently in the two suites.
+  - The view's shown count, and 9.25's optional "N revisions" line, is the node count of the topology.
+
+**Non-goals.**
+- No topology wire, lazy Dart view or id → index lookups (4.12).
+- No change to `walk_graph`, `stream_lanes`, `collect_lanes` or `zanshin_graph_slice`; 4.12 decides their fate.
+- No layout, no priority classes, no normalisation of repeated targets (4.11).
+- **No elided count N.** It depends on the revset (a parent is hidden relative to what the revset shows), so it is neither topology nor commit-intrinsic content, and 10.11's commit-id cache cannot hold it. It also needs an index walk per Missing parent. The stub needs only the Missing edge. If 10.4 design question (a) keeps N, a follow-up story adds an op-pinned count call for the visible nodes (e.g. `elided_counts(operation_id, revset, commit_ids)`).
+- No row-range API.
+- No detail-panel data (full description, parents, diff). That is `show` / `get_change`, Story 9.6.
+- No Rust-side state across calls: no repo state, and no timestamp cache unless Ralph picks (c). ADR-0002 §2 would allow memoising the pinned `ReadonlyRepo` within one operation id; do it only if the bench shows `load_operation` + `load_at` dominating a page.
+- No `--limit` / `--reversed`; the 4.4 decision stands.
+- No UI.
+
+**Depends on.** Nothing. 4.12 depends on this story. 4.11's engine does not; its layout command (item 9) and its dumper switch (item 10) do.
+
+**Open questions (Ralph).**
+1. **Timestamps** (item 4): the flag, loaded per call (recommended), or the flag plus a per-handle Rust cache (c) now, or one of (a), (d) and (e)? If (c): bounded (an LRU of a few `all()`s), or for the handle's lifetime? *(2026-09-27: Free is the default now, so every default reload pays these loads, and the flag spares only Compact. The question weighs more.)*
+2. **Committer or author timestamp** (SPEC §11.3, 10.2 design question (g))? Committer is what `jj log` shows.
+3. **Content-call framing** (item 5): the continuation of the topology call's `jj log` (recommended), or its own `jj --at-op` command with a config load and the fix-ups?
+4. **ADR-0002 Addendum:** it covers the pinned read (and, with (c), the commit-intrinsic timestamp cache). Agreed?
+5. **Vanished operation:** a new `jj.operation_not_found`, or a reused code?
+6. **Anchors** (item 3): a required pass-through list with zanshin_core's exported pre-fill `trunk()`, `present(@)`, or does Ralph's answer to 4.11's priority question (SPEC §11.2) need other inputs?
+
+**Related:**
+- 3.5 + 3.6 (watcher, `OpHeadsChanged`)
+- 4.4, 4.6
+- 4.8 (the per-row load the new call leaves out; its one-call AC)
+- 4.11 (priority rule, repeated-target normalisation, the layout command, the dumper switch, worker occupancy)
+- 4.12 (the topology's wire; the fate of the slice path)
+- 9.25 (Apply evaluates via `graphSlice`; "N revisions")
+- 9.26 (precondition), 9.37 (secure-config fix-ups)
+- 9.41 (the topology call's CLI command name is `log`; the content call resolves no config — open question 3)
+- 10.1 (`parentCountOf`, `totalCount`, `operationId`), 10.2, 10.4 (design question (a)), 10.5, 10.7, 10.11, 10.12
+- ADR-0002, FR-JJ-17, FR-GR-4 / NFR-P-2 (amended), FR-GR-5
+
+### Story 4.11: Dart layout engine on the worker isolate — the design's layered layout (compact / time / free) ported from the A/B spike [bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view. Re-planned 2026-09-26. The first version (landing lanes and graph width on `zanshin-graph`'s lane model) belongs to the `jj log` lane graph the view no longer draws. The layout A/B (`spikes/graph-layout-ab`: `README.md` incl. "Review 2026-09-26", `SPEC.md`) put the design's layout in Dart on the worker isolate; that is Ralph's decision. Bridge scope: pure Dart in `packages/zanshin_core`, plus moving the spike's dumper onto 4.10's API. The painter is Epic 10. Refined enough to build from; ACs to be written when scheduled.)*
+
+> **Product decisions 2026-09-27 (Ralph, after using the spike viewer on a real 1.4k-commit repo; the Epic 10 header):** the product ships the modes `free` (the default) and `compact`, and the lane orders `compact` (the default, item 11) and greedy. `time`, Time+gaps and `optimized` are dropped ("the rest can go").
+> - **Direct consequences:**
+>   - items 4 and 9: the greedy-then-optimized pair is gone, and the budget bounds the `compact` order. Whether large repos get greedy first and `compact` swapped in is open question 8;
+>   - item 7's seeded rule was written for `optimized`; the `compact` order's stability is open question 8's last point;
+>   - the worker requests timestamps for `free`, i.e. for every default layout (4.10 item 4);
+>   - Tests: the dev tools' occupancy measurement runs behind the `compact` order.
+> - **Port scope** (decided 2026-09-27, Ralph: "the rest can go"): the port carries only what ships, the modes `compact` | `free` and the orders greedy | `compact`. `time` and `optimized` stay in the spike as its reference and history. Then:
+>   - item 1: `nowMs` goes (only `time` read it); `utcOffsetMin` stays only if open question 9's day buckets are accepted;
+>   - item 2: byte identity with the Rust reference covers greedy in `compact` and `free`; the `compact` order's goldens come from the spike's Dart binary (item 11);
+>   - Tests: the design oracle keeps `compact` mode (greedy); SPEC §7.2's `optimized` expectations and the `time` goldens drop out; the invariant runs and the worker tests cover 2 modes × 2 orders.
+> - **Route geometry:** every edge now leaves the parent's top at the centre, branch-offs included (10.4 item 1). A dated SPEC §4.5 amendment changes only its geometry text; route classes, `blocked` and every output stay unchanged, so no golden changes (spike SPEC §12).
+> - Answered: open question 8's default (`compact`) and its `optimized` point (dropped). Moot with `optimized` out of the product: 7. Moved: 3, into 8's stability point. Still open: 1, 2, 4, 5, 6, 9 and 8's budget and stability points. Open question 4 now concerns the default view, because D8's buses behind cards occur in `free`.
+
+**Motivation.** Ralph's near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`, GV:140-225) lays commits out in rows shared by several commits:
+- Compact rows are the generation depth, Time rows are time buckets, and an experimental Free mode places each node at a time-proportional y;
+- lanes come from greedy interval packing with a first-parent continuation, optionally permuted to reduce crossings;
+- every parent edge is routed as one orthogonal polyline: straight, merge or branch-off.
+
+**The spike.**
+- The prototype's algorithm does not scale: a factorial lane search, O(E²) crossing counts and O(n²) blocked checks (Epic 10 prototype defect 16).
+- The spike's `SPEC.md` made it scalable and deterministic: O((n+E) log n), plus a budgeted lane-order search.
+- It was implemented twice, in Rust and in Dart, with byte-identical outputs. That holds on 48 input × mode × order combinations, and on all 12 combinations of a real 1.4k-commit repo.
+- The greedy compact and time outputs equal the design's own `computeLayout` byte for byte on the design sample.
+
+**Where it runs: Dart, in the worker isolate** (Ralph, 2026-09-26).
+- **Speed does not decide.** Rust is ~3× faster in AOT. With Dart's library sorts replaced by monomorphic ones, the gap is 1.2–1.9× outside many-lane `optimized` and 2.7–2.8× there (spike Review §2). At realistic sizes both are far below a frame. In Dart AOT:
+  - the real repo's `all()` (1,415 nodes, 10–12 lanes) takes 0.15–0.62 ms in any mode and order, and its default revset (12 nodes) takes ≤ 5 µs;
+  - `large-10k` takes 0.9–2.5 ms, and jj's own 15.5k-commit history 1.5–5.9 ms;
+  - only `optimized` at 100k synthetic nodes with ~170 lanes exceeds 100 ms, and the ordering budget caps it.
+- **Iteration decides.** The row model, the bucket ladder, the gap curve and the ordering are all still open (10.13). *(2026-09-27: the row model (Free) and the ordering (`compact`) are decided, and the bucket ladder is moot; the gap curve and Free's other constants stay open.)*
+  - A Dart layout change hot-reloads into the running app. The worker is started with `Isolate.spawn` (`packages/zanshin_core/lib/src/worker/isolate.dart:160`), so it shares the UI isolate's group, and a reload reaches it (VM probe: 32 ms). Flutter's own reload cycle on Zanshin is unmeasured (spike Review §8); the manual check under Tests closes that.
+  - A Rust change costs a ~6 s release rebuild of `zanshin-ffi`, plus a full app restart.
+- **Rust keeps the jj data:** 4.10's topology, view facts and timestamps, over 4.12's wire.
+
+**Scope.**
+
+1. **Home and shape.** The engine lives in `packages/zanshin_core/lib/src/graph_layout/`: pure Dart, no `dart:ffi`, no Flutter. The engine is private to the worker: only the worker (item 9) and the tests import it. Its result view (item 9) is public API, exported from `zanshin_core.dart` by 10.12's bridge part.
+   - **Port** the spike's Dart implementation: `spikes/graph-layout-ab/dart/lib/src/layout.dart` and `lane_order.dart` (~760 lines of code), plus `input.dart`'s value checks. Its JSON parser and `output.dart`'s canonical serializer become test support (Tests), not `lib/`.
+   - **Input:** flat typed arrays:
+     - `n`;
+     - `ts` (`Int64List`) with a presence array: false for the root, and everywhere when timestamps were not requested;
+     - `isRoot`;
+     - `priority` (`Int32List`);
+     - the parents as CSR (`parStart`, `parIdx`, `parKind`);
+     - `nowMs` (time only) and `utcOffsetMin` (time; also free if open question 9 is accepted);
+     - the ordering work budget.
+   - **Output:** typed arrays as SPEC §3 defines them:
+     - `unit`, `rows`, `lanes`;
+     - per node: row, lane and col;
+     - per layout edge: from, to, kind, route and blocked;
+     - per bucket: kind, value, start and end. **Proposed** (open question 9, for 10.2 item 9's day axis): buckets in `free` too, one `day` bucket per local day of the clamped time T(i) (SPEC §4.2 free, step 2) under the fixed offset (D7), with `start` / `end` in 1/U units and the root in none; `nowMs` stays unused in free. It needs dated amendments to SPEC §2 (`utc_offset_min` is `time` only), §3 (buckets are filled in `time` only) and §7.3 I5 (`[]` outside `time`; and a free row can hold two days, so their ranges may share a row). They are implemented in the spike's `dart/` and its Rust reference before the goldens (item 3). The spike's viewer computes these days itself today.
+   - **Naming.** Export no type called `GraphLayout`: that name is 10.1's app-side contract. The spike's internal class of that name is renamed. Names in the spec.
+
+2. **Behaviour = SPEC, byte for byte** (SPEC §1–§4.7):
+   - the modes `compact` | `time` | `free` and the orders `greedy` | `optimized`, plus the Dart-only order `compact` (SPEC §4.7, item 11), which has no Rust reference to be byte-identical with *(2026-09-27: the dated note at the top proposes porting only the modes `compact` | `free` and the orders greedy | `compact`)*;
+   - integer outputs;
+   - total sort keys and no dependence on hash-map iteration order;
+   - floor division;
+   - the budget's "stop the phase" semantics.
+
+3. **SPEC's home.** SPEC.md becomes the engine's versioned contract (open question 5; proposed `docs/graph-layout.md`).
+   - The file moves. The spike's `SPEC.md` becomes a pointer to the new path, and the spike's README, notes and tools cite the new path. There is one SPEC, never two drifting copies.
+   - Every behavioural change is a dated SPEC amendment first, with its goldens.
+   - The spike keeps its tools (`compare.mjs`, `fuzz.mjs`, `js_oracle.mjs`, `bench.mjs`) and its Rust implementation as the reference for a later Rust port. That port stays mechanical, about a day's work: the two implementations are 1,238 vs 1,136 lines of code.
+   - **Revisit trigger** (spike guardrails): once the row model is final and stops changing, the iteration argument weakens. A port to Rust is worth it only if real repos show 50k+ rows with many lanes in a view people actually open.
+   - **Architecture mapping.** `_bmad-output/planning-artifacts/architecture.md:32` and `:439` map FR-GR-* to `zanshin-graph`. They get a dated note in this story, whatever 4.12 decides: the FR-GR-1 layout lives in `packages/zanshin_core/lib/src/graph_layout/`.
+
+4. **Guardrails** (spike README, "Guardrails for the Dart variant", "What hot reload does not do" and the Review):
+   - **Flat typed arrays and CSR; no per-node objects or maps on hot paths.** The worker shares its isolate group's heap and GC with the UI isolate. The review measured no stall above noise at realistic relayout rates; keep it that way.
+   - **No `List.sort` or typed-list `sort` on hot paths.** The SDK sorts typed lists through a generic quicksort with a closure call per comparison.
+     - Use monomorphic sorts at the five call sites: the distinct bucket keys, the free walk order, the packing visit order, and the per-lane `lo[]` / `hi[]`.
+     - The review's control cut the Dart layout by 35–65 %, or by 17–20 % where many-lane sifting dominates, with byte-identical output.
+   - **Bounded `optimized`.** The SPEC's work budget is a parameter (default 2,000,000).
+     - `greedy` stays cheap at every size: Dart AOT ≤ 28 ms at 100k synthetic nodes, ~15 ms with monomorphic sorts.
+     - For ≥ 50k nodes with many lanes, the caller requests greedy first and optimized afterwards, as two requests (10.5 item 2). Both results are deterministic.
+   - **Hot reload keeps working:**
+     - engine tunables (the gap curve, the bucket ladder, the budget default) are request parameters or `const`, never static or top-level `final` initializers. A reload does not re-run those, so an edit would silently keep the old value. The manual check (Tests) edits one such constant;
+     - the worker stays `Isolate.spawn`ed into the UI isolate's group. An `Isolate.spawnUri` worker would not be reloaded;
+     - a change to a command class's shape (e.g. new `GraphLayoutCommand` fields) needs a hot restart. That kills the worker; the app's boot spawns it again, and the open handles are lost.
+   - **Keep SPEC and the differential tools current** (item 3).
+
+5. **The input builder** (topology → engine input) and the SPEC §2 amendments. The builder lives next to the engine and runs in the worker (item 9). The spike's dumper is its Rust reference implementation (item 10), so recordings, goldens and the product get the same input.
+   - **Repeated targets.** jj does yield them: 4.10 Scope 1 found a merge with a Direct and an Indirect edge to the same parent, on a real repo's default revset. SPEC §2's "jj never yields duplicate targets, so V3 holds" is amended:
+     - the builder keeps one layout edge per (child, target), at the first occurrence's position. That position decides the first parent `fp` and `pos`;
+     - its kind is `direct` if any of the repeated edges is direct (open question 2);
+     - V3 stays the engine's validation. So the spike's Rust reference, `tools/fuzz.mjs` and the JS oracle need no change;
+     - the dumper adopts the rule. Today it keeps the first edge unchanged and records the dropped one in its `.meta.json` sidecar (`dropped_duplicate_parents`).
+   - **Missing edges** are not layout edges (SPEC §4.1). The engine outputs none; the view draws the stub from 4.12's topology (10.4).
+   - **No elided counts** (SPEC §0, D2). N is not layout input. If 10.4 design question (a) keeps it, it comes from a follow-up count call (4.10 Non-goals).
+   - **V1, V2 and V4 stay validations.** A violation on topology from Rust is a contract bug. The layout fails with a named Dart error type (name in the spec), replied as a failed command, never a partial or silently repaired layout.
+
+6. **The priority rule** (SPEC §11.2; the spike's `priority` is a stand-in). Recommended as the first real rule, made normative by a dated SPEC §11.2 amendment (its inputs are the anchor node sets; its tie rule is D3), and computed by the input builder from 4.10's anchors:
+   - class 0: the nodes of anchor 0 (pre-filled `trunk()`) and their first-parent chains inside the revset, following each node's first non-Missing edge;
+   - class 1: the nodes of anchor 1 (pre-filled `present(@)`) and their first-parent chains, up to the first class-0 node;
+   - class 2: every other node.
+
+   Ties fall to `jj log` order (SPEC D3), so the earlier-printed commit packs left. On the real repo the three classes hold 119, 3 and 1,293 nodes.
+   - **Two implementations.** The dumper's Rust `assign_priorities` (`spikes/graph-layout-ab/rust-inputs/src/input.rs:147`, fed by 4.10's anchors once item 10 lands) is the reference. The Dart builder is the second implementation, checked against it end to end (Tests).
+   - Alternatives are open question 1.
+
+7. **Lane-order stability across reloads** (SPEC §11.5). 10.12 wants "columns that stay stable across reloads", but `optimized` is global, so one operation can reshuffle columns. Proposed rule, as a SPEC amendment (open question 3):
+   - an optional hint: the previous layout's node key → column map, keyed as in 10.1 (the change id, or the commit id when hidden or divergent);
+   - **transported as typed data,** never as a string map over `SendPort`: the previous result's per-node column `Int32List` plus the previous topology's key columns (4.12's id vectors), as one `TransferableTypedData`. The worker resolves the keys through 4.12's lookups;
+   - π₀ orders the lanes by the previous column of each lane's lowest hinted node. Lanes without a hinted node follow in greedy order, and lane 0 stays fixed;
+   - sifting starts at π₀, and Disp measures |π(ℓ) − π₀(ℓ)| instead of the distance from greedy;
+   - without a hint the output is SPEC v1's.
+
+   `greedy` is not seeded: it packs the oldest nodes first, so a new head changes little. Until Ralph confirms the rule, 10.12 records column changes across reloads instead of gating them.
+
+8. **Kept design defects, unchanged until Ralph decides:**
+   - blocked-merge routing (SPEC D9, §11.4). `synth-10k` has 229 blocked merges (compact, greedy), and 10.4's route report counts them;
+   - free-mode buses behind cards (D8, §11.1) *(2026-09-27: with `free` the default, a default-view issue; open question 4)*.
+
+   A fix is a SPEC amendment plus goldens in this engine, never a view patch.
+
+9. **The layout command** (needs 4.10 + 4.12). A new worker command (e.g. `GraphLayoutCommand`) behind `RepoHandle.graphLayout(...)`.
+   - **Request:**
+     - `revset`, `prioritize` and `shortPrefixes`: pass-throughs that the caller pre-fills from `logDefaults()` and passes explicitly (FR-JJ-17);
+     - `anchors`, a required argument. `zanshin_core` exports the editable pre-fill `["trunk()", "present(@)"]` as a documented constant, and the caller (10.5) passes it explicitly;
+     - `mode` and `order`;
+     - `nowMs` (time only) and `utcOffsetMin` (time; also free if open question 9 is accepted);
+     - the budget, and the optional stability hint (item 7).
+   - **In the worker:**
+     1. the topology call (4.12's extern), with `with_timestamps` iff the mode is `time` or `free`;
+     2. the engine input, built from the topology's typed-data views by the input builder (items 5–6);
+     3. the engine;
+     4. the reply.
+   - **Result view (public).** A read-only view over the materialized result buffer (name in the spec, never `GraphLayout`):
+     - a fixed header of per-array offsets and lengths, plus the enum encodings (edge kind, route, bucket kind);
+     - typed-data views over the arrays.
+
+     `RepoHandle.graphLayout` returns it together with 4.12's topology view, and 10.12 backs 10.1's `GraphLayout` with the two.
+   - **Hand-off to the UI isolate, cheaply.**
+     - The result arrays share one backing buffer and cross as one `TransferableTypedData`. That is one copy, and `materialize()` on the UI side is zero-copy, so the UI reads typed-data views.
+     - The topology crosses in the same reply, under 4.12's one-copy rule.
+     - No per-node objects exist on either side.
+   - **Worker occupancy.** The worker is one isolate. It runs every command of every open handle in one `commandPort.listen` switch (`isolate.dart:1699-1708`; `project-context.md:230-231`, "one isolate serializes all access"), and it forwards the watcher events on the same event loop (`registerEventSink`, `:1674-1686`). A layout request is synchronous FFI plus synchronous Dart. For its whole duration it delays content pages (10.11), every other repo's verbs and every `OpHeadsChanged` delivery (head-of-line):
+     - greedy: up to 28 ms (Dart AOT) at 100k synthetic nodes;
+     - optimized: 74–125 ms at 50k–100k, capped by the budget;
+     - the first layout after a hot reload runs cold JIT code: 21–52 ms at 10k (spike, cold-start table);
+     - in time and free, the timestamp loads before it (4.10 item 4): 33.6 ms at 10k packed, about 1.2 s on the loose-object 10k fixture.
+
+     The rules:
+     - rely on 10.5 item 3's coalescing: one request in flight plus one queued, and the latest wins; the worker cannot cancel;
+     - above 10.5's threshold, greedy and optimized are two separate commands (10.5 item 2's greedy-first pair), so that queued content pages run between them;
+     - rejected for now: a second long-lived layout isolate, also started with `Isolate.spawn` (so it stays in the group and hot-reloadable), at the cost of one more topology copy. Adopt it only if the occupancy measurement (Tests) shows a content-page stall behind a layout that matters.
+   - **Side channels.** The reply keeps the precondition and warnings that every graph read carries (Story 9.35).
+   - **No state in the worker between commands** (ADR-0002). Every request re-runs the topology call: under 1 ms of index work at 1.4k, plus the precondition's snapshot (28 ms on the real repo). Changes of mode, order or "now" are new requests.
+   - **Hot reload.** The worker lays out only when asked, so the debug-only relayout-on-reassemble hook belongs to the view (10.12 item 6).
+
+10. **The spike's dumper on the product path** (needs 4.10). `gen-inputs` (`spikes/graph-layout-ab/rust-inputs`) calls `Repo::walk_graph` and computes the priority stand-in itself (`src/jj_dump.rs:36-50`, `:126`). It moves to 4.10's API:
+    - `Repo::graph_topology` with the same anchors and `with_timestamps`, and `Repo::commit_contents` at the returned operation for the `.meta.json` sidecar's object-half fields;
+    - the priority classes of item 6, from the anchors, and the repeated-target rule of item 5, both as the amended SPEC states them.
+
+    It stays in the spike, outside the gate, as the reference input builder: 10.1's recordings, the goldens and the end-to-end tests compare against it. Real-repo output stays in gitignored paths (`spikes/graph-layout-ab/.gitignore`).
+
+11. **The `compact` lane order** (SPEC §4.7, added 2026-09-26, Dart-only; spike README "Lane order review 2026-09-26"). In the spike viewer, on the real 1.4k-commit repo, Ralph found that `optimized` sprawls and greedy is more compact: the card he marked sits one column right of a column that stays empty over its whole run. Without a better order he leaned to greedy.
+    - **Cause.** `optimized` gives each whole greedy lane one column for all of history. Greedy reuses a lane for many unrelated branches, and the cost has no width term. On the real repo, a lane occupied 6.7 % of the time lands in column 1, and the two busiest lanes (94 % and 46 %) in columns 10 and 11.
+    - **Rule.** Start from greedy's packing and keep its continuation chains (segments). Exchange the segments of two columns only inside local time windows, and keep an exchange only if it lowers U·(400·crossings + 4·run length) + κ·Σ column × reserved length, with κ = 24. Reach 8 columns, 16 rounds, the same 2,000,000 budget. The trunk column never moves, and empty columns are dropped. Rows, buckets, edges and every route equal greedy's, and `col = lane`.
+    - **Measured** on the real repo's `all()` (`tools/lane-metrics.mjs`, cards 240×62). Per cell greedy / optimized / compact:
+
+      | mode | crossings | mean width (columns) | holes % | Dart AOT layout |
+      |---|---|---|---|---|
+      | compact | 185 / 97 / 70 | 5.96 / 8.27 / 5.15 | 31.7 / 50.7 / 21.0 | 0.16 / 0.61 / 2.51 ms |
+      | time | 425 / 206 / 203 | 5.75 / 11.10 / 5.60 | 15.6 / 56.2 / 13.3 | 0.27 / 0.58 / 3.47 ms |
+      | free | 382 / 190 / 213 | 6.01 / 11.15 / 5.66 | 15.4 / 54.5 / 10.3 | 0.24 / 0.60 / 3.04 ms |
+
+      Against greedy, `compact` has 44–62 % fewer crossings and 21–28 % less horizontal run, and it is 3–14 % narrower on average. Its mean width is 50–62 % of `optimized`'s. At the card Ralph marked (free), the row is 6.00 columns wide under `compact`, 6.33 under greedy and 12.00 under `optimized`.
+    - **Caveats** (the spike's adversarial review):
+      - it is not uniformly better. In free, 7.8 % of the real history's row units are wider than under greedy (by ≥ 3 columns in 3.1 %), and 31.3 % are narrower. One ~40-pitch stretch shows the pattern of Ralph's screenshot, because a segment is atomic;
+      - on the default revset in compact mode it removes the last 3 crossings but widens from 2.83 to 3.67 columns (`optimized` does the same);
+      - at 10k+ commits the budget truncates the search (≈ 30 ms at 10k). On synth-10k in compact mode it stops inside the first sweep (column pair 59/60 of 134) and ends wider than greedy (52.97 vs 50.19 columns); in free it reaches that sweep's last pair, and in time d = 5. On synth-100k (68–86 ms) only the leftmost dozen columns move;
+      - a new commit can re-cut a window and move columns there (SPEC §11.6). Item 7's seeded rule was written for `optimized`.
+    - **Port.** `compact_order.dart` (493 lines including comments) joins the port. The Rust reference rejects `--order compact`, so its goldens and its differential run come from the spike's Dart binary (Tests). Its checks against greedy: the same rows, buckets, edges and routes, `col = lane`, the trunk lane unchanged, no more lanes, a model cost never above greedy's, determinism and I1–I6 (the spike's 4 `compact` unit tests and the viewer bundler's checks).
+    - **Occupancy.** Its budget is a request parameter like `optimized`'s, and item 9's rules apply to it: about 3 ms at 1.4k commits, the budget's ≈ 30 ms at 10k.
+    - **Default:** open question 8. *(Decided 2026-09-27, Ralph, after looking at it in the viewer: `compact`, with greedy as the alternative and fallback; `optimized` is dropped.)*
+
+**Tests.**
+- **Unit tests.** Port the spike's 30 Dart unit tests to `package:test` under `packages/zanshin_core/test/graph_layout/`. Drop the JSON-only cases (BOM, `-0`, duplicate keys); keep the value-range cases.
+- **The `compact` order** (item 11). The spike's 4 `compact` unit tests join the 30 (34 in all). Its goldens and the differential run use the spike's Dart binary, because the Rust reference has no `compact`; the bullets below that name the Rust reference cover greedy and optimized. The invariant runs cover all three orders (≥ 1,000 graphs × 3 modes × 3 orders).
+- **Test support** (`packages/zanshin_core/test/graph_layout/support/`): the spike's SPEC §2 JSON parser, `output.dart`'s SPEC §3 canonical serializer and the §8.4 digest, so that goldens compare in canonical form.
+- **Goldens.** Generated with `gen-inputs` plus the spike's Rust reference, after the SPEC amendments of items 5 and 6. They are committed under `packages/zanshin_core/test/graph_layout/goldens/`: the spike's `/inputs/` and `/outputs/` are gitignored (`spikes/graph-layout-ab/.gitignore:2-3`), so nothing there can be referenced as is.
+  - **The design oracle.** `design-default` / `design-all` × greedy × compact / time equal the design's own `computeLayout` output byte for byte (SPEC §7.2).
+  - **SPEC §7.2's hand-checked expectations:** `optimized` compact is the identity; `optimized` time gives π = [0, 2, 3, 1] (changes only through open question 7); free gives `rows` = 209 / 377 with 4 lanes.
+  - **All 12 design-sample outputs** (2 revsets × 3 modes × 2 orders), recorded from the spike's Rust reference and compared in SPEC §3's canonical form. So the port equals the reference that 10.1's recordings come from.
+  - **Seeded random small inputs** in the fuzz generator's shapes: hidden commits, priority ties, clock skew, repeated targets (through the input builder). A few hundred KB at most.
+- **End-to-end** (real cdylib, committed fixtures, fixed `nowMs` / `utcOffsetMin`; needs items 9–10):
+  - **Input equality.** The Dart input builder's input, serialized in SPEC §2's canonical form, equals the dumper's input for `tiny-3-commits`, `medium-1k-commits` `all()` and its narrowed revset, and `large-10k-commits` `all()`. That checks 4.10's topology, the priority rule and the normalisation against their Rust reference.
+  - **Output equality.** `RepoHandle.graphLayout` in every mode × order reproduces the Rust reference's full canonical output.
+  - **Form.** Both compare as committed files for `tiny` and `medium`'s narrowed revset, and as hashes of the canonical form (function in the spec) for `medium` `all()` and `large-10k`. Never the §8.4 digest alone: it omits edge kind, bucket kind and value, and `rows` / `lanes`.
+- **Invariants.** SPEC I1–I6 are checked on every golden, and on seeded random DAGs generated in Dart: at least 1,000 graphs × 3 modes × 2 orders, including repeated targets and non-monotonic timestamps.
+- **Worker** (`test/worker/graph_layout_test.dart`, real cdylib):
+  - tiny and medium through `RepoHandle.graphLayout` in every mode × order;
+  - determinism across two calls;
+  - the UI side receives `TransferableTypedData` and reads it through the result view, with no decode step;
+  - a decode-contract test for the result view's header (offsets, lengths, enum encodings);
+  - a `compact` request asks for no timestamps, and a `time` request does *(2026-09-27: and a `free` request, the default; the dated note at the top proposes dropping `time` from the port)*;
+  - a hand-built V1/V2/V4 violation fails with the named error.
+- **Dev tools, outside `test/`, not in the gate:**
+  - a differential script. It runs the production engine over the spike's generated inputs (synthetic 10k–100k, fixture dumps, local real-repo dumps kept outside the repo) and compares with the spike's Rust binary byte for byte, as a third implementation in `tools/compare.mjs`;
+  - a benchmark under `packages/zanshin_core/benchmark/`: AOT and JIT, cold and warm, per phase;
+  - **worker occupancy:** the latency of a content page queued behind an `optimized` `large-10k` layout *(2026-09-27: `optimized` is dropped from the product; measure behind the budgeted `compact` order instead)*, and behind a timestamped topology call on the loose and the packed `large-10k`. It decides item 9's second-isolate trigger.
+
+  The numbers go into the spec: the fixtures, and one real repo with its node count only.
+- **Manual check, once, recorded in the spec.** Run `flutter run` on Zanshin, edit the gap function and one tunable constant, and hot reload. A debug relayout request (10.12 item 6's reassemble hook, or a debug host until it lands) must lay out with the new code and the new value. The spike verified the mechanism on the plain VM only.
+- **Coverage.** The ratchet is Rust-only, so these Dart lines are not in it; these tests are the safety net. This story adds no product Rust and no extern; the dumper is spike code outside the gate.
+
+**Non-goals.**
+- No painting, pixel geometry, crossing hops or highlight sets (Epic 10: 10.1, 10.4, 10.6).
+- No elided counts (item 5).
+- No Rust layout. A later port follows SPEC (item 3's trigger).
+- No second layout isolate unless measured (item 9).
+- No lane cap; no horizontal compaction beyond item 11's `compact` order.
+- No row-range API, no op-log graph, no persisted layouts.
+
+**Depends on.**
+- Items 1–8: nothing. The goldens come from the spike, after the SPEC amendments of items 5–6.
+- Item 9: 4.10 and 4.12. Item 10: 4.10.
+
+**Open questions (Ralph).**
+1. **Priority source** (SPEC §11.2): the anchors rule of item 6 (recommended), or `jj log` order only, `log-graph-prioritize`, or bookmarks? Note that the design sample hand-sets seven per-branch ranks (0–5, including 4.5; @'s branch is rank 2; GD `priority` fields) that no jj fact supplies. The three anchor classes only approximate them, so the design picture cannot be reproduced from real data.
+2. **Repeated targets** (item 5): should the kept edge become `direct` when any repeated edge is direct (recommended)? Or should the first occurrence win unchanged, as in the spike's dumper today?
+3. **Lane-order stability** (item 7): build the seeded rule now, or ship without it and let 10.12 record the reshuffles? *(2026-09-27: item 7 was written for `optimized`, which is dropped; the question moves to open question 8's stability point for `compact`.)*
+4. **Blocked-merge routing** (D9, SPEC §11.4) and **free-mode buses** (D8, §11.1): keep them unchanged until 10.13 has shown them on real data? *(2026-09-27: the viewer has shown both on the real repo; 10.13's notes count 11–15 horizontal runs behind cards in `free`. With `free` the default, D8 is a default-view issue. Still open. The top-centre exit (10.4 item 1) moves a blocked merge's exit, not its vertical.)*
+5. **SPEC's home:** `docs/graph-layout.md`, or stay in the spike?
+6. **Day boundaries** (SPEC §11.3, 10.2 design question (f)): the fixed offset per layout (D7), or DST-exact local midnights?
+7. **Exact lane order for narrow revsets** (spike Review §7; *moot since 2026-09-27: `optimized` is dropped*): SPEC §4.6 sifting reaches ≈ 96 % of the design optimiser's reduction. On the design sample `default`/`time` picks the equal-cost π = [0, 2, 3, 1] where the design picks [0, 3, 2, 1]. Add an exact search for L ≤ 8 with the design's tie-break on top of sifting (the default revset is typically that narrow), or keep sifting everywhere?
+8. **The default lane order** (item 11; spike README "Lane order review 2026-09-26" §5–§6): `compact` or greedy? *(Decided 2026-09-27, Ralph, after looking at it in the viewer: `compact`, with greedy as the alternative; `optimized` is dropped. The budget and stability points below stay open.)*
+   - The spike recommends `compact`, on one condition: Ralph looks at it in the viewer first (Lane order → Compact), including the stretch where it reproduces his screenshot's pattern. Greedy stays a defensible default: the gap is mostly crossings, not width.
+   - Drop `optimized`? Recommended: on the real `all()` it is the widest order in every mode (50–56 % holes), and its one lead, 23 fewer crossings than `compact` in free, costs about twice the width. If it goes, open questions 3 and 7 and the greedy-then-optimized pair (item 4, 10.5 item 2) are re-pointed at `compact` or dropped.
+   - For 10k+ commits: a larger or time-based budget, or greedy painted first and `compact` swapped in when the worker finishes?
+   - Stability under edits (SPEC §11.6): a seeded rule for `compact` like item 7's, or none?
+9. **Free's day buckets** (item 1; 10.2 item 9): should the engine emit one `day` bucket per local day of T in `free` (recommended: it already has T and the fixed offset, and the goldens then cover the days)? Or should the worker return sorted (row, day) pairs beside the layout, as the spike README's Flutter mapping sketches? Either way the view only formats; it never computes T. The first needs item 1's SPEC amendments.
+
+Which modes the product exposes is 10.13's question. It does not gate this story, because all three modes are carried. *(Decided 2026-09-27: `free`, the default, and `compact`. Only these are ported (dated note at the top; Ralph: "the rest can go").)*
+
+**Related:**
+- 4.10 (topology, anchors, timestamps, content for the dumper's sidecar), 4.12 (wire, lazy view, lookups, one copy)
+- 10.1 (the `GraphLayout` contract; the recordings from the spike), 10.2 (buckets), 10.4 (routes, route report), 10.5 (requests, coalescing, the greedy-first pair), 10.12 (adoption, reassemble hook), 10.13 (modes, constants)
+- `spikes/graph-layout-ab` (`SPEC.md`, `README.md`)
+- FR-GR-1 / FR-GR-2 (amended 2026-09-26), FR-GR-5, ADR-0002
+
+### Story 4.12: Graph topology wire — whole-revset scalar vectors + CSR, lazy Dart view, id → index lookups, one copy across isolates [R/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Re-planned 2026-09-26: the layout runs in Dart (4.11), so the wire carries 4.10's topology instead of lane rows. The first version's landing lanes, pass-through segments and segment identity belong to the lane model the view no longer draws. Backend + bridge scope; the painter is Epic 10. Refined enough to build from; ACs to be written when scheduled. Depends on 4.10.)*
+
+**Motivation.** The Dart engine (4.11) needs the whole revset's topology as typed arrays. The view (Epic 10) needs the view facts of the visible cards only. Today's graph wire suits neither:
+- **One table per record.** `zanshin_graph_slice` returns a `GraphRow` table per row, a `GraphRowEdge` table with a hex `target` string per edge, and a `GraphActiveLane` table per pass-through lane.
+  - That is O(rows × width) tables, plus lanes the view no longer draws.
+  - A FlatBuffers `GraphSlice` costs ~175 B per node (1.75 MB at 10k), mostly id and summary strings (`spikes/ffi-payload-bench`, as the layout spike's README cites it).
+  - The layout spike's fixed-width estimate for the topology is ≈ 22 B per node plus the ids (`spikes/graph-layout-ab/tools/payload.mjs`). That estimate includes `priority` (u32) and `ts` (i64), which this wire drops or makes optional, and lacks the prefix lengths, `change_offset` and `parent_count` it adds. Item 1 re-measures.
+- **Eager decode.** Dart decodes all of it up front (`packages/zanshin_core/lib/src/ffi/graph.dart:373-433`: `.map(...).toList()` for every row, edge, lane and meta).
+- **Two copies.**
+  - The worker copies the native buffer (`request_bytes.dart:99-106`, `Uint8List.fromList`), and the `BufferResult` send copies it again (`worker/isolate.dart:1756-1777` → `:619-637`).
+  - No `TransferableTypedData` is used anywhere in `packages/zanshin_core/lib`.
+  - So `docs/ffi-abi.md:951-954`'s "copied once into Dart" is wrong.
+
+**Scope.**
+
+1. **The wire:** a `GraphTopology` payload (names in the spec) in `schemas/envelope.fbs`.
+   - **Union slot.** If item 7 removes the slice, the payload takes `GraphSlice`'s `Payload` union slot in place (WIP: edit in place, regenerate); the member order is the wire discriminant, so reusing the slot renumbers nothing. If the slice stays, the payload is appended.
+   - **Contents,** as scalar vectors + CSR:
+     - `operation_id` (full hex) and `all_count` (`ulong`);
+     - **per node** (n, in `jj log` order):
+       - the commit id and the change id (item 2);
+       - a flags byte: `working_copy`, `immutable`, `hidden`, `divergent`, `root`, and a presence bit for `change_offset`;
+       - `change_offset`, `change_id_prefix_len`, `commit_id_prefix_len` and `parent_count`;
+     - **edges as CSR:** `edge_start` (n + 1), `edge_target` (node index, `int`) and `edge_kind` (`GraphEdgeKind`). These are jj's edges verbatim, repeated targets included.
+       - A Missing edge has no target. `edge_target` is defined only when `kind != Missing`, which the docs state, and the Dart accessor returns `null`. That is kind-gated, as 4.2 did; flatc has no optional scalars for Dart (cf. the presence pairs at `envelope.fbs:252-253`).
+       - The Missing target's commit id is dropped. The CLI never prints it (`cli/src/commands/log.rs:250-272` @ v0.44.0), and the layout ignores it (open question 3);
+     - `timestamps: [long]`, present iff the request asked for them. Absent means not requested (null for absence). The root's slot holds 0 and is ignored: the engine keys off the `root` flag, and the Dart accessor returns `null` for the root (SPEC §2);
+     - **refs, sparse:** a vector of `TopologyRef` tables `{ node, kind: bookmark | tag, name, remote (absent = local), synced, conflicted }`, sorted by node. Not `GraphRef`: 10.1 item 2 reserves that name for the app-side type and says it is never a wire type. Tables are fine here, because refs are sparse: the real repo has 18 entries for 1,415 nodes;
+     - **working copies,** likewise, as `{ node, workspace name }`;
+     - **anchors as CSR:** `anchor_start` and `anchor_node`.
+   - **Not on the wire:** lanes, `color_idx`, `active_lanes`, synthetic rows, and any per-node strings besides the ids.
+   - **Decided by measurement,** not by guess: the id representation (item 2) and the flag packing.
+     - Metrics: payload bytes, Rust build time, Dart first-access time.
+     - Stores: `large-10k` loose and packed, plus one local real repo's `all()`. Its node count is recorded; its data is never committed.
+     - 100k synthetic nodes are exploratory only (FR-GR-6, P2).
+     - Benches: `crates/zanshin-ffi/benches/graph_wire.rs` (`harness = false`, like 4.10's) and a Dart timing script outside `test/` (e.g. `packages/zanshin_core/benchmark/`). The gate runs neither.
+
+2. **Ids.** Two options:
+   - (a) the display strings that Rust produces, as string vectors: the commit hex, and the change id's `reverse_hex()` (`crates/zanshin-jj/src/commit_meta.rs:185`);
+   - (b) fixed-stride byte vectors with a stride field, formatted in Dart on access: the commit id as plain hex, the change id through a small reverse-hex port. The stride matters because the commit-id length depends on the backend: SHA-1 today, with `object_hash` deferred to 9.20.
+
+   (b) carries 36 B per node (SHA-1), against ~95 B of strings and offsets for (a). Either way, never a silent second jj formatter in Dart. With (b), a real-cdylib test pins the Dart format against Rust's display string for every node of every fixture.
+
+3. **Request and extern.** `zanshin_graph_topology(handle, request)`, over a request buffer.
+   - The request is a table, because it has a list argument: `GraphTopologyRequest { kind, revset, prioritize, short_prefixes, anchors: [string], with_timestamps }`, with a new `RequestKind` member `GraphTopology` appended (names in the spec). The "For the other N tables" count at `envelope.fbs:62` goes up once more: 27 → 28 after 4.10's content request.
+   - Its envelope carries precondition + warnings, like every verb read.
+   - It replaces `zanshin_graph_slice` as the graph read (item 7).
+
+4. **Lazy Dart view** (e.g. `GraphTopologyView`) instead of the eager decode.
+   - **O(1) access to node i:**
+     - the ids, formatted on access;
+     - the flags and prefix lengths;
+     - `changeOffset` or `null`, and `parentCount`;
+     - the edge range, with each target index or `null`, and its kind;
+     - the timestamp or `null`;
+     - the refs (a binary search over the sorted `node` column), the working copies, and the anchors.
+   - No per-node objects are allocated up front.
+   - Typed-data views over the aligned scalar vectors (FlatBuffers aligns scalar vectors to their element size). Where a vector is not aligned, a copy of that one vector. Measured.
+   - A structurally required field missing on the wire is corruption and throws, instead of today's `?? ''` coercions (`graph.dart:393`, `:438`).
+   - 4.11's input builder reads these views, and 10.12 backs `GraphLayout`'s view facts with them.
+
+5. **At most one copy across the isolate boundary.**
+   - The worker reads the topology straight from the native buffer, through views over the token's memory, for 4.11's input builder.
+   - It then copies the bytes once into a `TransferableTypedData`, frees the token, and sends it. The UI isolate's `materialize()` is zero-copy.
+   - `readToken`'s copy plus the `SendPort` copy stay for every other extern.
+   - `docs/ffi-abi.md` states both copy counts, correcting `:951-954`.
+
+6. **Lookups**, only for named consumers: commit id → node index, and change id → node indices (a divergent change has several).
+   - They are built lazily on first use from the view:
+     - in the UI isolate, for 10.1's `indexOfKey`, for reveal (scroll to @), for anchoring across reloads, and for 10.6's go-to-change with a full id (10.6 item 11, if its design question (d) keeps go-to-change);
+     - in the worker, for 4.11's stability hint.
+   - There are no synthetic rows, so there are no `(commitId, synthetic)` keys.
+   - A Rust-emitted sorted permutation only if a measurement demands it.
+
+7. **The old lane path** (open question 1). Recommended: remove it in this story, once the topology call has replaced it.
+   - **What goes:**
+     - the `zanshin_graph_slice` extern and `graph_slice_to_envelope`;
+     - the `GraphSlice` / `GraphRow` / `GraphRowEdge` / `GraphActiveLane` / `GraphRowMeta` / `GraphCommitRef` tables;
+     - the Dart `GraphSlice` models and decoder, `GraphSliceCommand`, `ZanshinWorker.graphSlice` and `RepoHandle.graphSlice`;
+     - the `zanshin-graph` crate: the pvigier lane assigner (`lane.rs`), `stream_lanes`, `collect_lanes` and the synthetic-row splice, with the root `Cargo.toml` member and dependency (`:11`, `:53`) and `crates/zanshin-ffi/Cargo.toml:31`;
+     - the tests that pin the path: `crates/zanshin-graph/tests/*`, and the extern's witnesses elsewhere. `crates/zanshin-ffi/tests/snapshot_ffi.rs:34`, `:430` (a precondition witness) is re-pointed to `zanshin_graph_topology`, and `packages/zanshin_core/test/worker/graph_test.dart` (which credits the slice extern in the extern-coverage guard, `:9`) is rewritten for the new extern;
+     - the generated outputs, regenerated: `crates/zanshin-ffi/include/zanshin_ffi.h`, `packages/zanshin_core/lib/src/ffi/bindings.dart`, `crates/zanshin-ffi/src/envelope_generated.rs`, `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart`, and `Cargo.lock`.
+   - **`Repo::walk_graph`** then has no caller outside its own tests and `crates/zanshin-jj/benches/graph_blueprint.rs` (4.11 item 10 moves the dumper). Whether it stays as zanshin-jj's `jj log`-faithful read is part of open question 1.
+   - **Why:**
+     - No consumer is left. Its only user is `crates/zanshin-ffi/src/graph.rs`; no other crate, `app/lib` or `zanshin-mcp` uses it (verified). The view draws the design's layout, and Story 7.3's `log` returns `Array<Change>`.
+     - Keeping it keeps a second graph contract alive: `docs/ffi-abi.md`'s slice section, the schema tables, the synthetic-row and CAP-2 docs, and a second `walk_graph` caller.
+     - It stays recoverable from git history and Stories 4.1–4.9's delivered notes. A future `jj log`-faithful graph (an op-log graph, a TUI-like view) would re-derive it from there. A later Rust port of the layout could re-create a layout crate from SPEC.
+   - **Coverage.** Its baseline entries (`coverage-baseline.txt:40-42`) drop out. A removed file is not a ratchet failure (`docs/coverage.md:73`).
+   - **Consumers to re-point.** Story 9.25's "Apply evaluates via `graphSlice`" and its "N revisions" line move to the topology call's node count. Settle that when 9.25 is refined.
+   - **Alternatives:**
+     - (b) keep `zanshin-graph` as a Rust library without FFI. That is dead code in the gate;
+     - (c) keep the whole path, for `jj log` parity tests.
+
+8. **Docs.**
+   - `docs/ffi-abi.md`: rewrite the graph section. It covers the topology payload, the kind-gated target, null for absence (timestamps not requested, the root's timestamp, a local ref's remote, `change_offset`), both copy counts, and the extern's error list.
+   - `docs/rust-error-codes.md`'s "also emitted" clauses follow.
+   - The `schemas/envelope.fbs` table docs and the `graph.dart` model docs.
+   - **The slice's windowing statements** (moved here from 4.10). They are false since the PRD amendment of 2026-09-26 (FR-GR-4 / NFR-P-2: no windowing). They go with the slice docs if item 7 lands, and are corrected in place otherwise:
+     - `schemas/envelope.fbs:814-815` (the `GraphSlice.total_rows` doc);
+     - `docs/ffi-abi.md:890`, `:951-954` and `:1081-1084`;
+     - `packages/zanshin_core/lib/src/ffi/graph.dart:344`;
+     - `crates/zanshin-ffi/src/graph.rs:193-197` and `:229-231`;
+     - `crates/zanshin-graph/src/slice.rs:7-9`;
+     - `_bmad-output/implementation-artifacts/epic-4-context.md:28`.
+   - **If item 7 lands,** add dated notes where docs name the removed API:
+     - `_bmad-output/project-context.md:13`, `:346` (the `zanshin-graph` test exception) and `:694-704` (lane state, `collect_lanes`);
+     - `_bmad-output/planning-artifacts/architecture.md:41`, `:143`, `:459`, `:601` (`:32` and `:439` get 4.11's note regardless);
+     - `_bmad-output/implementation-artifacts/epic-4-context.md`;
+     - ADR-0002 (6 mentions of `zanshin-graph` / `zanshin_graph`) and `docs/rust-error-codes.md` (7);
+     - code docs: `crates/README.md:11`, `cbindgen.toml:20`, `crates/zanshin-ffi/src/log_defaults.rs:10`, `crates/zanshin-jj/src/graph.rs:3` and `:36`, `crates/zanshin-jj/tests/revset.rs:171`;
+     - the Epic 4 title "`zanshin-graph` — DAG Lane Assignment" (epics.md: the Epic List entry and the Epic 4 heading) and the sprint-status comment `# Epic 4: zanshin-graph — DAG Lane Assignment`: a dated retitle note, e.g. "(2026-09-26: the lane crate was removed in 4.12)".
+
+**Tests.**
+- **Rust:**
+  - **Builder round-trip,** inline in `crates/zanshin-ffi/src/graph.rs`: every vector; kind-gated targets; absent timestamps; the root's ignored slot; sparse refs; an empty revset (n = 0); the `Verifier`.
+  - **`crates/zanshin-ffi/tests/graph_ffi.rs`, reshaped for the topology** (or a new file next to it if the slice stays): the wire against the `Repo::graph_topology` oracle on tiny + medium. It covers the anchors, timestamps on and off, `all_count`, a narrowed revset with Indirect and Missing edges, and the repeated-target case.
+  - **The request-buffer ladder:** null data, wrong `RequestKind`, zero handle, an interior NUL in an anchor.
+  - **Codegen and the export list.** `cargo make codegen` output and `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs` stay green with the extern swapped. `EXPECTED_EXPORTS` stays 61 if item 7 lands (60 + 4.10's content extern), and becomes 62 otherwise.
+  - **The re-pointed precondition witness** in `snapshot_ffi.rs` passes on `zanshin_graph_topology`.
+- **Dart decode-contract tests with synthetic buffers** (`packages/zanshin_core/test/ffi/graph_test.dart`):
+  - random access;
+  - null for absence: timestamps not requested, the root's timestamp, a Missing target, a local ref's remote, an absent `change_offset`;
+  - a missing required vector throws;
+  - views vs copies;
+  - lookups, including a divergent change.
+- **Ids.** With option (b), the Dart formatting equals Rust's display string for every node of every fixture (real-cdylib test).
+- **Transfer.** A worker test shows the topology arriving as `TransferableTypedData` and read through views, with no decode step.
+- **Extern coverage.** A real-cdylib worker test calls `zanshin_graph_topology` (`test/worker/graph_test.dart`). Coverage and the extern-coverage guard credit an extern only through `zanshin_core` tests.
+- **Coverage ratchet.** It measures Rust lines only. Changed files must not drop, and new files reach 80 %. Removed `zanshin-graph` files leave the baseline.
+- **Numbers.** The size and time numbers of item 1 are recorded in the spec.
+
+**Non-goals.**
+- No layout (4.11).
+- No painting and no colour model (Epic 10: one gray plus the gold lineage of @).
+- No content (4.10).
+- No row-range API, no lane cap, no op-log graph, no elided counts.
+
+**Depends on.** 4.10. 4.11's layout command and 10.12 depend on this story.
+
+**Open questions (Ralph).**
+1. **The old lane path** (item 7): remove the slice extern and the `zanshin-graph` crate (recommended), keep the crate without FFI, or keep everything? And does `Repo::walk_graph` stay as zanshin-jj's `jj log`-faithful read once nothing calls it?
+2. **Ids** (item 2): display strings, or fixed-stride bytes with Dart formatting? Decided by measurement; (b) is expected to win.
+3. **Missing targets:** drop the target commit id (recommended), or keep it?
+
+**Related:**
+- 4.2, 4.6, 4.8 (the payload this replaces)
+- 4.10 (the topology), 4.11 (the input builder, the engine and the layout command)
+- 9.25 (a `graphSlice` consumer)
+- 9.31 (edge drop zones): each drawn edge is one layout edge with child and parent indices, so segment identity is explicit (10.4 item 9)
+- Epic 10 (10.1, 10.12)
+- ADR-0001, FR-GR-2 (amended 2026-09-26), FR-GR-6
 
 ---
 
@@ -5845,5 +6634,1696 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
+
+---
+
+## Epic 10: Commit-Graph View (Flutter UI)
+
+> **Granularity:** backlog-level, like Epic 9. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled, after Ralph has answered that story's design questions.
+>
+> **Tags:**
+> - `[docs]`: planning and rule documents only.
+> - `[UI]`: Flutter UI under the exception below.
+> - `[UI/bridge]`: UI plus the `zanshin_core` public-API exports it consumes.
+>
+> **Heading markers:**
+> - ***NEEDS DESIGN***: the build waits on several of Ralph's answers.
+> - ***PLACEHOLDER***: the story is thin on purpose, for one of two reasons. Either the design is not final there (Ralph: the design's dialogs, popups and panels will look different), or its backend is not scheduled. It is refined later.
+> - ***EXPERIMENT***: the story's outcome is a decision, not a product feature.
+>
+> **Scope exception (Ralph, 2026-09-26):** the Flutter UI is Ralph's work (PRD §3.2, `project-context.md`, `CLAUDE.md`). Ralph asked Claude to build this view anyway, because he has never built one and expects it to be faster and less buggy that way. He asked for separately reviewable pieces because not everything is final. Ralph reviews every story, and the rest of the UI stays his. Story 10.0 wrote this exception into the canonical rules (done).
+>
+> **Re-planned 2026-09-26 (console session, Ralph)** from the HTML design export. The export supersedes the mockup image that the first version of this epic was written from.
+>
+> **Product decisions 2026-09-27 (Ralph, console session, after using the spike viewer on a real 1.4k-commit repo).** They supersede every mention below of Time, Time+gaps (M1, the view-side gap variant), `optimized` / "Min. crossings", Plain crossings and the branch-off's ±0.28·W exit, including mentions without a dated note of their own (e.g. 10.1's motivation and items 2–3, 10.2 item 5 and its Non-goals, 10.4 item 8). The affected stories carry dated notes.
+> 1. **Layout modes:** Free is the default, Compact the only other mode. Time and Time+gaps are dropped ("the rest can go"). Free keeps its day axis in the gutter (10.2 item 9). The design has no Free mode, and its default is Compact (GV:507).
+> 2. **Lane order:** `compact` (SPEC §4.7) is the default, greedy the alternative. `optimized` is dropped. This deviates from the design's default, Min. crossings (APP:13). `compact`'s known limits stay recorded (4.11 item 11): in Free it is wider than greedy in about 8 % of the real repo's history, and its work budget binds from about 10k commits. Greedy is the fallback.
+> 3. **Label language:** keep what exists for now: labels formatted per locale, English by default as in the design (the viewer's `?lang=de` gives "Heute", "Gestern", …). Whether the app is English-only or translated is open and app-wide; some terms may sound odd in German (deferred-work).
+> 4. **Intended deviations from the design.** Ralph wants these viewer decisions kept:
+>    - (a) crossing gaps (line hops) are the only option: always on, no Plain, no toggle (10.4 items 4 and 11);
+>    - (b) content fades as it scrolls under the sticky gutter (10.2 item 2). The gradient is the design's own Time gutter (GC:57); it now lives in Free's day gutter, which the design does not have;
+>    - (c) the current date is sticky: the day at the viewport's top stays pinned in the gutter until the next day's label pushes it out (10.2 item 9);
+>    - (d) every edge leaves a card's top at the centre (item 5).
+> 5. **Edge exits** (recorded only; the spike viewer is not updated). Every edge already enters its child from below at the centre (Ralph noticed it at merge commits), and straight edges and merges already leave the parent's top at the centre. Only branch-offs leave at ±0.28·W, so edges often leave off-centre. Every edge now leaves the top at the centre too. That changes the painter (10.4 item 1) and SPEC §4.5's geometry text; route classes and every layout output stay unchanged (4.11). 10.4 item 1 lists the consequences; prototype defect 8 disappears.
+> 6. **10.13's outcome** is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph, who can reopen it.)* Still open: Free's constants and buses behind cards (4.11 open question 4), the source of Free's day buckets (4.11 open question 9), the minimap's design (10.16), and the label language. The port scope is decided: only these modes and orders (Ralph: "the rest can go").
+
+**Goal.** The app's main view as in the design export. The canvas and the graph:
+- commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
+  - Compact rows are the dependency depth;
+  - Time rows are time buckets, with a sticky time gutter *(dropped 2026-09-27: Free, the default, keeps the sticky gutter as a day axis)*;
+- rounded orthogonal edges behind the cards:
+  - straight, merge, and branch-off with shared buses;
+  - dashed indirect edges;
+  - crossing hops;
+  - the "~ N elided" marker;
+- the gold lineage of @, and a hover focus path that dims everything outside a card's ancestry;
+- two-axis scrolling and pan-by-drag over 10k–100k commits, with exact scrollbars.
+
+Around the graph sit a toolbar, a thin detail panel for the selected commit, a thin bookmark panel, placeholder action popups, and later drag-and-drop. Everything builds on the shipped bridge (`logDefaults`, `show`, `bookmarks`, the mutation verbs, the op-heads watcher) and on backend Stories 4.10–4.12.
+
+**Design input.** The design export lives under `_bmad-output/implementation-artifacts/design/`. The page `JJ Desktop Client.html` loads `data.js`, `graph-data.js`, `tweaks-panel.jsx`, `graph-view.jsx` and `app.jsx`, styled by `styles.css` and `graph.css`. The stories cite the sources by these abbreviations:
+- `GV` = `graph-view.jsx`: the layout algorithm, toolbar, card, bookmark control, quick actions, detail frame, bookmark list and workspace;
+- `GC` = `graph.css`;
+- `GD` = `graph-data.js`: 22 mock commits, with the clock fixed at 2026-09-25T14:00;
+- `APP` = `app.jsx`: the detail body, the describe editor, and the tweak defaults;
+- `SC` = `styles.css`: the design tokens.
+
+Status of the design:
+- **Preliminary but close to final** (Ralph, 2026-09-26). The earlier mockup lives at `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp` (untracked). Where it differs from the export, the mockup and everything planned from it are obsolete.
+- **The dialogs, popups and panels are not final** and will look different. The design extraction lists them as:
+  - the revset dropdown;
+  - the bookmark popover;
+  - the quick-action fan;
+  - the "+" chips' actions;
+  - the detail panel with its describe editor;
+  - the left side panels (the bookmark list);
+  - the Projects dialog.
+
+  Their stories are thin: 10.15, 10.8, 10.14 and 10.7's dropdown. Whether the two panels really count is 10.8 design question (a).
+- **The tweaks panel** (`tweaks-panel.jsx`, APP:7-16, :2510-2539) is a design tool, not a product surface. The tweaks that change the graph become view options with the design's defaults (below).
+- **Only the visuals and interactions are the reference.** The prototype renders every card and edge as DOM and runs a quadratic layout on the UI thread (about 2 s at 10k commits). Its algorithmic costs and its bugs (below) are not part of the reference.
+
+**The layout model.** The design does not draw `jj log`'s lane graph, which puts one commit on each row. Instead it lays commits out in rows shared by several commits (GV:140-225):
+- **Compact:** row = the longest-path depth. Row 0 is the root at the bottom, and the newest commits are at the top.
+- **Time:** rows are grouped into time buckets: a ladder from 10m to 12h, then calendar days. Independent commits in one bucket share a row.
+- **Lanes:** greedy interval packing with a first-parent continuation and a one-row buffer, optionally permuted to minimise crossings ("Lane order").
+- **Edges:** every parent edge is routed as one orthogonal polyline (straight, merge or branch-off), with rounded corners and crossing hops.
+
+That algorithm belongs to the backend:
+- **The A/B spike** `spikes/graph-layout-ab` (`SPEC.md`):
+  - it made the algorithm scalable and deterministic, and it fixes several of the prototype's defects (below);
+  - it implements three modes:
+    - `compact`;
+    - `time`, with a topological clamp (SPEC D1);
+    - `free`: y from compressed commit time, each child at least one pitch above its parents (SPEC §4.2, D8; the constants are provisional);
+  - it settled where 4.11 runs: in Dart, on `zanshin_core`'s worker isolate (Ralph, 2026-09-26; spike README "Recommendation" and "Review 2026-09-26"). Rust keeps supplying the jj data.
+- Story 4.11 ports the spike's Dart implementation into the worker isolate; Story 4.10 supplies the topology, and Story 4.12 its wire and the lazy Dart view.
+
+**The view never computes rows, columns, route shapes, buckets, elided counts or a free y.** It consumes an abstract `GraphLayout` (10.1) and only maps it to pixels:
+- per node: key, column, row in units of 1/U pitch, view facts and lazy content. U = `unit` is 1 in Compact and Time and 16 in `free` (SPEC §3);
+- per edge: child, parent, kind (direct | indirect) and shape (straight | merge | branch-off);
+- plus the mode, the time buckets, the elided markers, @ and the counts.
+
+Rows, lanes and columns do not depend on card width or height. This was verified on 3000 random layouts: the optimiser's width term is the same for every permutation (SPEC §0, D6). So a layout is requested once per operation and never for a resize.
+
+**Fixed rows or free y: the Time experiment** *(decided 2026-09-27: free y. Free is the default and Compact the other mode; the view-side gap variant is dropped, so `PerNodeTops` serves hand-made fixtures only)*. The design is row-based in both modes, with a uniform pitch, so its spacing is ordinal. Ralph may instead want the vertical spacing to follow elapsed time. The pixel mapping is therefore split in two:
+- `GraphMetrics` maps columns to x. It covers the card width (160–400), the lane gap (56), the padding (56) and the gutter (88, in Time, and in Free if Free ships with 10.2 item 9's day axis).
+- A `VerticalLayout` maps nodes to y.
+  - `UniformRows` maps the layout's rows: top = pad + (rows − U − row)·(H + gapY)/U. With U = 1 that is the design (GV:202). With the engine's `free` output (U = 16) it is the free layout, with no y computed in the view.
+  - `PerNodeTops` holds arbitrary per-node tops. It serves the one view-side variant, time-sized gaps between Time buckets (prefix sums over the buckets, SPEC §0), and hand-made fixtures.
+
+Everything vertical reads the `VerticalLayout`: cards, edges, buses, the gutter, guides, reveal, anchoring, hit testing and the extents. The visible set comes from a y-sorted index with binary search, not from row arithmetic. A free layout is therefore a different layout record, not a different viewport.
+
+Every time-based variant needs every commit's timestamp before the first frame. That includes the design's fixed Time rows. *(2026-09-27: with Free the default, the default layout needs them; 4.10 open question 1 weighs more.)* It is a dependency on 4.10 (the index holds no timestamps; its re-plan carries them in the topology call on request) and on 4.11 (the buckets and the free y).
+
+**How it is built** (research §1–§5; the POC).
+- **Viewport.** A `TwoDimensionalScrollView` with a custom `RenderTwoDimensionalViewport`. The viewport paints the background, the edges and the gutter itself. Cards are lazily built widgets whose body is a `RenderBox` with text slots.
+- **Geometry from data only.** No widget is measured. Extents and scrollbars are exact before the first card exists; the design computes them the same way (GV:219-224).
+- **Several cards per row, per-node y.**
+  - Visible cards come from the y-sorted index.
+  - Visible edges come from an interval index over each edge's vertical extent.
+  - Crossing hops are computed per visible window.
+- **Accessors only.** Painters and cards read `GraphLayout` through accessors. 10.12 can then swap the recorded source for 4.11's layout result plus 4.12's lazy topology view without touching 10.1–10.4.
+- **Pitfalls.** Every research §5 pitfall is a scope item of the story it belongs to, marked "(research §5)". One is moot: colouring lines by the edge that opened them (§5 "Linienfarbe"). The design has one gray plus the gold lineage of @.
+
+**Backend dependencies** (restated in 10.12):
+- **4.10:**
+  - the index-only topology and view facts for the whole revset before the first paint, including each node's real parent count (index-only, 4.10 item 1);
+  - the edge kinds as jj facts: direct, indirect and Missing. A Missing edge is the elided stub (10.4). Its count N, if 10.4 design question (a) keeps it, is not a topology field (4.10 Non-goals): it depends on the revset and needs an index walk per Missing parent, so it would come from a separate op-pinned count call for the visible nodes, owned by a follow-up story created only then;
+  - content (subject, author, time, empty, conflict), loaded lazily by commit id at the returned operation;
+  - `|all()|` for the "shown / total" counter;
+  - the operation id.
+- **4.11:**
+  - the layout in all three modes (compact, time, free) behind a mode enum, as the spike implements them. 10.13 decides which modes the product exposes *(decided 2026-09-27: `free`, the default, and `compact`; 4.11's dated note proposes porting only these)*;
+  - rows in units of 1/U, with `unit` and `rows` (SPEC §3), plus columns, route shapes including the blocked rule, and buckets. That is all: elided counts are not part of the layout, and Missing edges are not in its output (SPEC §0, §3, D2);
+  - independent of card width and height;
+  - with the prototype's layout defects fixed (below). The spike already fixes defects 3, 5 and 6 and the costs of 16;
+  - with a real source for the design's hand-set `priority` (a stand-in in the spike, SPEC §11.2), and a lane order that stays stable across reloads (SPEC §11.5; since 2026-09-27 `compact`'s §11.6, 4.11 open question 8);
+  - the dated amendments of FR-GR-1 / FR-GR-2 (2026-09-26), which described the `jj log` lane model.
+- **Time and free modes:**
+  - every node's timestamp before layout, committer or author (SPEC §11.3);
+  - for Time, also "now"; free mode never reads "now" (SPEC §4.2). *(2026-09-27: Time is dropped, so no layout reads "now", and Free, the default, needs every timestamp.)*
+
+  4.10's re-plan (2026-09-26) carries them in the topology call on request (`with_timestamps`), loaded per call; a commit-id → timestamp cache is its open question 1.
+
+**Design tweaks that matter** (APP:7-16; the defaults are the design's):
+- Bookmark labels: Always (legend pill) | On hover (button only) → 10.3.
+- Crossings: Bridge gap | Plain → 10.4. *(Decided 2026-09-27, Ralph: Bridge gap only, always on; no Plain and no option. An intended deviation.)*
+- Hover: focus path (on) → 10.6.
+- Lane order: Min. crossings | Greedy → an option of the layout request (10.5). 4.11 computes it (the spike's `optimized` | `greedy`, and since 2026-09-26 the Dart-only `compact`, SPEC §4.7). Which orders ship and which is the default is 4.11 open question 8; the spike recommends `compact` with greedy as the fallback, and dropping `optimized`, once Ralph has looked at it in the viewer. *(Decided 2026-09-27, Ralph, after looking at it in the viewer: `compact` is the default and greedy the alternative; `optimized` ("Min. crossings") is dropped. The design's default, Min. crossings (APP:13), is thereby replaced. The control's label is open, because "Compact" collides with the Compact layout (10.7 design question (f)).)*
+- Show changed files (on) → 10.8.
+- Diff mode (Inline) → the Epic 5 diff follow-up, together with the design's review workflow (deferred-work).
+- Density and theme are app-wide and stay Ralph's.
+
+The demo host exposes every graph option. Which of them become user settings is 10.7's design question (f).
+
+**Prototype defects that no story copies.** Each was verified in the page; the owning story is in brackets.
+1. **Re-centring on @ misfires** [10.5] (GV:531-538):
+   - a revset or layout switch re-centres on @ one relayout late;
+   - the first relayout of any kind after load (Card width, Detailed, Lane order) jumps to @;
+   - after a double-click `jj edit`, the next relayout scrolls to the old @;
+   - a hidden-bookmark pick reveals its target in the relayout it causes (GV:582), but the switch re-arms the @ re-centre (GV:538), so the next relayout of any kind jumps to @.
+2. **Blocked merges are routed behind cards** [4.11; reported by 10.4 item 10]. A blocked merge is re-routed as a branch-off and runs up the child's column behind that column's cards, collinear with their chain. Its reservation also pushes the continuation off its lane (GV:52-69, :188-206). The spike keeps this (SPEC D9) and leaves it to Ralph (SPEC §11.4). The design sample has none, but the spike's synthetic inputs have many (229 on `synth-10k`, compact, greedy), so the route invariant is a counted report until 4.11 fixes it.
+3. **Time rows break when a child is older than its parent** [4.11; the spike's clamp fixes it (SPEC D1); checked by 10.1 item 14] (GV:169) *(moot for the product since 2026-09-27: Time is dropped; Free clamps its own time, SPEC §4.2)*:
+   - across buckets, the parent is drawn above the child;
+   - inside one bucket, both land in the same cell and overlap.
+4. **Elided counts are costly and differ from jj** [4.10 supplies the Missing edges; N, if 10.4 design (a) keeps it, a follow-up count call] (GV:141-158):
+   - a DFS per parent counts every hidden ancestor down to the root, O(h) per Missing parent;
+   - it drops the hidden part of mixed parents and keeps transitive indirect edges;
+   - jj's Missing semantics differ: its walk is bounded, and it keeps Missing edges next to Indirect ones.
+
+   The spike takes the edges from jj and leaves the counts out of the layout (SPEC §0, D2). So the stub comes from 4.10's Missing edges; N, if 10.4 (a) keeps it, from a separate count call (4.10 Non-goals).
+5. **`rowOf` recursion** overflows the stack at about 8k depth with head-first input (GV:174) [4.11; the spike loops instead (SPEC §4.2)].
+6. **Duplicate parents** produce a dashed and a solid edge to the same parent, with colliding edge keys (GV:154, :640) [4.11: jj does yield repeated targets (a Direct and an Indirect edge to one parent, seen on a real repo), and 4.11's input builder keeps one layout edge per target (its Scope 5; SPEC §2 amended, V3 stays a validation); 10.1 item 14; 10.4 item 9].
+7. **An invisible elided stub**: the stub is drawn over the node's own incoming edge at the card centre (GV:643-645) [10.4 design (b)].
+8. **The bookmark legend pill covers branch exits**: it sits on the top border over rightward branch-off exits (GC:97, :105 vs GV:63). The code comment at GV:311-315 intended the bottom border [10.3 design (b)]. *(2026-09-27: it disappears with the top-centre exit, product decision 5: the pill's left end sits at least 24 px right of the card's centre.)*
+9. **A stale selection**: it survives a revset that hides the commit, so the panel stays open for a commit that is not on the canvas (GV:578) [10.5 item 7].
+10. **A hidden-bookmark pick** permanently rewrites the persisted revset preference (GV:504, :580) [10.14 design (a)].
+11. **Esc is global**: the graph's Esc handler is a window-level keydown listener (GV:541-548). So the Esc that closes the Projects dialog (APP:2034) also clears the graph selection [10.6 item 5].
+12. **Detail panel defects** [10.8]:
+    - a "behind" bookmark reads "local" (GV:467);
+    - the root shows a fake parent "c3d4e5f" (APP:765);
+    - only the first parent is shown (APP:761-766);
+    - the action row is inert, and it shows on immutable commits while the header hides Edit there (APP:854-859);
+    - every commit shows the same sample diff (APP:865).
+13. **The describe editor saves nothing**: "Done editing" persists nothing, and its hint still says `jj edit … Working copy moved here` (APP:1335-1363, :1345-1348) [10.15].
+14. **The subject is dimmed for an empty change**, not for an empty description (GV:407) [10.3 design (a)].
+15. **The mock's default-revset flags are wrong for `wq`**. jj's default revset shows 13 of the 22 commits with the elided stub under `vr`, not 14 (GD:1-2, :17) [10.1 item 13].
+16. **Nothing is virtualised, and the algorithms do not scale** (GV:71-138) [10.1, 10.4; 4.11]:
+    - every card and edge is a DOM node;
+    - crossings are found all-pairs, O(E²);
+    - the lane optimiser is factorial below 9 lanes and hill-climbing above, and it is global.
+
+    The spike's phases are O((n+E) log n), and its optimiser is budgeted (SPEC §5).
+
+**Prototype behaviours that are design questions, not defects** (the owning story asks):
+- (i) Crossings between edges that share a node are neither bridged nor counted (GV:87) [10.4 design (d)]. The spike's optimiser counts them (SPEC D5).
+- (ii) Opening the detail panel keeps the raw scroll offset [10.8 design (e)].
+- (iii) A click on empty canvas never clears the selection; it only starts a pan (GV:563-569) [10.6 design (b)].
+
+**House rules for every Epic 10 story.**
+- **Code and tests.** Code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/` (mirroring). The POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`) is reference only.
+- **Bridge imports.** The app imports only `package:zanshin_core/zanshin_core.dart`. That library exports none of the handle, show, bookmark, mutation, exception or graph types today (`zanshin_core.dart:9-33`). Each story adds the types it consumes to the `show` list; that is what the `[UI/bridge]` tag means.
+- **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
+- **Visuals.** Designed visuals are a `RenderBox` with text slots (the `splash_card_render.dart` pattern), not nested `Column`/`Row` trees.
+- **Theme.** Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376). `GraphTheme.of(context)` falls back to built-in defaults and never force-unwraps.
+- **Layout data.** The view never lays out the graph. Until 10.12, everything runs on recorded layouts from the spike's reference implementation (10.1 item 13). Every recording passes 10.1's hard invariants. 10.4's route invariant is a counted report, not a gate, until SPEC §11.4 is answered and 4.11 fixes the blocked-merge routing.
+- **Scroll precedence.** One rule, defined in 10.5 item 6 and used by 10.1, 10.7, 10.8 and 10.14. An explicit reveal (a bookmark pick, locate @, go-to-change) beats the re-centre on @ after a revset or layout switch, which beats the anchor. The anchor is the fallback when the target is absent. It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels.
+- **Ports.** The view model (10.5) declares the ports the view uses: the layout source (`GraphSource`) and the actions runner (`GraphActions`). A story whose real implementation has not landed yet wires a fake: 10.6 and 10.8 before 10.9, and everything before 10.12.
+- **Tests.**
+  - Scroll-physics tests run under `TargetPlatformVariant.only(TargetPlatform.macOS)`.
+  - There are no golden tests, because the repo has none. Ralph reviews visuals in 10.1's demo host.
+  - Real-cdylib widget tests wrap worker and watcher I/O in `tester.runAsync`.
+  - App tests never call a jj config verb for real. The `test-flutter` task does not pin `XDG_CONFIG_HOME` (`Makefile.toml:109-111`).
+- **Gate and definition of done.**
+  - A story is done when `cargo make test` passes: `flutter test`, `dart analyze --fatal-infos`, format, and the rest.
+  - The 3 splash-card failures are fixed, so the earlier "adds no new failure" workaround is gone.
+  - The coverage ratchet is Rust-only and does not measure these lines. Each story's named witnesses are the only safety net.
+- **Backend boundary.** The UI never composes jj operations (ADR-0003). It pre-fills every parameter the shipped API takes from the effective config (Story 4.9) and passes it explicitly. CLI parameters that the API lacks are backend gaps, not UI work.
+- **Design status.** Each story separates what the design fixes from what Ralph still decides:
+  - FINAL items cite the design by file:line;
+  - NEEDS DESIGN items are phrased as concrete questions, and they are answered before the story is built, never guessed;
+  - a prototype defect is never FINAL, and a prototype behaviour listed above is a question, not a rule.
+
+**Sequencing.**
+- 10.0 (the scope-exception note) is done.
+- 10.1 comes first: the viewport, the `GraphLayout` contract, `VerticalLayout`, the recorded layouts from the spike, and the demo host.
+- 10.2 (background and gutter), 10.3 (cards) and 10.4 (edges) run in parallel on recorded layouts.
+- 10.5 (the view model and its ports) can land any time after 10.1.
+- 10.13 (the Time-layout lab) follows 10.1, 10.4 and the spike's stages 2–3 (dumper and reference implementation). It uses 10.2 and 10.3 if they have landed. It does not gate 4.11, which carries all three modes; its outcome picks the modes the product exposes. *(2026-09-27: the outcome is picked; 4.11's dated note proposes porting only `free` and `compact`.)* The throwaway viewer inside the spike was built on 2026-09-26, and Ralph currently leans to Free (tentative; 10.13's status note). *Outcome decided 2026-09-27 in the spike viewer (Free by default, plus Compact); a Flutter lab is built only if Ralph asks for one (10.13 item 6).*
+- 10.6 (selection, hover focus, locate @) follows 10.3 and 10.4.
+- 10.7 (toolbar) follows 10.2, 10.3, 10.5 and 10.6.
+- 10.8 (thin detail panel) follows 10.5 and 10.6.
+- 10.9 (the action runner) follows 10.3 and 10.5. Until it lands, 10.6's double-click and 10.8's action row call the fake `GraphActions` port.
+- 10.15 (placeholder popups) follows 10.8 and 10.9.
+- 10.14 (thin bookmark panel) follows 10.5, 10.6 and 10.7. Its full row set needs backend 9.29.
+- 10.11 (content paging) follows 10.3 and 10.5 on the fake port.
+- 10.12 (real data) follows Stories 4.10, 4.11 and 4.12.
+- 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run` from the layout arrays, its design question (f)) it needs no backend story and runs on recorded layouts.
+- 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
+
+**What changed in the re-plan, and why** (story numbers kept where the topic still fits):
+- **10.1–10.7 keep their topics.** Their content now follows the design: several cards per row, routed edges, the design's toolbar. 10.1's contract takes the spike's output format (rows in 1/U units), so the engine's free layout needs no view-side computation.
+- **10.8 and 10.14 are thin by default.** The design extraction lists both panels among the design's not-final dialogs and popups. The design's review workflow (review meter, Viewed state, auto-advance, Inline/Split) reviews diffs that do not exist before Epic 5, so it moves to the Epic 5 follow-up.
+- **10.9 "Action dialogs" becomes the action runner.** The design has no dialogs. Its verbs are triggered from cards, the panel and popups, so the story is the shared pipeline that runs them.
+- **10.12 adopts the backend layout end to end** (4.10 + 4.11 + 4.12). The landing lanes and segment colours it was written for belong to the `jj log` lane model the view no longer draws.
+- **Three stories are new:**
+  - 10.13, the Time-layout lab (Ralph's experiment). It compares the engine's modes and one view-side gap variant; it computes no layout itself;
+  - 10.14, the bookmark panel (a designed surface with its own data source);
+  - 10.15, the placeholder popups. They are not final by Ralph's decision, and they are split from 10.9 so that the runner stays real.
+
+### Story 10.0: Record the Epic 10 scope exception in the canonical rules [docs]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Delivered (2026-09-26, console session):** the dated note "Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's" was added at every site of item 1: `CLAUDE.md` (the "Flutter UI is out of scope" sentence); `project-context.md` `scope_reminder`, the Flutter-toolchain bullet ("Ralph's separate work"), the coverage rationale (Epic 10's Dart lines stay unmeasured) and the "NEVER write Flutter UI code" rule; `prd.md` frontmatter `scopeBoundary` (incl. the view's own VoiceOver semantics), §1 (a pointer in the intro sentence + the note after "Ralph's own work"), §3.1 (the "No widgets, no UI" bullet), §3.2 ("No Flutter widgets…" and "No accessibility work", which notes Epic 10's VoiceOver semantics); and § UX Design Requirements above. The general rule stays at every site. The memory note was already updated.
+
+**Motivation.** Every build agent reads `CLAUDE.md` and `project-context.md` first. Both declare the Flutter UI out of scope, and `project-context.md:614` says "NEVER write Flutter UI code in this scope". Without a dated exception, every Epic 10 build refuses the work or quietly shrinks it. Nothing else in Epic 10 owns this edit.
+
+**Scope.**
+1. Add one dated note at every site that forbids UI work: "Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view, is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's". The sites:
+   - `CLAUDE.md:5`;
+   - `project-context.md:15` (`scope_reminder`), `:29`, `:307` (coverage rationale: Epic 10's Dart lines stay unmeasured) and `:614` (the NEVER rule);
+   - `prd.md`:
+     - the frontmatter `scopeBoundary` (`:56-60`);
+     - §1 (`:74`, `:82`);
+     - §3.1 (`:150`);
+     - §3.2 (`:154`, and `:156` "No accessibility work", because Epic 10 adds VoiceOver semantics to its own view);
+   - `epics.md:236` (§ UX Design Requirements);
+   - Claude's auto-memory note `feedback-scope-bridge-is-claudes-ui-is-ralphs.md` lives outside the repo; it already carries the exception (updated 2026-09-26).
+
+   The general rule stays everywhere. Only the exception is added.
+
+**Non-goals.** No code. No other rule changes. (The mockup image is already in the repo: `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp`, copied 2026-09-26.)
+
+**Witness.** `grep -n "Epic 10"` hits every site listed in item 1.
+
+### Story 10.1: Graph viewport — two-axis virtualized canvas over positioned nodes, extents from data, pan-by-drag [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The design places each card at a pixel position computed from data alone (GV:198-224):
+- x comes from the node's column, y from its row;
+- several cards share a row;
+- the canvas scrolls on both axes, and a drag on empty canvas pans it (GV:560-576).
+
+The prototype renders every card and edge as DOM, which is fine for 22 commits, but `all()` can reach 10k–100k. `ListView` cannot do this: its extents are estimates, and nested inside a horizontal scroll view it lets the trackpad lock one axis (research §1–§2).
+
+The POC showed that a `TwoDimensionalScrollView` with a custom `RenderTwoDimensionalViewport` works. It lives in `app/lib/src/features/graph_poc/`, with entry point `app/lib/main4.dart` and test `app/test/features/graph_poc/commit_graph_view_test.dart`. It mounts 13 cards at 800×600 over 100 000 rows, both extents are exact before any card is built, and clicks land on the right card. But:
+- it assumes one card per row and finds the visible rows by arithmetic on the row index;
+- the design puts several cards on a row;
+- the engine's `free` mode (spike SPEC §4.2) puts every node at its own y, which 10.13 evaluates;
+- it leaves out the research §5 pitfalls.
+
+This story makes the production viewport that every other Epic 10 story plugs into.
+
+**Scope.**
+1. **Home and demo host.** Production code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/`. The POC stays untouched.
+   - Add one fake-data demo host for Ralph's visual review of every Epic 10 story. It alone registers `GraphTheme` (item 12). It exposes every `GraphViewOptions` field: the design's graph tweaks, dark/light, the fixture, and later 10.13's lab *(2026-09-27: 10.13's outcome is decided; a lab joins the host only if Ralph asks for a Flutter confirmation)*.
+   - Which `main*.dart` hosts it is Ralph's call, given his note to clean those files up.
+2. **The `GraphLayout` contract.** An app-side, abstract, immutable interface, one per layout. Painters and cards read it **only through accessors**, so 10.12 swaps just the backing store.
+   - **Mode and units** (the spike's output fields, SPEC §3):
+     - `mode`: compact | time | free *(2026-09-27: the product ships `free`, the default, and `compact`)*;
+     - `unit` (U): rows are in units of 1/U pitch; 1 in compact and time, 16 in free;
+     - `rows`: max row + U;
+     - `colCount`.
+   - **Nodes:**
+     - `nodeCount`, `keyOf(i)`, `indexOfKey(key)` (null when absent);
+     - `colOf(i)`, `rowOf(i)` (row 0 = the oldest, at the bottom);
+     - `timestampOf(i)`, nullable; present when the source carries it (Time, free, the lab);
+     - view facts, always present;
+     - content, nullable until loaded (10.11).
+
+     10.3 defines the fields of both. The view facts include:
+     - the bookmark refs as an app-side `GraphRef`: name, remote, synced and conflicted, plus tracked and ahead/behind once 9.29 lands. 10.12 maps 4.12's types onto it, so it is never a wire type such as today's `GraphCommitRef`;
+     - `parentCountOf(i)`: the commit's real parent count, Missing parents included. It drives the merge glyph (10.3) and the merge tag (10.8), as the design's `isMerge` does (GD:56). It is not the edge count, because Missing edges are not layout edges (SPEC §3).
+   - **Edges:** `edgeCount`, `childOf(e)`, `parentOf(e)`, `kindOf(e)` (direct | indirect), `shapeOf(e)` (straight | merge | branch-off), plus CSR parent and child ranges per node.
+   - **Also:**
+     - `elidedOf(i)` (10.4): whether the node has a Missing parent, plus the count N where the source carries one. The flag comes from 4.10's topology (its Missing edges, on 4.12's wire), not from the layout (SPEC §0); N has no source until 10.4 design question (a) keeps it (then a follow-up count call, 4.10 Non-goals);
+     - the time buckets: kind, value, first and last row (10.2);
+     - `workingCopyIndex` (nullable);
+     - `shownCount`, and `totalCount`, which is nullable until the source provides `|all()|`;
+     - `operationId`, nullable until 4.10.
+   - Consumer stories may add accessors, but never backing objects.
+   - **Row key.** A node's key is `changeId`, or `commitId` when the commit is hidden or divergent (divergent changes share a change id, `graph.dart:229`). The key survives `describe`, which rewrites the commit id but keeps the change id, and it survives new heads.
+   - **No synthetic keys.** The design has no synthetic elided nodes: dashed indirect edges replace them. So the old synthetic-row key rule is gone.
+   - **What never comes from the view:** rows, columns, route shapes, buckets, elided data and every y the engine decides. They come from the source: item 13 now, then via 10.12 the layout from 4.11 and the Missing edges from 4.10's topology (N, if kept, from a follow-up count call).
+3. **`GraphMetrics`: pixels in x.**
+   - The sizes (GV:6): W = card width, 160–400, default 240; H = 62 with Detailed cards and 40 without; gapX 56, gapY 48, pad 56; the gutter 88, in Time (and in Free with 10.2 item 9's day axis; since 2026-09-27 in Free only, the default); elide 44.
+   - Corner radius 10 (GV:217, GC:72).
+   - x(i) = offX + pad + col·(W + gapX), and cx = x + W/2. offX is 88 wherever the gutter is (Time, and Free per 10.2 item 9) and 0 otherwise.
+   - Width = offX + 2·pad + colCount·(W + gapX) − gapX (GV:221).
+   - W and H never change rows, lanes or columns (verified, optimiser included; SPEC D6). A change is therefore an O(n) remap, never a new layout request.
+4. **`VerticalLayout`: pixels in y, and the visible query.**
+   - The interface offers `top(i)`, `contentHeight`, `bottomExtra` and a query for the nodes in a y range.
+   - This story ships two implementations:
+     - **`UniformRows`** maps the layout's rows:
+       - top(i) = pad + (rows − U − rowOf(i))·(H + gapY)/U;
+       - height = 2·pad + bottomExtra + (rows/U)·(H + gapY) − gapY.
+
+       With U = 1 these are the design's formulas (GV:202, :222). With the engine's `free` output (U = 16) the same mapping yields the free layout, so no view-side y is computed. The pixel y depends on `rows`, so a new head shifts every card down (item 10).
+     - **`PerNodeTops`**: per-node tops for 10.13's view-side gap variant and for hand-made fixtures (the gap variant was dropped on 2026-09-27; the fixtures remain). Its height is the largest top + H + pad + bottomExtra.
+   - **Visible query.** The index is a `Float64List` of tops plus an `Int32List` of node indices sorted by top. Binary search finds the nodes whose card rect, inflated by the overhang, intersects the window ± `scrollCacheExtent`; an x filter follows. It is one mechanism for rows and free y, with no row arithmetic.
+   - The index is rebuilt per layout and per metrics change: O(n) when the order is unchanged, O(n log n) otherwise.
+   - **Child vicinity** is `ChildVicinity(xIndex: col, yIndex: node index)`. That stays unique even when two nodes share a row and a column in free mode. Identity rides on the key (item 9).
+5. **Layout.** Override `layoutChildSequence` only, never `performLayout`.
+   - Apply both extents from the data before building any child. When `applyContentDimensions` returns `false`, apply them once more.
+   - Tolerate a `null` from `buildOrObtainChildFor`.
+   - Give every child its `layoutOffset` and lay it out with `parentUsesSize: true`.
+   - `firstChild` is valid only in paint.
+   - Pass both scroll controllers explicitly, so no `PrimaryScrollController` gets attached.
+   - Assert that the axis directions are down and right. That still holds: the newest commits are at the top, and only the row index counts from the bottom.
+   - Use `scrollCacheExtent`, not the deprecated `cacheExtent` (research §5). The default is 250 px on both axes.
+6. **Paint** (research §5). Override `paint` completely, with an own `LayerHandle<ClipRectLayer>` pushed via `context.pushClipRect(…, oldLayer:)`. The base `paint` returns early without children and keeps `_paintChildren` private.
+   - Paint in hook order:
+     1. background (10.2: the grid, then the bucket guides);
+     2. edges (10.4, including the elided stubs and labels);
+     3. the visible cards (`parentData.isVisible`), in the design's z-order: base, then @, then selected, then hovered or pinned (GC:73-77). Each card is painted at the opacity of 10.6's paint-time dim predicate (`context.pushOpacity`, no rebuild);
+     4. the overlay (10.2's gutter).
+   - The painted plane covers max(content, viewport); the design's `.gplane` has a minimum of 100% (GC:50).
+   - Null the handle in `dispose`.
+7. **Scrollbars** (research §5). The 2D view builds none (flutter#122348), so wrap two `Scrollbar`s from `package:material_ui` around it on the same controllers.
+   - Both axes notify at depth 0, so each predicate also checks `notification.metrics.axis`.
+   - Inset one bar by the other's thickness at the corner.
+   - Their style is design question (a).
+8. **Input.**
+   - Use `DiagonalDragBehavior.weightedEvent` (research §5). With the POC's `free` (`graph_poc/commit_graph_view.dart:25`), a vertical swipe drifts sideways.
+   - A mouse-wheel event that carries dx and dy scrolls both axes. Otherwise the inner Scrollable wins `pointerSignalResolver` and dy is dropped.
+   - Keep the framework's Shift flip for mice (`ScrollBehavior.pointerAxisModifiers`).
+   - **Pan-by-drag** (GV:560-576, GC:45-46):
+     - It is a canvas-only pan recognizer. A primary-mouse-button drag that starts off every card and card affordance pans both axes 1:1, with pointer capture.
+     - `ScrollBehavior.dragDevices` stays unchanged. Adding the mouse would make card drags scroll and collide with 10.10's card drags.
+     - The cursor is `grab`, and `grabbing` while panning. Cards show the click cursor.
+     - A pan never changes the selection.
+     - Presses on empty canvas hit the viewport itself (`hitTestSelf` is true; research §5: otherwise nothing is hit there). The recognizer uses that, and 10.6 decides what a plain click on the canvas does.
+   - This story exposes the scroll primitives only: jump or animate to an offset, and `reveal`. Keyboard handling belongs to 10.6.
+9. **Child delegate** (research §5, keys and `shouldRebuild`). Replace `TwoDimensionalChildBuilderDelegate` with a custom `TwoDimensionalChildDelegate`. The builder delegate has two problems:
+   - It wraps each card in a `RepaintBoundary` without hoisting the card's key, so a card's identity is its slot. In the review, 17 of 17 cards lost their state on a reload.
+   - Its `shouldRebuild` is always true, so every parent `setState` rebuilt all mounted cards.
+
+   The custom delegate:
+   - puts the node key on the outermost widget, whose type never changes;
+   - places `KeepAlive(keepAlive: pinned, child: RepaintBoundary(child: card))` below it. `KeepAlive` is a `ParentDataWidget`, so no render object may sit between it and the viewport. Pinning (an open popup in 10.15, a drag in 10.10) flips the flag and updates the Element in place;
+   - compares layout identity or version in `shouldRebuild`;
+   - returns `null` for vicinities outside the layout;
+   - adds no `AutomaticKeepAlive`;
+   - hands cards no per-build closures. Taps and hovers go to stable controllers (10.6), and per-card state arrives through Listenables (10.3).
+10. **Anchor and reveal** (research §5).
+    - An anchor is a node key plus that node's offset inside the viewport, on both axes.
+    - It is re-applied whenever the geometry changes under the same revset and layout mode:
+      - a reload (10.5);
+      - Detailed cards or Card width (10.3, 10.7);
+      - a side panel changing the viewport width: 10.8's right panel (as its design question (e) decides) and 10.14's left panel.
+
+      Resolve the key in the new geometry, then apply `correctBy(newPos − oldPos)` on each axis inside `layoutChildSequence`, before applying the dimensions.
+    - A relayout may instead carry a reveal key, which is centred in that same relayout: @ after a revset or layout-mode switch, or a picked bookmark's target (10.14). Which key wins follows 10.5 item 6's precedence. The anchor is the fallback when the key is absent. A reveal key is consumed by the relayout it targets and never re-armed.
+    - This covers a new head, which grows `rows` and moves every card down. It also covers a column reorder, because "Min. crossings" is global (GV:98-138; SPEC §4.6, §11.5). *(2026-09-27: `optimized` is dropped; the `compact` order can still move columns locally when a new commit re-cuts a window, SPEC §11.6.)*
+    - Which node anchors is 10.5's rule.
+    - `reveal(key, alignment: centre | minimal, animate)`. Centre is the design's `scrollToNode` (GV:526-530).
+11. **Hit testing and semantics** (research §5).
+    - `hitTestChildren` walks item 6's paint order in reverse. The base walks insertion order, which breaks once hover lift, border chips or drag ghosts make children overlap.
+    - `describeSemanticsClip` returns the viewport inflated by the cache extent. `describeApproximatePaintClip` returns `Offset.zero & size` unless `Clip.none`. Without these, VoiceOver reports cache-extent cards as visible.
+12. **Theme.** Add a `GraphTheme` `ThemeExtension`; this story adds the canvas tokens, and 10.2–10.4 add theirs.
+    - Dark and light values come from the design: `--canvas-base` is #12162a dark and #f0ece7 light (SC:9, :42).
+    - `GraphTheme.of(context)` falls back to built-in defaults. It must not force-unwrap the way `context.zc` does (`app/lib/src/shared/theme/zanshin_colors.dart:170`).
+    - Only the demo host registers it. The running app's `MaterialApp` is Ralph's Yaru test page (`app/lib/src/features/app/zanshin_app.dart:124-149`).
+13. **Fake data: recorded layouts from the A/B spike, never a layout engine in the view.** A record joins the spike's input and output (SPEC §2–§3) with the view facts a fixture needs (key, @, bookmarks, immutable, …) and mirrors `GraphLayout`'s fields. The sources:
+    - **(a) The design sample.**
+      - The spike's design inputs (`inputs/design-<rev>.json`, SPEC §7.2), laid out by the spike's reference implementation in compact, time and free, each with greedy and optimized lane order. *(2026-09-27: the product needs compact and free, with greedy and the `compact` order. The Rust reference has no `compact` order, so those recordings come from the spike's Dart binary, as 4.11's goldens do.)*
+      - The greedy compact and time outputs equal the design oracle byte for byte (SPEC §7.2).
+      - The design-default input keeps `wq` as the mock has it, so that it matches the oracle.
+      - A CLI-faithful variant is recorded as an extra input: 13 commits, with `wq` removed and `vr`'s parent Missing (prototype defect 15).
+    - **(b) Scale.** The spike's fixture dumps and seeded synthetic inputs, with their reference outputs (`spikes/graph-layout-ab/inputs/manifest.json`):
+      - the dumps: `medium-1k-commits` for `all()` and for a narrowed revset that yields indirect and Missing edges, and `large-10k-commits` for `all()`;
+      - the synthetic inputs (SPEC §8.1): 10k, 50k and 100k commits, with 100+ lanes, merges, indirect and Missing edges, and non-monotonic timestamps.
+
+      Vertical tiles of (a) remain only as an extra case.
+    - **(c) Free y.** The spike's `free` outputs of (a) and (b) (U = 16), plus one hand-made `PerNodeTops` fixture.
+    - **(d)** Real-repo recordings belong to 10.13. *(2026-09-27: 10.13's outcome was decided in the spike viewer, which commits nothing, and a Flutter lab is built only if Ralph asks for one. Real-repo data never enters git; 10.12 lays out real repos live.)*
+
+    **Elided data in a record.** A node's Missing parents come from the spike input's `missing` entries (the stub). A count N exists only for the design sample, taken from the design's `elided`; other records carry the stub without N. N is never a topology field (4.10 Non-goals); if 10.4 design question (a) keeps it, a follow-up count call supplies it.
+
+    **What is committed.** Small records and test excerpts are committed with the tests. The large recordings (10k–100k; the 100k input alone is about 14 MB) are generated locally or in the test setup from the spike, not committed.
+
+    The recorder is a dev-only tool outside `app/lib` and `test/`, e.g. under `spikes/graph-layout-ab/tools/`. Its location is Ralph's call.
+14. **Layout invariant checker** (test/debug only). Its **hard invariants** gate every fixture:
+    - node keys are unique;
+    - every edge references existing nodes;
+    - no (child, parent) pair appears twice (prototype defect 6);
+    - every child sits at least one pitch above each parent: rowOf(child) ≥ rowOf(parent) + U, i.e. top(child) + H + gapY ≤ top(parent) (SPEC I1);
+    - no two cards in one column overlap; in the row modes that means no two nodes share a (row, col) cell (prototype defect 3; SPEC I2).
+
+    Every fixture passes them. 10.4 adds the route invariant as a **counted report**, not a gate (10.4 item 10). A hard-invariant failure on engine output is an engine bug (4.11) to report, never to patch in the view.
+
+**Non-goals.**
+- Real cards (10.3; a placeholder box here), edges (10.4), background and gutter (10.2), the view model (10.5), selection and keys (10.6).
+- Any layout computation in the view: rows, lanes, columns, route shapes, buckets, elided data or a free y.
+- A single-RenderBox rewrite. It brings no measurable gain, and hover, VoiceOver, focus, tooltips, menus and drag would all have to be hand-rolled (research §2).
+- Reversed axes and RTL.
+- Any dependency on 4.10, 4.11 or 4.12.
+
+**Depends on.**
+- 10.0 (done).
+- The spike's reference implementation and tools, for the recordings (`spikes/graph-layout-ab`, stages 2–3; a spike, not a backend story).
+- No backend story.
+
+**Design status.** FINAL:
+- the geometry constants (GV:6), the corner radius (GV:217, GC:72), positions and extents (GV:198-224), and the 56 px padding;
+- newest at the top, with row 0 = the oldest, at the bottom;
+- the card z-order (GC:73-77);
+- pan-by-drag with the grab cursor (GV:560-576, GC:45-46);
+- reveal = centre (GV:526-530);
+- the canvas tokens for both themes.
+
+NEEDS DESIGN:
+- (a) Scrollbars: macOS overlay auto-hide, or the prototype's 10 px custom bars that are always visible (GC:47-49)?
+- (b) The demo host's file.
+
+If Ralph wants smaller reviews, this story splits cleanly into two:
+- 10.1a: items 1–8 and 11–14;
+- 10.1b: items 9–10 (delegate, keys, KeepAlive, anchor, reveal).
+
+**Witnesses.** Widget tests use an explicit 800×600 surface at dpr 1, reset in tearDown. Scroll tests also run under `TargetPlatformVariant.only(TargetPlatform.macOS)` (`BouncingScrollPhysics`). Mounted cards are counted with `skipOffstage: false`, and paint order is checked with the `paints` matcher.
+- (a) **Mounting and extents.** On the 100k synthetic fixture, the mounted cards are exactly those whose inflated rect intersects the viewport ± the cache extent (an oracle from the node rects). Both `maxScrollExtent` values equal `UniformRows`' and `GraphMetrics`' formulas before any card is built; at U = 1 those are the design's formulas.
+- (b) **Jumping.** A jump to the middle mounts only nearby nodes, and every card of a row that has several.
+- (c) **Hits.** Taps hit the right card before and after the jump, including two cards in one row.
+- (d) **Input:**
+  - a mostly-vertical trackpad pan does not move horizontally;
+  - a diagonal drag moves both axes, and so does a wheel event with dx and dy;
+  - Shift+wheel on a mouse scrolls horizontally.
+- (e) **Pan.** A primary mouse drag on empty canvas moves both offsets by the pointer delta and selects nothing. A drag that starts on a card or an affordance does not pan.
+- (f) **Horizontal culling.** On the branchy fixture (at least 100 lanes), at h = 0, far-right columns are not built; at the maximum h, column 0 is not built.
+- (g) **Paint order.** `clipRect`, then the background hook, then the first edge `drawPath`, then the first card `drawParagraph`, then the overlay. Among cards: base, then @, then selected, then hovered.
+- (h) **Scrollbar axes.** Vertical scrolling never feeds the horizontal scrollbar.
+- (i) **Build counts.** A parent `setState` builds 0 cards. A scroll that brings in no new node builds 0. One entering node builds 1.
+- (j) **Anchoring:**
+  - a reload that adds a head (every card moves down one pitch) keeps the anchor node's viewport offset;
+  - a reload that moves the anchor node to another column keeps it in place horizontally too;
+  - only entering nodes init a State;
+  - a relayout with a reveal key centres that key, and falls back to the anchor when the key is absent;
+  - the next relayout after it (a Card-width change) keeps the anchor and does not re-centre.
+- (k) **Visible query.** The y-index query equals a brute-force scan on random windows, for `UniformRows` over a row-mode recording and over an engine `free` recording, and for a `PerNodeTops` fixture.
+- (l) **Resizing.** Changing W or H re-maps without a layout request: rows and columns are unchanged, the extents are exact, and the anchor holds.
+- (m) **Semantics.** A cache-extent card is `isHidden`; a visible card is not.
+- (n) **Robustness.** No exception for an empty layout, a shrink while scrolled deep, or macOS overscroll past both ends.
+- (o) **Pinning.** A pinned key survives being scrolled out, and survives a reload that moves it. Pinning a mounted card keeps its State (the initState count does not change).
+- (p) **Invariant checker.** Its hard invariants pass on every fixture, and it rejects hand-built violations:
+  - the prototype's Time output for `r` at 13:59 and `k←r` at 13:55, which puts both in one cell;
+  - a child placed below its parent;
+  - a duplicate (child, parent) edge;
+  - a dangling edge.
+
+### Story 10.2: Canvas background and time gutter — dot grid, sticky 88 px gutter, bucket pills and guides, Free's day axis — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Decided 2026-09-27 (Ralph, after the spike viewer; the Epic 10 header's "Product decisions 2026-09-27"):** Free is the default layout and Compact the only other one; Time is dropped.
+> - The gutter (item 2) serves Free's day axis (item 9), which is no longer conditional. Items 3 and 4 keep giving it the pill and guide styles, but their Time placement, item 6's age ladder and item 7's re-bucketing are no longer built, and item 10 is moot. The Time-only witnesses (pills on a bucket's bottom node, the ladder labels, the today-older-than-12h rule) drop out; the Compact ↔ Free switch witness stays.
+> - Two viewer details stay as intended deviations from the design: content fades as it scrolls under the gutter (item 2's gradient, the design's Time gutter GC:57, now in Free), and the current day stays pinned (item 9; design question (e)'s first point is answered: keep it).
+> - Design questions: (a) shrinks to the "now" that formats "Today" and "Yesterday" (item 9, Clock); (b) is moot; (c) is settled for now (below); (d), the rest of (e), (f) and (g) stay open, (g) now for Free's timestamps (4.10 open question 2).
+
+**Motivation.** Ralph named the background as its own piece. In the design:
+- the canvas is `--canvas-base` with a subtle dot grid anchored to the content (GC:50);
+- the Time layout adds a sticky 88 px gutter with one time pill per bucket, plus dotted guides between the buckets (GV:618-628, GC:57-59).
+
+The earlier plan asked whether Time sorts rows by time. The design answers it: Time reorders and packs commits into buckets. That is the layout engine's job (4.11; the spike's `time` mode, SPEC §4.2). This story draws the canvas, and draws the gutter from the layout's buckets.
+
+**Scope.**
+1. **Canvas and dot grid.**
+   - The base is #12162a dark and #f0ece7 light.
+   - A dot of 1 px radius (radial, soft to 1.3 px) every 24 px, offset 4 px, in `--grid-dot`: rgba(255,255,255,.07) dark, rgba(58,46,34,.10) light (GC:4-5, :50).
+   - The grid is anchored to the content, so it scrolls with the plane, and covers max(content, viewport).
+   - It is painted through 10.1's background hook in **one draw call per frame**: a pre-rendered tile as an `ImageShader`, or `drawRawPoints` over the visible rect. The viewport repaints every scroll frame.
+2. **Time gutter** (Time; Free reuses it for its day axis, item 9).
+   - 88 px wide. It stays fixed horizontally and scrolls vertically with the content.
+   - It is painted through 10.1's overlay hook, above the cards (z 8).
+   - Its background is a horizontal gradient from `--canvas-base` (to 70%) to transparent (GC:57).
+   - **Hits pass through it** to the cards beneath (`pointer-events:none`, GC:57). This replaces the earlier plan to absorb them. Trackpad and wheel input over it scroll the graph.
+   - The content's offX is 88 in Time (and in Free, item 9), so column 0 starts beside the gutter at h = 0 (GV:201).
+3. **Pills** (GV:620-622, GC:58). One per bucket with a label; the root bucket has none and is not drawn.
+   - Style: 11 px JetBrains Mono in `--text-muted`, padding 2×7, radius 5, `--card-solid` background, 1 px `--border`.
+   - Position: x = 14, vertically centred on the card centre of the bucket's **oldest** (bottom) node (GV:203).
+   - Labels are cached `TextPainter`s and are never measured into the geometry.
+4. **Guides** (GV:203, :626-628, GC:59).
+   - A dotted 1 px line in `--border-strong`, dash 2 6, from content x = 88 to the content's right edge.
+   - It sits in the middle of the gap below each bucket's bottom node, for every bucket except the oldest.
+   - Guides take no height: every gap keeps gapY in `UniformRows`. They are painted in the background hook, behind the edges.
+5. **Vertical positions come from 10.1's `VerticalLayout`**, never from row arithmetic. A bucket's extent is the union of its nodes' card rects. So the gutter serves 10.13's view-side gap variant unchanged.
+6. **Labels.** The view formats them from the bucket's kind and value that the layout carries (SPEC §3). It uses en-US, as the design does (GV:9-17).
+   - An `age` bucket shows its ladder step: 10m, 20m, 40m, 1h, 2h, 4h, 8h or 12h (the age rounded **up**).
+   - A `day` bucket shows "Yesterday" or "Sep 23".
+     - The label is formatted from the bucket's `value`, the local-midnight instant, with the engine's fixed UTC offset (spike D7). So a label never disagrees with its bucket around a DST switch.
+     - DST-exact day boundaries are design question (f).
+
+   The bucketing itself (which commit falls where, and therefore the rows) is the engine's. It needs every node's timestamp and "now" before layout.
+7. **Clock.** Buckets are relative to "now", which 10.5 passes in the layout request.
+   - As the clock advances, commits change buckets and rows change. That is a relayout that 10.5 issues, not a repaint.
+   - This story formats the labels and raises the policy question (a).
+8. **Semantics:** design question (d).
+9. **Compact:** no gutter, no guides, offX 0.
+
+   **Free: a day axis** (Ralph's request, 2026-09-26, while reviewing the spike viewer; built there the same day, spike README "Viewer"). If Free ships (10.13; since 2026-09-27 it does, as the default), it gets item 2's gutter, with its gradient, its pass-through hits and offX 88. The gutter shows one label per local calendar day: "Today", "Yesterday", then "Sep 24".
+   - **The day of a card comes from the layout**, never from the card's own timestamp: it is the local day of the clamped time T(i) = max(ts, T(parents)) (SPEC §4.2 free, step 2), under the engine's fixed offset (D7). y is monotone in T (I6), so top-down every day appears once, newest first.
+     - Raw timestamps would open a day early wherever the clamp lifts a child above its older parent. On synth-100k (1,976 such nodes) they put 418 of 2,951 day labels out of order; the clamped days give 2,883 labels, all in order. The real 1.4k-commit repo has no such node (143 days).
+     - The price: such a child shows its own date on its card but sits in its parent's day (design question (e)).
+     - **Where the days come from** is 4.11 open question 9. Proposed: 4.11 emits one `day` bucket per local day of T in `free` too, and this story formats them as in item 6. Otherwise the worker returns sorted (row, day) pairs beside the layout, as the spike README's Flutter mapping sketches. The view never computes T or the days (the Epic 10 rule: the view never computes buckets). The spike viewer computes them from its bundle today.
+   - **Placement** (the viewer's; the design has no Free mode):
+     - each label is vertically centred on its day's top (newest) card, in item 3's pill style;
+     - a dotted guide in item 4's style runs through the middle of the gap above that card; the newest day has none;
+     - a label closer than 22 px to the one above it is pushed down (no dataset triggers that). A row can hold two days (commits less than a minute apart around midnight share a row); both labels then sit on that row, newest first, with one guide.
+   - **Pinned label.** A day can span several screens. The day at the viewport's top edge stays pinned at the top of the gutter until the next label pushes it out, like a list section header: one binary search over the sorted label positions per frame. The design has no pin (design question (e)).
+   - **Clock.** Free never relayouts on a clock tick (SPEC §4.2): its days depend on T and the offset, not on "now". "Today" and "Yesterday" are formatted against the "now" of design question (a)'s clock policy. When that "now" passes midnight, the labels are re-formatted: a repaint, not a relayout. A change of the UTC offset (DST, travel) moves the day boundaries, so it is a relayout.
+   - **Labels** follow item 6, in the language that design question (c) picks.
+10. **Not copied from the prototype:** Time rows for a child older than its parent (prototype defect 3). The engine's topological clamp (SPEC D1) prevents them. This story's witnesses use clamped recordings, and 10.1's checker rejects the rest.
+
+**Non-goals.**
+- Bucketing and rows (4.11).
+- Cards and edges.
+- The Layout control (10.7).
+- The clock's relayout (10.5).
+- The time-gap variant and the choice of modes (10.13; the pick arrives as a layout mode or a `VerticalLayout`). Free's day axis is item 9.
+
+**Depends on.**
+- 10.1.
+- Real buckets come from 4.11 via 10.12.
+- Time needs every node's timestamp before layout *(2026-09-27: Time is dropped; Free, the default, needs them too)*. 4.10 carries them in the topology call on request (its open question 1 weighs a commit-id cache).
+
+**Design status.** FINAL:
+- the base colours and the grid for both themes (24 px pitch, 1 px dot, offset 4, anchored to the content);
+- the gutter: 88 px, sticky, with a gradient, letting hits pass through;
+- the pill style and position, and the guide style and position;
+- the ladder and day labels;
+- no gutter in Compact.
+
+Ralph's request, not in the design (2026-09-26): a day axis in Free's gutter (item 9), if Free ships (10.13; it does since 2026-09-27, as the default). Its details are design question (e). Kept as intended deviations (Ralph, 2026-09-27): content fading under the gutter, and the pinned current day.
+
+NEEDS DESIGN:
+- (a) The clock. Option 1: freeze "now" per reload, so rows stay stable until the next operation but labels can go stale. Option 2: re-bucket periodically, with a relayout plus anchor every few minutes. Recommendation: freeze per reload, and re-bucket on window focus.
+- (b) A commit from today that is older than 12h: today's date (as in the prototype) or "Today"?
+- (c) The locale: en-US as in the design, or the system locale? Ralph's request for Free's axis was written in German. The spike viewer formats Free's labels with `Intl`, so `?lang=de` gives "Heute", "Gestern", "24. Sept." without a string table (its default, English, follows the design); in Flutter that is `DateFormat.MMMd(locale)` / `yMMMd` plus two ARB strings. The answer applies to Time's labels too. *(Decided 2026-09-27, Ralph, for now: keep the localisable labels, English by default as in the design. Whether the app is English-only or translated is open and app-wide; deferred-work.)*
+- (d) Gutter semantics: row headers, or excluded?
+- (e) Free's day axis (item 9). The earlier question (none, a time ruler from the timestamps, or pills at day boundaries) was answered by Ralph's request of 2026-09-26: day labels. Still open: keep the viewer's pinned top label, which the design does not have? *(Yes: Ralph, 2026-09-27, an intended deviation.)* Put the label on the day's top card (the viewer) or, like Time's pills, on its bottom card? Add the year to dates outside the current year (the viewer does, e.g. "Dec 29, 2025"; the design never shows one, in Time either)? Is it acceptable that a child older than its parent shows its own date on its card but sits in its parent's day?
+- (f) Day boundaries: keep the engine's fixed UTC offset per layout (spike D7), or have 4.11 use DST-exact local midnights (SPEC §11.3)?
+- (g) Which timestamp drives Time: the committer's (what `jj log` shows; the spike's stand-in) or the author's (SPEC §11.3)?
+
+**Witnesses.** The scroll cases also run under the macOS variant.
+- The dot grid is one draw call (`paints` matcher). It moves with the content, and covers the viewport when the content is smaller.
+- The gutter stays fixed horizontally, and column 0 is visible beside it at h = 0.
+- A tap on the gutter over a card reaches that card.
+- Pills sit at the card centre of each bucket's bottom node. Guides sit below each bucket except the oldest.
+- Labels with a fixed clock, offset and bucket set:
+  - 10m;
+  - the 12h boundary;
+  - Yesterday;
+  - Sep 23;
+  - the today-older-than-12h rule as decided;
+  - a day label formatted from the bucket's value and offset.
+- The same suite passes on a `PerNodeTops` fixture.
+- Switching Compact ↔ Time or Free adds or removes the gutter and the 88 px offset.
+- Free, with a fixed clock and offset: Today, Yesterday, Sep 24 and a previous-year date (as decided in (e)). On a recording with a child older than its parent, the labels follow the clamped days (as 4.11 open question 9 delivers them) and stay in order. The pinned label changes exactly where the next label reaches it. Passing midnight re-formats the labels without a layout request.
+
+### Story 10.3: Commit cards — detailed (62) and compact (40) cards, width 160–400, states, bookmark control and affordance slots — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
+
+**Scope.**
+1. **Structure.** A slotted `RenderBox` in the splash-card pattern.
+   - Text slots: subject, id head, id rest, author, date.
+   - Slot children: the @ badge, the flags, the bookmark control, the "…" button and the two "+" chips.
+   - The box itself paints the background, the border, the rings, the glow and the gold tint.
+   - The size is W×H, fixed. Text is ellipsized, and nothing is measured into the geometry (research §1).
+2. **Detailed layout (H 62)** (GV:397-427, GC:78-94). Padding 0 12. Line 1 holds the subject (13 px / 500, Inter, ellipsized). Line 2 is 11 px, with gap 8, and holds in order:
+   - the @ badge, on the working copy only: JetBrains Mono 700 11 px on `--co`, text `--co-ink`, radius 4, 16 px high;
+   - the id, 11.5 px mono in `--text-faint`:
+     - a 9 px ◆ first when the commit is immutable and not the root;
+     - the first 2 characters bold in the text colour;
+     - the dim rest, up to 8 characters in total, or 5 on the @ card;
+   - the author's first name, which shrinks first and ellipsizes;
+   - the relative date;
+   - "empty" in italic `--text-faint`;
+   - the conflict ⚠ in amber #fbbf24, 12 px;
+   - the merge glyph, 12 px in `--text-dim`.
+3. **Compact layout (H 40)** (GV:428-432). One line: the @ badge, the id (5 characters), the subject and the flags.
+4. **Data → card**, through `GraphLayout`.
+   - **View facts** (always present): change id, @, immutable, root, hidden, divergent, the bookmark refs as `GraphRef` (10.1 item 2), and tags.
+   - **Content** (nullable until 10.11 loads it): the description's first line, author name and email, committer timestamp, empty, conflict.
+   - **Merge** is shown when `parentCountOf(i)` ≥ 2 (10.1 item 2), Missing parents included, as the design derives it from the real parents (GD:56). The layout's edge count would drop the glyph from a merge whose other parent is outside the revset.
+   - **The date** is the relative committer time, which is the time `jj log` shows. Its format is design question (h).
+   - On a minute-tick Listenable, only the date slot re-lays out, with 0 card builds. The demo host drives the tick; 10.5 owns it in the app.
+5. **States** (GC:72-94).
+   - **Base:** `--card-solid` (#1a1f35 / #fffdfa), a 1 px `--border-strong` border, radius 10.
+   - **Hover:** `--card-solid-hi` and a `--edge-hov` border, drawn above its neighbours (10.1 item 6).
+   - **Selected:** an accent #3b82f6 border plus a 3 px ring in rgba(59,130,246,.28).
+   - **Working copy:**
+     - a `--co` border;
+     - a diagonal `--co-soft` tint up to 70%;
+     - a 1 px `--co-deep` ring and a 4 px `--co-glow` ring;
+     - a drop glow (0 8 28 −10).
+
+     The tokens are SC:2363-2376. When the card is also selected, the outer 4 px ring turns blue, rgba(59,130,246,.35), and the drop glow goes (GC:76).
+   - **Immutable:** the subject in `--text-muted`.
+   - **Root:** the subject in mono, normal style, muted. The root has no bookmark control, no "…" and no bottom "+". It keeps the top "+" (`jj new root()`).
+   - **Dim** (opacity .4) is not a card state. The viewport paints it from 10.6's focus set.
+   - **Pending** (a verb is running, 10.9) is not designed: design question (e).
+6. **Bookmark control** (GV:316-351, GC:96-128). This story builds the trigger; its popover is 10.15.
+   - It sits on the **top** border: right 10, top −11.
+   - **Button mode** (no bookmark, or Bookmark labels = On hover): a 20 px circle with a bookmark glyph, outlined when there is no bookmark and filled when there is one.
+   - **Legend mode** (Bookmark labels = Always, the default, and at least one bookmark): a pill of max-width 50% − 34 px showing the first bookmark shortened (GV:28-36):
+     - a JIRA-like key (`[A-Z][A-Z0-9]+-\d+`) in bold, then the dim rest;
+     - otherwise the dim prefix path (at most 4ch) and the bold last segment;
+     - "@remote" for a remote entry;
+     - "+N" for the further bookmarks.
+
+     The render order is prefix · main · @remote · rest · +N (GV:326-330).
+   - Its border follows the card state: accent when selected, `--co` on the working copy.
+   - Bookmarks arrive as `GraphRef` view facts (name, remote, synced, conflicted), not as a wire type. The design shows no tags.
+7. **"…" and "+".**
+   - The "…" button is a 20 px circle at the bottom right (right 10, bottom −11) and is always visible (GV:384-386). It opens 10.15's fan.
+   - The two "+" chips (GV:436-437, GC:129-133) are 30×18:
+     - top centre, at −10: "New change on top (jj new)";
+     - bottom centre: "Insert new change before (jj new --insert-before)".
+
+     They appear only while the card is hovered, fading and scaling from .85 to 1 over 120–160 ms (item 9). They run their verbs through 10.15 → 10.9.
+8. **Overhang.** Hit testing stops at the child's size, so anything painted beyond it would be unclickable.
+   - The child box is therefore the card rect inflated by the overhang, plus the 4 px ring and the glow:
+     - top: at least 11 px, for the bookmark control (−11) and the top "+" chip (−10; GC:97, :131);
+     - bottom: at least 11 px, for the "…" button (−11) and the bottom "+" chip (−10; GC:131, :135). If 10.15 draws the quick-action fan inside the card rather than as an overlay, the bottom grows to at least 13 px plus the fan's shadow: its 24 px buttons are centred on the "…" (GC:142).
+   - **The card's `RenderBox` hit-tests only the card rect and its affordance slots.** Everything else in the inflated box returns false. So a click or a drag start in the empty margin reaches the canvas (10.1's pan) or an edge (10.4, 10.10) beneath. The design behaves the same way: only `.gcard` and its affordances block the pan (GV:564).
+   - gapY 48 and gapX 56 keep neighbours clear.
+9. **Identity and rebuild discipline** (research §5).
+   - The key comes from 10.1.
+   - Selected and pending arrive through Listenables, with a per-key selector. Selecting A, then B, builds exactly 2 cards.
+   - **Hover is paint-only.** The card's `RenderBox` subscribes to the hover controller for its key, and to its fade, and calls `markNeedsPaint`.
+     - The background, the border, and the "+" chips' opacity and scale are painted.
+     - The chips are hit-testable only while the card is hovered.
+     - A hover builds 0 cards (10.6).
+   - Callbacks go to 10.6's controllers, never to per-build closures.
+10. **Global sizing.**
+    - Detailed cards sets H; the default is on.
+    - Card width sets W: 160–400 in steps of 10, default 240.
+    - Both are a pixel remap (10.1 item 3). 10.1's anchor holds, and both are exposed for 10.7.
+11. **Semantics.** One node per card, whose label carries subject, change id, author, date and states, with a tap action. The buttons use the design's labels: "Bookmarks: …" / "Add bookmark", "Quick actions", "New change on top", "Insert new change before".
+12. **Options and tokens.**
+    - Bookmark labels (Always | On hover) is a `GraphViewOptions` field that the demo host toggles.
+    - The card, @, selection and text tokens for both themes go into `GraphTheme`.
+    - The fonts are Inter and JetBrains Mono, both bundled.
+13. **Not copied from the prototype:**
+    - Dimming the subject for an empty **change** (prototype defect 14): design question (a).
+    - A legend pill that covers the first ~11 px of a rightward branch-off exit (prototype defect 8): design question (b). The exit leaves at centre + 0.28·W, and the pill spans 10–96 px from the right edge. *(2026-09-27: moot once every edge leaves at the top centre (10.4 item 1). The pill reaches at most W/2 − 24 px in from the right edge, so its left end sits at least 24 px right of the centre.)*
+    - Its `hov` class, which has no CSS. Hover is the `:hover` style only.
+
+**Non-goals.**
+- Selection and hover logic (10.6).
+- The popover, the fan and the describe editor (10.15), and the verbs (10.9).
+- The drag source (10.10).
+- Live data (10.12); this story runs on recorded layouts.
+- Skeletons (10.11).
+
+**Depends on.** 10.1.
+
+**Design status.** FINAL: items 2–8 as cited, plus the default width and the default Detailed.
+
+NEEDS DESIGN:
+- (a) The subject style. The prototype dims and italicizes on an empty change. Should the dim italic placeholder be keyed on an empty description instead, with an empty change shown only by its "empty" badge?
+- (b) The legend vs. branch exits: the bottom border (as the code comment GV:311-315 intended), the left side, or moving the exit point? *(2026-09-27: answered by moving the exit point: Ralph's top-centre exit (10.4 item 1) leaves the pill clear.)*
+- (c) The id: the design's fixed 2 bold characters, or the CLI's shortest unique prefix in bold (`changeIdPrefixLen` from `revsets.short-prefixes`)? The lengths stay 8/5 either way.
+- (d) The author fallback when the name is empty.
+- (e) The states the design lacks:
+  - divergent (the CLI's `/offset`) and hidden;
+  - a conflicted bookmark (`??`) and an unsynced local one (`*`);
+  - other workspaces' working copies (`name@`);
+  - pending.
+- (f) Should tags be shown?
+- (g) Which bookmark leads the legend?
+- (h) The relative-date format. The mock pre-formats `now`, `40m`, `1h`, `20h`, `1d`, `3d` and `Sep 19` (GD) with no rule behind them. When does a date replace `Nd`, and what is the rule below an hour?
+
+**Witnesses.**
+- Render tests for each state and flag combination, in both sizes and both themes.
+- A merge whose second parent is Missing still shows the merge glyph.
+- A 500-character subject and a long author name ellipsize without changing the card size.
+- Legend cases: `feature/ZAN-412_onboarding-swipe`, `release/1.5.x@origin`, `riverpod` + 2 more, and the render order including the prefix.
+- The root card's affordances: top "+" only.
+- The "+" chips appear only on hover. They, the "…" and the bookmark trigger are hit in the overhang.
+- A drag that starts 5 px above a card, but not on the bookmark control or a chip, pans the canvas.
+- A hover builds 0 cards and triggers one repaint.
+- Selecting A, then B, builds exactly 2 cards. A minute tick builds 0.
+- Changing W from 160 to 400, and toggling Detailed, keeps the anchor node in place (with 10.1).
+- Cards keep their State across a reload that shifts every row.
+
+### Story 10.4: Graph edges — rounded orthogonal routes, dashed indirect edges, crossing hops per window, shared buses, the elided marker, the @ lineage — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The design draws each parent edge as its own orthogonal polyline between known card positions, in one of three shapes (GV:52-69, GC:61-69). It confirms the earlier mockup reading: merges run below the child, convergence runs above the parent, and siblings share one horizontal. What changed is the model:
+- no lane verticals and no per-row recipe;
+- one gray plus a gold lineage, so the planned `colorIdx` / colour-by-opening-edge pass is obsolete (research §5's colour pitfall is moot).
+
+The prototype finds crossing bridges with an all-pairs pass (O(E²), about 1.4 s at 10k) and renders every edge. The view must virtualize both.
+
+**Scope.**
+1. **Routes.** The view maps the engine's shape to pixels. The points depend on W and H and are recomputed on a metrics change. Let outY be the parent's top, inY the child's bottom, and pcx/ncx their column centres:
+   - **Straight** (same column; a first-parent continuation): [(pcx,outY), (ncx,inY)].
+   - **Merge** (a non-first parent, not blocked): up the parent's column to my = inY + 0.4·gapY (below the child), across, then up into the child. [(pcx,outY), (pcx,my), (ncx,my), (ncx,inY)].
+   - **Branch-off** (a first parent in another column, or a blocked merge): out of the parent's top at sx = pcx ± 0.28·W towards the child, up to hy = outY − 0.4·gapY (above the parent), across, then up into the child. [(sx,outY), (sx,hy), (ncx,hy), (ncx,inY)].
+     - **Changed 2026-09-27 (Ralph; an intended deviation from the design): every edge leaves the parent's top at the centre.** Every edge already enters its child from below at the centre (Ralph noticed it at merge commits), and straight edges and merges already leave the parent's top at the centre; only branch-offs leave at ±0.28·W, so edges often leave off-centre. Now sx = pcx: [(pcx,outY), (pcx,hy), (ncx,hy), (ncx,inY)]. The spike viewer keeps the side exit (Ralph: record only). Consequences:
+       - a branch-off shares the exit, and the stub up to hy, with the parent's first-parent continuation and with a merge that leaves up the parent's column: a T-junction at the bus height, or a cross where branch-offs leave both ways;
+       - sibling branch-offs to one side still share one bus (item 3); both sides now share the stub;
+       - the route class, the blocked rule and every layout output stay unchanged. The stub stays inside the gap above the parent (0.4·gapY), and the engine's geometry model never modelled the side stub either (SPEC §4.6, D5). 4.11 amends only SPEC §4.5's geometry text; no golden changes;
+       - crossing hops (item 4): the branch-off's horizontal starts on the continuation's vertical, an endpoint rather than a strict interior point, so no hop is cut at the junction. In the row modes no other edge crosses the stub strictly inside: merge buses sit higher in the gap, and other branch-off buses of that row meet it at its end. In Free a foreign bus can cross it and gets a hop like any other crossing;
+       - a foreign branch-off bus of the same row that passes over the parent is hopped at the continuation's vertical, exactly where the branch-off's corner now starts; checked visually in the demo host;
+       - on the shared stub only the top-painted style shows (item 7's paint order): an indirect branch-off's dash is hidden where a solid continuation shares the stub, as on a shared bus;
+       - the route report (item 10) exempts the shared stub, like every overlap between edges that share the parent;
+       - a blocked merge (D9, prototype defect 2) leaves at the centre too, but its vertical still runs up the child's column behind that column's cards; SPEC §11.4 stays open;
+       - prototype defect 8 disappears: the legend pill's left end sits at least 24 px right of the centre (10.3 item 13, design question (b));
+       - the top "+" chip (10.3 item 7, shown on hover) already sat over straight and merge exits; it now sits over every exit.
+
+   Which shape an edge gets, including the blocked rule (GV:204-207), is the source's decision. That is 4.11, i.e. the spike's `route` and `blocked` (SPEC §4.4–§4.5).
+   - Corners are rounded with r = 10 by a quadratic curve, clamped to half of each adjacent segment (GV:38-49).
+   - Merges run 19.2 px below the upper card and branch-offs 19.2 px above the lower card, so the two zones never meet.
+2. **Style.**
+   - 1.5 px in `--edge`: rgba(214,222,245,.34) dark, rgba(58,46,34,.30) light.
+   - An **indirect** edge (to the nearest visible ancestor, past commits outside the revset) is dashed 3 5 (GC:64).
+3. **Shared buses.** Siblings that branch the same way off one parent share one horizontal at hy.
+4. **Crossing hops.** Crossings = Bridge gap is the default; Plain draws no gaps. *(Decided 2026-09-27, Ralph: hops are always on; there is no Plain and no toggle. An intended deviation from the design's tweak.)*
+   - A crossing is a point strictly inside a horizontal run of one edge and a vertical run of another, with 1 px tolerance. The horizontal gets a 12×10 gap; the vertical stays continuous (GV:71-96, :629-641).
+   - Hops are computed **only for the horizontals in the visible window** (plus a margin). They are checked against an index of vertical runs (by x, with y intervals) over the **whole** layout. So a crossing whose vertical starts off-screen is still found, and the result never depends on the window.
+   - There is no all-pairs pass.
+   - Gaps are cut into the path geometry as split subpaths, not through masks or `saveLayer`.
+   - Whether a crossing between two edges that share a node is bridged is design question (d). The prototype skips such pairs (GV:87); the spike's optimiser counts them (SPEC D5).
+5. **Elided marker** (GV:643-649, GC:69). It applies to a node with a Missing parent, i.e. no visible ancestor through that parent.
+   - Missing edges are jj facts from 4.10's topology; in the recordings they are the spike input's `missing` entries. The layout does not output them (SPEC §3), and 4.11 computes no counts (SPEC §0).
+   - A dashed stub runs from the card's bottom centre down 38 px. It is gold when the node is in @'s lineage.
+   - The label "~ N elided" (11 px mono, `--text-faint`) sits at (cx + 10, y + H + 20), above the edges and below the cards.
+   - bottomExtra is 44 when such a node sits lowest (GV:200).
+   - Whether and how N is shown is design question (a).
+   - Where the stub goes when the node also has a visible parent is design question (b). The prototype draws it exactly over that parent's incoming edge, which hides it (prototype defect 7).
+6. **@ lineage.**
+   - An edge is highlighted when both of its endpoints are ancestors of @, inclusive. That means all ancestors, including merged side branches (GV:520-524).
+   - The highlight is `--co`, 2.25 px, with a 4 px `--co-glow` glow, painted last (GC:66).
+   - The lineage is a bitset over node indices, built once per layout in O(n+E).
+7. **Hover and focus states**, driven by 10.6 (GV:593-599, GC:65-67):
+   - hovered edges use `--edge-hov`; dimmed edges drop to opacity .28 and fade over 160 ms;
+   - with the focus path on: an edge is hovered iff both its ends are in the focus set, and dimmed otherwise;
+   - with it off: an edge is hovered iff it touches the hovered card, and nothing dims;
+   - paint order: normal, then hovered, then lineage;
+   - only visible edges are classified.
+8. **Virtualized painting** (research §5, horizontal culling).
+   - An interval index over each edge's vertical extent is built once per layout in O(E log E). The extent runs from the child's bottom (or its bus) to the parent's top (or its bus).
+   - Per frame, the edges that intersect the window (plus a stroke/glow margin) are selected and culled horizontally by their x extent.
+   - One `Path` per style — normal, dashed, hovered, hovered dashed, dimmed, lineage, lineage dashed — each stroked once.
+   - Edges are painted behind the cards, inside 10.1's clip.
+   - All y values come from 10.1's `VerticalLayout`, so the same code serves the engine's free mode and 10.13's gap variant.
+9. **Hit lookup and identity.**
+   - A point → the **set** of edges within a tolerance, for 10.6 and 10.10. A shared bus or an overlap yields several.
+   - Edge identity is the edge index. The prototype's `from>to` string key collides on duplicate parents (prototype defect 6).
+10. **Route invariant**, added to 10.1's checker as a **counted report**, not a gate:
+    - no route segment runs behind a card that is not one of its endpoints;
+    - no two edges overlap collinearly, except on a shared bus. *(Widened 2026-09-27: except edges that share a node, which the prototype skips too (GV:87). Such edges overlap on a shared bus and up a parent's exit column: its continuation and a merge leaving up that column already share it, and since the top-centre exit (item 1) every branch-off's stub does too. The hand-built collinear-overlap witness uses edges that share no node.)*
+
+    It cannot gate the recordings yet:
+    - The spike keeps the prototype's blocked-merge routing (prototype defect 2; SPEC D9), which Ralph has not decided (SPEC §11.4). Its synthetic inputs have many blocked merges, e.g. 229 on `synth-10k` (compact, greedy).
+    - In the engine's free mode a bus can also pass behind a card (SPEC D8).
+
+    So the checker counts hits per kind (behind a card, collinear) and per mode, and 10.13 reads the counts *(2026-09-27: 10.13 is closed; the counts now feed 4.11 open question 4 and SPEC §11.4)*. It fails only on hand-built unit cases. Fixing the routing is 4.11's job. Once Ralph answers SPEC §11.4 and 4.11 fixes it, the report can become a gate for the row modes.
+11. **The Crossings option** (Bridge gap | Plain) is a `GraphViewOptions` field that the demo host toggles. *(Dropped 2026-09-27: hops are always on, item 4.)* The edge tokens for both themes go into `GraphTheme`.
+
+**Non-goals.**
+- The shape decision and the blocked rule (4.11).
+- Edge selection or editing.
+- Animation beyond the hover fade.
+- Lane colours: the design has one gray plus gold.
+- Drop zones (10.10).
+- A legend.
+
+**Depends on.** 10.1. Everything comes from the source: recordings now, then via 10.12 the route shapes from 4.11 and the Missing edges from 4.10 (N, if kept, from a separate count call; 4.10 Non-goals).
+
+**Design status.** FINAL:
+- the three shapes, the 0.4·gapY bus offsets, the ±0.28·W side point *(superseded 2026-09-27 by the top-centre exit, item 1)*, and r = 10;
+- stroke and dash;
+- one gray plus the gold lineage of all ancestors of @;
+- the hover and dim states and the paint order;
+- 12×10 bridges cut into the horizontal;
+- the stub-and-label position of the elided marker.
+
+NEEDS DESIGN:
+- (a) "~ N elided", or jj's bare "~"? The prototype's N walks every hidden ancestor, O(h) per Missing parent, and jj's Missing semantics differ. Relatedly, how does `ui.log-synthetic-elided-nodes` apply to a view that has no synthetic nodes?
+- (b) Where does the stub go when the node also has a visible parent?
+- (c) Do edges react to hover or show tooltips beyond the card-driven states?
+- (d) Should crossings between edges that share a node be bridged? The prototype skips them.
+
+**Witnesses.** `paints`-matcher tests on recorded layouts:
+- The route points of each shape at W 240 / H 62 and at W 160 / H 40 equal the design's formulas, except that since 2026-09-27 a branch-off leaves at the top centre (item 1) and meets its parent's continuation in a T-junction without a hop. The radius clamps on a short segment.
+- An indirect edge is dashed.
+- On the mock's `all()` / Time / Greedy layout, the two bridges sit in the xy→uw bus and the verticals stay continuous. Plain draws none. *(2026-09-27: Time and Plain are dropped; this witness moves to a Compact or Free recording with known crossings.)*
+- On random windows of a 10k fixture, the per-window bridges equal an all-pairs oracle (test-only), including a vertical that starts off-screen.
+- A strict-interior crossing between two edges that share a node behaves as decided in (d).
+- Sibling branch-offs share hy, and the hit lookup there returns both. A branch-off and its parent's continuation share the exit stub (since 2026-09-27, item 1): the hit lookup there returns both, no hop is cut at the junction, and the route report does not count the stub.
+- The elided stub and label positions, and bottomExtra.
+- The lineage covers every ancestor, including a merged side branch, and is painted last at 2.25 px.
+- The hovered/dimmed classification is correct for a given focus set.
+- At 100k, only the intersecting edges are stroked. A straight edge that spans the whole window with both ends off-screen is drawn. There is one `drawPath` per style.
+- The route report fails a hand-built blocked-merge case and a hand-built collinear overlap. On the `synth-10k` recordings it reports the blocked merges instead of failing, and on an engine free recording it reports the buses behind cards.
+- The same suite passes on an engine free recording and on a `PerNodeTops` fixture.
+
+### Story 10.5: Graph view model and repository wiring — reload per operation, anchoring, re-centring on @, ports, states [UI/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** 10.1–10.4 run on recorded layouts. This story owns the view model. It requests layouts through a narrow port and keeps the view coherent while jj re-derives the graph after every operation (ADR-0002), whether the operation is Zanshin's own or an external `jj`. The watcher reports each operation as an `OpHeadsChangedEvent` (`packages/zanshin_core/lib/src/worker/events.dart:19`) on `ZanshinWorker.events` (`packages/zanshin_core/lib/src/worker/isolate.dart:354`).
+
+Anchoring matters more in the design than it did before. Pixel y depends on the layout's row count (GV:202), so a new head shifts every card by one pitch, and a global lane reorder can move columns. The prototype has no reloads, and it re-centres on @ one relayout late (prototype defect 1).
+
+**Scope.**
+1. **View model.** `GraphViewModel` is an `@inject` `ChangeNotifier` created through `ViewModelFactory` with `init:`, like `ZanshinAppViewModel` (`app/lib/src/features/app/zanshin_app_view_model.dart:14-15`, used at `zanshin_app.dart:77-78`). The open handle arrives at `init`, never through an asynchronous DI provider.
+   - **Ports.** The view model declares the narrow ports the view uses:
+     - **`GraphSource`**: `layout(GraphRequest)` → `GraphLayout`, the handle's events, and `logDefaults()`.
+       - This story adds the real adapter over `RepoHandle` and `ZanshinWorker` for the events and `logDefaults`.
+       - `layout` stays on recorded layouts until 10.12 (4.10–4.12).
+       - Later stories add content (10.11), `show` (10.8) and bookmarks (10.14).
+     - **`GraphActions`**: run a verb with ids and parameters → a result or a refusal.
+       - This story declares it with a fake, and 10.9 implements it.
+       - 10.6's double-click and 10.8's action row wire to it, so they do not wait for 10.9.
+   - `RepoHandle` is a `final class` (`handle.dart:41`) and cannot be faked, so unit tests drive fake ports.
+   - **Bridge part.** Export `RepoHandle`, `OpenedRepoHandle`, `LogDefaults`, `ZanshinFfiException` (`worker/responses.dart:60`) and `Precondition` from `zanshin_core.dart`. None of them is exported today; this picks up the two barrel entries from 9.33 and 9.35 in `deferred-work.md`.
+2. **`GraphRequest`.**
+   - **Revset:** the `jj log` preset, which is the effective `revsets.log` from `logDefaults().log`, or `all()`.
+   - **Layout mode:** Compact | Time, plus Free if 10.13 exposes it. *(Decided 2026-09-27: Free (the default) | Compact.)*
+   - **Lane order:** Min. crossings | Greedy, an engine knob, plus 4.11's work budget. Above about 50k nodes with many lanes, request greedy first and optimized afterwards, as two requests (4.11 items 4 and 9; spike README Recommendation §1). The greedy result of such a pair is not stale: it is shown until the optimized one replaces it, an exception to item 3's drop rule. *(Decided 2026-09-27: the orders are `compact` (the default) | greedy; `optimized` is dropped, and this pair with it. Whether large repos get greedy painted first and `compact` swapped in, under the same exception, is 4.11 open question 8.)*
+   - **Pass-through parameters:** `prioritize` (`revsets.log-graph-prioritize`), `shortPrefixes` and the priority `anchors` (4.10 item 3), passed explicitly (`project-context.md:202`). `prioritize` and `shortPrefixes` are pre-filled from `logDefaults()` (Story 4.9, `handle.dart:215`), `anchors` from zanshin_core's editable pre-fill `["trunk()", "present(@)"]` (4.11 item 9).
+     - `syntheticElided` is not sent: the topology call has no synthetic nodes and takes no such parameter (4.10 item 1, re-planned 2026-09-26). What `ui.log-synthetic-elided-nodes` means for this view stays 10.4 design question (a).
+   - **For Time:** "now", set by 10.2's clock policy (a), and the fixed UTC offset for calendar days (SPEC D7; 10.2 design question (f)). **For Free:** the same offset, for its day buckets, if 4.11 open question 9 is accepted (10.2 item 9); Free sends no "now". *(2026-09-27: Time is dropped, so no request carries "now".)*
+   - The request carries no card width or height.
+3. **Reload.**
+   - Reload on every `OpHeadsChangedEvent` for this handle, and after every mutation the app runs (10.9).
+   - Coalesce: at most one request in flight plus one queued, and the latest wins.
+   - Drop any result older than the newest request. The worker runs one command at a time and cannot cancel one.
+   - **Clock.** In Time, a re-bucket under 10.2's policy (a) is a new request with a new "now", followed by an anchored relayout like any reload. *(Moot since 2026-09-27: Time is dropped, and Free never relayouts on a clock tick.)*
+4. **Snapshot-loop guard.** The graph call snapshots first and may write an operation (`handle.dart:57-70`). That operation's event triggers a reload, which then finds nothing left to snapshot. A witness proves that this converges.
+5. **Anchoring on swap** (research §5).
+   - Choose the anchor node by design question (a). The recommendation: the selected node while it is on screen, otherwise the node nearest the viewport centre.
+   - Record its viewport offset, resolve its key in the new layout, and correct both axes (10.1 item 10). That covers a new head, rows removed above, and a column reorder.
+   - If the anchor node is gone: design question (b).
+6. **Re-centring on @, and the scroll precedence** (GV:531-538).
+   - On the first layout, centre @ without animation.
+   - After a revset or layout switch, centre @ in the **same** relayout that the switch produced, not one relayout later. On these switches the re-centre replaces the anchor.
+   - Card width and Detailed changes keep the anchor and never jump to @.
+   - **Precedence.** This is the one rule for 10.1, 10.7, 10.8 and 10.14:
+     1. an explicit reveal request: a bookmark pick (10.14), locate @ (10.6), or go-to-change (10.6 item 11);
+     2. the re-centre on @ after a revset or layout switch;
+     3. the anchor.
+
+     So a hidden-bookmark pick that switches the revset to `all()` centres the picked target, not @. The anchor is the fallback when the chosen key is absent. It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels. A reveal is consumed by the relayout it targets and never re-armed, so no later relayout jumps.
+   - Not copied from the prototype (prototype defect 1): its first relayout of any kind after load or after a switch jumps to @, and after a double-click `jj edit` it scrolls to the old @. Both come from re-arming the re-centre after it has fired (GV:538).
+7. **Selection survival.**
+   - The selection is keyed by node key, so it survives rewrites.
+   - It becomes `null` (absent) when the node is gone: abandoned, or filtered out by the revset. Dependent UI such as 10.8 closes.
+   - The prototype keeps the panel open for a commit that is no longer on the canvas (GV:578, prototype defect 9).
+8. **Working-tree edits** (design question (c)). A file edit writes no operation until something snapshots, and the watcher reports only op-heads and checkout changes (`events.dart:17-33`). So @'s `empty` badge and the graph go stale while the user edits.
+   - Ralph decides the refresh policy: on window focus, a manual refresh, a timer, and/or jj's `fsmonitor.watchman.register-snapshot-trigger`. That trigger is off by default (jj-lib 0.44.0 `lib/src/config/misc.toml:10`).
+   - A `WatchErrorEvent` (`events.dart:40`) shows a "live updates degraded" state.
+9. **States.**
+   - Loading.
+   - Empty: the revset matched nothing. This is not an error.
+   - Revset error (`jj.revset_parse_error`, `jj.revset_resolution_error`): keep the last valid layout, and expose the message for 10.7.
+   - Other errors: an error state with retry.
+   - The call's `warnings` (Story 9.32) and `lastPrecondition` (`handle.dart:70`) are exposed for display.
+10. **Counter data.** shown = the node count. total = `|all()|` (GV:223), which is `null` until the source provides it (4.10, via 10.12).
+11. **Per-layout structures.** The y index, the edge interval index, the adjacency and the lineage bitset are built once per layout, outside the build phase. Their cost at 100k on the fake source is measured, not gated.
+12. **Minute tick.** The view model owns the minute-tick Listenable for the cards' relative dates (10.3 item 4).
+13. **Host.** The demo host drives the view model with the fake ports. A real-repo host arrives with 10.12.
+
+**Non-goals.**
+- The project picker and open flow.
+- Revset text editing (10.7 design question (a)).
+- Any layout computation.
+- Content paging (10.11), the real layout (10.12) and the real actions (10.9).
+- Any Rust change.
+
+**Depends on.** 10.1. Story 4.9 (`logDefaults`) and the Epic 3 watcher, both done.
+
+**Design status.** FINAL:
+- re-centring on @ at the first layout and after revset or layout switches (without the prototype's delay);
+- width and detail changes never jump;
+- the selection opens the panel;
+- the view preferences are global.
+
+NEEDS DESIGN:
+- (a) The anchor node on reloads and resizes. Recommendation: the selected node while visible, otherwise the centre node.
+- (b) The fallback when the anchor node vanishes.
+- (c) The refresh policy for file edits.
+- (d) The looks and wording of the loading, empty, error and degraded states; the design has none.
+- (e) Where warnings and snapshot reports appear.
+- (f) Should an external operation that moves @ make the view follow @, or keep the anchor?
+
+**Witnesses.** View-model unit tests on fake ports:
+- All pass-through parameters are passed explicitly: `prioritize` and `shortPrefixes` from `logDefaults`, `anchors` from zanshin_core's pre-fill.
+- Coalescing: 3 events during one load cause exactly one more request. A stale result is dropped.
+- The anchor holds when a head is added (every row shifts one pitch) and when the anchor's column changes. A vanished anchor falls back as decided.
+- The selection survives a `describe` (same change id, new commit id). It clears on `abandon`, and on a revset that filters the commit out.
+- A revset error keeps the last layout. The empty state shows.
+- An event caused by the view's own snapshot converges.
+- A `WatchErrorEvent` shows the degraded state.
+- A revset switch centres @ in the same relayout. A layout-mode switch with @ absent keeps the anchor.
+- A reveal request issued together with a revset switch wins over @ (the precedence).
+- A Card-width change right after load does not scroll to @.
+- After an edit moves @, the next relayout does not scroll to the old @.
+- A new "now" in Time issues exactly one request and keeps the anchor. *(Dropped 2026-09-27 with Time.)*
+
+Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `describe` through the handle fires `OpHeadsChangedEvent`, and the view model issues exactly one new layout request. The layout source is still fake.
+
+### Story 10.6: Selection, double-click edit, hover focus path, locate @, keyboard and tooltips — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The design fixes the pointer model:
+- a click selects and opens the panel;
+- a double-click moves the working copy there (`jj edit`);
+- hovering keeps the card's ancestors and descendants and dims everything else;
+- Esc steps back;
+- "@ Working copy" centres @ (GV:541-605).
+
+It designs no keyboard navigation, no context menu and no go-to-change. Research §5 adds that pushing selection or hover through a view rebuild rebuilds every card.
+
+**Scope.**
+1. **Controllers.** `GraphSelection` and `GraphHover` are stable controller objects and Listenables, owned by the view model.
+   - Cards subscribe per key (10.3 item 9). Selection rebuilds the affected cards; hover only repaints.
+   - The view never calls `setState`, and hands out no per-build closures.
+2. **Click and double-click** (GV:550-558).
+   - A single click on a card selects it and opens 10.8's panel. It does so only after the double-click window has passed, so a double-click never selects. The prototype waits 220 ms. The canvas does not scroll on select.
+   - A double-click on a mutable card runs `edit` through 10.5's `GraphActions` port (the fake until 10.9 lands), with no confirmation. On an immutable card: design question (a).
+   - Clicks on border affordances never select (GV:322, :375).
+3. **Empty canvas.** A press starts 10.1's pan. Whether a click without movement clears the selection is design question (b). The prototype never clears it: a press off every card only starts a pan (GV:563-569). That is a prototype behaviour, not a defect.
+4. **Hover and focus path** (GV:586-597). The option is on by default.
+   - Hover is the card under the pointer. It is keyed, so after a scroll it follows the pointer, not the recycled child.
+   - With the focus path on, the focus set is the hovered node plus all its ancestors and descendants. It is a bitset, O(n+E), computed once per hovered key and cached.
+   - Cards outside the set are painted at opacity .4 by the viewport, at paint time with 0 card builds (10.1 item 6). Edges dim to .28 (10.4 item 7).
+   - With it off, only the edges that touch the hovered card brighten.
+   - The set is measured at 100k, where a root's descendants are the whole graph. If it is too slow, it is computed when the hover settles.
+5. **Esc.** It leaves describe mode first (10.15), then clears the selection (GV:541-548).
+   - It acts only while the graph or its panel has focus.
+   - The prototype's handler is a window-level keydown listener. So the Esc that closes the Projects dialog (APP:2034) also clears the graph selection (prototype defect 11).
+6. **Locate @.** `reveal(@, centre, animate: true)`, used by 10.7's button. It is an explicit reveal in 10.5 item 6's precedence. A shortcut is design question (g).
+7. **Tooltips**, with the design's texts:
+   - on a card: "Click: details · Double-click: jj edit";
+   - on the @ card: "Working copy (@)" (GV:415);
+   - on the affordances: 10.3 item 11's labels.
+
+   The delay is the platform default.
+8. **Keyboard** — not designed. There is one focus node for the graph, visibly indicated and in the tab order with the toolbar and the panel. Everything else is design question (c).
+9. **Context menu** — not designed; the design uses the quick-action fan and the bookmark popover instead. Design question (e). If one is wanted, its card stays pinned while it is open (10.1 item 9).
+10. **VoiceOver.** The selection is announced, cards expose a tap action, and the reading order is by y, then x.
+11. **Go-to-change mechanics**, whatever design question (d) picks for the affordance (measured in the spike viewer, 2026-09-26; spike README "Viewer").
+    - **Recommended: an instant jump**, `reveal(key, centre, animate: false)`, i.e. `jumpTo` on both scroll controllers. Whether go-to-change animates, and whether it selects its target, is design question (d). The viewer jumps instantly, centres the target vertically, scrolls horizontally only as far as needed to show the card clear of the gutter, selects it and pulses it three times.
+      - 10.1 item 10's `reveal` takes one alignment for both axes. The viewer's behaviour needs a per-axis alignment there (vertical centre, horizontal minimal); otherwise go-to-change centres on both axes.
+      - It is an explicit reveal in 10.5 item 6's precedence.
+    - **Why an instant jump costs the same at every distance.** The frame after a jump is a pure function of the scroll offset. 10.1's y-sorted index finds the first visible card by binary search (O(log n)), only the visible cards are built, and the edge query does not depend on the distance either. Nothing carries over from the old position. An animated scroll would build and discard every card on the way: about 2,000 viewports over 1.6 M px at 100k.
+    - **Budget, from the viewer.** 200 jumps to random nodes, in Chromium, with a 1318×763 px scroll area at DPR 2, Free, the optimized order, detailed 240 px cards and the minimap on, on the real 1.4k-commit repo (median distance 47 k px) and on synth-100k (up to 5.4 M px):
+      - the jump is on screen in the first frame after the key press;
+      - the main-thread work of that frame is 3.8 / 3.4 ms median, 6.7 / 5.7 ms p95 and 7.4 / 7.0 ms max (real repo / synth-100k), against 0.5–0.7 ms median for an idle frame. A later rerun gave a median of 3.95–4.3, a p95 of 6.5–7.1 and a max of 8.1–10.8 ms;
+      - a median of 8–13 cards created (at most 18), and as many removed;
+      - distance and work are uncorrelated: |r| ≤ 0.08 over distances up to 5.4 M px, and 1.4k nodes cost the same as 99k.
+
+      Here, the frame after a jump builds at most the visible cards plus the cache extent, and stays within one frame at 100k.
+    - **Finding the target.** A full commit id or change id resolves through 4.12's lookups (4.12 item 6 names go-to-change as a consumer), and through the recording's keys until 10.12. A prefix, a bookmark or a revset resolves as the CLI resolves it, with jj's prefix semantics and its refusal of an ambiguous prefix: a backend path (deferred-work). So does a description search, because descriptions are lazy content (10.11). The viewer's linear scan over the ids and first description lines in its bundle took 0.3 ms on the real repo and at most 2.7 ms on synth-100k (ids only); these are viewer numbers, not a product path.
+
+**Non-goals.**
+- Multi-selection (design question (f)).
+- Drag (10.10).
+- The verbs (10.9) and the popups (10.15).
+
+**Depends on.**
+- 10.1, 10.3 and 10.4.
+- 10.5 for surviving reloads and for the actions port.
+- 10.9 for the real `edit`.
+
+**Design status.** FINAL:
+- click = select + panel, after the double-click window;
+- double-click = `jj edit` on a mutable commit;
+- the focus path with its opacities;
+- the Esc order;
+- locate @ centres with animation;
+- the tooltip texts.
+
+NEEDS DESIGN:
+- (a) Double-click on an immutable commit: nothing, as in the prototype, or the CLI's refusal?
+- (b) Does a click on empty canvas clear the selection?
+- (c) The key map for a layout with several cards per row:
+  - What is "next": by y, then x? Along parent/child edges? Along the first-parent chain?
+  - Do j/k apply?
+  - Do Page Up/Down and Home/End only scroll (the macOS convention) or move the selection?
+- (d) Go-to-change: a field, or a ⌘K entry? At 100k, one scrollbar pixel spans about 170 rows; 10.16's minimap is the other navigation for big repos. The spike viewer's version is a candidate:
+  - ⌘F focuses a box that matches a change-id or commit-id prefix, else a description substring, and lists up to 50 hits with the total count;
+  - Enter or a click jumps, Enter again and Shift+Enter walk the hits, ↑/↓ move in the list, Esc closes the list and keeps the query, and a second Esc leaves the box;
+  - the target is selected and pulses three times.
+
+  Open with it:
+  - Does the jump animate? Recommended: instant (item 11). That breaks with "locate @ centres with animation" (FINAL above). Should locate @ also jump instantly when @ is far away (more than a few viewports), where an animation builds every card on the way?
+  - Does go-to-change select its target (the viewer does), or only reveal it?
+  - jj's prefix semantics (the CLI refuses an ambiguous prefix); whether the input is a revset, as in `jj log -r`; whether a hit outside the shown revset switches to `all()`, as 10.14's pick does; where a description search runs (a backend call, deferred-work).
+- (e) A context menu, or not?
+- (f) Multi-select? jj verbs take sets (`abandon`, `rebase -r`, `squash --from`).
+- (g) The shortcut for locating @.
+
+**Witnesses.** Scroll cases also run under the macOS variant.
+- Selecting A, then B, builds exactly 2 cards.
+- A click selects only after the double-click window.
+- A double-click on a mutable card calls `edit` on the fake actions port and does not select. An immutable card behaves as decided.
+- A hover builds 0 cards and triggers one viewport repaint, with the dimming painted as opacity (`paints` matcher).
+- On the mock, the focus set equals the node plus its ancestors and descendants. With the option off, only the touching edges brighten.
+- Esc order and scope: describe mode first, then the selection, and never while a modal dialog has focus.
+- Locate @ centres @.
+- After a scroll, hover follows the pointer.
+- The selection survives scrolling out and back, and a reload (with 10.5).
+- Semantics carry the selected state.
+- After a parent rebuild that skips the cards, a tap still reaches the current controller.
+- The focus-set timing at 100k is recorded.
+- A go-to-change jump from one end of a 100k recording to the other builds only the target's visible cards, no card in between, and places the target as item 11 and (d) decide. Its frame work is recorded at three distances (not gated).
+
+### Story 10.7: Graph toolbar — revset select, Layout, Detailed/Compact cards, Card width, shown / total, @ Working copy — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The design's graph toolbar (GV:240-309, GC:10-56) replaces the earlier plan of a free-text revset field with Apply/Save. It offers:
+- exactly two revsets;
+- the Layout switch;
+- the card size and width;
+- a counter;
+- the @ button.
+
+jj's default log hides work that is reachable only from untracked remote bookmarks; the `all()` preset is how a user gets past that.
+
+**Scope.**
+1. **Bar.** 46 px high, with a bottom border on `--bg-window`. Groups run left to right, separated by 1×18 px separators (GC:11-14).
+2. **Revset select** (GV:240-276, GC:15-26). A thin control, because the design's popups are not final.
+   - A button with a "$" prompt, the code text and a chevron. It opens a 320 px listbox with two options:
+     - `jj log`: "Default revset — your mutable changes plus trunk context";
+     - `jj log -r 'all()'`: "Every visible commit, incl. immutable history and untracked remotes".
+   - The active option has a check mark. The list closes on a pointer-down outside it.
+   - `jj log` means the user's **effective** `revsets.log` (`logDefaults().log`), passed through, never a baked-in `builtin_log()`.
+   - Config edits write no operation. So while `jj log` is selected, `logDefaults()` is re-read on every reload, or on window focus (design question (b)).
+   - A revset error, e.g. a broken `revsets.log`, shows jj's message. Where it shows is design question (c).
+3. **Layout** (GV:284-290, GC:53-56). A segmented control: Compact ("Rows = dependency depth") | Time ("Rows = rounded commit time").
+   - Switching re-centres on @ (10.5 item 6, with its precedence).
+   - The default is Compact (GV:507).
+   - A third segment for the engine's free layout exists only if 10.13 decides so (design question (h)).
+   - **Decided 2026-09-27 (Ralph):** the segments are Free and Compact, and Free is the default, a deviation from the design's default (GV:507). Time is dropped. Free's label and hint are not designed (design question (h)).
+4. **Cards switch** (GV:292-295, GC:27-30). Its label flips between "Detailed cards" and "Compact cards". The default is Detailed.
+5. **Card width** (GV:297-302, GC:31-34). A range from 160 to 400 in steps of 10, with a readout such as "240px" in 11 px mono. The default is 240.
+6. **Right side** (GV:303-306, GC:35-39):
+   - the counter "{shown} / {total} commits" in 11 px mono. total = `|all()|` (10.5 item 10). What it shows while total is unknown is design question (d).
+   - the "@ Working copy" button (a gold @; title "Scroll to working copy"), which calls 10.6's locate.
+7. **Persistence** (GV:504-507). The revset choice, Detailed, Card width and Layout are app-global preferences in `zanshin_settings`. A switch triggered by the bookmark panel follows 10.14's design question (a).
+8. **Controls and semantics.** Controls come from `package:material_ui` with Yaru styling, themed to the design. Semantics follow the design's roles: radiogroup/radio, switch, and a labelled slider.
+9. **Other pass-through parameters.** 10.5 passes `prioritize`, `shortPrefixes` and the priority `anchors` (`syntheticElided` is no longer sent; 10.5 item 2). Whether the toolbar offers them is design question (e).
+
+**Non-goals.**
+- The earlier free-text field with Apply/Save to `revsets.log` (Stories 9.25 and 9.28), unless design question (a) brings it back.
+- Revset completion.
+- The window chrome (Fetch / Pull / Push / New, the status bar, the nav rail).
+- The design's tweaks panel. Its graph options are view options in the demo host.
+
+**Depends on.** 10.2, 10.3, 10.5 and 10.6.
+
+**Design status.** FINAL: items 1–8 as cited.
+
+NEEDS DESIGN:
+- (a) Is the two-preset select final? Or does a free-text field with Apply/Save come back (Story 9.25, the repo-scope `configSet` of 9.28), and do 9.25's presets (My work / All branches) join the list?
+- (b) How the `jj log` preset tracks the default.
+- (c) Where a revset error shows.
+- (d) What the counter shows before total is known.
+- (e) Are the advanced parameters offered?
+- (f) Which of the design's tweaks become user settings, and where: Bookmark labels, Lane order, Crossings, Hover focus path? *(2026-09-27: Crossings is no longer an option; hops are always on. Lane order is `compact` (the default) | greedy; its label is open, because "Compact" collides with the Compact layout.)*
+- (g) Shortcuts.
+- (h) Does the Layout control get a Free segment (10.13's outcome)? *(Yes, as the default: decided 2026-09-27. Still open: Free's label and hint text, and the segment order.)*
+
+**Witnesses** (fake port).
+- `jj log` sends the effective `revsets.log` (the fake `logDefaults` returns a custom value). `all()` sends `all()`.
+- A preset switch issues exactly one layout request and re-centres on @ (with 10.5).
+- The switch label flips. The slider's bounds, step and readout are right, and W is applied.
+- The counter text is right.
+- The @ button calls locate.
+- The preferences persist globally and are restored. The defaults are Compact, Detailed and 240 *(since 2026-09-27: Free, Detailed and 240)*.
+- A broken `revsets.log` shows jj's message and keeps the last layout.
+
+### Story 10.8: Commit detail panel — thin: header, bookmark chips, meta, description, file list, diff placeholder, action row — *PLACEHOLDER, NEEDS DESIGN* [UI/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Thin by default: the design extraction lists this panel, with its describe mode, among the design's dialogs and popups, which Ralph says are not final.)*
+
+**Motivation.** Selecting a card opens the design's right-hand panel (GV:445-479, APP:735-862, GC:150-159). The design extraction lists this panel and its describe mode among the design's dialogs and popups, which Ralph says are not final and will look different.
+- So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
+- The design's review workflow reviews diffs that do not exist before Epic 5: the review meter, the per-file Viewed state, auto-advance and Inline/Split. It moves to the Epic 5 diff follow-up (deferred-work).
+- The prototype's data defects (prototype defect 12) are still not copied.
+- Mock widgets with a similar structure exist on `MockCommit` and stay for Ralph to retire:
+  - `CommitDetail`: `app/lib/src/features/commits/commit_detail.dart:11`;
+  - `DiffBlock`: `app/lib/src/features/commits/diff_block.dart:11`.
+
+**Scope.**
+1. **Frame.**
+   - A right-hand column, 480 px wide (the design's width, a placeholder value), with a left border (GV:657-662, GC:150-155).
+   - It opens on selection (10.6). It closes on ×, on Esc (10.6 item 5), or when the selection vanishes (10.5 item 7).
+   - It shrinks the canvas. Whether the view holds 10.1's anchor or keeps the raw offset, as the prototype does, is design question (e).
+   - The design's 220 ms slide is optional.
+2. **Data from two sources.**
+   - **The node's view facts** from `GraphLayout`: bookmark refs with their sync state, immutable, empty, @, root, and merge (`parentCountOf(i)` ≥ 2, Missing parents included; the same rule as 10.3's glyph).
+   - **`RepoHandle.show(revset: <commit id>)`** (Story 9.6, `handle.dart:690`). It returns a `WarnedList<ShowEntry>` with a single entry:
+     - its `Change` provides the full description, `parents`, the author and committer `Signature`s, `isSigned`, and `conflict` with its `conflictedPaths`;
+     - its `fileChanges` provide path, kind and `fromPath`.
+   - The panel re-fetches when the selection changes and after every reload. A rewritten commit updates the panel; a vanished one closes it.
+   - **Snapshot interaction.** `show()` snapshots first. A witness proves that the resulting operation → reload → re-fetch cycle converges.
+   - **Bridge part.** Export `ShowEntry`, `Change`, `Signature`, `ConflictState`, `FileChange` and `FileChangeKind`.
+3. **Header** (GV:448-460).
+   - Tags: "@ working copy", "◆ immutable", "empty", "merge", and "conflict".
+   - The full change id, with the first 2 characters bold.
+   - **Edit** ("Move the working copy here (jj edit)"), hidden on @ and on immutable commits (GV:457).
+   - **Describe** ("Edit description (jj describe)"), hidden on immutable commits and while editing (GV:458).
+   - Close × ("Close (Esc)").
+4. **Subject and bookmark chips** (GV:461-471).
+   - The subject.
+   - One chip per bookmark: name and a state, which is ✓ synced, local or remote from the `GraphRef` view facts.
+   - "behind" must read as behind once 9.29 provides it; the prototype maps it to "local" (GV:467). The ahead/behind distances need Story 9.29 (backlog).
+5. **Body.**
+   - **Meta:** author, date, change id and parents. A merge shows every parent, and the root shows none (prototype defect 12).
+   - **Description:** the full text.
+   - **Changed files:** a plain list of status letter and path (plus `fromPath` for renames) from `fileChanges`. It is shown when "Show changed files" is on (the default).
+   - There is no review meter, no Viewed state, no auto-advance and no +/− counts. The counts need line statistics that no API provides (`FileChange`, `status.dart:50`), and the review workflow moves to the Epic 5 follow-up.
+6. **Diff.** A "diff not available yet" section until Epic 5 (5.6 and 5.8, backlog).
+   - Never a sample diff (prototype defect 12).
+   - Never a diff computed in Dart.
+7. **Action row** (APP:854-859): Edit, Squash, Abandon, Rebase…, through 10.5's `GraphActions` port. That is the fake until 10.9 lands.
+   - Squash and Rebase are disabled, with the reason, until 9.15 and 9.16 land.
+   - Hiding vs. disabling on immutable commits is design question (b).
+8. **Describe mode.** While editing, the body swaps to 10.15's describe editor.
+
+**Non-goals.**
+- Diff rendering (Epic 5 plus a follow-up).
+- The design's review workflow (the Epic 5 follow-up).
+- Evolog and interdiff views, and a file-content view.
+- The describe editor (10.15).
+- Line statistics (a backend gap).
+- Polish and animation.
+
+**Depends on.**
+- 10.5 and 10.6; Story 9.6 (done).
+- 10.9 for the real actions.
+- Epic 5 for the diff, and 9.29 for behind and ahead.
+
+**Design status.** PLACEHOLDER by default. FINAL: only the header's tag set and its Edit/Describe visibility rules (GV:450-458).
+
+NEEDS DESIGN:
+- (a) Does "the dialogs and popups are not final" cover this panel, so it stays thin as planned? Or is it exempt and built to the design: review meter, Viewed persisted per change id, auto-advance, Inline/Split?
+- (b) The action row vs. the header: Edit appears twice. On immutable commits, should the row hide its buttons or disable them with the CLI's reason?
+- (c) How several parents are displayed.
+- (d) Should the committer and the signature be shown?
+- (e) The canvas when the panel opens: hold the anchor, or keep the raw offset as the prototype does?
+- (f) The look of the diff section before Epic 5 lands.
+
+**Witnesses** (fake ports).
+- The header shows the tags, the id, the subject and the chips.
+- Edit is hidden on @ and on immutable commits; Describe is hidden on immutable commits.
+- The meta shows both parents of a merge, and none for the root.
+- The description and the plain file list show.
+- The panel updates after a reload caused by `describe`.
+- It closes when the commit vanishes, and when the revset filters it out.
+- The `show()` snapshot cycle converges.
+- The buttons call the actions port. Squash and Rebase are disabled, with the reason.
+- No diff request is made and no sample diff is shown.
+- Opening and closing the panel follows (e).
+
+### Story 10.9: Action runner — one path from every graph affordance to a verb: pending state, anchored reload, refusals, warnings, undo guard — *NEEDS DESIGN* [UI/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export, which has no action dialogs; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** The design triggers verbs from many places:
+- a double-click: `edit`;
+- the panel header: Edit, Describe;
+- the panel's action row: Edit, Squash, Abandon, Rebase…;
+- the quick-action fan: Edit, Describe…, Squash into parent, Abandon;
+- the "+" chips: new on top, new --insert-before;
+- the bookmark popover: create, delete, rename, move.
+
+It shows no pending state, no refusal, no warning and no undo for any of them. The backend owns each verb and its refusals (ADR-0003), and the UI shows the CLI's refusal verbatim.
+
+This story implements 10.5's `GraphActions` port: the one runner that every affordance calls. The popups themselves are thin placeholders (10.15), because Ralph will redesign them. It replaces the earlier "Action dialogs" story: the design has no dialogs.
+
+**Scope.**
+1. **Verbs.**
+   - **Shipped:** `edit` (`handle.dart:257`), `describe` (`:228`), `newChange([id])` = new on top (`:242`), `abandon` (`:271`), `bookmarkCreate` (`:861`), `bookmarkDelete` (`:891`), `undo` (`:284`).
+   - **Backlog:** `squash` (9.15), `rebase` (9.16), bookmark rename / move / move-here (9.19), and `new --insert-before` / `-A`. The last has no backend story; 9.31's preview matrix models it.
+   - An affordance whose verb is in the backlog is disabled, with the reason.
+2. **Parameters.** Every parameter the shipped verb exposes is offered, pre-filled with the CLI's default. CLI flags the verbs lack are backend gaps (`deferred-work.md`).
+3. **Pending.** While a verb runs, the affected cards show the pending state (10.3; its look is 10.3 design question (e)). The worker is serial.
+4. **On success.** 10.5 reloads with the anchor held. Whether the view reveals the new or moved @ after `new` or `edit` is design question (a).
+5. **Facts.** `MutationResult` provides the new op id, the new and abandoned change ids and @. `FinishFacts` provides the export failures.
+6. **One feedback surface** (design question (b)) for:
+   - refusals, in the CLI's wording, from `ZanshinFfiException`;
+   - 9.32 warnings on success, e.g. `jj.identity_missing`;
+   - 9.35's `precondition` / `warnings` on errors.
+7. **Undo** is offered only while the op-log head is still `MutationResult.newOpId`.
+   - Check the head with `opLog(limit: 1)`, which snapshots first. On any mismatch, drop the affordance.
+   - The proper fix is 9.12's `op revert`.
+   - `abandon` asks for no confirmation: that is CLI parity, and the design shows none either. Whether an Undo affordance appears is design question (c).
+8. **Refusal parity.**
+   - `jj.immutable`, including `edit` on the root.
+   - `jj.invalid_input` for describing the root.
+   - `jj.bookmark_exists`.
+   - No invented text.
+   - Until 9.38 and 9.40 land, editing @ or saving an unchanged description writes an operation. 10.15's editor therefore sends nothing when nothing changed.
+9. **Bridge part.** Export `MutationResult` and `FinishFacts`.
+
+**Non-goals.**
+- The popups and the editor (10.15).
+- `split`, `diffedit` and `resolve`; `duplicate` and `revert`.
+- An identity-remedy flow.
+- Drag-and-drop (10.10).
+
+**Depends on.**
+- 10.3 (the pending state) and 10.5 (the reload and the port).
+- The shipped verbs work now. 9.15, 9.16 and 9.19 enable more.
+
+**Design status.** The design shows only the triggers. NEEDS DESIGN:
+- (a) Reveal the new @ after `new` or `edit`?
+- (b) The feedback surface: a toast, a banner, or inline?
+- (c) An Undo affordance?
+- (d) Shortcuts.
+- (e) The two flows that arrive when 9.15 and 9.16 land:
+  - Squash's combined description, which is the CLI's `$EDITOR` case; 9.15 must surface jj-lib's combined message;
+  - Rebase…'s target picking: a click on a card or an edge (via 10.4's lookup), or 10.10's drop.
+
+**Witnesses** (fake ports, per shipped verb).
+- The right call is made, followed by exactly one reload request.
+- A refusal shows the exception's CLI message.
+- Warnings are shown on success.
+- The card is pending while the future runs.
+- Undo calls `undo()` only while the head is the mutation's operation, and disappears after a foreign operation.
+- A disabled verb calls nothing and shows its reason.
+
+Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner moves @ in the repo, and a reload request follows.
+
+### Story 10.10: Drag-and-drop on the graph — drop on commits and edges, menu from `drop_actions` — *PLACEHOLDER, NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 for the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Placeholder: this is not in the design; refine it once Story 9.31 is scheduled.)*
+
+**Motivation.** On 2026-09-21 Ralph decided that the graph is driven by drag-and-drop (Story 9.31, "UI shape"):
+- the user drops change S on a commit T, or on an edge T→C;
+- a menu lists the available verbs and greys out the unavailable ones with the reason;
+- ⌥-drag is a shortcut for duplicate, never a hidden default.
+
+The design has no drag-and-drop. Its canvas drag pans (GV:560-576), which leaves card drags free for this.
+
+**Scope.**
+1. **Drag source.** A drag that starts on a card starts a drag past the slop; a drag on the canvas keeps panning (10.1's canvas-only recognizer).
+   - A ghost card follows the pointer over other cards. This relies on 10.1's reverse-paint-order hit testing.
+   - The source card stays mounted while it is scrolled out, via 10.1's pin.
+2. **Auto-scroll** on both axes near the viewport edges.
+3. **Drop targets.**
+   - A card T means `-o T`.
+   - An edge T→C means `-A T -B C`, found through 10.4's point → edge-set lookup. On a shared bus the lookup returns several edges: which one applies is design.
+   - No gap zones: 9.31 decided that "above T" is ambiguous in a branching graph.
+   - A merge location (several ids) is design.
+4. **Preview.** When the pointer settles over a target, query `drop_actions(source, location)` (9.31).
+   - The query is debounced, with at most one in flight.
+   - Results are cached per (source, location), keyed by the layout's `operationId` (4.10, via 10.12). Until then, the cache is invalidated on every `OpHeadsChangedEvent`.
+   - The target is highlighted. On drop, a menu shows one row per verb: Available, NoOp, or Refused with the CLI's reason.
+5. **Reload hold.** Every query runs behind 9.26's implicit snapshot and can write an operation. That operation's event would reshuffle the nodes under the pointer. So while a drag is active, 10.5 holds at most one queued reload and applies it after the drop or the cancel.
+6. **Execution.** The chosen row runs its verb through 10.9. The possible verbs:
+   - `rebase -r` / `-s` / `-b` (9.16);
+   - `squash` (9.15);
+   - `new` as a merge (6.1);
+   - `duplicate` (9.9);
+   - `revert` (9.18);
+   - `restore` / `absorb` (9.3);
+   - `interdiff` (9.6), which is a read; what it opens is design.
+
+   The preview is advisory. The verb's own refusal stays authoritative.
+7. **Modifiers.** ⌥ at drop means duplicate. Esc cancels, and so does a drop on nothing.
+
+**Non-goals.**
+- Dropping bookmark labels (9.11 / 9.19).
+- File-level drags (split).
+- Dragging several cards at once (design).
+
+**Depends on.** 10.1, 10.3, 10.4, 10.6 and 10.9. Backend: 9.31 and 9.16 (both backlog), plus 9.15, 9.9 and 9.18 for the full menu.
+
+**Design status.** The interaction model was decided in 9.31. NEEDS DESIGN:
+- the ghost card;
+- the target highlight on cards and on edges;
+- which edge a shared bus targets;
+- the menu's layout and order;
+- what an `interdiff` drop opens;
+- dragging several cards at once.
+
+**Witnesses** (fake ports).
+- The ghost follows the pointer, while a canvas drag still pans.
+- Cards and edges highlight as drop targets.
+- Auto-scroll runs on both axes.
+- The source card survives scrolling out of view.
+- The drop menu shows a fake `drop_actions` result, with refused rows greyed out and their reasons.
+- Choosing a row calls the right verb through the runner.
+- ⌥-drop picks duplicate. Esc cancels without any call.
+- An op-heads event during a drag is held until the drop, and it invalidates the preview cache.
+
+### Story 10.11: Content paging — skeleton cards and visible-range content loads (after Story 4.10) [UI]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+**Motivation.** Story 4.10 splits the graph call:
+- the topology and view facts for the whole revset (cheap, index-only);
+- content for the requested commits: the commit objects. On the loose-object 10k fixture that is about 1.2 s of today's 1.22 s (research §3). On a real, packed 1.4k-commit repo most of today's 163 ms is `empty` on its merge commits, 0.78 ms each without a changed-path index (4.10).
+
+The design needs content only on visible cards (subject, author, date, empty, conflict; GV:394-440) and on the selected commit's panel. This story builds the view side against the port with fake latency. 10.12 plugs in 4.10's real call.
+
+**Scope.**
+1. **Port.** `content(operationId, commitIds)` returns the content per id. Failures follow 4.10's error contract.
+2. **Loading.** Once the viewport settles, request content for the visible nodes plus a buffer. There are no requests while flinging or panning.
+3. **Cache.** Content is cached by **commit id** across reloads, because it is commit-intrinsic. The view facts (bookmarks, immutable, @) come with the geometry.
+4. **Staleness.** Stale pages are dropped under 10.5's coalescing rule. Geometry and content stay pinned to the same operation (4.10).
+5. **Skeletons.** Cards show 10.3's slots without text until their content arrives. The geometry never depends on content, so nothing moves.
+6. **Time and free modes.** Timestamps are layout input, never paged content. The view never lays out from paged content. A card's relative date uses the geometry's timestamp when the layout carries one, and the content's otherwise.
+7. **Other consumers:** the bookmark panel's subjects for hidden targets (10.14 design question (b)).
+
+**Non-goals.**
+- Any Rust change (that is 4.10).
+- A growing-extent stream for unbounded revsets (research §3's fallback).
+
+**Depends on.** 10.3 and 10.5. The real call arrives with 10.12 (4.10).
+
+**Design status.** Decide at scheduling: the skeleton look (the design has none), and the buffer size.
+
+**Witnesses** (fake port with latency).
+- Settling after a jump requests content only for the visible nodes plus the buffer.
+- No requests are made while flinging or panning.
+- A reload with unchanged commit ids requests nothing.
+- A stale page is dropped.
+- A skeleton card gets its text without any card moving.
+- Switching to Time never waits for content *(2026-09-27: switching to Free, the default; Time is dropped)*.
+
+### Story 10.12: Adopt the backend layout — the real `GraphSource` over Stories 4.10, 4.11 and 4.12 [UI/bridge]
+*(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26: the design's layout engine is now Story 4.11, and the landing lanes and segment colours this story was first written for belong to the `jj log` lane model the view no longer draws.)*
+
+**Motivation.** Everything before this story runs on recorded layouts and fake content. Real data needs all three backend stories:
+- 4.10: the index-only topology and view facts for the whole revset (timestamps on request), an operation id, and op-pinned content by commit id;
+- 4.11: the design's layout computed at scale in Dart on the worker isolate (the spike's verdict, decided by Ralph 2026-09-26);
+- 4.12: the topology wire and a lazy Dart view.
+
+Because of 10.1's accessor rule, adopting them changes no painter and no card.
+
+**Scope.**
+1. **The real `GraphSource`.** Implement `layout` over 4.11's `RepoHandle` layout command and `content` over 4.10's content call. The layout runs in the worker isolate; the source never lays out.
+2. **Backing swap.** `GraphLayout`'s backing store becomes 4.12's lazy topology view plus 4.11's layout result view, behind the unchanged accessors.
+   - `indexOfKey` may use 4.12's key → index lookups.
+   - 4.12's bookmark refs are mapped onto the app-side `GraphRef` (10.1 item 2).
+3. **Requirements this epic places on 4.10–4.12,** checked here:
+   - **4.10:**
+     - the complete index-only topology for the revset before the first paint, with node keys, @, the view facts and each node's real parent count (4.10 item 1, on 4.12's wire);
+     - the edge kinds as jj facts: direct, indirect and Missing. The Missing edges draw the elided stubs. N, only if 10.4 design question (a) keeps it, comes from a separate op-pinned count call for the visible nodes (a follow-up story; never a topology field, 4.10 Non-goals);
+     - `|all()|` and the operation id;
+     - every node's timestamp for the time-based modes.
+   - **4.11:**
+     - the three layout modes (compact, time, free) behind a mode enum, as the spike implements them (SPEC §0) *(2026-09-27: 4.11's dated note proposes porting only `free` and `compact`)*, with `unit` and `rows` (SPEC §3). 10.13 decides which modes are exposed *(decided 2026-09-27: `free`, the default, and `compact`)*;
+     - rows, columns, route shapes (with the blocked rule) and buckets, computed from "now" as 10.2's clock policy decides *(moot since 2026-09-27: no product mode reads "now"; Free's day buckets are 4.11 open question 9)*. No elided counts: they are not part of the layout (SPEC §0, D2);
+     - the Lane order knob; columns stay stable across reloads only once Ralph confirms 4.11's seeded rule (its item 7, open question 3). *(2026-09-27: that rule was written for the dropped `optimized`; the `compact` order's stability is 4.11 open question 8.)* Until then this story records column changes across reloads instead of gating them;
+     - a W-independent result.
+   - **4.12:** the wire and the lazy view, with key → index lookups.
+   - **Invariants:** 10.1 item 14's hard invariants gate every real layout. 10.4 item 10's route invariant is reported, and becomes a gate for the row modes only once SPEC §11.4 is answered and 4.11 fixes the blocked-merge routing.
+4. **Bridge part.** Export 4.10–4.12's Dart types from `zanshin_core.dart`.
+5. **Real-repo host.** Until a project-open flow exists, a dev entry point opens an explicitly given path. Where the graph mounts in the shell is Ralph's call.
+6. **Debug relayout on reassemble** (4.11's guardrail). A hot reload swaps the engine's code in the worker, which shares the UI isolate's group, but the worker lays out only when asked. In debug builds, `reassemble` re-issues the current layout request, so a layout edit shows at once.
+
+**Non-goals.**
+- Painter or card changes.
+- Any Rust change (that is 4.10 and 4.12) and any layout code (that is 4.11).
+
+**Depends on.** Stories 4.10, 4.11 and 4.12; 10.1–10.5 and 10.11.
+
+**Design status.** No design of its own: it checks the requirements above. Decide at scheduling:
+- how the dev host receives its path (e.g. `--dart-define`);
+- where the graph mounts in the shell (Ralph's call).
+
+**Witnesses.**
+- Every 10.1–10.4 witness passes on real layouts of the committed fixtures. Every real layout passes the hard invariants, and its route report is recorded.
+- Real-cdylib widget tests on an in-test repo, using `tester.runAsync`:
+  - a `describe` through the handle reloads the view, and the anchored node stays in place;
+  - a double-click `edit` moves @ and the gold lineage;
+  - a revset switch to `all()` shows more nodes and a correct "shown / total".
+- Measured, not gated: the time from an operation event to the new layout being painted, on `medium-1k-commits` and `large-10k-commits`, for every exposed mode.
+
+### Story 10.13: Time-layout lab — compare the engine's Compact, Time and Free layouts and a view-side time-gap variant on real data — *EXPERIMENT* [UI]
+*(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view.)*
+
+> **Status 2026-09-26 (Ralph, after the spike viewer):** item 6's faster path was taken. The throwaway viewer (`spikes/graph-layout-ab/viewer/`, README "Viewer") paints the engine's Compact, Time and Free layouts and the M1 gaps ("Time+gaps", with the free mode's gap curve) with all three lane orders, on the real 1.4k-commit repo, the fixtures and synthetic inputs up to 100k. **Ralph's current preference is Free.** It is tentative, not a decision, and this story stays an experiment. His review led to a day axis for Free (10.2 item 9) and to the `compact` lane order (4.11 item 11). Still to decide:
+> - (a) Free as the default, and whether Compact and Time stay as options;
+> - (b) M1's knobs, if Time+gaps stays a candidate;
+> - (c) Free's constants (U = 16, the gap curve, the cap of 48 units; D8) and whether buses may pass behind cards. On the real repo's `all()`, 11–15 horizontal runs cross a card they do not belong to in Free, depending on the lane order (greedy 11, optimized 15, compact 13). The row modes have no such runs, only D9's blocked-merge verticals, which occur in every mode;
+> - the default lane order, judged in Free (4.11 open question 8);
+> - (d)–(f) below. With Free as the default every layout needs every timestamp, so 4.10's open question 1 (per call or cached) weighs more;
+> - whether this Flutter lab is still needed, or shrinks to a Flutter confirmation of the pick (item 6).
+>
+> **Outcome decided 2026-09-27 (Ralph, via the spike viewer on the real 1.4k-commit repo):**
+> - (a) Free is the default and Compact the only other mode. Time and Time+gaps (M1) are dropped.
+> - The default lane order is `compact`, with greedy as the alternative; `optimized` is dropped (4.11 open question 8).
+> - Ralph also keeps three viewer details as intended deviations from the design (crossing gaps always on, content fading under the gutter, the pinned current date), and he wants every edge to leave a card's top at the centre (the Epic 10 header's "Product decisions 2026-09-27").
+>
+> **What that leaves of the questions above** (Claude's reading, same day):
+> - (b) M1's knobs: moot.
+> - (c) Free's constants and buses behind cards: not decided. With Free the default, D8's 11–15 horizontal runs behind cards on the real `all()` are a default-view issue. The question moves to 4.11 open question 4.
+> - (d) Recordings: real-repo data never enters git (deferred-work's standing rule); the product's recordings are 10.1's.
+> - (e) Committer or author: open, as 4.10 open question 2 and 10.2 design question (g).
+> - (f) Clock semantics: moot. Free never relayouts on a clock tick.
+> - Every default layout now loads every timestamp (4.10 open question 1).
+>
+> **Closed as done 2026-09-27 (Claude's call on that outcome; item 6 leaves the Flutter lab to Ralph, who can reopen the story for a Flutter confirmation).** The story's outcome is a decision (item 5), now recorded here and fed to 4.11, 10.2, 10.5 and 10.7, which carry dated notes. The Flutter lab (items 1–4) is not built: with only Free and Compact left there is nothing to compare, and 10.2, 10.4 and 10.12 exercise Free on real data.
+
+**Motivation.** Ralph imagines commits made at about the same time on parallel branches drawn at the same height, so that both order and time distance are visible. A commit at 12:05 on branch b should sit closer to 12:00 on branch a than one at 13:00 does. He is not sure whether that calls for fixed rows (the design's Compact and Time) or a free layout whose vertical spacing follows elapsed time.
+
+The A/B spike already implements the engine side of every candidate (SPEC §0):
+- `compact`;
+- `time`, with the topological clamp (D1);
+- `free`: y from compressed commit time, each child at least one pitch above its parents, with provisional constants (§4.2, D8).
+
+It also names the hybrid, rows with time-sized gaps between the buckets, a painter-side prefix sum. So the question is no longer what 4.11 can build. It is which modes the product exposes, which is the default, and with which constants.
+
+10.1's contract makes each candidate either a different layout record (rows in 1/U units) or a different `VerticalLayout`. None needs a re-architecture, and none computes a layout in the view.
+
+**Scope.**
+1. **Data.**
+   - Real-repo dumps come from the spike's stage-2 dumper (SPEC §2). It runs on a scratch `jj git clone` of a local repository, e.g. Zanshin's own history or the upstream jj repository at `../jj`.
+     - Never `jj git init` in place: `../jj` is read-only (`CLAUDE.md`), and neither repository is a jj workspace today.
+     - The dumper extracts the committed fixtures today, so pointing it at a clone is a small extension inside the spike.
+   - The spike's fixture dumps and synthetic inputs (non-monotonic timestamps included) complete the set.
+   - Each input is laid out by the spike's reference implementation in compact, time and free, and recorded with 10.1's recorder.
+   - Every recording passes the hard invariants. The route report is counted in every mode, not failed (10.4 item 10).
+   - Whether full recordings are committed is design question (d); tests use small excerpts.
+2. **Variants**, switchable live in the demo host:
+   - **M0, Rows:** the engine's `compact` and `time` (the design), mapped by `UniformRows`.
+   - **M1, Rows + time gaps (hybrid):** the engine's `time` layout with a view-side `VerticalLayout`.
+     - It sizes the gap at each bucket boundary from the elapsed time between the buckets (log-scaled and capped), via prefix sums over `buckets` (SPEC §0).
+     - Lanes, columns and routes are unchanged, and every bus stays in a card-free gap.
+     - Its knobs (scale, cap) are sliders in the demo host only.
+   - **M2, Free y:** the engine's `free` layout (U = 16), mapped by `UniformRows`. There is no view-side y computation and no view-side clamp. Its constants (U, the gap curve, the cap) are the engine's (D8, provisional). Variants of them are separate recordings, not view sliders.
+3. **Readouts per variant,** shown in the demo host:
+   - the content height;
+   - the largest and the median vertical gap;
+   - 10.4's route report, split by kind:
+     - horizontal segments behind a card that is not one of their endpoints. That is the free mode's known issue (SPEC D8); M0 and M1 cannot have any, because every bus lies in a row gap;
+     - vertical segments behind such a card, i.e. the blocked merges (SPEC D9). They occur in every mode until SPEC §11.4 is answered;
+   - how many cross-column pairs within a given Δt sit at the same height.
+4. **Unchanged consumers.** Every variant gives exact extents from data, uses 10.1's y-index query, and runs 10.2's gutter, 10.3's cards and 10.4's edges unchanged.
+5. **Outcome.** Ralph picks which modes the product exposes (e.g. Compact plus Time, Time with gaps, Free, or a mix) and the default.
+   - The pick is recorded as a dated decision in this story.
+   - It is fed to 4.11: which modes ship, the free constants, and whether buses may pass behind cards (SPEC §11.1).
+   - It is fed to 10.2 (the gutter for the pick) and to 10.7 (the Layout control).
+   - It does not gate 4.11's build, because 4.11 carries all three modes. *(2026-09-27: 4.11's dated note proposes porting only `free` and `compact`.)*
+6. **Faster path** (taken 2026-09-26; see the status note above). The throwaway HTML viewer was built inside the spike (`spikes/graph-layout-ab/viewer/`, plain JS, outside the gate). It does not reuse GV's DOM rendering: it paints the design's look with DOM cards for the viewport only and a canvas for the edges, and it scrolls synth-100k at 60 fps. It renders the spike's outputs for compact, time and free, plus the M1 gaps, on the real 1.4k-commit repo, the fixtures and synthetic inputs. Whether this story now shrinks to a Flutter confirmation of the pick or is dropped is Ralph's call.
+
+**Non-goals.**
+- Production controls: the lab lives only in the demo host.
+- Any engine change: constants change in the spike.
+- Persisting the knobs.
+- Any view-side layout. M1's gap mapping is the only view-side variant, and it moves no lane, column or route.
+
+**Depends on.**
+- 10.1 and 10.4, because the edges are needed to judge the buses. It uses 10.2 and 10.3 if they have landed.
+- The spike's stages 2–3 (dumper and reference implementation).
+- No backend story.
+
+**Design status.** This story is the design question. M0 is the design (FINAL). NEEDS DESIGN, which the lab answers:
+- (a) Which modes are exposed, and which is the default?
+- (b) M1's knob values.
+- (c) M2's constants, and may buses pass behind cards (SPEC §11.1)?
+- (d) Are recordings committed?
+- (e) The committer or the author timestamp (SPEC §11.3)?
+- (f) Clock semantics. Time re-buckets relative to "now" (10.2 (a)); free mode never relayouts on a clock tick (SPEC §4.2). Is that difference acceptable? Either way, 10.1's anchor absorbs the shift a new head causes.
+
+**Witnesses.**
+- Every recording passes 10.1's hard invariants. Route-report hits are counted, not failed.
+- The extents are exact for every variant.
+- Switching variants keeps the centre node at the same viewport offset. That is a lab rule; the product's mode switch follows 10.5.
+- M1 keeps every horizontal run in a card-free gap, and its tops equal the prefix sums over the buckets.
+- M2 uses `UniformRows` over the engine's free rows, and the lab reads no timestamp to place a card.
+- The readouts are unit-tested on hand-made layouts.
+- Only the demo host imports the lab code (a grep-able import boundary).
+
+### Story 10.14: Bookmark list panel — every bookmark, dimmed outside the revset, pick to reveal — *PLACEHOLDER, NEEDS DESIGN* [UI/bridge]
+*(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view. Thin by default: the design extraction lists the left side panels among the design's dialogs and popups, which Ralph says are not final.)*
+
+**Motivation.** The design's "Branches" entry opens a 290 px "Bookmarks" panel on the left (GV:481-497, :607-613, GC:161-169). It lists every bookmark in the repository. Picking one selects and reveals its commit, and switches to `all()` when the commit is not in the current revset (GV:579-584). This is how a user finds work that the default log hides.
+
+The design extraction lists the side panels among the not-final dialogs and popups. So this story ships a minimal `material_ui` list and invests nothing in polish; design question (g) asks whether that reading is right.
+
+**Scope.**
+1. **Data.** `RepoHandle.bookmarks()` (`handle.dart:183`, FR-JJ-8) returns one entry per local bookmark and per **tracked** remote bookmark. Each entry has a target change id and nothing else (`packages/zanshin_core/lib/src/ffi/bookmarks.dart:26-67`). It has no synced or conflicted flag, and untracked remote bookmarks are dropped. Story 9.29 adds all of that.
+   - **Until 9.29:** rows for local and tracked-remote entries only, with the states local and remote.
+     - The view never derives "synced" by pairing a local and a remote entry. After a local rewrite, both share a change id but point at different commits (9.29's motivation).
+     - The design's own hidden example, `release/1.5.x@origin` (GD:21, state `remote`), is an untracked remote bookmark. It cannot be listed until 9.29. The `all()` preset promises "untracked remotes" (GV:242).
+   - Cards and the detail panel can still show synced, from the graph's view facts (`GraphRef.synced`; Story 4.8's `CommitRef.synced`).
+   - Each row shows:
+     - a glyph;
+     - the name, as `name@remote` for a remote entry;
+     - a sub-line "id · subject", with the id as 2 bold characters plus 6;
+     - the state.
+   - The subject of a target outside the current layout is design question (b).
+   - The list reloads with the graph.
+   - **Bridge part:** export `Bookmark`, `BookmarkKind`, `LocalBookmark` and `RemoteBookmark`.
+2. **Dimming.** Rows whose target is not in the current layout are dimmed to .55.
+3. **Pick.** Picking a row selects its target and centres it.
+   - If the target is not in the layout, the revset switches to `all()` first. The view reveals the target in the relayout that the switch produces: an explicit reveal beats the @ re-centre of a revset switch (10.5 item 6).
+   - No later relayout jumps to @. The prototype reveals the target in that relayout too (GV:582), but its switch re-arms the @ re-centre (GV:538), so the next relayout of any kind jumps to @ (prototype defect 1).
+   - Whether that switch rewrites the persisted revset preference is design question (a). The prototype does rewrite it (prototype defect 10).
+   - A **divergent** target: a bookmark targets a change id, but a divergent change's commits are keyed by commit id (10.1 item 2), so `indexOfKey` misses it. Design question (f).
+4. **Mounting.** Where the panel mounts is Ralph's call: the nav rail is his shell. This story ships the panel widget and its view-model wiring, and the demo host shows it.
+5. **Identity.** Rows are keyed by (name, remote).
+
+**Non-goals.**
+- Bookmark mutations (10.15 → 10.9).
+- Tracking and untracking (9.11).
+- The nav rail and the design's placeholder panels (Workstreams, Reviews, Undo Timeline; APP:1054-1080).
+- Polish.
+
+**Depends on.**
+- 10.5, 10.6 and 10.7.
+- Story 9.29 for untracked-remote rows, the synced and conflicted states, and ahead/behind.
+
+**Design status.** PLACEHOLDER by default. FINAL:
+- the pick behaviour: select and centre the target, switching to `all()` when it is hidden (GV:579-584), with the reveal in the relayout the switch produces;
+- dimming targets outside the layout.
+
+NEEDS DESIGN:
+- (a) Does the switch to `all()` persist?
+- (b) Where do subjects of hidden targets come from: the content call (10.11), or `show()`?
+- (c) Conflicted bookmarks with several targets.
+- (d) The sort order; the prototype lists rows in commit order.
+- (e) The mount point.
+- (f) A divergent target: select every commit, the first one, or refuse?
+- (g) Does "the dialogs and popups are not final" cover this panel (thin), or is it exempt and built to the design?
+
+**Witnesses** (fake port).
+- Rows appear for local and tracked-remote entries, including a hidden target, which is dimmed.
+- No "synced" state is derived from pairing entries.
+- Picking a visible bookmark selects and centres it.
+- Picking a hidden one switches to `all()` and reveals it, not @, in the relayout the switch produces.
+- A Card-width change after that pick keeps the anchor and does not jump to @.
+- The persisted preference behaves as decided.
+- A reload after an external `bookmark create` adds the row.
+- A divergent target behaves as decided.
+
+### Story 10.15: Action popups — quick-action fan, "+" chips, bookmark popover, describe editor — *PLACEHOLDER* [UI]
+*(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view. Placeholder by Ralph's decision: the design's dialogs and popups are not final and will look different; build them thin so the verbs are reachable, and replace their look later.)*
+
+**Motivation.** The design contains four popups: the quick-action fan, the "+" chips, the bookmark popover and the inline describe editor. They make the shipped verbs reachable from the graph. Their look will change, so this story wires them to 10.9's runner with minimal visuals and invests nothing in polish.
+
+**Scope.** Every popup is thin: `material_ui` widgets, no animation polish, an overlay anchored to its card (e.g. `OverlayPortal`). The card stays pinned (10.1 item 9) while its popup is open.
+1. **Quick-action fan**, opened from "…" (GV:353-389).
+   - Entries, in the design's order: Edit (jj edit), Describe…, Squash into parent, Abandon (danger).
+   - The list is static here; the design says it "will later come from user settings" (GV:356).
+   - Edit runs through 10.9. Describe… opens the panel in describe mode. Squash is disabled with its reason until 9.15.
+   - It opens on click. The prototype opens it on hover or keyboard focus (GC:143-144): design question (b).
+2. **"+" chips** (10.3 item 7).
+   - The top chip runs `newChange([this])`.
+   - The bottom chip (`new --insert-before`) is disabled, with the reason "no backend verb yet", until a backend story exists.
+3. **Bookmark popover** (GV:333-348).
+   - A list of the card's bookmarks, with the state text of GV:235. Synced comes from the graph's view facts; ahead, behind and untracked need 9.29.
+   - With bookmarks: Rename…, Move to…, Delete (danger). Without: Create bookmark here…, Move existing here….
+   - Create (a name field; refused with `jj.bookmark_exists`) and Delete use Story 9.8 (shipped). Rename, Move and Move existing wait for 9.19, and are disabled with the reason.
+   - It opens on click. The prototype opens it on hover or keyboard focus (GC:116-117): design question (b).
+4. **Describe editor in the panel** (APP:1313-1369).
+   - A subject input, focused and selected, plus a body textarea.
+   - Enter means done; Esc means discard (10.6 item 5).
+   - A dirty indicator, and the buttons Discard / Done editing.
+   - Done runs `describe` through 10.9 with the composed description, and only when something changed. The prototype persists nothing (prototype defect 13).
+   - Drop the prototype's leftover hint `jj edit … Working copy moved here` (APP:1345-1348).
+   - No `JJ:` lines.
+   - How the subject and the body are composed into one description is design question (c).
+   - What happens to unsaved edits is design question (d). The prototype discards them silently when the selection changes (GV:540).
+
+**Non-goals.**
+- The final look and animations.
+- A settings UI for the quick-action list.
+- Partial (per-file) squash.
+
+**Depends on.** 10.3, 10.8 and 10.9.
+
+**Design status.** PLACEHOLDER by Ralph's decision. Only the verb mapping is FINAL. NEEDS DESIGN, at the later redesign:
+- (a) Everything visual.
+- (b) Do the quick-action fan and the bookmark popover open on hover and keyboard focus, as in the prototype, or on click?
+- (c) How subject and body compose, e.g. with a blank line between them and a trailing newline.
+- (d) Unsaved describe edits: what happens when the selection changes, or when a reload rewrites the commit being edited (an external `describe`)? Discard silently, as the prototype does, ask, or keep the draft?
+
+**Witnesses** (fake port, minimal).
+- Each enabled affordance calls the right runner verb with the right ids.
+- Each disabled one shows its reason and calls nothing.
+- Done with no change calls nothing. Esc discards. Unsaved edits behave as decided in (d).
+- A card stays mounted while its popup is open and it is scrolled away.
+
+### Story 10.16: Minimap — a raster of the whole graph per layout, viewport overlay, click-and-drag navigation — *NEEDS DESIGN* [UI]
+*(Added 2026-09-26, Ralph's idea — console session on the commit-graph view, while reviewing the spike viewer. The viewer then built a minimap to measure its cost (`spikes/graph-layout-ab/viewer/`, README "Viewer"). Backlog; the design has no minimap.)*
+
+**Motivation.** On a big repo the scrollbar does not navigate: at 100k, one scrollbar pixel spans about 170 rows (10.6 design question (d)). Ralph proposed a minimap for big repos and asked how it performs. The spike viewer built one to find out: a 112 px strip on the right with a raster of the whole graph (cards bright, edges faint, bookmarked cards blue, @ as a gold line), the viewport as a rectangle plus a full-width band, and click or drag to jump. Measured (budget below):
+- the raster is the only real cost: a few milliseconds once per layout, so it belongs off the UI isolate;
+- scrolling with the minimap costs at most about 0.4 ms more main-thread work per frame, within the noise.
+
+**Scope.**
+1. **The raster: once per layout, off the UI isolate.**
+   - A pure-Dart function without `dart:ui` (name in the spec). Its input:
+     - the per-node columns and tops: 10.1's `GraphMetrics` and `VerticalLayout`, so `UniformRows` and `PerNodeTops` alike;
+     - the card size;
+     - the edges' vertical and horizontal runs in 10.4's route geometry (endpoints only, no paths);
+     - the marker nodes and the colours as integers;
+     - the strip's size in device pixels.
+   - O(n + E + pixels), however long the runs are, with no drawing call per node:
+     - every node adds its card's rectangle to a 2-D difference array (4 corner updates);
+     - every edge adds its runs to 1-D difference arrays;
+     - one prefix-sum pass gives per-pixel counts, and a log lookup table maps them to alpha: edges faint, cards bright.
+   - Exactness below one strip pixel is not required. At synth-100k's 5.6 M px of content height, one strip point (CSS px) covers about 7,200 content px, about 65 pitches of detailed cards; one raster pixel at DPR 2 covers about 3,600.
+   - **Markers that change only with an operation**, and so only with a new layout, are baked in. In the viewer: @ as a gold line across the strip, and bookmarked cards in blue. The set is design question (c).
+   - **Output:** an RGBA `Uint8List` at the strip's device size (about 1.4 MB at 222×1546).
+   - **Where it runs** is design question (f). Recommended, option A: an app-side `Isolate.run` over the materialized layout arrays and the `VerticalLayout` tops.
+     - It needs no change to 4.11, whose Non-goals exclude pixel geometry, and 10.5 item 2's request keeps carrying no card size.
+     - It keeps the one worker isolate free (4.11 item 9's occupancy).
+     - The inputs are copied into the helper isolate once (a few MB at 100k). The pixels come back through `Isolate.exit`, `Isolate.run`'s return path, which can pass them without a copy.
+     - It runs on recorded layouts from the start, with no backend story.
+2. **On the UI isolate.** `ui.decodeImageFromPixels` (or `ui.ImageDescriptor.raw`) turns the pixels into a `ui.Image` once per raster. The image is painted inside its own `RepaintBoundary` and never repainted on scroll.
+3. **Viewport overlay.** A separate `CustomPainter` with `repaint: Listenable.merge([vertical, horizontal])` over 10.1's scroll controllers draws the viewport rectangle. On a long graph that rectangle is a few pixels tall, so the viewer adds a full-width band (design question (d)). Scrolling repaints only this layer: no raster, no card build.
+4. **Dynamic markers** (proposed; not built in the viewer and not covered by its budget). The selection (10.6's `GraphSelection`) and go-to-change hits (10.6 design question (d)) would be painted by the overlay layer at their nodes' positions under the raster's scale, never baked into the raster. Many hits (a one-letter query gave 6,225 on synth-100k) would be drawn as at most one tick per strip pixel row. Whether they are shown is design question (c).
+5. **Navigation.** A click centres the viewport on the mapped point. A drag keeps centring it while the pointer is down, as instant jumps, because an animation cannot follow a pointer.
+   - Both use 10.6 item 11's jump mechanics, so their cost does not depend on the distance.
+   - Whether a click animates follows 10.6 design question (d); recommended: instant.
+   - A minimap move is a user scroll, not an explicit reveal (10.5 item 6). It selects nothing unless design question (e) decides otherwise.
+6. **Re-raster without a new layout.** A strip resize, a Detailed/Compact or Card-width change, a `VerticalLayout` change (10.13's M1; dropped 2026-09-27, so in the product only a hand-made `PerNodeTops` fixture) or a theme switch changes the pixels but not the layout. On option A they take the same path as a new layout, debounced. A raster of alpha planes that the UI tints would spare the theme switch altogether (design question (c)).
+7. **Option and semantics.** On/off is a view option (design question (a)). VoiceOver: design question (g).
+
+**Non-goals.**
+- Any layout: the raster maps the layout's rows and columns to pixels and computes none.
+- A 4.11 change on the recommended path (option A).
+- A minimap of the op log.
+- Day labels, @'s lineage and the hover focus path in the strip, unless design question (c) adds them.
+
+**Depends on.**
+- 10.1 (viewport, scroll controllers, extents, `GraphMetrics`, `VerticalLayout`), 10.4 (the route geometry for the edge runs), 10.5 (layout swaps) and 10.6 (selection, jump mechanics, go-to-change hits); 10.7 if the toggle lives in the toolbar.
+- No backend story on option A. Option B needs 4.11, 4.12 and 10.12, plus the amendments listed under (f).
+
+**Performance budget** (the spike viewer, 2026-09-26: Chromium, an emulated 1440×900 viewport at DPR 2, a strip of 111×773 CSS px = 222×1546 device px; spike README "Viewer"). The viewer rasterises on the page's main thread; here the raster runs off the UI isolate.
+- **Raster:** median 1.4–3.9 ms from 22 to 99k nodes, in every mode (9 warm renders each). The floor, about 1.5 ms, is the per-pixel pass over 343k pixels; nodes and edges add about 1 ms per 100k each. A rerun later the same evening was about twice as slow: medians up to 5.0 ms (the real repo 4.3–5.0 ms), one synth-100k series 5.7–7.9 ms, single renders up to 11 ms, and 18 ms right after a strip resize. Each render allocated about 6.6 MB of typed arrays.
+- **Scrolling** (240 frames of 64 px): at most about 0.4 ms more main-thread work per frame with the minimap than without (−0.01 to 0.42 ms across the runs), within the run-to-run noise. The overlay update takes 1–3 µs, and no frame was dropped.
+- **Here:**
+  - the raster stays within a few milliseconds at 100k at this strip size (recorded, not gated), off the UI isolate;
+  - the pixels reach the UI isolate without a second copy (option A: `Isolate.exit`; option B: one `TransferableTypedData`);
+  - scrolling triggers no raster and no card build;
+  - the helper isolate shares its heap and GC with the UI isolate (as the worker does, 4.11 item 4), so each raster's scratch arrays are measured, not assumed free.
+
+**Design status.** The design has no minimap. Ralph's request, not in the design (2026-09-26): a minimap for big repos; he asked about its cost. Everything else is Claude's proposal, modelled on the spike viewer.
+
+NEEDS DESIGN:
+- (a) Placement, size and default: a strip on the right as in the viewer (112 px)? Always on, off by default, or on above a node count? Where is the toggle (10.7's toolbar)? How does it share the right edge with 10.8's detail panel?
+- (b) Scale: the whole graph fitted into the strip (the viewer), or a fixed scale that scrolls with the view, as code editors do?
+- (c) Markers and colours in both themes. Built in the viewer: @ (a gold line) and bookmarked cards (blue). Proposed, not built: the selection and go-to-change hits (item 4). Also @'s lineage, the hover focus path, or Free's days (Time's buckets are moot since 2026-09-27)? Colours baked in, or alpha planes that the UI tints?
+- (d) The viewport indicator: a rectangle, a full-width band, or both (the viewer)?
+- (e) Interaction: does a click on a card's pixels select it? A hover tooltip with the subject? Instant vs animated follows 10.6 (d).
+- (f) Where the raster runs:
+  - option A (recommended): an app-side `Isolate.run` over the materialized layout arrays and the `VerticalLayout` tops (item 1). No backend or 4.11 change, and it serves every trigger of item 6, `PerNodeTops` included;
+  - option B: a separate worker command with its own geometry parameters in `zanshin_core`, run after the layout. The worker keeps no layout between commands (ADR-0002), so the command re-runs the layout or receives the arrays back, and it occupies the one worker isolate (4.11 item 9). It needs dated amendments to 4.11 (item 9, the Non-goal "no painting, pixel geometry", Related), to 10.5 item 2 ("the request carries no card width or height") and to 10.12. It cannot serve `PerNodeTops` without the tops (10.13's gap variant is dropped since 2026-09-27; the fixtures remain), and the tag becomes [UI/bridge].
+
+  The spike README's "Mapping to Flutter" sketches the worker. Option A keeps its point, the raster off the UI isolate, without those contract changes.
+- (g) VoiceOver: exclude the strip, or expose the vertical position as an adjustable value?
+
+**Witnesses.**
+- On a hand-made layout and a small strip, the raster's counts equal a naive per-rectangle and per-run fill, pixel for pixel. The marker pixels are as (c) decides.
+- The same layout under `UniformRows` and under equivalent `PerNodeTops` rasterises identically.
+- The raster time at 222×1546 is recorded for `medium-1k-commits`, `large-10k-commits` and a 100k recording (not gated).
+- Scrolling 240 frames with the minimap on rasterises nothing, builds no card through the minimap, and repaints only the overlay layer.
+- A click on the strip centres the viewport on the mapped point (the offsets equal the mapping), selects nothing unless (e) decides otherwise, and builds only the target's visible cards. A drag follows the pointer.
+- A reload rasterises once. A selection change repaints only the overlay. A strip resize or a Card-width change rasterises once, after the debounce.
+- The raster runs off the UI isolate, and its pixels are decoded into an image once per raster.
+
+**Related:** 10.6 item 11 and design question (d) (jump mechanics, go-to-change); 10.1 (metrics, `VerticalLayout`, scroll controllers); 4.11 item 9 (worker occupancy; option B); spike README "Viewer" (the reference implementation and its measurements).
 
 ---

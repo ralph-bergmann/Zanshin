@@ -11,8 +11,8 @@ overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
   - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
   - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k'
-  - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP'
-scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
+  - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP. AMENDED 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): row-range windowing is REPLACED, not built, because lanes depend on the whole prefix — the graph call returns the complete index-only geometry for the whole revset per operation, and card content is loaded lazily per visible page in O(page). Still open (Ralph, 2026-09-26): a fixed row-based layout or a free layout whose vertical spacing follows commit time (DECIDED 2026-09-27, Ralph: the free layout is the default and compact the only other mode; time is dropped, so the default layout needs every timestamp); time-based layouts need every commit''s committer timestamp, which lives in the commit object, not in jj''s index — Story 4.10 loads them per call on request (measured 2026-09-26: 6.7 ms for a real 1.4k-commit repo, 33.6 ms at 10k in a packed store; the earlier ~1.2 s was the loose-object fixture)'
+scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at Ralph''s request; the rest of the Flutter UI stays Ralph''s. Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
 
@@ -28,6 +28,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Flutter `main` channel (≥ `3.44.0-1.0.pre-573`) — main is required for the multi-window
   surface that the Flutter UI (Ralph's separate work) targets. Stable-channel pins are
   not viable until multi-window support lands on a stable release; revisit then.
+  Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built
+  by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.
 - Dart `main` channel (≥ `3.13.0-104.0.dev`) — bundled with Flutter main; track moves
   in lockstep.
 - Rust `1.95.0` (pinned via `rust-toolchain.toml`)
@@ -304,7 +306,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   baseline to pass. Lowering the floor or adding an `exclude_prefix` is a
   deliberate, reviewed edit to `coverage-baseline.txt`.
 - Coverage is **Rust-only** — Dart-side lines are not measured (heavy logic is
-  Rust; the Dart bridge is thin, the UI is out of scope). Mechanism + knobs:
+  Rust; the Dart bridge is thin, the UI is out of scope). Exception 2026-09-26
+  (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at Ralph's
+  request; the rest of the Flutter UI stays Ralph's. Epic 10's Dart lines stay
+  unmeasured as well. Mechanism + knobs:
   `docs/coverage.md`, `crates/xtask/src/tasks/{lcov_union,coverage_check}.rs`.
 
 **Fixtures:**
@@ -613,6 +618,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
   protocol — file-only tracing in ALL build modes, no exceptions.
 - **NEVER write Flutter UI code in this scope.** Widgets, layout, navigation,
   theming, a11y, i18n are Ralph's separate work. Stick to API surfaces.
+  Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built
+  by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.
 - **NEVER plan with a "good enough for now" mindset on CODE QUALITY.** Every line
   of code that ships meets the project's quality bar (Clippy pedantic, structured
   errors, `NativeFinalizer`, schema-validated JSON in tests, no shelling to jj CLI,
