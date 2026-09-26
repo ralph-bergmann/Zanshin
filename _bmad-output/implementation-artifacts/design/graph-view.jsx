@@ -1,0 +1,669 @@
+/* global React */
+(() => {
+const { useState, useEffect, useRef, useMemo, useLayoutEffect } = React;
+const Ic = (p) => <window.Icon {...p}/>;
+
+const G = { gapX: 56, gapY: 48, pad: 56, hCompact: 40, hDetailed: 62, elide: 44, gutter: 88 };
+
+// Time buckets: ages are rounded up onto a ladder; older than 12h → calendar day.
+const LADDER = [[10, "10m"], [20, "20m"], [40, "40m"], [60, "1h"], [120, "2h"], [240, "4h"], [480, "8h"], [720, "12h"]];
+function timeBucket(c) {
+  if (c.isRoot || !c.ts) return { key: -Infinity, label: "" };
+  const now = Date.parse(window.GRAPH_NOW), t = Date.parse(c.ts), age = (now - t) / 60000;
+  for (const [m, l] of LADDER) if (age <= m) return { key: now - m * 60000, label: l };
+  const d = new Date(t); d.setHours(0, 0, 0, 0);
+  const y = new Date(now); y.setHours(0, 0, 0, 0); y.setDate(y.getDate() - 1);
+  return { key: d.getTime(), label: d.getTime() === y.getTime() ? "Yesterday" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) };
+}
+
+function BookmarkGlyph({ filled, size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
+      <path d="M4.6 2.2h6.8c.47 0 .85.38.85.85v10.4c0 .35-.4.55-.68.34L8 11.1l-3.57 2.69a.43.43 0 0 1-.68-.34V3.05c0-.47.38-.85.85-.85z"
+        fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// feature/ZAN-412_onboarding-swipe → { main: "ZAN-412", rest: "onboarding-swipe" }
+function shortBookmark(name) {
+  const [base, remote] = name.split("@");
+  const m = base.match(/[A-Z][A-Z0-9]+-\d+/);
+  if (m) return { main: m[0], rest: base.slice(m.index + m[0].length).replace(/^[_\-/.]+/, ""), remote };
+  const seg = base.split("/");
+  if (seg.length > 1) return { prefix: seg.slice(0, -1).join("/") + "/", main: seg[seg.length - 1], remote };
+  return { main: base, remote };
+}
+
+function roundedPath(raw, r) {
+  const pts = raw.filter((p, i) => i === 0 || p[0] !== raw[i - 1][0] || p[1] !== raw[i - 1][1]);
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+    const l1 = Math.hypot(x1 - x0, y1 - y0), l2 = Math.hypot(x2 - x1, y2 - y1);
+    const rr = Math.min(r, l1 / 2, l2 / 2);
+    d += ` L${x1 - (x1 - x0) / l1 * rr},${y1 - (y1 - y0) / l1 * rr} Q${x1},${y1} ${x1 + (x2 - x1) / l2 * rr},${y1 + (y2 - y1) / l2 * rr}`;
+  }
+  const last = pts[pts.length - 1];
+  return d + ` L${last[0]},${last[1]}`;
+}
+
+// Root at the bottom, children above (jj log order). Rows = generation depth (compact), lanes = greedy interval packing.
+function routeEdges(nodes, N, W, H, xOf) {
+  const out = [];
+  nodes.forEach(n => n.parents.forEach((pp, i) => {
+    const p = N.get(pp.id), pcx = xOf(p) + W / 2, ncx = xOf(n) + W / 2;
+    const outY = p.y, inY = n.y + H;
+    let pts;
+    if (p.lane === n.lane) pts = [[pcx, outY], [ncx, inY]];
+    else if (i > 0 && !pp.blocked) {     // merge: up in parent lane, then across into child
+      const my = inY + G.gapY * 0.4;
+      pts = [[pcx, outY], [pcx, my], [ncx, my], [ncx, inY]];
+    } else {                             // branch-off: out of parent's side, across, then up
+      const sx = pcx + (ncx > pcx ? 1 : -1) * W * 0.28, hy = outY - G.gapY * 0.4;
+      pts = [[sx, outY], [sx, hy], [ncx, hy], [ncx, inY]];
+    }
+    out.push({ from: p.id, to: n.id, pts, dashed: pp.skipped });
+  }));
+  return out;
+}
+
+// Orthogonal polylines → H/V crossings (+ collinear overlaps, which read as one line).
+function analyzeEdges(edges) {
+  const segs = edges.map(e => {
+    const s = [];
+    for (let i = 1; i < e.pts.length; i++) {
+      const [x1, y1] = e.pts[i - 1], [x2, y2] = e.pts[i];
+      if (x1 === x2 && y1 === y2) continue;
+      s.push(y1 === y2 ? { h: true, c: y1, a: Math.min(x1, x2), b: Math.max(x1, x2) } : { h: false, c: x1, a: Math.min(y1, y2), b: Math.max(y1, y2) });
+    }
+    return s;
+  });
+  const cross = [];
+  let overlaps = 0;
+  const E = 1;
+  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
+    const A = edges[i], B = edges[j];
+    if (A.from === B.from || A.to === B.to || A.from === B.to || A.to === B.from) continue;
+    segs[i].forEach(s => segs[j].forEach(t => {
+      if (s.h !== t.h) {
+        const [h, v, hi] = s.h ? [s, t, i] : [t, s, j];
+        if (v.c > h.a + E && v.c < h.b - E && h.c > v.a + E && h.c < v.b - E) cross.push({ x: v.c, y: h.c, edge: hi });
+      } else if (Math.abs(s.c - t.c) < E && Math.min(s.b, t.b) - Math.max(s.a, t.a) > E) overlaps++;
+    }));
+  }
+  return { cross, overlaps };
+}
+
+// Reorder lanes (lane 0 = trunk stays put) to minimise crossings, then edge length, then displacement from greedy order.
+function optimizeLanes(nodes, N, laneCount, W, H) {
+  const ident = [...Array(laneCount).keys()];
+  if (laneCount < 3) return ident;
+  const step = W + G.gapX;
+  const cost = (pos) => {
+    const edges = routeEdges(nodes, N, W, H, n => pos[n.lane] * step);
+    const { cross, overlaps } = analyzeEdges(edges);
+    let len = 0;
+    edges.forEach(e => { len += Math.abs(e.pts[e.pts.length - 1][0] - e.pts[0][0]) / step; });
+    let disp = 0;
+    pos.forEach((p, l) => { disp += Math.abs(p - l); });
+    return cross.length * 100 + overlaps * 100 + len + disp * 0.25;
+  };
+  let best = ident, bestC = cost(ident);
+  const rest = ident.slice(1);
+  if (rest.length <= 7) {
+    const perm = (arr, k) => {
+      if (k === arr.length) {
+        const pos = [0]; arr.forEach((lane, i) => { pos[lane] = i + 1; });
+        const c = cost(pos);
+        if (c < bestC - 1e-9) { bestC = c; best = pos; }
+        return;
+      }
+      for (let i = k; i < arr.length; i++) { [arr[k], arr[i]] = [arr[i], arr[k]]; perm(arr, k + 1); [arr[k], arr[i]] = [arr[i], arr[k]]; }
+    };
+    perm(rest.slice(), 0);
+  } else {
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let a = 1; a < laneCount; a++) for (let b = a + 1; b < laneCount; b++) {
+        const pos = best.slice(), la = pos.indexOf(a), lb = pos.indexOf(b);
+        pos[la] = b; pos[lb] = a;
+        const c = cost(pos);
+        if (c < bestC - 1e-9) { bestC = c; best = pos; improved = true; }
+      }
+    }
+  }
+  return best;
+}
+
+function computeLayout(all, revset, W, H, mode = "compact", opts = {}) {
+  const byId = new Map(all.map(c => [c.id, c]));
+  const list = revset === "all" ? all : all.filter(c => c.inDefault);
+  const vis = new Set(list.map(c => c.id));
+  const nodes = list.map((c, idx) => {
+    const parents = []; let elided = 0;
+    c.parents.forEach(pid => {
+      if (vis.has(pid)) { parents.push({ id: pid, skipped: false }); return; }
+      const seen = new Set(), found = new Set(), st = [pid];
+      while (st.length) {
+        const x = st.pop(); if (seen.has(x)) continue; seen.add(x);
+        if (vis.has(x)) { found.add(x); continue; }
+        const cc = byId.get(x); if (cc) st.push(...cc.parents);
+      }
+      if (found.size) found.forEach(f => { if (!parents.some(p => p.id === f)) parents.push({ id: f, skipped: true }); });
+      else elided += seen.size;
+    });
+    return { c, id: c.id, idx, parents, elided, children: [] };
+  });
+  const N = new Map(nodes.map(n => [n.id, n]));
+  nodes.forEach(n => n.parents.forEach(p => N.get(p.id).children.push(n.id)));
+  const buckets = [];
+  if (mode === "time") {
+    const groups = new Map();
+    nodes.forEach(n => { const b = timeBucket(n.c); if (!groups.has(b.key)) groups.set(b.key, { ...b, nodes: [] }); groups.get(b.key).nodes.push(n); });
+    let next = 0;
+    [...groups.keys()].sort((a, b) => a - b).forEach(k => {
+      const g = groups.get(k), start = next; let end = start;
+      g.nodes.sort((a, b) => (Date.parse(a.c.ts) || 0) - (Date.parse(b.c.ts) || 0));
+      g.nodes.forEach(n => { n.row = Math.max(start, ...n.parents.map(p => (N.get(p.id).row ?? -1) + 1)); end = Math.max(end, n.row); });
+      buckets.push({ label: g.label, start, end });
+      next = end + 1;
+    });
+  } else {
+    const rowOf = (n) => n.row != null ? n.row : (n.row = n.parents.length ? Math.max(...n.parents.map(p => rowOf(N.get(p.id)))) + 1 : 0);
+    nodes.forEach(rowOf);
+  }
+
+  const order = [...nodes].sort((a, b) => a.row - b.row || a.c.priority - b.c.priority || a.idx - b.idx);
+  const lanes = [];
+  const free = (L, a, b, allow) => !(lanes[L] || []).some(iv => iv.a <= b && a <= iv.b && iv.owner !== allow);
+  order.forEach(n => {
+    const fp = n.parents[0] ? N.get(n.parents[0].id) : null;
+    // lifetime in own lane: merge children (routed up this lane) + the one first-parent child expected to continue it.
+    // Other branch-off children leave from the card's side and don't need this lane.
+    const kids = n.children.map(id => N.get(id));
+    const cont = kids.filter(ch => ch.parents[0].id === n.id).sort((a, b) => a.c.priority - b.c.priority || a.idx - b.idx)[0];
+    n.cont = cont ? cont.id : null;
+    const childRows = kids.filter(ch => ch === cont || ch.parents.findIndex(p => p.id === n.id) > 0).map(ch => ch.row);
+    const end = childRows.length ? Math.max(n.row, Math.max(...childRows) - 1) : n.row;
+    const a = fp ? fp.row + 1 : n.row, b = end + 1; // +1 = one empty row buffer so unrelated chains never "touch"
+    let L;
+    if (fp && fp.cont === n.id && free(fp.lane, a, b, fp.id)) L = fp.lane;
+    else { L = 0; while (!free(L, a, b, null)) L++; }
+    (lanes[L] = lanes[L] || []).push({ a, b, owner: n.id });
+    n.lane = L;
+  });
+
+  const laneCount = Math.max(1, ...nodes.map(n => n.lane + 1));
+  const maxRow = Math.max(0, ...nodes.map(n => n.row));
+  const botExtra = nodes.some(n => n.elided && n.row === 0) ? G.elide : 0;
+  const offX = mode === "time" ? G.gutter : 0;
+  const rowTop = (r) => G.pad + (maxRow - r) * (H + G.gapY);
+  buckets.forEach((b, i) => { b.y = rowTop(b.start) + H / 2; b.guide = i > 0 ? rowTop(b.start) + H + G.gapY / 2 : null; });
+  nodes.forEach(n => {
+    n.y = rowTop(n.row);
+    n.parents.forEach(pp => { const p = N.get(pp.id); pp.blocked = nodes.some(o => o.lane === p.lane && o.row > p.row && o.row <= n.row); });
+  });
+  const pos = opts.optimize ? optimizeLanes(nodes, N, laneCount, W, H) : [...Array(laneCount).keys()];
+  nodes.forEach(n => {
+    n.col = pos[n.lane];
+    n.x = offX + G.pad + n.col * (W + G.gapX);
+    n.cx = n.x + W / 2;
+  });
+
+  const raw = routeEdges(nodes, N, W, H, n => n.x);
+  const { cross } = analyzeEdges(raw);
+  const edges = raw.map((e, i) => ({ ...e, d: roundedPath(e.pts, 10), gaps: cross.filter(c => c.edge === i) }));
+
+  return {
+    nodes, N, edges, buckets, offX, crossings: cross.length,
+    width: offX + G.pad * 2 + laneCount * (W + G.gapX) - G.gapX,
+    height: G.pad * 2 + botExtra + (maxRow + 1) * (H + G.gapY) - G.gapY,
+    total: all.length, shown: list.length,
+  };
+}
+
+function usePersist(key, init) {
+  const [v, setV] = useState(() => {
+    try { const s = localStorage.getItem(key); return s == null ? init : JSON.parse(s); } catch { return init; }
+  });
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }, [key, v]);
+  return [v, setV];
+}
+
+const STATE_LABEL = { synced: "in sync with origin", ahead: "ahead of origin", behind: "behind origin", local: "local only", remote: "remote only" };
+
+// ============================================================
+// TOOLBAR
+// ============================================================
+const REVSETS = [
+  { id: "default", cmd: "jj log", desc: "Default revset — your mutable changes plus trunk context" },
+  { id: "all", cmd: "jj log -r 'all()'", desc: "Every visible commit, incl. immutable history and untracked remotes" },
+];
+
+function RevsetSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    window.addEventListener("pointerdown", h);
+    return () => window.removeEventListener("pointerdown", h);
+  }, [open]);
+  const cur = REVSETS.find(r => r.id === value) || REVSETS[0];
+  return (
+    <div className="gtb-select" ref={ref}>
+      <button className={"gtb-select-btn " + (open ? "open" : "")} onClick={() => setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open}>
+        <span className="gtb-prompt">$</span>
+        <code>{cur.cmd}</code>
+        <Ic name="chevronDown" size={13}/>
+      </button>
+      {open && (
+        <div className="gtb-menu" role="listbox">
+          {REVSETS.map(r => (
+            <button key={r.id} role="option" aria-selected={r.id === value} className={"gtb-opt " + (r.id === value ? "active" : "")}
+              onClick={() => { onChange(r.id); setOpen(false); }}>
+              <span className="chk">{r.id === value && <Ic name="check" size={12}/>}</span>
+              <code>{r.cmd}</code>
+              <span className="desc">{r.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetailed, cardW, setCardW, shown, total, onLocate }) {
+  const pct = ((cardW - 160) / (400 - 160)) * 100;
+  return (
+    <div className="gtb" role="toolbar" aria-label="Graph view">
+      <RevsetSelect value={revset} onChange={setRevset}/>
+      <div className="gtb-sep"/>
+      <div className="gtb-group">
+        <span className="gtb-label">Layout</span>
+        <div className="gtb-seg" role="radiogroup" aria-label="Layout">
+          <button role="radio" aria-checked={layout === "compact"} className={layout === "compact" ? "on" : ""} onClick={() => setLayout("compact")} title="Rows = dependency depth">Compact</button>
+          <button role="radio" aria-checked={layout === "time"} className={layout === "time" ? "on" : ""} onClick={() => setLayout("time")} title="Rows = rounded commit time">Time</button>
+        </div>
+      </div>
+      <div className="gtb-sep"/>
+      <label className="gtb-group">
+        <button role="switch" aria-checked={detailed} className={"gtb-switch " + (detailed ? "on" : "")} onClick={() => setDetailed(!detailed)}/>
+        <span className="gtb-label">{detailed ? "Detailed cards" : "Compact cards"}</span>
+      </label>
+      <div className="gtb-sep"/>
+      <div className="gtb-group">
+        <span className="gtb-label">Card width</span>
+        <input type="range" className="gtb-range" min="160" max="400" step="10" value={cardW}
+          style={{ "--p": pct + "%" }} onChange={(e) => setCardW(+e.target.value)} aria-label="Card width"/>
+        <span className="gtb-val">{cardW}px</span>
+      </div>
+      <div className="gtb-right">
+        <span className="gtb-count">{shown} / {total} commits</span>
+        <button className="gtb-locate" onClick={onLocate} title="Scroll to working copy"><b>@</b>Working copy</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// BOOKMARK CONTROL — button top-right; with labels on, it becomes a
+// legend sitting on the card's bottom border (top carries outgoing
+// branch lines; bottom only has the centered incoming edge).
+// ============================================================
+function BookmarkControl({ bookmarks, legend }) {
+  const has = bookmarks.length > 0;
+  const asLegend = legend && has;
+  const s = has ? shortBookmark(bookmarks[0].name) : null;
+  const stop = (e) => e.stopPropagation();
+  return (
+    <div className={"gbm " + (asLegend ? "is-legend " : "is-btn ") + (has ? "has" : "")} onClick={stop} onDoubleClick={stop} onPointerDown={stop}>
+      <button className="gbm-trigger" aria-label={has ? "Bookmarks: " + bookmarks.map(b => b.name).join(", ") : "Add bookmark"}>
+        <BookmarkGlyph filled={has} size={asLegend ? 11 : 14}/>
+        {asLegend && <>
+          {s.prefix && <span className="gbm-rest gbm-prefix" title={s.prefix}>{s.prefix}</span>}
+          <span className="gbm-main">{s.main}</span>
+          {s.remote && <span className="gbm-rest">@{s.remote}</span>}
+          {s.rest && <span className="gbm-rest gbm-shrink">{s.rest}</span>}
+          {bookmarks.length > 1 && <span className="gbm-more">+{bookmarks.length - 1}</span>}
+        </>}
+      </button>
+      <div className="gbm-pop">
+        <div className="gbm-pop-inner">
+          {has ? bookmarks.map(b => (
+            <div key={b.name} className="gbm-item">
+              <BookmarkGlyph filled size={12}/>
+              <span className="gbm-name">{b.name}</span>
+              <span className={"gbm-state s-" + b.state}>{b.state === "ahead" ? `↑${b.ahead}` : ""} {STATE_LABEL[b.state]}</span>
+            </div>
+          )) : <div className="gbm-none">No bookmark on this change</div>}
+          <div className="gbm-actions">
+            {has
+              ? <><button>Rename…</button><button>Move to…</button><button className="danger">Delete</button></>
+              : <><button>Create bookmark here…</button><button>Move existing here…</button></>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// QUICK ACTIONS — "more" button on the bottom-right border; on hover
+// round action buttons fan out to the left (Flow-style stagger).
+// List will later come from user settings.
+// ============================================================
+const QA_ICON = {
+  new: <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>,
+  edit: <text x="8" y="12" textAnchor="middle" fontSize="11" fontWeight="700" fill="currentColor" fontFamily="ui-monospace,monospace">@</text>,
+  describe: <path d="M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9L3 13zM9.3 4.7l2 2" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round"/>,
+  squash: <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v7M5 6l3 3 3-3"/><path d="M3 13h10"/></g>,
+  abandon: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></g>,
+};
+const QUICK_ACTIONS = [
+  { id: "edit", label: "Edit (jj edit)" },
+  { id: "describe", label: "Describe…" },
+  { id: "squash", label: "Squash into parent" },
+  { id: "abandon", label: "Abandon", danger: true },
+];
+const ADD_GLYPH = <svg width="10" height="10" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+function QuickActions({ actions = QUICK_ACTIONS }) {
+  const stop = (e) => e.stopPropagation();
+  return (
+    <div className="gqa" onClick={stop} onDoubleClick={stop} onPointerDown={stop}>
+      <div className="gqa-items">
+        {actions.map((a, i) => (
+          <button key={a.id} className={"gqa-btn " + (a.danger ? "danger" : "")} title={a.label} aria-label={a.label}
+            style={{ "--i": i + 1, "--n": actions.length }}>
+            <svg width="13" height="13" viewBox="0 0 16 16">{QA_ICON[a.id]}</svg>
+          </button>
+        ))}
+      </div>
+      <button className="gqa-more" aria-label="Quick actions">
+        <svg width="12" height="12" viewBox="0 0 16 16"><g fill="currentColor"><circle cx="3.5" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/></g></svg>
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// CARD
+// ============================================================
+function GraphCard({ n, W, H, detailed, legend, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover }) {
+  const c = n.c;
+  const hasLegend = legend && c.bookmarks.length > 0;
+  const cid = (
+    <span className="gcid">
+      {c.immutable && !c.isRoot && <span className="gimm" title="immutable">◆</span>}
+      <b>{c.id.slice(0, 2)}</b>{c.id.slice(2, detailed && !isWC ? 8 : 5)}
+    </span>
+  );
+  const flags = <>
+    {c.hasConflict && <span className="gflag conflict" title="conflict"><Ic name="conflict" size={12}/></span>}
+    {c.isMerge && <span className="gflag" title="merge"><Ic name="merge" size={12}/></span>}
+  </>;
+  const subj = <span className={"gsubj " + (c.isEmpty || c.isRoot ? "is-dim" : "")}>{c.subject}</span>;
+  return (
+    <div
+      className={"gcard " + (detailed ? "is-detailed " : "is-compact ") + (isSel ? "sel " : "") + (isWC ? "wc " : "") +
+        (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (dim ? "dim " : "")}
+      style={{ left: n.x, top: n.y, width: W, height: H }}
+      onClick={onClick} onDoubleClick={onDoubleClick}
+      onMouseEnter={() => onHover(c.id)} onMouseLeave={() => onHover(null)}
+      title={isWC ? "Working copy (@)" : "Click: details · Double-click: jj edit"}
+      data-change={c.id}
+    >
+      {detailed ? <>
+        <div className="gline">{subj}</div>
+        <div className="gline gmeta">
+          {isWC && <span className="gat">@</span>}
+          {cid}
+          {c.author && <span className="gmeta-t au">{c.author.split(" ")[0]}</span>}
+          {c.date && <span className="gmeta-t">{c.date}</span>}
+          {c.isEmpty && <span className="gmeta-t em">empty</span>}
+          {flags}
+        </div>
+      </> : (
+        <div className="gline">
+          {isWC && <span className="gat">@</span>}
+          {cid}{subj}{flags}
+        </div>
+      )}
+      {!c.isRoot && <BookmarkControl bookmarks={c.bookmarks} legend={legend}/>}
+      {!c.isRoot && <QuickActions/>}
+      <button className="gadd gadd-top" title="New change on top (jj new)" aria-label="New change on top" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>{ADD_GLYPH}</button>
+      {!c.isRoot && <button className="gadd gadd-bot" title="Insert new change before (jj new --insert-before)" aria-label="Insert new change before" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>{ADD_GLYPH}</button>}
+    </div>
+  );
+}
+
+// ============================================================
+// DETAIL PANEL (right)
+// ============================================================
+function GraphDetail({ commit, isWC, editMeta, setEditMeta, onClose, onEdit, t, setTweak }) {
+  return (
+    <section className="gdetail" style={{ "--branch-color": "var(--accent)" }} data-screen-label={`Detail ${commit.id}`}>
+      <div className="bcd-header">
+        <div className="commit-tags">
+          {isWC && <span className="tag checkout-tag">@ working copy</span>}
+          {commit.immutable && <span className="tag merge">◆ immutable</span>}
+          {commit.isEmpty && <span className="tag empty">empty</span>}
+          {commit.isMerge && <span className="tag merge">merge</span>}
+          {commit.hasConflict && <span className="tag conflict"><Ic name="conflict" size={10}/>conflict</span>}
+          <span className="gdetail-id"><b>{commit.id.slice(0, 2)}</b>{commit.id.slice(2)}</span>
+        </div>
+        {!isWC && !commit.immutable && <button className="bcd-edit-btn" onClick={onEdit} title="Move the working copy here (jj edit)"><span className="gat sm">@</span><span>Edit</span></button>}
+        {!editMeta && !commit.immutable && <button className="bcd-edit-btn" onClick={() => setEditMeta(true)} title="Edit description (jj describe)"><Ic name="edit" size={11}/><span>Describe</span></button>}
+        <button className="bcd-close" onClick={onClose} title="Close (Esc)"><Ic name="close" size={12}/></button>
+      </div>
+      <h2 className="bcd-subject">{commit.subject}</h2>
+      {commit.bookmarks.length > 0 && (
+        <div className="gdetail-bms">
+          {commit.bookmarks.map(b => (
+            <span key={b.name} className="gdetail-bm" title={STATE_LABEL[b.state]}>
+              <BookmarkGlyph filled size={11}/>{b.name}
+              <span className={"gbm-state s-" + b.state}>{b.state === "ahead" ? `↑${b.ahead}` : b.state === "synced" ? "✓" : b.state === "remote" ? "remote" : "local"}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="bcd-body">
+        {editMeta
+          ? <window.EditPanel commit={commit} onDone={() => setEditMeta(false)} onDiscard={() => setEditMeta(false)}/>
+          : <window.CommitDetail commit={commit} diffMode={t.diffMode} onSetDiffMode={(v) => setTweak("diffMode", v)} showFiles={t.showFiles}/>}
+      </div>
+    </section>
+  );
+}
+
+function BookmarkList({ commits, onPick, visibleSet }) {
+  const rows = commits.flatMap(c => c.bookmarks.map(b => ({ b, c })));
+  return (
+    <div className="gbl">
+      {rows.map(({ b, c }) => (
+        <button key={b.name} className={"gbl-row " + (visibleSet.has(c.id) ? "" : "is-hidden")} onClick={() => onPick(c.id)} title={b.name}>
+          <BookmarkGlyph filled size={12}/>
+          <span className="gbl-text">
+            <span className="gbl-name">{b.name}</span>
+            <span className="gbl-sub"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)} · {c.subject}</span>
+          </span>
+          <span className={"gbm-state s-" + b.state}>{b.state === "ahead" ? `↑${b.ahead}` : b.state === "synced" ? "✓" : b.state}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
+// WORKSPACE
+// ============================================================
+function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
+  const all = window.GRAPH_COMMITS;
+  const [revset, setRevset] = usePersist("zanshin.graph.revset", "default");
+  const [detailed, setDetailed] = usePersist("zanshin.graph.detailed", true);
+  const [cardW, setCardW] = usePersist("zanshin.graph.cardW", 240);
+  const [layout, setLayout] = usePersist("zanshin.graph.layout", "compact");
+  const [selectedId, setSelectedId] = useState(null);
+  const [wcId, setWcId] = useState(() => (all.find(c => c.isWorkingCopy) || {}).id);
+  const [hoverId, setHoverId] = useState(null);
+  const [editMeta, setEditMeta] = useState(false);
+  const scrollRef = useRef(null);
+  const pendingScroll = useRef(wcId);
+  const clickT = useRef(null);
+  const H = detailed ? G.hDetailed : G.hCompact;
+  const optimize = t.laneOrder !== "greedy";
+  const L = useMemo(() => computeLayout(all, revset, cardW, H, layout, { optimize }), [all, revset, cardW, H, layout, optimize]);
+  const visibleSet = useMemo(() => new Set(L.nodes.map(n => n.id)), [L]);
+
+  const ancestors = useMemo(() => {
+    const s = new Set(); const st = [wcId];
+    while (st.length) { const x = st.pop(); const n = L.N.get(x); if (!n || s.has(x)) continue; s.add(x); n.parents.forEach(p => st.push(p.id)); }
+    return s;
+  }, [L, wcId]);
+
+  const scrollToNode = (id, smooth = true) => {
+    const n = L.N.get(id), el = scrollRef.current;
+    if (!n || !el) return;
+    el.scrollTo({ left: n.cx - el.clientWidth / 2, top: n.y + H / 2 - el.clientHeight / 2, behavior: smooth ? "smooth" : "auto" });
+  };
+  useLayoutEffect(() => {
+    if (pendingScroll.current && L.N.get(pendingScroll.current)) {
+      const first = pendingScroll.current === wcId && !selectedId;
+      scrollToNode(pendingScroll.current, !first);
+      pendingScroll.current = null;
+    }
+  }, [L]);
+  useEffect(() => { pendingScroll.current = wcId; }, [revset, layout]);
+
+  useEffect(() => { setEditMeta(false); }, [selectedId]);
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key !== "Escape") return;
+      if (editMeta) setEditMeta(false); else setSelectedId(null);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [editMeta]);
+
+  const onCardClick = (id) => {
+    if (clickT.current) return;
+    clickT.current = setTimeout(() => { clickT.current = null; setSelectedId(id); }, 220);
+  };
+  const onCardDbl = (id) => {
+    if (clickT.current) { clearTimeout(clickT.current); clickT.current = null; }
+    const c = L.N.get(id)?.c;
+    if (c && !c.immutable) setWcId(id);
+  };
+
+  // drag-to-pan on empty canvas
+  const pan = useRef(null);
+  const [panning, setPanning] = useState(false);
+  const onPointerDown = (e) => {
+    if (e.button !== 0 || e.target.closest(".gcard")) return;
+    const el = scrollRef.current;
+    pan.current = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
+    el.setPointerCapture(e.pointerId);
+    setPanning(true);
+  };
+  const onPointerMove = (e) => {
+    if (!pan.current) return;
+    const el = scrollRef.current;
+    el.scrollLeft = pan.current.l - (e.clientX - pan.current.x);
+    el.scrollTop = pan.current.t - (e.clientY - pan.current.y);
+  };
+  const endPan = () => { pan.current = null; setPanning(false); };
+
+  const selected = selectedId ? all.find(c => c.id === selectedId) : null;
+  const pickBookmark = (id) => {
+    if (!visibleSet.has(id)) setRevset("all");
+    setSelectedId(id);
+    pendingScroll.current = id;
+    if (visibleSet.has(id)) scrollToNode(id);
+  };
+
+  const focus = useMemo(() => {
+    if (!t.hoverFocus || !hoverId || !L.N.get(hoverId)) return null;
+    const s = new Set([hoverId]);
+    const walk = (key) => { const st = [hoverId]; while (st.length) { const n = L.N.get(st.pop()); (key === "up" ? n.parents.map(p => p.id) : n.children).forEach(x => { if (!s.has(x)) { s.add(x); st.push(x); } }); } };
+    walk("up"); walk("down");
+    return s;
+  }, [L, hoverId, t.hoverFocus]);
+  const edgeCls = (e) => {
+    const hl = ancestors.has(e.from) && ancestors.has(e.to);
+    const hov = focus ? focus.has(e.from) && focus.has(e.to) : hoverId && (e.from === hoverId || e.to === hoverId);
+    return { hl, hov, dim: !!focus && !hov };
+  };
+  const bridges = t.crossings !== "plain";
+  const sortedEdges = L.edges.map((e, i) => ({ ...e, i, ...edgeCls(e) })).sort((a, b) => (a.hl - b.hl) || (a.hov - b.hov));
+
+  return (
+    <div className="gws">
+      <GraphToolbar revset={revset} setRevset={setRevset} layout={layout} setLayout={setLayout} detailed={detailed} setDetailed={setDetailed}
+        cardW={cardW} setCardW={setCardW} shown={L.shown} total={L.total}
+        onLocate={() => scrollToNode(wcId)}/>
+      <div className="gbody">
+        {leftPanel !== "history" && (
+          <div className="gleft">
+            {leftPanel === "branches"
+              ? <window.SidePanel title="Bookmarks" icon="branch" onClose={onCloseLeft}><BookmarkList commits={all} visibleSet={visibleSet} onPick={pickBookmark}/></window.SidePanel>
+              : <window.LeftPanel kind={leftPanel} onClose={onCloseLeft}/>}
+          </div>
+        )}
+        <div className={"gscroll " + (panning ? "panning" : "")} ref={scrollRef}
+          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endPan} onPointerCancel={endPan}
+          data-screen-label="Graph">
+          <div className="gplane" style={{ width: L.width, height: L.height }}>
+            {L.buckets.length > 0 && (
+              <div className="gtime" style={{ height: L.height, width: G.gutter }}>
+                {L.buckets.filter(b => b.label).map(b => (
+                  <div key={b.start} className="gtime-label" style={{ top: b.y }}>{b.label}</div>
+                ))}
+              </div>
+            )}
+            <svg className="gedges" width={L.width} height={L.height}>
+              {L.buckets.filter(b => b.guide != null).map(b => (
+                <line key={"g_" + b.start} x1={G.gutter} x2={L.width} y1={b.guide} y2={b.guide} className="gguide"/>
+              ))}
+              {bridges && (
+                <defs>
+                  {L.edges.map((e, i) => e.gaps.length > 0 && (
+                    <mask key={i} id={"gm" + i} maskUnits="userSpaceOnUse" x="0" y="0" width={L.width} height={L.height}>
+                      <rect x="0" y="0" width={L.width} height={L.height} fill="white"></rect>
+                      {e.gaps.map((g, k) => <rect key={k} x={g.x - 6} y={g.y - 5} width="12" height="10" fill="black"></rect>)}
+                    </mask>
+                  ))}
+                </defs>
+              )}
+              {sortedEdges.map(e => (
+                <path key={e.from + ">" + e.to} d={e.d} mask={bridges && e.gaps.length ? `url(#gm${e.i})` : undefined}
+                  className={"gedge " + (e.dashed ? "dashed " : "") + (e.hov ? "hov " : "") + (e.hl ? "hl " : "") + (e.dim ? "dim" : "")}/>
+              ))}
+              {L.nodes.filter(n => n.elided).map(n => (
+                <path key={"el_" + n.id} d={`M${n.cx},${n.y + H} L${n.cx},${n.y + H + G.elide - 6}`} className={"gedge dashed " + (ancestors.has(n.id) ? "hl" : "")}/>
+              ))}
+            </svg>
+            {L.nodes.filter(n => n.elided).map(n => (
+              <div key={"elt_" + n.id} className="gelide" style={{ left: n.cx + 10, top: n.y + H + G.elide - 24 }}>~ {n.elided} elided</div>
+            ))}
+            {L.nodes.map(n => (
+              <GraphCard key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"}
+                isSel={selectedId === n.id} isWC={wcId === n.id} isHover={hoverId === n.id} dim={!!focus && !focus.has(n.id)}
+                onClick={() => onCardClick(n.id)} onDoubleClick={() => onCardDbl(n.id)} onHover={setHoverId}/>
+            ))}
+          </div>
+        </div>
+        {selected && (
+          <GraphDetail key={selected.id} commit={selected} isWC={wcId === selected.id}
+            editMeta={editMeta} setEditMeta={setEditMeta}
+            onClose={() => setSelectedId(null)} onEdit={() => setWcId(selected.id)}
+            t={t} setTweak={setTweak}/>
+        )}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { GraphWorkspace, computeLayout, shortBookmark });
+})();

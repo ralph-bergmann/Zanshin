@@ -8,7 +8,11 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "system",
   "diffMode": "inline",
   "density": "compact",
-  "showFiles": true
+  "showFiles": true,
+  "bookmarkLabels": "legend",
+  "laneOrder": "optimized",
+  "crossings": "bridge",
+  "hoverFocus": true
 }/*EDITMODE-END*/;
 
 // ============================================================
@@ -308,7 +312,7 @@ function PlaceholderFlyout({ title, onClose }) {
 // ============================================================
 function NavRail({ activePanel, onSelectPanel, onOpenHome, homeOpen, activeProjectName }) {
   const items = [
-    { id: "history",    label: "History",       icon: "history" },
+    { id: "history",    label: "Log",           icon: "history" },
     { id: "branches",   label: "Branches",      icon: "branch" },
     { id: "workstream", label: "Workstreams",   icon: "workstream" },
     { id: "reviews",    label: "Reviews",       icon: "reviews" },
@@ -957,7 +961,6 @@ function StatusBar({ openCount }) {
         <span className="status-item"><strong>@</strong> {current?.name}</span>
         <span className="status-item"><span className="status-dot ok"/>repo clean</span>
         <span className="status-item">142 ops</span>
-        <span className="status-item">{`${openCount} column${openCount === 1 ? "" : "s"} open`}</span>
       </div>
       <div className="status-right">
         <span className="status-item">jj 0.24.0</span>
@@ -2478,114 +2481,7 @@ function App() {
           activeProjectName={activeProjectNode?.name}
         />
         <main className="main-area">
-          <div className={"columns-wrap " + (dragActive ? "dragging-active" : "")} onDragEnd={onDragEnd}>
-            <ColWrap
-              width={columnWidths.__history__}
-              onResizeStart={(e) => startResize(e, "__history__")}
-            >
-              <LeftPanel
-                kind={leftPanel}
-                onClose={leftPanel !== "history" ? () => setLeftPanel("history") : null}
-                selected={selected}
-                checkedOut={checkedOut}
-                hoveredId={hoveredId}
-                onCommitClick={setSelected}
-                onCheckout={onCheckout}
-                onHover={setHoveredId}
-                openColumns={openBranches}
-                onToggleBranch={toggleColumn}
-              />
-            </ColWrap>
-
-            {/* Drop target: leftmost gap (before first cluster) */}
-            <SlotEdgeDrop
-              active={dragActive}
-              isOver={dropTarget?.kind === "slot-edge" && dropTarget.idx === 0}
-              onOver={(e) => onDropOver(e, { kind: "slot-edge", idx: 0 })}
-              onLeave={onDragLeaveAny}
-              onDrop={(e) => onDropTarget(e, { kind: "slot-edge", idx: 0 })}
-            />
-
-            {clusters.map((cluster, ci) => {
-              const isMerge = cluster.kind === "merge";
-              const groupColors = cluster.slots.map(s => {
-                const firstBranch = s.branches[0];
-                return window.BRANCH_COLORS[firstBranch] || "#3b82f6";
-              });
-              const containsSelected = selected && cluster.slots.some(s => s.branches.includes(selected.source));
-              const clusterContent = (
-                <React.Fragment key={"c_" + ci}>
-                  {cluster.slots.map((slot, si) => {
-                    const slotIdxInAll = slots.indexOf(slot);
-                    return (
-                      <Slot
-                        key={slot.id}
-                        slot={slot}
-                        slotIndexInAll={slotIdxInAll}
-                        width={columnWidths[slot.id] || 360}
-                        onResizeStart={(e) => startResize(e, slot.id)}
-                        selected={selected}
-                        checkedOut={checkedOut}
-                        editMeta={editMeta}
-                        hoveredId={hoveredId}
-                        onCommitClick={setSelected}
-                        onCheckout={onCheckout}
-                        onStartEditMeta={onStartEditMeta}
-                        onCancelEditMeta={onCancelEditMeta}
-                        onHover={setHoveredId}
-                        onCloseBranch={closeBranch}
-                        onSlotHeaderDragStart={onSlotHeaderDragStart}
-                        isSlotDragged={dragSlot === slot.id}
-                        onBranchDragStart={onBranchDragStart}
-                        onDropOver={onDropOver}
-                        onDropTarget={onDropTarget}
-                        dropTarget={dropTarget}
-                        dragActive={dragActive}
-                        diffMode={t.diffMode}
-                        onSetDiffMode={(v) => setTweak("diffMode", v)}
-                        showFiles={t.showFiles}
-                        onToggleMergeRight={() => toggleMergeWithRight(slot.id)}
-                        canMergeRight={slotIdxInAll < slots.length - 1}
-                        mergedRight={isMerge && si < cluster.slots.length - 1}
-                        onCloseDetail={() => setSelected(null)}
-                      />
-                    );
-                  })}
-                </React.Fragment>
-              );
-
-              return (
-                <React.Fragment key={"cluster_" + ci}>
-                  {isMerge ? (
-                    <div className="merge-cluster" data-screen-label={`Merge cluster ${ci}`}>
-                      <MergeBar
-                        slots={cluster.slots}
-                        colors={groupColors}
-                        onRemoveFromMerge={(slotId) => {
-                          setSlots(prev => prev.map(s => s.id === slotId ? { ...s, mergeGroup: null } : s));
-                        }}
-                        active={dragActive}
-                        isOver={dropTarget?.kind === "merge" && dropTarget.group === cluster.group}
-                        onOver={(e) => onDropOver(e, { kind: "merge", group: cluster.group })}
-                        onLeave={onDragLeaveAny}
-                        onDrop={(e) => onDropTarget(e, { kind: "merge", group: cluster.group })}
-                      />
-                      <div className="merge-cluster-body">{clusterContent}</div>
-                    </div>
-                  ) : clusterContent}
-
-                  {/* Drop target between clusters */}
-                  <SlotEdgeDrop
-                    active={dragActive}
-                    isOver={dropTarget?.kind === "slot-edge" && dropTarget.idx === slots.findIndex(s => s.id === cluster.slots[cluster.slots.length - 1].id) + 1}
-                    onOver={(e) => onDropOver(e, { kind: "slot-edge", idx: slots.findIndex(s => s.id === cluster.slots[cluster.slots.length - 1].id) + 1 })}
-                    onLeave={onDragLeaveAny}
-                    onDrop={(e) => onDropTarget(e, { kind: "slot-edge", idx: slots.findIndex(s => s.id === cluster.slots[cluster.slots.length - 1].id) + 1 })}
-                  />
-                </React.Fragment>
-              );
-            })}
-          </div>
+          <GraphWorkspace t={t} setTweak={setTweak} leftPanel={leftPanel} onCloseLeft={() => setLeftPanel("history")}/>
         </main>
       </div>
       <StatusBar openCount={slots.length}/>
@@ -2622,6 +2518,17 @@ function App() {
             { value: "comfy",    label: "Comfy" },
           ]}
         />
+        <TweakSection label="Graph"/>
+        <TweakRadio
+          label="Bookmark labels" value={t.bookmarkLabels}
+          onChange={v => setTweak("bookmarkLabels", v)}
+          options={[{ value: "legend", label: "Always" }, { value: "hover", label: "On hover" }]}
+        />
+        <TweakRadio label="Lane order" value={t.laneOrder} onChange={v => setTweak("laneOrder", v)}
+          options={[{ value: "optimized", label: "Min. crossings" }, { value: "greedy", label: "Greedy" }]}/>
+        <TweakRadio label="Crossings" value={t.crossings} onChange={v => setTweak("crossings", v)}
+          options={[{ value: "bridge", label: "Bridge gap" }, { value: "plain", label: "Plain" }]}/>
+        <TweakToggle label="Hover: focus path" value={t.hoverFocus} onChange={v => setTweak("hoverFocus", v)}/>
         <TweakSection label="Diff"/>
         <TweakRadio
           label="Default mode" value={t.diffMode}
@@ -2645,4 +2552,5 @@ function App() {
   );
 }
 
+Object.assign(window, { Icon, CommitDetail, EditPanel, SidePanel, LeftPanel });
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
