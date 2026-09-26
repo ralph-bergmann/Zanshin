@@ -545,7 +545,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 **Product decisions 2026-09-27** (Ralph, console session, after using the spike viewer on a real 1.4k-commit repo; details in the Epic 10 header below):
 - **Layout modes:** Free is the default, Compact the only other mode. Time and Time+gaps are dropped, so the experiment above is decided: free y. Free keeps the day axis in the gutter. Every default layout therefore needs every timestamp.
 - **Lane order:** `compact` is the default, greedy the alternative. `optimized` (the design's "Min. crossings", its default) is dropped.
-- **Intended deviations from the design:** crossing gaps are always on (no Plain, no toggle); content fades as it scrolls under the gutter; the current date stays pinned in the gutter; every edge leaves a card's top at the centre, branch-offs included.
+- **Intended deviations from the design:** crossing gaps are always on (no Plain, no toggle); content fades as it scrolls under the gutter; the current date stays pinned in the gutter; every edge leaves a card's top at the centre, branch-offs included; a commit found by go-to-change pulses (added 2026-09-27, 10.6 item 12).
 - **Label language:** the localisable labels stay for now, English by default as in the design. Whether the app is English-only or translated is open.
 - 10.13's outcome is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph.)*
 
@@ -6663,7 +6663,8 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 >    - (a) crossing gaps (line hops) are the only option: always on, no Plain, no toggle (10.4 items 4 and 11);
 >    - (b) content fades as it scrolls under the sticky gutter (10.2 item 2). The gradient is the design's own Time gutter (GC:57); it now lives in Free's day gutter, which the design does not have;
 >    - (c) the current date is sticky: the day at the viewport's top stays pinned in the gutter until the next day's label pushes it out (10.2 item 9);
->    - (d) every edge leaves a card's top at the centre (item 5).
+>    - (d) every edge leaves a card's top at the centre (item 5);
+>    - (e) a commit found by go-to-change pulses: a blue ring that expands and fades, three times (added 2026-09-27; 10.6 item 12). The design has no such animation.
 > 5. **Edge exits** (recorded only; the spike viewer is not updated). Every edge already enters its child from below at the centre (Ralph noticed it at merge commits), and straight edges and merges already leave the parent's top at the centre. Only branch-offs leave at ±0.28·W, so edges often leave off-centre. Every edge now leaves the top at the centre too. That changes the painter (10.4 item 1) and SPEC §4.5's geometry text; route classes and every layout output stay unchanged (4.11). 10.4 item 1 lists the consequences; prototype defect 8 disappears.
 > 6. **10.13's outcome** is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph, who can reopen it.)* Still open: Free's constants and buses behind cards (4.11 open question 4), the source of Free's day buckets (4.11 open question 9), the minimap's design (10.16), and the label language. The port scope is decided: only these modes and orders (Ralph: "the rest can go").
 
@@ -7621,6 +7622,16 @@ It designs no keyboard navigation, no context menu and no go-to-change. Research
       Here, the frame after a jump builds at most the visible cards plus the cache extent, and stays within one frame at 100k.
     - **Finding the target.** A full commit id or change id resolves through 4.12's lookups (4.12 item 6 names go-to-change as a consumer), and through the recording's keys until 10.12. A prefix, a bookmark or a revset resolves as the CLI resolves it, with jj's prefix semantics and its refusal of an ambiguous prefix: a backend path (deferred-work). So does a description search, because descriptions are lazy content (10.11). The viewer's linear scan over the ids and first description lines in its bundle took 0.3 ms on the real repo and at most 2.7 ms on synth-100k (ids only); these are viewer numbers, not a product path.
 
+12. **Found-commit pulse** *(decided 2026-09-27, Ralph: the "I am the commit you searched for" animation from the spike viewer ships in the app; an intended deviation from the design, which has no such animation)*. When go-to-change lands on its target, the target card pulses exactly as in the viewer (`spikes/graph-layout-ab/viewer/viewer.css:113-118`, `viewer.js` `jumpTo`):
+    - **Shape:** an accent ring (#3B82F6, the selection blue) that grows from 2 px to 22 px beyond the card's border while fading from 80 % to 0 % opacity; the card's own 2 px accent ring stays through the whole pulse.
+    - **Timing:** three pulses of 650 ms each, ease-out, then idle. A new go-to-change onto the same card restarts the pulse; a jump to another card ends the old pulse and starts the new one.
+    - **Z-order:** while pulsing, the card sits above every other card (the viewer's z-index 7, above @ = 4, selection = 5 and hover = 6; 10.1 item 11's z-order). The ring reaches 22 px beyond the card, more than 10.3's overhang, so it is painted by 10.1's overlay hook at the card's rect (above all cards), never clipped by the card's own box.
+    - **Afterwards** the card keeps the selection ring (the viewer selects its target; whether the product selects it too stays design question (d)).
+    - **Rebuild discipline:** paint-only. The pulse runs on one ticker driven by a per-key Listenable (10.3 item 7); no other card builds or repaints, and the viewport repaints only the overlay layer.
+    - **Reduced motion (recommended):** with the platform's reduce-motion setting on (`MediaQuery.disableAnimations`, macOS "Reduce motion"), there is no pulse, only the selection ring, as the splash card's reduce-motion rule already does.
+    - **Scope:** go-to-change only, as in the viewer; whether other reveals pulse too is design question (d).
+    - **Witnesses:** a go-to-change starts exactly one pulse on its target (3 × 650 ms, then idle; `pumpAndSettle` completes); other cards build 0 times and do not repaint; a second go-to-change onto the same card restarts it; with `disableAnimations` no animation runs; the ring is visible above an overlapping neighbour (`paints` matcher on the overlay layer).
+
 **Non-goals.**
 - Multi-selection (design question (f)).
 - Drag (10.10).
@@ -7649,9 +7660,10 @@ NEEDS DESIGN:
 - (d) Go-to-change: a field, or a ⌘K entry? At 100k, one scrollbar pixel spans about 170 rows; 10.16's minimap is the other navigation for big repos. The spike viewer's version is a candidate:
   - ⌘F focuses a box that matches a change-id or commit-id prefix, else a description substring, and lists up to 50 hits with the total count;
   - Enter or a click jumps, Enter again and Shift+Enter walk the hits, ↑/↓ move in the list, Esc closes the list and keeps the query, and a second Esc leaves the box;
-  - the target is selected and pulses three times.
+  - the target is selected and pulses three times *(the pulse is decided 2026-09-27: item 12)*.
 
   Open with it:
+  - Do other reveals pulse too: locate @, a bookmark pick (10.14), a minimap click (10.16)? The viewer pulses only go-to-change targets.
   - Does the jump animate? Recommended: instant (item 11). That breaks with "locate @ centres with animation" (FINAL above). Should locate @ also jump instantly when @ is far away (more than a few viewports), where an animation builds every card on the way?
   - Does go-to-change select its target (the viewer does), or only reveal it?
   - jj's prefix semantics (the CLI refuses an ambiguous prefix); whether the input is a revset, as in `jj log -r`; whether a hit outside the shown revset switches to `all()`, as 10.14's pick does; where a description search runs (a backend call, deferred-work).
