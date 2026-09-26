@@ -74,12 +74,14 @@ class FakeBootWindowHost implements BootWindowHost {
 /// One fake-clock tick, for the timing tests' off-by-one edges.
 const _tick = Duration(milliseconds: 1);
 
-// The design grid the footer is asserted against; see `SPLASH-SPEC.md` § 1.
+// The design grid the footer is asserted against: the 620 x 400 card of
+// a50688f ("update Splash Screen"), which superseded `SPLASH-SPEC.md` § 1's
+// 560 x 320 one.
 const double _cardPadding = 36;
-const double _statusRight = 524;
-const double _footerBaseline = 276;
+const double _statusRight = 584;
+const double _footerBaseline = 370;
 const double _dotGap = 11;
-const double _dotY = 272;
+const double _dotY = 366;
 const _litDot = Color(0xFFF4CF80);
 const _divider = Color(0x14FFFFFF);
 
@@ -499,7 +501,7 @@ void main() {
     expect(versionSpan.style, splashVersionStyle);
     expect(versionSpan.style?.color, const Color(0xFFE7DCC4));
     expect(versionSpan.style?.fontFamily, 'JetBrainsMono');
-    expect(versionSpan.style?.fontSize, 12);
+    expect(versionSpan.style?.fontSize, 13);
     final List<InlineSpan> parts = versionSpan.children!;
     expect((parts[0] as TextSpan).text, '2026.9.1');
     expect((parts[0] as TextSpan).style, isNull);
