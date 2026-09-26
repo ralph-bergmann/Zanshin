@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- the only off-host requests are the design's web fonts; send them no referrer -->
+  <meta name="referrer" content="no-referrer"/>
+  <title>Graph layout viewer</title>
+  <!-- Throwaway spike viewer: compares the layout modes of spikes/graph-layout-ab on real data.
+       Serve this directory (python3 -m http.server …); the bundles in data/ are gitignored. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="viewer.css"/>
+</head>
+<body>
+  <div class="app">
+    <div class="gtb" role="toolbar" aria-label="Graph view">
+      <div class="gtb-group">
+        <span class="gtb-prompt">$</span>
+        <select id="dataset" class="gtb-select" aria-label="Dataset"></select>
+      </div>
+      <div class="gtb-sep"></div>
+      <div class="gtb-group">
+        <span class="gtb-label">Layout</span>
+        <div class="gtb-seg" id="mode" role="radiogroup" aria-label="Layout">
+          <button data-v="compact" title="Rows = dependency depth">Compact</button>
+          <button data-v="time" title="Rows = rounded commit time (buckets)">Time</button>
+          <button data-v="free" title="y = compressed commit time, each child ≥ 1 pitch above its parents (SPEC free)">Free</button>
+          <button data-v="timegaps" title="Time rows; the gap between two buckets grows with the time between them (painter-side prefix sums)">Time+gaps</button>
+        </div>
+      </div>
+      <div class="gtb-group">
+        <span class="gtb-label">Lane order</span>
+        <div class="gtb-seg" id="order" role="radiogroup" aria-label="Lane order">
+          <button data-v="greedy" title="Greedy lane packing, lane = column (SPEC §4.3)">Greedy</button>
+          <button data-v="optimized" title="Whole greedy lanes permuted to cut crossings (SPEC §4.6)">Optimized</button>
+          <button data-v="compact" title="Greedy packing, then column exchanges inside time windows: fewer crossings, narrower (SPEC §4.7, Dart only)">Compact</button>
+        </div>
+      </div>
+      <div class="gtb-sep"></div>
+      <label class="gtb-group">
+        <button role="switch" id="detailed" class="gtb-switch" aria-label="Detailed cards"></button>
+        <span class="gtb-label" id="detailedLabel">Detailed cards</span>
+      </label>
+      <div class="gtb-sep"></div>
+      <div class="gtb-group">
+        <span class="gtb-label">Card width</span>
+        <input type="range" id="cardW" class="gtb-range" min="160" max="400" step="10" aria-label="Card width"/>
+        <span class="gtb-val" id="cardWVal"></span>
+      </div>
+      <div class="gtb-sep"></div>
+      <label class="gtb-group" title="Painter-side crossing gaps, computed only for the edges in view">
+        <button role="switch" id="gaps" class="gtb-switch" aria-label="Crossing gaps"></button>
+        <span class="gtb-label">Crossing gaps</span>
+      </label>
+      <div class="gtb-sep"></div>
+      <label class="gtb-group" title="Whole graph, rendered once per layout; click or drag to jump">
+        <button role="switch" id="minimap" class="gtb-switch" aria-label="Minimap"></button>
+        <span class="gtb-label">Minimap</span>
+      </label>
+      <div class="gtb-sep"></div>
+      <div class="gtb-group" title="Jump test: N random jumps (?jumptest=N, default 100). Scroll test: frames with and without the minimap (?scrolltest=N, default 240).">
+        <span class="gtb-label">Test</span>
+        <div class="gtb-seg">
+          <button id="jumptest">Jumps</button>
+          <button id="scrolltest">Scroll</button>
+        </div>
+      </div>
+      <div class="gtb-right">
+        <div class="gsearch">
+          <input id="search" type="search" placeholder="Go to commit…  ⌘F" spellcheck="false" autocomplete="off"
+                 aria-label="Go to commit: change id or commit id prefix, or description text" aria-controls="searchList"/>
+          <div class="gsearch-list" id="searchList" role="listbox" hidden></div>
+        </div>
+        <button class="gtb-locate" id="locate" title="Scroll to working copy"><b>@</b>Working copy</button>
+      </div>
+    </div>
+    <div class="gview" id="view">
+      <canvas id="canvas"></canvas>
+      <div class="gscroll" id="scroll">
+        <div class="gplane" id="plane">
+          <div class="gtime" id="gutter"></div>
+          <div class="gcards" id="cards"></div>
+        </div>
+      </div>
+      <div class="gmm" id="mm" hidden>
+        <canvas id="mmCanvas"></canvas>
+        <div class="gmm-band" id="mmBand"></div>
+        <div class="gmm-view" id="mmView"></div>
+      </div>
+      <div class="gmsg" id="msg">Loading…</div>
+    </div>
+    <div class="ginfo" id="info"></div>
+  </div>
+  <script src="viewer.js"></script>
+</body>
+</html>

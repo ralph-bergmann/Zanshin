@@ -1,0 +1,30 @@
+# Input generator for the graph-layout A/B spike — intentionally DETACHED from the parent
+# Zanshin workspace, like `spikes/ffi-payload-bench`. The empty [workspace] table makes this
+# its own workspace root, so the parent's `crates/*` glob, `cargo test --workspace`, clippy,
+# deny and the coverage gate never see it.
+#
+# It is a separate crate from `../rust` (the layout implementation) on purpose: the jj dumper
+# needs jj-lib (via zanshin-jj), and SPEC.md §10 keeps jj-lib out of the layout crate's
+# dependency graph. Cargo.lock was seeded from the root Cargo.lock, so jj-lib's transitive
+# versions match the product build.
+[workspace]
+
+[package]
+name = "graph-layout-inputs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# WHY path deps on workspace members: the dumper runs the product's own `Repo::walk_graph`
+# (SPEC.md §2 "exactly as zanshin-jj's walk_graph runs it") and extracts the committed
+# fixtures the way the test suites do. Both inherit their versions from the root workspace.
+zanshin-jj = { path = "../../../crates/zanshin-jj" }
+test-helpers = { path = "../../../crates/test-helpers" }
+tempfile = "3"
+serde_json = { version = "1", features = ["preserve_order"] } # manifest.json keeps "file" first
+chrono = { version = "=0.4.45", features = ["clock"] } # `dump`: the local UTC offset at now_ms (SPEC.md §2)
+
+[[bin]]
+name = "gen-inputs"
+path = "src/main.rs"

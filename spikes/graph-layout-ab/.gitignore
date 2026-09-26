@@ -1,0 +1,10 @@
+# Generated / build artifacts for this detached spike.
+/inputs/
+/outputs/
+target/
+.dart_tool/
+pubspec.lock
+# `dart compile exe` output
+/dart/build/
+# viewer bundles: may hold customer-derived data (descriptions, authors, bookmarks); never commit
+/viewer/data/

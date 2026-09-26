@@ -1,0 +1,8 @@
+name: graph_layout
+description: Graph-layout A/B spike, pure-Dart implementation of ../SPEC.md.
+publish_to: none
+
+# Standalone package: NOT a member of the root Dart workspace (no `resolution: workspace`)
+# and no dependencies beyond the SDK (SPEC.md §10).
+environment:
+  sdk: ^3.12.0
