@@ -7629,7 +7629,7 @@ It designs no keyboard navigation, no context menu and no go-to-change. Research
     - **Afterwards** the card keeps the selection ring (the viewer selects its target; whether the product selects it too stays design question (d)).
     - **Rebuild discipline:** paint-only. The pulse runs on one ticker driven by a per-key Listenable (10.3 item 7); no other card builds or repaints, and the viewport repaints only the overlay layer.
     - **Reduced motion (recommended):** with the platform's reduce-motion setting on (`MediaQuery.disableAnimations`, macOS "Reduce motion"), there is no pulse, only the selection ring, as the splash card's reduce-motion rule already does.
-    - **Scope:** go-to-change only, as in the viewer; whether other reveals pulse too is design question (d).
+    - **Scope:** go-to-change only, as in the viewer *(decided 2026-09-27, Ralph: "not for now" — locate @, a bookmark pick and a minimap click do not pulse; another use case can add it later)*.
     - **Witnesses:** a go-to-change starts exactly one pulse on its target (3 × 650 ms, then idle; `pumpAndSettle` completes); other cards build 0 times and do not repaint; a second go-to-change onto the same card restarts it; with `disableAnimations` no animation runs; the ring is visible above an overlapping neighbour (`paints` matcher on the overlay layer).
 
 **Non-goals.**
@@ -7663,7 +7663,6 @@ NEEDS DESIGN:
   - the target is selected and pulses three times *(the pulse is decided 2026-09-27: item 12)*.
 
   Open with it:
-  - Do other reveals pulse too: locate @, a bookmark pick (10.14), a minimap click (10.16)? The viewer pulses only go-to-change targets.
   - Does the jump animate? Recommended: instant (item 11). That breaks with "locate @ centres with animation" (FINAL above). Should locate @ also jump instantly when @ is far away (more than a few viewports), where an animation builds every card on the way?
   - Does go-to-change select its target (the viewer does), or only reveal it?
   - jj's prefix semantics (the CLI refuses an ambiguous prefix); whether the input is a revset, as in `jj log -r`; whether a hit outside the shown revset switches to `all()`, as 10.14's pick does; where a description search runs (a backend call, deferred-work).
