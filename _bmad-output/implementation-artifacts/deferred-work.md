@@ -774,3 +774,12 @@ _Ralph re-downloaded the Claude Design export (`a399daf`). It adds a callout bes
   - **Follow-up:** the story that first draws one copies it into `app/assets/icons/svg/` and the `ZI` mapping (`app/lib/src/shared/widgets/zanshin_icon.dart`); Ralph adds it to the icon font.
 - **`rive/` is back in the export.** None; a record. The re-download restores `rive/` (the Nami wave SVG, its README and `nami_wave.dart`), which `57f259c`'s re-download had dropped. It belongs to the splash, not the graph.
 - **Old design citations.** None; a record. GV and GC citations written before 2026-09-28 refer to `57f259c`; from GV:225 on they no longer match the current file. The Epic 10 header says so; the stories are not rewritten.
+
+## Surfaced 2026-09-28 while testing AI titles for commit stacks (console session, Ralph)
+
+_Ralph asked whether an AI could name what a collapsed stack contains, instead of 10.17's newest subject. Claude compared the options (only Apple's on-device model fits PRD §5.3) and ran a spike on a real 1.4k-commit client repo (`spikes/stack-titles/`). Ralph put the idea in the backlog as Story 10.18 without deciding; he wants to think it over. The items below fall outside that story:_
+
+- **Stacks barely occur in the default view.** Low; a record for 10.17's priority and the default of 10.7's "Group stacks" switch.
+  - On the tested repo, the default `jj log` revset (12 commits) formed no stack. All 103 came from `all()`, and all were immutable. Runs of mutable ancestors of @ start expanded anyway (4.13 item 2).
+  - There, stacks are a history-browsing feature. The spike computes the default view's elided edges without jj's transitive pruning, so its count is a lower bound.
+- **The spike's reports hold client data.** None; a record. A report lists the tested repo's subjects, change ids and author names. `spikes/stack-titles/.gitignore` keeps `out/` and `build/` out of Git; never commit a report.

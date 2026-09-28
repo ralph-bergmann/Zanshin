@@ -581,6 +581,7 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.12 follows Stories 4.10, 4.11 and 4.12, and brings real data.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run`, its design question (f)) it needs no backend story.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the spike's stack recordings from 4.13's spike step. Real stacks come with 10.12 plus 4.13.
+- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
 
 ---
@@ -7000,6 +7001,7 @@ Added with the design update of 2026-09-28 (cited at `a399daf`):
 - 10.12 (real data) follows Stories 4.10, 4.11 and 4.12.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run` from the layout arrays, its design question (f)) it needs no backend story and runs on recorded layouts.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the stack recordings of 4.13's spike step (its item 6). 10.7's "Group stacks" switch can land with it. Real stacks come with 10.12 plus 4.13.
+- 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
 - 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
 
 **What changed in the re-plan, and why** (story numbers kept where the topic still fits):
@@ -8595,5 +8597,38 @@ NEEDS DESIGN:
 - The counter counts collapsed members as shown.
 
 **Related:** 4.13 (the engine half), 10.1 (accessors, recordings, anchor), 10.3 (card pattern, icons), 10.5 (request, anchor, selection), 10.6 (hover-callout controller, focus path), 10.7 (the switch), 10.10 (drag), 10.11 (content), 10.12 (real data), 10.16 (minimap).
+
+---
+
+### Story 10.18: AI titles for commit stacks — a collapsed stack named by its contents — *IDEA, NOT DECIDED* [UI]
+*(Added 2026-09-28, Ralph — console session. Backlog only: Ralph wants to think it over before anything is refined, so there are no ACs. Claude compared the options and ran a spike, `spikes/stack-titles/`; the numbers below come from it.)*
+
+**Motivation.** 10.17's stack card shows the newest member's subject (GV:255, :545 at `a399daf`). A branch's tip is never a member, because a candidate needs exactly one child (4.13 item 1). The label is therefore the subject right below the next visible card, often housekeeping such as "fix tests" or "format code". An anonymous branch has no bookmark, so its subjects are its only name. Ralph asked whether an AI could name what a stack contains.
+
+**Engine.** Only Apple's on-device model (Foundation Models) fits.
+- It is free and offline and needs no download and no API key. It needs macOS 26 or later on Apple silicon, with Apple Intelligence turned on. Its context is 4,096 tokens on macOS 26 and 8,192 on macOS 27.
+- Zanshin's deployment target is macOS 12.0, so every other Mac needs the fallback.
+- The framework is Swift-only: a small Swift bridge in the macOS runner, not the worker and not the FFI. The pub.dev wrappers are all 0.x.
+- Ruled out: cloud models (Claude, Gemini; macOS 27's `LanguageModel` protocol can plug them in) and Apple's Private Cloud Compute, because the commit messages would leave the Mac (PRD §5.3). A bundled model (llama.cpp or Gemma via pub.dev) costs 0.5–2 GB of download and RAM, out of proportion for one label.
+
+**Spike 2026-09-28.** 4.13's run rule over a real 1.4k-commit client repo, one on-device call per stack for a title and a summary; M4 Pro, macOS 27.
+- **The default `jj log` view (12 commits) formed no stack.** All 103 stacks came from `all()`: all immutable, 2 to 119 members, median 6.
+- **Speed:** median 1.06 s per stack, p90 1.81 s, max 3.74 s; cold start 1.0 s; 132 s for all 103. No errors, no guardrail refusals.
+- **Quality** (Claude reviewed all 103): the AI title was clearly more informative than the newest subject in about half the stacks, mostly those with 5 or more members. There it often surfaced the feature commit at the bottom of the run. The rest were about equal. One title was misleading: it named the single feature commit of a stack whose other 11 commits were tests and refactorings. No title invented a fact. "At most 6 words" was often ignored, and the casing varied.
+- **The summaries add little.** They mostly re-list the subjects and took most of the time, and the popover already lists the members.
+- **A label without AI** (the most frequent ticket keys or conventional-commit scopes) mostly showed Jira keys in that repo. It names the ticket, not the content.
+
+**Claude's recommendation, if built.**
+- A title only, no summary, and only for stacks of about 4–5 members or more.
+- Generated for visible collapsed stacks only, lazily and one request at a time, after 10.11 has loaded the members' content.
+- Cached by a hash of the members' descriptions, so a rebase keeps the title.
+- Marked as generated (✦) and truncated and normalised by the view. The newest subject stays the fallback and goes into the semantics label.
+- Opt-in, through a switch next to "Group stacks" (10.7).
+
+**Open (Ralph).** Whether to build it at all; the card label or only the popover's head; opt-in or on by default; the minimum stack size; an own Swift bridge or a pub.dev wrapper.
+
+**Depends on.** 10.17 (the card and its popover) and 10.11 (the members' content).
+
+**Related:** 10.17, 10.11, 10.7, 4.13; PRD §5.3; `spikes/stack-titles/README.md`.
 
 ---

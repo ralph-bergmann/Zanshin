@@ -1,0 +1,4 @@
+# The compiled program.
+/build/
+# Reports: they hold the tested repo's subjects, change ids and author names; never commit.
+/out/
