@@ -224,6 +224,45 @@ function computeLayout(all, revset, W, H, mode = "compact", opts = {}) {
   };
 }
 
+// Linear runs (1 parent, 1 child, no bookmark, not @) of ≥2 changes collapse into one synthetic "stack" commit.
+function groupStacks(all, revset, expanded) {
+  const vis = revset === "all" ? all : all.filter(c => c.inDefault);
+  const V = new Set(vis.map(c => c.id)), byId = new Map(all.map(c => [c.id, c]));
+  const kids = new Map(vis.map(c => [c.id, []]));
+  vis.forEach(c => c.parents.forEach(p => { if (V.has(p)) kids.get(p).push(c.id); }));
+  const ok = c => c && !c.isRoot && !c.isWorkingCopy && !c.bookmarks.length && c.parents.length === 1 && V.has(c.parents[0]) && kids.get(c.id).length === 1;
+  const nextOf = c => { const k = byId.get(kids.get(c.id)[0]); return ok(k) && k.immutable === c.immutable ? k : null; };
+  const runs = [], memberOf = new Map();
+  vis.forEach(c => {
+    if (!ok(c)) return;
+    const p = byId.get(c.parents[0]);
+    if (ok(p) && nextOf(p) === c) return;
+    const m = [c]; let x = c;
+    while ((x = nextOf(x))) m.push(x);
+    if (m.length < 2) return;
+    const id = "grp:" + c.id, exp = expanded.includes(id);
+    runs.push({ id, members: m, expanded: exp });
+    if (!exp) m.forEach(mm => memberOf.set(mm.id, id));
+  });
+  if (!memberOf.size) return { list: all, runs };
+  const out = [], done = new Set(), remap = pid => memberOf.get(pid) || pid;
+  all.forEach(c => {
+    const gid = memberOf.get(c.id);
+    if (gid) {
+      if (done.has(gid)) return; done.add(gid);
+      const m = runs.find(r => r.id === gid).members, top = m[m.length - 1];
+      const authors = [...new Set(m.map(x => x.author.split(" ")[0]))];
+      out.push({ id: gid, isGroup: true, members: m, parents: [m[0].parents[0]], bookmarks: [], subject: top.subject,
+        author: authors.join(", "), date: m[0].date === top.date ? top.date : m[0].date + " – " + top.date, ts: top.ts, priority: top.priority,
+        immutable: m[0].immutable, inDefault: m.every(x => x.inDefault), hasConflict: m.some(x => x.hasConflict), isEmpty: false, isMerge: false,
+        stats: m.reduce((s, x) => ({ added: s.added + x.stats.added, removed: s.removed + x.stats.removed }), { added: 0, removed: 0 }) });
+      return;
+    }
+    out.push(c.parents.some(p => memberOf.has(p)) ? { ...c, parents: [...new Set(c.parents.map(remap))] } : c);
+  });
+  return { list: out, runs };
+}
+
 function usePersist(key, init) {
   const [v, setV] = useState(() => {
     try { const s = localStorage.getItem(key); return s == null ? init : JSON.parse(s); } catch { return init; }
@@ -275,7 +314,7 @@ function RevsetSelect({ value, onChange }) {
   );
 }
 
-function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetailed, cardW, setCardW, shown, total, onLocate }) {
+function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetailed, stacks, setStacks, cardW, setCardW, shown, total, onLocate }) {
   const pct = ((cardW - 160) / (400 - 160)) * 100;
   return (
     <div className="gtb" role="toolbar" aria-label="Graph view">
@@ -292,6 +331,11 @@ function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetai
       <label className="gtb-group">
         <button role="switch" aria-checked={detailed} className={"gtb-switch " + (detailed ? "on" : "")} onClick={() => setDetailed(!detailed)}/>
         <span className="gtb-label">{detailed ? "Detailed cards" : "Compact cards"}</span>
+      </label>
+      <div className="gtb-sep"/>
+      <label className="gtb-group" title="Collapse linear runs of changes into one stack card">
+        <button role="switch" aria-checked={stacks} className={"gtb-switch " + (stacks ? "on" : "")} onClick={() => setStacks(!stacks)}/>
+        <span className="gtb-label">Group stacks</span>
       </label>
       <div className="gtb-sep"/>
       <div className="gtb-group">
@@ -391,7 +435,55 @@ function QuickActions({ actions = QUICK_ACTIONS }) {
 // ============================================================
 // CARD
 // ============================================================
-function GraphCard({ n, W, H, detailed, legend, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover }) {
+function fitPeek(el, needBelow) {
+  const sc = el.closest(".gscroll"); if (!sc) return;
+  const s = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+  el.classList.toggle("flip-up", s.bottom - r.bottom < needBelow && r.top - s.top > s.bottom - r.bottom);
+}
+function fitSide(el) {
+  const sc = el.closest(".gscroll"); if (!sc) return;
+  const s = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+  el.classList.toggle("anchor-bot", s.bottom - r.top < 260 && r.bottom - s.top > s.bottom - r.top);
+}
+function fitRight(el) {
+  const sc = el.closest(".gscroll"); if (!sc) return;
+  const s = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+  el.classList.toggle("flip-left", s.right - r.right < 370 && r.left - s.left > s.right - r.right);
+}
+
+function fileCounts(c) {
+  if (c.fileCounts) return c.fileCounts;
+  const f = c.stats.files || 0, tot = c.stats.added + c.stats.removed || 1;
+  const a = Math.min(f, Math.round(f * 0.35 * c.stats.added / tot)), d = f - a > 2 && c.stats.removed > c.stats.added * 0.6 ? 1 : 0;
+  return { a, m: f - a - d, d };
+}
+
+function CommitPeek({ c, hint }) {
+  const fc = fileCounts(c);
+  return (
+    <div className="gpeek-inner">
+      <div className="gpeek-subj">{c.subject}</div>
+      {c.description && <div className="gpeek-desc">{c.description}</div>}
+      <div className="gpeek-meta">
+        <span className="gcid"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)}</span>
+        {c.commitId && <span className="gpeek-dim">{c.commitId}</span>}
+        {c.author && <span>{c.author}</span>}
+        {c.date && <span className="gpeek-dim">{c.date}</span>}
+      </div>
+      {!c.isRoot && (c.stats.files > 0 ? (
+        <div className="gpeek-stats">
+          <span className="fa" title="files added">A {fc.a}</span>
+          <span className="fm" title="files modified">M {fc.m}</span>
+          <span className="fd" title="files deleted">D {fc.d}</span>
+          <span className="gpeek-lines"><span className="la">+{c.stats.added}</span><span className="lr">−{c.stats.removed}</span></span>
+        </div>
+      ) : <div className="gpeek-stats gpeek-dim">No file changes</div>)}
+      {hint && <div className="gstack-hint">{hint}</div>}
+    </div>
+  );
+}
+
+function GraphCard({ reveal, n, W, H, detailed, legend, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover }) {
   const c = n.c;
   const hasLegend = legend && c.bookmarks.length > 0;
   const cid = (
@@ -408,13 +500,15 @@ function GraphCard({ n, W, H, detailed, legend, isSel, isWC, isHover, dim, onCli
   return (
     <div
       className={"gcard " + (detailed ? "is-detailed " : "is-compact ") + (isSel ? "sel " : "") + (isWC ? "wc " : "") +
-        (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (dim ? "dim " : "")}
+        (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (dim ? "dim " : "") + (reveal ? "reveal " : "")}
       style={{ left: n.x, top: n.y, width: W, height: H }}
       onClick={onClick} onDoubleClick={onDoubleClick}
-      onMouseEnter={() => onHover(c.id)} onMouseLeave={() => onHover(null)}
-      title={isWC ? "Working copy (@)" : "Click: details · Double-click: jj edit"}
+      onMouseEnter={e => { fitRight(e.currentTarget); fitSide(e.currentTarget); onHover(c.id); }} onMouseLeave={() => onHover(null)}
       data-change={c.id}
     >
+      <div className="gpeek gpeek-side" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+        <CommitPeek c={c} hint={c.isRoot ? null : isWC ? "Working copy (@) · Click for details" : "Click: details · Double-click: jj edit"}/>
+      </div>
       {detailed ? <>
         <div className="gline">{subj}</div>
         <div className="gline gmeta">
@@ -435,6 +529,43 @@ function GraphCard({ n, W, H, detailed, legend, isSel, isWC, isHover, dim, onCli
       {!c.isRoot && <QuickActions/>}
       <button className="gadd gadd-top" title="New change on top (jj new)" aria-label="New change on top" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>{ADD_GLYPH}</button>
       {!c.isRoot && <button className="gadd gadd-bot" title="Insert new change before (jj new --insert-before)" aria-label="Insert new change before" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>{ADD_GLYPH}</button>}
+    </div>
+  );
+}
+
+function StackCard({ n, W, H, detailed, dim, onClick, onHover }) {
+  const c = n.c, m = c.members, a = m[0].id, b = m[m.length - 1].id;
+  const range = <span className="gcid"><b>{b.slice(0, 2)}</b>{b.slice(2, 5)}<span className="grange-sep">‥</span><b>{a.slice(0, 2)}</b>{a.slice(2, 5)}</span>;
+  const count = <span className="gstack-n" title={m.length + " changes"}>{m.length}</span>;
+  return (
+    <div className={"gcard gstack " + (detailed ? "is-detailed " : "is-compact ") + (c.immutable ? "immutable " : "") + (dim ? "dim " : "")}
+      style={{ left: n.x, top: n.y, width: W, height: H }} onClick={onClick}
+      onMouseEnter={e => { fitPeek(e.currentTarget, 60 + m.length * 34); onHover(c.id); }} onMouseLeave={() => onHover(null)} data-change={c.id}>
+      {detailed ? <>
+        <div className="gline">{count}<span className="gsubj">{c.subject}</span></div>
+        <div className="gline gmeta">
+          {range}
+          <span className="gmeta-t au">{c.author}</span>
+          <span className="gmeta-t">{c.date}</span>
+          {c.hasConflict && <span className="gflag conflict" title="contains conflict"><Ic name="conflict" size={12}/></span>}
+        </div>
+      </> : (
+        <div className="gline">{count}{range}<span className="gsubj">{c.subject}</span>
+          {c.hasConflict && <span className="gflag conflict"><Ic name="conflict" size={12}/></span>}</div>
+      )}
+      <div className="gstack-pop" onClick={e => e.stopPropagation()}>
+        <div className="gstack-pop-inner">
+          {m.slice().reverse().map(x => (
+            <div key={x.id} className="gstack-row" onMouseEnter={e => fitRight(e.currentTarget)}>
+              <span className="gcid"><b>{x.id.slice(0, 2)}</b>{x.id.slice(2, 6)}</span>
+              <span className="gstack-subj">{x.subject}</span>
+              <span className="gstack-date">{x.date}</span>
+              <div className="gpeek gpeek-right"><CommitPeek c={x}/></div>
+            </div>
+          ))}
+          <div className="gstack-hint">Click to expand {m.length} changes</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -505,6 +636,9 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   const [detailed, setDetailed] = usePersist("zanshin.graph.detailed", true);
   const [cardW, setCardW] = usePersist("zanshin.graph.cardW", 240);
   const [layout, setLayout] = usePersist("zanshin.graph.layout", "compact");
+  const [stacks, setStacks] = usePersist("zanshin.graph.stacks", true);
+  const [expanded, setExpanded] = usePersist("zanshin.graph.expanded", []);
+  const [revealId, setRevealId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [wcId, setWcId] = useState(() => (all.find(c => c.isWorkingCopy) || {}).id);
   const [hoverId, setHoverId] = useState(null);
@@ -514,7 +648,22 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   const clickT = useRef(null);
   const H = detailed ? G.hDetailed : G.hCompact;
   const optimize = t.laneOrder !== "greedy";
-  const L = useMemo(() => computeLayout(all, revset, cardW, H, layout, { optimize }), [all, revset, cardW, H, layout, optimize]);
+  const S = useMemo(() => stacks ? groupStacks(all, revset, expanded) : { list: all, runs: [] }, [all, revset, stacks, expanded]);
+  const L = useMemo(() => computeLayout(S.list, revset, cardW, H, layout, { optimize }), [S, revset, cardW, H, layout, optimize]);
+  const shownCount = L.nodes.reduce((s, n) => s + (n.c.members ? n.c.members.length : 1), 0);
+  const toggleStack = (gid) => {
+    const run = S.runs.find(r => r.id === gid); if (!run) return;
+    const m = run.members;
+    if (run.expanded) { setExpanded(expanded.filter(x => x !== gid)); pendingScroll.current = gid; setRevealId(null); }
+    else { setExpanded([...expanded, gid]); pendingScroll.current = m[Math.floor(m.length / 2)].id; setRevealId(gid); }
+    setHoverId(null);
+  };
+  const brackets = S.runs.filter(r => r.expanded && r.members.every(m => L.N.get(m.id))).map(r => {
+    const ns = r.members.map(m => L.N.get(m.id));
+    const top = Math.min(...ns.map(n => n.y)), bot = Math.max(...ns.map(n => n.y)) + H;
+    return { id: r.id, x: Math.min(...ns.map(n => n.x)) - 16, top: top + 6, h: bot - top - 12, n: r.members.length, members: new Set(r.members.map(m => m.id)) };
+  });
+  const revealSet = useMemo(() => { const r = S.runs.find(x => x.id === revealId); return new Set(r ? r.members.map(m => m.id) : []); }, [S, revealId]);
   const visibleSet = useMemo(() => new Set(L.nodes.map(n => n.id)), [L]);
 
   const ancestors = useMemo(() => {
@@ -561,7 +710,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   const pan = useRef(null);
   const [panning, setPanning] = useState(false);
   const onPointerDown = (e) => {
-    if (e.button !== 0 || e.target.closest(".gcard")) return;
+    if (e.button !== 0 || e.target.closest(".gcard, .gbracket-btn")) return;
     const el = scrollRef.current;
     pan.current = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
     el.setPointerCapture(e.pointerId);
@@ -601,7 +750,8 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   return (
     <div className="gws">
       <GraphToolbar revset={revset} setRevset={setRevset} layout={layout} setLayout={setLayout} detailed={detailed} setDetailed={setDetailed}
-        cardW={cardW} setCardW={setCardW} shown={L.shown} total={L.total}
+        stacks={stacks} setStacks={setStacks}
+        cardW={cardW} setCardW={setCardW} shown={shownCount} total={all.length}
         onLocate={() => scrollToNode(wcId)}/>
       <div className="gbody">
         {leftPanel !== "history" && (
@@ -647,8 +797,18 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
             {L.nodes.filter(n => n.elided).map(n => (
               <div key={"elt_" + n.id} className="gelide" style={{ left: n.cx + 10, top: n.y + H + G.elide - 24 }}>~ {n.elided} elided</div>
             ))}
-            {L.nodes.map(n => (
-              <GraphCard key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"}
+            {brackets.map(b => (
+              <div key={b.id} className={"gbracket " + (b.members.has(hoverId) ? "on" : "")} style={{ left: b.x, top: b.top, height: b.h }}>
+                <button className="gbracket-btn" onClick={() => toggleStack(b.id)} title={"Collapse " + b.n + " changes into a stack"} aria-label="Collapse stack">
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"><rect x="2" y="6.5" width="9" height="7.5" rx="1.5"/><path d="M5 4h8.5a.5.5 0 0 1 .5.5V11"/><path d="M8 1.5h7.5"/></svg>
+                </button>
+              </div>
+            ))}
+            {L.nodes.map(n => n.c.isGroup ? (
+              <StackCard key={n.id} n={n} W={cardW} H={H} detailed={detailed} dim={!!focus && !focus.has(n.id)}
+                onClick={() => toggleStack(n.id)} onHover={setHoverId}/>
+            ) : (
+              <GraphCard reveal={revealSet.has(n.id)} key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"}
                 isSel={selectedId === n.id} isWC={wcId === n.id} isHover={hoverId === n.id} dim={!!focus && !focus.has(n.id)}
                 onClick={() => onCardClick(n.id)} onDoubleClick={() => onCardDbl(n.id)} onHover={setHoverId}/>
             ))}
@@ -665,5 +825,5 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   );
 }
 
-Object.assign(window, { GraphWorkspace, computeLayout, shortBookmark });
+Object.assign(window, { GraphWorkspace, computeLayout, shortBookmark, groupStacks });
 })();
