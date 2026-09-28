@@ -758,3 +758,19 @@ _Ralph decided which layout modes and lane orders the product keeps: Free by def
   - It still offers Time, Time+gaps, the `optimized` order and the crossing-gap toggle, and it draws the branch-off side exit (Ralph: record the top-centre exit, do not update the viewer).
   - Its screenshots and `tools/lane-metrics.mjs`'s drawn crossing counts are side-exit numbers.
 - **The design export does not show the deviations.** None; a record. They live in epics.md's Epic 10 header, not in `JJ Desktop Client.html`; a later design revision may adopt them.
+
+## Surfaced 2026-09-28 while folding the design update into Epic 10: commit stacks and hover callouts (console session, Ralph)
+
+_Ralph re-downloaded the Claude Design export (`a399daf`). It adds a callout beside a hovered card, hover-only quick actions, the bookmark popover beside the card, and commit stacks: linear runs collapse into one card with a popover, and a toolbar switch turns the grouping on and off. Ralph decided that a stack toggle never moves a column (the design re-packs the lanes) while the graph may compact vertically, that the callout's stats row is not planned, and that the design is inspiration rather than a 1:1 template. The stories were updated the same day: the Epic 10 header ("Design update 2026-09-28", prototype defects 17–20, the amended "Design status" house rule) and the Epic List entries of Epics 4 and 10; new Stories 4.13 and 10.17; dated notes in 4.10, 4.11, 10.1, 10.3, 10.5, 10.6, 10.7, 10.10, 10.11, 10.12, 10.15 and 10.16; PRD FR-GR-1. The items below fall outside those stories:_
+
+- **The callout's stats row (A/M/D file counts, +/− lines).** Not planned, maybe never. Ralph: not that important for now, maybe we just don't build it.
+  - File counts need a tree diff per commit. `show()`'s `fileChanges` (Story 9.6) has them, but `show()` snapshots on every call, which is too expensive per hover; an op-pinned summary call would be new backend work.
+  - No API provides line counts (10.8 already lists line statistics as a backend gap; Epic 5).
+  - The mock fakes the file counts from the line counts (`fileCounts`, GV:454-459 at `a399daf`).
+  - **Follow-up:** only if Ralph asks. Then a backend story for an op-pinned diff summary, and 10.6's callout gains the row.
+- **The spike's JS oracle reads the live design folder.** Medium, because the drift is silent. `spikes/graph-layout-ab/tools/design-input.mjs:27` evaluates the current `graph-data.js`, which now has 36 commits. SPEC §7.2's expected results (π = [0, 2, 3, 1]; free rows 209 / 377 with 4 lanes), Epic 10's prototype defect 15 ("13 of the 22 commits") and 10.1 item 13's CLI-faithful variant were all derived on the 22-commit sample.
+  - **Follow-up:** pin the oracle to the sample of `57f259c` (a copy under the spike, or `git show`) before 4.11's goldens are generated (4.11's dated note). 4.13 uses the 36-commit sample for its run-rule oracle.
+- **8 new icons in the export.** Low. `icons/ui/` has abandon, bookmark, bookmark-filled, describe, squash, stack-collapse, stacked-on and working-copy-at, which `app/assets/icons/svg/` lacks. The prototype does not use `stacked-on` yet.
+  - **Follow-up:** the story that first draws one copies it into `app/assets/icons/svg/` and the `ZI` mapping (`app/lib/src/shared/widgets/zanshin_icon.dart`); Ralph adds it to the icon font.
+- **`rive/` is back in the export.** None; a record. The re-download restores `rive/` (the Nami wave SVG, its README and `nami_wave.dart`), which `57f259c`'s re-download had dropped. It belongs to the splash, not the graph.
+- **Old design citations.** None; a record. GV and GC citations written before 2026-09-28 refer to `57f259c`; from GV:225 on they no longer match the current file. The Epic 10 header says so; the stories are not rewritten.

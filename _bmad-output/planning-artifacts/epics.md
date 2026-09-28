@@ -59,7 +59,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 #### `zanshin-graph` — Commit-Graph Lane Assignment (Section 4.3)
 
-- **FR-GR-1** (P0): Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). (*Amended 2026-09-26 (prd.md): the commit-graph view draws the design's layered layout, computed in Dart on the worker isolate (Story 4.11); jj-lib supplies the topology (4.10).*)
+- **FR-GR-1** (P0): Compute lane assignment for the full DAG using jj-lib's `default_index` / `dag_walk`. Strategy: "straight branches" (pvigier-style). (*Amended 2026-09-26 (prd.md): the commit-graph view draws the design's layered layout, computed in Dart on the worker isolate (Story 4.11); jj-lib supplies the topology (4.10).*) (*Added 2026-09-28 (prd.md): linear runs can collapse into stack nodes; columns always come from the ungrouped layout (Stories 4.13, 10.17).*)
 - **FR-GR-2** (P0): Output structured data (rows with `lane`, `edges_below`, `color_idx`), crossing the FFI boundary as **FlatBuffers** (*amended by [ADR-0001](../../docs/adr/0001-ffi-data-transport-flatbuffers.md)*; was "structured JSON"). (*Amended 2026-09-26 (prd.md): the FFI carries the whole revset's topology as scalar vectors + CSR (Stories 4.10, 4.12); the layout never crosses the FFI (4.11).*)
 - **FR-GR-3** (P0): Full lane-cache computed on repo-open and on every `op_heads` change.
 - **FR-GR-4** (P0): Render-slice API: given a row range, return the slice in O(slice-size). (*Amended 2026-09-26 (prd.md): row-range windowing is replaced, not built — the complete index-only topology per operation plus lazy content per visible page (Stories 4.10–4.12).*)
@@ -268,7 +268,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 | FR-DF-3 | 5 | structured output, FlatBuffers (ADR-0001) |
 | FR-DF-4 | 5 | diff between any two revisions |
 | FR-DF-5 | 5 | bundled tree-sitter Kern-Set-9 grammars |
-| FR-GR-1 | 4 | lane-assignment algorithm on jj-lib default_index — amended 2026-09-26: the design's layered layout in Dart (4.11) |
+| FR-GR-1 | 4 | lane-assignment algorithm on jj-lib default_index — amended 2026-09-26: the design's layered layout in Dart (4.11); 2026-09-28: commit stacks with fixed columns (4.13) |
 | FR-GR-2 | 4 | FlatBuffers output (lane, edges_below, color_idx) — ADR-0001; amended 2026-09-26: topology vectors + CSR (4.10, 4.12) |
 | FR-GR-3 | 4 | full lane-cache on open + op_heads change |
 | FR-GR-4 | 4 | render-slice API O(slice-size) — amended 2026-09-26: whole-revset topology + lazy content (4.10–4.12) |
@@ -397,6 +397,7 @@ The stories:
 - **4.10 — topology vs. card content.** A new index-only call returns the whole revset's topology: nodes in `jj log` order, parents with their Direct / Indirect / Missing kinds, the View-derived facts, and, on request for the time-based modes, committer timestamps. A batch content lookup is pinned to that call's operation. `walk_graph` and `zanshin_graph_slice` stay unchanged.
 - **4.11 — the Dart layout engine.** The spike's Dart implementation of `spikes/graph-layout-ab/SPEC.md`, ported into `zanshin_core`'s worker isolate, plus the input builder (priority rule, repeated-target rule) and the layout command. Its result reaches the UI isolate as typed data. The spike's dumper becomes the input builder's Rust reference.
 - **4.12 — the topology wire.** FlatBuffers scalar vectors + CSR for the whole revset, a lazy Dart view, id → index lookups and at most one copy across isolates. It replaces `zanshin_graph_slice`; whether the pvigier lane path goes with it is its open question.
+- **4.13 — commit stacks in the engine** *(added 2026-09-28 with the design update; Epic 10's "Design update 2026-09-28")*. Linear runs of commits collapse into one stack node. Columns always come from the ungrouped layout, so a stack toggle never moves a card sideways; only the rows compact. First in the spike's Dart, then in `zanshin_core` after 4.11's port.
 
 Why:
 - **The layout needs the whole revset before the first frame,** but since 4.8 the only graph call loads every commit object inline. Measured 2026-09-26:
@@ -532,6 +533,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
   - Story 4.10: the whole revset's index-only topology (timestamps on request) vs. lazy, op-pinned content. The topology includes jj's Missing edges, which draw the elided marker.
   - Story 4.11: the layout engine in all three modes, in Dart on the worker isolate: rows, columns, route shapes and buckets *(2026-09-27: the product needs `free` and `compact` only)*.
   - Story 4.12: the topology wire and the lazy Dart view.
+  - Story 4.13 *(added 2026-09-28)*: commit stacks in the engine, with the columns of the ungrouped layout.
 
   Epic 10 consumes an abstract `GraphLayout`; 10.12 backs it with 4.11's layout result and 4.12's topology view.
 
@@ -549,6 +551,11 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 - **Label language:** the localisable labels stay for now, English by default as in the design. Whether the app is English-only or translated is open.
 - 10.13's outcome is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph.)*
 
+**Design update 2026-09-28** (Ralph, console session; the export at `a399daf`; details in the Epic 10 header below):
+- **What the export adds:** a callout beside a hovered card (full subject, description, ids, author, date), quick actions and the "add bookmark" button shown only on hover, the bookmark popover beside the card, and **commit stacks**: linear runs collapse into one card with a hover popover of its members, a click expands them, a bracket collapses them, and a toolbar switch "Group stacks" turns the grouping on or off.
+- **Decided:** a stack toggle never moves a column; the design re-packs the lanes, which Ralph finds irritating. The graph may compact vertically. The callout's file and line stats are not planned. The design is inspiration, not a 1:1 template: small deviations are expected, and FINAL means the intended direction.
+- **New stories:** 4.13 (stacks in the engine) and 10.17 (stacks in the view). The callouts go into 10.6, 10.3 and 10.15; the drag-and-drop hint (cards and bookmarks will be draggable) into 10.10.
+
 **FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
 - FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
 - Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
@@ -557,7 +564,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 
 The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Epic 9 uses it): CLI parameters are pre-filled from the effective config and passed explicitly, never baked in. The layered layout is presentation. What the view shows (which commits and edges, @, bookmarks) and every verb stay CLI-exact.
 
-**Scope note:** This epic is a dated exception to "the Flutter UI is Ralph's" (PRD §3.2; `project-context.md`; `CLAUDE.md`). Story 10.0 recorded it (done). Ralph reviews every story, and the rest of the UI stays his. The design's dialogs, popups and panels are not final. So the card popups (10.15), the detail panel (10.8) and the bookmark panel (10.14) are thin placeholders, unless Ralph exempts one of the panels.
+**Scope note:** This epic is a dated exception to "the Flutter UI is Ralph's" (PRD §3.2; `project-context.md`; `CLAUDE.md`). Story 10.0 recorded it (done). Ralph reviews every story, and the rest of the UI stays his. The design's dialogs, popups and panels are not final. So the card popups (10.15), the detail panel (10.8) and the bookmark panel (10.14) are thin placeholders, unless Ralph exempts one of the panels. *(2026-09-28: the hover callouts of the design update are interaction, not decoration, so their mechanism is built for real: the commit callout (10.6) and the stack popover (10.17). The bookmark popover stays a placeholder apart from its hover opening and its position (10.15).)*
 
 **Sequencing:**
 - 10.0 is done. 10.1 comes first: the viewport, `GraphLayout`, the vertical mapping, the recorded layouts from the spike and the demo host.
@@ -573,6 +580,7 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.11 follows 10.3 and 10.5 on the fake port.
 - 10.12 follows Stories 4.10, 4.11 and 4.12, and brings real data.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run`, its design question (f)) it needs no backend story.
+- 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the spike's stack recordings from 4.13's spike step. Real stacks come with 10.12 plus 4.13.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
 
 ---
@@ -586,7 +594,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
-> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12.
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view).
 
 ---
 
@@ -3296,11 +3304,17 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 > - **4.10** adds an index-only topology call for the whole revset next to `walk_graph`, with timestamps on request, and a batch content call pinned to its operation. `walk_graph` and `zanshin_graph_slice` stay unchanged; the commit-graph view no longer renders from 4.8's one call.
 > - **4.11** ports the spike's Dart engine into the worker isolate, with its guardrails, the input builder (priority rule, repeated-target rule), goldens and the layout command. The spike's dumper moves onto 4.10's API and stays the input builder's Rust reference.
 > - **4.12** puts the topology on the wire as scalar vectors + CSR, with a lazy Dart view, id → index lookups and one copy across isolates. It replaces `zanshin_graph_slice`; whether the pvigier lane path goes with it is its open question.
+> - **4.13** *(added 2026-09-28, the design update)* groups linear runs into stack nodes in the engine. The columns stay those of the ungrouped layout, so only the rows move.
 >
 > Row-range windowing (FR-GR-4 / NFR-P-2) is replaced, not built: the PRD was amended on 2026-09-26. FR-GR-1 / FR-GR-2 / FR-GR-5 carry dated amendment notes. The first plan's landing lanes, graph width and segment identity belonged to the lane model and are dropped.
 
 ### Story 4.10: Graph topology vs. card content — index-only topology call for the whole revset (timestamps on request) + op-pinned batch content lookup [R/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Re-planned 2026-09-26 after the layout A/B (`spikes/graph-layout-ab`, `README.md` incl. "Review 2026-09-26"; Ralph's decision): the layout runs in Dart on the worker isolate (4.11), so the new call carries the revset's topology instead of lanes. Backend + bridge scope. The topology's wire and lazy Dart view are 4.12, the view is Epic 10. Refined enough to build from; ACs to be written when scheduled. The commit-graph view no longer renders from Story 4.8's one call (Scope 9); `walk_graph` and `zanshin_graph_slice` themselves stay unchanged until 4.12.)*
+
+> **Design update 2026-09-28 (Ralph; the Epic 10 header):**
+> - **The full description joins the object half,** instead of its first line. The card derives the first line; 10.6's new commit callout shows the whole text beside a hovered card. It comes with the commit load the content call already does, so it costs no extra load, only bytes. The detail panel keeps `show` (Non-goals).
+> - **The view half already carries what 4.13's run rule needs:** bookmarks, tags, the working copies of every workspace, `immutable`, `root` and `parent_count`. No change.
+> - **No stats fields.** The design's callout also shows file counts and line counts. Ralph dropped that row (deferred-work, 2026-09-28): file counts need a tree diff per commit, and no API provides line counts.
 
 **Motivation.** The view lays out the whole revset before its first frame (4.11: rows by depth or time bucket, lane packing, lane order). No node's position can be computed from a window. So the layout needs the complete topology of the revset, once per operation.
 - **Topology is cheap, content is not.** Measured 2026-09-26 (release builds, jj-lib 0.44.0; a real 1.4k-commit repo, and `large-10k` both as committed and repacked):
@@ -3332,7 +3346,7 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
        - It is index-only. The call evaluates `revset.filtered(RevsetFilterPredicate::ParentCount(2..u32::MAX))` (jj-lib `revset.rs:579`; the `merges()` builtin is the same filter, `:1024`) and iterates it. That yields exactly the revset's merge nodes, with the predicate read from the index entry (`default_index/revset_engine.rs:1303-1308`).
        - Only on that set does it refine k = 3, 4, … the same way, until a pass is empty. `root()` gets 0, every other node 1. A bare `RevsetExpression::filter(…)` would instead test every visible commit per pass.
        - The edges cannot give it: a hidden parent can yield several Indirect edges, and a merge can yield two edges to one target (next item).
-   - **Object half:** `author_name` / `author_email`, `committer_timestamp`, `conflict` (tree ids), `empty`, `description_first_line` (`:181-194`, `:203`, `:207`, `:211`).
+   - **Object half:** `author_name` / `author_email`, `committer_timestamp`, `conflict` (tree ids), `empty`, `description_first_line` (`:181-194`, `:203`, `:207`, `:211`). *(2026-09-28: the full `description` instead of `description_first_line`, for 10.6's commit callout; the card derives the first line. See the note at the top.)*
    - **Edges are jj facts, verbatim.** Direct / Indirect / Missing, in `TopoGroupedGraph`'s stream order, deduplicated and pruned by jj-lib only.
      - That includes repeated targets. On a real repo's default revset, a merge carries a Direct and an Indirect edge to the same parent: its second parent is hidden and descends from the first.
      - So the spike's SPEC §2 premise ("jj never yields duplicate targets, so V3 holds") is false. Normalising them is layout input (4.11 Scope 5), not topology.
@@ -3541,7 +3555,7 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 - No layout, no priority classes, no normalisation of repeated targets (4.11).
 - **No elided count N.** It depends on the revset (a parent is hidden relative to what the revset shows), so it is neither topology nor commit-intrinsic content, and 10.11's commit-id cache cannot hold it. It also needs an index walk per Missing parent. The stub needs only the Missing edge. If 10.4 design question (a) keeps N, a follow-up story adds an op-pinned count call for the visible nodes (e.g. `elided_counts(operation_id, revset, commit_ids)`).
 - No row-range API.
-- No detail-panel data (full description, parents, diff). That is `show` / `get_change`, Story 9.6.
+- No detail-panel data (full description, parents, diff). That is `show` / `get_change`, Story 9.6. *(2026-09-28: the full description joins the object half anyway, for 10.6's hover callout, because `show` snapshots on every call; parents and the diff stay `show`'s.)*
 - No Rust-side state across calls: no repo state, and no timestamp cache unless Ralph picks (c). ADR-0002 §2 would allow memoising the pinned `ReadonlyRepo` within one operation id; do it only if the bench shows `load_operation` + `load_at` dominating a page.
 - No `--limit` / `--reversed`; the 4.4 decision stands.
 - No UI.
@@ -3583,6 +3597,10 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 >   - Tests: the design oracle keeps `compact` mode (greedy); SPEC §7.2's `optimized` expectations and the `time` goldens drop out; the invariant runs and the worker tests cover 2 modes × 2 orders.
 > - **Route geometry:** every edge now leaves the parent's top at the centre, branch-offs included (10.4 item 1). A dated SPEC §4.5 amendment changes only its geometry text; route classes, `blocked` and every output stay unchanged, so no golden changes (spike SPEC §12).
 > - Answered: open question 8's default (`compact`) and its `optimized` point (dropped). Moot with `optimized` out of the product: 7. Moved: 3, into 8's stability point. Still open: 1, 2, 4, 5, 6, 9 and 8's budget and stability points. Open question 4 now concerns the default view, because D8's buses behind cards occur in `free`.
+>
+> **Design update 2026-09-28 (Ralph; the Epic 10 header):**
+> - **No stack logic here.** Commit stacks are Story 4.13, which extends this engine after the port. The port and its goldens stay as specified.
+> - **The design sample grew from 22 to 36 commits** (`graph-data.js` at `a399daf`). The spike's JS oracle reads the live design folder (`spikes/graph-layout-ab/tools/design-input.mjs:27`), so SPEC §7.2's expected results and the design goldens below would drift. Pin the oracle to the 22-commit sample of `57f259c` (a copy under the spike, or `git show 57f259c:_bmad-output/implementation-artifacts/design/graph-data.js`) before the goldens are generated. `computeLayout` itself is unchanged by the update (GV:140-225 at both commits). The 36-commit sample serves 4.13's run-rule oracle.
 
 **Motivation.** Ralph's near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`, GV:140-225) lays commits out in rows shared by several commits:
 - Compact rows are the generation depth, Time rows are time buckets, and an experimental Free mode places each node at a time-proportional y;
@@ -3810,6 +3828,7 @@ Which modes the product exposes is 10.13's question. It does not gate this story
 **Related:**
 - 4.10 (topology, anchors, timestamps, content for the dumper's sidecar), 4.12 (wire, lazy view, lookups, one copy)
 - 10.1 (the `GraphLayout` contract; the recordings from the spike), 10.2 (buckets), 10.4 (routes, route report), 10.5 (requests, coalescing, the greedy-first pair), 10.12 (adoption, reassemble hook), 10.13 (modes, constants)
+- 4.13 (commit stacks: extends this engine, its input builder, its request and its result view; added 2026-09-28)
 - `spikes/graph-layout-ab` (`SPEC.md`, `README.md`)
 - FR-GR-1 / FR-GR-2 (amended 2026-09-26), FR-GR-5, ADR-0002
 
@@ -3965,6 +3984,87 @@ Which modes the product exposes is 10.13's question. It does not gate this story
 - 9.31 (edge drop zones): each drawn edge is one layout edge with child and parent indices, so segment identity is explicit (10.4 item 9)
 - Epic 10 (10.1, 10.12)
 - ADR-0001, FR-GR-2 (amended 2026-09-26), FR-GR-6
+
+### Story 4.13: Commit stacks in the layout engine — linear runs grouped into stack nodes, columns from the ungrouped layout, vertical compaction only [bridge]
+*(Added 2026-09-28, Ralph — console session on the design update, export at `a399daf`. Bridge scope: pure Dart in `packages/zanshin_core`, after 4.11's port; first in the spike's Dart, which is the reference and the recorder. The view side is 10.17. Refined enough to build from; ACs to be written when scheduled.)*
+
+**Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264; the toolbar's "Group stacks" switch GV:336-339; both at `a399daf`). A click expands a stack, and a bracket beside the expanded run collapses it again (GV:654-665, :800-806). The design implements this by rewriting the commit list and re-running the whole layout on it (GV:651-652). Every toggle therefore re-packs the lanes, and whole branches jump sideways. Measured in the design page on 2026-09-28 (default revset, collapsing every stack):
+- with Min. crossings, the settings branch moves from column 5 to 3 and the iOS branch from 3 to 1;
+- with greedy, the riverpod branch moves from column 5 to 1.
+
+Ralph's decisions (2026-09-28):
+- A stack toggle never changes a column, and neither does switching "Group stacks". The columns follow the decided lane logic (the `compact` order, greedy the alternative) on the ungrouped graph. This is an intended deviation from the design (the Epic 10 header, deviation (f)).
+- The graph may compact vertically.
+
+The view never computes rows (Epic 10's house rules), and a stack changes rows. So the grouping is engine work.
+
+**Scope.**
+
+1. **The run rule** (GV:228-246 at `a399daf`), evaluated in the worker on the layout's node set.
+   - **Candidates.** A node is a candidate when all of these hold:
+     - it is not the root and not the working copy of any workspace;
+     - it carries no bookmark (local or remote) and no tag;
+     - its real parent count is 1 (4.10's `parent_count`), and its one edge is Direct, so its parent is in the revset;
+     - exactly one layout edge has it as the parent, Direct or Indirect. An Indirect child is still a visible fork.
+
+     The design checks @, bookmarks, the root, one parent in the revset and one child (GV:233). Tags and other workspaces' working copies are Claude's proposal, accepted on 2026-09-28.
+   - **Runs.** A run is a maximal chain of candidates in which each member is the only child of the previous one. It breaks where `immutable` changes (GV:234).
+   - **Stacks.** A run of at least 2 members is a stack. Its key is its oldest member's key: the design's `"grp:" + id` (GV:243) under 10.1 item 2's key rule (the change id, or the commit id when hidden or divergent).
+   - **Conflicts do not break a run.** 10.17's card shows ⚠ when a member has one (GV:257; proposal accepted).
+   - **Inputs.** 4.11's input builder (its item 5) gains per-node `immutable`, `parentCount`, a has-ref flag (bookmark or tag) and an is-working-copy flag (any workspace), all from 4.10's view half. The edges are the layout edges after 4.11's repeated-target rule.
+
+2. **Request.** 4.11's layout command (its item 9) gains:
+   - `stacks`: the "Group stacks" switch (10.7). Off means 4.11's layout, byte for byte;
+   - `expandedKeys` and `collapsedKeys`: the runs the user toggled. 10.17 persists them per repository;
+   - `keepOpenKeys`: node keys whose run stays expanded, i.e. the selection and a pending go-to-change target (10.5).
+
+   **Default state.** A run without an explicit state is collapsed, except a run of mutable ancestors of @ (Claude's proposal, accepted; in jj's default configuration these are the ancestors of @ above `trunk()`). The worker walks them from @ (4.10's `working_copy`) over the layout edges. Explicit keys beat the default, and `keepOpenKeys` beat both. A key that names no current run is ignored, so a run whose oldest member changed falls back to the default.
+
+3. **Columns from the ungrouped layout.** The engine first lays out the ungrouped graph exactly as 4.11 does: rows, packing and lane order (`compact` or greedy). Every node keeps that column in every stack state.
+   - **A stack's column.** All members normally share one column: each member after the oldest is the sole continuation of its predecessor, which SPEC §4.3 keeps in its parent's lane unless another node's reservation blocks it. One known case does: the oldest member continues its parent's lane beside the parent's own merge reservation, which §4.3 excepts only for that direct continuation, so the next member moves to another lane. A stack therefore takes its **newest** member's column, which keeps the edge into the run's child straight.
+   - **Consequence:** collapsing never makes the graph narrower.
+
+4. **Rows from the grouped graph.** Each collapsed run becomes one stack node. Its parent edge is the oldest member's; the newest member's child edge now starts at it. The layering (SPEC §4.2, per mode) then runs on the grouped graph under extra ordering constraints per column: the segments that share a column keep their ungrouped vertical order and their one-row buffer (SPEC §4.3's [a, b) reservations). So cards move only vertically, and no two cards collide in a column.
+   - **`compact`:** a stack sits one row above its parent, where its oldest member was, unless a constraint pushes it up.
+   - **`free`:** a stack takes its newest member's timestamp (the design's `ts: top.ts`, GV:256). Free compacts only where the run had stretched the time axis to one pitch per commit (SPEC §4.2 step 3). Elsewhere only the members' cards disappear, and the edge remains.
+   - **Routes and `blocked`** are recomputed on the grouped rows with the fixed columns (SPEC §4.4–§4.5). Crossing hops stay the view's (10.4).
+   - **Free's day buckets** (4.11 open question 9, if accepted) follow the grouped rows; a stack lies in its newest member's day.
+   - **Proposal for the constraints:** extra longest-path constraints, one per pair of adjacent segments in a column, so that the upper segment's reservation cannot start below the lower one's end. Every constraint follows the ungrouped layout's y order. The SPEC amendment (item 6) states the exact rule with a termination argument, and the invariants below check it.
+
+5. **Output.** 4.11's result view (its item 9) gains, per run, collapsed or expanded: its key, its state and its members, oldest first, as a CSR over topology node indices.
+   - **Proposal:** the per-node arrays stay indexed by topology node, so 4.12's view is unchanged. Collapsed members carry a hidden flag and no position. Stack nodes are appended after the n topology nodes, with their own row and column, and layout edges reference them by those indices.
+   - 10.1's `GraphLayout` exposes all of it through accessors (10.17).
+
+6. **SPEC first, in the spike's Dart.** A dated SPEC section (e.g. §4.8 "Stacks") specifies the rule, the request fields, the columns, the constraints and the output. It is implemented in `spikes/graph-layout-ab/dart/` first. Like the `compact` order it is Dart-only: the Rust reference rejects the stack options, and the goldens come from the spike's Dart binary. The spike's recorder then produces the stack recordings for 10.1 and 10.17.
+
+7. **In `zanshin_core`,** after 4.11's port: the same code under `lib/src/graph_layout/`, the request fields on `RepoHandle.graphLayout`, the result view's new arrays (offsets and lengths in its header), and the input builder's new flags. SPEC's home follows 4.11 open question 5.
+
+8. **Cost.** Every toggle is a new layout request, because the worker keeps no state between commands (ADR-0002; 4.11 item 9). On the real 1.4k-commit repo that is about 30 ms, mostly the precondition's snapshot (28 ms), plus the timestamps in `free` and two layerings: the ungrouped one for the columns and the grouped one for the rows. 4.11's benchmark records it.
+
+**Tests.**
+- **The run-rule oracle.** On the design sample at `a399daf` (36 commits), for both revsets, the runs equal the design's `groupStacks` (GV:228-264): members, keys and the immutable split. The design's columns are no oracle, because they re-pack.
+- **I7, the column invariant (new).** For every input and every stack state (all collapsed, all expanded, random subsets, `stacks` off): every visible non-member keeps its ungrouped column, the members of an expanded run keep theirs, and a stack sits in its newest member's column.
+- **I1–I6 on the grouped layout,** on the goldens and on at least 1,000 seeded DAGs with runs × 2 modes × 2 orders × random stack states. The generator adds runs broken by bookmarks, tags, working copies, the immutable boundary, merges, forks and an Indirect child edge, plus item 3's split run.
+- **Vertical compaction.** Collapsing never increases `rows`. On the design sample in `compact`, collapsing every stack shrinks `rows` by the count the SPEC amendment derives by hand.
+- **`stacks: false`** equals 4.11's output byte for byte.
+- **State.** A run of mutable ancestors of @ starts expanded. Explicit keys win over the default, a keep-open key wins over both, and an unknown key is ignored.
+- **Worker.** A real-cdylib test toggles a stack through `RepoHandle.graphLayout` and reads the new arrays through the result view.
+- **Coverage.** Dart only, so the ratchet has no floor here; these tests are the safety net.
+
+**Non-goals.**
+- The stack card, its popover, the bracket, the animation and the persistence (10.17).
+- Grouping anything but linear runs, e.g. collapsing a whole branch with its forks.
+- Stacks in the spike's Rust reference.
+- A narrower layout for collapsed graphs: the columns are fixed by decision.
+
+**Depends on.** 4.11 (the port, the input builder, the layout command, the result view) and 4.10 (the view half, `parent_count`). The spike step (item 6) needs only the spike.
+
+**Open questions (Ralph).** None blocking. The design's rule plus the accepted proposals are recorded above: tags and other workspaces' working copies break a run, conflicts do not; runs of mutable ancestors of @ start expanded; in `free` a stack sits at its newest member's time. Ralph can overrule any of them at review.
+
+**Related:**
+- 4.10 (the view half, `parent_count`), 4.11 (engine, input builder, request, result view, SPEC's home)
+- 10.1 (accessors, recordings, the invariant checker), 10.5 (the request), 10.7 (the switch), 10.17 (the view)
+- spike `SPEC.md` §4.2–§4.7; the Epic 10 header, "Design update 2026-09-28"
 
 ---
 
@@ -6665,8 +6765,36 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 >    - (c) the current date is sticky: the day at the viewport's top stays pinned in the gutter until the next day's label pushes it out (10.2 item 9);
 >    - (d) every edge leaves a card's top at the centre (item 5);
 >    - (e) a commit found by go-to-change pulses: a blue ring that expands and fades, three times (added 2026-09-27; 10.6 item 12). The design has no such animation.
+>    - (f) a stack toggle never moves a column; the design re-packs the lanes on every toggle (added 2026-09-28; 4.13, 10.17).
 > 5. **Edge exits** (recorded only; the spike viewer is not updated). Every edge already enters its child from below at the centre (Ralph noticed it at merge commits), and straight edges and merges already leave the parent's top at the centre. Only branch-offs leave at ±0.28·W, so edges often leave off-centre. Every edge now leaves the top at the centre too. That changes the painter (10.4 item 1) and SPEC §4.5's geometry text; route classes and every layout output stay unchanged (4.11). 10.4 item 1 lists the consequences; prototype defect 8 disappears.
 > 6. **10.13's outcome** is these decisions. *(Not Ralph's decision: the story is closed as done on that outcome, Claude's call; its item 6 leaves a Flutter confirmation to Ralph, who can reopen it.)* Still open: Free's constants and buses behind cards (4.11 open question 4), the source of Free's day buckets (4.11 open question 9), the minimap's design (10.16), and the label language. The port scope is decided: only these modes and orders (Ralph: "the rest can go").
+
+> **Design update 2026-09-28 (Ralph, console session; the re-downloaded export at `a399daf`).** The export adds hover callouts and commit stacks. What changed, and what Ralph decided:
+> 1. **What the export adds** (cited at `a399daf`):
+>    - **a commit callout** beside a hovered card (GV:461-484, :506-511; GC:249-277). After 450 ms it shows the full subject, the description, the change and commit ids, the author, the date, a file and line stats row, and the hint text that replaces the card's tooltip. It flips left near the right edge and grows upwards near the bottom (GV:438-452). It stays closed while the pointer is on the bookmark control, "…" or a "+" (GC:255);
+>    - **"…" and the "add bookmark" button appear only on hover,** like the "+" chips (GC:135-136);
+>    - **the bookmark popover** opens to the right of the card, or above the control near the right edge (GC:116-117);
+>    - **commit stacks:** linear runs collapse into a stack card (GV:227-264, :536-571; GC:227-247) with a hover popover of its members, each of which opens its own commit callout. A click expands the stack, and a bracket beside the expanded run collapses it. A toolbar switch "Group stacks" turns grouping on and off (GV:336-339), and the expanded stacks persist;
+>    - **more mock data:** `graph-data.js` now has 36 commits (22 before). 4.11's dated note pins the spike's oracle to the 22-commit sample;
+>    - **assets:** an icon set `icons/ui/` (45 SVGs; 8 are not in `app/assets/icons/svg/` yet: abandon, bookmark, bookmark-filled, describe, squash, stack-collapse, stacked-on, working-copy-at), and `rive/` again (the splash wave, not the graph).
+> 2. **Decisions:**
+>    - (a) **A stack toggle never moves a column** (intended deviation (f), added to decision 4's list above). The design re-packs the lanes on every toggle, so branches jump sideways; Ralph finds that irritating. The columns come from the ungrouped layout with the decided lane order, and the graph may compact vertically (4.13).
+>    - (b) **No stats row in the callout.** Ralph: not important for now, maybe never. File counts need a tree diff per commit, and no API provides line counts (10.8). Recorded in deferred-work.
+>    - (c) **The design is inspiration, not a 1:1 template.** It keeps small deviations that Ralph leaves unfixed to save tokens. The house rule "Design status" below is amended accordingly.
+>    - (d) **Claude's proposals, accepted by Ralph** ("passt so"):
+>      - a toggle keeps the stack in place instead of centring the run;
+>      - runs of mutable ancestors of @ start expanded;
+>      - a run holding the selection does not collapse by itself;
+>      - what the user toggled persists per repository;
+>      - the stack popover's height is capped, and its list scrolls;
+>      - tags and other workspaces' working copies break a run like bookmarks, and conflicts do not;
+>      - in Free a stack sits at its newest member's time;
+>      - the quick-action fan opens on hover like the bookmark popover;
+>      - callouts yield to pans and drags;
+>      - VoiceOver gets the description as the card's hint.
+>    - (e) **Drag-and-drop later** (Ralph): commit cards and bookmarks will be draggable. The drag itself stays 10.10's, but the hover and callout mechanics are built so it fits in without rework.
+> 3. **Stories:** new 4.13 (stacks in the engine) and 10.17 (stacks in the view). Dated notes in 4.10, 4.11, 10.1, 10.3, 10.5, 10.6, 10.7, 10.10, 10.11, 10.12, 10.15 and 10.16, and on PRD FR-GR-1. Prototype defects 17–20 below.
+> 4. **Citations.** GV and GC line numbers written before this update refer to the export at `57f259c`; read them with `git show 57f259c:<path>`. From GV:225 on they no longer match the current file, where the stack code was inserted; GC shifts by up to 3 lines. Citations dated 2026-09-28 refer to `a399daf`. The layout code (GV:140-225) is unchanged.
 
 **Goal.** The app's main view as in the design export. The canvas and the graph:
 - commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
@@ -6685,12 +6813,12 @@ Around the graph sit a toolbar, a thin detail panel for the selected commit, a t
 **Design input.** The design export lives under `_bmad-output/implementation-artifacts/design/`. The page `JJ Desktop Client.html` loads `data.js`, `graph-data.js`, `tweaks-panel.jsx`, `graph-view.jsx` and `app.jsx`, styled by `styles.css` and `graph.css`. The stories cite the sources by these abbreviations:
 - `GV` = `graph-view.jsx`: the layout algorithm, toolbar, card, bookmark control, quick actions, detail frame, bookmark list and workspace;
 - `GC` = `graph.css`;
-- `GD` = `graph-data.js`: 22 mock commits, with the clock fixed at 2026-09-25T14:00;
+- `GD` = `graph-data.js`: 22 mock commits, with the clock fixed at 2026-09-25T14:00 *(36 since the 2026-09-28 update at `a399daf`; the spike's oracle keeps the 22 of `57f259c`, 4.11's dated note)*;
 - `APP` = `app.jsx`: the detail body, the describe editor, and the tweak defaults;
 - `SC` = `styles.css`: the design tokens.
 
 Status of the design:
-- **Preliminary but close to final** (Ralph, 2026-09-26). The earlier mockup lives at `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp` (untracked). Where it differs from the export, the mockup and everything planned from it are obsolete.
+- **Preliminary but close to final** (Ralph, 2026-09-26). *(2026-09-28, Ralph: inspiration, not a 1:1 template; small deviations are expected and stay unfixed in the export. Decision (c) of the design update.)* The earlier mockup lives at `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp` (untracked). Where it differs from the export, the mockup and everything planned from it are obsolete.
 - **The dialogs, popups and panels are not final** and will look different. The design extraction lists them as:
   - the revset dropdown;
   - the bookmark popover;
@@ -6701,6 +6829,8 @@ Status of the design:
   - the Projects dialog.
 
   Their stories are thin: 10.15, 10.8, 10.14 and 10.7's dropdown. Whether the two panels really count is 10.8 design question (a).
+
+  *(2026-09-28: the hover callouts of the design update are interaction, not decoration, so their mechanism is built for real: the commit callout (10.6) and the stack popover (10.17). The bookmark popover stays a placeholder apart from its hover opening and its position (10.15).)*
 - **The tweaks panel** (`tweaks-panel.jsx`, APP:7-16, :2510-2539) is a design tool, not a product surface. The tweaks that change the graph become view options with the design's defaults (below).
 - **Only the visuals and interactions are the reference.** The prototype renders every card and edge as DOM and runs a quadratic layout on the UI thread (about 2 s at 10k commits). Its algorithmic costs and its bugs (below) are not part of the reference.
 
@@ -6817,6 +6947,13 @@ The demo host exposes every graph option. Which of them become user settings is 
 
     The spike's phases are O((n+E) log n), and its optimiser is budgeted (SPEC §5).
 
+Added with the design update of 2026-09-28 (cited at `a399daf`):
+
+17. **Lanes re-pack on every stack toggle** (GV:651-652), so whole branches jump sideways [4.13; decision (a), deviation (f)].
+18. **The expanded stacks persist in one global list** (`zanshin.graph.expanded`, GV:640), not per repository, although their keys are change ids [10.17].
+19. **The stack popover grows without bound.** It lists every member and sizes its flip by 60 + 34 px per member (GV:543, :558) [10.17].
+20. **A collapse can hide the selected commit** and leave its panel open, like defect 9: the toggle keeps `selectedId` (GV:654-660) [10.17, 10.5].
+
 **Prototype behaviours that are design questions, not defects** (the owning story asks):
 - (i) Crossings between edges that share a node are neither bridged nor counted (GV:87) [10.4 design (d)]. The spike's optimiser counts them (SPEC D5).
 - (ii) Opening the detail panel keeps the raw scroll offset [10.8 design (e)].
@@ -6845,6 +6982,7 @@ The demo host exposes every graph option. Which of them become user settings is 
   - FINAL items cite the design by file:line;
   - NEEDS DESIGN items are phrased as concrete questions, and they are answered before the story is built, never guessed;
   - a prototype defect is never FINAL, and a prototype behaviour listed above is a question, not a rule.
+  - *Amended 2026-09-28 (Ralph; decision (c) of the design update):* the export is inspiration, not a 1:1 template, and it keeps small deviations that Ralph leaves unfixed to save tokens. FINAL therefore means the intended direction, not pixel or behaviour exactness. For a small gap or inconsistency Claude writes a proposed default, marked as Claude's proposal, which Ralph can overrule at review. NEEDS DESIGN questions are kept for choices that change architecture or scope. A decision recorded in this epic wins over the export.
 
 **Sequencing.**
 - 10.0 (the scope-exception note) is done.
@@ -6861,6 +6999,7 @@ The demo host exposes every graph option. Which of them become user settings is 
 - 10.11 (content paging) follows 10.3 and 10.5 on the fake port.
 - 10.12 (real data) follows Stories 4.10, 4.11 and 4.12.
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run` from the layout arrays, its design question (f)) it needs no backend story and runs on recorded layouts.
+- 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the stack recordings of 4.13's spike step (its item 6). 10.7's "Group stacks" switch can land with it. Real stacks come with 10.12 plus 4.13.
 - 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
 
 **What changed in the re-plan, and why** (story numbers kept where the topic still fits):
@@ -6900,6 +7039,11 @@ The demo host exposes every graph option. Which of them become user settings is 
 
 ### Story 10.1: Graph viewport — two-axis virtualized canvas over positioned nodes, extents from data, pan-by-drag [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Design update 2026-09-28 (the Epic 10 header):**
+> - **Stacks** (10.17, 4.13). `GraphLayout` (item 2) gains accessors for stack nodes (a collapsed run as one node, with its members) and for expanded runs (their members, for the bracket); 10.17 adds them. The recordings (item 13) gain stack recordings from the spike's Dart (4.13 item 6), on the 36-commit design sample and on the scale inputs. The invariant checker (item 14) gains 4.13's column invariant I7: a stack recording's columns equal those of its ungrouped recording.
+> - **A stack toggle is a relayout under the same revset and mode,** so item 10's anchor applies. The anchor node is the member that shares the toggled stack's place: the oldest in `compact`, the newest in `free` (10.17 item 4; 10.5).
+> - **Callouts** (10.6) are widgets above the viewport, anchored to their card like 10.15's popups. The card stays pinned (item 9) while its callout is open. Item 6's paint hooks are unchanged.
 
 **Motivation.** The design places each card at a pixel position computed from data alone (GV:198-224):
 - x comes from the node's column, y from its row;
@@ -7223,6 +7367,13 @@ NEEDS DESIGN:
 ### Story 10.3: Commit cards — detailed (62) and compact (40) cards, width 160–400, states, bookmark control and affordance slots — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
+> **Design update 2026-09-28 (the Epic 10 header):**
+> - **"…" and the empty bookmark button appear only on hover** (GC:135-136 at `a399daf`), fading and scaling like the "+" chips, and hit-testable only while the card is hovered (item 9). Filled bookmark buttons and legend pills stay visible. This changes item 7's "always visible" and item 6's button mode for a card without bookmarks.
+> - **The card's tooltip is gone.** Its text is now the hint line of 10.6's commit callout. The affordances keep their labels (item 11).
+> - **Icons.** The quick-action, bookmark and stack glyphs come from the export's `icons/ui/`; the 8 files that `app/assets/icons/svg/` lacks are copied there and mapped like the existing icons. Ralph builds the icon font from them.
+> - **The stack card** is 10.17. It reuses this story's `RenderBox` pattern and sizes, with its own slots.
+> - **Witness:** "…" and the empty bookmark button appear only on hover, and are hit only then.
+
 **Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
 
 **Scope.**
@@ -7466,6 +7617,12 @@ NEEDS DESIGN:
 ### Story 10.5: Graph view model and repository wiring — reload per operation, anchoring, re-centring on @, ports, states [UI/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
+> **Design update 2026-09-28 (the Epic 10 header; 4.13, 10.17):**
+> - **`GraphRequest`** (item 2) gains the stack state: `stacks` (10.7's "Group stacks" switch), the user's toggles (`expandedKeys` / `collapsedKeys`, persisted per repository by 10.17) and `keepOpenKeys`. The latter carries the selected node and a pending go-to-change target, so a reveal into a collapsed stack expands it in the same relayout.
+> - **A toggle is a new request** under the same revset and mode. It is anchored on the toggled stack, i.e. on the member that shares its place (10.17 item 4; item 5; 10.1 item 10), and never re-centres on @. Coalescing (item 3) applies.
+> - **Selection** (item 7): a run holding the selection stays expanded until the user collapses it. Then the selection clears, and 10.8 closes.
+> - **Counter** (item 10): shown stays the revset's commit count, members of collapsed stacks included (the design counts them, GV:653 at `a399daf`).
+
 **Motivation.** 10.1–10.4 run on recorded layouts. This story owns the view model. It requests layouts through a narrow port and keeps the view coherent while jj re-derives the graph after every operation (ADR-0002), whether the operation is Zanshin's own or an external `jj`. The watcher reports each operation as an `OpHeadsChangedEvent` (`packages/zanshin_core/lib/src/worker/events.dart:19`) on `ZanshinWorker.events` (`packages/zanshin_core/lib/src/worker/isolate.dart:354`).
 
 Anchoring matters more in the design than it did before. Pixel y depends on the layout's row count (GV:202), so a new head shifts every card by one pitch, and a global lane reorder can move columns. The prototype has no reloads, and it re-centres on @ one relayout late (prototype defect 1).
@@ -7570,6 +7727,21 @@ Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `descri
 
 ### Story 10.6: Selection, double-click edit, hover focus path, locate @, keyboard and tooltips — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Design update 2026-09-28 (the Epic 10 header; cited at `a399daf`):**
+> - **Item 7's tooltips become the commit callout** (GV:461-484, :506-511; GC:249-277). A card has no tooltip any more; the affordances keep theirs (10.3 item 11).
+>   - **Content:** the full subject, wrapped; the full description (4.10's object half); the change id (2 bold + 6); the commit id; the author's full name; the date; and the hint line: "Click: details · Double-click: jj edit", on @ "Working copy (@) · Click for details", none on the root. No stats row (decision (b)).
+>   - Content comes from 10.11's cache and is loaded on hover when missing; the 450 ms delay hides the latency.
+>   - **VoiceOver:** the description becomes the card's semantics hint (Claude's proposal, accepted).
+> - **One hover-callout controller** serves the commit callout, 10.17's stack popover and its row callouts, and 10.15's bookmark popover:
+>   - **delays** as in the design: card 450 ms, stack card 380 ms, stack row 180 ms, bookmark control none (GC:254, :234, :259, :118);
+>   - **callouts are hoverable.** Moving the pointer from the card into its callout keeps it open, nested too (stack card → popover → row → callout). The gap between card and callout is bridged, as the design's padding does (GC:252). Leaving the whole chain closes it;
+>   - **the commit callout stays closed** while the pointer is on the bookmark control, "…" or a "+" (GC:255);
+>   - **placement:** beside the card, flipped left near the right edge and growing upwards near the bottom (GV:438-452); always fully inside the canvas, above the cards and the gutter. Callouts are widgets anchored to their card, like 10.15's `OverlayPortal`s, and the card stays pinned while its callout is open (10.1 item 9);
+>   - **hover stays paint-only for cards** (0 card builds); only the opening callout builds;
+>   - **no callouts while panning or dragging** (10.10).
+> - **The focus path** (item 4) passes through stack nodes (10.17).
+> - **Witnesses:** the callout opens after 450 ms with the texts above, and stays closed over the affordances; moving into it keeps it open, and leaving closes it; near the right and bottom edges it flips and stays inside the canvas; a hover still builds 0 cards; a pan shows no callout.
 
 **Motivation.** The design fixes the pointer model:
 - a click selects and opens the panel;
@@ -7687,6 +7859,8 @@ NEEDS DESIGN:
 
 ### Story 10.7: Graph toolbar — revset select, Layout, Detailed/Compact cards, Card width, shown / total, @ Working copy — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Design update 2026-09-28 (the Epic 10 header):** a **"Group stacks"** switch (GV:336-339 at `a399daf`; title "Collapse linear runs of changes into one stack card"), default on, an app-global preference like Detailed (item 7). It sends 10.5's `stacks` flag and re-lays out under the anchor, never re-centring on @. The counter counts the members of collapsed stacks as shown (10.5 item 10). Witness: the switch issues exactly one layout request and keeps the anchor.
 
 **Motivation.** The design's graph toolbar (GV:240-309, GC:10-56) replaces the earlier plan of a free-text revset field with Apply/Save. It offers:
 - exactly two revsets;
@@ -7905,6 +8079,19 @@ Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner move
 ### Story 10.10: Drag-and-drop on the graph — drop on commits and edges, menu from `drop_actions` — *PLACEHOLDER, NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 for the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Placeholder: this is not in the design; refine it once Story 9.31 is scheduled.)*
 
+> **Design update 2026-09-28 (Ralph: commit cards and bookmarks will both be draggable later; the design has no drag yet):**
+> - **Bookmark drags join this story.** The sources are the legend pill, the bookmark button and the rows of the bookmark popover. A drop on a card moves the bookmark there (`jj bookmark move` / `set`, backend 9.19). As in the CLI, moving a bookmark backwards or sideways needs `--allow-backwards`: a visible choice in the drop menu, never a hidden default. The Non-goal "Dropping bookmark labels" is lifted.
+> - **What already holds, so drag needs no rework later** (10.3, 10.6, 10.17):
+>   - click, double-click and drag start are separated by the slop on cards, stack cards and bookmark controls, so a stack card expands only on a click that was not a drag;
+>   - every callout closes on drag start and stays closed during the drag;
+>   - the focus path pauses while the target highlight takes over;
+>   - the dragged card stays pinned (10.1 item 9).
+> - **New design questions:**
+>   - a collapsed stack as a source: the whole run (`rebase -r` over its members), or everything from its oldest member on (`-s`)?
+>   - a stack as a target: its newest member, or does it expand while the pointer rests on it, like a folder in the Finder?
+>   - dragging one member out of the stack popover?
+>   - a bookmark dropped on a stack lands on a member, and the run splits there.
+
 **Motivation.** On 2026-09-21 Ralph decided that the graph is driven by drag-and-drop (Story 9.31, "UI shape"):
 - the user drops change S on a commit T, or on an edge T→C;
 - a menu lists the available verbs and greys out the unavailable ones with the reason;
@@ -7940,11 +8127,11 @@ The design has no drag-and-drop. Its canvas drag pans (GV:560-576), which leaves
 7. **Modifiers.** ⌥ at drop means duplicate. Esc cancels, and so does a drop on nothing.
 
 **Non-goals.**
-- Dropping bookmark labels (9.11 / 9.19).
+- Dropping bookmark labels (9.11 / 9.19). *(Lifted 2026-09-28: bookmark drags join this story; see the note at the top.)*
 - File-level drags (split).
 - Dragging several cards at once (design).
 
-**Depends on.** 10.1, 10.3, 10.4, 10.6 and 10.9. Backend: 9.31 and 9.16 (both backlog), plus 9.15, 9.9 and 9.18 for the full menu.
+**Depends on.** 10.1, 10.3, 10.4, 10.6 and 10.9. Backend: 9.31 and 9.16 (both backlog), plus 9.15, 9.9 and 9.18 for the full menu. *(2026-09-28: 9.19 for bookmark drags; 10.17 for stack sources and targets.)*
 
 **Design status.** The interaction model was decided in 9.31. NEEDS DESIGN:
 - the ghost card;
@@ -7966,6 +8153,8 @@ The design has no drag-and-drop. Its canvas drag pans (GV:560-576), which leaves
 
 ### Story 10.11: Content paging — skeleton cards and visible-range content loads (after Story 4.10) [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
+
+> **Design update 2026-09-28 (the Epic 10 header):** a visible stack card needs the content of all its members: their authors, the oldest and newest dates, and their conflicts (10.17). The stack popover loads its rows as they scroll into view. 10.6's commit callout reads the same cache, with the full description from 4.10's object half.
 
 **Motivation.** Story 4.10 splits the graph call:
 - the topology and view facts for the whole revset (cheap, index-only);
@@ -8001,6 +8190,8 @@ The design needs content only on visible cards (subject, author, date, empty, co
 ### Story 10.12: Adopt the backend layout — the real `GraphSource` over Stories 4.10, 4.11 and 4.12 [UI/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26: the design's layout engine is now Story 4.11, and the landing lanes and segment colours this story was first written for belong to the `jj log` lane model the view no longer draws.)*
 
+> **Design update 2026-09-28 (the Epic 10 header):** real stacks need 4.13: its request fields (10.5) and its result view's stack arrays behind 10.17's accessors. 4.13's column invariant I7 gates every real layout, like 10.1 item 14's hard invariants. This story therefore also depends on 4.13.
+
 **Motivation.** Everything before this story runs on recorded layouts and fake content. Real data needs all three backend stories:
 - 4.10: the index-only topology and view facts for the whole revset (timestamps on request), an operation id, and op-pinned content by commit id;
 - 4.11: the design's layout computed at scale in Dart on the worker isolate (the spike's verdict, decided by Ralph 2026-09-26);
@@ -8034,7 +8225,7 @@ Because of 10.1's accessor rule, adopting them changes no painter and no card.
 - Painter or card changes.
 - Any Rust change (that is 4.10 and 4.12) and any layout code (that is 4.11).
 
-**Depends on.** Stories 4.10, 4.11 and 4.12; 10.1–10.5 and 10.11.
+**Depends on.** Stories 4.10, 4.11 and 4.12; 10.1–10.5 and 10.11. *(2026-09-28: also 4.13, and 10.17 for the stack accessors.)*
 
 **Design status.** No design of its own: it checks the requirements above. Decide at scheduling:
 - how the dev host receives its path (e.g. `--dart-define`);
@@ -8210,6 +8401,11 @@ NEEDS DESIGN:
 ### Story 10.15: Action popups — quick-action fan, "+" chips, bookmark popover, describe editor — *PLACEHOLDER* [UI]
 *(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view. Placeholder by Ralph's decision: the design's dialogs and popups are not final and will look different; build them thin so the verbs are reachable, and replace their look later.)*
 
+> **Design update 2026-09-28 (the Epic 10 header):**
+> - **The bookmark popover opens on hover and on keyboard focus,** without delay (GC:118 at `a399daf`), through 10.6's hover-callout controller. It sits to the right of the card at the control's height, and above the control near the right edge (GC:116-117). Design question (b) is answered for it: hover.
+> - **The quick-action fan opens on hover too** (Claude's proposal, accepted), as the design does (item 1), now that "…" itself is visible only on hover (10.3). Design question (b) is thereby answered for both popups.
+> - Everything else in this story stays a placeholder.
+
 **Motivation.** The design contains four popups: the quick-action fan, the "+" chips, the bookmark popover and the inline describe editor. They make the shipped verbs reachable from the graph. Their look will change, so this story wires them to 10.9's runner with minimal visuals and invests nothing in polish.
 
 **Scope.** Every popup is thin: `material_ui` widgets, no animation polish, an overlay anchored to its card (e.g. `OverlayPortal`). The card stays pinned (10.1 item 9) while its popup is open.
@@ -8257,6 +8453,8 @@ NEEDS DESIGN:
 
 ### Story 10.16: Minimap — a raster of the whole graph per layout, viewport overlay, click-and-drag navigation — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph's idea — console session on the commit-graph view, while reviewing the spike viewer. The viewer then built a minimap to measure its cost (`spikes/graph-layout-ab/viewer/`, README "Viewer"). Backlog; the design has no minimap.)*
+
+> **Design update 2026-09-28 (the Epic 10 header):** the raster shows the grouped layout, so a collapsed stack is one card (10.17). A stack toggle is a new layout and re-rasters through item 6's path.
 
 **Motivation.** On a big repo the scrollbar does not navigate: at 100k, one scrollbar pixel spans about 170 rows (10.6 design question (d)). Ralph proposed a minimap for big repos and asked how it performs. The spike viewer built one to find out: a 112 px strip on the right with a raster of the whole graph (cards bright, edges faint, bookmarked cards blue, @ as a gold line), the viewport as a rectangle plus a full-width band, and click or drag to jump. Measured (budget below):
 - the raster is the only real cost: a few milliseconds once per layout, so it belongs off the UI isolate;
@@ -8336,5 +8534,66 @@ NEEDS DESIGN:
 - The raster runs off the UI isolate, and its pixels are decoded into an image once per raster.
 
 **Related:** 10.6 item 11 and design question (d) (jump mechanics, go-to-change); 10.1 (metrics, `VerticalLayout`, scroll controllers); 4.11 item 9 (worker occupancy; option B); spike README "Viewer" (the reference implementation and its measurements).
+
+### Story 10.17: Commit stacks — the stack card, its popover and member callouts, the bracket, expand and collapse, persistence [UI]
+*(Added 2026-09-28, Ralph — console session on the design update, export at `a399daf`. The engine half is 4.13. Runs on the spike's stack recordings until 10.12. The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c)); the proposals below are Claude's, accepted by Ralph on 2026-09-28.)*
+
+**Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264, :536-571; GC:227-247 at `a399daf`). The graph gets shorter and calmer, while forks, merges, bookmarks and @ stay visible. Ralph decided that a toggle never moves a column and that the graph may compact vertically (4.13). This story is the view side: the card, its popover, the bracket, the toggle and the state.
+
+**Scope.**
+1. **Stack card** (GV:536-555; GC:228-232). It has a card's size (10.3 item 10) and is a slotted `RenderBox` in 10.3's pattern.
+   - **The stacked look:** two offset layers under the card (GC:228-229).
+   - **Detailed:** line 1 holds a count badge and the newest member's subject. Line 2 holds the id range newest‥oldest (2 bold + 3 dim characters each, GV:538), the authors' first names, the date range, and ⚠ when a member has a conflict (GV:550).
+   - **Compact:** the badge, the range, the subject and ⚠ on one line.
+   - **A click expands the stack.** It has no selection, no double-click, no bookmark control, no "…" and no "+" chips, as in the design. The click respects the drag slop (10.10).
+   - Hover border, dim and z-order work as for cards (10.3, 10.6), and the focus path passes through the stack node.
+   - **Semantics:** one node, labelled with the count, the newest subject and the id range, with an expand action.
+2. **Stack popover** (GV:556-568; GC:233-239), through 10.6's hover-callout controller.
+   - It opens after 380 ms below the card, or above it when there is no room below (GV:438-442; GC:273).
+   - Its rows run newest first, each with the change id (2 bold + 4), the subject and the date. The hint "Click to expand N changes" follows them.
+   - Each row opens 10.6's commit callout after 180 ms, beside the row and flipped left near the right edge (GV:559, :563; GC:256-259).
+   - **Large stacks** (proposal accepted): the height is capped and the list scrolls; rows load their content as they become visible (10.11). The design lists every member and sizes its flip by 60 + 34 px per member (prototype defect 19).
+3. **Bracket** (GV:661-665, :800-806; GC:240-245). Every expanded run gets a 7 px bracket 16 px left of its members' column, from its newest to its oldest member. In 4.13 item 3's rare split run it stands left of the leftmost member, as the design does (GV:664).
+   - Its collapse button (the `stack-collapse` icon; 10.3's icon note) appears on hover over the bracket or a member. Its tooltip is "Collapse N changes into a stack".
+   - The viewport paints the bracket with the edges (10.1 item 6). The button is hit-testable, and 10.1's pan skips it, as the design's pan does (GV:713).
+4. **Expand and collapse** (GV:654-660).
+   - A toggle is a new layout request with the changed state (10.5). 4.13 keeps every column.
+   - **Anchor, not centre** (proposal accepted). The design scrolls the middle member or the stack into view (GV:657-658). Here the toggled stack keeps its screen position: the anchor is the member that shares the stack's place, and the other members unfold around it; on collapse they fold back into it.
+     - In `compact` that member is the oldest, because the stack sits on its row; the others unfold upwards.
+     - In `free` it is the newest, because the stack carries its time (4.13 item 4); the older members unfold below it.
+   - **On expand the members fade in** over 260 ms: from opacity 0, 6 px higher and at scale .98 (GC:246-247). The animation is paint-only on one ticker, builds no card beyond the entering members, and is skipped under reduce motion (`MediaQuery.disableAnimations`).
+5. **Default state and persistence** (4.13 item 2).
+   - Every run starts collapsed, as in the design, except a run of mutable ancestors of @ (proposal accepted). Otherwise the work under @ would disappear behind a stack. The design's mock hides the issue, because bookmarks break the chain under @ there.
+   - "Group stacks" is 10.7's app-global switch, default on.
+   - **The user's toggles persist per repository,** keyed by each run's oldest member. The design persists one global list (prototype defect 18). A run whose oldest member changes falls back to the default.
+6. **Interplay.**
+   - **Reveal:** go-to-change onto a member of a collapsed stack expands the stack in the same relayout and reveals the member (10.5's `keepOpenKeys`). A bookmark pick and locate @ never target a member, because bookmarked commits and @ are never members.
+   - **Selection:** a run holding the selection does not collapse by itself, neither after a reload that forms a new run nor when "Group stacks" is switched on. A collapse by the user clears the selection and closes 10.8 (prototype defect 20).
+   - **Counter:** the members of collapsed stacks count as shown (10.5 item 10).
+   - **Minimap:** it rasters the grouped layout (10.16).
+   - **Content:** a visible stack card loads its members' content (10.11).
+7. **`GraphLayout` accessors** (10.1 item 2's rule): the stack nodes with their key and member range, a node's run membership, and the expanded runs with their members for the bracket. They read the recordings now and 4.13's result view after 10.12.
+8. **Recordings** (10.1 item 13): the spike's stack recordings (4.13 item 6) of the 36-commit design sample and of the scale inputs, in several stack states. They pass 10.1's hard invariants and 4.13's I7.
+
+**Non-goals.**
+- The run rule, the rows and the columns (4.13).
+- Dragging stacks (10.10's design questions).
+- A stack in the detail panel: a stack is never selected.
+
+**Depends on.** 10.1, 10.3, 10.5 and 10.6 (its hover-callout controller); 10.7 for the switch; 4.13's spike step for the recordings. Real data: 10.12 plus 4.13.
+
+**Design status.** The design gives the direction (cited at `a399daf`), and the proposals above are accepted. Two small points are proposed at build time: the look of the scrolling popover for large stacks, and whether the bracket dims with the focus path.
+
+**Witnesses.**
+- On a recording, the stack card shows the count, the range, the newest subject, the authors, the date range and ⚠ as its members say.
+- A click expands and the bracket's button collapses. Each toggle issues exactly one layout request, the toggled stack keeps its viewport position on both axes, and no node changes column (I7 on the recordings).
+- The popover opens after 380 ms and flips up near the bottom; a row's callout opens after 180 ms. Moving the pointer from the card through the popover into a row's callout keeps all three open, and leaving closes them.
+- On a 500-member stack the popover's height is capped, it scrolls, and it builds only its visible rows.
+- Expand fades the members in over 260 ms, builds only the entering cards, and animates nothing under `disableAnimations`.
+- A run of mutable ancestors of @ starts expanded; persisted toggles come back per repository; a changed oldest member falls back to the default.
+- Go-to-change onto a collapsed member expands its stack and reveals the member. A user collapse of the selected member's run clears the selection.
+- The counter counts collapsed members as shown.
+
+**Related:** 4.13 (the engine half), 10.1 (accessors, recordings, anchor), 10.3 (card pattern, icons), 10.5 (request, anchor, selection), 10.6 (hover-callout controller, focus path), 10.7 (the switch), 10.10 (drag), 10.11 (content), 10.12 (real data), 10.16 (minimap).
 
 ---
