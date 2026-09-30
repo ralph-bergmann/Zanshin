@@ -3,7 +3,7 @@
 **Datum:** 2026-09-30 · **Anlass:** Konsolensession mit Ralph zum GitButler-Video [„Agentic Git with GitButler: Parallel branches with multiple agents.“](https://www.youtube.com/watch?v=pXPTPr91Xew) (Scott Chacon, veröffentlicht 2026-09-29)
 **Fragen:** Wie arbeiten dort drei Agents (2× Claude Code, 1× Cursor) gleichzeitig im selben Verzeichnis und erzeugen am Ende getrennte, teils gestapelte Branches, ohne Worktrees? Kann jj das auch? Im Video heißt es sinngemäß (0:13), GitButler könne das, Git und Jujutsu nicht.
 **Methode:** Video-Transkript, GitButler-Doku und GitButler-Quellcode gelesen (Agent-Skill `crates/but/skill/`, Lock `crates/but-ctx/src/access.rs`). jj-lib 0.44.0 (vendored) und die jj-CLI @ v0.44.0 gelesen und mit Datei:Zeile belegt. Experimente mit jj 0.45.1 in Wegwerf-Repos; alle Skripte stehen in Anhang A, damit man die Messungen nachspielen kann. jj-Issues upstream durchsucht.
-**Status:** Nur eine Notiz, damit wir später wissen, wie es gehen könnte. Keine Story, keine Entscheidung. Offen ist, ob das eher ein Zanshin-Feature oder ein PR an jj wird (Abschnitt 9). Nachträge vom selben Tag in Abschnitt 10.
+**Status:** Nur eine Notiz, damit wir später wissen, wie es gehen könnte. Keine Story, keine Entscheidung. Offen ist, ob das eher ein Zanshin-Feature oder ein PR an jj wird (Abschnitt 9). Nachträge vom selben Tag in Abschnitt 10; die Idee einer Zanshin-CLI ist bewusst vertagt (Gründe am Ende von 10.2). Eine Kurzrecherche zur Nachfrage steht in 10.3.
 
 ---
 
@@ -285,6 +285,46 @@ Was dafür spricht:
 - Das Ergebnis bleibt reines jj. Megamerge, Branches und Bookmarks sind normale jj-Objekte; `jj log` zeigt alles, und wer nur die jj-CLI benutzt, kann weiterarbeiten.
 - Die Zanshin-GUI könnte die Lanes live zeigen, während die Agents arbeiten, über den Filesystem-Watcher aus FR-MCP-9.
 - Stufe 0 (8.1) zeigt vorher ohne Code, ob der Workflow im Alltag trägt.
+
+**Stand (Ralph, 2026-09-30): bewusst noch nicht entschieden.** Zwei Gründe:
+- Es ist noch unklar, ob das ein Feature ist, das jeder braucht.
+- Es gibt genug andere Stories, die zuerst umgesetzt werden wollen.
+
+Deshalb gibt es dazu keine Story.
+
+### 10.3 Kurzrecherche: Wollen AI-Nutzer das überhaupt?
+
+*Rückfrage von Ralph am 2026-09-30, vor dem Commit: Ist das ein Feature, das sich AI-Nutzer wünschen, oder eher „Guck mal, was GitButler kann“? Er selbst hatte bisher nicht das Bedürfnis, Claude an mehreren Stories gleichzeitig arbeiten zu lassen.*
+
+Man muss zwei Dinge trennen.
+
+**Parallele Agents überhaupt: verbreitet, aber eher etwas für Power-User.**
+- **Die großen Tools haben es fest eingebaut, isoliert per Worktree.** Die Claude-Code-Desktop-App legt für jede Session automatisch einen Worktree an, die CLI hat `--worktree`. Cursor 3 lässt im Agents Window bis zu acht Agents parallel in Worktrees laufen. Dazu gibt es eine eigene Tool-Kategorie (Conductor, Claude Squad, Superset, Nimbalyst u. a.).
+- **Die tatsächliche Nutzung ist verhaltener.** Stack Overflow Pulse Survey (April 2026, 1.100 Befragte): 69 % arbeiten mit einem einzelnen Agent, 17 % mit mehreren spezialisierten, 16 % mit mehreren koordinierten. 68 % bevorzugen berechenbare Ein-Agent-Setups. Wer mehrere Agents nutzt, tut das allerdings häufiger täglich (85 % bzw. 77 % gegenüber 54 %).
+- **Erfahrungsberichte sind sich weitgehend einig:** Der Engpass ist der Mensch, der prüfen und zwischen Kontexten wechseln muss. Praktikabel sind etwa 2 bis 5 parallele Sessions.
+  - Gut geht es mit unabhängigen, klar beschriebenen Aufgaben. Simon Willison nennt Recherche, Prototypen, Code verstehen und kleine Wartung.
+  - Schlecht geht es bei Architekturentscheidungen und in gemeinsam genutzten Hotspot-Dateien.
+  - The Pragmatic Engineer (Oktober 2025) sieht einen aufkommenden Trend, vor allem bei erfahrenen Engineers, die ohnehin gut zwischen Kontexten wechseln.
+- **Stimmungsbild aus einem Ask-HN-Thread** (nur 15 Kommentare): Etwa sechs berichten von Erfolg, meist mit Worktrees. Etwa vier sehen wenig Nutzen, vor allem wegen des Kontextwechsels.
+
+**Gleiches Verzeichnis ohne Worktrees: eine Nische, die vor allem GitButler vorantreibt.**
+- Fast alle Tools isolieren per Worktree. Die Variante ohne Worktree propagieren vor allem GitButler selbst (Doku, Blog, Video) und einzelne Nutzer wie trigger.dev.
+- Der Grund dafür ist echt, aber speziell: ein gemeinsamer Dev-Server, eine gemeinsame Datenbank, einmal `node_modules`. Im Ask-HN-Thread verzichtet genau einer aus diesem Grund auf Worktrees.
+
+**jj-Bezug:** Die jj-Community bildet das gängige Muster auf jj-Workspaces ab. Mehrere Plugins und Skills lenken Claude Codes Worktree-Funktion auf `jj workspace` um (claude-jj-worktree, jj-workspace-skill), dazu gibt es Blogposts. Für den Megamerge-Weg gibt es vereinzelte Agent-Skills; in dieser Kurzrecherche war die Workspace-Variante häufiger zu finden.
+
+**Einordnung:**
+- Der Bedarf, Agents mehrere Aufgaben gleichzeitig erledigen zu lassen, ist echt, aber eine Praxis von Power-Usern. Die Mehrheit arbeitet mit einem Agent, so wie Ralph bisher. Das passt zu Grund (a) in 10.2.
+- Die konkrete Variante aus dem Video (ein Verzeichnis, keine Worktrees) ist vor allem GitButlers Alleinstellungsmerkmal.
+- Falls Zanshin hier je etwas anbietet, wäre die verbreitetere Form die Isolation per jj-Workspace, etwa alle Workspaces und ihre `@` gut sichtbar im Graphen. Das ist eine Beobachtung, keine Empfehlung.
+
+Quellen zu 10.3:
+- [Stack Overflow: Agents on a leash](https://stackoverflow.blog/2026/05/27/agents-on-a-leash-agentic-ai-remains-mostly-monitored-at-work/) (Pulse Survey April 2026)
+- [Claude Code Docs: Run parallel sessions with worktrees](https://code.claude.com/docs/en/worktrees), [Cursor Docs: Worktrees](https://cursor.com/docs/configuration/worktrees)
+- [Simon Willison: Embracing the parallel coding agent lifestyle](https://simonw.substack.com/p/embracing-the-parallel-coding-agent) (2025-10-06), [The Pragmatic Engineer: New trend: programming by kicking off parallel AI agents](https://blog.pragmaticengineer.com/new-trend-programming-by-kicking-off-parallel-ai-agents/) (2025-10-30)
+- [Ask HN: Is it actually possible to run multiple coding sessions in parallel?](https://news.ycombinator.com/item?id=47573483), [DEV: I Ran 10+ AI Coding Agents in Parallel. The Bottleneck Wasn't the AI.](https://dev.to/kikakkz/i-ran-10-ai-coding-agents-in-parallel-the-bottleneck-wasnt-the-ai-12e3)
+- [GitButler: Managing Multiple Claude Code Sessions Without Worktrees](https://blog.gitbutler.com/parallel-claude-code), [trigger.dev](https://trigger.dev/blog/parallel-agents-gitbutler)
+- jj: [claude-jj-worktree](https://github.com/jasagiri/claude-jj-worktree), [jj-workspace-skill](https://github.com/antstanley/jj-workspace-skill), [Parallel Claude Code with Jujutsu](https://slavakurilyak.com/posts/parallel-claude-code-with-jujutsu)
 
 ---
 
