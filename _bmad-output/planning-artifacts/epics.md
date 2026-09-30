@@ -512,7 +512,7 @@ FR-GR-4 / NFR-P-2 were amended on 2026-09-26: no windowing, but complete geometr
   - straight, merge, and branch-off with shared buses;
   - dashed indirect edges;
   - crossing hops;
-  - the "~ N elided" marker;
+  - the "~ N elided" marker *(2026-09-30: a `//` marker on every dashed edge and a "~ elided" end stub, without counts; Story 10.19)*;
   - the gold lineage of @ and a hover focus path;
 - two-axis scrolling, pan-by-drag and exact scrollbars over 10k–100k commits.
 
@@ -556,6 +556,15 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 - **Decided:** a stack toggle never moves a column; the design re-packs the lanes, which Ralph finds irritating. The graph may compact vertically. The callout's file and line stats are not planned. The design is inspiration, not a 1:1 template: small deviations are expected, and FINAL means the intended direction.
 - **New stories:** 4.13 (stacks in the engine) and 10.17 (stacks in the view). The callouts go into 10.6, 10.3 and 10.15; the drag-and-drop hint (cards and bookmarks will be draggable) into 10.10.
 
+**Design update 2026-09-30** (Ralph, console session; the export at `e243dd2`; details in the Epic 10 header below):
+- **What the export adds:** a study of hidden history (`Graph Gaps Study.html`). It has three marker families for a gap on a dashed edge and for the end of history, a hover callout that explains a gap and offers "Show in all()", and a toolbar legend "N gaps". The sample data gains the gap cases (52 commits). An animation playground (`Animation Show Case.html`) tunes two animations: a stack unfolding and folding, and a tree change after an operation.
+- **Decided:**
+  - marker family B (`//`), and no counts of hidden commits;
+  - a marker's centre keeps 24 px from every card, bend, crossing, junction and other marker;
+  - Ralph's animation values: stacks in 250 ms without stagger; tree changes drawn at 1.8 px/ms, fading out over 600 ms with a 16 px blur and a 16 px rise;
+  - Ralph's line-behind-card finding is the Time layout's defect 3; it cannot occur in Free or Compact.
+- **New stories:** 10.19 (hidden history: markers, end stubs, the gap callout, the legend, "Show in all()") and 10.20 (graph animations). 10.19 takes over 10.4's elided marker. Earlier stories keep the doors open for 10.20, and 10.17 drops its fade.
+
 **FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
 - FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
 - Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
@@ -582,6 +591,8 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run`, its design question (f)) it needs no backend story.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the spike's stack recordings from 4.13's spike step. Real stacks come with 10.12 plus 4.13.
 - 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
+- 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample. Real gaps come with 10.12.
+- 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
 
 ---
@@ -595,7 +606,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
-> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view).
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations).
 
 ---
 
@@ -4044,6 +4055,7 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 **Tests.**
 - **The run-rule oracle.** On the design sample at `a399daf` (36 commits), for both revsets, the runs equal the design's `groupStacks` (GV:228-264): members, keys and the immutable split. The design's columns are no oracle, because they re-pack.
+  *(2026-09-30: the export at `e243dd2` (52 commits) adds the gap cases, and its `groupStacks` now counts a child behind a gap as a child and requires a Direct parent for members (GV:264-276), as item 1 does. The oracle can move to that sample and then reaches gaps. At build time, check that the design's gap walk, which keeps transitive indirect edges (prototype defect 4), yields jj's edges on it. The hand-built gap cases below stay.)*
 - **The gap cases** *(added 2026-09-30, console session: the design sample has no Indirect edge, so the oracle never reaches a gap)*. `jj log` draws a gap as "(elided revisions)" or `~`; the layout sees only 4.10's edge kinds. Hand-built inputs pin the run rule at a gap:
   - **Indirect parent edge.** A node whose one edge is Indirect is no member. Example: B's edge is Indirect, C and D sit above B with Direct edges. Expected: B stays a single card, and C–D is a stack whose parent edge (to B) is Direct.
   - **Several Indirect edges.** A node with one real parent gets two Indirect edges when that hidden parent is a merge (jj-lib 0.44.0 `default_index/revset_graph_iterator.rs:168-172`). It is no member.
@@ -4060,7 +4072,7 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 - **Coverage.** Dart only, so the ratchet has no floor here; these tests are the safety net.
 
 **Non-goals.**
-- The stack card, its popover, the bracket, the animation and the persistence (10.17).
+- The stack card, its popover, the bracket, the animation and the persistence (10.17; since 2026-09-30 the animation is 10.20's).
 - Grouping anything but linear runs, e.g. collapsing a whole branch with its forks.
 - Stacks in the spike's Rust reference.
 - A narrower layout for collapsed graphs: the columns are fixed by decision.
@@ -6804,6 +6816,47 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 > 3. **Stories:** new 4.13 (stacks in the engine) and 10.17 (stacks in the view). Dated notes in 4.10, 4.11, 10.1, 10.3, 10.5, 10.6, 10.7, 10.10, 10.11, 10.12, 10.15 and 10.16, and on PRD FR-GR-1. Prototype defects 17–20 below.
 > 4. **Citations.** GV and GC line numbers written before this update refer to the export at `57f259c`; read them with `git show 57f259c:<path>`. From GV:225 on they no longer match the current file, where the stack code was inserted; GC shifts by up to 3 lines. Citations dated 2026-09-28 refer to `a399daf`. The layout code (GV:140-225) is unchanged.
 
+> **Design update 2026-09-30 (Ralph, console session; the re-downloaded export at `e243dd2`).** The export adds a study of hidden history and an animation playground. What changed, and what Ralph decided:
+> 1. **What the export adds** (cited at `e243dd2`):
+>    - **the gaps study** `Graph Gaps Study.html` (GS:22-31):
+>      - three marker families, A dots, B break and C pill, each for the gap on an indirect edge and for the end of history along a Missing parent;
+>      - each family dark without counts and light with counts, with @ moved to `mxnztwqp` so that the gold line runs through a gap;
+>      - the code is `graph-gaps.jsx` (GG), wired in at GV:144-170 (a gap walk per parent: direct, indirect with its hidden parent `via` and the hidden commits, or missing), GV:243-249 (markers and stubs), GV:366 (the toolbar legend), GV:755-765 (hover and "Show in all()") and GV:881-896; the styles are GC:279-321;
+>    - **a hover callout on every gap:**
+>      - the dashed edge, its marker and the stub open it;
+>      - it names the gap and shows the child, the gap and the ancestors;
+>      - it offers a lazy "Count", and "Show in all()", which switches to `all()`, centres the first hidden commit and flashes the hidden ones for 2.4 s (GG:146-180; GV:755-762; GC:311-312);
+>    - **a toolbar legend** "N gaps", whose popover explains solid, dashed and end and offers "Show all()" (GG:182-203; GV:366);
+>    - **more mock data:** `graph-data.js` has 52 commits (36 before). The 16 new ones are the gap cases Claude asked Claude Design for on 2026-09-30 (deferred-work): a stack beside a gap, a single card between two stacks, a hidden merge that gives one single-parent card two dashed edges, a merge with one visible and one Missing parent, and a fork behind a gap (GD:76-102). The design tweaks gain "Gap marker" and "Show hidden count" (APP:16-17, :2536-2539);
+>    - **the design now follows two earlier decisions:** a stack toggle keeps the columns of the expanded layout while they stay valid (GV:220-237; prototype defect 17), and `groupStacks` counts a child behind a gap as a child and requires a Direct parent for members (GV:264-276), as 4.13 does;
+>    - **`Animation Show Case.html`** (AS): a playground with sliders for a stack unfolding and folding and for a tree change after an operation.
+> 2. **Decisions** (Ralph):
+>    - (a) **Marker family B** ("Break", `//`), for gaps and for ends.
+>    - (b) **No counts** anywhere: no "N elided", no "Count" link and no count toggle.
+>      - This answers 10.4 design question (a).
+>      - No count call is needed, so the follow-up story that 4.10's Non-goals and "Backend dependencies" below reserved is not created.
+>    - (c) **The spacing rule:** a marker's centre keeps at least 24 px from everything: every card, bend, crossing and junction, and every other marker, stub and label.
+>      - It is a `GraphTheme` constant, tunable in the demo host.
+>      - The design's own scan already keeps about 24 px from bends and crossings; its fixed positions do not (prototype defect 21).
+>    - (d) **Two new stories:**
+>      - 10.19 (hidden history: markers, end stubs, the gap callout, the legend, "Show in all()") takes over 10.4 item 5;
+>      - 10.20 (graph animations) carries Ralph's values: stacks unfold and fold in 250 ms without stagger; a tree change draws at 1.8 px/ms and fades out over 600 ms with a 16 px blur and a 16 px rise.
+>
+>      Earlier stories get dated notes that keep the doors open for 10.20, and 10.17 drops its 260 ms fade.
+>    - (e) **Claude's proposals, accepted by Ralph:**
+>      - a hidden merge gets one marker per edge, grouped on hover;
+>      - the end stub takes the design's side slots (GV:246-248) under the spacing rule;
+>      - the gap callout opens after 380 ms, and a press on a dashed edge still pans;
+>      - "Show in all()" opens the stack that holds the hidden parent;
+>      - the flash is static under reduce motion;
+>      - every reload with a new operation animates, within a cap on the duration.
+> 3. **Ralph's line-behind-card finding is the Time layout's defect 3** (reproduced in the page on 2026-09-30; Compact is clean).
+>    - `kx` (13:30) is a parent of the hidden merge `yx` (12:00) under `sr` (13:00), so in Time `kx` sits above `sr`. The indirect branch-off then runs from `kx`'s top down through `sr`'s own card to its bottom.
+>    - The product's Free and Compact put every child at least one pitch above each parent (10.1 item 14), so this cannot occur there.
+>    - Edges still pass behind other cards in two open cases: blocked merges (prototype defect 2, SPEC §11.4) and buses in Free (SPEC D8, 4.11 open question 4). 10.19's spacing rule treats every card as an obstacle.
+> 4. **Stories:** new 10.19 and 10.20. Dated notes in 4.13, 10.1, 10.3, 10.4, 10.5, 10.6, 10.7, 10.12 and 10.17. Prototype defects 21–24 below, dated amendments to defects 3, 4 and 17, and behaviours (iv)–(v).
+> 5. **Citations.** GV, GC, GD and APP line numbers dated 2026-09-30 refer to `e243dd2`. New abbreviations: `GG` = `graph-gaps.jsx`, `GS` = `Graph Gaps Study.html`, `AS` = `Animation Show Case.html`.
+
 **Goal.** The app's main view as in the design export. The canvas and the graph:
 - commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
   - Compact rows are the dependency depth;
@@ -6812,7 +6865,7 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
   - straight, merge, and branch-off with shared buses;
   - dashed indirect edges;
   - crossing hops;
-  - the "~ N elided" marker;
+  - the "~ N elided" marker *(2026-09-30: a `//` marker on every dashed edge and a "~ elided" end stub, without counts; 10.19)*;
 - the gold lineage of @, and a hover focus path that dims everything outside a card's ancestry;
 - two-axis scrolling and pan-by-drag over 10k–100k commits, with exact scrollbars.
 
@@ -6821,9 +6874,10 @@ Around the graph sit a toolbar, a thin detail panel for the selected commit, a t
 **Design input.** The design export lives under `_bmad-output/implementation-artifacts/design/`. The page `JJ Desktop Client.html` loads `data.js`, `graph-data.js`, `tweaks-panel.jsx`, `graph-view.jsx` and `app.jsx`, styled by `styles.css` and `graph.css`. The stories cite the sources by these abbreviations:
 - `GV` = `graph-view.jsx`: the layout algorithm, toolbar, card, bookmark control, quick actions, detail frame, bookmark list and workspace;
 - `GC` = `graph.css`;
-- `GD` = `graph-data.js`: 22 mock commits, with the clock fixed at 2026-09-25T14:00 *(36 since the 2026-09-28 update at `a399daf`; the spike's oracle keeps the 22 of `57f259c`, 4.11's dated note)*;
+- `GD` = `graph-data.js`: 22 mock commits, with the clock fixed at 2026-09-25T14:00 *(36 since the 2026-09-28 update at `a399daf`; the spike's oracle keeps the 22 of `57f259c`, 4.11's dated note; 52 since the 2026-09-30 update at `e243dd2`)*;
 - `APP` = `app.jsx`: the detail body, the describe editor, and the tweak defaults;
 - `SC` = `styles.css`: the design tokens.
+- *(since 2026-09-30)* `GG` = `graph-gaps.jsx`, which the page now loads too: gap markers, end stubs, the gap callout and the toolbar legend. `GS` = `Graph Gaps Study.html`, `AS` = `Animation Show Case.html`.
 
 Status of the design:
 - **Preliminary but close to final** (Ralph, 2026-09-26). *(2026-09-28, Ralph: inspiration, not a 1:1 template; small deviations are expected and stay unfixed in the export. Decision (c) of the design update.)* The earlier mockup lives at `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp` (untracked). Where it differs from the export, the mockup and everything planned from it are obsolete.
@@ -6888,7 +6942,7 @@ Every time-based variant needs every commit's timestamp before the first frame. 
 **Backend dependencies** (restated in 10.12):
 - **4.10:**
   - the index-only topology and view facts for the whole revset before the first paint, including each node's real parent count (index-only, 4.10 item 1);
-  - the edge kinds as jj facts: direct, indirect and Missing. A Missing edge is the elided stub (10.4). Its count N, if 10.4 design question (a) keeps it, is not a topology field (4.10 Non-goals): it depends on the revset and needs an index walk per Missing parent, so it would come from a separate op-pinned count call for the visible nodes, owned by a follow-up story created only then;
+  - the edge kinds as jj facts: direct, indirect and Missing. A Missing edge is the elided stub (10.4). Its count N, if 10.4 design question (a) keeps it, is not a topology field (4.10 Non-goals): it depends on the revset and needs an index walk per Missing parent, so it would come from a separate op-pinned count call for the visible nodes, owned by a follow-up story created only then *(decided 2026-09-30: no counts, the design update's decision (b); no count call and no follow-up story. The stub is 10.19's)*;
   - content (subject, author, time, empty, conflict), loaded lazily by commit id at the returned operation;
   - `|all()|` for the "shown / total" counter;
   - the operation id.
@@ -6925,13 +6979,16 @@ The demo host exposes every graph option. Which of them become user settings is 
 2. **Blocked merges are routed behind cards** [4.11; reported by 10.4 item 10]. A blocked merge is re-routed as a branch-off and runs up the child's column behind that column's cards, collinear with their chain. Its reservation also pushes the continuation off its lane (GV:52-69, :188-206). The spike keeps this (SPEC D9) and leaves it to Ralph (SPEC §11.4). The design sample has none, but the spike's synthetic inputs have many (229 on `synth-10k`, compact, greedy), so the route invariant is a counted report until 4.11 fixes it.
 3. **Time rows break when a child is older than its parent** [4.11; the spike's clamp fixes it (SPEC D1); checked by 10.1 item 14] (GV:169) *(moot for the product since 2026-09-27: Time is dropped; Free clamps its own time, SPEC §4.2)*:
    - across buckets, the parent is drawn above the child;
-   - inside one bucket, both land in the same cell and overlap.
+   - inside one bucket, both land in the same cell and overlap;
+   - *(2026-09-30, Ralph's finding in the gaps study; the design update's item 3)* an edge to a parent drawn above its child runs down through the child's own card, because every route climbs from the parent's top to the child's bottom (GV:52-69 at `e243dd2`).
 4. **Elided counts are costly and differ from jj** [4.10 supplies the Missing edges; N, if 10.4 design (a) keeps it, a follow-up count call] (GV:141-158):
    - a DFS per parent counts every hidden ancestor down to the root, O(h) per Missing parent;
    - it drops the hidden part of mixed parents and keeps transitive indirect edges;
    - jj's Missing semantics differ: its walk is bounded, and it keeps Missing edges next to Indirect ones.
 
    The spike takes the edges from jj and leaves the counts out of the layout (SPEC §0, D2). So the stub comes from 4.10's Missing edges; N, if 10.4 (a) keeps it, from a separate count call (4.10 Non-goals).
+
+   *(2026-09-30: counts are dropped, the design update's decision (b). The new gap walk (GV:144-170 at `e243dd2`) also names each indirect edge's hidden parent (`via`) and the hidden commits between; jj reports neither. 10.19 groups a hidden merge by the real parent count instead, and derives the hidden commits from the two layouts after a switch to `all()`.)*
 5. **`rowOf` recursion** overflows the stack at about 8k depth with head-first input (GV:174) [4.11; the spike loops instead (SPEC §4.2)].
 6. **Duplicate parents** produce a dashed and a solid edge to the same parent, with colliding edge keys (GV:154, :640) [4.11: jj does yield repeated targets (a Direct and an Indirect edge to one parent, seen on a real repo), and 4.11's input builder keeps one layout edge per target (its Scope 5; SPEC §2 amended, V3 stays a validation); 10.1 item 14; 10.4 item 9].
 7. **An invisible elided stub**: the stub is drawn over the node's own incoming edge at the card centre (GV:643-645) [10.4 design (b)].
@@ -6957,15 +7014,33 @@ The demo host exposes every graph option. Which of them become user settings is 
 
 Added with the design update of 2026-09-28 (cited at `a399daf`):
 
-17. **Lanes re-pack on every stack toggle** (GV:651-652), so whole branches jump sideways [4.13; decision (a), deviation (f)].
+17. **Lanes re-pack on every stack toggle** (GV:651-652), so whole branches jump sideways [4.13; decision (a), deviation (f)]. *(2026-09-30: the export at `e243dd2` keeps the columns of the expanded layout while they stay valid and re-packs only otherwise (GV:220-237); 4.13's I7 keeps them always.)*
 18. **The expanded stacks persist in one global list** (`zanshin.graph.expanded`, GV:640), not per repository, although their keys are change ids [10.17].
 19. **The stack popover grows without bound.** It lists every member and sizes its flip by 60 + 34 px per member (GV:543, :558) [10.17].
 20. **A collapse can hide the selected commit** and leave its panel open, like defect 9: the toggle keeps `selectedId` (GV:654-660) [10.17, 10.5].
+
+Added with the design update of 2026-09-30 (cited at `e243dd2`):
+
+21. **Gap markers crowd cards and bends at fixed positions** [10.19; decision (c)]:
+    - the fallback sits 11 px under the card (GG:45-46);
+    - a hidden merge's shared marker sits 10 px under the card, on the merge bus's bend (GG:53-57);
+    - an end stub's cut sits 10–15 px under the card (GG:106-110).
+
+    The scan itself keeps about 24 px from bends and crossings and 21–27 px from its own cards (GG:22, :30, :39).
+22. **Marker placement knows only the edge's own two cards** (GG:22). Nothing keeps a marker off another card, e.g. in Free, where a bus can pass behind one (SPEC D8) [10.19].
+23. **Marker placement is all-pairs:** for every dashed edge it scans every segment of every other edge, O(D·E) (GG:26-36) [10.19: whole-layout indexes].
+24. **The mock hides commits that jj's `builtin_log()` shows** [10.1 item 13; 10.19 item 9]:
+    - that revset holds every mutable commit and every parent of one (`ancestors(immutable_heads().., 2)`);
+    - the mock hides the mutable `vw`, `lm`, `nt`, `om` and `yx`, and `ro`, a parent of the mutable merge `wl` (GD:80-81, :91, :95, :99-100).
+
+    Its gaps therefore stand for a narrower revset such as `mine()`. Under jj's default revset, gaps occur only in immutable history.
 
 **Prototype behaviours that are design questions, not defects** (the owning story asks):
 - (i) Crossings between edges that share a node are neither bridged nor counted (GV:87) [10.4 design (d)]. The spike's optimiser counts them (SPEC D5).
 - (ii) Opening the detail panel keeps the raw scroll offset [10.8 design (e)].
 - (iii) A click on empty canvas never clears the selection; it only starts a pan (GV:563-569) [10.6 design (b)].
+- (iv) *(2026-09-30)* The gap callout opens without delay (GV:755 at `e243dd2`), so it flashes whenever the pointer crosses a dashed edge [decided in 10.19: after 380 ms].
+- (v) *(2026-09-30)* A press on a dashed edge's hover band or on a marker never starts a pan (GV:791) [decided in 10.19: it pans, and only the callout blocks a pan].
 
 **House rules for every Epic 10 story.**
 - **Code and tests.** Code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/` (mirroring). The POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`) is reference only.
@@ -7009,6 +7084,8 @@ Added with the design update of 2026-09-28 (cited at `a399daf`):
 - 10.16 (minimap) follows 10.1, 10.4, 10.5 and 10.6. On its recommended raster path (an app-side `Isolate.run` from the layout arrays, its design question (f)) it needs no backend story and runs on recorded layouts.
 - 10.17 (commit stacks, added 2026-09-28) follows 10.1, 10.3, 10.5 and 10.6, on the stack recordings of 4.13's spike step (its item 6). 10.7's "Group stacks" switch can land with it. Real stacks come with 10.12 plus 4.13.
 - 10.18 (AI stack titles, added 2026-09-28) is an idea Ralph has not decided on. If it is built, it follows 10.17 and 10.11.
+- 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample (10.1 item 13). Real gaps come with 10.12.
+- 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
 
 **What changed in the re-plan, and why** (story numbers kept where the topic still fits):
@@ -7053,6 +7130,18 @@ Added with the design update of 2026-09-28 (cited at `a399daf`):
 > - **Stacks** (10.17, 4.13). `GraphLayout` (item 2) gains accessors for stack nodes (a collapsed run as one node, with its members) and for expanded runs (their members, for the bracket); 10.17 adds them. The recordings (item 13) gain stack recordings from the spike's Dart (4.13 item 6), on the 36-commit design sample and on the scale inputs. The invariant checker (item 14) gains 4.13's column invariant I7: a stack recording's columns equal those of its ungrouped recording.
 > - **A stack toggle is a relayout under the same revset and mode,** so item 10's anchor applies. The anchor node is the member that shares the toggled stack's place: the oldest in `compact`, the newest in `free` (10.17 item 4; 10.5).
 > - **Callouts** (10.6) are widgets above the viewport, anchored to their card like 10.15's popups. The card stays pinned (item 9) while its callout is open. Item 6's paint hooks are unchanged.
+
+> **Design update 2026-09-30 (the Epic 10 header):**
+> - **Recordings** (item 13):
+>   - the design sample at `e243dd2` (52 commits) joins (a) in both revsets, with the design's flags, for 10.19's gap cases. Those flags stand in for a narrower revset (prototype defect 24);
+>   - counts are dropped (decision (b)), so records carry no N: item 13's "A count N exists only for the design sample" goes, and the Missing edges stay;
+>   - the spike's `tools/design-input.mjs` cannot read this export yet (deferred-work, 2026-09-30).
+> - **Transitions for 10.20** (a constraint; no animation code here):
+>   - the viewport must be able to keep nodes of the previous layout mounted for the length of a transition, and paint them on an overlay layer with opacity, blur and an offset;
+>   - during a transition its visible set is the union of both layouts;
+>   - a card's y is a paint parameter per key, so a card can slide without a rebuild.
+>
+>   Keys already survive rewrites (item 2's change-id rule).
 
 **Motivation.** The design places each card at a pixel position computed from data alone (GV:198-224):
 - x comes from the node's column, y from its row;
@@ -7383,6 +7472,8 @@ NEEDS DESIGN:
 > - **The stack card** is 10.17. It reuses this story's `RenderBox` pattern and sizes, with its own slots.
 > - **Witness:** "…" and the empty bookmark button appear only on hover, and are hit only then.
 
+> **Design update 2026-09-30 (the Epic 10 header; for 10.20):** the card's `RenderBox` can paint without its border. Its content opacity and a vertical offset of its text line are paint parameters per key, paint-only like hover (item 9). 10.20 traces the outline itself from the card's rect and radius. No animation code here.
+
 **Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
 
 **Scope.**
@@ -7512,6 +7603,21 @@ NEEDS DESIGN:
 ### Story 10.4: Graph edges — rounded orthogonal routes, dashed indirect edges, crossing hops per window, shared buses, the elided marker, the @ lineage — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
+> **Design update 2026-09-30 (the Epic 10 header):**
+> - **Item 5 moves to 10.19,** which answers design questions (a)–(c):
+>   - no counts;
+>   - the end stub on the design's side slots, under a 24 px spacing rule;
+>   - dashed edges, markers and stubs as hover targets with a callout.
+>
+>   This story keeps the dashed style (item 2), and its hit lookup (item 9) serves 10.19's hover bands. The witness "the elided stub and label positions, and bottomExtra" moves to 10.19; bottomExtra stays 44.
+> - **The non-goal "A legend" is lifted:** 10.19 adds one to the toolbar.
+> - **10.19 adds cuts:** under each `//` marker the dashed edge is cut 8 × 12 px, as split subpaths like the hops (item 4).
+> - **Run indexes:** 10.19 places its markers against whole-layout indexes of vertical and horizontal runs, bends and junctions. Item 4's index of vertical runs is one half of that; build it so that both stories can use it.
+> - **For 10.20** (a constraint; no animation code here):
+>   - an edge can be stroked partially, from its parent end and by length (`PathMetric.extractPath`);
+>   - besides its per-layout index (item 9), it has an identity across layouts: (child key, parent key);
+>   - the lineage style can switch without a new layout.
+
 **Motivation.** The design draws each parent edge as its own orthogonal polyline between known card positions, in one of three shapes (GV:52-69, GC:61-69). It confirms the earlier mockup reading: merges run below the child, convergence runs above the parent, and siblings share one horizontal. What changed is the model:
 - no lane verticals and no per-row recipe;
 - one gray plus a gold lineage, so the planned `colorIdx` / colour-by-opening-edge pass is obsolete (research §5's colour pitfall is moot).
@@ -7631,6 +7737,14 @@ NEEDS DESIGN:
 > - **A toggle is a new request** under the same revset and mode. It is anchored on the toggled stack, i.e. on the member that shares its place (10.17 item 4; item 5; 10.1 item 10), and never re-centres on @. Coalescing (item 3) applies.
 > - **Selection** (item 7): a run holding the selection stays expanded until the user collapses it. Then the selection clears, and 10.8 closes.
 > - **Counter** (item 10): shown stays the revset's commit count, members of collapsed stacks included (the design counts them, GV:653 at `a399daf`).
+
+> **Design update 2026-09-30 (the Epic 10 header; 10.19, 10.20):**
+> - **"Show in all()"** (10.19 item 6) is a revset switch to `all()` with an explicit reveal (item 6, rank 1).
+>   - The reveal is resolved on the new layout.
+>   - The request carries in `keepOpenKeys` the child's real parents that the old revset hid (from the child's `show`), so the stack that holds the hidden parent opens in the same relayout.
+>   - The view model then derives the flash set from the new layout and the old layout's keys.
+>   - The legend's "Show `all()`" is a plain switch that re-centres on @.
+> - **For 10.20** (a constraint; no animation code here): a reload with a new operation and a stack toggle hand the view both the previous and the new layout, plus the anchor. The previous layout stays alive until the transition ends.
 
 **Motivation.** 10.1–10.4 run on recorded layouts. This story owns the view model. It requests layouts through a narrow port and keeps the view coherent while jj re-derives the graph after every operation (ADR-0002), whether the operation is Zanshin's own or an external `jj`. The watcher reports each operation as an `OpHeadsChangedEvent` (`packages/zanshin_core/lib/src/worker/events.dart:19`) on `ZanshinWorker.events` (`packages/zanshin_core/lib/src/worker/isolate.dart:354`).
 
@@ -7752,6 +7866,10 @@ Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `descri
 > - **The focus path** (item 4) passes through stack nodes (10.17).
 > - **Witnesses:** the callout opens after 450 ms with the texts above, and stays closed over the affordances; moving into it keeps it open, and leaving closes it; near the right and bottom edges it flips and stays inside the canvas; a hover still builds 0 cards; a pan shows no callout.
 
+> **Design update 2026-09-30 (the Epic 10 header; 10.19):**
+> - **The hover-callout controller also serves 10.19's gap callout.** Its targets are a 12 px band along each dashed edge (10.4 item 9's hit lookup), a marker's box and an end stub. It opens after 380 ms and closes 180 ms after the pointer leaves.
+> - **10.19's flash after "Show in all()"** runs on item 12's per-key ticker and overlay layer, with its own look: an accent ring held and faded over 2.4 s, static under reduce motion.
+
 **Motivation.** The design fixes the pointer model:
 - a click selects and opens the panel;
 - a double-click moves the working copy there (`jj edit`);
@@ -7870,6 +7988,8 @@ NEEDS DESIGN:
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
 > **Design update 2026-09-28 (the Epic 10 header):** a **"Group stacks"** switch (GV:336-339 at `a399daf`; title "Collapse linear runs of changes into one stack card"), default on, an app-global preference like Detailed (item 7). It sends 10.5's `stacks` flag and re-lays out under the anchor, never re-centring on @. The counter counts the members of collapsed stacks as shown (10.5 item 10). Witness: the switch issues exactly one layout request and keeps the anchor.
+
+> **Design update 2026-09-30 (the Epic 10 header):** 10.19's gap legend, a chip "N gaps" with its popover, sits right after the revset select (GV:366 at `e243dd2`). This story leaves room for it; 10.19 builds it.
 
 **Motivation.** The design's graph toolbar (GV:240-309, GC:10-56) replaces the earlier plan of a free-text revset field with Apply/Save. It offers:
 - exactly two revsets;
@@ -8200,6 +8320,11 @@ The design needs content only on visible cards (subject, author, date, empty, co
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26: the design's layout engine is now Story 4.11, and the landing lanes and segment colours this story was first written for belong to the `jj log` lane model the view no longer draws.)*
 
 > **Design update 2026-09-28 (the Epic 10 header):** real stacks need 4.13: its request fields (10.5) and its result view's stack arrays behind 10.17's accessors. 4.13's column invariant I7 gates every real layout, like 10.1 item 14's hard invariants. This story therefore also depends on 4.13.
+
+> **Design update 2026-09-30 (the Epic 10 header):** the gaps (10.19) need no new backend call.
+> - Item 3's N goes, because counts are dropped (decision (b)).
+> - 10.19 groups a hidden merge by each node's real parent count, which item 3 already requires from 4.10.
+> - Its "Show in all()" reads the child's parents through `show`.
 
 **Motivation.** Everything before this story runs on recorded layouts and fake content. Real data needs all three backend stories:
 - 4.10: the index-only topology and view facts for the whole revset (timestamps on request), an operation id, and op-pinned content by commit id;
@@ -8547,6 +8672,12 @@ NEEDS DESIGN:
 ### Story 10.17: Commit stacks — the stack card, its popover and member callouts, the bracket, expand and collapse, persistence [UI]
 *(Added 2026-09-28, Ralph — console session on the design update, export at `a399daf`. The engine half is 4.13. Runs on the spike's stack recordings until 10.12. The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c)); the proposals below are Claude's, accepted by Ralph on 2026-09-28.)*
 
+> **Design update 2026-09-30 (the Epic 10 header; 10.19, 10.20):**
+> - **Item 4's fade is dropped.** 10.20 brings the unfold and fold animation Ralph tuned in the showcase: the members slide out of the stack's layers in 250 ms. Until then a toggle is instant. The witness "Expand fades the members in over 260 ms…" goes with it.
+> - **The export now keeps the columns** on a toggle while its frozen columns stay valid (GV:220-237 at `e243dd2`; prototype defect 17). 4.13's I7 keeps them always.
+> - **Stacks at gaps:** the export's `groupStacks` now agrees with 4.13's rule at gaps (GV:264-276). Its sample shows a stack beside a gap and a single card between two stacks (10.19's recordings).
+> - **"Show in all()"** (10.19) opens the stack that holds the hidden parent through `keepOpenKeys`, like go-to-change (item 6).
+
 **Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264, :536-571; GC:227-247 at `a399daf`). The graph gets shorter and calmer, while forks, merges, bookmarks and @ stay visible. Ralph decided that a toggle never moves a column and that the graph may compact vertically (4.13). This story is the view side: the card, its popover, the bracket, the toggle and the state.
 
 **Scope.**
@@ -8637,5 +8768,238 @@ NEEDS DESIGN:
 **Depends on.** 10.17 (the card and its popover) and 10.11 (the members' content).
 
 **Related:** 10.17, 10.11, 10.7, 4.13; PRD §5.3; `spikes/stack-titles/README.md`.
+
+---
+
+### Story 10.19: Hidden history — gap markers on dashed edges, end stubs, the gap callout, the toolbar legend and "Show in all()" [UI/bridge]
+*(Added 2026-09-30, Ralph — console session on the design update, export at `e243dd2`. The design is the gaps study (`Graph Gaps Study.html`, GS), whose variant B Ralph picked. This story takes over 10.4 item 5 and answers 10.4's design questions (a)–(c). It runs on recordings until 10.12. The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c)); the proposals below are Claude's, accepted by Ralph on 2026-09-30.)*
+
+**Motivation.** A revset that leaves commits out leaves gaps. jj reports them as edge kinds (4.10):
+- an Indirect edge runs to the nearest visible ancestor;
+- a Missing edge marks a parent with no visible ancestor.
+
+10.4 draws an Indirect edge dashed. It had planned a "~ N elided" stub, whose count, position and hover were still open (its design questions (a)–(c)).
+
+The design update of 2026-09-30 answers them (GG; GV:144-170, :243-249, :366, :755-765, :881-896; GC:279-321):
+- a marker on every dashed edge;
+- an end stub for every Missing edge;
+- a hover callout that explains the gap;
+- a toolbar legend;
+- a one-click way into `all()`.
+
+Ralph picked variant B (`//`, "Break"), no counts anywhere, and one spacing rule: 24 px from everything.
+
+**Scope.**
+1. **The marker** (GG:73-92, variant `break`; GC:282).
+   - **Look:** two parallel slanted strokes across the edge, 10 px wide and 6 px apart, 1.5 px with round caps, in `--text-faint`.
+   - **Cut:** the dashed edge is cut beneath the marker, 8 px along and 12 px across (GG:65-69). The cut is made of split subpaths like 10.4's hops (10.4 item 4), never a mask.
+   - Every Indirect edge gets one marker.
+   - **A hidden merge** (proposal accepted) is a node with exactly one real parent (4.10's `parent_count`) and at least two Indirect edges. Its hidden parent is a merge (jj-lib 0.44.0 `default_index/revset_graph_iterator.rs:168-172`).
+     - The design gives these edges one shared marker on the child's stem, 10 px under the card (GG:53-57). No spacing rule fits there: the stem up to the merge bus is 19.2 px long.
+     - Here each edge gets its own marker. Hovering any of them hovers the whole group and opens the group's callout (item 5).
+   - **Nodes with several real parents never form a group.** jj does not report through which real parent an Indirect edge was found, and the design's `via` (GV:147-168) has no jj source (prototype defect 4). Each of their edges stands alone.
+2. **Placement: the 24 px rule** (Ralph, 2026-09-30). The clearance is a `GraphTheme` constant, 24 px by default, tunable in the demo host.
+   - **Obstacles.** The marker's centre keeps at least 24 px from:
+     - every card rect, including the bookmark legend pill. Every card counts, not only the edge's own two;
+     - every bend (the corner point), crossing and junction of any edge;
+     - every other marker, stub and label.
+   - **No shared stretches.** The marker never sits where the edge shares its line with another edge: a shared bus, a parent's exit stub, a child's entry stem.
+   - **The scan** follows the design (GG:18-44): vertical runs before horizontal ones, each from the child's end, and the first admissible point wins.
+     - 24 px is the middle of a 48 px row gap. A straight edge between adjacent rows therefore keeps its marker there, unless a crossing sits in that gap.
+     - A branch-off whose child vertical is too short gets its marker on its bus, above a column gap.
+   - **Fallback:** without an admissible point, the marker takes the point with the largest minimum distance, the one nearest the child on a tie, never on a shared stretch. The design falls back to 11 px under the card (GG:45-46; prototype defect 21).
+   - **Deterministic and independent of the window.**
+     - Markers are placed once per layout and card size (W, H), against whole-layout indexes: 10.1's y-sorted card index and 10.4's run indexes (verticals by x, horizontals by y, plus bends and junctions).
+     - Stubs are placed first, then markers in edge-index order, each clear of those placed before.
+     - The design does neither. It scans every segment of every other edge per dashed edge, O(D·E) (GG:26-36; prototype defect 23), and knows only the edge's own two cards (GG:22; prototype defect 22).
+3. **The end stub** (a Missing edge; GG:95-116, variant `break`).
+   - **Look:** a dashed lead runs from the card's bottom to a `//` whose centre sits 24 px under the card. Beside it stands "~ elided" in 11 px mono `--text-faint` (GC:284).
+   - **No count** (decision (b)). The design shows "~ N elided" only with its count toggle (GG:97).
+   - **Position** (answers 10.4 design question (b)):
+     - centred when the node has no layout edge to a parent;
+     - otherwise the first of the design's side slots that passes the 24 px rule: +0.28·W, −0.28·W, +0.14·W (GV:246-248), else the best of them.
+
+     The design's cut sits 10–15 px under the card (GG:106-110; prototype defect 21).
+   - **Label:** it goes right of the glyph where that box is free, else left, else it is left out. The callout says the same.
+   - A node that sits lowest keeps 10.4 item 5's bottomExtra of 44 px, which holds the stub.
+   - It replaces 10.4 item 5's 38 px stub and label.
+4. **States** (GC:286-290).
+   - **A marker follows its edge** (10.4 item 7): `--text` when hovered, `--co` when the edge is in @'s lineage, opacity .28 when the focus path dims it.
+   - **A stub follows its node:** gold when the node is in @'s lineage, with the lead at 2.25 px and the glow; hovered with the node; dimmed with it.
+   - **Painting:** markers and stubs are painted in the edge layer, after the edges and below the cards. Their tokens go into `GraphTheme` for both themes.
+5. **The gap callout** (GG:146-180; GC:293-310), through 10.6's hover-callout controller.
+   - **Targets:**
+     - a band 12 px wide along each dashed edge (the design's `ghit`, GC:291), resolved through 10.4 item 9's hit lookup;
+     - a 26×26 box around a marker;
+     - an end stub's lead, glyph and label.
+   - **Timing** (proposal accepted):
+     - it opens after 380 ms, like the stack popover (GC:234). The design opens it at once (GV:755), so it flashes whenever the pointer crosses a dashed edge (prototype behaviour (iv));
+     - it closes 180 ms after the pointer leaves both the target and the callout (GV:756);
+     - it stays open while the pointer is on it.
+   - **Placement:** 18 px right of the target point, flipped left near the right edge (GG:154; GV:895), inside the canvas, above the cards and the gutter. It yields to pans and drags (the Epic 10 header, decision (d)).
+   - **Content** (GG:147-172), without a count:
+     - the title: "Commits hidden between these changes", "A hidden merge sits below this change", or, for a Missing edge, "History continues outside this revset";
+     - the chain:
+       - the child's row: the change id (2 bold + 4), the subject, and the member count when the child is a stack;
+       - the glyph with "Hidden commits", or "Older history not shown" for a Missing edge;
+       - the ancestors' rows. For a Missing edge instead the hidden parent's id, with "parent, not in revset" in italic;
+     - the design's description per kind (GG:168-172);
+     - the button "Show in `all()`" with the hint "switches revset · centers here".
+   - **Data:** the rows read 10.11's content cache. The hidden parent of a Missing edge lies outside the revset; its change id comes from `show` by commit id (Story 9.6).
+   - **Pans** (proposal accepted): a press on a band still starts 10.1's pan, and only the callout blocks one. The design excludes the bands from panning (GV:791; prototype behaviour (v)), which makes every dashed edge a dead zone.
+6. **"Show in `all()`"** (GV:757-762; GC:311-312).
+   - **Request.**
+     - One `show` of the child (Story 9.6) gives its real parents. It goes through the `GraphSource` port, where 10.8 adds `show`; if this story lands first, it adds `show` and exports `ShowEntry` and `Change`.
+     - The layout request switches the revset to `all()` (10.5).
+     - It carries in `keepOpenKeys` the parents that the old layout lacks, so the stack that holds the hidden parent opens in the same relayout (10.17 item 6).
+   - **Reveal** (10.5 item 6's precedence, rank 1), resolved on the new layout:
+     - the hidden parent from which the edge's target is reached through commits the old revset hid;
+     - for a Missing edge, its target.
+
+     A reveal key that ends up inside a collapsed stack reveals that stack card, as the design does (GV:737).
+   - **Flash:** every commit the gap hid gets the design's flash.
+     - Look: an accent ring, 2 px plus 6 px at 25 %, held for the first 35 % of 2.4 s and then faded out (GC:311-312).
+     - It is paint-only, on 10.6 item 12's per-key ticker and overlay layer.
+     - Under reduce motion the ring shows for 2.4 s without fading.
+     - A collapsed stack with a flashed member flashes as one card.
+   - **Which commits** the view model derives without a backend call:
+     - the nodes of the new layout that the old layout lacked and that lie on a path from the child to the edge's target through such nodes only;
+     - for a hidden merge, the paths to every target of the group;
+     - for a Missing edge, every such ancestor of its target, capped at 10,000 (proposal). Beyond the cap only the reveal remains.
+7. **The toolbar legend** (GG:182-203; GC:313-321), right after 10.7's revset select (GV:366).
+   - **Chip:** a small dashed glyph and "N gaps" ("1 gap"), 11 px mono `--text-faint`, hidden when N = 0. N counts gaps as the design does (GV:838): one per Indirect edge, a hidden merge once, plus one per Missing edge.
+   - **Popover:** hover or focus opens it after 200 ms (GC:317). It shows:
+     - the title "This revset hides part of the history";
+     - three rows with glyphs: Solid "direct parent", Dashed "commits in between are hidden · N×", End "older history isn't in the revset · M×";
+     - the line "Stacks never span a gap. Hover a marker for details.";
+     - the button "Show `all()`", a plain revset switch; 10.5 re-centres on @.
+   - **Semantics** (proposal): the chip is a button labelled "N gaps", and its popover text is readable. Markers and stubs add no semantics nodes.
+8. **`GraphLayout` accessors** (10.1 item 2's rule): the edge kind, `parentCountOf`, and the Missing edges per node with their target commit ids (added if the contract lacks them). They read the recordings now and 4.10's topology after 10.12.
+9. **Recordings** (10.1 item 13): the design sample at `e243dd2` (52 commits) in both revsets.
+   - Its `inDefault` flags stand in for a narrower revset such as `mine()`, because jj's `builtin_log()` would show the hidden mutable commits (prototype defect 24).
+   - It holds every case of the study: a stack beside a gap, a single card between two stacks, a hidden merge with two dashed edges, a merge with one visible and one Missing parent, a fork behind a gap, and @'s lineage through a gap (@ on `mxnztwqp`, as GS:26-31 set it).
+
+**Non-goals.**
+- Counts of hidden commits, the "Count" link and the design's "Show hidden count" toggle (decision (b)).
+- The marker families Dots and Pill.
+- A backend call for gap details.
+- Edge selection, editing, and drop zones on edges (10.10).
+- Animating the reveal beyond the flash. 10.20 animates operations and stacks only.
+
+**Depends on.**
+- 10.4: dashed edges, cuts as split subpaths, the hit lookup, the run indexes.
+- 10.6: the hover-callout controller, the focus path, item 12's ticker.
+- 10.5: the revset switch, the reveal precedence, `keepOpenKeys`.
+- 10.7: the toolbar.
+- 10.11 for the rows' content, and 10.8's `show` (or this story's own).
+- Real data: 10.12, with 4.10's edge kinds and `parent_count`.
+
+**Design status.** The export gives the direction (cited at `e243dd2`); Ralph's decisions and the accepted proposals are above. Proposed at build time: the legend glyphs' sizes and the callout's width (the design's 320 px, GC:296).
+
+**Witnesses.**
+- **Painting** (`paints` matcher) on the `e243dd2` recording: every Indirect edge carries one `//` with its cut, a hidden merge one per edge, and every Missing edge a stub with "~ elided".
+- **The 24 px rule**, on every recording and on 1,000 random windows of the scale recordings:
+  - every marker keeps ≥ 24 px from every card, bend, crossing, junction, marker and stub, or is the recorded fallback with the largest minimum distance;
+  - no marker sits on a shared stretch;
+  - every window yields the same placement.
+- **Placement cases:** a straight edge between adjacent rows gets its marker in the middle of the row gap; a branch-off with a short child vertical gets it on its bus, above a column gap.
+- **Stubs:** a stub is centred without another parent edge, otherwise on the first free side slot, with its `//` 24 px under the card.
+- **States:** lineage gold, hover and dim.
+- **Callout:**
+  - it opens after 380 ms on a band, a marker and a stub, and not when the pointer crosses a band quickly;
+  - it shows the texts per kind, stays open while hovered and flips near the right edge;
+  - a press on a band pans.
+- **"Show in `all()`"**, on one hand-built case per kind, a hidden merge included:
+  - it issues one `show` and exactly one layout request, with `all()` and the hidden parents in `keepOpenKeys`;
+  - it centres the hidden parent, opens its stack, and flashes exactly the gap's commits;
+  - under `disableAnimations` nothing animates.
+- **Legend:** its count equals the recording's gaps (the design shows 5 on its default revset); it is hidden at 0; its popover shows the rows; "Show `all()`" re-centres on @.
+- **Rebuilds:** a hover builds 0 cards.
+
+**Related:** 10.4 (edges; its old item 5), 10.5, 10.6, 10.7, 10.8, 10.11, 10.12, 10.17, 10.20; 4.10 (edge kinds, `parent_count`), 4.13 (stacks never span a gap); the Epic 10 header, "Design update 2026-09-30".
+
+---
+
+### Story 10.20: Graph animations — stacks unfolding and folding, tree changes after an operation [UI]
+*(Added 2026-09-30, Ralph — console session on the design update, export at `e243dd2`. Ralph tuned both animations in `Animation Show Case.html` (AS) and picked the values below. The story comes after the view's structure; earlier stories only keep the doors open, in their dated notes. The proposals below are Claude's, accepted by Ralph on 2026-09-30.)*
+
+**Motivation.** The export adds a playground for two graph animations, with the goal "perceptible, but never in the way: quick and smooth, not hectic" (AS:56; the playground is in German):
+- a commit stack unfolds and folds (AS:64);
+- the tree shows what an operation changed (AS:73).
+
+Without them, a toggle or a reload swaps the picture in one frame. The anchor keeps the viewport still, but the user has to find the change.
+
+**Scope.**
+1. **Stacks unfolding and folding** (AS "01 Stapel", AS:109-156).
+   - **Ralph's values:** 250 ms, no stagger. The showcase's defaults are 280 ms and off (AS:67-68).
+   - **Easing:** `cubic-bezier(.2,.8,.2,1)` (AS:134).
+   - **Unfolding:**
+     - the members slide from the stack's layers to their positions: the first member from the stack card, the second from the first offset layer, the rest from the second (AS:126-127; GC:228);
+     - every other card slides from its old to its new position, and its edges stretch with it (AS:137-138);
+     - the stack card fades out over min(150 ms, 0.6 × d) = 150 ms (AS:141-142);
+     - the bracket fades in over 180 ms after 0.6 × d = 150 ms, from scaleY .9 (AS:143-144).
+   - **Folding:** the reverse (AS:145-149).
+     - The stack card fades in over 0.45 × d ≈ 113 ms at the end.
+     - The bracket fades out over 100 ms.
+     - The members are removed when the fold ends.
+   - **Direction** follows from the two layouts and the anchor (10.17 item 4), without a rule of its own:
+     - in `free` the newest member keeps its place and the older ones slide down, as in AS;
+     - in `compact` the oldest keeps its place and the newer ones slide up, mirrored.
+
+     Columns never change on a toggle (deviation (f), 4.13's I7), so every motion is vertical.
+2. **Tree changes** (AS "02 Tree", AS:158-242).
+   - **Ralph's values:** drawing speed 1.8 px/ms, fade-out 600 ms, blur 16 px, rise 16 px. The showcase's defaults are 1.8 px/ms, 240 ms, 6 px and 8 px (AS:79-82).
+   - **Trigger** (proposal accepted): every reload that brings a new operation (10.5 item 3), whether from Zanshin's own verb (10.9) or an external `jj`. Revset, layout-mode, card-size and Detailed switches do not animate.
+   - **Identity** (AS:177, :204-206).
+     - A node is kept when its key (10.1 item 2), column, row and parent keys are the same in both layouts. Otherwise its old self leaves and its new self arrives.
+     - An edge is kept when its child and its parent are kept.
+     - A `describe` therefore animates nothing: the node stays, and only its content updates.
+   - **Leaving parts** (AS:210-212, :219): the old layout's leaving cards and edges move to an overlay layer. Over 600 ms it fades to 0, blurs to 16 px and rises 16 px, with easing `cubic-bezier(.4,0,.2,1)`.
+   - **Arriving parts** (AS:220-238) start at t0 = 300 ms, half the fade-out, or at once if nothing leaves.
+     - A new edge is drawn from its parent at 1.8 px/ms, linear, once its parent is ready: a kept node at t0, a new node when its trace ends.
+     - A new card starts when its first incoming edge arrives.
+       - **Outline:** it is traced from the entry point (bottom centre) along both sides to the exit point (top centre, where every edge leaves: the Epic 10 header, decision 5), at the same speed. The stroke is 1 px `--border-strong`, or 1.25 px `--co` on @ (AS:44-46). The card's own border stays hidden while tracing (AS:47).
+       - **Content:** it fades in over max(0.8 × td, 120 ms), starting at 0.3 × td, with the text line rising 3 px (AS:233-234).
+       - **Trace strokes:** they fade out over 160 ms, starting 80 ms after the trace ends (AS:232).
+     - A new edge between two kept nodes is drawn from t0.
+   - **@** (AS:239, :49-50): when @ moves to a kept card, its @ badge pops at t0 (200 ms, from scale .4, `cubic-bezier(.3,1.4,.5,1)`). Kept edges switch their lineage style at t0.
+3. **Limits** (proposals accepted).
+   - Only what intersects the viewport (plus the cache extent) animates; changes elsewhere apply at once.
+   - **A cap on the total duration** (proposal 1.5 s, tuned in the demo host). A longer chain is drawn faster. Above a node count (proposal 30 arriving cards in view), the arriving parts fade in together without tracing.
+   - A new transition finishes the running one at once (AS:201).
+   - Under reduce motion (`MediaQuery.disableAnimations`) nothing animates, as with 10.6 item 12's pulse.
+   - Scrolling and panning continue during a transition; hover callouts open only after it.
+4. **Rebuild discipline.** Paint-only on tickers, like 10.6 item 12's pulse. Leaving and arriving cards build once, when they mount or unmount; kept cards build 0 times.
+5. **Demo host:** a "slow motion ×5" switch (`timeDilation`), as in AS:58.
+
+**Non-goals.**
+- Animated revset, layout-mode, card-size or Detailed switches.
+- Sliding kept nodes that changed row or column in a tree change: by the showcase's rule they leave and arrive.
+- Animated scrolling (10.6's reveal decisions stand).
+
+**Depends on.**
+- 10.1: transition rendering.
+- 10.3: the card's paint parameters.
+- 10.4: partial strokes and edge identity.
+- 10.5: old and new layout per reload and per toggle.
+- 10.17: stacks.
+- 10.9 and 10.12 for real triggers.
+
+**Design status.** The showcase gives the values Ralph picked. The limits and the trigger set are Claude's proposals, accepted on 2026-09-30.
+
+**Witnesses.**
+- **Stacks**, on a stack recording:
+  - each member starts at its layer, and each kept card ends at its new position;
+  - the stack card and the bracket fade with the given timings;
+  - nothing moves sideways, and `pumpAndSettle` completes after 250 ms plus the fades;
+  - in `compact` the newer members slide up, in `free` the older ones slide down, and the anchored member does not move.
+- **Tree changes**, between two recordings (a rebase, an abandon and a `jj new`, like AS's steps; AS:165-169):
+  - exactly the changed nodes leave and arrive, and the kept ones are untouched;
+  - the arrival order follows the edges, and the timings match the values above;
+  - a `describe`-like change (same keys, positions and parents) animates nothing.
+- **Limits:** the cap and the count limit hold on a large synthetic change; reduce motion shows the end state at once; a second transition finishes the first.
+- **Rebuilds:** kept cards build 0 times during a transition.
+
+**Related:** 10.1, 10.3, 10.4, 10.5, 10.9, 10.17; 10.6 item 12 (the pulse's ticker and reduce-motion rule); the Epic 10 header, "Design update 2026-09-30".
 
 ---

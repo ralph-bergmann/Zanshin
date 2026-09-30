@@ -796,3 +796,23 @@ _Ralph asked whether the commit stacks account for the "(elided revisions)" gaps
 
   Its `groupStacks` also counts only Direct children (GV:232 at `a399daf`), unlike 4.13.
   - **Follow-up:** Claude wrote Ralph a prompt for Claude Design. It asks for this case, for sample data that contains it, and for the stub position of 10.4 design question (b). A new export folds into 10.4 (design questions (a) and (b)) and 10.17.
+  - **Resolved 2026-09-30** (export `e243dd2`). The export shows all four cases, and its sample contains them (52 commits). Its `groupStacks` now counts children behind a gap (GV:264-276). The export answered 10.4's design questions (a)–(c), and the gap work became Story 10.19 (the Epic 10 header, "Design update 2026-09-30").
+
+## Surfaced 2026-09-30 while folding the gaps study and the animation showcase into Epic 10 (console session, Ralph)
+
+_Ralph re-downloaded the Claude Design export (`e243dd2`). It adds a study of hidden history (three marker families, a hover callout, a toolbar legend, "Show in all()", the gap cases in the sample) and an animation playground. Ralph picked marker family B (`//`), no counts, a 24 px spacing rule and his animation values. His line-behind-card finding turned out to be the Time layout's defect 3. The stories were updated the same day: the Epic 10 header ("Design update 2026-09-30", prototype defects 21–24, amendments to 3, 4 and 17, behaviours (iv)–(v)) and the Epic List entry of Epic 10; new Stories 10.19 and 10.20; dated notes in 4.13, 10.1, 10.3, 10.4, 10.5, 10.6, 10.7, 10.12 and 10.17. The items below fall outside those stories:_
+
+- **The spike's design-input tool cannot read the new export.** Medium: it blocks the planned recordings.
+  - `spikes/graph-layout-ab/tools/design-input.mjs` extracts `computeLayout` from the live `graph-view.jsx`. That function now calls `window.placeGapMarkers` from `graph-gaps.jsx`, which the tool does not load.
+  - Checked on 2026-09-30 by importing the tool, read-only: both revsets throw "window.placeGapMarkers is not a function".
+  - The drift that the 2026-09-28 item warned about ("The spike's JS oracle reads the live design folder") is no longer silent.
+  - The tool also records at most one Missing entry per node (`x.elided > 0`, :75), while the new walk keeps one per Missing parent.
+  - **Follow-up:** pin 4.11's oracle to `57f259c`, as planned on 2026-09-28. For 10.19's `e243dd2` recordings (10.1 item 13), the tool loads `placeGapMarkers` from `graph-gaps.jsx` or stubs it, and emits one Missing entry per Missing parent.
+- **Edges behind cards stay open.** Low; a record.
+  - Ralph's finding was Time's defect 3, which is moot.
+  - The product keeps two cases where an edge passes behind a card: blocked merges (prototype defect 2, SPEC §11.4) and buses in Free (SPEC D8, 4.11 open question 4).
+  - 10.19's spacing rule keeps markers off cards, but not lines.
+  - **Follow-up:** those two open questions, whenever Ralph takes them up.
+- **10.20's limits are untested proposals.** Low.
+  - The duration cap (1.5 s), the count limit (30 arriving cards in view) and the trigger set (every reload with a new operation, external `jj` included) were accepted without being tried on real data.
+  - **Follow-up:** tune them in the demo host with the slow-motion switch when 10.20 is built.
