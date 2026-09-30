@@ -3,7 +3,7 @@
 **Datum:** 2026-09-30 · **Anlass:** Konsolensession mit Ralph zum GitButler-Video [„Agentic Git with GitButler: Parallel branches with multiple agents.“](https://www.youtube.com/watch?v=pXPTPr91Xew) (Scott Chacon, veröffentlicht 2026-09-29)
 **Fragen:** Wie arbeiten dort drei Agents (2× Claude Code, 1× Cursor) gleichzeitig im selben Verzeichnis und erzeugen am Ende getrennte, teils gestapelte Branches, ohne Worktrees? Kann jj das auch? Im Video heißt es sinngemäß (0:13), GitButler könne das, Git und Jujutsu nicht.
 **Methode:** Video-Transkript, GitButler-Doku und GitButler-Quellcode gelesen (Agent-Skill `crates/but/skill/`, Lock `crates/but-ctx/src/access.rs`). jj-lib 0.44.0 (vendored) und die jj-CLI @ v0.44.0 gelesen und mit Datei:Zeile belegt. Experimente mit jj 0.45.1 in Wegwerf-Repos; alle Skripte stehen in Anhang A, damit man die Messungen nachspielen kann. jj-Issues upstream durchsucht.
-**Status:** Nur eine Notiz, damit wir später wissen, wie es gehen könnte. Keine Story, keine Entscheidung. Offen ist, ob das eher ein Zanshin-Feature oder ein PR an jj wird (Abschnitt 9).
+**Status:** Nur eine Notiz, damit wir später wissen, wie es gehen könnte. Keine Story, keine Entscheidung. Offen ist, ob das eher ein Zanshin-Feature oder ein PR an jj wird (Abschnitt 9). Nachträge vom selben Tag in Abschnitt 10.
 
 ---
 
@@ -217,7 +217,7 @@ Zur Hunk-Auswahl im Detail:
 ### 8.3 Stufe 2: PRs an jj
 
 Kandidaten, grob nach Erfolgsaussicht:
-1. **Hunk-Auswahl (#8218).** Die Nachfrage ist belegt, Maintainer sind beteiligt, mehrere Designs liegen auf dem Tisch. Ein Beitrag nützt allen jj-Nutzern und über jj-lib auch Zanshin. Vorher im Issue oder auf Discord klären, welche Variante gewünscht ist; Zeilenbereiche wirkten bei yuja am anschlussfähigsten.
+1. **Hunk-Auswahl (#8218).** Die Nachfrage ist belegt, Maintainer sind beteiligt, mehrere Designs liegen auf dem Tisch. Ein Beitrag nützt allen jj-Nutzern und über jj-lib auch Zanshin. *(Einschränkung: siehe Nachtrag 10.1.)* Vorher im Issue oder auf Discord klären, welche Variante gewünscht ist; Zeilenbereiche wirkten bei yuja am anschlussfähigsten.
 2. **Serialisierung.** Zwei denkbare Formen:
    - als Opt-in das Working-Copy-Lock über den ganzen schreibenden Befehl halten, wie es `jj file track` schon tut (Abschnitt 6, Punkt 5);
    - die Transaktion auf dem neuen Kopf wiederholen, wenn `@` inzwischen von einer anderen Operation umgeschrieben wurde, statt Divergenz zu erzeugen.
@@ -229,11 +229,62 @@ Kandidaten, grob nach Erfolgsaussicht:
 
 Kriterien:
 - **Wer profitiert?** Ein PR an jj nützt allen jj-Nutzern und Zanshin gleich mit. Ein Zanshin-Feature nützt nur Zanshin-Nutzern, bringt dafür die Oberfläche (Lanes, Drag & Drop, Hinweise).
-- **Modell oder Werkzeug?** Das Modell hat jj schon. Die fehlenden Bausteine ganz unten (Hunk-Auswahl, Serialisierung) gehören eher nach jj, Bedienung und Koordination eher nach Zanshin.
+- **Modell oder Werkzeug?** Das Modell hat jj schon. Die fehlenden Bausteine ganz unten (Hunk-Auswahl, Serialisierung) gehören eher nach jj, Bedienung und Koordination eher nach Zanshin. *(Für Zanshins eigene Oberfläche liegt die Hunk-Auswahl ohnehin bei Zanshin, siehe 10.1.)*
 - **Abhängigkeiten:** die offene MCP-Entscheidung, FR-MCP-9 und die CLI-Paritätsregel.
 - **Aufwand und Risiko:** Stufe 0 kostet fast nichts und zeigt, ob der Workflow im Alltag trägt.
 
 Denkbare Reihenfolge (nur ein Vorschlag): Stufe 0 ausprobieren, bei Bedarf #8218 upstream voranbringen, danach Zanshin als Koordinator mit Oberfläche.
+
+## 10. Nachträge
+
+### 10.1 Zanshin selbst braucht #8218 nicht
+
+*Rückfrage von Ralph am 2026-09-30: Geht in Zanshin ohne #8218 überhaupt `split`, oder das, was `jj squash --interactive` auf der Konsole macht?*
+
+Ja, das geht. #8218 betrifft nur die Kommandozeile von jj, also Programme, die das `jj`-Binary aufrufen (Agents im Terminal, Skripte). Zanshin ruft die CLI nicht auf, sondern jj-lib direkt.
+
+- **So arbeitet `-i` in der CLI:** Erst liefert ein Diff-Editor die Auswahl, und die endet als Baum. Das erledigt der eingebaute Editor im CLI-Crate (`cli/src/merge_tools/builtin.rs` @ v0.44.0: `apply_diff_builtin` :404, `apply_changes` :466). Dann verschiebt jj-lib diesen Baum: `rewrite::squash_commits` nimmt `CommitWithSelection` mit dem ausgewählten Baum (jj-lib `src/rewrite.rs:1259` und `:1320`).
+- **Den ersten Schritt ersetzt Zanshin durch die eigene Diff-Ansicht.** So steht es schon in ADR-0003: Interaktive Verben bekommen einen von der GUI gebauten `TreeId`, und `SelectedTree` ersetzt den interaktiven `DiffSelector` der CLI. project-context.md führt das als Regel.
+- **Im Code vorbereitet:** `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs:430`) ist getestet, hat aber noch keinen Aufrufer. Die ersten Aufrufer bringen Story 9.15 (`squash`, `split` für Teile von Dateien) und 9.17 (`commit`, `resolve`, `diffedit`). Die Hunks für die Diff-Ansicht liefert Epic 5 (5.1, 5.8). Alles davon ist im Backlog.
+- **Was fehlt, liegt auf Zanshin-Seite: der Schritt „Auswahl → Baum“.** Die GUI kann selbst keine jj-Bäume schreiben. Das Backend nimmt die Auswahl (Hunks oder Zeilen pro Datei), wendet sie auf die Elternversion an, schreibt Dateien und Baum (`MergedTreeBuilder`) und gibt den `TreeId` zurück. Alternativ nimmt das Verb die Auswahl direkt.
+  - Vorbild ist `apply_diff_builtin`. Es liegt im CLI-Crate und wird deshalb portiert wie andere Teile von `cli_util`.
+  - Sonderfälle wie in der CLI: Binärdateien, Executable-Bit, neue und gelöschte Dateien, Konflikte.
+  - Die genaue Form der Übergabe führt ADR-0003 noch als offene Frage.
+- **Folge für diese Notiz:** Abschnitt 8.3 (1.) gilt nur für Tools, die die jj-CLI benutzen. Zanshin profitiert höchstens indirekt, falls #8218 als wiederverwendbare Funktion in jj-lib umgesetzt wird.
+- **Folge für das Agent-Thema:** Die Hunk-Auswahl, die Agents auf der Kommandozeile fehlt, baut Zanshin für die eigene Diff-Ansicht ohnehin. Derselbe Baustein wäre das Zuordnen einzelner Hunks in Stufe 1 (8.2) und in 10.2.
+
+### 10.2 Option: eine Zanshin-CLI wie `but`
+
+*Rückfrage von Ralph am 2026-09-30: Könnte man eine Zanshin-CLI bauen, mit der mehrere Agents im selben Verzeichnis arbeiten wie im Video mit `but`?*
+
+Technisch ja. Das wäre GitButlers Architektur mit jj als Unterbau.
+- **GitButler ist genau so gebaut:** Die Desktop-App (`crates/gitbutler-tauri`) und die `but`-CLI (`crates/but`) hängen beide an denselben Kern-Crates `but-api` und `but-ctx`.
+- **Zanshin hat dieselbe Form:** `zanshin-jj` ist der Kern mit typisierten Verben (ADR-0003). Darauf sitzen `zanshin-ffi` für die Flutter-App und `zanshin-mcp` (bisher ein Stub). Eine CLI wäre ein weiterer Konsument derselben Verben, im Sinn von ADR-0003 Punkt 3.
+
+Was die CLI gegenüber `jj` mitbringen müsste, entlang der Lücken aus Abschnitt 7:
+
+| `but` im Video | Zanshin-CLI | Baustein in Zanshin |
+|---|---|---|
+| Lock pro Operation | jeder Aufruf nimmt ein Repo-Lock, das auch die GUI nimmt | Vorlage: 9.22 (`lock_working_copy`, `commit_with_locked_wc`); prozessübergreifend ist neu |
+| Kurz-IDs für Dateien und Hunks | `zanshin diff` mit Kurz-IDs, z. B. ein kurzer Hash über Pfad und Hunk-Inhalt | Hunks aus Epic 5 (5.1); stabile IDs sind neu |
+| `but commit -b X <ids>` | `zanshin squash --into X <ids>` | „Auswahl → Baum“ aus 10.1 + Story 9.15 |
+| Abhängigkeitssperre | vor dem Squash prüfen, ob die Zeilen aus einem anderen Branch stammen; dann ablehnen und Stapeln vorschlagen | `file annotate` aus Story 9.4 (`FileAnnotator`) |
+| Branch anlegen, stapeln | Megamerge-Befehle wie `jj new -A/-B` und `bookmark` | `Repo::new_change` (bisher nur mit Eltern) und `bookmark create` gibt es; `-A/-B` fehlt noch als Verb, die Einfüge-Logik `compute_commit_location` liegt aber schon in `op_support.rs:199` |
+| `but agent setup` | installiert einen Skill (Entwurf in Anhang B) | neu |
+
+Die teuersten Teile (Hunks, „Auswahl → Baum“, `squash`) braucht die GUI für 9.15, 9.17 und Epic 5 ohnehin. Neu für die CLI wären Lock-Protokoll, stabile IDs, Abhängigkeitsprüfung, Megamerge-Befehle, Skill und Verteilung.
+
+Zu klären, bevor man das baut:
+- **FR-MCP-9:** Ein gemeinsames Lock von CLI und GUI ist genau die „Locking-Choreografie“, die FR-MCP-9 ausschließt. Das müsste neu entschieden werden.
+- **Nebeneinander mit der jj-CLI:** jj hat keine Hooks. GitButler blockiert `git commit` per `pre-commit`-Hook, Zanshin kann schreibende `jj`-Aufrufe dagegen nicht blockieren. Schutz gäbe es nur per Skill-Regel oder PATH-Shim (8.1).
+- **Agent-Schnittstelle:** Eine CLI mit Skill wäre eine Alternative zum MCP-Server. Die MCP-Entscheidung ist offen.
+- **Umfang:** Die Verben darunter bleiben CLI-Parität. Hunk-IDs, Abhängigkeitssperre und Lock sind Zanshin-eigene Zusätze, also eine neue Produktfläche und eher ein eigenes Epic.
+- **Verteilung:** ein Rust-Binary im App-Bundle, das die App auf Wunsch in den `PATH` verlinkt, ähnlich wie GitButler die CLI separat installieren lässt.
+
+Was dafür spricht:
+- Das Ergebnis bleibt reines jj. Megamerge, Branches und Bookmarks sind normale jj-Objekte; `jj log` zeigt alles, und wer nur die jj-CLI benutzt, kann weiterarbeiten.
+- Die Zanshin-GUI könnte die Lanes live zeigen, während die Agents arbeiten, über den Filesystem-Watcher aus FR-MCP-9.
+- Stufe 0 (8.1) zeigt vorher ohne Code, ob der Workflow im Alltag trägt.
 
 ---
 
@@ -547,10 +598,10 @@ done
 
 - Video: [Agentic Git with GitButler: Parallel branches with multiple agents.](https://www.youtube.com/watch?v=pXPTPr91Xew) (GitButler, 2026-09-29)
 - GitButler-Doku: [Parallel agents](https://docs.gitbutler.com/ai-agents/parallel-agents), [Getting started](https://docs.gitbutler.com/ai-agents/getting-started), [Workspace Branch](https://docs.gitbutler.com/workspace-branch), [Parallel Branches](https://docs.gitbutler.com/features/branch-management/virtual-branches)
-- GitButler-Quellcode: [Agent-Skill `crates/but/skill/SKILL.md`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but/skill/SKILL.md), [`references/concepts.md`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but/skill/references/concepts.md), [Lock `crates/but-ctx/src/access.rs`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but-ctx/src/access.rs)
+- GitButler-Quellcode: [Agent-Skill `crates/but/skill/SKILL.md`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but/skill/SKILL.md), [`references/concepts.md`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but/skill/references/concepts.md), [Lock `crates/but-ctx/src/access.rs`](https://github.com/gitbutlerapp/gitbutler/blob/HEAD/crates/but-ctx/src/access.rs); gemeinsamer Kern von App und CLI: `crates/gitbutler-tauri/Cargo.toml` und `crates/but/Cargo.toml` hängen beide an `but-api` und `but-ctx`
 - Erfahrungsbericht: [trigger.dev, „We ditched worktrees for Claude Code“](https://trigger.dev/blog/parallel-agents-gitbutler) (2026-04-16)
 - Megamerge in jj: [Steve Klabnik, Working on all of your branches simultaneously](https://steveklabnik.github.io/jujutsu-tutorial/advanced/simultaneous-edits.html), [Chris Krycho, Jujutsu Megamerges and jj absorb](https://v5.chriskrycho.com/journal/jujutsu-megamerges-and-jj-absorb/)
 - jj-Issues: [#8218 Programmatically selecting hunks](https://github.com/jj-vcs/jj/issues/8218), [#9814 Agent-friendly interfaces](https://github.com/jj-vcs/jj/issues/9814), [#6830 Race-Fix colocated (0.36)](https://github.com/jj-vcs/jj/issues/6830)
 - Community-Tool: [laulauland/jj-hunk](https://github.com/laulauland/jj-hunk)
-- jj-Code @ v0.44.0: `cli/src/cli_util.rs` (`snapshot_working_copy` 2058–2231, `finish_transaction` 2300ff., `start_working_copy_mutation` 1497–1507), jj-lib `src/workspace.rs:456–482`, `src/repo.rs:706–729`; CHANGELOG (0.36: #6830, 0.44: `jj absorb -i/--tool`)
-- Zanshin: PRD FR-MCP-9; sprint-status 9-22 (`lock_working_copy`, `commit_with_locked_wc`), 9-26 (implicit snapshot + colocated git import)
+- jj-Code @ v0.44.0: `cli/src/cli_util.rs` (`snapshot_working_copy` 2058–2231, `finish_transaction` 2300ff., `start_working_copy_mutation` 1497–1507), jj-lib `src/workspace.rs:456–482`, `src/repo.rs:706–729`; CHANGELOG (0.36: #6830, 0.44: `jj absorb -i/--tool`); für 10.1: `cli/src/merge_tools/builtin.rs` (`apply_diff_builtin` 404, `apply_changes` 466), jj-lib `src/rewrite.rs` (`CommitWithSelection` 1259, `squash_commits` 1320)
+- Zanshin: PRD FR-MCP-9; sprint-status 9-22 (`lock_working_copy`, `commit_with_locked_wc`), 9-26 (implicit snapshot + colocated git import); ADR-0003 (Punkte 3 und 4, offene Frage zum Interactive-verb contract); `crates/zanshin-jj/src/op_support.rs` (`compute_commit_location` 199, `SelectedTree::from_tree_id` 430); epics.md Stories 9.15, 9.17 und Epic 5
