@@ -55,7 +55,7 @@ function routeEdges(nodes, N, W, H, xOf) {
     const p = N.get(pp.id), pcx = xOf(p) + W / 2, ncx = xOf(n) + W / 2;
     const outY = p.y, inY = n.y + H;
     let pts;
-    if (p.lane === n.lane) pts = [[pcx, outY], [ncx, inY]];
+    if (pcx === ncx) pts = [[pcx, outY], [ncx, inY]];
     else if (i > 0 && !pp.blocked) {     // merge: up in parent lane, then across into child
       const my = inY + G.gapY * 0.4;
       pts = [[pcx, outY], [pcx, my], [ncx, my], [ncx, inY]];
@@ -63,7 +63,7 @@ function routeEdges(nodes, N, W, H, xOf) {
       const sx = pcx + (ncx > pcx ? 1 : -1) * W * 0.28, hy = outY - G.gapY * 0.4;
       pts = [[sx, outY], [sx, hy], [ncx, hy], [ncx, inY]];
     }
-    out.push({ from: p.id, to: n.id, pts, dashed: pp.skipped });
+    out.push({ from: p.id, to: n.id, pts, dashed: pp.skipped, via: pp.via, count: pp.count, hiddenIds: pp.hiddenIds });
   }));
   return out;
 }
@@ -141,20 +141,32 @@ function computeLayout(all, revset, W, H, mode = "compact", opts = {}) {
   const byId = new Map(all.map(c => [c.id, c]));
   const list = revset === "all" ? all : all.filter(c => c.inDefault);
   const vis = new Set(list.map(c => c.id));
+  // parent edges: direct | indirect (skipped, via = hidden parent, hiddenIds = commits in the gap) | missing (no visible ancestor)
   const nodes = list.map((c, idx) => {
-    const parents = []; let elided = 0;
+    const parents = [], missing = [];
     c.parents.forEach(pid => {
-      if (vis.has(pid)) { parents.push({ id: pid, skipped: false }); return; }
-      const seen = new Set(), found = new Set(), st = [pid];
-      while (st.length) {
-        const x = st.pop(); if (seen.has(x)) continue; seen.add(x);
-        if (vis.has(x)) { found.add(x); continue; }
-        const cc = byId.get(x); if (cc) st.push(...cc.parents);
+      if (vis.has(pid)) { if (!parents.some(p => p.id === pid)) parents.push({ id: pid, skipped: false }); return; }
+      const hidden = [], hs = new Set(), found = [], q = [pid];
+      while (q.length) {
+        const x = q.shift();
+        if (vis.has(x)) { if (!found.includes(x)) found.push(x); continue; }
+        if (hs.has(x)) continue; hs.add(x); hidden.push(x);
+        const cc = byId.get(x); if (cc) q.push(...cc.parents);
       }
-      if (found.size) found.forEach(f => { if (!parents.some(p => p.id === f)) parents.push({ id: f, skipped: true }); });
-      else elided += seen.size;
+      if (!found.length) { missing.push({ via: pid, count: hidden.length, hiddenIds: hidden }); return; }
+      const memo = new Map();
+      const reaches = (x, f) => {
+        const k = x + ">" + f; if (memo.has(k)) return memo.get(k); memo.set(k, false);
+        const cc = byId.get(x), r = !!cc && cc.parents.some(p => p === f || (hs.has(p) && reaches(p, f)));
+        memo.set(k, r); return r;
+      };
+      found.forEach(f => {
+        if (parents.some(p => p.id === f)) return;
+        const ids = hidden.filter(x => reaches(x, f));
+        parents.push({ id: f, skipped: true, via: pid, count: ids.length, hiddenIds: ids });
+      });
     });
-    return { c, id: c.id, idx, parents, elided, children: [] };
+    return { c, id: c.id, idx, parents, missing, elided: missing.reduce((s, m) => s + m.count, 0), children: [] };
   });
   const N = new Map(nodes.map(n => [n.id, n]));
   nodes.forEach(n => n.parents.forEach(p => N.get(p.id).children.push(n.id)));
@@ -197,7 +209,7 @@ function computeLayout(all, revset, W, H, mode = "compact", opts = {}) {
 
   const laneCount = Math.max(1, ...nodes.map(n => n.lane + 1));
   const maxRow = Math.max(0, ...nodes.map(n => n.row));
-  const botExtra = nodes.some(n => n.elided && n.row === 0) ? G.elide : 0;
+  const botExtra = nodes.some(n => n.missing.length && n.row === 0) ? G.elide : 0;
   const offX = mode === "time" ? G.gutter : 0;
   const rowTop = (r) => G.pad + (maxRow - r) * (H + G.gapY);
   buckets.forEach((b, i) => { b.y = rowTop(b.start) + H / 2; b.guide = i > 0 ? rowTop(b.start) + H + G.gapY / 2 : null; });
@@ -205,20 +217,40 @@ function computeLayout(all, revset, W, H, mode = "compact", opts = {}) {
     n.y = rowTop(n.row);
     n.parents.forEach(pp => { const p = N.get(pp.id); pp.blocked = nodes.some(o => o.lane === p.lane && o.row > p.row && o.row <= n.row); });
   });
-  const pos = opts.optimize ? optimizeLanes(nodes, N, laneCount, W, H) : [...Array(laneCount).keys()];
+  // opts.cols: columns frozen from the fully expanded layout, so (un)grouping stacks only moves cards vertically.
+  let frozen = false;
+  if (opts.cols) {
+    const cs = nodes.map(n => opts.cols.get(n.c.isGroup ? n.c.members[0].id : n.id));
+    frozen = cs.every(v => v != null) && !nodes.some((a, i) => nodes.some((b, j) => j > i && cs[i] === cs[j] && a.row === b.row))
+      && !nodes.some((n, i) => n.parents.some(pp => { const p = N.get(pp.id), pc = cs[nodes.indexOf(p)];
+        return pc === cs[i] && nodes.some((o, k) => cs[k] === pc && o.row > p.row && o.row < n.row); }));
+    if (frozen) nodes.forEach((n, i) => { n.col = cs[i]; });
+  }
+  if (!frozen) {
+    const pos = opts.optimize ? optimizeLanes(nodes, N, laneCount, W, H) : [...Array(laneCount).keys()];
+    nodes.forEach(n => { n.col = pos[n.lane]; });
+  }
   nodes.forEach(n => {
-    n.col = pos[n.lane];
     n.x = offX + G.pad + n.col * (W + G.gapX);
     n.cx = n.x + W / 2;
   });
+  if (frozen) nodes.forEach(n => n.parents.forEach(pp => { const p = N.get(pp.id); pp.blocked = nodes.some(o => o.col === p.col && o.row > p.row && o.row <= n.row); }));
+  const colCount = Math.max(1, ...nodes.map(n => n.col + 1));
 
   const raw = routeEdges(nodes, N, W, H, n => n.x);
   const { cross } = analyzeEdges(raw);
   const edges = raw.map((e, i) => ({ ...e, d: roundedPath(e.pts, 10), gaps: cross.filter(c => c.edge === i) }));
+  const markers = window.placeGapMarkers(raw);
+  // missing stubs: centered when the card has no other parent edge, otherwise off to the side so they never sit on a real edge
+  const stubs = [];
+  nodes.forEach(n => n.missing.forEach((m, k) => {
+    const slots = n.parents.length ? [0.28, -0.28, 0.14] : [0, 0.28, -0.28];
+    stubs.push({ kind: "end", key: n.id + "~" + m.via, node: n.id, x: n.cx + (slots[k] ?? 0) * W, y: n.y + H, ...m });
+  }));
 
   return {
-    nodes, N, edges, buckets, offX, crossings: cross.length,
-    width: offX + G.pad * 2 + laneCount * (W + G.gapX) - G.gapX,
+    nodes, N, edges, markers, stubs, buckets, offX, crossings: cross.length,
+    width: offX + G.pad * 2 + colCount * (W + G.gapX) - G.gapX,
     height: G.pad * 2 + botExtra + (maxRow + 1) * (H + G.gapY) - G.gapY,
     total: all.length, shown: list.length,
   };
@@ -229,9 +261,19 @@ function groupStacks(all, revset, expanded) {
   const vis = revset === "all" ? all : all.filter(c => c.inDefault);
   const V = new Set(vis.map(c => c.id)), byId = new Map(all.map(c => [c.id, c]));
   const kids = new Map(vis.map(c => [c.id, []]));
-  vis.forEach(c => c.parents.forEach(p => { if (V.has(p)) kids.get(p).push(c.id); }));
+  // descendants behind a gap count as children too: a direct child + one behind a gap = fork, the stack ends there
+  const reach = (pid) => {
+    const out = new Set(), seen = new Set(), st = [pid];
+    while (st.length) { const x = st.pop(); if (seen.has(x)) continue; seen.add(x); if (V.has(x)) { out.add(x); continue; } const cc = byId.get(x); if (cc) st.push(...cc.parents); }
+    return out;
+  };
+  vis.forEach(c => c.parents.forEach(p => {
+    if (V.has(p)) kids.get(p).push(c.id);
+    else reach(p).forEach(a => { if (!kids.get(a).includes(c.id)) kids.get(a).push(c.id); });
+  }));
+  // members need a direct, visible single parent: a change whose edge down is indirect or missing is never part of a stack
   const ok = c => c && !c.isRoot && !c.isWorkingCopy && !c.bookmarks.length && c.parents.length === 1 && V.has(c.parents[0]) && kids.get(c.id).length === 1;
-  const nextOf = c => { const k = byId.get(kids.get(c.id)[0]); return ok(k) && k.immutable === c.immutable ? k : null; };
+  const nextOf = c => { const k = byId.get(kids.get(c.id)[0]); return ok(k) && k.parents[0] === c.id && k.immutable === c.immutable ? k : null; };
   const runs = [], memberOf = new Map();
   vis.forEach(c => {
     if (!ok(c)) return;
@@ -263,11 +305,13 @@ function groupStacks(all, revset, expanded) {
   return { list: out, runs };
 }
 
+const GQ = new URLSearchParams(location.search), EMBED = GQ.has("embed");
 function usePersist(key, init) {
   const [v, setV] = useState(() => {
+    if (EMBED) return init;
     try { const s = localStorage.getItem(key); return s == null ? init : JSON.parse(s); } catch { return init; }
   });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }, [key, v]);
+  useEffect(() => { if (!EMBED) try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }, [key, v]);
   return [v, setV];
 }
 
@@ -314,11 +358,12 @@ function RevsetSelect({ value, onChange }) {
   );
 }
 
-function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetailed, stacks, setStacks, cardW, setCardW, shown, total, onLocate }) {
+function GraphToolbar({ revset, setRevset, layout, setLayout, detailed, setDetailed, stacks, setStacks, cardW, setCardW, shown, total, onLocate, gapInfo }) {
   const pct = ((cardW - 160) / (400 - 160)) * 100;
   return (
     <div className="gtb" role="toolbar" aria-label="Graph view">
       <RevsetSelect value={revset} onChange={setRevset}/>
+      <window.GapLegend {...gapInfo} onShowAll={() => setRevset("all")}/>
       <div className="gtb-sep"/>
       <div className="gtb-group">
         <span className="gtb-label">Layout</span>
@@ -483,7 +528,7 @@ function CommitPeek({ c, hint }) {
   );
 }
 
-function GraphCard({ reveal, n, W, H, detailed, legend, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover }) {
+function GraphCard({ reveal, flash, n, W, H, detailed, legend, isSel, isWC, isHover, dim, onClick, onDoubleClick, onHover }) {
   const c = n.c;
   const hasLegend = legend && c.bookmarks.length > 0;
   const cid = (
@@ -500,7 +545,7 @@ function GraphCard({ reveal, n, W, H, detailed, legend, isSel, isWC, isHover, di
   return (
     <div
       className={"gcard " + (detailed ? "is-detailed " : "is-compact ") + (isSel ? "sel " : "") + (isWC ? "wc " : "") +
-        (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (dim ? "dim " : "") + (reveal ? "reveal " : "")}
+        (isHover ? "hov " : "") + (c.immutable ? "immutable " : "") + (c.isRoot ? "root " : "") + (hasLegend ? "has-legend " : "") + (dim ? "dim " : "") + (reveal ? "reveal " : "") + (flash ? "flash " : "")}
       style={{ left: n.x, top: n.y, width: W, height: H }}
       onClick={onClick} onDoubleClick={onDoubleClick}
       onMouseEnter={e => { fitRight(e.currentTarget); fitSide(e.currentTarget); onHover(c.id); }} onMouseLeave={() => onHover(null)}
@@ -640,16 +685,26 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   const [expanded, setExpanded] = usePersist("zanshin.graph.expanded", []);
   const [revealId, setRevealId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [wcId, setWcId] = useState(() => (all.find(c => c.isWorkingCopy) || {}).id);
+  const [wcId, setWcId] = useState(() => { const q = GQ.get("wc"); return q && all.some(c => c.id === q) ? q : (all.find(c => c.isWorkingCopy) || {}).id; });
   const [hoverId, setHoverId] = useState(null);
   const [editMeta, setEditMeta] = useState(false);
+  const [gapHover, setGapHover] = useState(null);
+  const [counted, setCounted] = useState(() => new Set());
+  const [flash, setFlash] = useState(() => new Set());
+  const gapT = useRef(null);
   const scrollRef = useRef(null);
-  const pendingScroll = useRef(wcId);
+  const pendingScroll = useRef(GQ.get("focus") || wcId);
+  const mounted = useRef(false);
   const clickT = useRef(null);
   const H = detailed ? G.hDetailed : G.hCompact;
   const optimize = t.laneOrder !== "greedy";
   const S = useMemo(() => stacks ? groupStacks(all, revset, expanded) : { list: all, runs: [] }, [all, revset, stacks, expanded]);
-  const L = useMemo(() => computeLayout(S.list, revset, cardW, H, layout, { optimize }), [S, revset, cardW, H, layout, optimize]);
+  const cols = useMemo(() => {
+    if (!stacks) return null;
+    const L0 = computeLayout(all, revset, cardW, H, layout, { optimize });
+    return new Map(L0.nodes.map(n => [n.id, n.col]));
+  }, [all, revset, stacks, cardW, H, layout, optimize]);
+  const L = useMemo(() => computeLayout(S.list, revset, cardW, H, layout, { optimize, cols }), [S, revset, cardW, H, layout, optimize, cols]);
   const shownCount = L.nodes.reduce((s, n) => s + (n.c.members ? n.c.members.length : 1), 0);
   const toggleStack = (gid) => {
     const run = S.runs.find(r => r.id === gid); if (!run) return;
@@ -678,13 +733,36 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
     el.scrollTo({ left: n.cx - el.clientWidth / 2, top: n.y + H / 2 - el.clientHeight / 2, behavior: smooth ? "smooth" : "auto" });
   };
   useLayoutEffect(() => {
-    if (pendingScroll.current && L.N.get(pendingScroll.current)) {
-      const first = pendingScroll.current === wcId && !selectedId;
-      scrollToNode(pendingScroll.current, !first);
+    let id = pendingScroll.current;
+    if (id && !L.N.get(id)) { const r = S.runs.find(x => !x.expanded && x.members.some(m => m.id === id)); if (r) id = r.id; }
+    if (id && L.N.get(id)) {
+      const smooth = mounted.current, el = scrollRef.current;
+      scrollToNode(id, smooth);
       pendingScroll.current = null;
+      if (!smooth && el) {
+        // first mount: the viewport may not have its final size yet (lazy iframes, fonts) — retry until it sticks
+        let tries = 0;
+        const retry = () => { if (!scrollRef.current || tries++ > 30) return; scrollToNode(id, false); const e = scrollRef.current; if (e.clientWidth < 50 || (e.scrollLeft === 0 && e.scrollTop === 0 && e.scrollWidth > e.clientWidth)) setTimeout(retry, 100); };
+        requestAnimationFrame(retry);
+      }
     }
+    mounted.current = true;
   }, [L]);
-  useEffect(() => { pendingScroll.current = wcId; }, [revset, layout]);
+  const skipFirst = useRef(true);
+  useEffect(() => { if (skipFirst.current) { skipFirst.current = false; return; } pendingScroll.current = wcId; }, [revset, layout]);
+
+  // hidden-history hover + reveal
+  const gapEnter = (g) => { clearTimeout(gapT.current); setGapHover(g); };
+  const gapLeave = () => { clearTimeout(gapT.current); gapT.current = setTimeout(() => setGapHover(null), 180); };
+  const revealGap = (g) => {
+    setGapHover(null);
+    setRevset("all");
+    pendingScroll.current = g.hiddenIds[0] || g.via;
+    setFlash(new Set(g.hiddenIds));
+    setTimeout(() => setFlash(new Set()), 2600);
+  };
+  const gapVariant = t.gapMarker || "break";
+  const showCount = !!t.gapCount;
 
   useEffect(() => { setEditMeta(false); }, [selectedId]);
   useEffect(() => {
@@ -710,7 +788,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
   const pan = useRef(null);
   const [panning, setPanning] = useState(false);
   const onPointerDown = (e) => {
-    if (e.button !== 0 || e.target.closest(".gcard, .gbracket-btn")) return;
+    if (e.button !== 0 || e.target.closest(".gcard, .gbracket-btn, .ggap-pop, .ghit, .ggap-hit")) return;
     const el = scrollRef.current;
     pan.current = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
     el.setPointerCapture(e.pointerId);
@@ -739,19 +817,31 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
     walk("up"); walk("down");
     return s;
   }, [L, hoverId, t.hoverFocus]);
-  const edgeCls = (e) => {
+  const gapEdges = gapHover && gapHover.edges ? new Set(gapHover.edges) : null;
+  const edgeCls = (e, i) => {
     const hl = ancestors.has(e.from) && ancestors.has(e.to);
-    const hov = focus ? focus.has(e.from) && focus.has(e.to) : hoverId && (e.from === hoverId || e.to === hoverId);
+    const hov = (gapEdges && gapEdges.has(i)) || (focus ? focus.has(e.from) && focus.has(e.to) : hoverId && (e.from === hoverId || e.to === hoverId));
     return { hl, hov, dim: !!focus && !hov };
   };
   const bridges = t.crossings !== "plain";
-  const sortedEdges = L.edges.map((e, i) => ({ ...e, i, ...edgeCls(e) })).sort((a, b) => (a.hl - b.hl) || (a.hov - b.hov));
+  const sortedEdges = L.edges.map((e, i) => ({ ...e, i, ...edgeCls(e, i) })).sort((a, b) => (a.hl - b.hl) || (a.hov - b.hov));
+  const edgeState = new Map(sortedEdges.map(e => [e.i, e]));
+  const cuts = new Map();
+  const addCut = (i, r) => { if (!cuts.has(i)) cuts.set(i, []); cuts.get(i).push(r); };
+  if (bridges) L.edges.forEach((e, i) => e.gaps.forEach(g => addCut(i, { x: g.x - 6, y: g.y - 5, w: 12, h: 10 })));
+  L.markers.forEach(m => { const r = window.gapCut(m, gapVariant); if (r) m.edges.forEach(i => addCut(i, r)); });
+  const markerCls = (m) => {
+    const es = m.edges.map(i => edgeState.get(i));
+    return (es.every(e => e.hl) ? "hl " : "") + (gapHover && gapHover.key === m.key || es.some(e => e.hov) ? "hov " : "") + (es.every(e => e.dim) ? "dim" : "");
+  };
+  const stubCls = (s) => (ancestors.has(s.node) ? "hl " : "") + (gapHover && gapHover.key === s.key || hoverId === s.node ? "hov " : "") + (focus && !focus.has(s.node) ? "dim" : "");
+  const gapInfo = { variant: gapVariant, gaps: L.markers.length, ends: L.stubs.length };
 
   return (
     <div className="gws">
       <GraphToolbar revset={revset} setRevset={setRevset} layout={layout} setLayout={setLayout} detailed={detailed} setDetailed={setDetailed}
         stacks={stacks} setStacks={setStacks}
-        cardW={cardW} setCardW={setCardW} shown={shownCount} total={all.length}
+        cardW={cardW} setCardW={setCardW} shown={shownCount} total={all.length} gapInfo={gapInfo}
         onLocate={() => scrollToNode(wcId)}/>
       <div className="gbody">
         {leftPanel !== "history" && (
@@ -776,27 +866,35 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
               {L.buckets.filter(b => b.guide != null).map(b => (
                 <line key={"g_" + b.start} x1={G.gutter} x2={L.width} y1={b.guide} y2={b.guide} className="gguide"/>
               ))}
-              {bridges && (
-                <defs>
-                  {L.edges.map((e, i) => e.gaps.length > 0 && (
-                    <mask key={i} id={"gm" + i} maskUnits="userSpaceOnUse" x="0" y="0" width={L.width} height={L.height}>
-                      <rect x="0" y="0" width={L.width} height={L.height} fill="white"></rect>
-                      {e.gaps.map((g, k) => <rect key={k} x={g.x - 6} y={g.y - 5} width="12" height="10" fill="black"></rect>)}
-                    </mask>
-                  ))}
-                </defs>
-              )}
+              <defs>
+                {[...cuts].map(([i, rs]) => (
+                  <mask key={i} id={"gm" + i} maskUnits="userSpaceOnUse" x="0" y="0" width={L.width} height={L.height}>
+                    <rect x="0" y="0" width={L.width} height={L.height} fill="white"></rect>
+                    {rs.map((g, k) => <rect key={k} x={g.x} y={g.y} width={g.w} height={g.h} fill="black"></rect>)}
+                  </mask>
+                ))}
+              </defs>
               {sortedEdges.map(e => (
-                <path key={e.from + ">" + e.to} d={e.d} mask={bridges && e.gaps.length ? `url(#gm${e.i})` : undefined}
+                <path key={e.from + ">" + e.to} d={e.d} mask={cuts.has(e.i) ? `url(#gm${e.i})` : undefined}
                   className={"gedge " + (e.dashed ? "dashed " : "") + (e.hov ? "hov " : "") + (e.hl ? "hl " : "") + (e.dim ? "dim" : "")}/>
               ))}
-              {L.nodes.filter(n => n.elided).map(n => (
-                <path key={"el_" + n.id} d={`M${n.cx},${n.y + H} L${n.cx},${n.y + H + G.elide - 6}`} className={"gedge dashed " + (ancestors.has(n.id) ? "hl" : "")}/>
-              ))}
+              {L.markers.map(m => <window.GapMark key={m.key} m={m} variant={gapVariant} count={showCount || counted.has(m.key) ? m.count : null} cls={markerCls(m)}/>)}
+              {L.stubs.map(s => <window.GapEnd key={s.key} s={s} variant={gapVariant} count={showCount || counted.has(s.key) ? s.count : null} cls={stubCls(s)}/>)}
+              {L.markers.map(m => m.edges.map(i => (
+                <path key={"h" + m.key + i} d={L.edges[i].d} className="ghit" onMouseEnter={() => gapEnter(m)} onMouseLeave={gapLeave}/>
+              )))}
             </svg>
-            {L.nodes.filter(n => n.elided).map(n => (
-              <div key={"elt_" + n.id} className="gelide" style={{ left: n.cx + 10, top: n.y + H + G.elide - 24 }}>~ {n.elided} elided</div>
+            {L.markers.map(m => (
+              <div key={"mh" + m.key} className="ggap-hit" style={{ left: m.x - 13, top: m.y - 13, width: 26, height: 26 }} onMouseEnter={() => gapEnter(m)} onMouseLeave={gapLeave}></div>
             ))}
+            {L.stubs.map(s => (
+              <div key={"sh" + s.key} className="ggap-hit" style={{ left: s.x - 10, top: s.y + 1, width: 96, height: 20 }} onMouseEnter={() => gapEnter(s)} onMouseLeave={gapLeave}></div>
+            ))}
+            {gapHover && (L.markers.some(m => m.key === gapHover.key) || L.stubs.some(s => s.key === gapHover.key)) && (
+              <window.GapPeek g={gapHover.kind === "end" ? { ...gapHover, y: gapHover.y + 10 } : gapHover} N={L.N} variant={gapVariant} showCount={showCount} counted={counted.has(gapHover.key)}
+                flip={gapHover.x + 380 > L.width} onCount={() => setCounted(new Set([...counted, gapHover.key]))}
+                onReveal={() => revealGap(gapHover)} onEnter={() => gapEnter(gapHover)} onLeave={gapLeave}/>
+            )}
             {brackets.map(b => (
               <div key={b.id} className={"gbracket " + (b.members.has(hoverId) ? "on" : "")} style={{ left: b.x, top: b.top, height: b.h }}>
                 <button className="gbracket-btn" onClick={() => toggleStack(b.id)} title={"Collapse " + b.n + " changes into a stack"} aria-label="Collapse stack">
@@ -808,7 +906,7 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft }) {
               <StackCard key={n.id} n={n} W={cardW} H={H} detailed={detailed} dim={!!focus && !focus.has(n.id)}
                 onClick={() => toggleStack(n.id)} onHover={setHoverId}/>
             ) : (
-              <GraphCard reveal={revealSet.has(n.id)} key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"}
+              <GraphCard reveal={revealSet.has(n.id)} flash={flash.has(n.id)} key={n.id} n={n} W={cardW} H={H} detailed={detailed} legend={t.bookmarkLabels !== "hover"}
                 isSel={selectedId === n.id} isWC={wcId === n.id} isHover={hoverId === n.id} dim={!!focus && !focus.has(n.id)}
                 onClick={() => onCardClick(n.id)} onDoubleClick={() => onCardDbl(n.id)} onHover={setHoverId}/>
             ))}

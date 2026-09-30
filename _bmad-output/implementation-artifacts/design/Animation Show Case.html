@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Zanshin — Animation Show Case</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css?v=32"/>
+<link rel="stylesheet" href="graph.css?v=8"/>
+<style>
+html,body{height:auto;min-height:100%}
+body{overflow:auto;background:var(--canvas);background-attachment:fixed;color:var(--text);padding:28px 28px 60px}
+a{color:var(--accent)}a:hover{color:var(--text)}
+.as-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;max-width:1440px;margin:0 auto 22px}
+.as-head h1{font-size:20px;font-weight:600;letter-spacing:.01em}
+.as-head p{font-size:12.5px;color:var(--text-dim);margin-top:5px;max-width:620px;line-height:1.5;text-wrap:pretty}
+.as-global{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.as-grid{display:flex;flex-wrap:wrap;gap:22px;max-width:1440px;margin:0 auto;align-items:flex-start}
+.as-sec{display:flex;flex-direction:column;gap:12px;min-width:0;flex:0 1 auto;max-width:100%}
+.as-sec-h h2{font-size:14px;font-weight:600}
+.as-sec-h p{font-size:12px;color:var(--text-dim);margin-top:4px;line-height:1.5;max-width:560px;text-wrap:pretty}
+.as-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;min-height:30px}
+.as-panel{border:1px solid var(--border);border-radius:12px;background:var(--canvas-base);overflow:auto;max-width:100%}
+.as-stage{position:relative;min-width:0;min-height:0;box-sizing:border-box;overflow:hidden}
+.as-btn{display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;color:var(--text);white-space:nowrap;transition:border-color 120ms,background 120ms}
+.as-btn:hover{border-color:var(--border-strong);background:var(--bg-card-2)}
+.as-btn.on{border-color:var(--accent);background:rgba(59,130,246,.14)}
+.as-steps{display:flex;flex-wrap:wrap;gap:6px}
+.as-step{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-muted);font-size:12px;white-space:nowrap;transition:border-color 120ms,color 120ms,background 120ms}
+.as-step:hover{color:var(--text);border-color:var(--border-strong)}
+.as-step.on{color:var(--text);border-color:var(--accent);background:rgba(59,130,246,.14)}
+.as-step i{font:600 10.5px var(--font-mono);font-style:normal;color:var(--text-faint);min-width:10px}
+.as-step code{font:12px var(--font-mono)}
+.as-step .gtb-prompt{margin-right:-3px}
+.as-line{position:absolute;width:2.25px;background:var(--co);box-shadow:0 0 4px var(--co-glow);border-radius:1px}
+.gcard.gstack.flat{box-shadow:none!important}
+.as-count{position:absolute;right:10px;bottom:-11px;z-index:3;background:var(--card-solid);min-width:22px;height:22px;padding:0 7px;font-size:12px}
+.gstack:hover .as-count{background:var(--card-solid-hi)}
+.as-mem{will-change:transform}
+.as-old{position:absolute;inset:0;z-index:2;pointer-events:none;will-change:filter,transform,opacity}
+.as-svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.as-trace{z-index:40}
+.as-trace-p{fill:none;stroke:var(--border-strong);stroke-width:1;stroke-linecap:round}
+.as-trace-p.wc{stroke:var(--co);stroke-width:1.25}
+.gcard.tracing{border-color:transparent!important;box-shadow:none!important;background:var(--card-solid)!important}
+.gcard.tracing .gbm-trigger{border-color:transparent!important}
+.gat.pop{animation:asPop 200ms cubic-bezier(.3,1.4,.5,1) both}
+@keyframes asPop{from{transform:scale(.4);opacity:0}}
+.as-bm{display:inline-block;width:8px;height:10px;background:currentColor;clip-path:polygon(0 0,100% 0,100% 100%,50% 72%,0 100%);flex-shrink:0}
+</style>
+</head>
+<body>
+<header class="as-head">
+<div><h1>Animation Show Case</h1><p>Spielwiese für Graph-Animationen. Ziel: wahrnehmbar, aber nie im Weg — schnell und flüssig, nicht hektisch.</p></div>
+<div class="as-global">
+<label class="gtb-group"><button id="slowmo" role="switch" aria-checked="false" class="gtb-switch"></button><span class="gtb-label">Zeitlupe ×5</span></label>
+<div class="gtb-seg" id="theme"><button class="on" data-t="dark">Dark</button><button data-t="light">Light</button></div>
+</div>
+</header>
+<main class="as-grid">
+<section class="as-sec" data-screen-label="01 Stapel">
+<div class="as-sec-h"><h2>Stapel auf- und zuklappen</h2><p>Die Karten gleiten aus den Stapel-Kanten nach unten auf ihre Zeilen — und zurück nach oben in den Stapel. Klick auf den Stapel öffnet, die Klammer links schließt.</p></div>
+<div class="as-bar">
+<button class="as-btn" id="stToggle">Aufklappen</button>
+<label class="gtb-group"><span class="gtb-label">Dauer</span><input type="range" class="gtb-range" id="stDur" min="120" max="600" step="10" value="280"/><span class="gtb-val" id="stDurV"></span></label>
+<label class="gtb-group"><button id="stStag" role="switch" aria-checked="false" class="gtb-switch"></button><span class="gtb-label">Versatz</span></label>
+</div>
+<div class="as-panel"><div class="gplane as-stage" id="stackStage" style="width:380px;height:544px"></div></div>
+</section>
+<section class="as-sec" data-screen-label="02 Tree">
+<div class="as-sec-h"><h2>Änderung im Tree</h2><p>Ungültige Teile werden unscharf und steigen ein paar Pixel auf. Der neue Teil wird von den bestehenden Karten aus nachgezeichnet — trifft die Linie eine Karte, läuft ihre Kontur von der Eintritts- bis zur Austrittsstelle.</p></div>
+<div class="as-bar">
+<div class="as-steps" id="steps"></div>
+<button class="as-btn" id="play">▶ Ablauf</button>
+</div>
+<div class="as-bar">
+<label class="gtb-group"><span class="gtb-label">Zeichentempo</span><input type="range" class="gtb-range" id="trSpd" min="0.6" max="4" step="0.1" value="1.8"/><span class="gtb-val" id="trSpdV"></span></label>
+<label class="gtb-group"><span class="gtb-label">Ausblenden</span><input type="range" class="gtb-range" id="trOut" min="100" max="600" step="10" value="240"/><span class="gtb-val" id="trOutV"></span></label>
+<label class="gtb-group"><span class="gtb-label">Unschärfe</span><input type="range" class="gtb-range" id="trBlur" min="0" max="16" step="1" value="6"/><span class="gtb-val" id="trBlurV"></span></label>
+<label class="gtb-group"><span class="gtb-label">Anstieg</span><input type="range" class="gtb-range" id="trRise" min="0" max="30" step="1" value="8"/><span class="gtb-val" id="trRiseV"></span></label>
+</div>
+<div class="as-panel"><div class="gplane as-stage" id="treeStage" style="width:896px;height:544px"></div></div>
+</section>
+</main>
+<script>
+(function(){
+const $=s=>document.querySelector(s), NS="http://www.w3.org/2000/svg";
+const svgEl=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const slowK=()=>$("#slowmo").classList.contains("on")?5:1;
+function sw(el,cb){el.addEventListener("click",()=>{const on=!el.classList.contains("on");el.classList.toggle("on",on);el.setAttribute("aria-checked",on);cb&&cb(on);});}
+function rng(id,fmt){const i=$("#"+id),v=$("#"+id+"V");const u=()=>{i.style.setProperty("--p",((i.value-i.min)/(i.max-i.min)*100)+"%");v.textContent=fmt(+i.value);};i.addEventListener("input",u);u();return i;}
+sw($("#slowmo"));
+document.querySelectorAll("#theme button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("#theme button").forEach(x=>x.classList.toggle("on",x===b));if(b.dataset.t==="light")document.documentElement.dataset.theme="light";else delete document.documentElement.dataset.theme;}));
+
+function cardEl(c,wc,x,y,W,H){
+  const d=document.createElement("div");
+  d.className="gcard is-compact"+(c.imm?" immutable":"")+(c.root?" root":"")+(wc?" wc":"")+(c.bm?" has-legend":"");
+  Object.assign(d.style,{left:x+"px",top:y+"px",width:W+"px",height:H+"px"});
+  fillCard(d,c,wc);return d;
+}
+function fillCard(d,c,wc,pop){
+  const cid=`<span class="gcid">${c.imm&&!c.root?'<span class="gimm">◆</span>':""}<b>${c.id.slice(0,2)}</b>${c.id.slice(2,5)}</span>`;
+  d.innerHTML=`<div class="gline">${wc?`<span class="gat${pop?" pop":""}">@</span>`:""}${cid}<span class="gsubj${c.root||c.empty?" is-dim":""}">${c.s}</span></div>`+
+    (c.bm?`<div class="gbm is-legend has"><span class="gbm-trigger"><span class="as-bm"></span><span class="gbm-main">${c.bm}</span></span></div>`:"");
+}
+
+/* ---------- 01 STACK ---------- */
+const SW=240,SH=40,P=88,SX=100,sy=r=>32+r*P;
+const st=$("#stackStage"),stDur=rng("stDur",v=>v+"ms");
+const A={id:"yqnmwrto",s:"Settings page: wire up form"},B={id:"ktmrlxsq",s:"Merge auth refactor",imm:1,bm:"main"};
+const M=[{id:"lxmwqpzo",s:"Validate email on blur"},{id:"ovkrtsnu",s:"Add form field primitives"},{id:"twpyzmlk",s:"Extract useForm hook"},{id:"rnqsvwxo",s:"Scaffold settings route"}];
+const line=document.createElement("div");line.className="as-line";line.style.left=(SX+SW/2-1.1)+"px";line.style.top=(sy(0)+SH)+"px";st.append(line);
+const bEl=cardEl(B,false,SX,sy(2),SW,SH);st.append(bEl);
+const mem=M.map((m,i)=>{const e=cardEl(m,false,SX,sy(1),SW,SH);e.classList.add("as-mem");e.style.zIndex=5-i;e.style.visibility="hidden";st.append(e);return e;}).reverse().reverse();
+const stackEl=document.createElement("div");stackEl.className="gcard is-compact gstack";
+Object.assign(stackEl.style,{left:SX+"px",top:sy(1)+"px",width:SW+"px",height:SH+"px",zIndex:6});
+const top=M[0],bot=M[M.length-1];
+stackEl.innerHTML=`<div class="gline"><span class="gcid"><b>${top.id.slice(0,2)}</b>${top.id.slice(2,5)}</span><span class="gsubj">${top.s}</span></div><span class="gstack-n as-count" title="${M.length} changes · ${top.id.slice(0,5)}‥${bot.id.slice(0,5)}">${M.length}</span>`;
+st.append(stackEl);
+st.append(cardEl(A,true,SX,sy(0),SW,SH));
+const br=document.createElement("div");br.className="gbracket";br.style.cssText=`left:${SX-16}px;top:${sy(1)+6}px;height:${sy(4)+SH-sy(1)-12}px;display:none`;
+br.innerHTML=`<button class="gbracket-btn" title="Collapse ${M.length} changes into a stack" aria-label="Collapse stack"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2" y="6.5" width="9" height="7.5" rx="1.5"/><path d="M5 4h8.5a.5.5 0 0 1 .5.5V11"/><path d="M8 1.5h7.5"/></svg></button>`;
+st.append(br);
+const peek=k=>{const s=(SW-(k===1?6:12))/SW;return `translateY(${SH/2*(1-s)+(k===1?4:8)}px) scale(${s})`;};
+const memTf=(exp,i)=>exp?`translateY(${i*P}px) scale(1)`:i===0?"translateY(0px) scale(1)":peek(i===1?1:2);
+const bTf=exp=>`translateY(${exp?3*P:0}px)`, lineH=exp=>sy(2)-sy(0)-SH+(exp?3*P:0);
+let stExp=false,stTimers=[];
+function stackApply(exp,anim){
+  stTimers.forEach(clearTimeout);stTimers=[];
+  st.getAnimations({subtree:true}).forEach(a=>a.cancel());
+  stExp=exp;$("#stToggle").textContent=exp?"Zuklappen":"Aufklappen";
+  const k=slowK(),d=+stDur.value*k,sg=$("#stStag").classList.contains("on")?26*k:0,o={duration:d,easing:"cubic-bezier(.2,.8,.2,1)",fill:"backwards"};
+  mem.forEach((el,i)=>{el.style.transform=memTf(exp,i);el.style.visibility="visible";
+    if(anim&&i>0)el.animate([{transform:memTf(!exp,i)},{transform:memTf(exp,i)}],{...o,delay:exp?(i-1)*sg:(3-i)*sg});});
+  const bd=exp?2*sg:0;bEl.style.transform=bTf(exp);line.style.height=lineH(exp)+"px";
+  if(anim){bEl.animate([{transform:bTf(!exp)},{transform:bTf(exp)}],{...o,delay:bd});line.animate([{height:lineH(!exp)+"px"},{height:lineH(exp)+"px"}],{...o,delay:bd});}
+  const total=d+2*sg;
+  if(exp){
+    stackEl.classList.add("flat");stackEl.style.opacity=0;stackEl.style.pointerEvents="none";
+    if(anim)stackEl.animate([{opacity:1},{opacity:0}],{duration:Math.min(150*k,d*.6),easing:"ease-out",fill:"backwards"});
+    br.style.display="";
+    if(anim)br.animate([{opacity:0,transform:"scaleY(.9)"},{opacity:1,transform:"none"}],{duration:180*k,delay:total*.6,easing:"ease-out",fill:"backwards"});
+  }else{
+    stackEl.style.opacity=1;stackEl.style.pointerEvents="";
+    const end=()=>{stackEl.classList.remove("flat");mem.forEach(el=>el.style.visibility="hidden");br.style.display="none";};
+    if(anim){stackEl.animate([{opacity:0},{opacity:1}],{duration:d*.45,delay:total-d*.45,easing:"ease-in-out",fill:"backwards"});br.animate([{opacity:1},{opacity:0}],{duration:100*k,fill:"forwards"});stTimers.push(setTimeout(end,total));}
+    else end();
+  }
+}
+mem.forEach((el,i)=>el.style.transform=memTf(false,i));line.style.height=lineH(false)+"px";
+$("#stToggle").addEventListener("click",()=>stackApply(!stExp,true));
+stackEl.addEventListener("click",()=>stackApply(true,true));
+br.querySelector("button").addEventListener("click",()=>stackApply(false,true));
+sw($("#stStag"));
+
+/* ---------- 02 TREE ---------- */
+const TW=240,TH=40,GX=56,GY=48,TP=TH+GY,PAD=32,MAXR=5;
+const tx=c=>PAD+c*(TW+GX),ty=r=>PAD+(MAXR-r)*TP;
+const C={zz:{id:"zzzzzzzz",s:"root()",root:1,imm:1},qp:{id:"qpvuntsm",s:"Initial project layout",imm:1},kt:{id:"ktmrlxsq",s:"Merge auth refactor",imm:1,bm:"main"},
+  dc:{id:"dcnwyxor",s:"Docs: deployment guide",bm:"docs"},f1:{id:"mzvwutpr",s:"Add session store"},f2:{id:"ptlqzkso",s:"Refresh tokens on 401"},
+  f3:{id:"wnlxyrqk",s:"Login screen polish"},nw:{id:"yokqrmsn",s:"(no description set)",empty:1}};
+const trunk=[["zz",0,0],["qp",0,1,"zz"],["kt",0,2,"qp"],["dc",1,2,"qp"]];
+const STATES=[
+  {label:"Ausgangslage",nodes:[...trunk,["f1",2,2,"qp"],["f2",2,3,"f1"],["f3",2,4,"f2",1]]},
+  {cmd:"jj rebase -b @ -d main",nodes:[...trunk,["f1",0,3,"kt"],["f2",0,4,"f1"],["f3",0,5,"f2",1]]},
+  {cmd:"jj abandon pt",nodes:[...trunk,["f1",0,3,"kt"],["f3",0,4,"f1",1]]},
+  {cmd:"jj new",nodes:[...trunk,["f1",0,3,"kt"],["f3",0,4,"f1"],["nw",0,5,"f3",1]]}];
+function roundedPath(raw,r){
+  const pts=raw.filter((p,i)=>i===0||p[0]!==raw[i-1][0]||p[1]!==raw[i-1][1]);let d=`M${pts[0][0]},${pts[0][1]}`;
+  for(let i=1;i<pts.length-1;i++){const[x0,y0]=pts[i-1],[x1,y1]=pts[i],[x2,y2]=pts[i+1];const l1=Math.hypot(x1-x0,y1-y0),l2=Math.hypot(x2-x1,y2-y1),rr=Math.min(r,l1/2,l2/2);
+    d+=` L${x1-(x1-x0)/l1*rr},${y1-(y1-y0)/l1*rr} Q${x1},${y1} ${x1+(x2-x1)/l2*rr},${y1+(y2-y1)/l2*rr}`;}
+  const l=pts[pts.length-1];return d+` L${l[0]},${l[1]}`;
+}
+function layout(s){
+  const N=new Map();s.nodes.forEach(([k,col,row,par,wc])=>N.set(k,{k,c:C[k],par,wc:!!wc,x:tx(col),y:ty(row),sig:`${k}|${col}|${row}|${par||""}`}));
+  const E=[];N.forEach(n=>{if(!n.par)return;const p=N.get(n.par),pcx=p.x+TW/2,ncx=n.x+TW/2,oy=p.y,iy=n.y+TH;let pts;
+    if(pcx===ncx)pts=[[pcx,oy],[ncx,iy]];else{const sx=pcx+(ncx>pcx?1:-1)*TW*.28,hy=oy-GY*.4;pts=[[sx,oy],[sx,hy],[ncx,hy],[ncx,iy]];}
+    E.push({from:p.k,to:n.k,d:roundedPath(pts,10),sx:pts[0][0],sig:p.sig+">"+n.sig});});
+  const anc=new Set();let w=[...N.values()].find(n=>n.wc);while(w){anc.add(w.k);w=N.get(w.par);}
+  return{N,E,anc};
+}
+const ts=$("#treeStage"),W0=896,H0=544;
+const mkSvg=cls=>svgEl("svg",{class:"as-svg"+(cls?" "+cls:""),width:W0,height:H0});
+const edgeP=(e,hl)=>svgEl("path",{d:e.d,class:"gedge"+(hl?" hl":"")});
+const T={cur:0,busy:false,timers:[],play:false,playT:null};
+function renderStatic(i){
+  const L=layout(STATES[i]);ts.innerHTML="";const s=mkSvg();ts.append(s);
+  L.E.forEach(e=>s.append(edgeP(e,L.anc.has(e.to))));
+  L.N.forEach(n=>ts.append(cardEl(n.c,n.wc,n.x,n.y,TW,TH)));
+}
+function tracePaths(x,y,ex){
+  const x0=x+.5,y0=y+.5,x1=x+TW-.5,y1=y+TH-.5,r=9.5,cx=x+TW/2;
+  return[`M${cx},${y1} L${x0+r},${y1} Q${x0},${y1} ${x0},${y1-r} L${x0},${y0+r} Q${x0},${y0} ${x0+r},${y0} L${ex},${y0}`,
+         `M${cx},${y1} L${x1-r},${y1} Q${x1},${y1} ${x1},${y1-r} L${x1},${y0+r} Q${x1},${y0} ${x1-r},${y0} L${ex},${y0}`];
+}
+const spdIn=rng("trSpd",v=>v.toFixed(1)+"px/ms"),outIn=rng("trOut",v=>v+"ms"),blurIn=rng("trBlur",v=>v+"px"),riseIn=rng("trRise",v=>v+"px");
+function treeGo(to){
+  T.timers.forEach(clearTimeout);T.timers=[];
+  if(T.busy){renderStatic(T.cur);T.busy=false;}
+  const from=T.cur;if(from===to)return 0;
+  T.cur=to;markSteps();
+  const A=layout(STATES[from]),B=layout(STATES[to]);
+  const aN=new Map([...A.N.values()].map(n=>[n.sig,n])),bN=new Set([...B.N.values()].map(n=>n.sig));
+  const aE=new Set(A.E.map(e=>e.sig)),bE=new Set(B.E.map(e=>e.sig));
+  const k=slowK(),spd=+spdIn.value/k,out=+outIn.value*k;
+  ts.innerHTML="";
+  const base=mkSvg();ts.append(base);
+  const old=document.createElement("div");old.className="as-old";const oS=mkSvg();old.append(oS);ts.append(old);
+  A.E.filter(e=>!bE.has(e.sig)).forEach(e=>oS.append(edgeP(e,A.anc.has(e.to))));
+  A.N.forEach(n=>{if(!bN.has(n.sig))old.append(cardEl(n.c,n.wc,n.x,n.y,TW,TH));});
+  const stE=[],nE=[];
+  B.E.forEach(e=>{const was=aE.has(e.sig),p=edgeP(e,was?A.anc.has(e.to):B.anc.has(e.to));base.append(p);(was?stE:nE).push({e,p,hl:B.anc.has(e.to)});});
+  const stC=[],nN=[];
+  B.N.forEach(n=>{const a=aN.get(n.sig);if(a){const c=cardEl(n.c,a.wc,n.x,n.y,TW,TH);ts.append(c);stC.push({n,c,was:a.wc});}else nN.push(n);});
+  const tr=mkSvg("as-trace");ts.append(tr);
+  const hasOld=oS.childNodes.length||old.children.length>1;
+  if(hasOld)old.animate([{opacity:1,filter:"blur(0px)",transform:"translateY(0px)"},{opacity:0,filter:`blur(${blurIn.value}px)`,transform:`translateY(${-riseIn.value}px)`}],{duration:out,easing:"cubic-bezier(.4,0,.2,1)",fill:"forwards"});
+  const t0=hasOld?out*.5:0,ready=new Map();let end=hasOld?out:0;
+  stC.forEach(s=>ready.set(s.n.k,t0));
+  const draw=x=>{const len=x.p.getTotalLength(),s=ready.get(x.e.from),d=len/spd;x.p.style.strokeDasharray=`${len} ${len+2}`;x.p.style.strokeDashoffset=0;
+    x.p.animate([{strokeDashoffset:len},{strokeDashoffset:0}],{duration:d,delay:s,easing:"linear",fill:"backwards"});end=Math.max(end,s+d);return s+d;};
+  nN.forEach(n=>{
+    const inc=nE.filter(x=>x.e.to===n.k),t=inc.length?Math.min(...inc.map(draw)):t0;
+    const oe=nE.find(x=>x.e.from===n.k),ex=oe?oe.e.sx:n.x+TW/2;
+    const c=cardEl(n.c,n.wc,n.x,n.y,TW,TH);c.classList.add("tracing");ts.insertBefore(c,tr);
+    const ps=tracePaths(n.x,n.y,ex).map(d=>svgEl("path",{d,class:"as-trace-p"+(n.wc?" wc":"")}));ps.forEach(p=>tr.append(p));
+    const lens=ps.map(p=>p.getTotalLength()),td=Math.max(...lens)/spd;
+    ps.forEach((p,i)=>{p.style.strokeDasharray=`${lens[i]} ${lens[i]+2}`;p.style.strokeDashoffset=0;
+      p.animate([{strokeDashoffset:lens[i]},{strokeDashoffset:0}],{duration:td,delay:t,easing:"linear",fill:"backwards"});
+      p.animate([{opacity:1},{opacity:0}],{duration:160*k,delay:t+td+80*k,fill:"forwards"});});
+    const fo={duration:Math.max(td*.8,120*k),delay:t+td*.3,easing:"ease-out",fill:"backwards"};
+    c.animate([{opacity:0},{opacity:1}],fo);c.querySelector(".gline").animate([{transform:"translateY(3px)"},{transform:"none"}],fo);
+    T.timers.push(setTimeout(()=>c.classList.remove("tracing"),t+td));
+    ready.set(n.k,t+td);end=Math.max(end,t+td+260*k);
+  });
+  nE.filter(x=>!nN.some(n=>n.k===x.e.to)).forEach(draw);
+  T.timers.push(setTimeout(()=>{stC.forEach(s=>{if(s.was!==s.n.wc){s.c.classList.toggle("wc",s.n.wc);fillCard(s.c,s.n.c,s.n.wc,true);}});stE.forEach(x=>x.p.classList.toggle("hl",x.hl));},t0));
+  T.busy=true;T.timers.push(setTimeout(()=>{T.busy=false;renderStatic(to);},end+20));
+  return end;
+}
+const stepsEl=$("#steps");
+STATES.forEach((s,i)=>{const b=document.createElement("button");b.className="as-step";
+  b.innerHTML=`<i>${i+1}</i>`+(s.cmd?`<span class="gtb-prompt">$</span><code>${s.cmd}</code>`:`<span>${s.label}</span>`);
+  b.addEventListener("click",()=>{stopPlay();treeGo(i);});stepsEl.append(b);});
+function markSteps(){[...stepsEl.children].forEach((b,i)=>b.classList.toggle("on",i===T.cur));}
+function stopPlay(){T.play=false;clearTimeout(T.playT);$("#play").classList.remove("on");$("#play").textContent="▶ Ablauf";}
+function tick(){if(!T.play)return;const d=treeGo((T.cur+1)%STATES.length);T.playT=setTimeout(tick,d+1100*slowK());}
+$("#play").addEventListener("click",()=>{if(T.play)return stopPlay();T.play=true;$("#play").classList.add("on");$("#play").textContent="■ Stopp";tick();});
+renderStatic(0);markSteps();
+})();
+</script>
+</body>
+</html>

@@ -275,3 +275,47 @@ a{color:var(--accent)}a:hover{color:var(--text)}
 .gcard.flip-up .gpeek-right{top:auto;bottom:-6px}
 .gstack-row.flip-left>.gpeek-right{left:auto;right:100%;padding-left:0;padding-right:14px;transform:translateX(3px)}
 .gstack-row.flip-left:hover>.gpeek-right{transform:none}
+
+/* hidden history: gap markers, end stubs, callout, toolbar legend */
+.ggap{pointer-events:none;transition:opacity 160ms}
+.ggap-ink{fill:var(--text-faint);transition:fill 140ms}
+.ggap-cut{stroke:var(--text-faint);stroke-width:1.5;stroke-linecap:round;fill:none;transition:stroke 140ms}
+.ggap-pill{fill:var(--card-solid);stroke:var(--edge-hov);stroke-width:1;transition:stroke 140ms}
+.ggap-txt{font:11px var(--font-mono);fill:var(--text-faint)}
+.ggap-pill-txt{font:600 10.5px var(--font-mono);fill:var(--text-muted);text-anchor:middle}
+.ggap.hov .ggap-ink{fill:var(--text)}.ggap.hov .ggap-cut{stroke:var(--text)}.ggap.hov .ggap-pill{stroke:var(--text-muted)}.ggap.hov .ggap-txt{fill:var(--text-muted)}
+.ggap.hov .gend-line{stroke:var(--edge-hov)}
+.ggap.hl .ggap-ink{fill:var(--co)}.ggap.hl .ggap-cut{stroke:var(--co)}.ggap.hl .ggap-pill{stroke:var(--co)}.ggap.hl .ggap-pill-txt{fill:var(--co)}
+.ggap.hl .gend-line{stroke:var(--co);stroke-width:2.25;filter:drop-shadow(0 0 4px var(--co-glow))}
+.ggap.dim{opacity:.28}
+.ghit{fill:none;stroke:transparent;stroke-width:12;pointer-events:stroke;cursor:help}
+.ggap-hit{position:absolute;cursor:help;z-index:2}
+.ggap-pop{position:absolute;z-index:50;cursor:default;animation:ggap-in 140ms ease-out}
+.ggap-pop.flip{transform:translateX(-100%)}
+@keyframes ggap-in{from{opacity:0;margin-top:3px}}
+.ggap-pop .gpeek-inner{width:320px}
+.ggap-chain{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.ggap-row{display:flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text);height:22px}
+.ggap-row-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ggap-row.is-hidden .ggap-row-subj{color:var(--text-faint);font-style:italic}
+.ggap-mid{display:flex;align-items:center;gap:8px;font:11px var(--font-mono);color:var(--text-dim);padding-left:10px}
+.ggap-mid svg{flex-shrink:0}
+.ggap-sep{padding:0 6px;color:var(--text-faint)}
+.ggap-link{font:11px var(--font-mono);color:var(--accent);padding:0}
+.ggap-link:hover{color:var(--text);text-decoration:underline}
+.ggap-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ggap-btn{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-card);color:var(--text);font-size:12px}
+.ggap-btn:hover{background:var(--bg-card-2);border-color:var(--edge-hov)}
+.ggap-btn code{font:12px var(--font-mono)}
+.ggap-actions .gpeek-dim{font-size:11px}
+.gcard.flash{animation:gFlash 2.4s ease-out both}
+@keyframes gFlash{0%,35%{box-shadow:0 0 0 2px var(--accent),0 0 0 6px rgba(59,130,246,.25)}100%{box-shadow:0 0 0 0 transparent}}
+.gtb-gaps{position:relative;margin-left:-6px}
+.gtb-gaps-btn{display:flex;align-items:center;gap:6px;height:28px;padding:0 9px 0 7px;border-radius:7px;border:1px solid transparent;font:11px var(--font-mono);color:var(--text-faint);white-space:nowrap}
+.gtb-gaps-btn:hover,.gtb-gaps:focus-within .gtb-gaps-btn{color:var(--text-muted);border-color:var(--border)}
+.gtb-gaps-pop{position:absolute;top:100%;left:0;padding-top:6px;z-index:60;opacity:0;visibility:hidden;transition:opacity 120ms,visibility 0s linear 120ms}
+.gtb-gaps:hover .gtb-gaps-pop,.gtb-gaps:focus-within .gtb-gaps-pop{opacity:1;visibility:visible;transition:opacity 140ms 200ms,visibility 0s linear 200ms}
+.gtb-gaps-inner{width:320px;box-sizing:border-box;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.gtb-gaps-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-dim)}
+.gtb-gaps-row b{color:var(--text);font-weight:500}
+.gtb-gaps-row svg{flex-shrink:0}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="design_doc_mode" content="canvas"/>
+<title>Graph — hidden history study</title>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+body{margin:0;font-family:Ubuntu,sans-serif}
+a{color:#3b82f6}a:hover{color:#1d4ed8}
+.frame{position:absolute;display:flex;flex-direction:column;gap:10px}
+.frame h3{margin:0;font:500 18px Ubuntu,sans-serif;color:#1c1b22;display:flex;gap:12px;align-items:baseline}
+.frame h3 span{font:14px "Ubuntu Mono",monospace;color:#6b6874}
+.frame iframe{width:1100px;height:720px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#11152a;box-shadow:0 20px 50px -20px rgba(0,0,0,.35)}
+.note{position:absolute;left:0;top:0;width:3440px;display:flex;flex-direction:column;gap:10px;color:#1c1b22}
+.note h1{margin:0;font:500 34px Ubuntu,sans-serif}
+.note p{margin:0;font-size:17px;line-height:1.5;color:#44414d;max-width:1400px;text-wrap:pretty}
+.note code{font-family:"Ubuntu Mono",monospace}
+</style>
+</head>
+<body>
+<div class="note">
+<h1>Hidden history — gap markers</h1>
+<p>Three marker families, each covering both the gap on an indirect edge and the end of history (<code>missing</code>). Every frame is the live prototype: the default revset, stacks grouped, and @ moved to <code>feature/ZAN-440</code> so the gold line runs through a gap. Top row is dark without counts; bottom row is light with counts. Hover a marker or stub for the callout.</p>
+</div>
+<div class="frame" style="left:0;top:150px"><h3>A · Dots <span>dark · no count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=dark&gap=dots&count=0&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+<div class="frame" style="left:1170px;top:150px"><h3>B · Break <span>dark · no count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=dark&gap=break&count=0&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+<div class="frame" style="left:2340px;top:150px"><h3>C · Pill <span>dark · no count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=dark&gap=pill&count=0&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+<div class="frame" style="left:0;top:960px"><h3>A · Dots <span>light · with count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=light&gap=dots&count=1&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+<div class="frame" style="left:1170px;top:960px"><h3>B · Break <span>light · with count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=light&gap=break&count=1&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+<div class="frame" style="left:2340px;top:960px"><h3>C · Pill <span>light · with count</span></h3><iframe src="JJ%20Desktop%20Client.html?embed=1&th=light&gap=pill&count=1&wc=mxnztwqp&focus=vkxnrslp"></iframe></div>
+</body>
+</html>

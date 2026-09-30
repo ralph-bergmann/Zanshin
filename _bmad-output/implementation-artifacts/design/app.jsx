@@ -12,8 +12,12 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "bookmarkLabels": "legend",
   "laneOrder": "optimized",
   "crossings": "bridge",
-  "hoverFocus": true
+  "hoverFocus": true,
+  "gapMarker": "break",
+  "gapCount": false
 }/*EDITMODE-END*/;
+const URLQ = new URLSearchParams(location.search);
+const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("theme")], ["gapMarker", URLQ.get("gap")], ["gapCount", URLQ.has("count") ? URLQ.get("count") === "1" : null]].filter(([, v]) => v != null));
 
 // ============================================================
 // ICONS
@@ -2190,10 +2194,10 @@ const DEFAULT_WIDTHS = {
 };
 
 function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [t, setTweak] = useTweaks({ ...TWEAK_DEFAULTS, ...URL_TWEAKS });
   const [activeProject, setActiveProject] = useState("flutter-app");
   const [homeTree, setHomeTree] = useState(() => window.HOME_TREE);
-  const [homeOpen, setHomeOpen] = useState(true); // opens automatically on app start
+  const [homeOpen, setHomeOpen] = useState(!URLQ.has("embed")); // opens automatically on app start
   const [activeProjectId, setActiveProjectId] = useState(window.ACTIVE_PROJECT_ID || "p_myapp");
   // Slot-based model: each slot holds 1+ branches (stacked vertically).
   // mergeGroup ID groups adjacent slots into a virtual merge cluster.
@@ -2529,6 +2533,10 @@ function App() {
         <TweakRadio label="Crossings" value={t.crossings} onChange={v => setTweak("crossings", v)}
           options={[{ value: "bridge", label: "Bridge gap" }, { value: "plain", label: "Plain" }]}/>
         <TweakToggle label="Hover: focus path" value={t.hoverFocus} onChange={v => setTweak("hoverFocus", v)}/>
+        <TweakSection label="Hidden history"/>
+        <TweakRadio label="Gap marker" value={t.gapMarker} onChange={v => setTweak("gapMarker", v)}
+          options={[{ value: "dots", label: "Dots" }, { value: "break", label: "Break" }, { value: "pill", label: "Pill" }]}/>
+        <TweakToggle label="Show hidden count" value={t.gapCount} onChange={v => setTweak("gapCount", v)}/>
         <TweakSection label="Diff"/>
         <TweakRadio
           label="Default mode" value={t.diffMode}

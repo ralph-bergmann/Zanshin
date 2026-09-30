@@ -72,6 +72,34 @@
     C({ id: "tzkvmrls", commitId: "e2f2a3b4", parents: ["nqxwrptl"], subject: "docs: document pagination params", author: "Charlie Davis", date: "1d", ts: "2026-09-24T12:00", priority: 7, stats: { added: 44, removed: 2, files: 1 } }),
     C({ id: "mrplxqwv", commitId: "e3f2a3b4", parents: ["tzkvmrls"], subject: "docs: auth flow sequence diagrams", author: "Charlie Davis", date: "12h", ts: "2026-09-25T02:00", priority: 7,
         bookmarks: [{ name: "docs/api-reference", state: "local" }], stats: { added: 58, removed: 4, files: 3 } }),
+
+    // ---- hidden history (inDefault:false) — gap scenarios for the default revset ----
+    // offline cache: stack → gap → single card → stack → bookmark (stack below/above a gap, dashed edge above a stack)
+    C({ id: "pnwqxrtk", commitId: "f1a2b3c4", parents: ["vruxwmqv"], subject: "feat(cache): offline store schema", author: "Lena König", date: "3d", ts: "2026-09-22T09:00", priority: 8, stats: { added: 132, removed: 0, files: 4 } }),
+    C({ id: "qrvtmkxl", commitId: "f2a2b3c4", parents: ["pnwqxrtk"], subject: "feat(cache): write-through repository", author: "Lena König", date: "3d", ts: "2026-09-22T15:00", priority: 8, stats: { added: 96, removed: 12, files: 3 } }),
+    C({ id: "vwkzplmn", commitId: "f3a2b3c4", parents: ["qrvtmkxl"], subject: "chore(cache): regenerate freezed models", author: "Lena König", date: "2d", ts: "2026-09-23T09:00", priority: 8, inDefault: false, stats: { added: 410, removed: 388, files: 14 } }),
+    C({ id: "lmtqzvwr", commitId: "f4a2b3c4", parents: ["vwkzplmn"], subject: "wip(cache): split read/write paths", author: "Lena König", date: "2d", ts: "2026-09-23T12:00", priority: 8, inDefault: false, stats: { added: 58, removed: 31, files: 3 } }),
+    C({ id: "vkxnrslp", commitId: "f5a2b3c4", parents: ["lmtqzvwr"], subject: "feat(cache): sync queue with retry", author: "Ralph Stein", date: "1d", ts: "2026-09-24T10:00", priority: 8, stats: { added: 121, removed: 9, files: 5 } }),
+    C({ id: "tqwmlnxz", commitId: "f6a2b3c4", parents: ["vkxnrslp"], subject: "feat(cache): conflict banner in list views", author: "Ralph Stein", date: "20h", ts: "2026-09-24T18:00", priority: 8, stats: { added: 64, removed: 7, files: 3 } }),
+    C({ id: "xrlpkvqm", commitId: "f7a2b3c4", parents: ["tqwmlnxz"], subject: "test(cache): queue replay integration tests", author: "Ralph Stein", date: "9h", ts: "2026-09-25T05:00", priority: 8, stats: { added: 188, removed: 0, files: 4 } }),
+    C({ id: "mxnztwqp", commitId: "f8a2b3c4", parents: ["xrlpkvqm"], subject: "feat(cache): settings toggle for offline mode", author: "Ralph Stein", date: "2h", ts: "2026-09-25T12:00", priority: 8,
+        bookmarks: [{ name: "feature/ZAN-440_offline-cache", state: "ahead", ahead: 1 }], stats: { added: 22, removed: 3, files: 2 } }),
+
+    // merge with one visible parent and one parent whose whole history is outside the revset (missing + visible parent)
+    C({ id: "ksqlrzvo", commitId: "f9a2b3c4", parents: ["sqpuoqvx"], subject: "fix(l10n): locale fallback for de-AT", author: "Charlie Davis", date: "Sep 10", ts: "2026-09-10T09:00", immutable: true, inDefault: false,
+        bookmarks: [{ name: "release/1.4.x@origin", state: "remote" }], stats: { added: 9, removed: 2, files: 1 } }),
+    C({ id: "romwxqkn", commitId: "faa2b3c4", parents: ["ksqlrzvo"], subject: "fix(l10n): plural rules for pl", author: "Charlie Davis", date: "Sep 11", ts: "2026-09-11T09:00", immutable: true, inDefault: false, stats: { added: 14, removed: 6, files: 2 } }),
+    C({ id: "wlmpxokt", commitId: "fba2b3c4", parents: ["vruxwmqv", "romwxqkn"], subject: "merge: pull 1.4.x locale fixes forward", author: "Charlie Davis", date: "1d", ts: "2026-09-24T08:00", priority: 9 }),
+
+    // fork: sxmtvqno keeps its direct child and gains a descendant behind a gap → settings stack ends there
+    C({ id: "ntvrqkzo", commitId: "fca2b3c4", parents: ["sxmtvqno"], subject: "spike(settings): index section titles", author: "Lena König", date: "18h", ts: "2026-09-24T20:00", priority: 6.5, inDefault: false, stats: { added: 44, removed: 0, files: 2 } }),
+    C({ id: "zqklmwts", commitId: "fda2b3c4", parents: ["ntvrqkzo"], subject: "spike(settings): search across sections", author: "Lena König", date: "6h", ts: "2026-09-25T08:00", priority: 6.5, stats: { added: 71, removed: 4, files: 3 } }),
+
+    // one parent, two dashed edges: the hidden parent is a merge of develop and the settings redesign
+    C({ id: "ompktvxr", commitId: "fea2b3c4", parents: ["potwkszn"], subject: "chore(settings): drop debug toggles for release", author: "Bob", date: "3h", ts: "2026-09-25T11:00", priority: 5.5, inDefault: false, stats: { added: 2, removed: 36, files: 2 } }),
+    C({ id: "yxlnqwmk", commitId: "ffa2b3c4", parents: ["kxwsnptm", "ompktvxr"], subject: "merge: settings redesign into rc", author: "Bob", date: "2h", ts: "2026-09-25T12:00", priority: 5.5, inDefault: false }),
+    C({ id: "srkvzmop", commitId: "0aa3b3c4", parents: ["yxlnqwmk"], subject: "release: bump to 1.1.0-rc1", author: "Bob", date: "1h", ts: "2026-09-25T13:00", priority: 5.5,
+        bookmarks: [{ name: "release/1.1.0-rc1", state: "local" }], stats: { added: 3, removed: 3, files: 2 } }),
   ];
   list.forEach(c => { c.changeId = c.id; c.isMerge = c.parents.length > 1; });
   window.GRAPH_COMMITS = list;
