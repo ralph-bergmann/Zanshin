@@ -701,9 +701,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
   model) and never trusted across an op-id advance. **Don't reintroduce a materialized lane
   cache** — it buys nothing here (re-derive ≪ NFR-P-1's < 1s @ 10k) and brings back staleness.
   *(2026-09-30, Story 4.10: the ~3 ms / ~27 µs time the index-only TOPOLOGY walk (re-measured
-  3.1 ms / 30 µs). The whole `graph_topology(all())` call is 22 ms @ 10k packed (6 ms @ 1k),
-  its timestamps +31 ms packed / ~1 s on the loose fixture, a 60-id content page 1.9 ms
-  packed; since Story 4.8 `walk_graph`'s rows cost the commit loads. See spec-4-10 §
+  3.1 ms / 30 µs). The whole `graph_topology(all())` call is 22 ms @ 10k packed (5 ms @ 1k),
+  its timestamps +31 ms packed / ~1 s on the loose fixture, a 60-id content page 1.7 ms
+  packed, and `walk_graph(all())` itself 53 ms packed / 1.09 s loose @ 10k; since Story 4.8 `walk_graph`'s rows cost the commit loads. See spec-4-10 §
   Measurements and the ADR-0002 Addendum 2026-09-30.)*
 - **`zanshin-graph` slice API = `collect_lanes`, a collect-all over the lazy stream.**
   There is no held cache to iterate: `collect_lanes(repo, revset, prioritize)` drives

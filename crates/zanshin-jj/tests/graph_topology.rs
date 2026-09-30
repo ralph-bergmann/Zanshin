@@ -16,7 +16,7 @@ use std::sync::LazyLock;
 use test_helpers::{add_commit_with_files, extract_fixture};
 use zanshin_jj::{
     resolve_revset, Change, CommitContent, CommitMeta, GraphEdgeKind, GraphNode, GraphTopology, Repo, RevsetError,
-    TopologyMeta, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
+    TopologyMeta, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
 };
 
 /// The CLI's `revsets.short-prefixes` default.
@@ -47,9 +47,14 @@ fn default_anchors() -> Vec<String> {
 
 /// `walk_graph`'s whole stream for the same pass-throughs.
 fn walk(repo: &mut Repo, revset: &str, prioritize: &str) -> Vec<GraphNode> {
+    walk_with(repo, revset, prioritize, SHORT)
+}
+
+/// [`walk`] with an explicit `short_prefixes`.
+fn walk_with(repo: &mut Repo, revset: &str, prioritize: &str, short_prefixes: &str) -> Vec<GraphNode> {
     let mut nodes = Vec::new();
     let flow = repo
-        .walk_graph(revset, prioritize, SHORT, |node| {
+        .walk_graph(revset, prioritize, short_prefixes, |node| {
             nodes.push(node);
             ControlFlow::Continue(())
         })
@@ -457,5 +462,66 @@ fn graph_topology_loads_commits_only_for_timestamps() {
     assert!(
         matches!(with_timestamps, Err(RevsetError::JjLibError(_))),
         "timestamps load every non-root node: {with_timestamps:?}"
+    );
+}
+
+// ── Pass-throughs + side channels ─────────────────────────────────────────────
+
+/// `prioritize = none()` and an EMPTY `short_prefixes` reach the topology path exactly as
+/// they reach `walk_graph`: no prioritisation (c3 first, not @ — as in `tests/graph.rs`), and
+/// full-index prefix lengths. A hidden default on either would change the order or the lengths.
+#[test]
+fn graph_topology_passes_prioritize_and_short_prefixes_through_without_a_default() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let c3 = commit_id_of(&mut repo, "description(\"Commit 3\")");
+    let walked = walk_with(&mut repo, "all()", "none()", "");
+
+    let topology = repo.graph_topology("all()", "none()", "", &[], false).unwrap();
+
+    let ids: Vec<&str> = topology.nodes.iter().map(|n| n.commit_id.0.as_str()).collect();
+    let walked_ids: Vec<&str> = walked.iter().map(|n| n.id.0.as_str()).collect();
+    assert_eq!(ids, walked_ids);
+    assert_eq!(ids[0], c3, "no prioritisation: c3 first, not @");
+    let requested: Vec<zanshin_jj::CommitId> = topology.nodes.iter().map(|n| n.commit_id.clone()).collect();
+    let contents = repo.commit_contents(&topology.operation_id, &requested).unwrap();
+    for ((node, content), row) in topology.nodes.iter().zip(&contents).zip(&walked) {
+        assert_eq!(
+            recompose(&node.meta, content),
+            row.meta,
+            "{} recomposes",
+            node.commit_id.0
+        );
+    }
+}
+
+/// An anchor's parse diagnostics reach `take_warnings()` under the CLI's context line, like the
+/// revset's own (`tests/warnings.rs::revset_parse_diagnostics_warn_under_the_clis_context_line`).
+#[test]
+fn graph_topology_records_an_anchors_parse_diagnostics_as_warnings() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    repo.graph_topology(
+        "all()",
+        DEFAULT_GRAPH_PRIORITIZE,
+        SHORT,
+        &["diff_contains(\"x\")".to_owned()],
+        false,
+    )
+    .unwrap();
+
+    let warnings = repo.take_warnings();
+    let kinds: Vec<WarningKind> = warnings.iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::RevsetDiagnostic]);
+    assert!(
+        warnings[0].message.starts_with("In revset expression\n")
+            && warnings[0]
+                .message
+                .contains("diff_contains() is deprecated; use diff_lines() instead"),
+        "{}",
+        warnings[0].message
     );
 }

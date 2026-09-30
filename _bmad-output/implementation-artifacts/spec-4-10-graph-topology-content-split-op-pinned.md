@@ -12,7 +12,43 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/decisions-review-4-10-to-4-13.md'
   - '{project-root}/_bmad-output/planning-artifacts/epics.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      Option (c)'s trigger is met at 10k packed: the first timestamped topology call is 53 ms,
+      above the ~50 ms the OQ 1 decision set for adopting a per-handle timestamp cache.
+    evidence: |-
+      crates/zanshin-ffi/benches/graph_topology.rs, medians, fresh handle:
+      graph_topology(all(), with_timestamps) = 53.1 ms on large-10k packed (~31 ms of it are the
+      commit loads), 105 ms on medium loose, ~1.04 s on large-10k loose. Zanshin never packs, so
+      a repo only Zanshin writes accumulates loose commits. OQ 1 = (b) stands until Ralph picks
+      (c) (commit id -> timestamp cache on zanshin_jj::Repo, ADR-0002 clause, bound) or (d)
+      (a Dart-side cache in the worker), or accepts 53 ms. Mirrored in deferred-work.md
+      "Surfaced in Story 4.10".
+    location: >-
+      crates/zanshin-jj/src/topology.rs (graph_topology, with_timestamps pass)
+    severity: medium
+  - summary: >-
+      On a packed 10k store the pinned load_operation + load_at is about half of a 60-id
+      content page; whether that "dominates" enough to memoise the pinned repo is Ralph's call.
+    evidence: |-
+      Empty-list content call vs page (medians, cold commit cache): ~8 % (medium loose),
+      ~28 % (large loose), ~45 % (large packed; ~51 % with a changed-path index) of a 60-id page;
+      ~3 / 12 / 33 % of a 200-id page. The story's Non-goal memoises only "if the bench shows
+      load_operation + load_at dominating a page"; memoising adds handle state and an ADR-0002
+      clause, or 10.11 pages in larger batches instead. Mirrored in deferred-work.md.
+    location: >-
+      crates/zanshin-jj/src/commit_content.rs (commit_contents, load_operation + load_at)
+    severity: low
+  - summary: >-
+      No real-repo bench numbers: the optional local real-repo input (item 8) needs a path to
+      one of Ralph's repos.
+    evidence: |-
+      The dispatch skipped item 8's real-repo input (no path given). The bench covers medium,
+      large-10k loose and a git-gc-packed copy of large-10k only. Run it against a COPY of a
+      real repo (the topology call snapshots). Mirrored in deferred-work.md.
+    location: >-
+      crates/zanshin-ffi/benches/graph_topology.rs
+    severity: low
 ---
 
 <intent-contract>
@@ -158,6 +194,43 @@ Fixture facts: **tiny-3-commits** — `all()` in `jj log` order is `[@, c3, c2, 
 
 ## Review Triage Log
 
+### 2026-10-01 — Review pass
+- verdicts: 33 findings — high 0, medium 0, low 26, false 7, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (Blind Hunter) The Measurements read-out and the deferred-work "memoising … not triggered" item put the pinned `load_operation` + `load_at` at "10–25 %" of a page; at large-10k packed it is ~45 % of a 60-id page — re-stated per store (8 / 28 / 45 %, 51 % with the index; 3 / 12 / 33 % at 200 ids) in the read-out and deferred-work.md, the item reworded as a decision for Ralph (deferred entry 2) instead of "not triggered".
+  - `[low]` `[patch]` (Blind Hunter) Option (c)'s trigger is a FIRST timestamped call, but the bench timed only the warm median on a reused handle — added a fresh-handle first-call row; re-run: 53.1 ms packed / 1.04 s loose, the same as a repeat call; numbers updated in the spec, deferred-work.md, the decisions file and the ADR-0002 Addendum.
+  - `[low]` `[patch]` (Blind Hunter) `commit_contents_leaves_divergent_op_heads_unreconciled` wrote h0 as an ANCESTOR of h1 (only `load_at_head`'s prune path) — the test now builds two SIBLING op heads (the `tests/op_log.rs` marker choreography), reads at each with a non-empty id list, and asserts both markers stay and no operation file appears.
+  - `[false]` `[reject]` (Blind Hunter) The story is marked done (sprint-status, epics.md, epic-4-context) before its review — the run finalizes to `done` after this pass, so the records match the final state; no reader sees a done story whose review failed.
+  - `[low]` `[reject]` (Blind Hunter) The sprint-status 4-10 comment is stale now that it reads `done` (first-line description, "proposed" code, "Ralph chooses") — the dispatch intent requires updating only the status value and keeping the comment; editing it is excluded by the intent itself.
+  - `[low]` `[patch]` (Blind Hunter) The root's content (empty author, committer timestamp 0) vs the topology's absent root timestamp was undocumented and untested — one sentence each in `CommitContent`'s rustdoc and the ffi-abi.md payload notes; the happy-path test asserts the root's author and `Timestamp { 0, 0 }`.
+  - `[low]` `[patch]` (Blind Hunter) The Dart decoder coerced an absent `contents` vector with `?? const []` (and the "absent `commit_ids` = empty request" case had no FFI test) — the decoder now throws `ffi.unknown` "CommitContents is missing its contents" with a decode-contract test; `commit_contents_treats_an_absent_commit_ids_vector_as_an_empty_request` pins the Rust side.
+  - `[false]` `[reject]` (Blind Hunter) A bad anchor looks exactly like a bad revset — the story specifies exactly that ("A malformed anchor fails the way `revset` does"); the missing warnings test it also names is the Verification Gap finding below and was patched there.
+  - `[low]` `[patch]` (Blind Hunter) The `graph_blueprint.rs` relabel said its figures "time `Repo::graph_topology`'s stream pass", but the blueprint has no per-node view half — reworded: the raw jj-lib topology stream only; `graph_topology` adds the view half.
+  - `[low]` `[reject]` (Blind Hunter) Codegen dropped `EvologEntry_VT_OPERATION_ID` from `zanshin_ffi.h` / `bindings.dart` (cbindgen keeps one associated const per name) — nothing consumes the C `VT_*` defines (Dart uses the flatc accessors; ffigen includes functions only), the files come from `cargo make codegen` unchanged (re-run: no drift), and a fix needs cbindgen export rules; unlikely to be met.
+  - `[low]` `[reject]` (Blind Hunter) `RevsetError::DanglingEdge` puts a topology-only failure into the crate-wide revset error with three unreachable arms — a decision recorded for Ralph in `decisions-review-4-10-to-4-13.md` § Taken during the runs → 4.10 with its "if overruled" path; no user or caller harm (the arms map to their `Backend` / `graph.dangling_edge`).
+  - `[low]` `[patch]` (Blind Hunter) The new Dart worker test found the root id through `handle.graphSlice`, which Story 4.12 (next) removes — `wcAndRoot` now uses `handle.show(revset: 'root()')`; the Rust suites use `walk_graph`, which 4.12 keeps (OQ 1b).
+  - `[low]` `[patch]` (Blind Hunter) "Topology + contents for every id — the old one-call cost" was inferred; `walk_graph` itself was never timed — added a fresh-handle `walk_graph(all())` row (53 ms packed / 1.09 s loose at 10k); the ADR-0002 Addendum now cites it.
+  - `[low]` `[patch]` (Blind Hunter) The changed-path-index conclusion ("saves the parent loads, 1.9 → 1.6 ms") is within noise — reworded to "no measurable effect on the fixtures (within noise)" in the read-out and deferred-work.md.
+  - `[low]` `[reject]` (Blind Hunter) `epic-4-context.md` was rewritten wholesale — step-01 of this workflow regenerated it because every planning artifact was newer (mandated); the dropped facts (slice error codes, `lane.rs` `expect()`, the verify-codegen/separate-.fbs gotcha) concern the slice path 4.12 removes, and 4.12's `GraphTopology` stays in `envelope.fbs`.
+  - `[low]` `[reject]` (Blind Hunter) `LogMetaIndex::extract` computes a `parent_count` only to discard it — one `parent_ids().len()` per row on the slice path, no named caller harm; restructuring `view_half`'s signature is more than a direct correction.
+  - `[low]` `[reject]` (Blind Hunter) Uppercase ids are echoed in the caller's case by `jj.change_not_found` but answered lowercase in `CommitContent.commit_id` — every caller id comes lowercase from the topology call; unlikely to be met, and normalising adds a branch.
+  - `[low]` `[patch]` (Edge Case Hunter) An ok envelope whose `contents` is absent decoded as empty (grouped with the Blind Hunter decoder finding above) — fixed there; the proposed per-call count-mismatch guard was not added: Rust always returns one entry per id, so it would guard a state never shown to occur.
+  - `[low]` `[patch]` (Edge Case Hunter) A revset that names hidden commits can yield more nodes than `all_count` (visible `all()` only) — documented on `GraphTopology::all_count` and in the zanshin-jj README.
+  - `[low]` `[reject]` (Edge Case Hunter) The dropped `EvologEntry_VT_OPERATION_ID` (same root cause as the Blind Hunter codegen finding) — rejected there.
+  - `[low]` `[patch]` (Verification Gap) `prioritize` / `short_prefixes` were only ever passed at their defaults on the topology path — new `graph_topology_passes_prioritize_and_short_prefixes_through_without_a_default` (`none()` / `""`: c3 first, every node recomposes `walk_graph`'s meta).
+  - `[low]` `[patch]` (Verification Gap) No test read `take_warnings()` after `graph_topology` (an anchor's diagnostics could be dropped) — new `graph_topology_records_an_anchors_parse_diagnostics_as_warnings` (`[RevsetDiagnostic]` under "In revset expression").
+  - `[low]` `[patch]` (Verification Gap) The worker's unknown-handle branch for `CommitContentsCommand` was untested — new Dart `unknown_handle_id_surfaces_ffi_invalid_handle`.
+  - `[false]` `[reject]` (Intent Alignment) The story's FFI codes for a bad anchor / a removed object and `DanglingEdge` → `graph.dangling_edge` are only pinned as Rust variants — the story makes the topology "Rust API only" in 4.10 (item 7; its wire and FFI mapper are 4.12), so no FFI surface exists yet to pin.
+  - `[false]` `[reject]` (Intent Alignment) Topology → content composition is exercised only at the Rust API — same reason: the topology has no FFI/Dart surface until 4.12; the FFI and Dart tests take the operation id from the op heads / `opLog`, which is the operation the topology would return.
+  - `[false]` `[reject]` (Intent Alignment) `defaultGraphAnchors` and `CommitContent` are not in the `zanshin_core.dart` barrel — none of their siblings (`defaultLogRevset`, `LogDefaults`, `RepoHandle`) are, and epics.md Story 10.12 item 4 assigns "Export 4.10–4.12's Dart types from `zanshin_core.dart`" to 10.12.
+  - `[false]` `[reject]` (Intent Alignment) The Dart API returns `WarnedList` although the envelope carries no warnings — the wire rule holds (absent on every arm, pinned by Rust and Dart tests); `warnings` on every result is Story 9.32's Dart convention, always empty here.
+  - `[low]` `[patch]` (Intent Alignment) The divergent-op-heads test used an ancestor head, not siblings (same root cause as the Blind Hunter finding above) — patched there.
+  - `[low]` `[patch]` (Intent Alignment) The (c) trigger was compared against a warm median, not a first call (same root cause as the Blind Hunter bench finding) — patched there; the other shares come from the proxies the spec planned (snapshot, the anchors delta, the blueprint's raw passes), which is not a defect.
+  - `[false]` `[reject]` (Intent Alignment) "Slice path untouched" is violated internally (shared `LogParse`/`LogSetup`, the `extract` split, a new `RevsetError` variant, compile-forced mapper arms) — the story itself asks for the shared helper; signatures, behaviour and every slice-path test are unchanged (`git diff` of those tests empty, gate green).
+  - `[low]` `[defer]` (Intent Alignment) The spec's `deferred:` list was empty while deferred-work.md § "Surfaced in Story 4.10" lists items, one a decision for Ralph — the three Ralph-facing items (option (c)'s trigger, pinned-repo memoising, real-repo numbers) are now in the spec's `deferred:` list and the deferred-work.md intro line says so; the fourth (changed-path index) is a record, not a deferral.
+  - `[low]` `[reject]` (Intent Alignment) `epic-4-context.md` rewritten wholesale (same root cause as the Blind Hunter finding) — rejected there.
+  - `[low]` `[reject]` (Intent Alignment) Codegen dropped `EvologEntry_VT_OPERATION_ID` (same root cause as the Blind Hunter codegen finding) — rejected there.
+
 ## Design Notes
 
 - **Split names.** View half `TopologyMeta` (avoids `CommitView*`, which `commit_views.rs` uses), object half `CommitContent`, node `TopologyNode`, edge `TopologyEdge`, result `GraphTopology`. `CommitContent` carries its own `commit_id`: rows stay self-describing for 10.11's commit-id cache even though the order is the request order.
@@ -172,32 +245,39 @@ Fixture facts: **tiny-3-commits** — `all()` in `jj log` order is `[@, c3, c2, 
 ### Taken during this run (also appended to `decisions-review-4-10-to-4-13.md` § Taken during the runs → 4.10)
 - **Not-a-full-id texts.** The CLI resolves prefixes, so it has no text for "valid hex, wrong length"; Zanshin uses its own `Operation ID "<x>" is not a full operation ID` / `Commit ID "<x>" is not a full commit ID` (both `jj.invalid_input`), keeping the CLI's `… is not a valid hexadecimal prefix` for empty/non-hex operation ids — and, by the same wording, `Commit ID "<x>" is not a valid hexadecimal prefix` for an empty/non-hex commit id. Basis: status quo (no prefix resolution, per the story). If overruled: change the strings.
 - **`RevsetError::DanglingEdge`** as a new public variant (see above). Basis: the story's "`graph.dangling_edge`, as in `walk_graph`". If overruled: fold into `JjLibError`, drop three mapper arms.
-- **Option (c)'s trigger is measured, not acted on.** The first timestamped topology call is 53 ms at 10k packed (above the ~50 ms trigger) and ~1 s on the loose fixture; recorded for Ralph in `deferred-work.md` § "Surfaced in Story 4.10". Basis: OQ 1 = (b) stands until Ralph decides. If overruled: a follow-up story builds (c) or (d).
+- **Option (c)'s trigger is measured, not acted on.** The FIRST timestamped topology call on a fresh handle is 53 ms (median) at 10k packed — above the ~50 ms trigger — and ~1.04 s on the loose fixture; recorded for Ralph in `deferred-work.md` § "Surfaced in Story 4.10". Basis: OQ 1 = (b) stands until Ralph decides. If overruled: a follow-up story builds (c) or (d).
 
 ### Measurements
 
-Release builds, jj-lib 0.44.0, this machine (Apple silicon), 2026-09-30; min / median over 5 runs after 1 warm-up (`crates/zanshin-ffi/benches/graph_topology.rs`), 7 / 21 runs for `crates/zanshin-jj/benches/graph_blueprint.rs`. "Loose" = the committed fixture (every git object loose); "packed" = a `git gc`-packed copy of `large-10k`. Content pages run on a FRESH handle each time (cold commit cache, the first page after a reload); the topology rows reuse one handle.
+Release builds, jj-lib 0.44.0, this machine (Apple silicon), 2026-10-01 (the `graph_topology` bench's second run, after review added the first-call and `walk_graph` rows; the `graph_blueprint` rows are from 2026-09-30); min / median over 5 runs after 1 warm-up (`crates/zanshin-ffi/benches/graph_topology.rs`), 7 / 21 runs for `crates/zanshin-jj/benches/graph_blueprint.rs`. "Loose" = the committed fixture (every git object loose); "packed" = a `git gc`-packed copy of `large-10k`. Content pages and the rows marked "fresh handle" run on a FRESH handle each time (cold commit cache, the first call after a reload); the other topology rows reuse one handle.
 
 | Timing | medium (1,002 nodes) loose | large-10k (10,002) loose | large-10k packed |
 |---|---|---|---|
 | topology-only walk, raw jj-lib (`graph_blueprint`) | 0.31 ms (first-100: 30 µs) | 3.07 ms (first-100: 30 µs) | — |
 | `all()` count pass / `ParentCount` passes, raw (`graph_blueprint`) | 29 µs / 10 µs (1 merge) | 290 µs / 82 µs (1 merge) | — |
-| `graph_topology(all())`, default anchors — the call total | 5.9 / 6.0 ms | 25.4 / 25.5 ms | 22.3 / 22.4 ms |
-| `Repo::snapshot()` on the unchanged tree (precondition share) | 2.3 / 2.4 ms | 2.3 / 2.5 ms | 2.4 / 2.5 ms |
-| `graph_topology`, anchors `[]` (anchor share = difference) | 5.4 / 5.5 ms | 23.6 / 23.9 ms | 21.7 / 21.8 ms |
-| `graph_topology` with timestamps | 102 / 111 ms | 1.031 / 1.050 s | 52.9 / 53.1 ms |
-| content, EMPTY list (`load_operation` + `load_at` share) | 0.17 / 0.20 ms | 0.73 / 0.88 ms | 0.71 / 0.84 ms |
-| content page 60 ids, no merge (no changed-path index) | 2.48 / 2.58 ms | 3.42 / 3.46 ms | 1.83 / 1.94 ms |
-| content page 60 ids, 1 merge (no changed-path index) | 2.90 / 3.02 ms | 3.73 / 3.98 ms | 1.81 / 1.90 ms |
-| content page 200 ids, no merge (no changed-path index) | 6.41 / 6.48 ms | 7.17 / 7.99 ms | 2.52 / 2.60 ms |
-| content page 200 ids, 1 merge (no changed-path index) | 6.15 / 6.33 ms | 6.55 / 6.64 ms | 2.75 / 2.83 ms |
-| content page 60 ids, no merge (changed-path index) | 2.56 / 2.61 ms | 3.77 / 4.09 ms | 1.38 / 1.56 ms |
-| content page 60 ids, 1 merge (changed-path index) | 2.42 / 2.54 ms | 3.73 / 3.86 ms | 1.81 / 1.86 ms |
-| content page 200 ids, no merge (changed-path index) | 6.82 / 7.58 ms | 8.08 / 9.15 ms | 2.51 / 2.66 ms |
-| content page 200 ids, 1 merge (changed-path index) | 5.92 / 5.98 ms | 7.16 / 7.40 ms | 2.70 / 2.74 ms |
-| topology + contents for every id (fresh handle) | 101 / 103 ms | 1.022 / 1.036 s | 58.2 / 58.5 ms |
+| `graph_topology(all())`, default anchors — the call total | 5.2 / 5.2 ms | 25.0 / 25.8 ms | 21.9 / 22.0 ms |
+| `Repo::snapshot()` on the unchanged tree (precondition share) | 1.7 / 1.7 ms | 2.5 / 2.6 ms | 2.5 / 2.6 ms |
+| `graph_topology`, anchors `[]` (anchor share = difference) | 4.9 / 5.0 ms | 24.5 / 24.9 ms | 21.4 / 21.5 ms |
+| `graph_topology` with timestamps, repeat call (reused handle) | 104 / 108 ms | 1.024 / 1.039 s | 53.1 / 53.2 ms |
+| `graph_topology` with timestamps, FIRST call (fresh handle) | 103 / 105 ms | 1.017 / 1.040 s | 53.1 / 53.1 ms |
+| content, EMPTY list (`load_operation` + `load_at` share) | 0.17 / 0.19 ms | 0.74 / 0.86 ms | 0.72 / 0.78 ms |
+| content page 60 ids, no merge (no changed-path index) | 2.35 / 2.45 ms | 3.02 / 3.09 ms | 1.62 / 1.74 ms |
+| content page 60 ids, 1 merge (no changed-path index) | 2.63 / 2.70 ms | 3.38 / 3.44 ms | 1.96 / 1.97 ms |
+| content page 200 ids, no merge (no changed-path index) | 6.12 / 6.29 ms | 6.54 / 7.05 ms | 2.30 / 2.34 ms |
+| content page 200 ids, 1 merge (no changed-path index) | 5.97 / 6.17 ms | 6.13 / 6.48 ms | 1.94 / 2.11 ms |
+| content page 60 ids, no merge (changed-path index) | 2.84 / 3.22 ms | 3.76 / 4.27 ms | 1.42 / 1.54 ms |
+| content page 60 ids, 1 merge (changed-path index) | 2.55 / 2.60 ms | 3.28 / 3.48 ms | 1.79 / 1.87 ms |
+| content page 200 ids, no merge (changed-path index) | 6.20 / 7.09 ms | 7.55 / 8.13 ms | 2.47 / 2.56 ms |
+| content page 200 ids, 1 merge (changed-path index) | 5.89 / 6.10 ms | 6.54 / 6.64 ms | 2.50 / 2.74 ms |
+| topology + contents for every id (fresh handle) | 103 / 106 ms | 0.969 / 1.043 s | 58.2 / 58.5 ms |
+| `walk_graph(all())` to the end (fresh handle) — the old one-call cost | 101 / 103 ms | 1.052 / 1.091 s | 53.1 / 53.4 ms |
 
-Read-outs: the index-only topology walk is unchanged (3.1 ms / 30 µs at 10k); the whole topology call is 7× that at 10k, of which ~2.4 ms is the precondition and the rest the per-node view half (change-id resolution, two prefix lengths, immutable containment); anchors cost ~0.5–1.6 ms; timestamps cost ~31 ms packed and ~1 s loose at 10k; a content page's pinned load is 10–25 % of the page, so memoising the pinned repo stays unwarranted; the fixtures' one octopus merge merges tiny trees, so the changed-path index only saves parent loads here.
+Read-outs:
+- The raw index-only topology walk is unchanged (3.1 ms / 30 µs at 10k). The whole topology call is ~7× that at 10k: ~2.5 ms is the precondition, the rest the per-node view half (change-id resolution, two prefix lengths, immutable containment). Anchors cost ~0.2–0.9 ms.
+- Timestamps cost ~31 ms packed and ~1 s loose at 10k, the first call on a fresh handle as much as a repeat call.
+- The old one-call cost, `walk_graph(all())`, is 53 ms packed / 1.09 s loose at 10k; the split path (topology, then every node's content) is 58 ms / 1.04 s. The split pays off only because a page loads content for the visible nodes alone.
+- The pinned `load_operation` + `load_at` share of a content page (empty-list median ÷ page median, no changed-path index): 60 ids — ~8 % (medium loose), ~28 % (large loose), ~45 % (large packed; ~51 % with the changed-path index); 200 ids — ~3 %, ~12 %, ~33 %. Whether that dominates a page enough to memoise the pinned repo is Ralph's call (`deferred-work.md` § "Surfaced in Story 4.10").
+- The changed-path index has no measurable effect on the fixtures (within noise: 5 samples, and several index rows are slower than their no-index rows); the fixtures' one octopus merge merges tiny trees.
 
 ## Verification
 
@@ -212,3 +292,57 @@ Read-outs: the index-only topology walk is unchanged (3.1 ms / 30 µs at 10k); t
 **Manual checks:**
 - `grep -rn "count_estimate" crates/zanshin-jj/src` -- no hit in the new code.
 - `_bmad-output/implementation-artifacts/epic-4-context.md` is newer than every file in `_bmad-output/planning-artifacts/`.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+### Summary of implemented change
+
+`jj log` is split along "index/View-derived" vs "object-derived". `Repo::graph_topology(revset, prioritize, short_prefixes, anchors, with_timestamps)` (new `crates/zanshin-jj/src/topology.rs`) runs `walk_graph`'s parse → `load_at_head` → `TopoGroupedGraph` + `prioritize_branch` setup — now one shared helper (`graph.rs::LogParse` / `LogSetup`) — and the pre-verb precondition exactly once, and returns the loaded `operation_id`, every node in `jj log` order with its commit id, jj's edges verbatim (targets as node indices, Missing without a target, repeated targets kept; a miss is the new `RevsetError::DanglingEdge`) and `TopologyMeta` (the view half + an exact index-only `parent_count` from `ParentCount` filter passes), plus `all_count` (iterating `all()`, never `count_estimate`), the anchors' node indices and — only with `with_timestamps` — each non-root committer timestamp (epoch ms). `Repo::commit_contents(&self, operation_id, commit_ids)` (new `commit_content.rs`) reads the object half (author, committer timestamp, FULL description, conflict, empty) at the PINNED operation (`load_operation` + `load_at`): no precondition, no config load, no warnings, no operation or op head written; full hex ids only, request order, error ladder `jj.invalid_input` → new `jj.operation_not_found` → `jj.invalid_input` → `jj.change_not_found` → `jj.jj_lib_error`. `commit_meta.rs`'s extraction is split into the two halves; `walk_graph`'s `CommitMeta` is composed from them, values unchanged. The content call ships full stack: `zanshin_commit_contents` over `CommitContentsRequest` → `CommitContents` (61 exports), Dart `RepoHandle.commitContents` → `WarnedList<CommitContent>` with a throwing decoder, and the `defaultGraphAnchors` pre-fill. ADR-0002 Addendum 2026-09-30 records the pinned read; a bench re-measures every figure.
+
+### Files changed (baseline `64ed3b32cc3d76e2ecfc75db1b8dbc1ceb5dd828`)
+
+- `crates/zanshin-jj/src/topology.rs` (NEW) — `GraphTopology` / `TopologyNode` / `TopologyEdge` / `TopologyMeta`, `graph_topology`, pure helpers + unit tests.
+- `crates/zanshin-jj/src/commit_content.rs` (NEW) — `CommitContent`, `CommitContentError`, `commit_contents` (two passes over the ids), id classifiers + unit tests.
+- `crates/zanshin-jj/src/{graph,commit_meta,repo,revset,lib}.rs` — shared `LogParse` / `LogSetup`; view/object half split; the two `Repo` methods; `RevsetError::DanglingEdge`; exports; dated note on `Repo`'s doc.
+- `crates/zanshin-jj/src/{commit_views,mutate}.rs` — the `DanglingEdge` arm in the two exhaustive mappers (+ test rows).
+- `crates/zanshin-jj/tests/{graph_topology,commit_contents}.rs` (NEW), `tests/api_stability.rs` — every zanshin-jj matrix row, split equivalence on tiny + medium, API pins.
+- `crates/zanshin-jj/{README.md,benches/graph_blueprint.rs}` — topology/content section; blueprint relabelled (raw topology stream) + the count and `ParentCount` pass timings.
+- `schemas/envelope.fbs` + regenerated `crates/zanshin-ffi/include/zanshin_ffi.h`, `crates/zanshin-ffi/src/envelope_generated.rs`, `packages/zanshin_core/lib/src/ffi/{bindings.dart,envelope_zanshin.ffi_generated.dart}` — `CommitContentsRequest`, `CommitContent` / `CommitContents`, appended `RequestKind` / `Payload` members.
+- `crates/zanshin-ffi/src/commit_contents.rs` (NEW), `src/{envelope,lib,graph,repo}.rs` — the extern, reader, builder, mapper; `JJ_OPERATION_NOT_FOUND`; the `DanglingEdge` arm; dated note.
+- `crates/zanshin-ffi/tests/commit_contents_ffi.rs` (NEW), `tests/{snapshot_ffi,ffi_abi_doc_sync}.rs` — the FFI ladder, the no-precondition list, `EXPECTED_EXPORTS` 61.
+- `crates/zanshin-ffi/{Cargo.toml,benches/graph_topology.rs}` (NEW bench), `crates/test-helpers/src/lib.rs` (`build_changed_path_index`).
+- `packages/zanshin_core/lib/src/{ffi/commit_contents.dart (NEW),ffi/graph.dart,worker/commands.dart,worker/isolate.dart,worker/handle.dart}`, `test/ffi/commit_contents_test.dart` (NEW), `test/worker/commit_contents_test.dart` (NEW), `test/ffi/graph_test.dart`.
+- `docs/{adr/0002-…,ffi-abi,rust-error-codes}.md` — Addendum, the CommitContents section + counts + index row, the `jj.operation_not_found` row and "also emitted" clauses.
+- `_bmad-output/{project-context.md,planning-artifacts/architecture.md,planning-artifacts/epics.md}` — dated notes, the Delivered note; `implementation-artifacts/{deferred-work.md,decisions-review-4-10-to-4-13.md,sprint-status.yaml,epic-4-context.md}`, `coverage-baseline.txt` (three new files at 100 / 97.17 / 99.52 %).
+
+### Review findings breakdown
+
+One review pass (four layers: Blind Hunter, Edge Case Hunter, Verification Gap, Intent Alignment), 33 findings: high 0, medium 0, low 26, false 7.
+- **Patched (13 entries, all low):** the pinned-load share and changed-path-index read-outs corrected; a first-call and a `walk_graph` row added to the bench (re-run, numbers updated everywhere they are cited); sibling op heads in the divergent-heads test; the Dart decoder throws on an absent `contents` vector; an FFI test for an absent `commit_ids`; the root commit's content documented and asserted; `all_count` vs hidden commits documented; the blueprint comment corrected; tests for non-default `prioritize` / `short_prefixes`, for the topology's warnings and for the worker's unknown-handle branch; the Dart test no longer depends on `graphSlice`.
+- **Deferred (3, spec `deferred:` + deferred-work.md):** option (c)'s trigger met at 10k packed (decision for Ralph); whether the pinned load (~45 % of a 60-id page, packed 10k) dominates enough to memoise (decision for Ralph); no real-repo numbers (needs a repo path).
+- **Rejected:** 7 false (done-before-review is resolved by this finalization; the anchor error behaviour is the story's; FFI-surface expectations of the topology are 4.12's; the barrel export is 10.12's; `WarnedList` is Story 9.32's convention while the wire stays warning-free; the slice path's signatures, behaviour and tests are unchanged) and 7 low (the sprint-status comment — the intent keeps it; the codegen-dropped `EvologEntry_VT_OPERATION_ID` — no consumer, a cbindgen export-rule fix; `RevsetError::DanglingEdge` — a recorded decision for Ralph; the regenerated epic context — mandated by step-01, the dropped facts belong to the slice path 4.12 removes; the discarded `parent_count` in `extract` — negligible; uppercase-id echo — unreachable from the topology's lowercase ids), each with its reason in the triage log.
+
+### Follow-up review recommendation
+
+`followup_review_recommended: false` — first pass, patched entries by verdict: high 0, medium 0, low 13; no high and fewer than two medium patches.
+
+### Verification performed
+
+- `cargo make codegen` — exit 0, no drift (the committed generated files are reproducible); the header, bindings and both flatc outputs carry `zanshin_commit_contents` / the new tables.
+- `cargo test -p zanshin-jj --test graph_topology --test commit_contents --test api_stability` (11 + 14 + 14 before the patches) and `cargo test -p zanshin-ffi --test commit_contents_ffi --test snapshot_ffi --test ffi_abi_doc_sync` — green; after the patches the implementer ran the touched suites green (13 + 14, 7, 16 Dart).
+- `cargo make test`, synchronous and unpiped (output to a file): exit 0 twice — before the review (820 s) and after the patches (751 s); both `coverage-check: OK — coverage held at 99.48% (14841/14919 lines)` and `extern-coverage: OK`; the Dart suite `+573: All tests passed!`; no baseline lowered, no `exclude_prefix`, no `EXTERN_COV_ALLOW` addition.
+- `cargo bench -p zanshin-jj --bench graph_blueprint -- --large` and `cargo bench -p zanshin-ffi --bench graph_topology` — run to completion (the latter again after the patches); the numbers reproduce § Measurements within noise.
+- `git diff 64ed3b3 -- crates/zanshin-jj/tests/graph.rs crates/zanshin-jj/tests/warnings.rs crates/zanshin-graph crates/zanshin-ffi/tests/graph_ffi.rs app/lib` — empty.
+- Manual: `grep -rn count_estimate crates/zanshin-jj/src` — no hit; `epic-4-context.md` newer than every planning artifact.
+- Matrix test audit: every I/O-matrix row maps to a test that ran and passed in the gate output (zanshin-jj, zanshin-ffi and Dart names checked in the log).
+
+### Residual risks
+
+- Option (c) / (d): every default (free-layout) reload loads every commit's timestamp — 53 ms at 10k packed, ~1 s on loose stores; Ralph's decision is open (deferred).
+- `RevsetError::DanglingEdge` is unreachable through jj-lib and pinned only by a unit test of the pure resolution helper.
+- The topology's FFI error codes (anchors, dangling edge) are only reached in Story 4.12; this story pins them as Rust variants.
+- The bench runs on synthetic fixtures (one octopus merge, tiny trees); real repos with many merges were not measured (deferred).
+

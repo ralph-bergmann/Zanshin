@@ -17,11 +17,13 @@
 //!
 //! ADR-0002 AC-4 result (already recorded; no longer needed as decision input): full
 //! derive ~3 ms @ 10k, first-100 page ~27 µs → no materialized lane cache, lazy stream.
-//! *(2026-09-30, Story 4.10: this walk is the TOPOLOGY only — index-only, no commit
-//! loads. Since Story 4.8 `Repo::walk_graph` loads every emitted commit for its metadata,
-//! so those figures time `Repo::graph_topology`'s stream pass, not `walk_graph`. The two
-//! extra passes below are the topology call's per-call index-only passes: `all_count` and
-//! the `ParentCount` refinement. Full-call numbers: `crates/zanshin-ffi/benches/graph_topology.rs`.)*
+//! *(2026-09-30, Story 4.10: this walk is the raw jj-lib TOPOLOGY stream only — index-only,
+//! no commit loads, no per-node metadata. Since Story 4.8 `Repo::walk_graph` loads every
+//! emitted commit for its metadata, so those figures time neither `walk_graph` nor
+//! `Repo::graph_topology`, which adds the per-node view half (change-id resolution, prefix
+//! lengths, immutable containment). The two extra passes below are the topology call's
+//! per-call index-only passes: `all_count` and the `ParentCount` refinement. Full-call
+//! numbers: `crates/zanshin-ffi/benches/graph_topology.rs`.)*
 
 use std::path::Path;
 use std::sync::{Arc, LazyLock};

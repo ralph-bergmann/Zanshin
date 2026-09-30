@@ -93,6 +93,23 @@ void main() {
       expect(decodeCommitContentsEnvelope(contentsEnvelope(const [])), isEmpty);
     });
 
+    test('throws ffi.unknown when the payload is missing its contents vector (no ?? coercion)', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.CommitContents,
+        data: fbs.CommitContentsObjectBuilder(),
+      ).toBytes();
+
+      expect(
+        () => decodeCommitContentsEnvelope(bytes),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'ffi.unknown')
+              .having((e) => e.context, 'context', 'CommitContents is missing its contents'),
+        ),
+      );
+    });
+
     for (final field in const ['commit_id', 'author_name', 'author_email', 'description']) {
       test('throws ffi.unknown when an entry is missing its $field (no ?? coercion)', () {
         expect(

@@ -10,12 +10,15 @@
 //! - `Repo::graph_topology` over `all()` with the default anchors — the call total;
 //! - `Repo::snapshot()` on the unchanged tree — the precondition's share of that total;
 //! - the same call with NO anchors — the anchor share is the difference;
-//! - the same call `with_timestamps` — the per-call object loads (Story 4.10 OQ 1's trigger);
+//! - the same call `with_timestamps` — the per-call object loads — both repeated on the reused
+//!   handle and as the FIRST call on a fresh handle (Story 4.10 OQ 1's trigger is the first
+//!   call);
 //! - `zanshin_commit_contents` pages of 60 and 200 ids, without and with a merge in the page,
 //!   before and after building jj's changed-path index — each on a FRESH handle (a cold commit
 //!   cache, as the first page after a reload is);
 //! - an EMPTY-list content call — the pinned `load_operation` + `load_at` share of a page;
-//! - topology + contents for every id — the old one-call cost, split.
+//! - topology + contents for every id, and `Repo::walk_graph(all())` driven to the end — the
+//!   old one-call cost — each on a fresh handle.
 //!
 //! Prints node counts and min / median only; asserts nothing about wall-clock. Not run by
 //! `cargo make test` / coverage (benches are excluded; see docs/coverage.md):
@@ -25,6 +28,7 @@
 //! ```
 
 use std::ffi::CString;
+use std::ops::ControlFlow;
 use std::path::Path;
 use std::process::Command;
 use std::sync::LazyLock;
@@ -210,6 +214,45 @@ fn bench_pages(store: &str, root: &Path, operation_id: &str, pages: &[(String, V
     }
 }
 
+/// The whole revset's content, each on a fresh handle: topology + contents for every node, and
+/// `Repo::walk_graph(all())` driven to the end — the old one-call cost.
+fn bench_whole_revset(store: &str, root: &Path, first: &GraphTopology) {
+    let anchors = default_anchors();
+    let all_ids: Vec<CommitId> = first.nodes.iter().map(|n| n.commit_id.clone()).collect();
+    report(
+        store,
+        "topology + contents for every id (fresh handle)",
+        measure_with(
+            || Repo::open(root).expect("open"),
+            |fresh| {
+                let t = topology(fresh, &anchors, false);
+                hint::black_box(fresh.commit_contents(&t.operation_id, &all_ids).expect("contents"));
+            },
+            drop,
+        ),
+    );
+    report(
+        store,
+        "walk_graph(all()) to the end (fresh handle) — the old one-call cost",
+        measure_with(
+            || Repo::open(root).expect("open"),
+            |fresh| {
+                let mut rows = 0usize;
+                let flow = fresh
+                    .walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET, |node| {
+                        hint::black_box(node);
+                        rows += 1;
+                        ControlFlow::Continue(())
+                    })
+                    .expect("walk_graph");
+                assert_eq!(flow, ControlFlow::Continue(()));
+                assert_eq!(rows, first.nodes.len());
+            },
+            drop,
+        ),
+    );
+}
+
 fn bench_store(name: &str, packed: bool) {
     let fixture = extract_fixture(name).expect("fixture must extract");
     let root = fixture.path.as_path();
@@ -257,10 +300,21 @@ fn bench_store(name: &str, packed: bool) {
     );
     report(
         &store,
-        "graph_topology with_timestamps",
+        "graph_topology with_timestamps (repeat call, reused handle)",
         measure(|| {
             hint::black_box(topology(&mut repo, &anchors, true));
         }),
+    );
+    report(
+        &store,
+        "graph_topology with_timestamps (FIRST call on a fresh handle)",
+        measure_with(
+            || Repo::open(root).expect("open"),
+            |fresh| {
+                hint::black_box(topology(fresh, &anchors, true));
+            },
+            drop,
+        ),
     );
 
     let op = first.operation_id.0.clone();
@@ -278,19 +332,7 @@ fn bench_store(name: &str, packed: bool) {
     );
     bench_pages(&store, root, &op, &pages, "no changed-path index");
 
-    let all_ids: Vec<CommitId> = first.nodes.iter().map(|n| n.commit_id.clone()).collect();
-    report(
-        &store,
-        "topology + contents for every id",
-        measure_with(
-            || Repo::open(root).expect("open"),
-            |fresh| {
-                let t = topology(fresh, &anchors, false);
-                hint::black_box(fresh.commit_contents(&t.operation_id, &all_ids).expect("contents"));
-            },
-            drop,
-        ),
-    );
+    bench_whole_revset(&store, root, &first);
 
     build_changed_path_index(root);
     bench_pages(&store, root, &op, &pages, "changed-path index");

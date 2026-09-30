@@ -37,7 +37,9 @@ pub struct GraphTopology {
     /// Per caller-supplied anchor, in request order: the indices of the nodes it selects (the
     /// anchor intersected with the revset), ascending — which is `jj log` order.
     pub anchors: Vec<Vec<usize>>,
-    /// `|all()|`, counted by iterating — the "shown / total" denominator.
+    /// `|all()|`, counted by iterating — the "shown / total" denominator. It counts the
+    /// VISIBLE commits only, so a revset that names hidden commits can yield more nodes than
+    /// this.
     pub all_count: usize,
 }
 

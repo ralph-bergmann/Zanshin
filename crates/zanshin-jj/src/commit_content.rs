@@ -26,6 +26,10 @@ use crate::{CommitId, OperationId, Timestamp};
 /// Commit-intrinsic — a commit is content-addressed and its parents are part of it — so a
 /// caller may cache it by [`Self::commit_id`] across operations. The view half (change id,
 /// refs, flags) is [`crate::TopologyMeta`].
+///
+/// The root commit's entry carries jj-lib's fabricated values, exactly as `jj log` shows them:
+/// empty author name and email, an empty description, and a committer timestamp of `0` (the
+/// epoch) with offset `0` — unlike the topology, which gives the root no timestamp at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitContent {
     /// The commit's full hex id (lowercase, as jj prints it), so a row describes itself even

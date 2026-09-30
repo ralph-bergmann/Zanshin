@@ -23,7 +23,6 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/commit_contents.dart';
-import 'package:zanshin_core/src/ffi/graph.dart';
 import 'package:zanshin_core/src/ffi/op_log.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
 import 'package:zanshin_core/src/ffi/warning.dart';
@@ -38,10 +37,10 @@ Future<String> headOp(RepoHandle handle) async {
   return ops.single.id;
 }
 
-/// The working-copy commit id and the root commit id.
+/// The working-copy commit id and the root commit id — through `show`, not the graph slice
+/// (Story 4.12 removes it).
 Future<(String, String)> wcAndRoot(RepoHandle handle) async {
-  final GraphSlice slice = await handle.graphSlice(revset: 'all()');
-  final String root = slice.rows.singleWhere((r) => r.meta?.root ?? false).commitId;
+  final String root = (await handle.show(revset: 'root()')).single.change.commitId;
   final String wc = await handle.status().then((s) => handle.getChange(s.workingCopyChangeId)).then((c) => c.commitId);
   return (wc, root);
 }
@@ -131,6 +130,15 @@ void main() {
       await expectLater(handle.commitContents(operationId: 'abcd', commitIds: ['a${nul}b']), throwsArgumentError);
 
       await handle.close();
+    });
+
+    test('unknown_handle_id_surfaces_ffi_invalid_handle', () async {
+      const unknown = 9999;
+
+      await expectLater(
+        worker.commitContents(unknown, operationId: 'ab' * 64, commitIds: const []),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
     });
 
     test('commit_contents_on_a_closed_handle_throws_state_error', () async {

@@ -153,8 +153,9 @@ repo.commit_contents(&operation_id, &commit_ids) -> Result<Vec<CommitContent>, C
   Missing in stream order, repeated targets kept, targets resolved to node indices, a
   Missing edge without target) and `TopologyMeta` — the view half of `CommitMeta` plus an
   exact `parent_count` from index-only `ParentCount` filter passes. The change ids come
-  from one `commit_change_ids` pass. The result also carries `all_count` (`|all()|`,
-  counted by iterating — never `count_estimate`), per anchor the node indices it selects,
+  from one `commit_change_ids` pass. The result also carries `all_count` (`|all()|`, the
+  VISIBLE commits, counted by iterating — never `count_estimate`; a revset naming hidden
+  commits can yield more nodes), per anchor the node indices it selects,
   and the `operation_id` the call loaded. `with_timestamps` loads each non-root commit for
   its committer timestamp (epoch ms) — the one per-node load, per call, never cached.
 - **`commit_contents`** (`&self`) is the continuation of that `jj log` — its per-row

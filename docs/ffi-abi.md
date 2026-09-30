@@ -1312,7 +1312,10 @@ CommitContent {
 }
 ```
 
-Every string is always written. `empty` is the one field that may load more than the
+Every string is always written. The root commit's entry carries jj-lib's fabricated
+values, as `jj log` shows them: empty author name and email, an empty description, and a
+committer timestamp of `0` (the epoch) with offset `0` — unlike the topology, which gives
+the root no timestamp at all. `empty` is the one field that may load more than the
 commit: `Commit::is_empty` asks jj's changed-path index first and otherwise loads the
 parents and, for a merge, merges their trees.
 
@@ -1329,8 +1332,9 @@ parents and, for a merge, merges their trees.
 - `RepoHandle.commitContents(operationId:, commitIds:)` — closed-handle guard
   (`StateError`), delegates.
 - Decode contract: `!ok` → `ZanshinFfiException(code, context)`; `ok` with a
-  non-`CommitContents` union variant, or an entry missing a required string →
-  `ZanshinFfiException('ffi.unknown', …)` — no `?? ''` coercion.
+  non-`CommitContents` union variant, an absent `contents` vector (Rust always writes it,
+  an empty one included), or an entry missing a required string →
+  `ZanshinFfiException('ffi.unknown', …)` — no `?? ''` / `?? const []` coercion.
 - `defaultGraphAnchors` (`['trunk()', 'present(@)']`, `lib/src/ffi/graph.dart`) is the
   editable pre-fill for the topology call's required `anchors`; nothing applies it on
   its own.

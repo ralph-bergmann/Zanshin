@@ -199,6 +199,41 @@ fn commit_contents_returns_every_field_in_request_order_without_precondition_or_
     close(handle);
 }
 
+/// The documented "absent `commit_ids` = an empty request": a request whose vector was never
+/// written answers ok with an empty (but present) `contents` vector.
+#[test]
+fn commit_contents_treats_an_absent_commit_ids_vector_as_an_empty_request() {
+    pin_env();
+    let (fixture, handle) = open_fixture("tiny-3-commits");
+    let op = head(&fixture.path);
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let op_off = b.create_string(&op);
+    let req = fbs::CommitContentsRequest::create(
+        &mut b,
+        &fbs::CommitContentsRequestArgs {
+            kind: fbs::RequestKind::CommitContents,
+            operation_id: Some(op_off),
+            commit_ids: None,
+        },
+    );
+    b.finish(req, None);
+
+    let bytes = call(handle, b.finished_data());
+
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert!(env.precondition().is_none(), "the pinned read runs no precondition");
+    assert!(env.warnings().is_none(), "the pinned read records no warning");
+    assert_eq!(
+        env.data_as_commit_contents()
+            .and_then(|c| c.contents())
+            .map(|c| c.len()),
+        Some(0),
+        "an empty, present contents vector"
+    );
+    close(handle);
+}
+
 // ── Refusal ladder ────────────────────────────────────────────────────────────
 
 #[test]

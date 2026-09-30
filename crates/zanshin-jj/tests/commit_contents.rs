@@ -122,6 +122,17 @@ fn commit_contents_answers_in_request_order_with_the_full_description() {
     }
     assert_eq!(contents[0].description, c3_description, "the FULL description");
     assert_eq!(contents[1].description, "", "the root has no description");
+    // jj-lib's fabricated root commit, as `jj log` shows it: an empty author, the epoch.
+    assert_eq!(contents[1].author_name, "");
+    assert_eq!(contents[1].author_email, "");
+    assert_eq!(
+        contents[1].committer_timestamp,
+        zanshin_jj::Timestamp {
+            millis_since_epoch: 0,
+            tz_offset_minutes: 0
+        },
+        "the root's committer timestamp is the epoch, not an absence"
+    );
 }
 
 #[test]
@@ -390,23 +401,36 @@ fn commit_contents_leaves_the_previous_verbs_side_channels_untouched() {
 fn commit_contents_leaves_divergent_op_heads_unreconciled() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let h0 = head(&fx.path);
-    let _external = add_commit_off_root(&fx.path, "moves head");
-    let h1 = head(&fx.path);
-    // Hand-written marker: the heads dir now holds h0 (an ancestor) and h1. `load_at_head`
-    // would prune h0; a pinned read must not.
     let heads_dir = fx.path.join(".jj").join("repo").join("op_heads").join("heads");
+    // Two SIBLING op heads — two external operations on the same parent h0 — by the marker
+    // choreography of `tests/op_log.rs::undo_on_merge_op_returns_invalid_input`: rewind the
+    // heads dir to h0 between the two writes, then put h1's marker back. `load_at_head` would
+    // publish a "reconcile divergent operations" merge here; a pinned read must not.
+    let h0 = head(&fx.path);
+    let a = add_commit_off_root(&fx.path, "sibling A");
+    let h1 = head(&fx.path);
+    std::fs::remove_file(heads_dir.join(&h1.0)).unwrap();
     std::fs::write(heads_dir.join(&h0.0), "").unwrap();
-    let mut expected = vec![h0.0.clone(), h1.0.clone()];
+    let b = add_commit_off_root(&fx.path, "sibling B");
+    let h2 = head(&fx.path);
+    std::fs::write(heads_dir.join(&h1.0), "").unwrap();
+    let mut expected = vec![h1.0.clone(), h2.0.clone()];
     expected.sort();
+    assert_eq!(op_heads(&fx.path), expected, "two sibling op heads");
+    let operations = listing(&fx.path, &["op_store", "operations"]);
     let repo = Repo::open(&fx.path).unwrap();
 
-    repo.commit_contents(&h1, &[]).unwrap();
-    repo.commit_contents(&h0, &[]).unwrap();
+    let at_h1 = repo.commit_contents(&h1, &[CommitId(a.clone())]).unwrap();
+    let at_h2 = repo.commit_contents(&h2, &[CommitId(b.clone())]).unwrap();
 
+    assert_eq!(at_h1[0].commit_id.0, a);
+    assert_eq!(at_h1[0].description, "sibling A");
+    assert_eq!(at_h2[0].commit_id.0, b);
+    assert_eq!(at_h2[0].description, "sibling B");
+    assert_eq!(op_heads(&fx.path), expected, "both markers stay: no reconcile merge");
     assert_eq!(
-        op_heads(&fx.path),
-        expected,
-        "both markers stay: no prune, no reconcile merge"
+        listing(&fx.path, &["op_store", "operations"]),
+        operations,
+        "no operation written"
     );
 }

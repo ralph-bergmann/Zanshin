@@ -108,10 +108,13 @@ WarnedList<CommitContent> _decodeCommitContentsEnvelope(Uint8List bytes) {
   if (payload is! fbs.CommitContents) {
     throw ZanshinFfiException('ffi.unknown', 'expected CommitContents payload, got ${env.dataType}');
   }
-  return WarnedList(
-    payload.contents?.map(_mapCommitContent).toList() ?? const [],
-    decodeEnvelopeWarningsInternal(env),
-  );
+  final List<fbs.CommitContent>? contents = payload.contents;
+  if (contents == null) {
+    // Rust always writes the vector, an empty list included — an absent one is a malformed
+    // buffer, not a modellable state, so no `?? const []`.
+    throw const ZanshinFfiException('ffi.unknown', 'CommitContents is missing its contents');
+  }
+  return WarnedList(contents.map(_mapCommitContent).toList(), decodeEnvelopeWarningsInternal(env));
 }
 
 CommitContent _mapCommitContent(fbs.CommitContent c) => CommitContent(
