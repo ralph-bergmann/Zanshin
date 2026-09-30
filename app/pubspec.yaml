@@ -66,3 +66,6 @@ flutter:
           weight: 500
         - asset: assets/fonts/Shippori_Mincho/ShipporiMincho-SemiBold.ttf
           weight: 600
+    - family: Zanshin
+      fonts:
+        - asset: 'assets/fonts/zanshin_icons/Zanshin.ttf'

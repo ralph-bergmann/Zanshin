@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>calendar</title>
+    <g id="calendar" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(2.5, 2)" fill="#000000">
+            <path d="M11.7,2.5 L11.7,10.5 C11.7,11.4388841 10.9388841,12.2 10,12.2 L1,12.2 C0.0611159253,12.2 -0.7,11.4388841 -0.7,10.5 L-0.7,2.5 C-0.7,1.56111593 0.0611159253,0.8 1,0.8 L10,0.8 C10.9388841,0.8 11.7,1.56111593 11.7,2.5 Z M1,2.2 C0.834314575,2.2 0.7,2.33431458 0.7,2.5 L0.7,10.5 C0.7,10.6656854 0.834314575,10.8 1,10.8 L10,10.8 C10.1656854,10.8 10.3,10.6656854 10.3,10.5 L10.3,2.5 C10.3,2.33431458 10.1656854,2.2 10,2.2 L1,2.2 Z" id="Rectangle" fill-rule="nonzero"></path>
+            <path d="M11,5.2 L0,5.2 L0,3.8 L11,3.8 L11,5.2 Z M3.7,3 L2.3,3 L2.3,0 L3.7,0 L3.7,3 Z M8.7,3 L7.3,3 L7.3,0 L8.7,0 L8.7,3 Z" id="Shape" fill-rule="nonzero"></path>
+        </g>
+    </g>
+</svg>

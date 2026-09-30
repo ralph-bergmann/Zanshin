@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>reviews</title>
+    <g id="reviews" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(3, 3)" fill="#000000">
+            <path d="M8.49497475,-0.494974747 L11.4949747,2.50502525 L11.7,2.71005051 L11.7,8.5 C11.7,9.43888407 10.9388841,10.2 10,10.2 L3.16524758,10.2 L0.313049517,11.626099 L-0.7,12.1326238 L-0.7,1 C-0.7,0.0611159253 0.0611159253,-0.7 1,-0.7 L8.28994949,-0.7 L8.49497475,-0.494974747 Z M1,0.7 C0.834314575,0.7 0.7,0.834314575 0.7,1 L0.7,9.86737621 L2.68695048,8.87390097 L2.83475242,8.8 L10,8.8 C10.1656854,8.8 10.3,8.66568542 10.3,8.5 L10.3,3.28994951 L7.71005049,0.7 L1,0.7 Z" id="Path" fill-rule="nonzero"></path>
+        </g>
+    </g>
+</svg>

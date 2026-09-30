@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>conflict</title>
+    <g id="conflict" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(1.5, 1.5)" fill="#000000">
+            <path d="M7.11550438,-0.333398204 L13.6155044,11.6666018 C13.8681432,12.133012 13.5304384,12.7 13,12.7 L1.11022302e-16,12.7 C-0.530438394,12.7 -0.868143245,12.133012 -0.615504377,11.6666018 L5.88449562,-0.333398204 C6.14926359,-0.822200599 6.85073641,-0.822200599 7.11550438,-0.333398204 Z M1.17526175,11.3 L11.8247383,11.3 L6.5,1.46971397 L1.17526175,11.3 Z" id="Path" fill-rule="nonzero"></path>
+        </g>
+    </g>
+</svg>

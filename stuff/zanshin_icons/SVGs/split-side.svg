@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>split-side</title>
+    <g id="split-side" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(2, 3)" fill="#000000">
+            <path d="M12.65,1.2 L12.65,8.8 C12.65,9.82172679 11.8217268,10.65 10.8,10.65 L1.2,10.65 C0.178273213,10.65 -0.65,9.82172679 -0.65,8.8 L-0.65,1.2 C-0.65,0.178273213 0.178273213,-0.65 1.2,-0.65 L10.8,-0.65 C11.8217268,-0.65 12.65,0.178273213 12.65,1.2 Z M1.2,0.65 C0.896243388,0.65 0.65,0.896243388 0.65,1.2 L0.65,8.8 C0.65,9.10375661 0.896243388,9.35 1.2,9.35 L10.8,9.35 C11.1037566,9.35 11.35,9.10375661 11.35,8.8 L11.35,1.2 C11.35,0.896243388 11.1037566,0.65 10.8,0.65 L1.2,0.65 Z" id="Rectangle" fill-rule="nonzero"></path>
+            <polygon id="Path" fill-rule="nonzero" points="5.35 0 5.35 10 6.65 10 6.65 0"></polygon>
+        </g>
+    </g>
+</svg>

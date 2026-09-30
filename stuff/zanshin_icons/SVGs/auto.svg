@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>auto</title>
+    <g id="auto" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(2.5, 2.5)" fill="#000000">
+            <path d="M11.7,5.5 C11.7,8.92416545 8.92416545,11.7 5.5,11.7 C2.07583455,11.7 -0.7,8.92416545 -0.7,5.5 C-0.7,2.07583455 2.07583455,-0.7 5.5,-0.7 C8.92416545,-0.7 11.7,2.07583455 11.7,5.5 Z M0.7,5.5 C0.7,8.1509668 2.8490332,10.3 5.5,10.3 C8.1509668,10.3 10.3,8.1509668 10.3,5.5 C10.3,2.8490332 8.1509668,0.7 5.5,0.7 C2.8490332,0.7 0.7,2.8490332 0.7,5.5 Z" id="Oval" fill-rule="nonzero"></path>
+            <polygon id="Path" fill-rule="nonzero" points="4.8 0 4.8 11 6.2 11 6.2 0"></polygon>
+            <path d="M5.5,0 C2.46243388,0 0,2.46243388 0,5.5 C0,8.53756612 2.46243388,11 5.5,11" id="Path"></path>
+        </g>
+    </g>
+</svg>
