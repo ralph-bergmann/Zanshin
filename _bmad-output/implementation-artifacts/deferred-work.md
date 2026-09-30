@@ -783,3 +783,16 @@ _Ralph asked whether an AI could name what a collapsed stack contains, instead o
   - On the tested repo, the default `jj log` revset (12 commits) formed no stack. All 103 came from `all()`, and all were immutable. Runs of mutable ancestors of @ start expanded anyway (4.13 item 2).
   - There, stacks are a history-browsing feature. The spike computes the default view's elided edges without jj's transitive pruning, so its count is a lower bound.
 - **The spike's reports hold client data.** None; a record. A report lists the tested repo's subjects, change ids and author names. `spikes/stack-titles/.gitignore` keeps `out/` and `build/` out of Git; never commit a report.
+
+## Surfaced 2026-09-30 while checking commit stacks against jj's elided revisions (console session, Ralph)
+
+_Ralph asked whether the commit stacks account for the "(elided revisions)" gaps that `jj log` shows. They do. jj-lib yields only Direct, Indirect and Missing edges; the synthetic "(elided revisions)" row exists only in the CLI (`cli/src/commands/log.rs:246-325` at v0.44.0). 4.13's run rule already breaks every run at a gap, because a member needs a Direct parent edge and an Indirect child edge counts as a fork. The run-rule oracle, however, never reached a gap, because the design sample has no Indirect edge. The same day, 4.13's Tests gained hand-built gap cases, and its generator gained the gap kinds. The items below fall outside that story:_
+
+- **The gap has no designed look next to stacks.** Medium, for 10.4 and 10.17. The export draws Indirect edges dashed and a Missing parent as a "~ N elided" stub. It never shows:
+  - a stack beside a gap;
+  - a single card left between two stacks by a gap;
+  - several dashed edges from one single-parent card;
+  - the @ lineage through a gap.
+
+  Its `groupStacks` also counts only Direct children (GV:232 at `a399daf`), unlike 4.13.
+  - **Follow-up:** Claude wrote Ralph a prompt for Claude Design. It asks for this case, for sample data that contains it, and for the stub position of 10.4 design question (b). A new export folds into 10.4 (design questions (a) and (b)) and 10.17.

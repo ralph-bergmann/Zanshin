@@ -4044,8 +4044,15 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 
 **Tests.**
 - **The run-rule oracle.** On the design sample at `a399daf` (36 commits), for both revsets, the runs equal the design's `groupStacks` (GV:228-264): members, keys and the immutable split. The design's columns are no oracle, because they re-pack.
+- **The gap cases** *(added 2026-09-30, console session: the design sample has no Indirect edge, so the oracle never reaches a gap)*. `jj log` draws a gap as "(elided revisions)" or `~`; the layout sees only 4.10's edge kinds. Hand-built inputs pin the run rule at a gap:
+  - **Indirect parent edge.** A node whose one edge is Indirect is no member. Example: B's edge is Indirect, C and D sit above B with Direct edges. Expected: B stays a single card, and C–D is a stack whose parent edge (to B) is Direct.
+  - **Several Indirect edges.** A node with one real parent gets two Indirect edges when that hidden parent is a merge (jj-lib 0.44.0 `default_index/revset_graph_iterator.rs:168-172`). It is no member.
+  - **Missing parent edge.** A node whose one edge is Missing is no member, and its stub stays with its own card.
+  - **Two runs meet at a gap.** The lower run's newest member has one Indirect child edge; it stays a member, and its run ends there. The node above the gap is no member. Expected: two stacks with one single card between them.
+  - **Indirect child edge.** A node with one Direct and one Indirect child edge is a fork and no member.
+  - **Edge kinds survive collapsing.** A collapsed stack's parent edge is Direct, and its child edge keeps the kind of the newest member's child edge, so it can be Indirect.
 - **I7, the column invariant (new).** For every input and every stack state (all collapsed, all expanded, random subsets, `stacks` off): every visible non-member keeps its ungrouped column, the members of an expanded run keep theirs, and a stack sits in its newest member's column.
-- **I1–I6 on the grouped layout,** on the goldens and on at least 1,000 seeded DAGs with runs × 2 modes × 2 orders × random stack states. The generator adds runs broken by bookmarks, tags, working copies, the immutable boundary, merges, forks and an Indirect child edge, plus item 3's split run.
+- **I1–I6 on the grouped layout,** on the goldens and on at least 1,000 seeded DAGs with runs × 2 modes × 2 orders × random stack states. The generator adds runs broken by bookmarks, tags, working copies, the immutable boundary, merges, forks and an Indirect child edge, plus item 3's split run. *(2026-09-30:)* It also breaks runs at gaps below a node: an Indirect parent edge, a single-parent node with several Indirect edges, and a Missing parent edge.
 - **Vertical compaction.** Collapsing never increases `rows`. On the design sample in `compact`, collapsing every stack shrinks `rows` by the count the SPEC amendment derives by hand.
 - **`stacks: false`** equals 4.11's output byte for byte.
 - **State.** A run of mutable ancestors of @ starts expanded. Explicit keys win over the default, a keep-open key wins over both, and an unknown key is ignored.
