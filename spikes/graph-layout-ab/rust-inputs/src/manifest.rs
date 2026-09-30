@@ -14,7 +14,7 @@ fn registry() -> Vec<(String, Value)> {
         out.push((
             d.file.to_owned(),
             json!({
-                "source": "design sample: _bmad-output/implementation-artifacts/design/graph-data.js, converted by tools/design-input.mjs (SPEC.md §7.2)",
+                "source": "design sample: _bmad-output/implementation-artifacts/design/graph-data.js at 57f259c (tools/design-source.mjs), converted by tools/design-input.mjs (SPEC.md §7.2)",
                 "revset": d.revset,
                 "note": d.note,
             }),

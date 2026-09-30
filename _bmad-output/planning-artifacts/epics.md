@@ -3612,7 +3612,7 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 >
 > **Design update 2026-09-28 (Ralph; the Epic 10 header):**
 > - **No stack logic here.** Commit stacks are Story 4.13, which extends this engine after the port. The port and its goldens stay as specified.
-> - **The design sample grew from 22 to 36 commits** (`graph-data.js` at `a399daf`). The spike's JS oracle reads the live design folder (`spikes/graph-layout-ab/tools/design-input.mjs:27`), so SPEC §7.2's expected results and the design goldens below would drift. Pin the oracle to the 22-commit sample of `57f259c` (a copy under the spike, or `git show 57f259c:_bmad-output/implementation-artifacts/design/graph-data.js`) before the goldens are generated. `computeLayout` itself is unchanged by the update (GV:140-225 at both commits). The 36-commit sample serves 4.13's run-rule oracle.
+> - **The design sample grew from 22 to 36 commits** (`graph-data.js` at `a399daf`). The spike's JS oracle reads the live design folder (`spikes/graph-layout-ab/tools/design-input.mjs:27`), so SPEC §7.2's expected results and the design goldens below would drift. Pin the oracle to the 22-commit sample of `57f259c` (a copy under the spike, or `git show 57f259c:_bmad-output/implementation-artifacts/design/graph-data.js`) before the goldens are generated. *(Done 2026-09-30: `tools/design-source.mjs` pins it through `git show`, and the oracle passes again; the spike SPEC §7.2's dated note.)* `computeLayout` itself is unchanged by the update (GV:140-225 at both commits). The 36-commit sample serves 4.13's run-rule oracle.
 
 **Motivation.** Ralph's near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`, GV:140-225) lays commits out in rows shared by several commits:
 - Compact rows are the generation depth, Time rows are time buckets, and an experimental Free mode places each node at a time-proportional y;
@@ -7135,7 +7135,7 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
 > - **Recordings** (item 13):
 >   - the design sample at `e243dd2` (52 commits) joins (a) in both revsets, with the design's flags, for 10.19's gap cases. Those flags stand in for a narrower revset (prototype defect 24);
 >   - counts are dropped (decision (b)), so records carry no N: item 13's "A count N exists only for the design sample" goes, and the Missing edges stay;
->   - the spike's `tools/design-input.mjs` cannot read this export yet (deferred-work, 2026-09-30).
+>   - the spike's `node tools/design-input.mjs --rev e243dd2` converts this export into `inputs/design-e243dd2-{default,all}.json` (fixed 2026-09-30; without `--rev` the tool reads the pinned `57f259c`).
 > - **Transitions for 10.20** (a constraint; no animation code here):
 >   - the viewport must be able to keep nodes of the previous layout mounted for the length of a transition, and paint them on an overlay layer with opacity, blur and an offset;
 >   - during a transition its visible set is the union of both layouts;

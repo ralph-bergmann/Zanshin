@@ -33,6 +33,7 @@ dart/         Dart implementation (standalone package, not in the root workspace
 rust-inputs/  input generator (detached crate, bin `gen-inputs`): jj fixture dumps + synthetic inputs
 tools/        node scripts, no npm dependencies:
   design-input.mjs, js_oracle.mjs   design sample → input; the design as oracle (§7.2)
+  design-source.mjs                 the pinned design export (57f259c), read from git
   compare.mjs, fuzz.mjs             Rust ≡ Dart + invariants (§7.1, §7.3); probes + random inputs
   bench.mjs                         the benchmark (§8) and its tables
   payload.mjs                       FFI payload sizes per variant

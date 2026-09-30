@@ -770,6 +770,7 @@ _Ralph re-downloaded the Claude Design export (`a399daf`). It adds a callout bes
   - **Follow-up:** only if Ralph asks. Then a backend story for an op-pinned diff summary, and 10.6's callout gains the row.
 - **The spike's JS oracle reads the live design folder.** Medium, because the drift is silent. `spikes/graph-layout-ab/tools/design-input.mjs:27` evaluates the current `graph-data.js`, which now has 36 commits. SPEC §7.2's expected results (π = [0, 2, 3, 1]; free rows 209 / 377 with 4 lanes), Epic 10's prototype defect 15 ("13 of the 22 commits") and 10.1 item 13's CLI-faithful variant were all derived on the 22-commit sample.
   - **Follow-up:** pin the oracle to the sample of `57f259c` (a copy under the spike, or `git show`) before 4.11's goldens are generated (4.11's dated note). 4.13 uses the 36-commit sample for its run-rule oracle.
+  - **Resolved 2026-09-30** (console session): `tools/design-source.mjs` pins the export at `57f259c`, and `design-input.mjs`, `js_oracle.mjs` and `viewer-bundle.mjs` read it with `git show`, never the live folder. The regenerated inputs are byte-identical, and the oracle passes again with SPEC §7.2's expectations. It had failed its staleness check since `a399daf`. Another export converts with `--rev <commit>` (SPEC §7.2's dated note).
 - **8 new icons in the export.** Low. `icons/ui/` has abandon, bookmark, bookmark-filled, describe, squash, stack-collapse, stacked-on and working-copy-at, which `app/assets/icons/svg/` lacks. The prototype does not use `stacked-on` yet.
   - **Follow-up:** the story that first draws one copies it into `app/assets/icons/svg/` and the `ZI` mapping (`app/lib/src/shared/widgets/zanshin_icon.dart`); Ralph adds it to the icon font.
 - **`rive/` is back in the export.** None; a record. The re-download restores `rive/` (the Nami wave SVG, its README and `nami_wave.dart`), which `57f259c`'s re-download had dropped. It belongs to the splash, not the graph.
@@ -808,6 +809,11 @@ _Ralph re-downloaded the Claude Design export (`e243dd2`). It adds a study of hi
   - The drift that the 2026-09-28 item warned about ("The spike's JS oracle reads the live design folder") is no longer silent.
   - The tool also records at most one Missing entry per node (`x.elided > 0`, :75), while the new walk keeps one per Missing parent.
   - **Follow-up:** pin 4.11's oracle to `57f259c`, as planned on 2026-09-28. For 10.19's `e243dd2` recordings (10.1 item 13), the tool loads `placeGapMarkers` from `graph-gaps.jsx` or stubs it, and emits one Missing entry per Missing parent.
+  - **Resolved 2026-09-30** (the same session, at Ralph's request).
+    - The pin: see the 2026-09-28 item.
+    - `node tools/design-input.mjs --rev e243dd2` writes `inputs/design-e243dd2-{default,all}.json`. A no-op stands in for `placeGapMarkers` (its markers are drawing only), and there is one Missing entry per Missing parent.
+    - Result: the default revset has 35 nodes with 4 Indirect and 2 Missing edges, the design's 5 gaps; `all()` has 52 nodes.
+    - `viewer-bundle.mjs` reads the card content of a `design-<commit>-*` input at that commit.
 - **Edges behind cards stay open.** Low; a record.
   - Ralph's finding was Time's defect 3, which is moot.
   - The product keeps two cases where an edge passes behind a card: blocked merges (prototype defect 2, SPEC §11.4) and buses in Free (SPEC D8, 4.11 open question 4).

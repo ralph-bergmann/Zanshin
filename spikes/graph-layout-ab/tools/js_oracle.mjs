@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // SPEC.md §7.2 — the design as oracle. Runs the design's own computeLayout (extracted BY NAME
 // from graph-view.jsx together with G, LADDER, timeBucket, roundedPath, routeEdges, analyzeEdges
-// and optimizeLanes, evaluated after graph-data.js with window = globalThis under TZ=UTC; the
-// design folder is only read) with Lane order = Greedy (opts.optimize = false) for
-// rev ∈ {default, all} × layout ∈ {compact, time}, maps each result into the spike's OUTPUT shape
-// (§3) and compares it with the Rust and Dart `layout` outputs for inputs/design-<rev>.json.
+// and optimizeLanes, evaluated after graph-data.js with window = globalThis under TZ=UTC; both
+// read from git at the pinned export, tools/design-source.mjs) with Lane order = Greedy
+// (opts.optimize = false) for rev ∈ {default, all} × layout ∈ {compact, time}, maps each result
+// into the spike's OUTPUT shape (§3) and compares it with the Rust and Dart `layout` outputs for
+// inputs/design-<rev>.json.
 //
 //   node tools/js_oracle.mjs [--fuzz N] [--seed S]   (from the spike root; build both binaries first)
 //
@@ -167,7 +168,7 @@ function clampTs(d, rev, commits) {
 const d = loadDesign();
 let bad = 0;
 
-// The committed inputs must be what the converter derives from the design today.
+// The committed inputs must be what the converter derives from the pinned export.
 for (const rev of ["default", "all"]) {
   const now = JSON.stringify(designInput(d, rev)) + "\n";
   if (now !== fs.readFileSync(path.join(spike, "inputs", `design-${rev}.json`), "utf8")) {

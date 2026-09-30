@@ -6,7 +6,9 @@
 //
 // - Sidecar: `<input>.meta.json` next to the input (gen-inputs `dump` writes it) is picked up when
 //   present. For the design samples (`design-*.json`) without one, the card content comes from the
-//   design's own graph-data.js. Otherwise cards show ids only.
+//   design's own graph-data.js, read from git at the export the input was converted from
+//   (tools/design-source.mjs; `design-<commit>-<rev>.json` from tools/design-input.mjs --rev).
+//   Otherwise cards show ids only.
 // - Outputs: `<outputs>/<name>.<mode>.<order>.json` (default outputs/dart). A missing output, or one
 //   older than its input or than the binary, is (re)written by the spike's Dart AOT binary
 //   (dart/build/graph_layout, compiled with `dart compile exe` if absent). Orders: greedy,
@@ -30,9 +32,9 @@ import path from "node:path";
 import vm from "node:vm";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { designFile } from "./design-source.mjs";
 
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const designDir = path.resolve(spike, "../../_bmad-output/implementation-artifacts/design");
 const dataDir = path.join(spike, "viewer", "data");
 const binary = path.join(spike, "dart", "build", "graph_layout");
 const metricsTool = path.join(spike, "tools", "lane-metrics.mjs");
@@ -132,11 +134,11 @@ function sidecarMeta(meta, input) {
   return m;
 }
 
-/** Card content for the design samples, from the design's graph-data.js (matched by change id). */
-function designMeta(input) {
+/** Card content for the design samples, from the design's graph-data.js at `commit` (matched by change id). */
+function designMeta(input, commit) {
   const ctx = vm.createContext({});
   vm.runInContext("var window = globalThis;", ctx);
-  vm.runInContext(fs.readFileSync(path.join(designDir, "graph-data.js"), "utf8"), ctx, { filename: "graph-data.js" });
+  vm.runInContext(designFile("graph-data.js", commit), ctx, { filename: "graph-data.js" });
   const byId = new Map(ctx.GRAPH_COMMITS.map((c) => [c.id, c]));
   const m = { source: "design graph-data.js", revset: null, change: [], plen: [], desc: [], author: [], flags: [], bm: [], wc: -1, dropped: 0 };
   input.nodes.forEach((x, k) => {
@@ -216,7 +218,7 @@ function bundleOne(o, inputFile) {
   const metaFile = inputFile.replace(/\.json$/, ".meta.json");
   let meta = null;
   if (fs.existsSync(metaFile)) meta = sidecarMeta(readJson(metaFile), input);
-  else if (name.startsWith("design-")) meta = designMeta(input);
+  else if (name.startsWith("design-")) meta = designMeta(input, /^design-(.+)-(?:default|all)$/.exec(name)?.[1]);
 
   const modes = {};
   let ran = 0;

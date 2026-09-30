@@ -573,6 +573,13 @@ graph-data.js with `window = globalThis`, under `TZ=UTC`, and runs
 `computeLayout(GRAPH_COMMITS, rev, 240, 62, mode, {optimize: false})` for
 rev ∈ {default, all} × mode ∈ {compact, time}.
 
+*(2026-09-30: both files are read from git at the pinned export `57f259c`, the 22-commit sample
+this section was derived from (`tools/design-source.mjs`), never from the live export folder,
+which Ralph replaces on every re-download. `node tools/design-input.mjs --rev <commit>` converts
+another export into `inputs/design-<commit>-<rev>.json`, with one `missing` entry per Missing
+parent where that export records them. A no-op stands in for `window.placeGapMarkers`, which
+computeLayout calls from `e243dd2` on; its markers are drawing only.)*
+
 **What each run writes.**
 - The input, `inputs/design-<rev>.json`:
   - the nodes: the design's visible nodes in reverse design order (children first);
