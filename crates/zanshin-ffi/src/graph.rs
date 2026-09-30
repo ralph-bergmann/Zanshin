@@ -52,7 +52,8 @@ fn map_lane_stream_err(e: LaneStreamError) -> FfiErrorObj {
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
-        LaneStreamError::Graph(GraphError::DanglingEdge { target }) => FfiErrorObj {
+        LaneStreamError::Graph(GraphError::DanglingEdge { target })
+        | LaneStreamError::Revset(RevsetError::DanglingEdge { target }) => FfiErrorObj {
             report: None,
             code: GRAPH_DANGLING_EDGE.to_owned(),
             context: Some(target),
@@ -766,5 +767,12 @@ mod tests {
         }));
         assert_eq!(dangling.code, GRAPH_DANGLING_EDGE);
         assert_eq!(dangling.context.as_deref(), Some("deadbeef"));
+
+        // Story 4.10: the topology call's own dangling edge lands on the same code.
+        let topology = map_lane_stream_err(LaneStreamError::Revset(RevsetError::DanglingEdge {
+            target: "cafe".to_owned(),
+        }));
+        assert_eq!(topology.code, GRAPH_DANGLING_EDGE);
+        assert_eq!(topology.context.as_deref(), Some("cafe"));
     }
 }

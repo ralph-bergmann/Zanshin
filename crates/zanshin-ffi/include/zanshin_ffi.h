@@ -14,7 +14,7 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 28
+#define ENUM_MAX_REQUEST_KIND 29
 
 #define ENUM_MIN_REVISION_REF 0
 
@@ -136,6 +136,10 @@ typedef struct {
 #define ConfigGcDeleteRequest_VT_CONFIG_DIRS 6
 
 #define EnvironmentAdoptRequest_VT_VARIABLES 6
+
+#define CommitContentsRequest_VT_OPERATION_ID 6
+
+#define CommitContentsRequest_VT_COMMIT_IDS 8
 
 #define RepoHandle_VT_SESSION_ID 6
 
@@ -337,8 +341,6 @@ typedef struct {
 
 #define EvologEntry_VT_PREDECESSOR_COMMIT_IDS 6
 
-#define EvologEntry_VT_OPERATION_ID 8
-
 #define InterdiffView_VT_BASE_HAS_CONFLICTS 6
 
 #define WorkspaceEntry_VT_WC_COMMIT_ID 6
@@ -386,6 +388,8 @@ typedef struct {
 #define ConfigGcResult_VT_DELETED 4
 
 #define ConfigGcResult_VT_FAILED 6
+
+#define CommitContents_VT_CONTENTS 4
 
 #define Envelope_VT_PRECONDITION 12
 
@@ -561,6 +565,49 @@ ZanshinBuf *zanshin_bookmarks(uint64_t handle);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_change(uint64_t handle, const char *change_id);
+
+/**
+ * Return the object half of each requested commit — author, committer timestamp, FULL
+ * description, conflict, empty — read at the PINNED operation `operation_id`, in request order
+ * (Story 4.10).
+ *
+ * The continuation of the topology call's `jj log` (the CLI's per-row commit load), pinned to
+ * the operation that call returned: `load_operation` + `load_at`, never `load_at_head`. It runs
+ * no pre-verb snapshot, no import, no config load and no fix-up, writes no operation and no op
+ * head, and its envelope carries NO `precondition` and NO `warnings` (ok and error alike). The
+ * values are commit-intrinsic, so a head that moved since the topology call changes nothing. Ids
+ * are FULL hex only — prefixes are not resolved. An empty `commit_ids` list answers with an empty
+ * list.
+ *
+ * The arguments cross as a `CommitContentsRequest` `FlatBuffers` request buffer. Returns a
+ * `FlatBuffers` `Envelope` carrying a `CommitContents` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `CommitContentsRequest` buffer, or its
+ *   `kind` is not `CommitContents`, i.e. the buffer was built for a different wrapper.
+ * - `jj.invalid_input` — `operation_id` is absent, empty, not hex or not a full id (an empty or
+ *   non-hex id gets the CLI's "is not a valid hexadecimal prefix" text); or a commit id is empty,
+ *   not hex or not a full id. Every commit id is checked before any load.
+ * - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
+ *   CLI's `No operation ID matching "<id>"`.
+ * - `jj.change_not_found` — a commit id is not in the pinned operation's index; the hex in
+ *   `context`.
+ * - `jj.jj_lib_error` — loading the operation, its repo, or an indexed commit (or, for `empty`,
+ *   its parent) failed; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.CommitContentsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call. The request is read BEFORE the handle is borrowed.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_commit_contents(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Show each revision the request's revset denotes, with what it changed, in the repo
@@ -1892,6 +1939,9 @@ ZanshinBuf *zanshin_repo_clone(const char *url,
  * single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
  * the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
  * loader, not a state cache — reads re-resolve to head (ADR-0002).
+ * *(2026-09-30, Story 4.10: `zanshin_commit_contents` is the one pinned read — it answers at
+ * the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
+ * Addendum 2026-09-30.)*
  * The returned token must be freed via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_repo_close(uint64_t handle);

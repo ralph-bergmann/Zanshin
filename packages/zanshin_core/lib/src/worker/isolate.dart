@@ -11,6 +11,7 @@ import 'package:meta/meta.dart';
 import '../ffi/bookmark_ops.dart' as repo_ffi_bookmark_ops;
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
+import '../ffi/commit_contents.dart' as repo_ffi_commit_contents;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
@@ -1320,6 +1321,46 @@ class ZanshinWorker {
     return repo_ffi_workspace.decodeWorkspaceRootEnvelopeInternal(bytes);
   }
 
+  /// Return the object half of each commit in [commitIds] — author, committer
+  /// timestamp, FULL description, conflict, empty — read at the pinned operation
+  /// [operationId], in [commitIds]' order, in the repo identified by [handleId]
+  /// (Story 4.10).
+  ///
+  /// The continuation of the graph topology call's `jj log`, pinned to the
+  /// operation that call returned: it runs no pre-verb snapshot (so
+  /// `lastPrecondition` is untouched), records no warning (the result's
+  /// `warnings` is always empty) and writes no operation. Ids are FULL hex only.
+  ///
+  /// Sends a [CommitContentsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<CommitContents>` bytes.
+  ///
+  /// Throws [ArgumentError] if [operationId] or any commit id contains an
+  /// interior NUL (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.operation_not_found`,
+  /// `jj.change_not_found`, `jj.jj_lib_error`). Completes with a [StateError]
+  /// after [close]; the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.commitContents].
+  Future<WarnedList<repo_ffi_commit_contents.CommitContent>> commitContents(
+    int handleId, {
+    required String operationId,
+    required List<String> commitIds,
+  }) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw comes back as `internal.dispatch_error` rather than
+    // the documented [ArgumentError] (same rule as [workspaceRoot]).
+    rejectInteriorNul(operationId, 'operationId');
+    rejectInteriorNuls(commitIds, 'commitIds');
+    final Uint8List bytes = await send(
+      CommitContentsCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        operationId: operationId,
+        commitIds: commitIds,
+      ),
+    );
+    return repo_ffi_commit_contents.decodeCommitContentsEnvelopeInternal(bytes);
+  }
+
   /// Create local bookmarks pointing at one revision, in the repo identified by
   /// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
   ///
@@ -2136,6 +2177,25 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRoot(raw, name: name);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case CommitContentsCommand(
+          :final int handleId,
+          :final String operationId,
+          :final List<String> commitIds,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: CommitContentsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_commit_contents.zanshinCommitContents(
+              raw,
+              operationId: operationId,
+              commitIds: commitIds,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

@@ -804,6 +804,33 @@ final class WorkspaceRootCommand extends WorkerCommand implements HandleScopedCo
   final String? name;
 }
 
+/// Read the object half of each commit in [commitIds] at the pinned operation
+/// [operationId], in the repo identified by [handleId] (Story 4.10) — the
+/// continuation of the graph topology call's `jj log`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinCommitContents(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<CommitContents>` bytes. It runs no pre-verb
+/// snapshot, so `lastPrecondition` is left untouched.
+final class CommitContentsCommand extends WorkerCommand implements HandleScopedCommand {
+  const CommitContentsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operationId,
+    required this.commitIds,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The FULL hex id of the operation the topology call loaded.
+  final String operationId;
+
+  /// FULL hex commit ids; the answer comes back in this order.
+  final List<String> commitIds;
+}
+
 /// Create local bookmarks pointing at one revision, in the repo identified by
 /// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
 ///

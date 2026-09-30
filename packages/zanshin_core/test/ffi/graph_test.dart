@@ -81,6 +81,14 @@ fbs.GraphRowMetaObjectBuilder _fullMeta() => fbs.GraphRowMetaObjectBuilder(
 );
 
 void main() {
+  group('graph pre-fills', () {
+    test('defaultGraphAnchors is the trunk chain first, then @ (Story 4.10)', () {
+      // The editable pre-fill for the topology call's required `anchors`; the
+      // order is the priority order 4.11's rule reads.
+      expect(defaultGraphAnchors, ['trunk()', 'present(@)']);
+    });
+  });
+
   group('decodeGraphSliceEnvelope decode contract', () {
     // ── Error envelope ────────────────────────────────────────────────────────
 

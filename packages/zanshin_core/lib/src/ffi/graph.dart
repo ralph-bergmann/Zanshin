@@ -68,6 +68,15 @@ const defaultSyntheticElided = true;
 /// `revsets.short-prefixes` is unset).
 const String defaultShortPrefixes = defaultLogRevset;
 
+/// The editable pre-fill for the graph topology call's required `anchors`
+/// (Story 4.10): an ordered list of revsets whose selected nodes feed the layout
+/// engine's priority rule (Story 4.11) — the trunk chain first, then `@`'s.
+///
+/// Rust has no default for `anchors` (FR-JJ-17), and nothing applies this list
+/// on its own: a caller passes it explicitly, and may edit it. `trunk()` follows
+/// the user's `[revset-aliases]` (Story 4.9).
+const defaultGraphAnchors = ['trunk()', 'present(@)'];
+
 /// Call `zanshin_graph_slice` with the raw `u64` handle, a [revset], a
 /// [prioritize] expression, the [syntheticElided] toggle and a [shortPrefixes]
 /// expression, and return the FlatBuffers `Envelope` bytes.

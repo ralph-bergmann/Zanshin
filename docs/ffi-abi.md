@@ -95,6 +95,9 @@ exposing them as `warnings`; a refused creation throws `ZanshinFfiException` exp
 as its `warnings` (e.g. `jj.clone_cleanup_failed`, which only an error envelope carries).
 On every error envelope — handle-scoped, handle-less or creation — Dart reads the warnings
 the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
+`zanshin_commit_contents` (Story 4.10) never carries the vector, on the ok or the error
+envelope: the op-pinned read loads no config and runs no snapshot, so it has nothing to warn
+about (Dart still returns a `WarnedList`, always empty).
 
 **The start-up secure-config fix-up (Story 9.37).** At the start of every command the jj CLI
 runs jj-lib's `SecureConfig::maybe_load_config` for the repo, then the workspace config
@@ -114,7 +117,8 @@ notices are one-shot — the next call finds nothing left to fix.
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
 Like every jj CLI command, every handle-scoped symbol except `zanshin_repo_close`,
-`zanshin_log_defaults` and `zanshin_workspace_root` first runs the CLI's
+`zanshin_log_defaults`, `zanshin_workspace_root` and `zanshin_commit_contents` (the
+continuation of the topology call's `jj log`, Story 4.10) first runs the CLI's
 `snapshot_impl`: under jj's own `git_import_export.lock` (colocated workspaces
 only) it imports a moved Git HEAD (`import git head`), snapshots the working copy
 into `@` (`snapshot working copy`), and imports the Git refs (`import git refs`) —
@@ -130,7 +134,7 @@ notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD rese
 are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, detect, close, `zanshin_log_defaults`,
-`zanshin_workspace_root`, the infrastructure symbols, async events, and every
+`zanshin_workspace_root`, `zanshin_commit_contents`, the infrastructure symbols, async events, and every
 `zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation). `zanshin_repo_convert` (Story 9.33) carries
@@ -162,7 +166,7 @@ write ride `MutationResult.finish` (absent when none failed); `@` becoming immut
 a failed HEAD reset, the export failures themselves and an empty identity are
 `Envelope.warnings` (Story 9.32).
 
-`Payload` has **35** members. Two of them — `WatcherEvent` and `Progress` — are
+`Payload` has **36** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
 `zanshin_events_register` callback (see *Async events* below). Union member order
 is the wire discriminant, so the union is **append-only**.
@@ -260,7 +264,7 @@ answer to `ffi.null_pointer`, which is a different refusal.
 
 ### Reading the buffer (Rust side) — the refusal ladder
 
-All twenty-eight wrappers share one reader shape (worked example:
+All twenty-nine wrappers share one reader shape (worked example:
 `crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
@@ -285,9 +289,10 @@ a login shell's — `variables is required`) and an entry whose `name` is absent
 that could not be read never reaches Rust: the Dart reader reports it itself.
 
 Row 4 is the *reader's* own required-field guard, which among the handle-taking
-readers only five have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
+readers only six have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
 and `url`, `git remote set-url`'s `name`, `interdiff`'s `from.id` / `to.id` — the
-`id` inside a present `RevisionRef` union arm), plus the `zanshin_config_*` readers
+`id` inside a present `RevisionRef` union arm — and, since Story 4.10, `commit contents`'s
+`operation_id`), plus the `zanshin_config_*` readers
 above (`name`, `value`, `path`, `text`, a required scope) and the
 `zanshin_environment_adopt` reader (`variables`, each entry's `name`). `interdiff`'s "at least one of from or to" refusal is
 *not* row 4: an absent side is a legal value there, and the pair is judged by the
@@ -310,7 +315,7 @@ A **zero-length or garbage buffer** fails verification, so it lands on
 `data` pointer produces `ffi.null_pointer`.
 
 **The whole request buffer is judged before the handle is borrowed.** Every one
-of the eighteen handle-scoped wrappers calls its reader BEFORE `session_from_handle`, so rows 1
+of the nineteen handle-scoped wrappers calls its reader BEFORE `session_from_handle`, so rows 1
 through 4 all precede row 5. That order is deliberate: a buffer built for the
 wrong verb has to be refused on its own merits, not only when the caller happens
 to hold a live handle. The only callers that see a different answer than they
@@ -322,7 +327,7 @@ bytes readable at `data`; the reader builds its slice with
 `std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
 larger than the allocation is an out-of-bounds read — undefined behaviour, not a
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
-repeated in every one of the twenty-eight symbols' `# Safety` blocks.
+repeated in every one of the twenty-nine symbols' `# Safety` blocks.
 
 Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
@@ -355,7 +360,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **27** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **28** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -364,7 +369,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 27 tables + 1 shared reuse = the 28
+one caller, and no table is orphaned. 28 tables + 1 shared reuse = the 29
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -384,7 +389,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 26 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 27 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -429,7 +434,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **60** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **61** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -459,6 +464,7 @@ or no `# Errors` block.
 | `zanshin_op_log` | `(uint64_t handle, int64_t limit)` | — | `OpLog` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_log_defaults` | `(uint64_t handle)` | — | `LogDefaults` | `ffi.invalid_handle`, `jj.config_error` | 4.9 |
 | `zanshin_graph_slice` | `(uint64_t handle, const char *revset, const char *prioritize, bool synthetic_elided, const char *short_prefixes)` | — | `GraphSlice` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.stale_working_copy`, `jj.jj_lib_error`, `jj.config_error`, `graph.dangling_edge` | 4.6 (+4.8) |
+| `zanshin_commit_contents` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitContentsRequest` | `CommitContents` (no `precondition`, no `warnings`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.change_not_found`, `jj.jj_lib_error` | 4.10 |
 | `zanshin_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ShowRequest` | `ShowView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_evolog` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `EvologRequest` | `EvologView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_interdiff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `InterdiffRequest` | `InterdiffView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
@@ -532,9 +538,9 @@ conversion's raw commits.
 
 ## Per-symbol contracts
 
-Four symbols carry more contract than their rustdoc can hold, and keep a prose
+Five symbols carry more contract than their rustdoc can hold, and keep a prose
 section: `zanshin_repo_detect` and `zanshin_repo_convert` here,
-`zanshin_graph_slice` and `zanshin_log_defaults` further down. For every other
+`zanshin_graph_slice`, `zanshin_log_defaults` and `zanshin_commit_contents` further down. For every other
 symbol the rustdoc block above its declaration in `zanshin_ffi.h` is the contract.
 
 ### `zanshin_repo_detect`
@@ -888,6 +894,10 @@ exactly ONE graph function: no `zanshin_graph_build` / `_close`, no graph
 handle, no `LaneCache` (ADR-0002 AC-4 — nothing to build, rebuild, or close),
 and no `start` / `count` / `limit` / `reversed` (Story 4.4 delivered
 return-all; windowing is deferred past WIP).
+*(2026-09-30, Story 4.10: the commit-graph view renders from the topology call
+(`zanshin_jj::Repo::graph_topology`, on the wire in Story 4.12) plus the op-pinned
+content call `zanshin_commit_contents` (Stories 4.10–4.12); this slice keeps its
+one-call rows until 4.12 decides its fate.)*
 
 **Parameter semantics (FR-JJ-17 pass-through):**
 
@@ -1228,3 +1238,99 @@ The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
   non-`LogDefaults` union variant → `ZanshinFfiException('ffi.unknown')`. Absent
   strings coalesce to `''`, so an explicitly empty `short_prefixes` and an
   absent one are indistinguishable Dart-side — Rust always writes all three.
+
+## `CommitContents` payload and `zanshin_commit_contents` (Story 4.10)
+
+The object half of a `jj log` row — author, committer timestamp, the FULL
+description, conflict, empty — crosses FFI as a `CommitContents` member of the
+`Payload` union (appended after `ConfigGcResult`; union member order is the wire
+discriminant). The symbol calls `zanshin_jj::Repo::commit_contents` and serialises
+the result (`crates/zanshin-ffi/src/commit_contents.rs::commit_contents_to_envelope`). The
+view half (change id, prefix lengths, refs, flags, `parent_count`) and the edges
+come from `zanshin_jj::Repo::graph_topology`, whose wire is Story 4.12; the view
+composes the two calls.
+
+### `zanshin_commit_contents`
+
+```c
+ZanshinBuf* zanshin_commit_contents(uint64_t handle, const uint8_t* data, uintptr_t len);
+```
+
+**A pinned read, framed as the continuation of the topology call's `jj log`.** The
+CLI's `jj log` loads each row's commit object while it renders; Zanshin moves that
+load out of the topology call and into this one, answering at the operation the
+topology call returned (`GraphTopology.operation_id`) with `load_operation` +
+`load_at` — never `load_at_head`, which prunes ancestor op heads and reconciles
+divergent ones. So this symbol:
+
+- runs NO pre-verb snapshot, import, config load or secure-config fix-up — its
+  envelope carries NO `precondition` and NO `warnings`, on the ok arm and on every
+  error arm alike, and `RepoHandle.lastPrecondition` is left untouched;
+- writes no operation and no op head (like any load, `load_at` may write the
+  operation's index files when they are missing);
+- returns commit-intrinsic values only, so a head that moved since the topology
+  call changes nothing — the caller re-requests the topology on the watcher's
+  `OpHeadsChanged` (ADR-0002 Addendum 2026-09-30).
+
+**Request:** `CommitContentsRequest { kind: CommitContents, operation_id, commit_ids }`.
+Both are FULL hex ids — prefixes are not resolved (the caller got the full ids from
+the topology call); uppercase hex is accepted. `operation_id` is required (row 4 of
+the refusal ladder, `operation_id is required`); an absent or empty `commit_ids` is
+an empty request. Interior NULs are guarded Dart-side (*Interior NUL* above); one
+that reaches Rust is simply not hex.
+
+**Check order** (after the ladder's rows 1–5):
+
+| Order | Check | Code | `context` |
+|-------|-------|------|-----------|
+| a | `operation_id` is empty or not hex | `jj.invalid_input` | `Operation ID "<x>" is not a valid hexadecimal prefix` (the CLI's text) |
+| a | `operation_id` is hex but not the op store's full length | `jj.invalid_input` | `Operation ID "<x>" is not a full operation ID` |
+| b | the operation is not in the operation store | `jj.operation_not_found` | `No operation ID matching "<id>"` (the CLI's text) |
+| b | the operation or its repo cannot be loaded | `jj.jj_lib_error` | jj-lib's reason |
+| c | EVERY commit id: empty, not hex, or not the store's full length | `jj.invalid_input` | `Commit ID "<x>" is not a valid hexadecimal prefix` / `… is not a full commit ID` |
+| c | then EVERY commit id: not in the pinned operation's index | `jj.change_not_found` | the caller's hex |
+| d | a load: the commit, or — for `empty` — its parent | `jj.jj_lib_error` | jj-lib's reason |
+
+Every id is validated before the first load, so a malformed id is refused wherever
+it sits, and the index check is the only thing that separates an unknown id
+(`jj.change_not_found`) from an indexed but unloadable one (`jj.jj_lib_error`) —
+`get_commit_async` answers `ObjectNotFound` for both.
+
+**Success payload:** `Envelope<CommitContents>`, one entry per requested id in
+REQUEST order (not `jj log` order):
+
+```
+CommitContent {
+  commit_id:                   string  // full hex, lowercase — the entry describes itself
+  author_name:                 string  // may be ""
+  author_email:                string  // may be ""
+  committer_timestamp_millis:  long    // committer timestamp, millis since the Unix epoch
+  committer_tz_offset_minutes: int     // minutes east of UTC
+  description:                 string  // the FULL description; "" when empty
+  conflict:                    bool
+  empty:                       bool
+}
+```
+
+Every string is always written. `empty` is the one field that may load more than the
+commit: `Commit::is_empty` asks jj's changed-path index first and otherwise loads the
+parents and, for a merge, merges their trees.
+
+**Dart worker integration:**
+
+- `CommitContentsCommand(handleId, operationId, commitIds)` — worker looks up the raw
+  handle (unknown id → `ffi.invalid_handle` envelope built Dart-side), calls
+  `zanshinCommitContents(raw, operationId:, commitIds:)`
+  (`lib/src/ffi/commit_contents.dart`), and replies `BufferResult`.
+- `ZanshinWorker.commitContents(handleId, operationId:, commitIds:)` →
+  `WarnedList<CommitContent>` (its `warnings` always empty) via
+  `decodeCommitContentsEnvelopeInternal`; interior-NUL guards run on the calling side
+  (`ArgumentError`) before `send`.
+- `RepoHandle.commitContents(operationId:, commitIds:)` — closed-handle guard
+  (`StateError`), delegates.
+- Decode contract: `!ok` → `ZanshinFfiException(code, context)`; `ok` with a
+  non-`CommitContents` union variant, or an entry missing a required string →
+  `ZanshinFfiException('ffi.unknown', …)` — no `?? ''` coercion.
+- `defaultGraphAnchors` (`['trunk()', 'present(@)']`, `lib/src/ffi/graph.dart`) is the
+  editable pre-fill for the topology call's required `anchors`; nothing applies it on
+  its own.

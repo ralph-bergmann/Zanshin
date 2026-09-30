@@ -693,6 +693,9 @@ pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *co
 /// single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
 /// the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
 /// loader, not a state cache — reads re-resolve to head (ADR-0002).
+/// *(2026-09-30, Story 4.10: `zanshin_commit_contents` is the one pinned read — it answers at
+/// the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
+/// Addendum 2026-09-30.)*
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 #[no_mangle]
 pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {

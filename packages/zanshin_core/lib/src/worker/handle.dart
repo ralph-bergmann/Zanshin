@@ -2,6 +2,7 @@
 
 import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
+import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
@@ -57,8 +58,9 @@ final class RepoHandle {
   /// The pre-verb snapshot report (Story 9.26) of the latest reply for this
   /// handle that carried one — ok OR error — or `null` before the first.
   ///
-  /// Every snapshotting verb (all reads and mutations except [logDefaults] and
-  /// [workspaceRoot]) first snapshots the working copy and, in a colocated
+  /// Every snapshotting verb (all reads and mutations except [logDefaults],
+  /// [workspaceRoot] and the op-pinned [commitContents], Story 4.10) first
+  /// snapshots the working copy and, in a colocated
   /// workspace, imports the Git HEAD and refs, exactly as each jj CLI command
   /// does. That can write operations the caller did not ask for; this is where
   /// the facts the CLI would have printed land. On an error it is PARTIAL — up to
@@ -217,6 +219,32 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.logDefaults(_handleId);
+  }
+
+  /// Read the object half of each commit in [commitIds] — author, committer
+  /// timestamp, FULL description, conflict, empty — at the pinned operation
+  /// [operationId], in [commitIds]' order (Story 4.10).
+  ///
+  /// The continuation of the graph topology call's `jj log`: pass the operation
+  /// id that call returned and the ids of the cards to show. It runs no pre-verb
+  /// snapshot, so [lastPrecondition] is left unchanged, and records no warning
+  /// (the result's `warnings` is always empty). The values are commit-intrinsic,
+  /// so a head that moved since the topology call changes nothing. Ids are FULL
+  /// hex only.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000). Throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.operation_not_found`, `jj.change_not_found`,
+  /// `jj.jj_lib_error`).
+  Future<WarnedList<CommitContent>> commitContents({
+    required String operationId,
+    required List<String> commitIds,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.commitContents(_handleId, operationId: operationId, commitIds: commitIds);
   }
 
   /// Rewrite the description of [changeId] to [description] (Story 6.5).

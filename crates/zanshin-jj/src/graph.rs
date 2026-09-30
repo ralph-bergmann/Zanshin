@@ -7,20 +7,29 @@
 //! `revsets.log-graph-prioritize` mechanics, so the visit order is the order `jj log
 //! -r <revset>` prints (NFR-R-2, ADR-0003). The graph is re-derived from the head
 //! operation on every call and never retained (ADR-0002 AC-4).
+//!
+//! The parse → load → evaluate → topo-group setup ([`LogParse`], [`LogSetup`]) is shared with
+//! the index-only [`crate::topology::graph_topology`] (Story 4.10); `walk_graph` keeps its
+//! per-row commit load and full rows.
 
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
+use futures::stream::LocalBoxStream;
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::CommitId as JjCommitId;
-use jj_lib::graph::{GraphEdge as JjGraphEdge, GraphEdgeType, TopoGroupedGraph};
+use jj_lib::graph::{GraphEdge as JjGraphEdge, GraphEdgeType, GraphNode as JjGraphNodeOf, TopoGroupedGraph};
 use jj_lib::id_prefix::{IdPrefixContext, IdPrefixIndex};
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
-use jj_lib::revset::{RevsetExtensions, UserRevsetExpression};
+use jj_lib::revset::{ResolvedRevsetExpression, Revset, RevsetEvaluationError, RevsetExtensions, UserRevsetExpression};
 
 use crate::commit_meta::LogMetaIndex;
-use crate::revset::{evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, revset_config};
+use crate::revset::{
+    evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, resolve_expression, revset_config,
+    RevsetConfig,
+};
 use crate::warning::{self, WarningKind, Warnings};
 use crate::{CommitId, CommitMeta, Repo, RevsetError};
 
@@ -78,7 +87,7 @@ fn jj<E: std::fmt::Display>(e: E) -> RevsetError {
 }
 
 /// Maps jj-lib's edge type onto the crate-owned kind (exhaustive — the variant orders differ).
-fn edge_kind(kind: GraphEdgeType) -> GraphEdgeKind {
+pub(crate) fn edge_kind(kind: GraphEdgeType) -> GraphEdgeKind {
     match kind {
         GraphEdgeType::Missing => GraphEdgeKind::Missing,
         GraphEdgeType::Direct => GraphEdgeKind::Direct,
@@ -147,6 +156,139 @@ fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext 
     }
 }
 
+/// The identity id-mapper `TopoGroupedGraph` needs, as a `fn` pointer (HRTB inference).
+type IdFn = for<'a> fn(&'a JjCommitId) -> &'a JjCommitId;
+
+/// The `jj log` graph stream over a repo borrowed for `'r`: `TopoGroupedGraph` over
+/// `Revset::stream_graph`, prioritised.
+pub(crate) type LogTopo<'r> = TopoGroupedGraph<
+    JjCommitId,
+    JjCommitId,
+    LocalBoxStream<'r, Result<JjGraphNodeOf<JjCommitId>, RevsetEvaluationError>>,
+    IdFn,
+>;
+
+/// Everything one `jj log` walk parses BEFORE it loads a repo — shared by [`walk_graph`] and
+/// [`crate::topology::graph_topology`] (Story 4.10), so both parse in the CLI's order with the
+/// same diagnostics.
+pub(crate) struct LogParse {
+    /// The ONE alias map (+ `mine()`'s email) every expression of the call parses against.
+    pub(crate) config: RevsetConfig,
+    immutable: Arc<UserRevsetExpression>,
+    short: Option<Arc<UserRevsetExpression>>,
+    /// The caller's `revset`.
+    pub(crate) log: Arc<UserRevsetExpression>,
+    /// `prioritize ∩ revset`, intersected as user expressions before resolution.
+    prio: Arc<UserRevsetExpression>,
+}
+
+impl LogParse {
+    /// Loads the effective config ONCE per walk (never cached — Story 4.9) and parses
+    /// everything against the ONE alias map it feeds: `short_prefixes` first, where the CLI
+    /// parses `revsets.short-prefixes` (its command environment, before the command's own
+    /// revsets), then `revset` and `prioritize`. Parsing needs no loaded operation, so a syntax
+    /// error costs no `load_at_head` I/O.
+    ///
+    /// # Errors
+    ///
+    /// - [`RevsetError::ParseError`] — any expression is syntactically invalid.
+    /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable.
+    pub(crate) fn new(
+        repo: &Repo,
+        sink: &mut Warnings,
+        revset: &str,
+        prioritize: &str,
+        short_prefixes: &str,
+    ) -> Result<Self, RevsetError> {
+        let config = crate::config::load(repo)?;
+        let parse_config = revset_config(&config, sink)?;
+        let immutable = immutable_expression(repo.workspace(), &parse_config, sink)?;
+        let short = (!short_prefixes.is_empty())
+            .then(|| {
+                parse_diagnosed(
+                    repo.workspace(),
+                    &parse_config,
+                    (short_prefixes, "In `revsets.short-prefixes`"),
+                    sink,
+                )
+            })
+            .transpose()?;
+        let log = parse_revset_with(repo, &parse_config, revset, sink)?;
+        let prio = parse_revset_with(repo, &parse_config, prioritize, sink)?.intersection(&log);
+        Ok(Self {
+            config: parse_config,
+            immutable,
+            short,
+            log,
+            prio,
+        })
+    }
+
+    /// Resolves and evaluates the parsed expressions against the loaded `repo_dyn`; the
+    /// prioritised commit ids are materialised (they are a tiny set).
+    ///
+    /// # Errors
+    ///
+    /// - [`RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize` cannot be
+    ///   resolved.
+    /// - [`RevsetError::JjLibError`] — evaluation failed.
+    pub(crate) fn evaluate<'r>(&self, repo_dyn: &'r dyn jj_lib::repo::Repo) -> Result<LogSetup<'r>, RevsetError> {
+        let resolved = resolve_expression(repo_dyn, &self.log)?;
+        let set = resolved.clone().evaluate(repo_dyn).map_err(jj)?;
+        let prio_set = evaluate_revset(repo_dyn, &self.prio)?;
+        let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
+        let immutable_set = evaluate_revset(repo_dyn, &self.immutable)?;
+        Ok(LogSetup {
+            resolved,
+            set,
+            prio_ids,
+            prefix_ctx: prefix_context(self.short.as_ref()),
+            immutable_set,
+        })
+    }
+}
+
+/// One walk's evaluated state over a repo borrowed for `'r`: the revset, the prioritised ids and
+/// what the per-call metadata indexes borrow (the prefix context, the immutable set).
+pub(crate) struct LogSetup<'r> {
+    /// The caller's `revset`, resolved once — what the topology's index-only passes refine.
+    pub(crate) resolved: Arc<ResolvedRevsetExpression>,
+    /// The caller's `revset`, evaluated.
+    pub(crate) set: Box<dyn Revset + 'r>,
+    prio_ids: Vec<JjCommitId>,
+    prefix_ctx: IdPrefixContext,
+    immutable_set: Box<dyn Revset + 'r>,
+}
+
+impl<'r> LogSetup<'r> {
+    /// Builds the per-call O(1) metadata indexes (Story 4.8). An index-LOAD failure of
+    /// `short_prefixes` warns into `sink` and degrades (see [`short_prefix_index`]).
+    pub(crate) fn meta_index(
+        &self,
+        repo_dyn: &dyn jj_lib::repo::Repo,
+        workspace_name: &WorkspaceName,
+        sink: &mut Warnings,
+    ) -> LogMetaIndex<'_> {
+        LogMetaIndex::new(
+            repo_dyn,
+            workspace_name,
+            short_prefix_index(&self.prefix_ctx, repo_dyn, sink),
+            self.immutable_set.containing_fn(),
+        )
+    }
+
+    /// `TopoGroupedGraph::new(set.stream_graph(), |id| id)` with `prioritize_branch` for every
+    /// prioritised commit id — the CLI's `jj log` graph pipeline.
+    pub(crate) fn topo(&self) -> LogTopo<'r> {
+        let as_id: IdFn = |id| id;
+        let mut topo = TopoGroupedGraph::new(self.set.stream_graph(), as_id);
+        for id in &self.prio_ids {
+            topo.prioritize_branch(id.clone());
+        }
+        topo
+    }
+}
+
 /// Streams the commit graph of `revset` in `jj log` order through `visit`, each node
 /// carrying its `jj log`-parity metadata.
 ///
@@ -178,52 +320,18 @@ pub(crate) fn walk_graph(
     short_prefixes: &str,
     mut visit: impl FnMut(GraphNode) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
-    // 1. Load the effective config ONCE per walk (never cached — Story 4.9) and parse
-    //    everything against the ONE alias map it feeds. Parsing needs no loaded operation,
-    //    so a syntax error costs no `load_at_head` I/O.
-    let config = crate::config::load(repo)?;
-    let parse_config = revset_config(&config, sink)?;
-    let immutable = immutable_expression(repo.workspace(), &parse_config, sink)?;
-    let short = (!short_prefixes.is_empty())
-        .then(|| {
-            parse_diagnosed(
-                repo.workspace(),
-                &parse_config,
-                (short_prefixes, "In `revsets.short-prefixes`"),
-                sink,
-            )
-        })
-        .transpose()?;
-    let log = parse_revset_with(repo, &parse_config, revset, sink)?;
-    let prio = parse_revset_with(repo, &parse_config, prioritize, sink)?.intersection(&log);
+    // 1. Parse everything before any repo I/O (shared with `graph_topology`, Story 4.10).
+    let parsed = LogParse::new(repo, sink, revset, prioritize, short_prefixes)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
 
-    // 3. Evaluate; the prioritised commit ids are materialised (they are a tiny set).
-    let set = evaluate_revset(repo_dyn, &log)?;
-    let prio_set = evaluate_revset(repo_dyn, &prio)?;
-    let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
-
-    // 4. Per-call O(1) metadata setup. `prefix_ctx` and `immutable_set` are locals so the
-    //    borrows inside `meta` (the prefix index, the containment closure) stay valid.
-    let prefix_ctx = prefix_context(short.as_ref());
-    let immutable_set = evaluate_revset(repo_dyn, &immutable)?;
-    let meta = LogMetaIndex::new(
-        repo_dyn,
-        repo.workspace().workspace_name(),
-        short_prefix_index(&prefix_ctx, repo_dyn, sink),
-        immutable_set.containing_fn(),
-    );
-
-    // 5. Topo-group + prioritise (identity id-mapper as a `fn` pointer — HRTB inference).
-    let as_id: for<'a> fn(&'a JjCommitId) -> &'a JjCommitId = |id| id;
-    let mut topo = TopoGroupedGraph::new(set.stream_graph(), as_id);
-    for id in prio_ids {
-        topo.prioritize_branch(id);
-    }
+    // 3.–5. Evaluate, build the per-call metadata indexes, topo-group + prioritise.
+    let setup = parsed.evaluate(repo_dyn)?;
+    let meta = setup.meta_index(repo_dyn, repo.workspace().workspace_name(), sink);
+    let topo = setup.topo();
 
     // 6. Drive the lazy stream into the visitor; stop at the first `Break`.
     pollster::block_on(async {

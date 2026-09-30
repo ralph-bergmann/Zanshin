@@ -122,6 +122,14 @@ type _ViewError = zanshin_jj::ViewError;
 type _WorkspaceEntry = zanshin_jj::WorkspaceEntry;
 type _WorkspaceError = zanshin_jj::WorkspaceError;
 
+// graph topology + op-pinned content (Story 4.10)
+type _GraphTopology = zanshin_jj::GraphTopology;
+type _TopologyNode = zanshin_jj::TopologyNode;
+type _TopologyEdge = zanshin_jj::TopologyEdge;
+type _TopologyMeta = zanshin_jj::TopologyMeta;
+type _CommitContent = zanshin_jj::CommitContent;
+type _CommitContentError = zanshin_jj::CommitContentError;
+
 // --- Free-function binding: resolve_revset (AC-1, AC-8) -------------------------
 
 /// Names every `CommitMeta` / `CommitRef` field by its public path, so a field rename or
@@ -554,6 +562,77 @@ fn content_ops_surface_resolves() {
             Option<&str>,
             &[String],
         ) -> Result<zanshin_jj::AbsorbResult, zanshin_jj::MutateError>;
+}
+
+/// Graph topology + op-pinned content (Story 4.10): 6 new types, 1 new `RevsetError` variant,
+/// 2 new `Repo` methods. Every field is named by its public path and both methods are pinned as
+/// `fn` pointers, so a rename, a type change or a changed pass-through breaks this at compile
+/// time.
+#[test]
+fn graph_topology_surface_resolves() {
+    let meta = zanshin_jj::TopologyMeta {
+        change_id: String::new(),
+        change_id_prefix_len: 0,
+        commit_id_prefix_len: 0,
+        change_offset: None,
+        bookmarks: Vec::new(),
+        tags: Vec::new(),
+        working_copies: Vec::new(),
+        working_copy: false,
+        immutable: false,
+        hidden: false,
+        divergent: false,
+        root: false,
+        parent_count: 0,
+    };
+    let edge = zanshin_jj::TopologyEdge {
+        target: Some(0usize),
+        kind: zanshin_jj::GraphEdgeKind::Direct,
+    };
+    let node = zanshin_jj::TopologyNode {
+        commit_id: zanshin_jj::CommitId(String::new()),
+        edges: vec![edge],
+        meta,
+        committer_timestamp_ms: Some(0i64),
+    };
+    _ = zanshin_jj::GraphTopology {
+        operation_id: zanshin_jj::OperationId(String::new()),
+        nodes: vec![node],
+        anchors: vec![vec![0usize]],
+        all_count: 0usize,
+    };
+    _ = zanshin_jj::CommitContent {
+        commit_id: zanshin_jj::CommitId(String::new()),
+        author_name: String::new(),
+        author_email: String::new(),
+        committer_timestamp: zanshin_jj::Timestamp {
+            millis_since_epoch: 0,
+            tz_offset_minutes: 0,
+        },
+        description: String::new(),
+        conflict: false,
+        empty: false,
+    };
+    _ = zanshin_jj::CommitContentError::InvalidInput(String::new());
+    _ = zanshin_jj::CommitContentError::OperationNotFound(String::new());
+    _ = zanshin_jj::CommitContentError::CommitNotFound(String::new());
+    _ = zanshin_jj::CommitContentError::Backend(String::new());
+    _ = zanshin_jj::RevsetError::DanglingEdge { target: String::new() };
+    _ = zanshin_jj::Repo::graph_topology
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            &str,
+            &str,
+            &[String],
+            bool,
+        ) -> Result<zanshin_jj::GraphTopology, zanshin_jj::RevsetError>;
+    _ = zanshin_jj::Repo::commit_contents
+        as fn(
+            &zanshin_jj::Repo,
+            &zanshin_jj::OperationId,
+            &[zanshin_jj::CommitId],
+        ) -> Result<Vec<zanshin_jj::CommitContent>, zanshin_jj::CommitContentError>;
 }
 
 /// File reads (Story 9.4): 7 new types and 4 new `Repo` methods.

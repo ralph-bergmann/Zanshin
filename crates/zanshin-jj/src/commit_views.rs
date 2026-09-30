@@ -227,6 +227,8 @@ fn rev(e: crate::RevsetError) -> CommitViewError {
         },
         crate::RevsetError::JjLibError(reason) => CommitViewError::Backend(reason),
         crate::RevsetError::Precondition(inner) => CommitViewError::Precondition(inner),
+        // Only `Repo::graph_topology` raises it; no commit view walks a graph.
+        e @ crate::RevsetError::DanglingEdge { .. } => CommitViewError::Backend(e.to_string()),
     }
 }
 
@@ -614,6 +616,11 @@ mod tests {
         assert!(matches!(
             rev(RevsetError::Precondition(crate::PreconditionError::Backend("b".to_owned()))),
             CommitViewError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "b"
+        ));
+        // Story 4.10: a dangling topology edge is no revset stage of its own here.
+        assert!(matches!(
+            rev(RevsetError::DanglingEdge { target: "ab".to_owned() }),
+            CommitViewError::Backend(reason) if reason.contains("ab")
         ));
     }
 

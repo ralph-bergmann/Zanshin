@@ -308,6 +308,52 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
   ffi.Pointer<ffi.Char> change_id,
 );
 
+/// Return the object half of each requested commit — author, committer timestamp, FULL
+/// description, conflict, empty — read at the PINNED operation `operation_id`, in request order
+/// (Story 4.10).
+///
+/// The continuation of the topology call's `jj log` (the CLI's per-row commit load), pinned to
+/// the operation that call returned: `load_operation` + `load_at`, never `load_at_head`. It runs
+/// no pre-verb snapshot, no import, no config load and no fix-up, writes no operation and no op
+/// head, and its envelope carries NO `precondition` and NO `warnings` (ok and error alike). The
+/// values are commit-intrinsic, so a head that moved since the topology call changes nothing. Ids
+/// are FULL hex only — prefixes are not resolved. An empty `commit_ids` list answers with an empty
+/// list.
+///
+/// The arguments cross as a `CommitContentsRequest` `FlatBuffers` request buffer. Returns a
+/// `FlatBuffers` `Envelope` carrying a `CommitContents` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `CommitContentsRequest` buffer, or its
+/// `kind` is not `CommitContents`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `operation_id` is absent, empty, not hex or not a full id (an empty or
+/// non-hex id gets the CLI's "is not a valid hexadecimal prefix" text); or a commit id is empty,
+/// not hex or not a full id. Every commit id is checked before any load.
+/// - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
+/// CLI's `No operation ID matching "<id>"`.
+/// - `jj.change_not_found` — a commit id is not in the pinned operation's index; the hex in
+/// `context`.
+/// - `jj.jj_lib_error` — loading the operation, its repo, or an indexed commit (or, for `empty`,
+/// its parent) failed; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.CommitContentsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call. The request is read BEFORE the handle is borrowed.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_commit_contents(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
 /// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
 /// start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
@@ -1702,6 +1748,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_clone(
 /// single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
 /// the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
 /// loader, not a state cache — reads re-resolve to head (ADR-0002).
+/// *(2026-09-30, Story 4.10: `zanshin_commit_contents` is the one pinned read — it answers at
+/// the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
+/// Addendum 2026-09-30.)*
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
 external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
@@ -2225,6 +2274,12 @@ const int Change_VT_IS_SIGNED = 16;
 
 const int Change_VT_PARENTS = 8;
 
+const int CommitContentsRequest_VT_COMMIT_IDS = 8;
+
+const int CommitContentsRequest_VT_OPERATION_ID = 6;
+
+const int CommitContents_VT_CONTENTS = 4;
+
 const int ConfigEntry_VT_OVERRIDDEN = 12;
 
 const int ConfigEntry_VT_SOURCE = 8;
@@ -2269,7 +2324,7 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 28;
+const int ENUM_MAX_REQUEST_KIND = 29;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -2308,8 +2363,6 @@ const int Envelope_VT_PRECONDITION = 12;
 const int Envelope_VT_WARNINGS = 14;
 
 const int EnvironmentAdoptRequest_VT_VARIABLES = 6;
-
-const int EvologEntry_VT_OPERATION_ID = 8;
 
 const int EvologEntry_VT_PREDECESSOR_COMMIT_IDS = 6;
 

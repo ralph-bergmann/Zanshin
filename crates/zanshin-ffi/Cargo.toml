@@ -35,5 +35,15 @@ zanshin-jj = { workspace = true }
 tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
+# WHY: harness = false — timed manually (libtest `#[bench]` is nightly-only). Story 4.10's
+# re-measure of the graph topology call and the op-pinned content call per store kind (loose
+# vs packed); this is the one crate that reaches both `zanshin-jj` and the FlatBuffers wire.
+# It asserts nothing about wall-clock and is excluded from coverage (benches are not run by
+# `cargo make coverage`; see docs/coverage.md). Run with
+# `cargo bench -p zanshin-ffi --bench graph_topology`.
+[[bench]]
+name = "graph_topology"
+harness = false
+
 [lints]
 workspace = true

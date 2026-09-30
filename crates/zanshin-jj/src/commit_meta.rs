@@ -8,9 +8,16 @@
 //! O(1) — no revset is ever evaluated per row. Field semantics mirror
 //! `cli/src/commit_templater.rs` at v0.42.0 (NFR-R-2): content parity only, never the
 //! CLI's glyphs, colors or layout.
+//!
+//! Since Story 4.10 the extraction is split along "index/View-derived" vs "object-derived":
+//! [`LogMetaIndex::view_half`] needs no commit object (the topology call's
+//! [`crate::TopologyMeta`]), [`object_half`] needs the loaded commit (the content call's
+//! [`crate::CommitContent`]), and [`LogMetaIndex::extract`] composes both into `walk_graph`'s
+//! [`CommitMeta`] — one extraction path per half.
 
 use std::collections::HashMap;
 
+use jj_lib::backend::{ChangeId as JjChangeId, CommitId as JjCommitId};
 use jj_lib::commit::Commit;
 use jj_lib::id_prefix::IdPrefixIndex;
 use jj_lib::object_id::ObjectId;
@@ -18,7 +25,7 @@ use jj_lib::op_store::LocalRemoteRefTarget;
 use jj_lib::ref_name::{RefName, WorkspaceName};
 use jj_lib::revset::RevsetContainingFn;
 
-use crate::{RevsetError, Timestamp};
+use crate::{CommitContent, CommitId, RevsetError, Timestamp, TopologyMeta};
 
 /// One bookmark or tag entry attached to a commit row.
 ///
@@ -152,7 +159,8 @@ impl<'a> LogMetaIndex<'a> {
         }
     }
 
-    /// Extracts one commit's `jj log`-parity metadata.
+    /// Extracts one commit's `jj log`-parity metadata: [`Self::view_half`] and
+    /// [`object_half`] composed (Story 4.10 — one extraction path per half).
     ///
     /// # Errors
     ///
@@ -163,12 +171,33 @@ impl<'a> LogMetaIndex<'a> {
         repo_dyn: &dyn jj_lib::repo::Repo,
         commit: &Commit,
     ) -> Result<CommitMeta, RevsetError> {
-        let commit_id = commit.id();
+        let parent_count = u32::try_from(commit.parent_ids().len()).unwrap_or(u32::MAX);
+        let view = self.view_half(repo_dyn, commit.id(), commit.change_id(), parent_count)?;
+        let object = object_half(repo_dyn, commit).map_err(jj)?;
+        Ok(CommitMeta::from_halves(view, object))
+    }
+
+    /// Extracts the VIEW half of one commit's metadata (Story 4.10): everything the index and
+    /// the operation's View answer, so no commit object is needed. `parent_count` is the
+    /// caller's, since the index-only way to learn it is a per-call filter pass
+    /// ([`crate::topology`]).
+    ///
+    /// # Errors
+    ///
+    /// - [`RevsetError::JjLibError`] — a change-id resolution, prefix lookup or immutable
+    ///   containment check failed in jj-lib.
+    pub(crate) fn view_half(
+        &self,
+        repo_dyn: &dyn jj_lib::repo::Repo,
+        commit_id: &JjCommitId,
+        change_id: &JjChangeId,
+        parent_count: u32,
+    ) -> Result<TopologyMeta, RevsetError> {
         let id_hex = commit_id.hex();
 
         // One resolve_change_id for all three change-identity facts (the CLI computes
         // them in three separate template keywords; one lookup is the same answer).
-        let targets = repo_dyn.resolve_change_id(commit.change_id()).map_err(jj)?;
+        let targets = repo_dyn.resolve_change_id(change_id).map_err(jj)?;
         let hidden = targets.as_ref().is_none_or(|t| !t.has_visible(commit_id));
         let divergent = targets
             .as_ref()
@@ -178,38 +207,84 @@ impl<'a> LogMetaIndex<'a> {
             .and_then(|t| t.find_offset(commit_id))
             .and_then(|offset| u32::try_from(offset).ok());
 
-        let author = commit.author();
-        let committer = commit.committer();
-
-        Ok(CommitMeta {
-            change_id: commit.change_id().reverse_hex(),
-            change_id_prefix_len: prefix_len(self.prefixes.shortest_change_prefix_len(repo_dyn, commit.change_id()))?,
+        Ok(TopologyMeta {
+            change_id: change_id.reverse_hex(),
+            change_id_prefix_len: prefix_len(self.prefixes.shortest_change_prefix_len(repo_dyn, change_id))?,
             commit_id_prefix_len: prefix_len(self.prefixes.shortest_commit_prefix_len(repo_dyn, commit_id))?,
             change_offset,
-            author_name: author.name.clone(),
-            author_email: author.email.clone(),
-            committer_timestamp: Timestamp {
-                millis_since_epoch: committer.timestamp.timestamp.0,
-                tz_offset_minutes: committer.timestamp.tz_offset,
-            },
             bookmarks: self.bookmarks.get(&id_hex).cloned().unwrap_or_default(),
             tags: self.tags.get(&id_hex).cloned().unwrap_or_default(),
             working_copies: self.working_copies.get(&id_hex).cloned().unwrap_or_default(),
             working_copy: self.current_wc_commit.as_deref() == Some(id_hex.as_str()),
             // WHY: jj 0.44 made `RevsetContainingFn` async (it returns a `LocalBoxFuture`);
-            // pollster drives it here exactly as `is_empty` below, keeping the crate's public
-            // API sync (project-context § zanshin-jj).
+            // pollster drives it here exactly as `is_empty` in `object_half`, keeping the
+            // crate's public API sync (project-context § zanshin-jj).
             immutable: pollster::block_on((self.immutable)(commit_id)).map_err(jj)?,
-            conflict: commit.has_conflict(),
-            // WHY: `Commit::is_empty` is jj-lib's only emptiness check and it is async;
-            // pollster drives it here exactly as the rest of this crate drives jj-lib's
-            // futures (the crate's public API stays sync — project-context § zanshin-jj).
-            empty: pollster::block_on(commit.is_empty(repo_dyn)).map_err(jj)?,
             hidden,
             divergent,
             root: id_hex == self.root_commit_id,
-            description_first_line: commit.description().lines().next().unwrap_or_default().to_owned(),
+            parent_count,
         })
+    }
+}
+
+/// Extracts the OBJECT half of one commit's metadata (Story 4.10): what only the loaded commit
+/// answers — author, committer timestamp, full description, conflict and emptiness. `empty` is
+/// the one field that may load more (`Commit::is_empty` asks the changed-path index first, and
+/// otherwise loads the parents and merges their trees).
+///
+/// # Errors
+///
+/// - The jj-lib backend error of the emptiness check (a parent that cannot be loaded).
+pub(crate) fn object_half(
+    repo_dyn: &dyn jj_lib::repo::Repo,
+    commit: &Commit,
+) -> jj_lib::backend::BackendResult<CommitContent> {
+    let author = commit.author();
+    let committer = commit.committer();
+    Ok(CommitContent {
+        commit_id: CommitId(commit.id().hex()),
+        author_name: author.name.clone(),
+        author_email: author.email.clone(),
+        committer_timestamp: Timestamp {
+            millis_since_epoch: committer.timestamp.timestamp.0,
+            tz_offset_minutes: committer.timestamp.tz_offset,
+        },
+        description: commit.description().to_owned(),
+        conflict: commit.has_conflict(),
+        // WHY: `Commit::is_empty` is jj-lib's only emptiness check and it is async;
+        // pollster drives it here exactly as the rest of this crate drives jj-lib's
+        // futures (the crate's public API stays sync — project-context § zanshin-jj).
+        empty: pollster::block_on(commit.is_empty(repo_dyn))?,
+    })
+}
+
+impl CommitMeta {
+    /// Composes the `jj log` row from its two halves; `description_first_line` is the first
+    /// line of the full description (`""` when it is empty), and the view half's
+    /// `parent_count` is not part of the row.
+    fn from_halves(view: TopologyMeta, object: CommitContent) -> Self {
+        let description_first_line = object.description.lines().next().unwrap_or_default().to_owned();
+        Self {
+            change_id: view.change_id,
+            change_id_prefix_len: view.change_id_prefix_len,
+            commit_id_prefix_len: view.commit_id_prefix_len,
+            change_offset: view.change_offset,
+            author_name: object.author_name,
+            author_email: object.author_email,
+            committer_timestamp: object.committer_timestamp,
+            bookmarks: view.bookmarks,
+            tags: view.tags,
+            working_copies: view.working_copies,
+            working_copy: view.working_copy,
+            immutable: view.immutable,
+            conflict: object.conflict,
+            empty: object.empty,
+            hidden: view.hidden,
+            divergent: view.divergent,
+            root: view.root,
+            description_first_line,
+        }
     }
 }
 

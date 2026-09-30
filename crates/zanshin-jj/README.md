@@ -134,6 +134,40 @@ brand-new `wip()`, resolves exactly as it does in their CLI. `Repo::log_defaults
 returns the four *effective* `jj log` defaults for the UI to pre-fill.
 `zanshin-graph`'s `stream_lanes` feeds this stream through its lane assigner.
 
+## Graph topology + op-pinned content (`Repo::graph_topology`, `Repo::commit_contents`)
+
+Story 4.10 splits `jj log` along "index/View-derived" vs "object-derived", for a
+view that lays out the WHOLE revset before its first frame and loads card content
+per visible page:
+
+```rust
+repo.graph_topology(revset, prioritize, short_prefixes, anchors: &[String], with_timestamps: bool)
+    -> Result<GraphTopology, RevsetError>
+repo.commit_contents(&operation_id, &commit_ids) -> Result<Vec<CommitContent>, CommitContentError>
+```
+
+- **`graph_topology`** runs `walk_graph`'s parse → `load_at_head` → `TopoGroupedGraph` +
+  `prioritize_branch` pipeline (the setup is one shared helper) and the pre-verb
+  precondition exactly once, but reads nothing per node that needs the commit object:
+  each `TopologyNode` carries its commit id, jj's edges verbatim (Direct / Indirect /
+  Missing in stream order, repeated targets kept, targets resolved to node indices, a
+  Missing edge without target) and `TopologyMeta` — the view half of `CommitMeta` plus an
+  exact `parent_count` from index-only `ParentCount` filter passes. The change ids come
+  from one `commit_change_ids` pass. The result also carries `all_count` (`|all()|`,
+  counted by iterating — never `count_estimate`), per anchor the node indices it selects,
+  and the `operation_id` the call loaded. `with_timestamps` loads each non-root commit for
+  its committer timestamp (epoch ms) — the one per-node load, per call, never cached.
+- **`commit_contents`** (`&self`) is the continuation of that `jj log` — its per-row
+  commit load — pinned to the returned operation (`load_operation` + `load_at`, never
+  `load_at_head`): no precondition, no config load, no operation or op head written.
+  `CommitContent` is the object half (author, committer timestamp, FULL description,
+  conflict, empty), one entry per id in request order. Ids are full hex only; the error
+  ladder is bad id → `InvalidInput`, vanished operation → `OperationNotFound`, id not in
+  the pinned index → `CommitNotFound`, load failure → `Backend`.
+
+`TopologyMeta` plus the matching `CommitContent` recompose `walk_graph`'s `CommitMeta`
+exactly; `walk_graph` itself is unchanged.
+
 ## Integration-test fixture pattern
 
 Integration tests that need a real jj repository use the pre-built fixtures:

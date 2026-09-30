@@ -10,7 +10,7 @@ optimized_for_llm: true
 overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
   - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
-  - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k'
+  - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k (AMENDED 2026-09-30, Story 4.10: the ~3 ms is the index-only TOPOLOGY walk; the whole topology call is 22 ms @ 10k packed incl. its precondition, and since Story 4.8 a full row costs the commit loads — re-measured numbers in spec-4-10 § Measurements and the ADR-0002 Addendum 2026-09-30)'
   - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP. AMENDED 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): row-range windowing is REPLACED, not built, because lanes depend on the whole prefix — the graph call returns the complete index-only geometry for the whole revset per operation, and card content is loaded lazily per visible page in O(page). Still open (Ralph, 2026-09-26): a fixed row-based layout or a free layout whose vertical spacing follows commit time (DECIDED 2026-09-27, Ralph: the free layout is the default and compact the only other mode; time is dropped, so the default layout needs every timestamp); time-based layouts need every commit''s committer timestamp, which lives in the commit object, not in jj''s index — Story 4.10 loads them per call on request (measured 2026-09-26: 6.7 ms for a real 1.4k-commit repo, 33.6 ms at 10k in a packed store; the earlier ~1.2 s was the loose-object fixture)'
 scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at Ralph''s request; the rest of the Flutter UI stays Ralph''s. Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
@@ -230,7 +230,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
   The Dart worker isolate is the sole consumer (AD-2). The app holds 0..N handles
   (multi-repo / project overview); one isolate serializes all access, so still no
   `Arc<Mutex>`. The repo handle is a warm `Workspace` loader + op-heads-watcher owner,
-  not a state cache — reads re-resolve to head (ADR-0002).
+  not a state cache — reads re-resolve to head (ADR-0002). *(2026-09-30, Story 4.10: one
+  read is pinned instead — `Repo::commit_contents` / `zanshin_commit_contents` answers at
+  the caller-supplied operation with commit-intrinsic values only and retains nothing; see
+  the ADR-0002 Addendum 2026-09-30.)*
 - Async Rust→Dart signals: `NativeCallable.listener` ONLY. Same mechanism for
   watcher events AND progress notifications — no special-case channels.
 
@@ -697,6 +700,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   the graph is re-derived via a lazy revset stream (`stream_graph` + `TopoGroupedGraph`, GG
   model) and never trusted across an op-id advance. **Don't reintroduce a materialized lane
   cache** — it buys nothing here (re-derive ≪ NFR-P-1's < 1s @ 10k) and brings back staleness.
+  *(2026-09-30, Story 4.10: the ~3 ms / ~27 µs time the index-only TOPOLOGY walk (re-measured
+  3.1 ms / 30 µs). The whole `graph_topology(all())` call is 22 ms @ 10k packed (6 ms @ 1k),
+  its timestamps +31 ms packed / ~1 s on the loose fixture, a 60-id content page 1.9 ms
+  packed; since Story 4.8 `walk_graph`'s rows cost the commit loads. See spec-4-10 §
+  Measurements and the ADR-0002 Addendum 2026-09-30.)*
 - **`zanshin-graph` slice API = `collect_lanes`, a collect-all over the lazy stream.**
   There is no held cache to iterate: `collect_lanes(repo, revset, prioritize)` drives
   `stream_lanes` with a collecting sink (Story 4.4; windowing deferred past WIP). A future

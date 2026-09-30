@@ -71,3 +71,11 @@ sits at its newest member's time).
 
 *(Each run appends here any further decision it had to take — a question it met that this file does not
 answer — with the option taken and its basis, under its story's heading.)*
+
+### 4.10
+
+| Question | Answer taken | Basis | If overruled |
+|---|---|---|---|
+| Error text for a hex id that is not full length (the CLI resolves prefixes, so it has no such text) | Zanshin's own `Operation ID "<x>" is not a full operation ID` / `Commit ID "<x>" is not a full commit ID` (both `jj.invalid_input`); the CLI's `Operation ID "<x>" is not a valid hexadecimal prefix` stays for an empty/non-hex operation id, and an empty/non-hex commit id gets the same wording, `Commit ID "<x>" is not a valid hexadecimal prefix`. | status quo (no prefix resolution, per the story) | Change the strings in `crates/zanshin-jj/src/commit_content.rs`. |
+| How the topology reports a Direct/Indirect target outside its node set | A new public `RevsetError::DanglingEdge { target }`; `zanshin-ffi`'s `map_lane_stream_err` maps it to `graph.dangling_edge`, the two other exhaustive mappers (`commit_views.rs`, `mutate.rs`) to their `Backend`. Unreachable through jj-lib; pinned by unit tests. | the story's "`graph.dangling_edge`, as in `walk_graph`" | Fold it into `JjLibError` and drop the three arms. |
+| Option (c)'s trigger | Measured, not acted on: the first timestamped topology call is 53 ms at 10k packed (> ~50 ms), ~1 s on the loose fixture. Recorded in `deferred-work.md` ("Surfaced in Story 4.10") for Ralph; nothing built. | measured | Build (c) or (d) as a follow-up story. |

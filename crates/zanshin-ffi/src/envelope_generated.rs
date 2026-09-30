@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 28;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 29;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 29] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 30] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -53,6 +53,7 @@ pub mod zanshin {
             RequestKind::ConfigGcList,
             RequestKind::ConfigGcDelete,
             RequestKind::EnvironmentAdopt,
+            RequestKind::CommitContents,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -66,7 +67,7 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
+        /// named as parents. For the other 27 tables the variant name plus `Request` IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -108,9 +109,10 @@ pub mod zanshin {
             pub const ConfigGcList: Self = Self(26);
             pub const ConfigGcDelete: Self = Self(27);
             pub const EnvironmentAdopt: Self = Self(28);
+            pub const CommitContents: Self = Self(29);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 28;
+            pub const ENUM_MAX: u8 = 29;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -141,6 +143,7 @@ pub mod zanshin {
                 Self::ConfigGcList,
                 Self::ConfigGcDelete,
                 Self::EnvironmentAdopt,
+                Self::CommitContents,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -174,6 +177,7 @@ pub mod zanshin {
                     Self::ConfigGcList => Some("ConfigGcList"),
                     Self::ConfigGcDelete => Some("ConfigGcDelete"),
                     Self::EnvironmentAdopt => Some("EnvironmentAdopt"),
+                    Self::CommitContents => Some("CommitContents"),
                     _ => None,
                 }
             }
@@ -1431,13 +1435,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 35;
+        pub const ENUM_MAX_PAYLOAD: u8 = 36;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 36] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 37] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1474,6 +1478,7 @@ pub mod zanshin {
             Payload::ConfigFileText,
             Payload::ConfigGcList,
             Payload::ConfigGcResult,
+            Payload::CommitContents,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1517,9 +1522,10 @@ pub mod zanshin {
             pub const ConfigFileText: Self = Self(33);
             pub const ConfigGcList: Self = Self(34);
             pub const ConfigGcResult: Self = Self(35);
+            pub const CommitContents: Self = Self(36);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 35;
+            pub const ENUM_MAX: u8 = 36;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1557,6 +1563,7 @@ pub mod zanshin {
                 Self::ConfigFileText,
                 Self::ConfigGcList,
                 Self::ConfigGcResult,
+                Self::CommitContents,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1597,6 +1604,7 @@ pub mod zanshin {
                     Self::ConfigFileText => Some("ConfigFileText"),
                     Self::ConfigGcList => Some("ConfigGcList"),
                     Self::ConfigGcResult => Some("ConfigGcResult"),
+                    Self::CommitContents => Some("CommitContents"),
                     _ => None,
                 }
             }
@@ -6908,6 +6916,171 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("EnvironmentAdoptRequest");
                 ds.field("kind", &self.kind());
                 ds.field("variables", &self.variables());
+                ds.finish()
+            }
+        }
+        pub enum CommitContentsRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_commit_contents` (Story 4.10) — the op-pinned batch content lookup.
+        /// `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
+        /// absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
+        /// commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
+        /// request.
+        pub struct CommitContentsRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CommitContentsRequest<'a> {
+            type Inner = CommitContentsRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CommitContentsRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CommitContentsRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CommitContentsRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CommitContentsRequest<'bldr>> {
+                let mut builder = CommitContentsRequestBuilder::new(_fbb);
+                if let Some(x) = args.commit_ids {
+                    builder.add_commit_ids(x);
+                }
+                if let Some(x) = args.operation_id {
+                    builder.add_operation_id(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(CommitContentsRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitContentsRequest::VT_OPERATION_ID, None)
+                }
+            }
+            #[inline]
+            pub fn commit_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CommitContentsRequest::VT_COMMIT_IDS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CommitContentsRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("commit_ids", Self::VT_COMMIT_IDS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct CommitContentsRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for CommitContentsRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CommitContentsRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation_id: None,
+                    commit_ids: None,
+                }
+            }
+        }
+
+        pub struct CommitContentsRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CommitContentsRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(CommitContentsRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation_id(&mut self, operation_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CommitContentsRequest::VT_OPERATION_ID,
+                    operation_id,
+                );
+            }
+            #[inline]
+            pub fn add_commit_ids(
+                &mut self,
+                commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContentsRequest::VT_COMMIT_IDS, commit_ids);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> CommitContentsRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CommitContentsRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CommitContentsRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CommitContentsRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CommitContentsRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation_id", &self.operation_id());
+                ds.field("commit_ids", &self.commit_ids());
                 ds.finish()
             }
         }
@@ -17801,6 +17974,386 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum CommitContentOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
+        /// operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
+        /// by `commit_id`. Field names mirror GraphRowMeta's; every string is always present (an empty
+        /// author or description is `""`).
+        pub struct CommitContent<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CommitContent<'a> {
+            type Inner = CommitContent<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CommitContent<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_AUTHOR_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AUTHOR_EMAIL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_COMMITTER_TIMESTAMP_MILLIS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_COMMITTER_TZ_OFFSET_MINUTES: ::flatbuffers::VOffsetT = 12;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 14;
+            pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_EMPTY: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CommitContent { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CommitContentArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CommitContent<'bldr>> {
+                let mut builder = CommitContentBuilder::new(_fbb);
+                builder.add_committer_timestamp_millis(args.committer_timestamp_millis);
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                builder.add_committer_tz_offset_minutes(args.committer_tz_offset_minutes);
+                if let Some(x) = args.author_email {
+                    builder.add_author_email(x);
+                }
+                if let Some(x) = args.author_name {
+                    builder.add_author_name(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.add_empty(args.empty);
+                builder.add_conflict(args.conflict);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitContent::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn author_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitContent::VT_AUTHOR_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn author_email(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitContent::VT_AUTHOR_EMAIL, None)
+                }
+            }
+            #[inline]
+            pub fn committer_timestamp_millis(&self) -> i64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<i64>(CommitContent::VT_COMMITTER_TIMESTAMP_MILLIS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn committer_tz_offset_minutes(&self) -> i32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<i32>(CommitContent::VT_COMMITTER_TZ_OFFSET_MINUTES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CommitContent::VT_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn conflict(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(CommitContent::VT_CONFLICT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn empty(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(CommitContent::VT_EMPTY, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CommitContent<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_name", Self::VT_AUTHOR_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_email", Self::VT_AUTHOR_EMAIL, false)?
+                    .visit_field::<i64>("committer_timestamp_millis", Self::VT_COMMITTER_TIMESTAMP_MILLIS, false)?
+                    .visit_field::<i32>(
+                        "committer_tz_offset_minutes",
+                        Self::VT_COMMITTER_TZ_OFFSET_MINUTES,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
+                    .visit_field::<bool>("conflict", Self::VT_CONFLICT, false)?
+                    .visit_field::<bool>("empty", Self::VT_EMPTY, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct CommitContentArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_email: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub committer_timestamp_millis: i64,
+            pub committer_tz_offset_minutes: i32,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub conflict: bool,
+            pub empty: bool,
+        }
+        impl<'a> Default for CommitContentArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CommitContentArgs {
+                    commit_id: None,
+                    author_name: None,
+                    author_email: None,
+                    committer_timestamp_millis: 0,
+                    committer_tz_offset_minutes: 0,
+                    description: None,
+                    conflict: false,
+                    empty: false,
+                }
+            }
+        }
+
+        pub struct CommitContentBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CommitContentBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContent::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_author_name(&mut self, author_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContent::VT_AUTHOR_NAME, author_name);
+            }
+            #[inline]
+            pub fn add_author_email(&mut self, author_email: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContent::VT_AUTHOR_EMAIL, author_email);
+            }
+            #[inline]
+            pub fn add_committer_timestamp_millis(&mut self, committer_timestamp_millis: i64) {
+                self.fbb_.push_slot::<i64>(
+                    CommitContent::VT_COMMITTER_TIMESTAMP_MILLIS,
+                    committer_timestamp_millis,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_committer_tz_offset_minutes(&mut self, committer_tz_offset_minutes: i32) {
+                self.fbb_.push_slot::<i32>(
+                    CommitContent::VT_COMMITTER_TZ_OFFSET_MINUTES,
+                    committer_tz_offset_minutes,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContent::VT_DESCRIPTION, description);
+            }
+            #[inline]
+            pub fn add_conflict(&mut self, conflict: bool) {
+                self.fbb_.push_slot::<bool>(CommitContent::VT_CONFLICT, conflict, false);
+            }
+            #[inline]
+            pub fn add_empty(&mut self, empty: bool) {
+                self.fbb_.push_slot::<bool>(CommitContent::VT_EMPTY, empty, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitContentBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CommitContentBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CommitContent<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CommitContent<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CommitContent");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("author_name", &self.author_name());
+                ds.field("author_email", &self.author_email());
+                ds.field("committer_timestamp_millis", &self.committer_timestamp_millis());
+                ds.field("committer_tz_offset_minutes", &self.committer_tz_offset_minutes());
+                ds.field("description", &self.description());
+                ds.field("conflict", &self.conflict());
+                ds.field("empty", &self.empty());
+                ds.finish()
+            }
+        }
+        pub enum CommitContentsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_commit_contents`' answer: one entry per requested id, in REQUEST order.
+        pub struct CommitContents<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CommitContents<'a> {
+            type Inner = CommitContents<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CommitContents<'a> {
+            pub const VT_CONTENTS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CommitContents { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CommitContentsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CommitContents<'bldr>> {
+                let mut builder = CommitContentsBuilder::new(_fbb);
+                if let Some(x) = args.contents {
+                    builder.add_contents(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn contents(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<CommitContent<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<CommitContent>>,
+                    >>(CommitContents::VT_CONTENTS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CommitContents<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<CommitContent>>,
+                    >>("contents", Self::VT_CONTENTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct CommitContentsArgs<'a> {
+            pub contents: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<CommitContent<'a>>>>,
+            >,
+        }
+        impl<'a> Default for CommitContentsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CommitContentsArgs { contents: None }
+            }
+        }
+
+        pub struct CommitContentsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CommitContentsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_contents(
+                &mut self,
+                contents: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<CommitContent<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitContents::VT_CONTENTS, contents);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitContentsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CommitContentsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CommitContents<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CommitContents<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CommitContents");
+                ds.field("contents", &self.contents());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -17952,8 +18505,8 @@ pub mod zanshin {
         /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
         /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
         /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-        /// `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every `zanshin_config_*` symbol
-        /// except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
+        /// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+        /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
         /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
         /// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
         /// started — on its ok envelope and on its error envelope (after a failure before the re-open it
@@ -18597,6 +19150,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_commit_contents(&self) -> Option<CommitContents<'a>> {
+                if self.data_type() == Payload::CommitContents {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { CommitContents::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -18645,6 +19213,7 @@ pub mod zanshin {
           Payload::ConfigFileText => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigFileText>>("Payload::ConfigFileText", pos),
           Payload::ConfigGcList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcList>>("Payload::ConfigGcList", pos),
           Payload::ConfigGcResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcResult>>("Payload::ConfigGcResult", pos),
+          Payload::CommitContents => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<CommitContents>>("Payload::CommitContents", pos),
           _ => Ok(()),
         }
      })?
@@ -18981,6 +19550,13 @@ pub mod zanshin {
                     }
                     Payload::ConfigGcResult => {
                         if let Some(x) = self.data_as_config_gc_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::CommitContents => {
+                        if let Some(x) = self.data_as_commit_contents() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

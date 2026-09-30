@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 27 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -55,7 +55,8 @@ enum RequestKind {
   ConfigFileWrite(25),
   ConfigGcList(26),
   ConfigGcDelete(27),
-  EnvironmentAdopt(28);
+  EnvironmentAdopt(28),
+  CommitContents(29);
 
   final int value;
   const RequestKind(this.value);
@@ -120,6 +121,8 @@ enum RequestKind {
         return RequestKind.ConfigGcDelete;
       case 28:
         return RequestKind.EnvironmentAdopt;
+      case 29:
+        return RequestKind.CommitContents;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -128,7 +131,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 28;
+  static const int maxValue = 29;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -703,7 +706,8 @@ enum PayloadTypeId {
   ConfigUnsetResult(32),
   ConfigFileText(33),
   ConfigGcList(34),
-  ConfigGcResult(35);
+  ConfigGcResult(35),
+  CommitContents(36);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -782,6 +786,8 @@ enum PayloadTypeId {
         return PayloadTypeId.ConfigGcList;
       case 35:
         return PayloadTypeId.ConfigGcResult;
+      case 36:
+        return PayloadTypeId.CommitContents;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -790,7 +796,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 35;
+  static const int maxValue = 36;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -3964,6 +3970,105 @@ class EnvironmentAdoptRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, variablesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_commit_contents` (Story 4.10) — the op-pinned batch content lookup.
+///  `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
+///  absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
+///  commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
+///  request.
+class CommitContentsRequest {
+  CommitContentsRequest._(this._bc, this._bcOffset);
+  factory CommitContentsRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CommitContentsRequest> reader = _CommitContentsRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get commitIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'CommitContentsRequest{kind: ${kind}, operationId: ${operationId}, commitIds: ${commitIds}}';
+  }
+}
+
+class _CommitContentsRequestReader extends fb.TableReader<CommitContentsRequest> {
+  const _CommitContentsRequestReader();
+
+  @override
+  CommitContentsRequest createObject(fb.BufferContext bc, int offset) => CommitContentsRequest._(bc, offset);
+}
+
+class CommitContentsRequestBuilder {
+  CommitContentsRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CommitContentsRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operationId;
+  final List<String>? _commitIds;
+
+  CommitContentsRequestObjectBuilder({
+    RequestKind? kind,
+    String? operationId,
+    List<String>? commitIds,
+  }) : _kind = kind,
+       _operationId = operationId,
+       _commitIds = commitIds;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    final int? commitIdsOffset = _commitIds == null
+        ? null
+        : fbBuilder.writeList(_commitIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationIdOffset);
+    fbBuilder.addOffset(2, commitIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -10630,6 +10735,229 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
+///  operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
+///  by `commit_id`. Field names mirror GraphRowMeta's; every string is always present (an empty
+///  author or description is `""`).
+class CommitContent {
+  CommitContent._(this._bc, this._bcOffset);
+  factory CommitContent(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CommitContent> reader = _CommitContentReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get authorName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get authorEmail => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  int get committerTimestampMillis => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  int get committerTzOffsetMinutes => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 12, 0);
+  String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+  bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  bool get empty => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+
+  @override
+  String toString() {
+    return 'CommitContent{commitId: ${commitId}, authorName: ${authorName}, authorEmail: ${authorEmail}, committerTimestampMillis: ${committerTimestampMillis}, committerTzOffsetMinutes: ${committerTzOffsetMinutes}, description: ${description}, conflict: ${conflict}, empty: ${empty}}';
+  }
+}
+
+class _CommitContentReader extends fb.TableReader<CommitContent> {
+  const _CommitContentReader();
+
+  @override
+  CommitContent createObject(fb.BufferContext bc, int offset) => CommitContent._(bc, offset);
+}
+
+class CommitContentBuilder {
+  CommitContentBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorEmailOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitterTimestampMillis(int? committerTimestampMillis) {
+    fbBuilder.addInt64(3, committerTimestampMillis);
+    return fbBuilder.offset;
+  }
+
+  int addCommitterTzOffsetMinutes(int? committerTzOffsetMinutes) {
+    fbBuilder.addInt32(4, committerTzOffsetMinutes);
+    return fbBuilder.offset;
+  }
+
+  int addDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConflict(bool? conflict) {
+    fbBuilder.addBool(6, conflict);
+    return fbBuilder.offset;
+  }
+
+  int addEmpty(bool? empty) {
+    fbBuilder.addBool(7, empty);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CommitContentObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final String? _authorName;
+  final String? _authorEmail;
+  final int? _committerTimestampMillis;
+  final int? _committerTzOffsetMinutes;
+  final String? _description;
+  final bool? _conflict;
+  final bool? _empty;
+
+  CommitContentObjectBuilder({
+    String? commitId,
+    String? authorName,
+    String? authorEmail,
+    int? committerTimestampMillis,
+    int? committerTzOffsetMinutes,
+    String? description,
+    bool? conflict,
+    bool? empty,
+  }) : _commitId = commitId,
+       _authorName = authorName,
+       _authorEmail = authorEmail,
+       _committerTimestampMillis = committerTimestampMillis,
+       _committerTzOffsetMinutes = committerTzOffsetMinutes,
+       _description = description,
+       _conflict = conflict,
+       _empty = empty;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? authorNameOffset = _authorName == null ? null : fbBuilder.writeString(_authorName!);
+    final int? authorEmailOffset = _authorEmail == null ? null : fbBuilder.writeString(_authorEmail!);
+    final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
+    fbBuilder.startTable(8);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addOffset(1, authorNameOffset);
+    fbBuilder.addOffset(2, authorEmailOffset);
+    fbBuilder.addInt64(3, _committerTimestampMillis);
+    fbBuilder.addInt32(4, _committerTzOffsetMinutes);
+    fbBuilder.addOffset(5, descriptionOffset);
+    fbBuilder.addBool(6, _conflict);
+    fbBuilder.addBool(7, _empty);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_commit_contents`' answer: one entry per requested id, in REQUEST order.
+class CommitContents {
+  CommitContents._(this._bc, this._bcOffset);
+  factory CommitContents(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CommitContents> reader = _CommitContentsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<CommitContent>? get contents =>
+      const fb.ListReader<CommitContent>(CommitContent.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'CommitContents{contents: ${contents}}';
+  }
+}
+
+class _CommitContentsReader extends fb.TableReader<CommitContents> {
+  const _CommitContentsReader();
+
+  @override
+  CommitContents createObject(fb.BufferContext bc, int offset) => CommitContents._(bc, offset);
+}
+
+class CommitContentsBuilder {
+  CommitContentsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addContentsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CommitContentsObjectBuilder extends fb.ObjectBuilder {
+  final List<CommitContentObjectBuilder>? _contents;
+
+  CommitContentsObjectBuilder({
+    List<CommitContentObjectBuilder>? contents,
+  }) : _contents = contents;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? contentsOffset = _contents == null
+        ? null
+        : fbBuilder.writeList(_contents!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, contentsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
@@ -10733,8 +11061,8 @@ class WarningObjectBuilder extends fb.ObjectBuilder {
 ///  envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 ///  before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 ///  validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-///  `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every `zanshin_config_*` symbol
-///  except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
+///  `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 ///  working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
 ///  conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
 ///  started — on its ok envelope and on its error envelope (after a failure before the re-open it
@@ -10834,6 +11162,8 @@ class Envelope {
         return ConfigGcList.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 35:
         return ConfigGcResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 36:
+        return CommitContents.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

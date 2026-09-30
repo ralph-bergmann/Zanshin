@@ -56,6 +56,11 @@ pub const JJ_STALE_WORKING_COPY: &str = "jj.stale_working_copy";
 pub const JJ_PATH_NOT_IGNORED: &str = "jj.path_not_ignored";
 /// AR-P-4: emitted by `change.rs` when no change exists for the given id.
 pub const JJ_CHANGE_NOT_FOUND: &str = "jj.change_not_found";
+/// AR-P-4: emitted by `commit_contents.rs::zanshin_commit_contents` (Story 4.10) when the
+/// pinned operation is not in the operation store (abandoned and garbage-collected); `context`
+/// is the CLI's `No operation ID matching "<id>"`. Unrelated to the `operation_not_found` CAUSE
+/// inside [`JJ_STALE_WORKING_COPY`]'s context.
+pub const JJ_OPERATION_NOT_FOUND: &str = "jj.operation_not_found";
 /// AR-P-4: emitted by `file.rs::zanshin_file_annotate` when the path exists in the target
 /// revision's tree but is not a regular file (a directory, a symlink, a Git submodule, or a
 /// conflict with a non-file side); the repo-relative path in `context`. Distinct from

@@ -386,6 +386,8 @@ pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
         crate::RevsetError::Config(inner) => cfg(inner),
         crate::RevsetError::JjLibError(reason) => MutateError::Backend(reason),
         crate::RevsetError::Precondition(inner) => MutateError::Precondition(inner),
+        // Only `Repo::graph_topology` raises it; no mutation walks a graph.
+        e @ crate::RevsetError::DanglingEdge { .. } => MutateError::Backend(e.to_string()),
     }
 }
 
@@ -1542,6 +1544,11 @@ mod tests {
         assert!(matches!(
             rev(RevsetError::Precondition(crate::PreconditionError::Backend("p".to_owned()))),
             MutateError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "p"
+        ));
+        // Story 4.10: a dangling topology edge is no revset stage of its own here.
+        assert!(matches!(
+            rev(RevsetError::DanglingEdge { target: "ab".to_owned() }),
+            MutateError::Backend(reason) if reason.contains("ab")
         ));
     }
 

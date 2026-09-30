@@ -117,6 +117,9 @@ pub enum Backend {
 /// Created via [`Repo::open`], [`Repo::init`], or [`Repo::clone`]. The handle
 /// is a warm `Workspace` loader that re-resolves to the operation-log head on
 /// every call (ADR-0002) — it is not an authoritative state cache.
+/// *(2026-09-30, Story 4.10: one read is pinned instead — [`Repo::commit_contents`] answers at
+/// the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
+/// Addendum 2026-09-30.)*
 ///
 /// The `UserSettings` it writes with (commit author, operation user/host, working-copy
 /// knobs) come from the workspace's EFFECTIVE jj config stack — the CLI's own — and are
@@ -376,8 +379,8 @@ impl Repo {
     ///
     /// Every verb that runs the precondition leaves one — on success AND on failure (then
     /// partial: every fact up to the failing step). Verbs that do not snapshot
-    /// ([`Repo::workspace_root`], [`Repo::resolve_workspace_root`], [`Repo::log_defaults`])
-    /// leave none. The FFI layer attaches it to every envelope it builds for such a verb.
+    /// ([`Repo::workspace_root`], [`Repo::resolve_workspace_root`], [`Repo::log_defaults`],
+    /// [`Repo::commit_contents`]) leave none. The FFI layer attaches it to every envelope it builds for such a verb.
     #[must_use]
     pub fn take_precondition(&mut self) -> Option<crate::Precondition> {
         self.pending_precondition.take()
@@ -391,8 +394,8 @@ impl Repo {
     /// snapshot's and imports', the verb body's, and the transaction finish's. The list is reset
     /// ONLY where a verb runs the precondition: such a verb starts a fresh list and leaves it
     /// behind — on success AND on failure (then everything up to the failure). Verbs that do not
-    /// snapshot ([`Repo::workspace_root`],
-    /// [`Repo::resolve_workspace_root`], [`Repo::log_defaults`]) neither reset nor add to it, so
+    /// snapshot ([`Repo::workspace_root`], [`Repo::resolve_workspace_root`],
+    /// [`Repo::log_defaults`], [`Repo::commit_contents`]) neither reset nor add to it, so
     /// a take after one of them returns whatever an earlier verb left untaken. A caller takes
     /// the list after each precondition-running verb, as the FFI layer does for every envelope
     /// it builds for one.
@@ -785,6 +788,96 @@ impl Repo {
         self.with_verb(|repo, ctx| {
             crate::graph::walk_graph(repo, &mut ctx.warnings, revset, prioritize, short_prefixes, visit)
         })
+    }
+
+    /// Returns the index-only topology of `revset` — every node in `jj log` order with its
+    /// commit id, jj's edges verbatim (targets resolved to node indices) and the view half of
+    /// its `jj log` metadata — plus `|all()|`, the node indices each anchor selects, and the
+    /// operation it was read at (Story 4.10).
+    ///
+    /// The CLI's one `jj log`, split: the same parse order, diagnostics and `TopoGroupedGraph` +
+    /// `prioritize_branch` pipeline as [`Repo::walk_graph`], and the pre-verb precondition
+    /// exactly once (Story 9.26), but nothing per node that needs the commit object — the
+    /// object half is [`Repo::commit_contents`] at the returned
+    /// [`crate::GraphTopology::operation_id`], which is the head this call's own load saw
+    /// (after its snapshot, if that wrote one). Edges keep repeated targets; a Missing edge has
+    /// no target; no synthetic "(elided revisions)" node is spliced.
+    ///
+    /// Every argument is a caller pass-through (FR-JJ-17) — Rust applies no default:
+    /// `revset`, `prioritize` and `short_prefixes` as in [`Repo::walk_graph`]; `anchors`, an
+    /// ordered list of revsets, each intersected with `revset` as a user expression and
+    /// evaluated once (an empty list is valid); `with_timestamps`, which loads each non-root
+    /// commit for its committer timestamp (the one per-node load, per call, never cached).
+    /// Re-resolves to head per call (ADR-0002); nothing is retained across calls.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::RevsetError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::RevsetError::ParseError`] — any expression, an anchor included, is
+    ///   syntactically invalid; raised before the repo is loaded.
+    /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset`, `prioritize` or an
+    ///   anchor cannot be resolved. An unresolvable `short_prefixes` only warns and degrades.
+    /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
+    ///   unreadable.
+    /// - [`crate::RevsetError::DanglingEdge`] — an edge names a target outside the node set
+    ///   (jj-lib's stream contract rules it out).
+    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, a per-node index
+    ///   lookup, a stream item, or (with `with_timestamps`) a commit load failed.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn graph_topology(
+        &mut self,
+        revset: &str,
+        prioritize: &str,
+        short_prefixes: &str,
+        anchors: &[String],
+        with_timestamps: bool,
+    ) -> Result<crate::GraphTopology, crate::RevsetError> {
+        self.with_verb(|repo, ctx| {
+            crate::topology::graph_topology(
+                repo,
+                &mut ctx.warnings,
+                revset,
+                prioritize,
+                short_prefixes,
+                anchors,
+                with_timestamps,
+            )
+        })
+    }
+
+    /// Returns the object half of each commit in `commit_ids` — author, committer timestamp,
+    /// full description, conflict, empty — in request order, read at the PINNED `operation_id`
+    /// (Story 4.10).
+    ///
+    /// The continuation of [`Repo::graph_topology`]'s `jj log`: the CLI's per-row commit load.
+    /// It takes `&self`, so it runs no precondition, snapshot, import, config load or fix-up;
+    /// it loads the repo with `load_operation` + `load_at` (never `load_at_head`), so it writes
+    /// no operation and no op head (a load may write missing index files); and it leaves
+    /// [`Repo::take_precondition`] / [`Repo::take_warnings`] untouched. The values are
+    /// commit-intrinsic, so a head that moved since the topology call changes nothing
+    /// (ADR-0002 Addendum 2026-09-30). Ids are full hex only — no prefix resolution. An empty
+    /// list is `Ok(vec![])`.
+    ///
+    /// # Errors
+    ///
+    /// In check order:
+    /// - [`crate::CommitContentError::InvalidInput`] — `operation_id` is empty, not hex, or not
+    ///   a full operation id.
+    /// - [`crate::CommitContentError::OperationNotFound`] — the operation is not in the
+    ///   operation store (the CLI's `No operation ID matching "<id>"`).
+    /// - [`crate::CommitContentError::InvalidInput`] — a commit id is empty, not hex, or not a
+    ///   full commit id (every id is checked before any load).
+    /// - [`crate::CommitContentError::CommitNotFound`] — a commit id is not in the pinned
+    ///   operation's index.
+    /// - [`crate::CommitContentError::Backend`] — any jj-lib load failure, including an indexed
+    ///   commit (or, for `empty`, its parent) whose object is gone.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn commit_contents(
+        &self,
+        operation_id: &crate::OperationId,
+        commit_ids: &[crate::CommitId],
+    ) -> Result<Vec<crate::CommitContent>, crate::CommitContentError> {
+        crate::commit_content::commit_contents(&self.workspace, operation_id, commit_ids)
     }
 
     /// Streams the commits `revset` denotes through `visit`, one [`crate::Change`] per commit

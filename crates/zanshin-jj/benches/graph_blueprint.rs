@@ -17,6 +17,11 @@
 //!
 //! ADR-0002 AC-4 result (already recorded; no longer needed as decision input): full
 //! derive ~3 ms @ 10k, first-100 page ~27 µs → no materialized lane cache, lazy stream.
+//! *(2026-09-30, Story 4.10: this walk is the TOPOLOGY only — index-only, no commit
+//! loads. Since Story 4.8 `Repo::walk_graph` loads every emitted commit for its metadata,
+//! so those figures time `Repo::graph_topology`'s stream pass, not `walk_graph`. The two
+//! extra passes below are the topology call's per-call index-only passes: `all_count` and
+//! the `ParentCount` refinement. Full-call numbers: `crates/zanshin-ffi/benches/graph_topology.rs`.)*
 
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
@@ -29,7 +34,7 @@ use jj_lib::backend::CommitId;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::graph::TopoGroupedGraph;
 use jj_lib::repo::{ReadonlyRepo, Repo as JjRepo};
-use jj_lib::revset::ResolvedRevsetExpression;
+use jj_lib::revset::{ResolvedRevsetExpression, RevsetFilterPredicate};
 use jj_lib::workspace::Workspace;
 use test_helpers::extract_fixture;
 
@@ -119,6 +124,52 @@ fn walk_graph(repo: &Arc<ReadonlyRepo>, limit: Option<usize>) -> Result<usize, B
     Ok(count)
 }
 
+/// Story 4.10's `all_count` pass: count `|all()|` by iterating its stream (index-only).
+fn count_all(repo: &Arc<ReadonlyRepo>) -> Result<usize, BenchErr> {
+    let repo_dyn: &dyn JjRepo = repo.as_ref();
+    let revset = ResolvedRevsetExpression::all().evaluate(repo_dyn)?;
+    let mut stream = revset.stream();
+    let mut count = 0usize;
+    while let Some(item) = block_on(stream.next()) {
+        item?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// The ids a resolved expression denotes.
+fn ids_of(repo_dyn: &dyn JjRepo, expr: Arc<ResolvedRevsetExpression>) -> Result<Vec<CommitId>, BenchErr> {
+    let revset = expr.evaluate(repo_dyn)?;
+    let mut stream = revset.stream();
+    let mut ids = Vec::new();
+    while let Some(item) = block_on(stream.next()) {
+        ids.push(item?);
+    }
+    Ok(ids)
+}
+
+/// Story 4.10's `parent_count` passes over `all()`: `ParentCount(2..)` once, then each
+/// refinement `k = 3, 4, …` over the previous pass's set until one is empty. Returns the number
+/// of merges.
+fn parent_count_passes(repo: &Arc<ReadonlyRepo>) -> Result<usize, BenchErr> {
+    let repo_dyn: &dyn JjRepo = repo.as_ref();
+    let merges = ids_of(
+        repo_dyn,
+        ResolvedRevsetExpression::all().filtered(RevsetFilterPredicate::ParentCount(2..u32::MAX)),
+    )?;
+    let count = merges.len();
+    let mut candidates = merges;
+    let mut k = 3u32;
+    while !candidates.is_empty() {
+        candidates = ids_of(
+            repo_dyn,
+            ResolvedRevsetExpression::commits(candidates).filtered(RevsetFilterPredicate::ParentCount(k..u32::MAX)),
+        )?;
+        k += 1;
+    }
+    Ok(count)
+}
+
 fn bench_graph(name: &str) {
     pin_env();
     let fixture = extract_fixture(name).expect("fixture must extract");
@@ -131,6 +182,19 @@ fn bench_graph(name: &str) {
     let (page_min, page_med) = measure(3, 21, || {
         hint::black_box(walk_graph(&repo, Some(100)).expect("walk must succeed"));
     });
+    let all = count_all(&repo).expect("count must succeed");
+    let (count_min, count_med) = measure(2, 7, || {
+        hint::black_box(count_all(&repo).expect("count must succeed"));
+    });
+    let merges = parent_count_passes(&repo).expect("passes must succeed");
+    let (pc_min, pc_med) = measure(2, 7, || {
+        hint::black_box(parent_count_passes(&repo).expect("passes must succeed"));
+    });
 
-    eprintln!("[graph {name}] nodes={nodes} | full-walk: min {full_min:?} / med {full_med:?} | first-100: min {page_min:?} / med {page_med:?}");
+    eprintln!(
+        "[graph {name}] nodes={nodes} | topology-only walk: min {full_min:?} / med {full_med:?} | first-100: min {page_min:?} / med {page_med:?}"
+    );
+    eprintln!(
+        "[graph {name}] all()={all} count pass: min {count_min:?} / med {count_med:?} | merges={merges} ParentCount passes: min {pc_min:?} / med {pc_med:?}"
+    );
 }

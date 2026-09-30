@@ -3224,6 +3224,8 @@ As a Rust developer completing the graph payload,
 I want every `GraphRow` to carry the display metadata `jj log` shows plus the lanes passing through it,
 So that the (out-of-scope) Flutter log view renders from ONE `zanshin_graph_slice` call, with no window in which an external `jj` operation can make a row's lanes and its content disagree.
 
+> *(2026-09-30, Story 4.10: the commit-graph view renders from the topology call (`Repo::graph_topology`, on the wire in Story 4.12) plus the op-pinned content call `zanshin_commit_contents` (Stories 4.10–4.12); the slice keeps its one-call rows until 4.12 decides its fate.)*
+
 > **Delivered (2026-08-23, Story 4.8 done):** spec + parity catalog at `_bmad-output/specs/spec-4-8-log-rows-cli-parity/` (`SPEC.md` + `cli-log-parity.md`, both read from the jj monorepo at the pinned tag `v0.42.0`).
 >
 > - **Metadata (CAP-1).** New `crates/zanshin-jj/src/commit_meta.rs`: `pub struct CommitMeta` (change id + `change_id_prefix_len` / `commit_id_prefix_len` / `change_offset`, author name+email, committer timestamp, `bookmarks`/`tags` as `CommitRef { name, remote: Option<String>, synced, conflicted }`, `working_copies`, and the `working_copy` / `immutable` / `conflict` / `empty` / `hidden` / `divergent` / `root` flags + `description_first_line`). A crate-internal `LogMetaIndex` builds the refs reverse index, the working-copy map, the `IdPrefixIndex` and the immutable `containing_fn` ONCE per call and answers per node in amortized O(1) — no revset is evaluated per row. Extraction happens inside the SAME `load_at_head` scope and the same stream pass as the lane assignment (ADR-0002), so `Repo::walk_graph` now loads each emitted commit (`store.get_commit_async`) exactly as the CLI's render loop does.
@@ -3239,6 +3241,7 @@ So that the (out-of-scope) Flutter log view renders from ONE `zanshin_graph_slic
 **When** `zanshin_graph_slice` is called once with the CLI default log revset
 **Then** the returned rows carry, per commit row, every field of `cli-log-parity.md` § Row model, derived from a single `load_at_head` snapshot
 **And** no second FFI call is needed to render the default `jj log` view.
+*(2026-09-30, Story 4.10: the commit-graph view renders from the topology call plus the op-pinned content call (Stories 4.10–4.12); this AC stays true of the slice, which keeps its one-call rows until 4.12.)*
 
 **Given** the medium fixture (octopus merge, multiple roots)
 **When** the structural-invariant test runs
@@ -3593,6 +3596,12 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 - 9.41 (the topology call's CLI command name is `log`; the content call resolves no config — open question 3)
 - 10.1 (`parentCountOf`, `totalCount`, `operationId`), 10.2, 10.4 (design question (a)), 10.5, 10.7, 10.11, 10.12
 - ADR-0002, FR-JJ-17, FR-GR-4 / NFR-P-2 (amended), FR-GR-5
+
+> **Delivered (2026-09-30, Story 4.10 done):** spec at `_bmad-output/implementation-artifacts/spec-4-10-graph-topology-content-split-op-pinned.md` (open questions answered in `decisions-review-4-10-to-4-13.md`).
+>
+> - **Topology (Rust API only).** `Repo::graph_topology(revset, prioritize, short_prefixes, anchors, with_timestamps) -> GraphTopology` in the new `crates/zanshin-jj/src/topology.rs`: `walk_graph`'s parse → load → `TopoGroupedGraph` + `prioritize_branch` setup, now one shared helper (`graph.rs::LogParse` / `LogSetup`), the precondition exactly once, and per node the commit id, jj's edges verbatim (targets resolved to node indices, a Missing edge has none; a miss is the new `RevsetError::DanglingEdge`) and `TopologyMeta` — the view half plus an exact index-only `parent_count`. Change ids come from one `commit_change_ids` pass, `all_count` from iterating `all()`, anchors are intersected with the revset and mapped to ascending node indices, committer timestamps (epoch ms, never the root) only on request. The operation id it loaded comes back in the `Ok` value.
+> - **Content (full stack).** `Repo::commit_contents(&self, operation_id, commit_ids) -> Vec<CommitContent>` in `commit_content.rs`: `load_operation` + `load_at`, no precondition/config/warnings, full hex ids only, request order; ladder `jj.invalid_input` → new `jj.operation_not_found` → `jj.invalid_input` → `jj.change_not_found` → `jj.jj_lib_error`. `commit_meta.rs`'s extraction is split into the view half and the object half; `walk_graph`'s `CommitMeta` is composed from both, values unchanged. FFI `zanshin_commit_contents` over `CommitContentsRequest` → `CommitContents` (61 exports), Dart `RepoHandle.commitContents` → `WarnedList<CommitContent>`, and the `defaultGraphAnchors` pre-fill.
+> - **Measured** (medians, § Measurements of the spec): topology-only walk 3.1 ms @ 10k; the whole topology call 22 ms @ 10k packed (6 ms @ 1k), timestamps +31 ms packed / ~1 s loose; a 60-id content page 1.9 ms packed / 3.5 ms loose on a cold commit cache. The slice path (`walk_graph`, `stream_lanes`, `collect_lanes`, `zanshin_graph_slice`) and its tests are untouched.
 
 ### Story 4.11: Dart layout engine on the worker isolate — the design's layered layout (compact / time / free) ported from the A/B spike [bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view. Re-planned 2026-09-26. The first version (landing lanes and graph width on `zanshin-graph`'s lane model) belongs to the `jj log` lane graph the view no longer draws. The layout A/B (`spikes/graph-layout-ab`: `README.md` incl. "Review 2026-09-26", `SPEC.md`) put the design's layout in Dart on the worker isolate; that is Ralph's decision. Bridge scope: pure Dart in `packages/zanshin_core`, plus moving the spike's dumper onto 4.10's API. The painter is Epic 10. Refined enough to build from; ACs to be written when scheduled.)*

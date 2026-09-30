@@ -25,6 +25,7 @@ use tempfile::TempDir;
 use zanshin_ffi::bookmark_ops::zanshin_bookmark_create;
 use zanshin_ffi::bookmarks::zanshin_bookmarks;
 use zanshin_ffi::change::zanshin_change;
+use zanshin_ffi::commit_contents::zanshin_commit_contents;
 use zanshin_ffi::commit_views::{zanshin_evolog, zanshin_interdiff, zanshin_show};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
@@ -852,11 +853,41 @@ fn symbols_that_run_no_precondition_never_carry_the_field() {
     let p = c_path(&root);
     // SAFETY: p is a valid NUL-terminated C string alive for the call.
     let detect = unsafe { read_and_free(zanshin_repo_detect(p.as_ptr())) };
+    // Story 4.10: the op-pinned content read, at the head read off disk (no snapshot).
+    let contents_request = {
+        let heads = fs::read_dir(root.join(".jj").join("repo").join("op_heads").join("heads"))
+            .expect("heads dir")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+        let op = b.create_string(&heads[0]);
+        let root_id = b.create_string(&"0".repeat(40));
+        let ids = b.create_vector(&[root_id]);
+        let req = fbs::CommitContentsRequest::create(
+            &mut b,
+            &fbs::CommitContentsRequestArgs {
+                kind: fbs::RequestKind::CommitContents,
+                operation_id: Some(op),
+                commit_ids: Some(ids),
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    };
+    // SAFETY: handle is live; `contents_request` is alive for the call.
+    let commit_contents = unsafe {
+        read_and_free(zanshin_commit_contents(
+            handle,
+            contents_request.as_ptr(),
+            contents_request.len(),
+        ))
+    };
 
     for (name, bytes) in [
         ("log_defaults", &log_defaults),
         ("workspace_root", &workspace_root),
         ("repo_detect", &detect),
+        ("commit_contents", &commit_contents),
     ] {
         let env = parse_envelope(bytes);
         assert!(env.ok(), "{name}: {:?}", env.error().and_then(|e| e.code()));

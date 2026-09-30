@@ -170,6 +170,31 @@ pub fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
     commit.id().hex()
 }
 
+/// Builds jj's changed-path index for every commit at the head operation of the workspace at
+/// `root` — the CLI's `jj debug index-changed-paths` (`cli/src/commands/debug/
+/// index_changed_paths.rs` @ v0.44.0, jj-lib `DefaultIndexStore::build_changed_path_index_at_operation`).
+///
+/// With it, `Commit::is_empty` answers from the index instead of loading the parents and
+/// merging their trees — the store kind Story 4.10's bench compares against. Writes index
+/// files only; no operation.
+///
+/// # Panics
+/// Panics on any jj-lib failure, or if the repo's index store is not jj's default one.
+pub fn build_changed_path_index(root: &Path) {
+    let (workspace, repo) = load(root);
+    let index_store = workspace.repo_loader().index_store();
+    let default_store = index_store
+        .downcast_ref::<jj_lib::default_index::DefaultIndexStore>()
+        .expect("the default index store");
+    pollster::block_on(default_store.build_changed_path_index_at_operation(
+        repo.op_id(),
+        repo.store(),
+        u32::MAX,
+        |_| {},
+    ))
+    .unwrap();
+}
+
 // ── Shared plumbing ───────────────────────────────────────────────────────────
 
 /// Loads the workspace at `workspace_root` and its head repo.

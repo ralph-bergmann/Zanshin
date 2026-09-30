@@ -441,7 +441,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── lane.rs                 # FR-GR-1 algorithm
-│   │       ├── stream.rs               # FR-GR-3 → lazy revset stream (`stream_lanes`, Story 4.3; was `cache.rs`), NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k)
+│   │       ├── stream.rs               # FR-GR-3 → lazy revset stream (`stream_lanes`, Story 4.3; was `cache.rs`), NO materialized cache (ADR-0002 AC-4 resolved: ~3 ms full graph derive @ 10k — 2026-09-30, Story 4.10: that is the index-only topology walk; the whole topology call is 22 ms @ 10k packed and since Story 4.8 a full row costs the commit loads, see ADR-0002 Addendum 2026-09-30)
 │   │       ├── slice.rs                # FR-GR-4 → return-all lanes for a revset (`collect_lanes`, Story 4.4; windowing deferred past WIP)
 │   │       └── output.rs               # FR-GR-2 JSON
 │   │

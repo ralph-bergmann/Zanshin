@@ -60,6 +60,14 @@ pub enum RevsetError {
     /// bad `config-id`, or a wrong-typed value. Never a silent fall-back to the builtins.
     #[error(transparent)]
     Config(#[from] ConfigError),
+    /// A Direct/Indirect edge of [`crate::Repo::graph_topology`] names a target that is not a
+    /// node of the walked graph (Story 4.10) — a violation of jj-lib's stream contract (a
+    /// target always arrives later in the stream), so unreachable through jj-lib itself.
+    #[error("dangling edge: target {target} is not a node of the graph")]
+    DanglingEdge {
+        /// Hex commit id of the edge's target.
+        target: String,
+    },
 }
 
 /// Resolve a jj revset expression to a deduplicated, fully materialized list of change ids.

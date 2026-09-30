@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 26 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 27 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -96,7 +96,8 @@ enum RequestKind : ubyte {
   ConfigFileWrite,
   ConfigGcList,
   ConfigGcDelete,
-  EnvironmentAdopt
+  EnvironmentAdopt,
+  CommitContents
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -509,6 +510,17 @@ table EnvironmentAdoptRequest {
   variables: [EnvironmentVariable];
 }
 
+/// Arguments of `zanshin_commit_contents` (Story 4.10) — the op-pinned batch content lookup.
+/// `operation_id` is required: the FULL hex id of the operation the topology call loaded (an
+/// absent field is `jj.invalid_input` "operation_id is required"). `commit_ids` are FULL hex
+/// commit ids; the answer comes back in this order. An absent or empty list is a valid, empty
+/// request.
+table CommitContentsRequest {
+  kind: RequestKind;
+  operation_id: string;
+  commit_ids: [string];
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -538,6 +550,7 @@ table EnvironmentAdoptRequest {
 //                ConfigUnsetResult ✓, ConfigFileText ✓, ConfigGcList ✓, ConfigGcResult ✓
 //                (`zanshin_config_file_write` answers ok with no payload)
 //   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload and no warnings)
+//   Story 4-10 : CommitContents ✓
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1363,6 +1376,26 @@ table ConfigGcResult {
   failed: [ConfigGcFailure];
 }
 
+/// The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
+/// operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
+/// by `commit_id`. Field names mirror GraphRowMeta's; every string is always present (an empty
+/// author or description is `""`).
+table CommitContent {
+  commit_id: string;                 // full hex, lowercase
+  author_name: string;               // may be empty (jj allows it)
+  author_email: string;              // may be empty (jj allows it)
+  committer_timestamp_millis: long;  // committer timestamp, millis since the Unix epoch
+  committer_tz_offset_minutes: int;  // timezone offset, minutes east of UTC
+  description: string;               // the FULL description; "" when empty
+  conflict: bool;
+  empty: bool;
+}
+
+/// `zanshin_commit_contents`' answer: one entry per requested id, in REQUEST order.
+table CommitContents {
+  contents: [CommitContent];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -1400,6 +1433,7 @@ union Payload {
   ConfigFileText,
   ConfigGcList,
   ConfigGcResult,
+  CommitContents,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
@@ -1430,8 +1464,8 @@ table Warning {
 /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-/// `zanshin_workspace_root`, `zanshin_log_defaults`, events, and every `zanshin_config_*` symbol
-/// except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
+/// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+/// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
 /// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
 /// started — on its ok envelope and on its error envelope (after a failure before the re-open it
