@@ -72,6 +72,13 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    `Repo::commit_contents` (`rust-inputs/`, every existing input byte-identical, plus
    `fixture-tiny-all`); the product's goldens (`tools/goldens.mjs`); and `tools/compare.mjs
    --core`, which checks the product engine's CLI against both references.
+10. **Done (2026-10-01, Story 4.13):** commit stacks, [`docs/graph-layout.md`](../../docs/graph-layout.md)
+   §4.8 — Dart-only, like the `compact` order: `dart/lib/src/stacks.dart` and `--stacks
+   <request.json>` (stack facts in the input, §2); the Rust binary rejects the flag. `tools/stacks.mjs`
+   checks that the design's gap walk at `e243dd2` yields jj-lib 0.44's edges, writes
+   `inputs/stacks-design-{default,all}.json` and the design's own `groupStacks` runs (the run-rule
+   oracle) and checks the Dart binary against them; `tools/goldens.mjs` writes the `stacks/`
+   goldens; `node tools/stacks.mjs facts <in> <out>` adds synthetic facts to any input.
 
 ## Run
 
@@ -103,7 +110,9 @@ node tools/friction.mjs             # ≈ 1 min; copies rust/ + dart/ to $TMPDIR
 node tools/loc.mjs
 /usr/bin/time -l rust/target/release/graph-layout layout --mode time --order optimized inputs/synth-100k.json /tmp/o.json
 
-# the product engine's goldens (Story 4.11; after js_oracle.mjs, which writes outputs/oracle/)
+# the product engine's goldens (Story 4.11; after js_oracle.mjs, which writes outputs/oracle/,
+# and — Story 4.13 — stacks.mjs, which checks the run-rule oracle and writes the stack inputs)
+node tools/stacks.mjs               # → inputs/stacks-design-*.json, outputs/oracle/stacks-design-*.runs.json
 node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/
 
 # the product engine as a third implementation (Story 4.11)

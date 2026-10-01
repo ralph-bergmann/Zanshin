@@ -694,6 +694,10 @@ class ZanshinWorker {
   /// boundary as one copy of the topology and one of the grid (`GraphLayoutResult`); both views
   /// own their bytes.
   ///
+  /// With [stacks] (Story 4.13) the layout groups linear runs into stack nodes (docs/graph-layout.md
+  /// §4.8): [expandedKeys], [collapsedKeys] and [keepOpenKeys] resolve against the topology in the
+  /// worker, and the grid has format version 2. With [stacks] false the key lists are ignored.
+  ///
   /// Throws [ArgumentError] — before anything is sent — if [revset], [prioritize],
   /// [shortPrefixes] or an anchor contains an interior NUL (U+0000), if [utcOffsetMin] is not
   /// within ±1440 or if [budget] is negative. Throws [ZanshinFfiException] on the topology call's
@@ -711,6 +715,10 @@ class ZanshinWorker {
     required LaneOrder order,
     required int utcOffsetMin,
     required int budget,
+    required bool stacks,
+    required List<String> expandedKeys,
+    required List<String> collapsedKeys,
+    required List<String> keepOpenKeys,
   }) async {
     // WHY here: the worker isolate would report a throw as `internal.dispatch_error` (same rule as
     // [graphTopology]).
@@ -731,6 +739,10 @@ class ZanshinWorker {
       order: order,
       utcOffsetMin: utcOffsetMin,
       budget: budget,
+      stacks: stacks,
+      expandedKeys: expandedKeys,
+      collapsedKeys: collapsedKeys,
+      keepOpenKeys: keepOpenKeys,
     );
     final WorkerResponse response = await _sendCommand(cmd);
     switch (response) {
@@ -1947,6 +1959,10 @@ void _workerEntry(_WorkerInit init) {
           :final LaneOrder order,
           :final int utcOffsetMin,
           :final int budget,
+          :final bool stacks,
+          :final List<String> expandedKeys,
+          :final List<String> collapsedKeys,
+          :final List<String> keepOpenKeys,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -1968,7 +1984,17 @@ void _workerEntry(_WorkerInit init) {
               // The ONE copy of the topology across the isolate boundary (Story 4.12's rule), and
               // the layout over the same native bytes — before the native buffer is freed.
               topology = TransferableTypedData.fromList([buf.bytes]);
-              layout = layOutTopology(buf.bytes, mode: mode, order: order, utcOffsetMin: utcOffsetMin, budget: budget);
+              layout = layOutTopology(
+                buf.bytes,
+                mode: mode,
+                order: order,
+                utcOffsetMin: utcOffsetMin,
+                budget: budget,
+                stacks: stacks,
+                expandedKeys: expandedKeys,
+                collapsedKeys: collapsedKeys,
+                keepOpenKeys: keepOpenKeys,
+              );
             } finally {
               buf.dispose();
             }

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'stacks.dart';
+
 /// Edge kinds, as stored in [LayoutInput.parKind] (SPEC §2).
 const int kindDirect = 0;
 const int kindIndirect = 1;
@@ -36,6 +38,11 @@ final class LayoutInput {
     required this.parStart,
     required this.parIdx,
     required this.parKind,
+    this.keys,
+    this.immutable,
+    this.parentCount,
+    this.hasRef,
+    this.workingCopy,
   }) : n = ts.length;
 
   final int nowMs;
@@ -56,14 +63,27 @@ final class LayoutInput {
   /// Target node index, or −1 for a `missing` parent.
   final Int32List parIdx;
   final Uint8List parKind;
+
+  // ---- Stack facts (SPEC §2, amended 2026-10-01, Story 4.13): read only by
+  // `parseInput(stacks: true)`, else null.
+  final List<String>? keys;
+  final Uint8List? immutable;
+  final Int32List? parentCount;
+  final Uint8List? hasRef;
+
+  /// `workingCopyNone` / `workingCopyOther` / `workingCopyThis` (stacks.dart).
+  final Uint8List? workingCopy;
 }
 
 final Converter<List<int>, Object?> _decoder = const Utf8Decoder().fuse(const JsonDecoder());
 
 /// Parses and validates the input JSON (SPEC §2). Throws [InputError].
 ///
+/// With [stacks] (Story 4.13) it also reads every node's stack facts (SPEC §2, amended), which
+/// are then required: V5 (`parent_count` ≥ 0, at most one `"this"`) and pairwise distinct keys.
+///
 /// Error messages are only built on failure, so the (timed) happy path does no string work.
-LayoutInput parseInput(Uint8List bytes) {
+LayoutInput parseInput(Uint8List bytes, {bool stacks = false}) {
   // A UTF-8 byte order mark is not part of a JSON text (RFC 8259 §8.1). The fused decoder skips
   // it, serde_json and JSON.parse reject it: SPEC §2 (clarified during diff) rejects it too.
   if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
@@ -105,10 +125,49 @@ LayoutInput parseInput(Uint8List bytes) {
   final parKind = Uint8List(total);
   // V3: seen[idx] == i + 1 ⇔ node i already has a parent with this idx.
   final seen = Int32List(n);
+  final keys = stacks ? List<String>.filled(n, '') : null;
+  final keyIndex = <String, int>{};
+  final immutable = stacks ? Uint8List(n) : null;
+  final parentCount = stacks ? Int32List(n) : null;
+  final hasRef = stacks ? Uint8List(n) : null;
+  final workingCopy = stacks ? Uint8List(n) : null;
+  var self = -1;
 
   var k = 0;
   for (var i = 0; i < n; i++) {
     final node = nodes[i] as Map<String, Object?>;
+
+    if (stacks) {
+      final key = node['key'];
+      if (key is! String) throw InputError('node $i: V5: "key" must be a string');
+      final earlier = keyIndex[key];
+      if (earlier != null) throw InputError('node $i: V5: key "$key" is also node $earlier\'s');
+      keyIndex[key] = i;
+      keys![i] = key;
+      final imm = node['immutable'];
+      if (imm is! bool) throw InputError('node $i: V5: "immutable" must be a boolean');
+      immutable![i] = imm ? 1 : 0;
+      final count = node['parent_count'];
+      if (count is! int || count < 0 || count >= 0x80000000) {
+        throw InputError('node $i: V5: "parent_count" must be an integer in [0, 2^31)');
+      }
+      parentCount![i] = count;
+      final ref = node['has_ref'];
+      if (ref is! bool) throw InputError('node $i: V5: "has_ref" must be a boolean');
+      hasRef![i] = ref ? 1 : 0;
+      final wc = node['working_copy'];
+      if (wc == null && !node.containsKey('working_copy')) throw InputError('node $i: V5: missing "working_copy"');
+      workingCopy![i] = switch (wc) {
+        null => workingCopyNone,
+        'other' => workingCopyOther,
+        'this' => workingCopyThis,
+        _ => throw InputError('node $i: V5: "working_copy" must be "this", "other" or null'),
+      };
+      if (wc == 'this') {
+        if (self >= 0) throw InputError('node $i: V5: node $self is "this" working copy too');
+        self = i;
+      }
+    }
 
     final tsValue = node['ts_ms'];
     if (tsValue != null) {
@@ -167,6 +226,50 @@ LayoutInput parseInput(Uint8List bytes) {
     parStart: parStart,
     parIdx: parIdx,
     parKind: parKind,
+    keys: keys,
+    immutable: immutable,
+    parentCount: parentCount,
+    hasRef: hasRef,
+    workingCopy: workingCopy,
+  );
+}
+
+/// Parses a stack request file (SPEC §2, amended 2026-10-01): `{"expanded":[…],"collapsed":[…],
+/// "keep_open":[…]}`, three required arrays of strings, against an input parsed with
+/// `parseInput(stacks: true)`. Each key resolves to the node whose `key` equals it; an unknown key
+/// is dropped. Throws [InputError].
+StackInput parseStackRequest(Uint8List bytes, LayoutInput input) {
+  final keys = input.keys;
+  if (keys == null) throw InputError('a stack request needs an input parsed with stack facts');
+  final Object? doc;
+  try {
+    doc = _decoder.convert(bytes);
+  } on FormatException catch (e) {
+    throw InputError('stack request: invalid JSON: ${e.message}');
+  }
+  if (doc is! Map<String, Object?>) throw InputError('stack request: expected an object');
+  final request = doc;
+  final index = <String, int>{for (var i = 0; i < keys.length; i++) keys[i]: i};
+  Int32List resolve(String field) {
+    final list = request[field];
+    if (list is! List<Object?>) throw InputError('stack request: "$field" must be an array of strings');
+    final out = <int>[];
+    for (final key in list) {
+      if (key is! String) throw InputError('stack request: "$field" must be an array of strings');
+      final i = index[key];
+      if (i != null) out.add(i);
+    }
+    return Int32List.fromList(out);
+  }
+
+  return StackInput(
+    immutable: input.immutable!,
+    parentCount: input.parentCount!,
+    hasRef: input.hasRef!,
+    workingCopy: input.workingCopy!,
+    expandedNodes: resolve('expanded'),
+    collapsedNodes: resolve('collapsed'),
+    keepOpenNodes: resolve('keep_open'),
   );
 }
 

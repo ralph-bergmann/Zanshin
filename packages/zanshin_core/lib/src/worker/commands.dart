@@ -239,6 +239,10 @@ final class GraphLayoutCommand extends WorkerCommand implements HandleScopedComm
     required this.order,
     required this.utcOffsetMin,
     required this.budget,
+    required this.stacks,
+    required this.expandedKeys,
+    required this.collapsedKeys,
+    required this.keepOpenKeys,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -269,6 +273,19 @@ final class GraphLayoutCommand extends WorkerCommand implements HandleScopedComm
 
   /// The work units the `compact` lane order may spend, ≥ 0.
   final int budget;
+
+  /// Whether the layout groups linear runs into stacks (Story 4.13, docs/graph-layout.md §4.8);
+  /// `false` is 4.11's layout and ignores the key lists.
+  final bool stacks;
+
+  /// Keys of runs the user expanded (a run's key is its oldest member's).
+  final List<String> expandedKeys;
+
+  /// Keys of runs the user collapsed.
+  final List<String> collapsedKeys;
+
+  /// Keys of nodes whose run stays expanded whatever else holds (the selection, a go-to target).
+  final List<String> keepOpenKeys;
 }
 
 /// Detect the repository kind at [path] (FR-JJ-17).

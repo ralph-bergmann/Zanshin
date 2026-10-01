@@ -18,7 +18,9 @@ import 'layout_request.dart';
 // view and the grid view, or into the error the call ended with.
 
 /// The worker side of `RepoHandle.graphLayout`: reads [topologyEnvelope] (the
-/// `zanshin_graph_topology` reply, possibly a view over native memory) and lays it out.
+/// `zanshin_graph_topology` reply, possibly a view over native memory) and lays it out — with
+/// [stacks] (Story 4.13) also grouping its runs by the request [expandedKeys], [collapsedKeys] and
+/// [keepOpenKeys] ([buildStackInput]); without it the key lists are ignored.
 ///
 /// Returns the grid buffer ([GraphGridView]'s format), or the [LayoutContractException] the
 /// engine's validation threw. Returns neither when the envelope is an error envelope, the view
@@ -30,11 +32,26 @@ import 'layout_request.dart';
   required LaneOrder order,
   required int utcOffsetMin,
   required int budget,
+  required bool stacks,
+  required List<String> expandedKeys,
+  required List<String> collapsedKeys,
+  required List<String> keepOpenKeys,
 }) {
   try {
     final topology = GraphTopologyView.fromEnvelope(topologyEnvelope);
     final LayoutInput input = buildLayoutInput(topology, utcOffsetMin: utcOffsetMin);
-    return (grid: computeGraphGrid(input, mode: mode, order: order, budget: budget), violation: null);
+    final StackInput? stackInput = stacks
+        ? buildStackInput(
+            topology,
+            expandedKeys: expandedKeys,
+            collapsedKeys: collapsedKeys,
+            keepOpenKeys: keepOpenKeys,
+          )
+        : null;
+    return (
+      grid: computeGraphGrid(input, mode: mode, order: order, budget: budget, stacks: stackInput),
+      violation: null,
+    );
   } on LayoutContractException catch (e) {
     return (grid: null, violation: e);
   } on ZanshinFfiException {
@@ -69,8 +86,10 @@ import 'layout_request.dart';
   }
   final TransferableTypedData? grid = reply.grid;
   if (grid == null) {
-    // The worker refused the topology's values; building the input again names why.
+    // The worker refused the topology's values; building the inputs again names why (the stack
+    // facts' refusals do not depend on the request's keys).
     buildLayoutInput(topology, utcOffsetMin: 0);
+    buildStackInput(topology, expandedKeys: const [], collapsedKeys: const [], keepOpenKeys: const []);
     throw StateError('a graphLayout reply carries neither a grid nor an error');
   }
   return (topology: topology, grid: GraphGridView.fromBytes(grid.materialize().asUint8List()));

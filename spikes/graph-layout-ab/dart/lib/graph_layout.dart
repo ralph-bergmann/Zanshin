@@ -6,3 +6,4 @@ export 'src/input.dart';
 export 'src/lane_order.dart';
 export 'src/layout.dart';
 export 'src/output.dart';
+export 'src/stacks.dart';

@@ -7,6 +7,9 @@ which is now a pointer. Paths below that start with `rust/`, `dart/`, `tools/`, 
 only (§12, §13). The dated amendments of Story 4.11 are §2, §3, §4.2, §4.3, §4.5, §7.3, §11.2,
 §12 and the new §13.)*
 
+*(Amended 2026-10-01, Story 4.13: the dated amendments of Story 4.13 are §2, §3, §4.8 (new), §6,
+§7.3, §9 and §13.)*
+
 The contract for both implementations (`rust/`, `dart/`). Each one is written from this
 document alone and MUST produce **byte-identical output** for every input × mode × order.
 Where this spec and the design differ, the spec wins; every deliberate difference is listed
@@ -159,6 +162,30 @@ from `Repo::commit_contents` at the topology's operation. Three of the rules abo
   the dumper passes the anchors `[trunk(), present(@)]`, which yields exactly the three classes
   listed above.
 
+*Amended 2026-10-01, Story 4.13: stack facts.* A node may carry five more fields, the facts §4.8's
+run rule reads:
+
+| field | meaning |
+|---|---|
+| `key` | the node's key (a string): its change id, or its commit id when it is hidden or divergent (Story 10.1's key rule); request keys resolve against it |
+| `immutable` | bool: the commit is in `::(immutable_heads() \| root())` |
+| `parent_count` | int ≥ 0: the commit's real parent count, Missing parents included (Story 4.10's `parent_count`; it can exceed the number of `parents` entries) |
+| `has_ref` | bool: a bookmark (local or remote) or a tag points at it |
+| `working_copy` | `"this"` for this workspace's `@`, `"other"` for another workspace's working copy, `null` for none |
+
+- They are read only with a stack request (`--stacks`, §6). Then all five are required on every
+  node (an absent key is invalid; `working_copy` needs an explicit `null`), the keys are pairwise
+  distinct, and at most one node is `"this"`; a violation is invalid input (V5, exit 2). Without
+  `--stacks` they are unknown keys and ignored, as before.
+- Producers write them after `parents`, in the table's order.
+- **V5** (the engine's check, §13): the fact arrays have one entry per node, `parent_count` ≥ 0,
+  `working_copy` is one of the three values with at most one `"this"`, and every resolved request
+  node lies in [0, n).
+
+**The stack request** is its own file, `{"expanded":[…],"collapsed":[…],"keep_open":[…]}`: three
+required arrays of strings. Each key resolves to the node whose `key` equals it; a key no node
+carries is dropped (§4.8 step 3). Unknown fields are ignored, as in the input.
+
 §7.2 describes how the design sample is converted to this format.
 
 ## 3. Output
@@ -197,6 +224,24 @@ Two conforming files are compared with `cmp`.
     instant in epoch ms for `day`.
   - `start` / `end` are the bucket's first and last row.
   - Labels ("10m", "Yesterday", "Sep 23") are the painter's.
+
+*Amended 2026-10-01, Story 4.13: the output with stacks (§4.8).* Without a stack request nothing
+changes: there is no `runs` key. With one:
+- `rows` is the grouped rows′ (§4.8 step 7); `lanes` stays the ungrouped value.
+- `nodes` has n + S entries: the n input nodes, index-aligned as before, then the S stack nodes in
+  run order. A hidden member (a member of a collapsed run) is `null`: it has no position.
+- `edges` are the grouped graph's (§4.8 step 5), in the same order rule: by child ascending — the
+  input nodes, then the stack nodes — then by position. `from` / `to` may be stack node indices.
+  A stack node's edge is `direct`. Index order is then no topological order: an edge into a stack
+  node has a parent index below its child's (p < n ≤ s).
+- `buckets` as before, over the grouped nodes.
+- After `buckets`, `"runs":[{"members":[…],"state":"collapsed","node":12}]`: one entry per run, in
+  run order (by newest member index ascending); `members` are input node indices, oldest first;
+  `state` is `collapsed` or `expanded`; `node` is the run's stack node, or `null` when expanded.
+
+```json
+{"mode":"compact","order":"greedy","unit":1,"rows":3,"lanes":1,"nodes":[{"row":2,"lane":0,"col":0},null,null,{"row":0,"lane":0,"col":0},{"row":1,"lane":0,"col":0}],"edges":[{"from":4,"to":0,"kind":"direct","route":"straight","blocked":false},{"from":3,"to":4,"kind":"direct","route":"straight","blocked":false}],"buckets":[],"runs":[{"members":[2,1],"state":"collapsed","node":4}]}
+```
 
 ## 4. Algorithm
 
@@ -555,6 +600,177 @@ budget; on synth-10k the budget binds.
 - The viewer shows it since bundle v2 (2026-09-26), which stores `compact`'s own lane array per
   mode (README, Viewer).
 
+### 4.8 Stacks [stacks] — Dart-only (not in the Rust A/B reference), 2026-10-01
+
+*(Added 2026-10-01, Story 4.13.)* With a stack request (§2, §6 `--stacks`, §13), linear runs of
+commits collapse into one card each. Ralph's rule (2026-09-28): neither a toggle nor the request
+as a whole ever changes a column; the graph may only compact vertically. So the engine first lays
+out the ungrouped graph exactly as §4.1–§4.7 do, and then groups the runs and computes new rows
+for the fixed columns. Only `dart/` and the product engine implement it; the Rust binary rejects
+`--stacks` as an unknown flag (exit 2). Without a stack request nothing here runs, and the output
+is the ungrouped one byte for byte.
+
+Notation: LP, fp, C and pos are §4.1's; y, lane, col and the packing's visit order (y, priority, i)
+are those of the finished ungrouped layout (after §4.7 when the order is `compact`); the facts
+`key`, `immutable`, `parent_count`, `has_ref` and `working_copy` are §2's.
+
+**1. Candidates.** cand(i) ⇔ all of:
+- `is_root` is false and `working_copy` is null (no workspace's working copy);
+- `has_ref` is false;
+- `parent_count` = 1;
+- i's §2 parent list has exactly one entry, and it is `direct` (so LP(i) = [fp(i)]);
+- |C(i)| = 1: exactly one layout edge, Direct or Indirect, has i as its parent.
+
+A conflict does not matter. A node whose one edge is Indirect or Missing, or that has several
+Indirect edges (a hidden merge parent), is no candidate; neither is a node with one Direct and one
+Indirect child edge (a fork).
+
+**2. Runs.** link(i) = c, where C(i) = {c}, iff cand(i), cand(c) and immutable(c) = immutable(i);
+cand(c) makes i the only layout parent of c. A **run** is a maximal chain m_1 → m_2 → … → m_k with
+link(m_j) = m_{j+1} and k ≥ 2: m_1 is its oldest member (largest index), m_k its newest. A node is
+in at most one run, and the immutable boundary splits a chain into two runs. Runs are numbered by
+m_k ascending; a run's key is key(m_1).
+
+**3. State.** The request's three key lists resolve to node sets (§2: a key resolves to the node
+whose `key` equals it, an unresolved key is dropped): EX (`expanded`), CO (`collapsed`) and KO
+(`keep_open`). Let A be the node whose `working_copy` is `"this"`, if there is one, together with
+every node reached from it by repeatedly stepping to an LP parent whose `immutable` is false. A run
+is **expanded** iff
+- one of its members is in KO; else
+- m_1 is in EX; else
+- m_1 is not in CO, and m_k is in A.
+
+So a run of mutable ancestors of this workspace's `@` starts expanded, every other run collapsed;
+an explicit key wins over that default (EX over CO when both name m_1), and KO wins over all. A key
+in EX or CO that is no run's m_1, and a key in KO that is no member, changes nothing. The S
+collapsed runs get the **stack nodes** n, n + 1, …, n + S − 1, in run order; their members are
+**hidden**. img(v) is v for a visible node and the stack node of v's run for a hidden one.
+
+**4. Columns.** Every visible node keeps its lane and col; a stack node takes lane(m_k) and
+col(m_k), so the edge into the run's child stays where it was; `lanes` is the ungrouped value. A
+run is **split** iff col(m_1) ≠ col(m_k). That can happen only between m_1 and m_2: m_1 may continue
+its parent's lane beside the parent's own merge reservation (§4.3 excepts only fp's own interval),
+and then m_2, which may not, takes another lane; every later member continues its predecessor,
+whose only child it is, so the chain m_2 … m_k shares one lane and lies there without a gap.
+
+**5. The grouped graph G′.** Its nodes are the visible nodes and the stack nodes. Its edges, in
+§3's order (by child ascending — the input nodes, then the stack nodes — then by position):
+- a visible child v keeps every layout edge (p, v) as (img(p), v), with its kind and its pos;
+- a stack node s has one edge (img(fp(m_1)), s), `direct`, pos 0.
+
+fp′(v) is v's first grouped parent. A hidden node with a visible child is always some m_k (every
+other member's only child is a member), so Y below gives Y(img(p)) = y(p) for every parent p of a
+visible child. The newest member's child edge keeps its kind, so a stack node's child edge can be
+`indirect`; its parent edge is always `direct`.
+
+**6. Rows.** Y(v) = y(v) for a visible node, Y(s) = y(m_k) for a stack node. The grouped rows y′
+are the **least** solution with y′ ≥ 0 of these constraints, each y′(target) ≥ y′(source) + δ with
+δ ≥ 0:
+- **(E)** y′(v) ≥ y′(p) + U for every grouped edge (p, v).
+- **(F)**, `free` only. W is §4.2's walk (T ascending, i descending); X(w_0) = 0 and X(w_j) =
+  X(w_{j−1}) + gap(T(w_j) − T(w_{j−1})), the ungrouped walk's gaps summed. W′ is W without the
+  hidden nodes, each m_k replaced by its stack node, which takes X(m_k) and T(m_k). For
+  consecutive u, v in W′: y′(v) ≥ y′(u) + X(v) − X(u).
+- **(C)** Per column, take the grouped nodes of that column by ascending Y (distinct there). A
+  **segment** is a maximal stretch of consecutive nodes in which every node's fp′ is the node right
+  before it. For each two adjacent segments, S below with its top node u and T above with its
+  lowest node h:
+  - if h is the stack node of a split run, or h has no grouped parent: t = h, δ₁ = 2U, δ₂ = U;
+  - otherwise: t = fp′(h), δ₁ = U, δ₂ = 0;
+
+  and then y′(t) ≥ y′(u) + δ₁, and y′(t) ≥ y′(c) + δ₂ for every grouped edge (x, c) with x in S
+  and pos ≥ 1.
+
+  This is §4.3's packing rule restated on the grouped rows: T's interval [a, b) starts at or above
+  the end of S's, which counts S's cards and the merges routed up S's column. Two of §4.3's terms
+  are dropped: a continuation child in another column (it leaves through the stub, §4.5), and, for a
+  split run's stack node, the start one pitch above its parent: it reserves its column from its
+  own card (D11).
+
+**Procedure.** Visit the grouped nodes in the ungrouped visit order (y, priority, i) — hidden nodes
+dropped, each m_k replaced by its stack node, so ascending in Y — in groups of equal Y. Every y′
+starts unset. For one group, repeat a pass over its nodes, y′(v) = the maximum of 0 and of
+y′(source) + δ over every constraint on v whose source is set, until a pass changes no value; then
+take the next group. (The order of a pass changes only the number of passes, never the result; the
+implementations alternate the direction.)
+
+**Termination, and why rows never grow.** Y satisfies every constraint:
+- (E): a visible child has y(v) ≥ y(p) + U = Y(img(p)) + U; a stack node has Y(s) = y(m_k) ≥
+  y(m_1) ≥ y(fp(m_1)) + U = Y(img(fp(m_1))) + U.
+- (F): along W, y(w_j) ≥ y(w_{j−1}) + gap(T(w_j) − T(w_{j−1})) (§4.2 step 3); summing gives
+  y(v) − y(u) ≥ X(v) − X(u) for every u before v in W.
+- (C): let ĥ be h itself, or m_1 for a non-split stack node, or m_2 for a split one. ĥ heads a
+  chain of straight edges (a §4.7 segment) in its ungrouped column: had it continued the node below
+  it, that node (or its image) would be fp′(h) and right before h, and h would not head T. In the
+  final columns the reservations of such chains are disjoint (§4.3's first fit; §4.7's exchanges
+  keep them so), so every interval [a′, b′) of a node below ĥ in that column ends at or below ĥ's
+  start a. Every node x of S lies below the run's members in that column, so b(x) ≤ a, where
+  b(x) ≥ Y(x) + 2U and b(x) ≥ Y(c) + U for each merge child c of x (§4.3). Now a = Y(t) + U when
+  t = fp′(h) (a = y(fp(ĥ)) + U), a = Y(h) when h has no parent, and a = y(m_1) + U ≤ y(m_2) ≤ Y(h)
+  for a split stack node. Each case gives Y(t) ≥ Y(u) + δ₁ and Y(t) ≥ Y(c) + δ₂.
+
+So every constraint has Y(target) ≥ Y(source) + δ ≥ Y(source): its source lies in the same group or
+an earlier one, and inside a group only constraints with δ = 0 occur. After a group's first pass
+every node of it is set, and each later pass only copies values along δ = 0 constraints, so the
+loop ends after at most |group| + 1 passes. Values only rise from below, so the result is the least
+solution; and since Y is a solution, **y′ ≤ Y** for every grouped node. Collapsing never raises a
+node's y, and `rows` never grows. With nothing collapsed, G′ is the ungrouped graph, whose y is the
+least solution of (E) and (F) (§4.2) and satisfies (C), so y′ = y exactly.
+
+**7. Then.** §4.4 and §4.5 run on G′ with the fixed lanes: `blocked` over per-lane y′ lists (built in
+the visit order above, which is ascending in y′ within a lane), routes with the grouped pos. In
+`free`, the day buckets are §4.2 step 4 over W′: the visible nodes whose `is_root` is false and the
+stack nodes, a stack node in the day of T(m_k). rows′ = max y′ + U; `lanes` stays the ungrouped
+value.
+
+**Output** (§3, amended). The node arrays hold n + S entries: the input nodes, a hidden member with
+no position (−1, JSON `null`), then the stack nodes in run order. The edges are G′'s in §3's order
+and may reference stack nodes; the buckets are step 7's. Then the runs, ordered by newest member:
+each one's members (input node indices, oldest first), its state (`collapsed` / `expanded`) and its
+stack node (or none). `rows` is rows′, `lanes` the ungrouped value. Without a stack request there
+are no runs and the output is §3's ungrouped one, byte for byte.
+
+**V5** (§2, amended). The stack facts have one entry per node; `parent_count` ≥ 0; `working_copy` is
+none, other or this, with at most one this; every resolved request node lies in [0, n). The JSON
+layer also requires all five facts on every node, pairwise distinct keys and three arrays of
+strings in the request file. A violation is invalid input (exit 2; the product's
+`LayoutContractException('V5', …)`), checked before anything is laid out.
+
+**Consequences.**
+- In `compact`, a stack node sits one row above its parent, where m_1 was, unless a column
+  constraint pushes it up; everything above moves down by the members it no longer stacks.
+- In `free`, a stack node keeps y(m_k) unless the run had stretched the time axis to one pitch per
+  commit (§4.2 step 3); only then do its descendants move down. A run whose commits lie a day apart
+  (m_1 a day after its parent too: the gap, 20 units, exceeds U) loses its member cards and keeps
+  every other y.
+- I1–I6 hold on the grouped layout, a stack node counting as (T(m_k), m_k) in I6; I7 holds (§7.3).
+
+**Known limit (D11).** A split run's stack node reserves its column from its own card, so its parent
+edge, which branches off m_1's parent in another column, rises in the stack's column below the card
+without a reservation and may pass behind a lower card there. §4.3's start one pitch above the
+parent would avoid that, but would let collapsing grow `rows`.
+
+**The design sample, by hand.** `e243dd2` (52 commits, §7.2), `compact`, greedy, the default
+request: no run lies in A (the onboarding chain under `@` has no run), so every run collapses.
+- `all` (7 runs): `rows` 19 → 15. The longest chain, root → … → vruxwmqv → the qmsvtlkr run →
+  sxmtvqno → lvqrnkmw → potwkszn → ompktvxr → yxlnqwmk → srkvzmop, passes three runs:
+  mzvwutvl–zsuskuln and nvkqlxsp–rtmswzvk below vruxwmqv save one row each (vruxwmqv 9 → 7), and
+  qmsvtlkr–wrnxqpsz–ynkplrtv saves two (sxmtvqno 13 → 9): srkvzmop 18 → 14. No column constraint
+  binds on it (in ntvrqkzo's column the segment below ends at romwxqkn, row 5, and its merge child
+  wlmpxokt, row 8, both below sxmtvqno's 9).
+- `default` (6 runs): `rows` 9 → 8. srkvzmop (row 8) has two Indirect parents. kxwsnptm drops
+  from 6 to 4 (the mwoqxlpn run, four members, becomes one card at 2; vtxnbqrs stays at 3).
+  The qmsvtlkr run becomes one card at 2, which alone would put sxmtvqno at 3 — but a column
+  constraint binds: in zqklmwts's column, the nqxwrptl run's card (2) and mrplxqwv (3) form the
+  segment below zqklmwts, whose first parent is sxmtvqno, so y′(sxmtvqno) ≥ y′(mrplxqwv) + 1 = 4
+  (in the ungrouped layout, zqklmwts's reservation starts one row above sxmtvqno and mrplxqwv's
+  ends two above mrplxqwv). So potwkszn 7 → 6 and srkvzmop 8 → 7. *(The story's planning estimate,
+  9 → 7, missed this constraint.)*
+
+With the `compact` order the columns differ, and so do the constraints: `all` 19 → 16, `default`
+9 → 8 (measured, not derived by hand). `golden_test.dart` asserts the greedy counts. If the engine
+disagrees, re-derive by hand before changing a number.
+
 ## 5. Complexity: design step → spike
 
 | step (GV) | design | spike | spike cost |
@@ -602,6 +818,16 @@ bench  --mode compact|time|free --order greedy|optimized --runs N [--warmup W] <
   `layout` and `bench`: the `compact` order's search budget (§4.7; the other orders ignore it).
   `tools/goldens.mjs` uses it for the budget-cut goldens. The Rust binary has no `--budget` (an
   unknown flag, exit 2); the product engine's CLI (§13) always runs the default.
+- **Dart-only (2026-10-01, Story 4.13):** `--stacks <request.json>`, in `layout` and `bench`, with
+  `--mode compact` or `free` (with `time` it is a usage error, exit 2): the
+  stack request of §2 (amended), which also makes the input's stack facts required; the layout
+  then runs §4.8 and writes §3's output with stacks. `bench` times it as one more phase, `stacks`,
+  after `ordering` (the request is parsed in `parse`; `total` still spans layering … the last
+  phase), and its digest (§8.4) runs over the n + S node entries and the grouped edges, a hidden
+  member counting as row = col = lane = −1 (d stays in [0, P): the mod is the non-negative
+  remainder). An unreadable or malformed request file is exit 2, as is a stack-fact violation of the
+  input. The Rust binary has no `--stacks` (an unknown flag, exit 2). The product engine's CLI
+  (§13, `packages/zanshin_core/benchmark/graph_layout_cli.dart`) takes it too.
 
 ## 7. Verification
 
@@ -690,6 +916,17 @@ If an implementation disagrees, re-derive by hand before "fixing" code.
   - each bucket's start and end are the least and the largest y of its members;
   - there is no bucket iff there is no node with `is_root` false.
 - I6: in `free`, y never decreases in (T asc, i desc) order.
+
+*Amended 2026-10-01, Story 4.13: with stacks (§4.8).*
+- I1–I6 hold on the grouped layout: over the visible nodes and the stack nodes and the grouped
+  edges, with the grouped pos and fp′; in I5 a stack node lies in the day of T(m_k); in I6 a stack
+  node sorts as (T(m_k), m_k).
+- I7 (columns): every visible node keeps its ungrouped lane and col, so do the members of an
+  expanded run, a stack node sits in its newest member's lane and col, and `lanes` is the ungrouped
+  value — for every stack state (all collapsed, all expanded, any subset) and without stacks.
+- Compaction: y′ ≤ the ungrouped y for every visible node, y′(s) ≤ y(m_k) for every stack node, and
+  `rows` ≤ the ungrouped `rows`. With every run expanded, the nodes, edges, buckets and `rows` equal
+  the ungrouped output.
 
 ## 8. Benchmark protocol
 
@@ -795,6 +1032,13 @@ Record the CPU, the OS, and the rustc and Dart versions.
 - **D9 — a design defect is kept:** blocked-merge routing (§4.5).
 - **D10 — recursion and Intl calls are removed** (§5). For n = 0, rows = lanes = 0; the design
   reports 1 lane.
+- **D11 — a split run's stack node is unprotected below its card** *(added 2026-10-01, Story
+  4.13)*. The design re-runs its whole layout on the grouped commit list, so its columns re-pack on
+  every toggle; §4.8 keeps the ungrouped columns (Ralph, 2026-09-28) and compacts only rows. A split
+  run's stack node reserves its column from its own card, so its parent edge (a branch-off from
+  m_1's parent) rises in the stack's column below the card without a reservation and may pass
+  behind a lower card there. Reserving from one pitch above the parent, as §4.3 does, would let
+  collapsing grow `rows`.
 
 ## 10. Project layout and detaching
 
@@ -954,3 +1198,32 @@ topology call on every request (ADR-0002; timestamps iff `free`), builds the inp
 in the worker, and replies with the topology and the grid as two `TransferableTypedData` (one
 copy each). A contract violation crosses as the `LayoutContractException` itself, after the
 topology, whose own errors (and its precondition and warnings) reach the caller first.
+
+*Amended 2026-10-01, Story 4.13: stacks (§4.8).*
+- **Engine.** `stacks.dart` joins the engine core (same imports rule). `computeGraphGrid` takes an
+  optional `StackInput` (`layout_input.dart`): per node `immutable`, `parentCount`, `hasRef` and a
+  `workingCopy` code (0 none, 1 another workspace's, 2 this workspace's `@`), plus the request as
+  three node-index lists (`expandedNodes`, `collapsedNodes`, `keepOpenNodes`); the engine never
+  sees a key. It validates V1–V4, then V5 (§2, amended: four fact arrays of length n, codes 0–2
+  with at most one 2, `parentCount` ≥ 0, every request index in [0, n)), throwing
+  `LayoutContractException('V5', …)` before anything is laid out; it runs §4.8 after the lane
+  order. Without a `StackInput` it is 4.11's engine, byte for byte, grid format version 1 included.
+- **Input builder** (`buildStackInput`): the facts from the topology — `immutable` from its
+  immutable flag, `parentCount` from `parent_count`, `hasRef` iff a bookmark entry (local or
+  remote) or a tag points at the node, `workingCopy` 2 for this workspace's `@` (its flag), else
+  1 if any other workspace's working copy is the node, else 0. Request keys resolve by Story 10.1's
+  key rule through the topology's id lookups: a key that is a change id names its one node that is
+  neither hidden nor divergent; a key that is a commit id names its node only when that node is
+  hidden or divergent; anything else is dropped.
+- **Result.** With stacks the grid is format version 2: version 1's header and twelve arrays (the
+  node arrays with n + S entries, −1 for a hidden member; edges and buckets of the grouped layout),
+  then header slots 33–45 — S, R (runs), M (members), and the byte offset and count of five more
+  arrays: node run (int32 × n, the run index or −1), run state (uint8 × R; 0 expanded, 1
+  collapsed), run node (int32 × R; the stack node or −1), run start (int32 × R + 1) and run members
+  (int32 × M, oldest first). The header is 184 bytes; every array starts 8-aligned after it.
+  `GraphGridView` reads both versions; its doc comment is the contract. With stack nodes the index
+  order is no topological order: an edge into a stack node has a parent index below its child's
+  (p < n ≤ s).
+- **Request.** `RepoHandle.graphLayout` gains `stacks` (default `false`) and the key lists
+  `expandedKeys`, `collapsedKeys` and `keepOpenKeys` (default empty); with `stacks` false the lists
+  are ignored and the result is 4.11's.

@@ -189,6 +189,21 @@ final class RepoHandle {
   /// - [mode], [order] — pre-filled [defaultLayoutMode] (`free`) and [defaultLaneOrder]
   ///   (`compact`).
   /// - [budget] — the `compact` order's work units, pre-filled [defaultLayoutBudget].
+  /// - [stacks] — Story 4.13's commit stacks (docs/graph-layout.md §4.8): linear runs grouped into
+  ///   stack nodes, the columns kept, only rows compacted; the grid then has format version 2 and
+  ///   carries the runs. The "Group stacks" switch (Story 10.7) decides it; `false` here is 4.11's
+  ///   layout byte for byte and ignores the three key lists.
+  /// - [expandedKeys], [collapsedKeys] — the runs the user toggled (Story 10.17), by a run's key:
+  ///   the bare key of its oldest member, `runMembers[runStarts[k]]` in the grid (no design-style
+  ///   `grp:` prefix).
+  /// - [keepOpenKeys] — node keys whose run stays expanded whatever else holds: the selected card
+  ///   and a pending go-to-change target (Story 10.5). They name nodes; a collapsed stack's own
+  ///   card is no node, so selecting it keeps nothing open.
+  ///
+  ///   Keys follow Story 10.1's key rule — a change id, or the commit id of a hidden or divergent
+  ///   commit — and resolve in the worker; a key that names no current run (for [keepOpenKeys]: no
+  ///   member) is ignored. Without an explicit key a run is collapsed, except a run of mutable
+  ///   ancestors of this workspace's `@`.
   ///
   /// The topology is re-derived from head on every call and nothing is kept between calls
   /// (ADR-0002) — re-request on an `OpHeadsChangedEvent`. The topology's `warnings` and
@@ -210,6 +225,10 @@ final class RepoHandle {
     LayoutMode mode = defaultLayoutMode,
     LaneOrder order = defaultLaneOrder,
     int budget = defaultLayoutBudget,
+    bool stacks = false,
+    List<String> expandedKeys = const [],
+    List<String> collapsedKeys = const [],
+    List<String> keepOpenKeys = const [],
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -224,6 +243,10 @@ final class RepoHandle {
       order: order,
       utcOffsetMin: utcOffsetMin,
       budget: budget,
+      stacks: stacks,
+      expandedKeys: expandedKeys,
+      collapsedKeys: collapsedKeys,
+      keepOpenKeys: keepOpenKeys,
     );
   }
 

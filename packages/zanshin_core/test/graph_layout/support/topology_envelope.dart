@@ -11,12 +11,21 @@ import 'package:zanshin_core/src/graph_layout/layout_input.dart';
 
 /// A synthetic `GraphTopology` envelope of `edges.length` nodes: node i's edges are `edges[i]`,
 /// each `(target, kind)` (a Missing edge's target is −1 unless given otherwise); [roots] carry the
-/// root flag; [timestamps] (one per node) are present iff given; [anchors] are node lists.
+/// root flag; [timestamps] (one per node) are present iff given; [anchors] are node lists. For the
+/// stack facts (Story 4.13): [flags] adds flag bits per node, [parentCounts] overrides a node's
+/// parent count (default: its edge count), [refs] are `(node, kind, remote)` entries (a null
+/// remote is the local one), [workingCopies] `(node, workspace)` entries; node i's change id is
+/// 16 bytes of `changeIds[i] ?? i` (two nodes may share one) and its commit id 20 bytes of i.
 Uint8List topologyEnvelope(
   List<List<(int, fbs.GraphEdgeKind)>> edges, {
   Set<int> roots = const {},
   List<int>? timestamps,
   List<List<int>> anchors = const [],
+  Map<int, int> flags = const {},
+  Map<int, int> parentCounts = const {},
+  List<(int, fbs.TopologyRefKind, String?)> refs = const [],
+  List<(int, String)> workingCopies = const [],
+  Map<int, int> changeIds = const {},
 }) {
   final int n = edges.length;
   final edgeStart = <int>[0];
@@ -34,17 +43,16 @@ Uint8List topologyEnvelope(
       operationId: 'ab' * 64,
       allCount: n,
       commitIds: [for (var i = 0; i < n; i++) ...List.filled(20, i & 0xFF)],
-      changeIds: [for (var i = 0; i < n; i++) ...List.filled(16, i & 0xFF)],
+      changeIds: [for (var i = 0; i < n; i++) ...List.filled(16, (changeIds[i] ?? i) & 0xFF)],
       commitIdStride: 20,
       changeIdStride: 16,
       flags: [
-        for (var i = 0; i < n; i++)
-          if (roots.contains(i)) GraphTopologyView.flagRoot else 0,
+        for (var i = 0; i < n; i++) (roots.contains(i) ? GraphTopologyView.flagRoot : 0) | (flags[i] ?? 0),
       ],
       changeOffset: List.filled(n, 0),
       changeIdPrefixLen: List.filled(n, 1),
       commitIdPrefixLen: List.filled(n, 1),
-      parentCount: [for (final List<(int, fbs.GraphEdgeKind)> e in edges) e.length],
+      parentCount: [for (var i = 0; i < n; i++) parentCounts[i] ?? edges[i].length],
       edgeStart: edgeStart,
       edgeTarget: [
         for (final List<(int, fbs.GraphEdgeKind)> e in edges)
@@ -55,8 +63,14 @@ Uint8List topologyEnvelope(
           for (final (_, fbs.GraphEdgeKind kind) in e) kind,
       ],
       timestamps: timestamps,
-      refs: const [],
-      workingCopies: const [],
+      refs: [
+        for (final (int node, fbs.TopologyRefKind kind, String? remote) in refs)
+          fbs.TopologyRefObjectBuilder(node: node, kind: kind, name: 'ref$node', remote: remote, synced: true),
+      ],
+      workingCopies: [
+        for (final (int node, String workspace) in workingCopies)
+          fbs.TopologyWorkingCopyObjectBuilder(node: node, workspace: workspace),
+      ],
       anchorStart: anchorStart,
       anchorNode: [for (final List<int> a in anchors) ...a],
     ),

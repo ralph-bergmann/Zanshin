@@ -1,5 +1,6 @@
 import 'input.dart';
 import 'layout.dart';
+import 'stacks.dart';
 
 /// The canonical output JSON of SPEC §3: fixed key order, no whitespace, one trailing newline.
 String encodeOutput(LayoutResult r) {
@@ -17,6 +18,10 @@ String encodeOutput(LayoutResult r) {
     ..write(',"nodes":[');
   for (var i = 0; i < r.row.length; i++) {
     if (i > 0) out.write(',');
+    if (r.lane[i] < 0) {
+      out.write('null'); // a hidden stack member (SPEC §3, amended 2026-10-01)
+      continue;
+    }
     out
       ..write('{"row":')
       ..write(r.row[i])
@@ -56,11 +61,33 @@ String encodeOutput(LayoutResult r) {
       ..write(r.bucketEnd[b])
       ..write('}');
   }
-  out.write(']}\n');
+  out.write(']');
+  final runStart = r.runStart, runMembers = r.runMembers, runState = r.runState, runNode = r.runNode;
+  if (runStart != null && runMembers != null && runState != null && runNode != null) {
+    // SPEC §3, amended 2026-10-01 (Story 4.13): the runs after the buckets.
+    out.write(',"runs":[');
+    for (var k = 0; k + 1 < runStart.length; k++) {
+      if (k > 0) out.write(',');
+      out.write('{"members":[');
+      for (var j = runStart[k]; j < runStart[k + 1]; j++) {
+        if (j > runStart[k]) out.write(',');
+        out.write(runMembers[j]);
+      }
+      out
+        ..write('],"state":"')
+        ..write(runStateNames[runState[k]])
+        ..write('","node":')
+        ..write(runNode[k] < 0 ? 'null' : runNode[k])
+        ..write('}');
+    }
+    out.write(']');
+  }
+  out.write('}\n');
   return out.toString();
 }
 
-/// The bench digest of SPEC §8.4.
+/// The bench digest of SPEC §8.4; with stacks over the n + S node entries, a hidden member
+/// counting as row = col = lane = −1 (SPEC §6, amended 2026-10-01).
 int digest(LayoutResult r) {
   const p = 1000000007;
   var d = 0;

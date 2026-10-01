@@ -129,6 +129,10 @@ void main() {
           order: LaneOrder.compact,
           utcOffsetMin: 60,
           budget: defaultLayoutBudget,
+          stacks: false,
+          expandedKeys: const [],
+          collapsedKeys: const [],
+          keepOpenKeys: const [],
         ),
       );
 
@@ -268,6 +272,91 @@ void main() {
       await handle.close();
     });
 
+    test('a_stack_toggles_through_the_request_and_off_is_the_version_1_grid', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      // The run a ← b ← c under the head x; @ on the sibling s.
+      await buildDag(handle, const [
+        ('a', ['root']),
+        ('b', ['a']),
+        ('c', ['b']),
+        ('x', ['c']),
+        ('s', ['root']),
+      ]);
+      Future<Layout> layOut({
+        bool stacks = true,
+        LayoutMode mode = LayoutMode.compact,
+        List<String> expandedKeys = const [],
+        List<String> collapsedKeys = const [],
+        List<String> keepOpenKeys = const [],
+      }) => handle.graphLayout(
+        revset: 'all()',
+        anchors: defaultGraphAnchors,
+        utcOffsetMin: 0,
+        mode: mode,
+        stacks: stacks,
+        expandedKeys: expandedKeys,
+        collapsedKeys: collapsedKeys,
+        keepOpenKeys: keepOpenKeys,
+      );
+
+      final Layout off = await layOut(stacks: false);
+      expect(off.grid.hasStacks, isFalse);
+      expect(ByteData.sublistView(off.grid.bytes).getInt32(0, Endian.little), GraphGridView.formatVersion);
+
+      final Layout collapsed = await layOut();
+      final GraphGridView grid = collapsed.grid;
+      final int n = collapsed.topology.nodeCount;
+      expect([grid.hasStacks, grid.stackCount, grid.runCount, grid.nodeCount], [true, 1, 1, n]);
+      final List<int> members = grid.runMembers!.toList();
+      expect(members, hasLength(3), reason: 'a, b, c — oldest first');
+      expect([grid.runStates![0], grid.runNodes![0]], [GraphGridView.runCollapsed, n], reason: 'the stack node is n');
+      for (final m in members) {
+        expect([grid.isHidden(m), grid.nodeRows[m], grid.nodeRuns![m]], [true, -1, 0]);
+      }
+      expect(grid.nodeRows[n], 1, reason: 'one row above the root, where a was');
+      expect(grid.nodeCols[n], off.grid.nodeCols[members.last], reason: "the stack sits in c's column");
+      expect(grid.rows, off.grid.rows - 2, reason: 'three cards become one');
+
+      final String a = collapsed.topology.changeId(members.first);
+      final String b = collapsed.topology.changeId(members[1]);
+      for (final Layout open in [
+        await layOut(expandedKeys: [a]),
+        await layOut(keepOpenKeys: [b]),
+      ]) {
+        expect(
+          [open.grid.stackCount, open.grid.runStates![0], open.grid.runNodes![0]],
+          [0, GraphGridView.runExpanded, -1],
+        );
+        expect(open.grid.nodeRows.toList(), off.grid.nodeRows.toList(), reason: 'expanded = ungrouped rows');
+      }
+      expect((await layOut(expandedKeys: [b])).grid.stackCount, 1, reason: 'b is no run key: ignored');
+
+      // The default mode, `free`, end to end: the same stack, in c's column, rows never grow.
+      final Layout freeOff = await layOut(stacks: false, mode: LayoutMode.free);
+      final GraphGridView free = (await layOut(mode: LayoutMode.free)).grid;
+      expect([free.stackCount, free.runNodes![0]], [1, n]);
+      expect([for (final m in members) free.isHidden(m)], [true, true, true]);
+      expect(free.nodeCols[n], freeOff.grid.nodeCols[members.last], reason: "the stack sits in c's column");
+      expect(free.rows, lessThanOrEqualTo(freeOff.grid.rows));
+
+      // @ on top of the run: its mutable ancestors start expanded, and a collapse request beats that.
+      final GraphTopologyView t = collapsed.topology;
+      final int x = [
+        for (var i = 0; i < n; i++)
+          if (t.edgeEnd(i) > t.edgeStart(i) && t.edgeTarget(t.edgeStart(i)) == members.last) i,
+      ].single;
+      await handle.edit(t.changeId(x));
+      final Layout atop = await layOut();
+      expect([atop.grid.stackCount, atop.grid.runStates![0]], [0, GraphGridView.runExpanded], reason: '@ on x');
+      final Layout shut = await layOut(collapsedKeys: [a]);
+      expect([shut.grid.stackCount, shut.grid.runStates![0]], [1, GraphGridView.runCollapsed], reason: 'collapsed a');
+
+      // A bookmark on b breaks the run: a and c alone are no runs.
+      await handle.bookmarkCreate(['mark'], revision: b);
+      expect((await layOut()).grid.runCount, 0, reason: 'a ref breaks a run');
+      await handle.close();
+    });
+
     test('the_calling_side_rejects_bad_arguments_before_sending', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
 
@@ -288,6 +377,10 @@ void main() {
         order: LaneOrder.compact,
         utcOffsetMin: utcOffsetMin,
         budget: budget,
+        stacks: false,
+        expandedKeys: const [],
+        collapsedKeys: const [],
+        keepOpenKeys: const [],
       );
 
       await expectLater(call(revset: 'a${_nul}b'), throwsArgumentError);
@@ -314,6 +407,10 @@ void main() {
           order: defaultLaneOrder,
           utcOffsetMin: 0,
           budget: defaultLayoutBudget,
+          stacks: false,
+          expandedKeys: const [],
+          collapsedKeys: const [],
+          keepOpenKeys: const [],
         ),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
@@ -340,6 +437,10 @@ void main() {
           order: defaultLaneOrder,
           utcOffsetMin: 0,
           budget: defaultLayoutBudget,
+          stacks: false,
+          expandedKeys: const [],
+          collapsedKeys: const [],
+          keepOpenKeys: const [],
         ),
         throwsStateError,
       );

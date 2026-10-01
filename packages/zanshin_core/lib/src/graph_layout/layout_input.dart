@@ -63,6 +63,96 @@ final class LayoutInput {
   final Uint8List parKind;
 }
 
+/// A [StackInput.workingCopy] code: the node is no workspace's working copy.
+const workingCopyNone = 0;
+
+/// A [StackInput.workingCopy] code: another workspace's working copy.
+const workingCopyOther = 1;
+
+/// A [StackInput.workingCopy] code: this workspace's `@`.
+const workingCopyThis = 2;
+
+/// The stack request of docs/graph-layout.md §4.8 (Story 4.13) with the per-node facts its run rule
+/// reads (§2, amended), as flat typed arrays index-aligned with the [LayoutInput]. The request is
+/// already resolved to node indices: the engine never sees a key.
+final class StackInput {
+  /// A request over the facts; [validateStackInput] checks the values.
+  StackInput({
+    required this.immutable,
+    required this.parentCount,
+    required this.hasRef,
+    required this.workingCopy,
+    required this.expandedNodes,
+    required this.collapsedNodes,
+    required this.keepOpenNodes,
+  });
+
+  /// 1 where the commit is immutable (in `::(immutable_heads() | root())`), else 0.
+  final Uint8List immutable;
+
+  /// Each commit's real parent count, Missing parents included (Story 4.10's `parent_count`).
+  final Int32List parentCount;
+
+  /// 1 where a bookmark (local or remote) or a tag points at the commit, else 0.
+  final Uint8List hasRef;
+
+  /// Each node's working-copy code: [workingCopyNone], [workingCopyOther] or [workingCopyThis].
+  final Uint8List workingCopy;
+
+  /// The nodes the request names as expanded (a run's oldest member expands that run).
+  final Int32List expandedNodes;
+
+  /// The nodes the request names as collapsed (a run's oldest member collapses that run).
+  final Int32List collapsedNodes;
+
+  /// The nodes whose run stays expanded whatever else holds (the selection, a go-to target).
+  final Int32List keepOpenNodes;
+}
+
+/// Checks [stacks] against docs/graph-layout.md §2 V5 for an input of [n] nodes and throws a
+/// [LayoutContractException] with rule `V5`: the four fact arrays have n entries, every
+/// working-copy code is one of the three with at most one [workingCopyThis], every parent count is
+/// ≥ 0, and every request node lies in [0, n).
+void validateStackInput(StackInput stacks, int n) {
+  if (stacks.immutable.length != n ||
+      stacks.parentCount.length != n ||
+      stacks.hasRef.length != n ||
+      stacks.workingCopy.length != n) {
+    throw LayoutContractException(
+      'V5',
+      'stack facts of ${stacks.immutable.length}, ${stacks.parentCount.length}, ${stacks.hasRef.length} and '
+          '${stacks.workingCopy.length} entries for $n nodes',
+    );
+  }
+  var self = -1;
+  for (var i = 0; i < n; i++) {
+    final int code = stacks.workingCopy[i];
+    if (code > workingCopyThis) {
+      throw LayoutContractException('V5', 'node $i: working-copy code $code is unknown');
+    }
+    if (code == workingCopyThis) {
+      if (self >= 0) {
+        throw LayoutContractException('V5', 'nodes $self and $i are both this workspace\'s working copy');
+      }
+      self = i;
+    }
+    if (stacks.parentCount[i] < 0) {
+      throw LayoutContractException('V5', 'node $i: parent count ${stacks.parentCount[i]} is negative');
+    }
+  }
+  for (final (name, nodes) in [
+    ('expanded', stacks.expandedNodes),
+    ('collapsed', stacks.collapsedNodes),
+    ('keep-open', stacks.keepOpenNodes),
+  ]) {
+    for (final node in nodes) {
+      if (node < 0 || node >= n) {
+        throw LayoutContractException('V5', 'the $name request names node $node, not in [0, $n)');
+      }
+    }
+  }
+}
+
 /// Checks [input] against docs/graph-layout.md §2 V1–V4 and throws a [LayoutContractException]
 /// naming the first rule it breaks: V4 for the offset, then per node in index order V4 for its
 /// timestamp and priority and V1, V2, V3 for each parent in order.

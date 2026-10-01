@@ -35,16 +35,19 @@ const LaneOrder defaultLaneOrder = LaneOrder.compact;
 /// BUDGET): the work units the `compact` lane order may spend before it stops its search.
 const defaultLayoutBudget = 2000000;
 
-/// The layout engine's input broke a contract rule of docs/graph-layout.md §2 (V1–V4).
+/// The layout engine's input broke a contract rule of docs/graph-layout.md §2 (V1–V4, and V5 for a
+/// stack request).
 ///
 /// Thrown before anything is laid out: there is never a partial or silently repaired layout.
 final class LayoutContractException implements Exception {
-  /// A violation of [rule] (`V1` … `V4`), described by [message].
+  /// A violation of [rule] (`V1` … `V5`), described by [message].
   const LayoutContractException(this.rule, this.message);
 
   /// The violated rule: `V1` (a parent has a target iff it is not missing), `V2` (a target lies
-  /// strictly between its child and n), `V3` (no repeated target per node) or `V4` (value ranges:
-  /// timestamps within ±2^53, 0 ≤ priority < 2^31, |utcOffsetMin| ≤ 1440).
+  /// strictly between its child and n), `V3` (no repeated target per node), `V4` (value ranges:
+  /// timestamps within ±2^53, 0 ≤ priority < 2^31, |utcOffsetMin| ≤ 1440) or, with a stack
+  /// request (Story 4.13), `V5` (the stack facts: one entry per node, parent counts ≥ 0, a known
+  /// working-copy code with at most one "this", every request node in [0, n)).
   final String rule;
 
   /// What violated [rule], naming the node.

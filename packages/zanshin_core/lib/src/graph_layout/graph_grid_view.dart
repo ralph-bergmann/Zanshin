@@ -58,6 +58,32 @@ const _arrayNames = <String>[
   'bucket end',
 ];
 
+/// The version-2 header (Story 4.13, a layout with stacks): 46 int32 slots, version 1's 33 first.
+const _stackHeaderSlots = 46;
+
+/// The version-2 header's byte length; its first array starts right after it (184 is 8-aligned).
+const int _stackHeaderBytes = 4 * _stackHeaderSlots;
+
+const _slotStacks = 33;
+const _slotRuns = 34;
+const _slotMembers = 35;
+
+/// Slot 36 + 2k is stack array k's byte offset, slot 37 + 2k its element count.
+const _slotStackArrays = 36;
+
+const _nodeRun = 0;
+const _runState = 1;
+const _runNode = 2;
+const _runStart = 3;
+const _runMember = 4;
+const _stackArrayCount = 5;
+
+/// The element size in bytes of each stack array, in array order.
+const _stackElementSizes = <int>[4, 1, 4, 4, 4];
+
+/// The stack array names, in array order (for the decode errors).
+const _stackArrayNames = <String>['node run', 'run state', 'run node', 'run start', 'run members'];
+
 /// A layout's result (Story 4.11): the abstract grid of docs/graph-layout.md §3 — per node its
 /// row, lane and column, per layout edge its route and `blocked` flag, per time bucket its row
 /// range — read through typed-data views over ONE buffer, without a per-node object.
@@ -80,6 +106,23 @@ const _arrayNames = <String>[
 ///   [routeStraight] / [routeMerge] / [routeBranchOff] (§8.4's r), `blocked` 0 or 1. Buckets are
 ///   `free`'s day buckets ([bucketKindDay]), ascending; their value is the local-midnight instant
 ///   in epoch ms, their start and end the least and the largest y of their members.
+///
+/// **Format version [stackFormatVersion]** (Story 4.13, docs/graph-layout.md §4.8 and §13 — a
+/// layout with a stack request): version 1's header slots and twelve arrays, with header slot 0
+/// = 2, then
+/// - **more header slots,** 46 in all (184 bytes): [33] S (the stack nodes), [34] R (the runs),
+///   [35] M (the run members), then for each of five more arrays its byte offset and element count
+///   (slots 36 + 2k and 37 + 2k);
+/// - **the node arrays** hold n + S entries: the n topology nodes, then the stack nodes in run
+///   order; a hidden node (a member of a collapsed run) has row, lane and col −1. [nodeCount] stays
+///   n. The edges and buckets are the grouped layout's, and an edge's `from` / `to` may be a stack
+///   node. Index order is then no topological order: an edge into a stack node has a parent index
+///   below its child's (p < n ≤ s);
+/// - **five more arrays** after the twelve, each 8-aligned after the previous one: node run
+///   (int32 × n: the run index of each topology node, or −1), run state (uint8 × R:
+///   [runExpanded] / [runCollapsed]), run node (int32 × R: the run's stack node, or −1 when
+///   expanded), run start (int32 × R + 1) and run members (int32 × M) — the runs' members as a CSR
+///   over topology node indices, oldest first. Runs are ordered by their newest member.
 ///
 /// [GraphGridView.fromBytes] validates the header and every array's offset, count and bounds,
 /// never the values.
@@ -107,26 +150,41 @@ final class GraphGridView {
     required this.bucketValues,
     required this.bucketStarts,
     required this.bucketEnds,
+    required this.stackCount,
+    required this.runCount,
+    required this.nodeRuns,
+    required this.runStates,
+    required this.runNodes,
+    required this.runStarts,
+    required this.runMembers,
   });
 
-  /// Reads a grid buffer. A [bytes] view whose start is not 8-aligned in its buffer is copied
-  /// once (see [copied]); otherwise every view reads [bytes] in place. Throws [FormatException]
-  /// for a buffer shorter than the header, a format version other than [formatVersion], an
-  /// unknown mode or order code, a unit that is not the mode's, a negative count, an array count
-  /// that differs from its header count, or an array offset that is not 8-aligned or runs past
-  /// the buffer. Little-endian host assumed (macOS).
+  /// Reads a grid buffer of format version [formatVersion] or [stackFormatVersion]. A [bytes]
+  /// view whose start is not 8-aligned in its buffer is copied once (see [copied]); otherwise
+  /// every view reads [bytes] in place. Throws [FormatException] for a buffer shorter than its
+  /// header, another format version, an unknown mode or order code, a unit that is not the
+  /// mode's, a negative count, an array count that differs from its header count, or an array
+  /// offset that is not 8-aligned, lies inside the header or runs past the buffer. Little-endian
+  /// host assumed (macOS).
   factory GraphGridView.fromBytes(Uint8List bytes) {
     final copy = bytes.offsetInBytes % 8 != 0;
     final data = copy ? Uint8List.fromList(bytes) : bytes;
     if (data.length < _headerBytes) {
       throw FormatException('a grid buffer needs its $_headerBytes-byte header, got ${data.length} bytes');
     }
-    final header = ByteData.sublistView(data, 0, _headerBytes);
+    final header = ByteData.sublistView(data);
     int slot(int k) => header.getInt32(4 * k, Endian.little);
 
     final int version = slot(_slotVersion);
-    if (version != formatVersion) {
-      throw FormatException('grid format version $version, expected $formatVersion');
+    if (version != formatVersion && version != stackFormatVersion) {
+      throw FormatException('grid format version $version, expected $formatVersion or $stackFormatVersion');
+    }
+    final stacked = version == stackFormatVersion;
+    final int headerBytes = stacked ? _stackHeaderBytes : _headerBytes;
+    if (data.length < headerBytes) {
+      throw FormatException(
+        'a version-$version grid buffer needs its $headerBytes-byte header, got ${data.length} bytes',
+      );
     }
     final int modeCode = slot(_slotMode);
     if (modeCode < 0 || modeCode >= LayoutMode.values.length) {
@@ -149,26 +207,53 @@ final class GraphGridView {
     if (n < 0 || e < 0 || b < 0 || rows < 0 || lanes < 0) {
       throw FormatException('negative grid count: n $n, E $e, B $b, rows $rows, lanes $lanes');
     }
+    final int s = stacked ? slot(_slotStacks) : 0;
+    final int r = stacked ? slot(_slotRuns) : 0;
+    final int m = stacked ? slot(_slotMembers) : 0;
+    if (s < 0 || r < 0 || m < 0) {
+      throw FormatException('negative grid stack count: S $s, R $r, M $m');
+    }
     final ByteBuffer buffer = data.buffer;
     final int base = data.offsetInBytes;
-    final offsets = Int32List(_arrayCount);
-    for (var k = 0; k < _arrayCount; k++) {
-      final int offset = slot(_slotArrays + 2 * k);
-      final int count = slot(_slotArrays + 2 * k + 1);
-      final expected = k <= _nodeCol ? n : (k <= _edgeBlocked ? e : b);
+    int locate(String name, int offsetSlot, int count, int expected, int elementSize) {
+      final int offset = slot(offsetSlot);
       if (count != expected) {
-        throw FormatException('grid ${_arrayNames[k]} array has $count entries, expected $expected');
+        throw FormatException('grid $name array has $count entries, expected $expected');
       }
       if (offset % 8 != 0) {
-        throw FormatException('grid ${_arrayNames[k]} array starts at byte $offset, which is not 8-aligned');
+        throw FormatException('grid $name array starts at byte $offset, which is not 8-aligned');
       }
-      if (offset < _headerBytes || offset + count * _elementSizes[k] > data.length) {
-        throw FormatException(
-          'grid ${_arrayNames[k]} array at byte $offset runs outside the ${data.length}-byte buffer',
+      if (offset < headerBytes || offset + count * elementSize > data.length) {
+        throw FormatException('grid $name array at byte $offset runs outside the ${data.length}-byte buffer');
+      }
+      return base + offset;
+    }
+
+    final offsets = Int32List(_arrayCount);
+    for (var k = 0; k < _arrayCount; k++) {
+      final int expected = k <= _nodeCol ? n + s : (k <= _edgeBlocked ? e : b);
+      offsets[k] = locate(
+        _arrayNames[k],
+        _slotArrays + 2 * k,
+        slot(_slotArrays + 2 * k + 1),
+        expected,
+        _elementSizes[k],
+      );
+    }
+    final stackOffsets = Int32List(_stackArrayCount);
+    if (stacked) {
+      final expected = <int>[n, r, r, r + 1, m];
+      for (var k = 0; k < _stackArrayCount; k++) {
+        stackOffsets[k] = locate(
+          _stackArrayNames[k],
+          _slotStackArrays + 2 * k,
+          slot(_slotStackArrays + 2 * k + 1),
+          expected[k],
+          _stackElementSizes[k],
         );
       }
-      offsets[k] = base + offset;
     }
+    final int nodes = n + s;
     return GraphGridView._(
       bytes: data.asUnmodifiableView(),
       copied: copy,
@@ -180,9 +265,9 @@ final class GraphGridView {
       nodeCount: n,
       edgeCount: e,
       bucketCount: b,
-      nodeRows: buffer.asInt32List(offsets[_nodeRow], n).asUnmodifiableView(),
-      nodeLanes: buffer.asInt32List(offsets[_nodeLane], n).asUnmodifiableView(),
-      nodeCols: buffer.asInt32List(offsets[_nodeCol], n).asUnmodifiableView(),
+      nodeRows: buffer.asInt32List(offsets[_nodeRow], nodes).asUnmodifiableView(),
+      nodeLanes: buffer.asInt32List(offsets[_nodeLane], nodes).asUnmodifiableView(),
+      nodeCols: buffer.asInt32List(offsets[_nodeCol], nodes).asUnmodifiableView(),
       edgeFroms: buffer.asInt32List(offsets[_edgeFrom], e).asUnmodifiableView(),
       edgeTos: buffer.asInt32List(offsets[_edgeTo], e).asUnmodifiableView(),
       edgeKinds: buffer.asUint8List(offsets[_edgeKind], e).asUnmodifiableView(),
@@ -192,11 +277,27 @@ final class GraphGridView {
       bucketValues: buffer.asInt64List(offsets[_bucketValue], b).asUnmodifiableView(),
       bucketStarts: buffer.asInt32List(offsets[_bucketStart], b).asUnmodifiableView(),
       bucketEnds: buffer.asInt32List(offsets[_bucketEnd], b).asUnmodifiableView(),
+      stackCount: s,
+      runCount: r,
+      nodeRuns: stacked ? buffer.asInt32List(stackOffsets[_nodeRun], n).asUnmodifiableView() : null,
+      runStates: stacked ? buffer.asUint8List(stackOffsets[_runState], r).asUnmodifiableView() : null,
+      runNodes: stacked ? buffer.asInt32List(stackOffsets[_runNode], r).asUnmodifiableView() : null,
+      runStarts: stacked ? buffer.asInt32List(stackOffsets[_runStart], r + 1).asUnmodifiableView() : null,
+      runMembers: stacked ? buffer.asInt32List(stackOffsets[_runMember], m).asUnmodifiableView() : null,
     );
   }
 
-  /// The grid format version this view reads (header slot 0).
+  /// The grid format version of a layout without stacks (header slot 0).
   static const formatVersion = 1;
+
+  /// The grid format version of a layout with a stack request (Story 4.13).
+  static const stackFormatVersion = 2;
+
+  /// A run state ([runStates]): the run's members are visible.
+  static const runExpanded = 0;
+
+  /// A run state ([runStates]): the run's members are hidden behind its stack node.
+  static const runCollapsed = 1;
 
   /// An edge kind: the parent is in the revset.
   static const edgeKindDirect = 0;
@@ -239,7 +340,8 @@ final class GraphGridView {
   /// The largest lane plus 1; 0 for an empty grid.
   final int lanes;
 
-  /// n, the nodes, index-aligned with the topology.
+  /// n, the topology nodes; the node arrays are index-aligned with the topology and, with stacks,
+  /// hold [stackCount] stack nodes after them.
   final int nodeCount;
 
   /// E, the layout edges.
@@ -248,13 +350,13 @@ final class GraphGridView {
   /// B, the buckets.
   final int bucketCount;
 
-  /// Each node's row (y), unmodifiable.
+  /// Each node's row (y), unmodifiable; −1 for a hidden node.
   final Int32List nodeRows;
 
-  /// Each node's lane, unmodifiable.
+  /// Each node's lane, unmodifiable; −1 for a hidden node.
   final Int32List nodeLanes;
 
-  /// Each node's column, unmodifiable.
+  /// Each node's column, unmodifiable; −1 for a hidden node.
   final Int32List nodeCols;
 
   /// Each layout edge's parent node, unmodifiable.
@@ -283,6 +385,51 @@ final class GraphGridView {
 
   /// Each bucket's largest member y, unmodifiable.
   final Int32List bucketEnds;
+
+  /// S, the stack nodes (the collapsed runs); 0 without stacks.
+  final int stackCount;
+
+  /// R, the runs, collapsed or expanded; 0 without stacks.
+  final int runCount;
+
+  /// Each topology node's run index, or −1 for a node in no run; `null` without stacks.
+  /// Unmodifiable.
+  final Int32List? nodeRuns;
+
+  /// Each run's state ([runExpanded] or [runCollapsed]); `null` without stacks. Unmodifiable.
+  final Uint8List? runStates;
+
+  /// Each run's stack node (≥ [nodeCount]), or −1 for an expanded run; `null` without stacks.
+  /// Unmodifiable.
+  final Int32List? runNodes;
+
+  /// The runs' member CSR offsets (R + 1): run k's members are `runMembers[runStarts[k] ..<
+  /// runStarts[k + 1]]`; `null` without stacks. Unmodifiable.
+  final Int32List? runStarts;
+
+  /// Every run's members as topology node indices, oldest first; `null` without stacks.
+  /// Unmodifiable.
+  ///
+  /// Run k's key — what `RepoHandle.graphLayout`'s `expandedKeys` / `collapsedKeys` take — is the
+  /// Story 10.1 key of its first (oldest) member `runMembers[runStarts[k]]`, bare: no design-style
+  /// `grp:` prefix.
+  final Int32List? runMembers;
+
+  /// Whether the layout had a stack request (format version [stackFormatVersion]).
+  bool get hasStacks => nodeRuns != null;
+
+  /// Whether node [i] is hidden: a member of a collapsed run, with no position. Stack nodes and
+  /// every node of a layout without stacks are visible.
+  bool isHidden(int i) {
+    RangeError.checkValidIndex(i, nodeRows, 'i');
+    final Int32List? runs = nodeRuns;
+    final Uint8List? states = runStates;
+    if (runs == null || states == null || i >= nodeCount) {
+      return false;
+    }
+    final int run = runs[i];
+    return run >= 0 && states[run] == runCollapsed;
+  }
 }
 
 /// Writes a grid buffer in [GraphGridView]'s format: the header, then the twelve arrays. Every
@@ -354,5 +501,107 @@ Uint8List writeGraphGrid({
     start[k] = bucketStarts[k];
     bucketEnd[k] = bucketEnds[k];
   }
+  return bytes;
+}
+
+/// Writes a grid buffer of format version [GraphGridView.stackFormatVersion] (Story 4.13): the
+/// 46-slot header, the twelve arrays of [writeGraphGrid] — the node arrays with n + S entries,
+/// −1 for a hidden node — then the five run arrays. n is `nodeRuns.length`, S the node arrays'
+/// surplus over it. Every bucket is a `day` bucket. For the layout engine only, like
+/// [writeGraphGrid].
+@internal
+Uint8List writeStackGrid({
+  required LayoutMode mode,
+  required LaneOrder order,
+  required int unit,
+  required int rows,
+  required int lanes,
+  required Int64List nodeRows,
+  required Int32List nodeLanes,
+  required Int32List nodeCols,
+  required Int32List edgeFroms,
+  required Int32List edgeTos,
+  required Uint8List edgeKinds,
+  required Uint8List edgeRoutes,
+  required Uint8List edgeBlocked,
+  required Int64List bucketValues,
+  required Int64List bucketStarts,
+  required Int64List bucketEnds,
+  required Int32List nodeRuns,
+  required Uint8List runStates,
+  required Int32List runNodes,
+  required Int32List runStarts,
+  required Int32List runMembers,
+}) {
+  final int nodes = nodeLanes.length;
+  final int n = nodeRuns.length;
+  final int e = edgeFroms.length;
+  final int b = bucketValues.length;
+  final int r = runStates.length;
+  final int m = runMembers.length;
+  final counts = <int>[nodes, nodes, nodes, e, e, e, e, e, b, b, b, b];
+  final stackCounts = <int>[n, r, r, r + 1, m];
+  final offsets = Int32List(_arrayCount);
+  final stackOffsets = Int32List(_stackArrayCount);
+  int end = _stackHeaderBytes;
+  for (var k = 0; k < _arrayCount; k++) {
+    final int start = (end + 7) & ~7;
+    offsets[k] = start;
+    end = start + counts[k] * _elementSizes[k];
+  }
+  for (var k = 0; k < _stackArrayCount; k++) {
+    final int start = (end + 7) & ~7;
+    stackOffsets[k] = start;
+    end = start + stackCounts[k] * _stackElementSizes[k];
+  }
+  final bytes = Uint8List(end);
+  final ByteBuffer buffer = bytes.buffer;
+  final header = ByteData.sublistView(bytes, 0, _stackHeaderBytes)
+    ..setInt32(4 * _slotVersion, GraphGridView.stackFormatVersion, Endian.little)
+    ..setInt32(4 * _slotMode, mode.index, Endian.little)
+    ..setInt32(4 * _slotOrder, order.index, Endian.little)
+    ..setInt32(4 * _slotUnit, unit, Endian.little)
+    ..setInt32(4 * _slotRows, rows, Endian.little)
+    ..setInt32(4 * _slotLanes, lanes, Endian.little)
+    ..setInt32(4 * _slotNodes, n, Endian.little)
+    ..setInt32(4 * _slotEdges, e, Endian.little)
+    ..setInt32(4 * _slotBuckets, b, Endian.little)
+    ..setInt32(4 * _slotStacks, nodes - n, Endian.little)
+    ..setInt32(4 * _slotRuns, r, Endian.little)
+    ..setInt32(4 * _slotMembers, m, Endian.little);
+  for (var k = 0; k < _arrayCount; k++) {
+    header
+      ..setInt32(4 * (_slotArrays + 2 * k), offsets[k], Endian.little)
+      ..setInt32(4 * (_slotArrays + 2 * k + 1), counts[k], Endian.little);
+  }
+  for (var k = 0; k < _stackArrayCount; k++) {
+    header
+      ..setInt32(4 * (_slotStackArrays + 2 * k), stackOffsets[k], Endian.little)
+      ..setInt32(4 * (_slotStackArrays + 2 * k + 1), stackCounts[k], Endian.little);
+  }
+  final Int32List row = buffer.asInt32List(offsets[_nodeRow], nodes);
+  for (var i = 0; i < nodes; i++) {
+    row[i] = nodeRows[i];
+  }
+  buffer.asInt32List(offsets[_nodeLane], nodes).setAll(0, nodeLanes);
+  buffer.asInt32List(offsets[_nodeCol], nodes).setAll(0, nodeCols);
+  buffer.asInt32List(offsets[_edgeFrom], e).setAll(0, edgeFroms);
+  buffer.asInt32List(offsets[_edgeTo], e).setAll(0, edgeTos);
+  buffer.asUint8List(offsets[_edgeKind], e).setAll(0, edgeKinds);
+  buffer.asUint8List(offsets[_edgeRoute], e).setAll(0, edgeRoutes);
+  buffer.asUint8List(offsets[_edgeBlocked], e).setAll(0, edgeBlocked);
+  buffer.asUint8List(offsets[_bucketKind], b).fillRange(0, b, GraphGridView.bucketKindDay);
+  buffer.asInt64List(offsets[_bucketValue], b).setAll(0, bucketValues);
+  final Int32List start = buffer.asInt32List(offsets[_bucketStart], b);
+  final Int32List bucketEnd = buffer.asInt32List(offsets[_bucketEnd], b);
+  for (var k = 0; k < b; k++) {
+    start[k] = bucketStarts[k];
+    bucketEnd[k] = bucketEnds[k];
+  }
+  buffer.asInt32List(stackOffsets[_nodeRun], n).setAll(0, nodeRuns);
+  buffer.asUint8List(stackOffsets[_runState], r).setAll(0, runStates);
+  buffer.asInt32List(stackOffsets[_runNode], r).setAll(0, runNodes);
+  buffer.asInt32List(stackOffsets[_runStart], r + 1).setAll(0, runStarts);
+  buffer.asInt32List(stackOffsets[_runMember], m).setAll(0, runMembers);
   return bytes;
 }

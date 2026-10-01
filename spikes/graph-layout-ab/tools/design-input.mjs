@@ -33,8 +33,9 @@ const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const DECLARATIONS = ["G", "LADDER", "timeBucket", "roundedPath", "routeEdges", "analyzeEdges", "optimizeLanes", "computeLayout"];
 
 // A top-level `const NAME = …;` (one line) or `function NAME(…) {` up to the next line that is
-// exactly "}" — the file's own layout; anything else fails loudly.
-function extract(src, name) {
+// exactly "}" — the file's own layout; anything else fails loudly. (Exported 2026-10-01 for
+// tools/stacks.mjs, which extracts `groupStacks` the same way.)
+export function extract(src, name) {
   const lines = src.split("\n");
   const i = lines.findIndex((l) => l.startsWith(`const ${name} =`) || l.startsWith(`function ${name}(`));
   if (i < 0) throw new Error(`graph-view.jsx: no top-level declaration of ${name}`);

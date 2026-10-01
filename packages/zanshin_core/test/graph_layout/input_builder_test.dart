@@ -298,6 +298,117 @@ void main() {
     });
   });
 
+  group('stack facts (Story 4.13)', () {
+    // Ten unrelated nodes and a root; the facts come from flags, parent counts, refs and working
+    // copies. 7 and 8 share a change id and are divergent; 9 is a hidden commit of 6's change.
+    final Uint8List bytes = topologyEnvelope(
+      [
+        for (var i = 0; i < 10; i++) [(10, _d)],
+        [],
+      ],
+      roots: {10},
+      flags: {
+        0: GraphTopologyView.flagWorkingCopy,
+        5: GraphTopologyView.flagImmutable,
+        7: GraphTopologyView.flagDivergent,
+        8: GraphTopologyView.flagDivergent,
+        9: GraphTopologyView.flagHidden,
+        10: GraphTopologyView.flagImmutable,
+      },
+      parentCounts: {3: 2, 10: 0},
+      refs: [
+        (1, fbs.TopologyRefKind.Bookmark, null),
+        (2, fbs.TopologyRefKind.Bookmark, 'origin'),
+        (3, fbs.TopologyRefKind.Tag, null),
+      ],
+      workingCopies: [(0, 'default'), (0, 'second'), (4, 'second')],
+      changeIds: {8: 7, 9: 6},
+    );
+    final topology = GraphTopologyView.fromEnvelope(bytes);
+    StackInput facts({
+      List<String> expanded = const [],
+      List<String> collapsed = const [],
+      List<String> keepOpen = const [],
+    }) => buildStackInput(topology, expandedKeys: expanded, collapsedKeys: collapsed, keepOpenKeys: keepOpen);
+
+    test('the_facts_map_from_flags_parent_counts_refs_and_working_copies', () {
+      final StackInput s = facts();
+      expect(s.immutable, [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+      expect(s.parentCount, [1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 0]);
+      expect(s.hasRef, [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], reason: 'a local bookmark, a remote bookmark, a tag');
+      expect(
+        s.workingCopy,
+        [workingCopyThis, 0, 0, 0, workingCopyOther, 0, 0, 0, 0, 0, 0],
+        reason: "this workspace's @ wins over another workspace's entry on the same node",
+      );
+      expect([s.expandedNodes, s.collapsedNodes, s.keepOpenNodes], [isEmpty, isEmpty, isEmpty]);
+    });
+
+    test('keys_resolve_by_the_key_rule_and_unresolvable_keys_are_dropped', () {
+      final StackInput s = facts(
+        expanded: [
+          topology.changeId(2), // a visible, non-divergent change → 2
+          topology.commitId(2), // the commit id of a visible, non-divergent commit → dropped
+          topology.changeId(7), // a divergent change → dropped
+          topology.commitId(8), // a divergent commit's id → 8
+          topology.changeId(6), // the change of the visible 6 and the hidden 9 → 6
+          topology.commitId(9), // a hidden commit's id → 9
+          'no-such-key',
+        ],
+        collapsed: [topology.changeId(1)],
+        keepOpen: [topology.changeId(9)],
+      );
+      expect(s.expandedNodes, [2, 8, 6, 9]);
+      expect(s.collapsedNodes, [1]);
+      expect(s.keepOpenNodes, [6], reason: "a key is a change id: the hidden 9 shares visible 6's");
+    });
+
+    test('lay_out_topology_groups_runs_only_with_stacks', () {
+      // @ ← c ← b ← a ← root: the run a ← b ← c sits under this workspace's @ (mutable), so it
+      // starts expanded; collapsing it by its key (a's change id) makes one stack node.
+      final Uint8List chain = topologyEnvelope(
+        [
+          [(1, _d)],
+          [(2, _d)],
+          [(3, _d)],
+          [(4, _d)],
+          [],
+        ],
+        roots: {4},
+        flags: {0: GraphTopologyView.flagWorkingCopy, 4: GraphTopologyView.flagImmutable},
+        parentCounts: {4: 0},
+      );
+      final String a = GraphTopologyView.fromEnvelope(chain).changeId(3);
+      GraphGridView layOutChain({required bool stacks, List<String> collapsed = const []}) => GraphGridView.fromBytes(
+        layOutTopology(
+          chain,
+          mode: LayoutMode.compact,
+          order: LaneOrder.greedy,
+          utcOffsetMin: 0,
+          budget: defaultLayoutBudget,
+          stacks: stacks,
+          expandedKeys: const [],
+          collapsedKeys: collapsed,
+          keepOpenKeys: const [],
+        ).grid!,
+      );
+      final GraphGridView off = layOutChain(stacks: false, collapsed: [a]);
+      expect([off.hasStacks, off.rows], [false, 5], reason: 'off ignores the keys');
+      final GraphGridView open = layOutChain(stacks: true);
+      expect([open.hasStacks, open.runCount, open.stackCount, open.rows], [true, 1, 0, 5], reason: "@'s ancestors");
+      final GraphGridView shut = layOutChain(stacks: true, collapsed: [a]);
+      expect(
+        [shut.stackCount, shut.runMembers, shut.runNodes, shut.rows],
+        [
+          1,
+          [3, 2, 1],
+          [5],
+          3,
+        ],
+      );
+    });
+  });
+
   group('worker glue', () {
     GraphLayoutResult reply(Uint8List topology, ({Uint8List? grid, LayoutContractException? violation}) layout) =>
         GraphLayoutResult(
@@ -306,8 +417,18 @@ void main() {
           violation: layout.violation,
         );
 
-    ({Uint8List? grid, LayoutContractException? violation}) layOutAt(Uint8List bytes) =>
-        layOutTopology(bytes, mode: LayoutMode.free, order: LaneOrder.compact, utcOffsetMin: 120, budget: 0);
+    ({Uint8List? grid, LayoutContractException? violation}) layOutAt(Uint8List bytes, {bool stacks = false}) =>
+        layOutTopology(
+          bytes,
+          mode: LayoutMode.free,
+          order: LaneOrder.compact,
+          utcOffsetMin: 120,
+          budget: 0,
+          stacks: stacks,
+          expandedKeys: const [],
+          collapsedKeys: const [],
+          keepOpenKeys: const [],
+        );
 
     test('a_valid_topology_round_trips_into_the_topology_and_the_grid', () {
       final Uint8List bytes = topologyEnvelope(tiny, roots: {4}, timestamps: [50, 40, 30, 20, 0]);
@@ -359,6 +480,34 @@ void main() {
         () => decodeGraphLayoutReply(bytes, reply(bytes, layout)),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
       );
+    });
+
+    test('a_ref_or_working_copy_beyond_the_nodes_is_ffi_unknown_only_with_stacks', () {
+      for (final Uint8List bytes in [
+        topologyEnvelope(tiny, roots: {4}, refs: [(9, fbs.TopologyRefKind.Bookmark, null)]),
+        topologyEnvelope(tiny, roots: {4}, workingCopies: [(7, 'second')]),
+      ]) {
+        final ({Uint8List? grid, LayoutContractException? violation}) stacked = layOutAt(bytes, stacks: true);
+        expect([stacked.grid, stacked.violation], [null, null]);
+        expect(
+          () => decodeGraphLayoutReply(bytes, reply(bytes, stacked)),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+        );
+        final ({Uint8List? grid, LayoutContractException? violation}) plain = layOutAt(bytes);
+        expect([plain.grid, plain.violation], [isNotNull, isNull], reason: 'without stacks the facts are not read');
+      }
+    });
+
+    test('two_this_working_copies_with_stacks_cross_as_a_v5_violation', () {
+      final Uint8List bytes = topologyEnvelope(
+        tiny,
+        roots: {4},
+        flags: {0: GraphTopologyView.flagWorkingCopy, 1: GraphTopologyView.flagWorkingCopy},
+      );
+      final ({Uint8List? grid, LayoutContractException? violation}) layout = layOutAt(bytes, stacks: true);
+      expect(layout.grid, isNull);
+      expect(layout.violation?.rule, 'V5');
+      expect(() => decodeGraphLayoutReply(bytes, reply(bytes, layout)), violates('V5'));
     });
 
     test('a_reply_without_grid_or_error_is_a_state_error', () {

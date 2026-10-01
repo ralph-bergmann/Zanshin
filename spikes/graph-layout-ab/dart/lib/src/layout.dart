@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'compact_order.dart';
 import 'input.dart';
 import 'lane_order.dart';
+import 'stacks.dart';
 
 /// Vertical model (SPEC §0).
 enum Mode { compact, time, free }
@@ -85,6 +86,12 @@ final class LayoutResult {
     required this.bucketValue,
     required this.bucketStart,
     required this.bucketEnd,
+    this.stackCount = 0,
+    this.nodeRun,
+    this.runState,
+    this.runNode,
+    this.runStart,
+    this.runMembers,
   });
 
   final Mode mode;
@@ -107,17 +114,37 @@ final class LayoutResult {
   final Int64List bucketValue;
   final Int64List bucketStart;
   final Int64List bucketEnd;
+
+  // ---- With a stack request (SPEC §4.8, Story 4.13); otherwise 0 / null. The node arrays above
+  // then hold n + stackCount entries (−1 for a hidden member) and the edges are the grouped ones.
+  final int stackCount;
+
+  /// Per input node, its run or −1.
+  final Int32List? nodeRun;
+
+  /// Per run, [runExpanded] or [runCollapsed].
+  final Uint8List? runState;
+
+  /// Per run, its stack node or −1.
+  final Int32List? runNode;
+
+  /// The runs' member CSR (R + 1 offsets); members oldest first.
+  final Int32List? runStart;
+  final Int32List? runMembers;
 }
 
 /// Runs the whole layout; [onPhaseEnd] is called after each of the five timed phases
-/// (layering, lanes, blocked, routing, ordering; SPEC §8.2). [budget] is the `compact` order's
-/// search budget (SPEC §4.7; a request parameter in the product, 2026-10-01).
+/// (layering, lanes, blocked, routing, ordering; SPEC §8.2) and, with [stacks], after the sixth
+/// (stacks, SPEC §4.8). [budget] is the `compact` order's search budget (SPEC §4.7; a request
+/// parameter in the product, 2026-10-01). With [stacks] (Story 4.13) the result is the grouped
+/// layout of SPEC §4.8 over the finished ungrouped one.
 LayoutResult computeLayout(
   LayoutInput input,
   Mode mode,
   LaneOrder order, {
   void Function()? onPhaseEnd,
   int budget = compactBudget,
+  StackInput? stacks,
 }) {
   final g = GraphLayout(input, mode);
   g.layering();
@@ -130,7 +157,10 @@ LayoutResult computeLayout(
   onPhaseEnd?.call();
   g.orderLanes(order, budget: budget);
   onPhaseEnd?.call();
-  return g.result(order);
+  if (stacks == null) return g.result(order);
+  final grouped = StackLayout(g, stacks)..run();
+  onPhaseEnd?.call();
+  return grouped.result(order);
 }
 
 /// The layout state, one phase per method (SPEC §4). Phases must run in order.
@@ -161,6 +191,10 @@ final class GraphLayout {
   Int64List bucketValue = Int64List(0);
   Int64List bucketStart = Int64List(0);
   Int64List bucketEnd = Int64List(0);
+
+  /// `free`'s walk W (T ascending, i descending) and clamped T; null otherwise. SPEC §4.8 reads them.
+  Int32List? freeOrder;
+  Int64List? freeT;
 
   // ---- 4.3 (re-assigned by the `compact` order, SPEC §4.7)
   late Int32List lane;
@@ -388,6 +422,8 @@ final class GraphLayout {
       prevT = t[i];
     }
     _freeDayBuckets(order, t);
+    freeOrder = order;
+    freeT = t;
   }
 
   /// Step 4 of SPEC §4.2 free (amended 2026-10-01): one `day` bucket per local day of the clamped

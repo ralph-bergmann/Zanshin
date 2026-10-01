@@ -2,7 +2,7 @@
 
 import 'dart:typed_data';
 
-import '../ffi/graph.dart' show GraphTopologyView;
+import '../ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyWorkingCopy;
 import '../worker/responses.dart' show ZanshinFfiException;
 import 'layout_input.dart';
 
@@ -119,4 +119,95 @@ Int32List _priorities(GraphTopologyView topology, Int32List parStart, Int32List 
     }
   }
   return priority;
+}
+
+/// The stack request of docs/graph-layout.md §4.8 (Story 4.13) for the engine input
+/// [buildLayoutInput] builds from [topology], in O(n + refs + working copies + keys):
+/// - `immutable` from the topology's immutable flag, `parentCount` from its `parent_count`;
+/// - `hasRef` iff a bookmark entry (local or remote) or a tag points at the node;
+/// - `workingCopy` [workingCopyThis] for this workspace's `@` (its flag), else [workingCopyOther] if
+///   another workspace's working copy is the node, else [workingCopyNone];
+/// - each key of [expandedKeys], [collapsedKeys] and [keepOpenKeys] resolved by Story 10.1's key
+///   rule: a change id names its node that is neither hidden nor divergent, a commit id names its
+///   node only when that node is hidden or divergent; a key that names nothing is dropped.
+///
+/// The id lookups are built only when a list is not empty. Throws `ffi.unknown`
+/// [ZanshinFfiException] for a corrupt ref or working-copy entry (a missing name, or a node outside
+/// the node range), as [GraphTopologyView] does.
+StackInput buildStackInput(
+  GraphTopologyView topology, {
+  required List<String> expandedKeys,
+  required List<String> collapsedKeys,
+  required List<String> keepOpenKeys,
+}) {
+  final int n = topology.nodeCount;
+  final Uint8List flags = topology.flags;
+  final Uint32List parentCounts = topology.parentCounts;
+  final immutable = Uint8List(n);
+  final parentCount = Int32List(n);
+  final hasRef = Uint8List(n);
+  final workingCopy = Uint8List(n);
+  for (var i = 0; i < n; i++) {
+    if (flags[i] & GraphTopologyView.flagImmutable != 0) {
+      immutable[i] = 1;
+    }
+    parentCount[i] = parentCounts[i];
+    if (flags[i] & GraphTopologyView.flagWorkingCopy != 0) {
+      workingCopy[i] = workingCopyThis;
+    }
+  }
+  for (final TopologyRef ref in topology.refs) {
+    if (ref.node < 0 || ref.node >= n) {
+      throw ZanshinFfiException(
+        'ffi.unknown',
+        'GraphTopology.refs entry ${ref.name} is node ${ref.node}, beyond $n nodes',
+      );
+    }
+    hasRef[ref.node] = 1;
+  }
+  for (final TopologyWorkingCopy copy in topology.workingCopies) {
+    if (copy.node < 0 || copy.node >= n) {
+      throw ZanshinFfiException(
+        'ffi.unknown',
+        'GraphTopology.working_copies entry ${copy.workspace} is node ${copy.node}, beyond $n nodes',
+      );
+    }
+    if (workingCopy[copy.node] == workingCopyNone) {
+      workingCopy[copy.node] = workingCopyOther;
+    }
+  }
+  return StackInput(
+    immutable: immutable,
+    parentCount: parentCount,
+    hasRef: hasRef,
+    workingCopy: workingCopy,
+    expandedNodes: _resolveKeys(topology, expandedKeys),
+    collapsedNodes: _resolveKeys(topology, collapsedKeys),
+    keepOpenNodes: _resolveKeys(topology, keepOpenKeys),
+  );
+}
+
+/// The nodes [keys] name by Story 10.1's key rule (see [buildStackInput]); unresolved keys dropped.
+Int32List _resolveKeys(GraphTopologyView topology, List<String> keys) {
+  final nodes = <int>[];
+  for (final key in keys) {
+    final int node = _resolveKey(topology, key);
+    if (node >= 0) {
+      nodes.add(node);
+    }
+  }
+  return Int32List.fromList(nodes);
+}
+
+int _resolveKey(GraphTopologyView topology, String key) {
+  for (final int i in topology.indicesOfChangeId(key)) {
+    if (!topology.isHidden(i) && !topology.isDivergent(i)) {
+      return i;
+    }
+  }
+  final int? i = topology.indexOfCommitId(key);
+  if (i != null && (topology.isHidden(i) || topology.isDivergent(i))) {
+    return i;
+  }
+  return -1;
 }

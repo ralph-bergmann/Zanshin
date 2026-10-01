@@ -1,0 +1,1085 @@
+{
+  "seed": 413,
+  "cases": [
+    {
+      "compact.greedy": {
+        "fnv1a64": "bee5ffeff5a85d3b",
+        "bytes": 566
+      },
+      "compact.compact": {
+        "fnv1a64": "5c4bc2f2054aad18",
+        "bytes": 567
+      },
+      "free.greedy": {
+        "fnv1a64": "2168d309d36ec70b",
+        "bytes": 739
+      },
+      "free.compact": {
+        "fnv1a64": "076c0163260b3646",
+        "bytes": 740
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "97fc5d7e9fb647dd",
+        "bytes": 1698
+      },
+      "compact.compact": {
+        "fnv1a64": "0fc89b11ddfd90f2",
+        "bytes": 1699
+      },
+      "free.greedy": {
+        "fnv1a64": "ce543d5bc7243f00",
+        "bytes": 2012
+      },
+      "free.compact": {
+        "fnv1a64": "c16ec56678386acf",
+        "bytes": 2013
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "f57715b742677c17",
+        "bytes": 2056
+      },
+      "compact.compact": {
+        "fnv1a64": "0d6c947be1657df4",
+        "bytes": 2057
+      },
+      "free.greedy": {
+        "fnv1a64": "fe4288c36a01eac9",
+        "bytes": 2254
+      },
+      "free.compact": {
+        "fnv1a64": "487989c99fc53266",
+        "bytes": 2255
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "72626f59f35f9462",
+        "bytes": 976
+      },
+      "compact.compact": {
+        "fnv1a64": "d30f961e0d294289",
+        "bytes": 977
+      },
+      "free.greedy": {
+        "fnv1a64": "441319a8808fe208",
+        "bytes": 1086
+      },
+      "free.compact": {
+        "fnv1a64": "1a4023bcbc5b7493",
+        "bytes": 1087
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "03b64fbc2fb1d91b",
+        "bytes": 3622
+      },
+      "compact.compact": {
+        "fnv1a64": "36f6ceecc31552b8",
+        "bytes": 3623
+      },
+      "free.greedy": {
+        "fnv1a64": "eff56a9c2f9506b1",
+        "bytes": 4417
+      },
+      "free.compact": {
+        "fnv1a64": "7ec98ff3c7e19db4",
+        "bytes": 4418
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "4c6d9709c392dcf8",
+        "bytes": 1115
+      },
+      "compact.compact": {
+        "fnv1a64": "09c117e1c5770b99",
+        "bytes": 1116
+      },
+      "free.greedy": {
+        "fnv1a64": "765eee0cd64275be",
+        "bytes": 1475
+      },
+      "free.compact": {
+        "fnv1a64": "ab82276a3f2ce3d3",
+        "bytes": 1476
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "722bc47069af3685",
+        "bytes": 1148
+      },
+      "compact.compact": {
+        "fnv1a64": "ceb86f12c44009be",
+        "bytes": 1149
+      },
+      "free.greedy": {
+        "fnv1a64": "ba2c08dc3d264558",
+        "bytes": 1572
+      },
+      "free.compact": {
+        "fnv1a64": "048c3aedba9401ff",
+        "bytes": 1573
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0279bed78b0e2ecf",
+        "bytes": 3909
+      },
+      "compact.compact": {
+        "fnv1a64": "bf172da940c71cd6",
+        "bytes": 3910
+      },
+      "free.greedy": {
+        "fnv1a64": "195aab167ccb02c5",
+        "bytes": 4711
+      },
+      "free.compact": {
+        "fnv1a64": "47e336d06503f514",
+        "bytes": 4712
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "98b01587f27009a8",
+        "bytes": 2191
+      },
+      "compact.compact": {
+        "fnv1a64": "ee7763cac70bd09d",
+        "bytes": 2192
+      },
+      "free.greedy": {
+        "fnv1a64": "0a2fb035da979acf",
+        "bytes": 2684
+      },
+      "free.compact": {
+        "fnv1a64": "b8a3bb9f60e18db0",
+        "bytes": 2685
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0c973022a5c24fd4",
+        "bytes": 2324
+      },
+      "compact.compact": {
+        "fnv1a64": "7ccd76871205d187",
+        "bytes": 2325
+      },
+      "free.greedy": {
+        "fnv1a64": "c6f1026243d46e7d",
+        "bytes": 2637
+      },
+      "free.compact": {
+        "fnv1a64": "2466e0ab45e53224",
+        "bytes": 2638
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "1e2dea966e9e98a6",
+        "bytes": 782
+      },
+      "compact.compact": {
+        "fnv1a64": "ee67b921be9230d1",
+        "bytes": 783
+      },
+      "free.greedy": {
+        "fnv1a64": "c54cc6000a3aa6fb",
+        "bytes": 962
+      },
+      "free.compact": {
+        "fnv1a64": "65c3052fa0b57e04",
+        "bytes": 963
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "5db916a166ff4587",
+        "bytes": 3312
+      },
+      "compact.compact": {
+        "fnv1a64": "ecf5e0dfd3cb0c2c",
+        "bytes": 3313
+      },
+      "free.greedy": {
+        "fnv1a64": "17b299d639632b6b",
+        "bytes": 3816
+      },
+      "free.compact": {
+        "fnv1a64": "0e3f1f55c3fff6f0",
+        "bytes": 3817
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "9987c69e42444bbd",
+        "bytes": 1448
+      },
+      "compact.compact": {
+        "fnv1a64": "cf09ca380cc1ea06",
+        "bytes": 1449
+      },
+      "free.greedy": {
+        "fnv1a64": "f43f110b33b90533",
+        "bytes": 1755
+      },
+      "free.compact": {
+        "fnv1a64": "55313e41f0b3e926",
+        "bytes": 1756
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "3fde925643fc1ce3",
+        "bytes": 1797
+      },
+      "compact.compact": {
+        "fnv1a64": "1d089ea60a44abae",
+        "bytes": 1798
+      },
+      "free.greedy": {
+        "fnv1a64": "95618066b9a21470",
+        "bytes": 1995
+      },
+      "free.compact": {
+        "fnv1a64": "cc6f7189c0cf6995",
+        "bytes": 1996
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "7e7fe1c33e793a24",
+        "bytes": 1299
+      },
+      "compact.compact": {
+        "fnv1a64": "42573691186a7ebd",
+        "bytes": 1300
+      },
+      "free.greedy": {
+        "fnv1a64": "99629ea43250a19f",
+        "bytes": 1541
+      },
+      "free.compact": {
+        "fnv1a64": "0369455ee2b62192",
+        "bytes": 1542
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "c8e08156945bdc64",
+        "bytes": 1823
+      },
+      "compact.compact": {
+        "fnv1a64": "a017caffa07adec5",
+        "bytes": 1824
+      },
+      "free.greedy": {
+        "fnv1a64": "30cc5a56f13e4d18",
+        "bytes": 2192
+      },
+      "free.compact": {
+        "fnv1a64": "d2d59b61430a854f",
+        "bytes": 2193
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "d0052c30b16ebd54",
+        "bytes": 382
+      },
+      "compact.compact": {
+        "fnv1a64": "520aeabae7240203",
+        "bytes": 383
+      },
+      "free.greedy": {
+        "fnv1a64": "5865c8bbb1483417",
+        "bytes": 439
+      },
+      "free.compact": {
+        "fnv1a64": "01c1542c972d8f3a",
+        "bytes": 440
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "14125d7860679ffd",
+        "bytes": 2509
+      },
+      "compact.compact": {
+        "fnv1a64": "67013ccca3922898",
+        "bytes": 2510
+      },
+      "free.greedy": {
+        "fnv1a64": "5b150e08c0c7225a",
+        "bytes": 2937
+      },
+      "free.compact": {
+        "fnv1a64": "c4a26e2dbcb0e397",
+        "bytes": 2938
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "b26da9575a50510b",
+        "bytes": 3451
+      },
+      "compact.compact": {
+        "fnv1a64": "4a2d1e02e463840a",
+        "bytes": 3452
+      },
+      "free.greedy": {
+        "fnv1a64": "ba0f522316a4af8c",
+        "bytes": 4180
+      },
+      "free.compact": {
+        "fnv1a64": "d9912a86202ff18f",
+        "bytes": 4181
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "dced473ba6a7d203",
+        "bytes": 3634
+      },
+      "compact.compact": {
+        "fnv1a64": "c45e14237d4a03d4",
+        "bytes": 3635
+      },
+      "free.greedy": {
+        "fnv1a64": "d5dafde3bf1f6e40",
+        "bytes": 4139
+      },
+      "free.compact": {
+        "fnv1a64": "a90fdd40b8ab08dd",
+        "bytes": 4140
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "887348aee3328e08",
+        "bytes": 960
+      },
+      "compact.compact": {
+        "fnv1a64": "68cc846c95e04db7",
+        "bytes": 961
+      },
+      "free.greedy": {
+        "fnv1a64": "8ee586aad53e66e0",
+        "bytes": 1200
+      },
+      "free.compact": {
+        "fnv1a64": "08cb74bc9a0e3bef",
+        "bytes": 1201
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "5fce2f8059adaa90",
+        "bytes": 2209
+      },
+      "compact.compact": {
+        "fnv1a64": "8084765b60b0219d",
+        "bytes": 2210
+      },
+      "free.greedy": {
+        "fnv1a64": "d49ebcb6b57e3a68",
+        "bytes": 2932
+      },
+      "free.compact": {
+        "fnv1a64": "21ea9c445fa0849b",
+        "bytes": 2933
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "8803455d67b358a0",
+        "bytes": 518
+      },
+      "compact.compact": {
+        "fnv1a64": "cb101092a462b93b",
+        "bytes": 519
+      },
+      "free.greedy": {
+        "fnv1a64": "f3d60b75ca66aa18",
+        "bytes": 634
+      },
+      "free.compact": {
+        "fnv1a64": "93390e1182b96413",
+        "bytes": 635
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "3c27361f634abeff",
+        "bytes": 2888
+      },
+      "compact.compact": {
+        "fnv1a64": "7ea2cba64a6de00c",
+        "bytes": 2889
+      },
+      "free.greedy": {
+        "fnv1a64": "5b11a56c3dae1c9a",
+        "bytes": 3563
+      },
+      "free.compact": {
+        "fnv1a64": "9b7809da9edf136b",
+        "bytes": 3564
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "810f191f53a387b3",
+        "bytes": 1271
+      },
+      "compact.compact": {
+        "fnv1a64": "83351c9c8a212ca2",
+        "bytes": 1272
+      },
+      "free.greedy": {
+        "fnv1a64": "17677e386a5b407a",
+        "bytes": 1397
+      },
+      "free.compact": {
+        "fnv1a64": "c1f0e5aca9f77b7f",
+        "bytes": 1398
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "b21323cd4cb90805",
+        "bytes": 519
+      },
+      "compact.compact": {
+        "fnv1a64": "956b1ca2448c06ec",
+        "bytes": 520
+      },
+      "free.greedy": {
+        "fnv1a64": "01b59924f1d64adb",
+        "bytes": 692
+      },
+      "free.compact": {
+        "fnv1a64": "8c683360885510e4",
+        "bytes": 693
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0eafe25eda97ae34",
+        "bytes": 1677
+      },
+      "compact.compact": {
+        "fnv1a64": "049cc8920e39c585",
+        "bytes": 1678
+      },
+      "free.greedy": {
+        "fnv1a64": "1b5b05f4150ec78c",
+        "bytes": 1989
+      },
+      "free.compact": {
+        "fnv1a64": "5cc82b92739e20d5",
+        "bytes": 1990
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "544e0f1a91b1dce4",
+        "bytes": 1960
+      },
+      "compact.compact": {
+        "fnv1a64": "ea4adb8b10279fc7",
+        "bytes": 1961
+      },
+      "free.greedy": {
+        "fnv1a64": "f700f00a46081a15",
+        "bytes": 2450
+      },
+      "free.compact": {
+        "fnv1a64": "74f419bf2f3bc89a",
+        "bytes": 2451
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "03435c7c9192360e",
+        "bytes": 2909
+      },
+      "compact.compact": {
+        "fnv1a64": "31ea33236dcfe617",
+        "bytes": 2910
+      },
+      "free.greedy": {
+        "fnv1a64": "821f1d089c477926",
+        "bytes": 3524
+      },
+      "free.compact": {
+        "fnv1a64": "99432e0f67199a81",
+        "bytes": 3525
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "7a21cbe4decd8891",
+        "bytes": 3763
+      },
+      "compact.compact": {
+        "fnv1a64": "61b4d5e55c800090",
+        "bytes": 3764
+      },
+      "free.greedy": {
+        "fnv1a64": "2cfd9a322aabb392",
+        "bytes": 4562
+      },
+      "free.compact": {
+        "fnv1a64": "863252dfe5756619",
+        "bytes": 4563
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "232d9fae0bcd4f4d",
+        "bytes": 1247
+      },
+      "compact.compact": {
+        "fnv1a64": "6991868b9be74f74",
+        "bytes": 1248
+      },
+      "free.greedy": {
+        "fnv1a64": "d6dd77ec2c3684c4",
+        "bytes": 1430
+      },
+      "free.compact": {
+        "fnv1a64": "b7950600db16564f",
+        "bytes": 1431
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "3a36415bbde5ac44",
+        "bytes": 519
+      },
+      "compact.compact": {
+        "fnv1a64": "f7bace3d57078185",
+        "bytes": 520
+      },
+      "free.greedy": {
+        "fnv1a64": "0f181220a91c1e36",
+        "bytes": 635
+      },
+      "free.compact": {
+        "fnv1a64": "1a4602c4c26c8a07",
+        "bytes": 636
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "2a819d81ad994865",
+        "bytes": 1475
+      },
+      "compact.compact": {
+        "fnv1a64": "622e0af4cf811b6c",
+        "bytes": 1476
+      },
+      "free.greedy": {
+        "fnv1a64": "ac94628dcc05a0ba",
+        "bytes": 1711
+      },
+      "free.compact": {
+        "fnv1a64": "ca20a3963ec4913f",
+        "bytes": 1712
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "d74d33f35d088c58",
+        "bytes": 1716
+      },
+      "compact.compact": {
+        "fnv1a64": "ad12b171b9eb9397",
+        "bytes": 1717
+      },
+      "free.greedy": {
+        "fnv1a64": "cdc48c9a16da0a55",
+        "bytes": 1972
+      },
+      "free.compact": {
+        "fnv1a64": "5c63e95c644317be",
+        "bytes": 1973
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0cefd93c5b9eb785",
+        "bytes": 1243
+      },
+      "compact.compact": {
+        "fnv1a64": "732a236839b61cc4",
+        "bytes": 1244
+      },
+      "free.greedy": {
+        "fnv1a64": "48f758bf844893d2",
+        "bytes": 1425
+      },
+      "free.compact": {
+        "fnv1a64": "17d880583452937f",
+        "bytes": 1426
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "1bbead195f2a0f3f",
+        "bytes": 3803
+      },
+      "compact.compact": {
+        "fnv1a64": "f87e8770839231e6",
+        "bytes": 3804
+      },
+      "free.greedy": {
+        "fnv1a64": "f6d99091a2ca96db",
+        "bytes": 4541
+      },
+      "free.compact": {
+        "fnv1a64": "26d026ee53d4cbde",
+        "bytes": 4542
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0da2c924767576ca",
+        "bytes": 1314
+      },
+      "compact.compact": {
+        "fnv1a64": "c8c01ef1a08617e9",
+        "bytes": 1315
+      },
+      "free.greedy": {
+        "fnv1a64": "5788cb43344d0c8e",
+        "bytes": 1674
+      },
+      "free.compact": {
+        "fnv1a64": "186928e4f8158c45",
+        "bytes": 1675
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "2ecaef20b1497330",
+        "bytes": 2127
+      },
+      "compact.compact": {
+        "fnv1a64": "9c0b2c4f13b852a1",
+        "bytes": 2128
+      },
+      "free.greedy": {
+        "fnv1a64": "62f315613e084074",
+        "bytes": 2501
+      },
+      "free.compact": {
+        "fnv1a64": "01b91517069855e9",
+        "bytes": 2502
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "59fc1b1c722d6ec3",
+        "bytes": 2306
+      },
+      "compact.compact": {
+        "fnv1a64": "8f019a4a0c03ee50",
+        "bytes": 2307
+      },
+      "free.greedy": {
+        "fnv1a64": "ebe1e59fcb084869",
+        "bytes": 2628
+      },
+      "free.compact": {
+        "fnv1a64": "f2791afdc540142a",
+        "bytes": 2629
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "4995124b86d11641",
+        "bytes": 873
+      },
+      "compact.compact": {
+        "fnv1a64": "c612bd613fecbb5c",
+        "bytes": 874
+      },
+      "free.greedy": {
+        "fnv1a64": "5ce7b3edbed3197b",
+        "bytes": 995
+      },
+      "free.compact": {
+        "fnv1a64": "d830d5e06da80ade",
+        "bytes": 996
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "6eadf8cdf2273e9f",
+        "bytes": 1074
+      },
+      "compact.compact": {
+        "fnv1a64": "469d8320283a41f4",
+        "bytes": 1075
+      },
+      "free.greedy": {
+        "fnv1a64": "82da22c53cb2ab8d",
+        "bytes": 1375
+      },
+      "free.compact": {
+        "fnv1a64": "66ea313b478a79c0",
+        "bytes": 1376
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "c4b2ef798ce85510",
+        "bytes": 1853
+      },
+      "compact.compact": {
+        "fnv1a64": "d9e11cd4fa3f97bd",
+        "bytes": 1854
+      },
+      "free.greedy": {
+        "fnv1a64": "a111e78e7c3e89be",
+        "bytes": 2161
+      },
+      "free.compact": {
+        "fnv1a64": "b5500645003b2073",
+        "bytes": 2162
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0f84acf4f971ee35",
+        "bytes": 3378
+      },
+      "compact.compact": {
+        "fnv1a64": "f765950551603a22",
+        "bytes": 3379
+      },
+      "free.greedy": {
+        "fnv1a64": "3ecb13c98f40796c",
+        "bytes": 3885
+      },
+      "free.compact": {
+        "fnv1a64": "43472daa9bba3bc5",
+        "bytes": 3886
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "4ddf1927f95b796e",
+        "bytes": 1581
+      },
+      "compact.compact": {
+        "fnv1a64": "1030589912d9f4b7",
+        "bytes": 1582
+      },
+      "free.greedy": {
+        "fnv1a64": "1b9d62384e693138",
+        "bytes": 1949
+      },
+      "free.compact": {
+        "fnv1a64": "dc1983cada0e8725",
+        "bytes": 1950
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "76d9e2fda0461697",
+        "bytes": 398
+      },
+      "compact.compact": {
+        "fnv1a64": "b8e72c93c33ef2b8",
+        "bytes": 399
+      },
+      "free.greedy": {
+        "fnv1a64": "ec0915e9183ff924",
+        "bytes": 512
+      },
+      "free.compact": {
+        "fnv1a64": "e3c3ba072613c74b",
+        "bytes": 513
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "e88c55f0875fb1b6",
+        "bytes": 2607
+      },
+      "compact.compact": {
+        "fnv1a64": "378b2bb9a3ed30cf",
+        "bytes": 2608
+      },
+      "free.greedy": {
+        "fnv1a64": "1f1cce876458f7f6",
+        "bytes": 3111
+      },
+      "free.compact": {
+        "fnv1a64": "6d2dd3f6e0b715ab",
+        "bytes": 3112
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "4679fca099d2c3ef",
+        "bytes": 644
+      },
+      "compact.compact": {
+        "fnv1a64": "c63f893adb8ae57c",
+        "bytes": 645
+      },
+      "free.greedy": {
+        "fnv1a64": "b6c39e47374aa2c4",
+        "bytes": 699
+      },
+      "free.compact": {
+        "fnv1a64": "e788c7d8d1c0bf71",
+        "bytes": 700
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "7f366959013dd144",
+        "bytes": 3391
+      },
+      "compact.compact": {
+        "fnv1a64": "9a148ce3da9669a1",
+        "bytes": 3392
+      },
+      "free.greedy": {
+        "fnv1a64": "779ac896fbaaac0e",
+        "bytes": 4012
+      },
+      "free.compact": {
+        "fnv1a64": "fd245f7fca3cca65",
+        "bytes": 4013
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "67b993e0ab01a18b",
+        "bytes": 2656
+      },
+      "compact.compact": {
+        "fnv1a64": "ccbc0b8fe3aff2a4",
+        "bytes": 2657
+      },
+      "free.greedy": {
+        "fnv1a64": "36afc4d74372b506",
+        "bytes": 3146
+      },
+      "free.compact": {
+        "fnv1a64": "cf2d3af9e75b4739",
+        "bytes": 3147
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "7633bae91a9586fc",
+        "bytes": 2608
+      },
+      "compact.compact": {
+        "fnv1a64": "e0e1c75a6d259547",
+        "bytes": 2609
+      },
+      "free.greedy": {
+        "fnv1a64": "45022c45b163f43d",
+        "bytes": 3104
+      },
+      "free.compact": {
+        "fnv1a64": "c461bc358b73edc6",
+        "bytes": 3105
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "3cbb9e4c79056743",
+        "bytes": 3878
+      },
+      "compact.compact": {
+        "fnv1a64": "068805a972680154",
+        "bytes": 3879
+      },
+      "free.greedy": {
+        "fnv1a64": "8b214195a7ffca2b",
+        "bytes": 4739
+      },
+      "free.compact": {
+        "fnv1a64": "2cda1fe9874c084a",
+        "bytes": 4740
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "52b3196cc1218ebf",
+        "bytes": 1688
+      },
+      "compact.compact": {
+        "fnv1a64": "d2f9a2c17f88ce18",
+        "bytes": 1689
+      },
+      "free.greedy": {
+        "fnv1a64": "78ab4d9a96ca8094",
+        "bytes": 1930
+      },
+      "free.compact": {
+        "fnv1a64": "a18f0d696c867eab",
+        "bytes": 1931
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "8b3f70fba6d177ea",
+        "bytes": 2443
+      },
+      "compact.compact": {
+        "fnv1a64": "5534efa3acb2b037",
+        "bytes": 2444
+      },
+      "free.greedy": {
+        "fnv1a64": "5a1032e46649e573",
+        "bytes": 2945
+      },
+      "free.compact": {
+        "fnv1a64": "7fd053af4cc34cea",
+        "bytes": 2946
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "0002ab27cfe2ebdc",
+        "bytes": 2144
+      },
+      "compact.compact": {
+        "fnv1a64": "0da163c3b3f78983",
+        "bytes": 2145
+      },
+      "free.greedy": {
+        "fnv1a64": "b51a8af9a57c28fc",
+        "bytes": 2337
+      },
+      "free.compact": {
+        "fnv1a64": "f041f773f7e149bd",
+        "bytes": 2338
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "7a01e93751ca6d93",
+        "bytes": 2040
+      },
+      "compact.compact": {
+        "fnv1a64": "8f0a93686027f4cc",
+        "bytes": 2041
+      },
+      "free.greedy": {
+        "fnv1a64": "96f5968d24d83992",
+        "bytes": 2353
+      },
+      "free.compact": {
+        "fnv1a64": "fbc59755f46c4b87",
+        "bytes": 2354
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "25ae5a036d6c21cf",
+        "bytes": 2181
+      },
+      "compact.compact": {
+        "fnv1a64": "9bc7aa0325d09652",
+        "bytes": 2182
+      },
+      "free.greedy": {
+        "fnv1a64": "3051c6a35c3bd800",
+        "bytes": 2614
+      },
+      "free.compact": {
+        "fnv1a64": "bbcf07d7723c8acb",
+        "bytes": 2615
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "31053317e74dba78",
+        "bytes": 4388
+      },
+      "compact.compact": {
+        "fnv1a64": "50dc53117094438f",
+        "bytes": 4389
+      },
+      "free.greedy": {
+        "fnv1a64": "a02959bf428e7148",
+        "bytes": 5080
+      },
+      "free.compact": {
+        "fnv1a64": "bd3d3c79c53372e3",
+        "bytes": 5081
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "086da7cd8a84f85e",
+        "bytes": 575
+      },
+      "compact.compact": {
+        "fnv1a64": "f2e858ee31074e6f",
+        "bytes": 576
+      },
+      "free.greedy": {
+        "fnv1a64": "8024a88b9fb330e6",
+        "bytes": 749
+      },
+      "free.compact": {
+        "fnv1a64": "da8cbc5f5aa571cb",
+        "bytes": 750
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "161a0596b55f09d3",
+        "bytes": 1720
+      },
+      "compact.compact": {
+        "fnv1a64": "e7925b1c69d61b40",
+        "bytes": 1721
+      },
+      "free.greedy": {
+        "fnv1a64": "14d5efc31c252b1b",
+        "bytes": 2088
+      },
+      "free.compact": {
+        "fnv1a64": "bd08301ae72969e0",
+        "bytes": 2089
+      }
+    },
+    {
+      "compact.greedy": {
+        "fnv1a64": "97e171ac4206591f",
+        "bytes": 2790
+      },
+      "compact.compact": {
+        "fnv1a64": "af5b8fc60c797d20",
+        "bytes": 2791
+      },
+      "free.greedy": {
+        "fnv1a64": "86fbf3ca55441066",
+        "bytes": 3359
+      },
+      "free.compact": {
+        "fnv1a64": "c4e7e41be93b630b",
+        "bytes": 3360
+      }
+    }
+  ]
+}

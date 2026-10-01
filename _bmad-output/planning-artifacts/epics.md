@@ -4111,6 +4111,14 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 - 10.1 (accessors, recordings, the invariant checker), 10.5 (the request), 10.7 (the switch), 10.17 (the view)
 - spike `SPEC.md` §4.2–§4.7; the Epic 10 header, "Design update 2026-09-28"
 
+> **Delivered (2026-10-01, Story 4.13 done):** spec at `_bmad-output/implementation-artifacts/spec-4-13-commit-stacks-layout-engine.md` (decisions in `decisions-review-4-10-to-4-13.md`; the run's own under `### 4.13`).
+>
+> - **SPEC.** `docs/graph-layout.md` §4.8 "Stacks" (new): the run rule, the state, the fixed columns (a split run stacks in its newest member's column), the grouped graph, the rows as the least solution of the edge / `free` walk / per-column segment constraints with the level-sweep procedure and its termination argument, `free`'s buckets, D11, and the design sample's compaction by hand; dated §2 (stack facts, the request file, V5), §3 (the output with stacks), §6 (`--stacks`), §7.3 (I7, I1–I6 on the grouped layout, y′ ≤ y), §9 (D11), §13 amendments.
+> - **Oracle.** The design's gap walk at `e243dd2` yields jj-lib 0.44's edges on both revsets (`tools/stacks.mjs` re-checks it), so its `groupStacks` is the run-rule oracle: 6 runs (default) and 7 (all), equal to the engine's. The hand-built gap cases are tests.
+> - **Engine.** `stacks.dart` in the spike's Dart reference and in `packages/zanshin_core/lib/src/graph_layout/` (the same code, byte-identical via goldens); `StackInput` + V5; the input builder's facts and key resolution (10.1's key rule); grid format version 2 only with stacks (version 1, byte for byte, without). Request fields `stacks` / `expandedKeys` / `collapsedKeys` / `keepOpenKeys` on `RepoHandle.graphLayout`, default off.
+> - **Compaction** on the design sample, `compact` / greedy, every run collapsed: all 19 → 15, default 9 → 8 (a column constraint binds; the planning estimate 9 → 7 missed it).
+> - **Measured** (spec § Measurements): the `stacks` phase costs 0.3–0.45 ms at large-10k and ~9–11 ms at synth-100k (AOT warm).
+
 ---
 
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight

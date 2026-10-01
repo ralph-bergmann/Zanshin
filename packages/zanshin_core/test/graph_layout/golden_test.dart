@@ -3,7 +3,8 @@
 // The product engine against the committed goldens (Story 4.11), which tools/goldens.mjs writes
 // from the spike's two references (greedy: Rust; the `compact` order: the spike's Dart) and from
 // the design's own computeLayout: every output byte for byte in docs/graph-layout.md §3's
-// canonical form, the fuzz cases by FNV-1a 64 hash and byte length.
+// canonical form, the fuzz cases by FNV-1a 64 hash and byte length. Story 4.13 adds the stacks
+// (§4.8): the spike Dart's outputs, the design's own groupStacks runs, the hand-derived compaction.
 
 import 'dart:convert';
 import 'dart:io';
@@ -27,6 +28,19 @@ Uint8List golden(String path) => File('$_goldens/$path').readAsBytesSync();
 String layOut(Uint8List bytes, LayoutMode mode, LaneOrder order, {int budget = defaultLayoutBudget}) {
   final LayoutInput input = parseSpecInput(bytes).input;
   return canonicalOutput(GraphGridView.fromBytes(computeGraphGrid(input, mode: mode, order: order, budget: budget)));
+}
+
+/// The grouped grid (Story 4.13) of [input] with the stack request [stacks].
+GraphGridView stackGrid(LayoutInput input, StackInput stacks, LayoutMode mode, LaneOrder order) =>
+    GraphGridView.fromBytes(
+      computeGraphGrid(input, mode: mode, order: order, budget: defaultLayoutBudget, stacks: stacks),
+    );
+
+/// The engine's §3 canonical output with stacks for the §2 input [bytes] (with stack facts) and the
+/// stack request file [request].
+String layOutStacks(Uint8List bytes, Uint8List request, LayoutMode mode, LaneOrder order) {
+  final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(bytes, stacks: true);
+  return canonicalOutput(stackGrid(parsed.input, parseSpecStackRequest(request, parsed.facts!), mode, order));
 }
 
 void main() {
@@ -112,6 +126,99 @@ void main() {
         }
       }
     }
+  });
+
+  // Story 4.13, docs/graph-layout.md §4.8: every stack golden comes from the spike's Dart binary.
+  group('stacks', () {
+    for (final rev in ['default', 'all']) {
+      for (final state in ['default', 'expanded', 'mixed']) {
+        for (final LayoutMode mode in LayoutMode.values) {
+          for (final LaneOrder order in LaneOrder.values) {
+            test('stacks_design_${rev}_${state}_${mode.name}_${order.name}_equals_the_spike_reference', () {
+              expect(
+                layOutStacks(golden('stacks/design-$rev.json'), golden('stacks/request-$state.json'), mode, order),
+                utf8.decode(golden('stacks/design-$rev.$state.${mode.name}.${order.name}.json')),
+              );
+            });
+          }
+        }
+      }
+
+      test('stacks_design_${rev}_runs_equal_the_designs_group_stacks', () {
+        final oracle = jsonDecode(utf8.decode(golden('stacks/oracle/design-$rev.runs.json'))) as Map<String, Object?>;
+        final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
+          golden('stacks/design-$rev.json'),
+          stacks: true,
+        );
+        final GraphGridView grid = stackGrid(
+          parsed.input,
+          parseSpecStackRequest(golden('stacks/request-default.json'), parsed.facts!),
+          LayoutMode.compact,
+          LaneOrder.greedy,
+        );
+        final List<Map<String, Object>> runs = [
+          for (var k = 0; k < grid.runCount; k++)
+            {
+              'key': parsed.facts!.keys[grid.runMembers![grid.runStarts![k]]],
+              'members': grid.runMembers!.sublist(grid.runStarts![k], grid.runStarts![k + 1]),
+            },
+        ];
+        expect(runs, oracle['runs']);
+        expect(runs, hasLength(rev == 'default' ? 6 : 7));
+      });
+    }
+
+    // docs/graph-layout.md §4.8 "The design sample, by hand": compact, greedy, every run collapsed.
+    test('stacks_design_compact_greedy_rows_shrink_by_the_hand_derived_counts', () {
+      for (final (String rev, int before, int after) in const [('all', 19, 15), ('default', 9, 8)]) {
+        final ({LayoutInput input, int nowMs, SpecStackFacts? facts}) parsed = parseSpecInput(
+          golden('stacks/design-$rev.json'),
+          stacks: true,
+        );
+        final off = GraphGridView.fromBytes(
+          computeGraphGrid(
+            parsed.input,
+            mode: LayoutMode.compact,
+            order: LaneOrder.greedy,
+            budget: defaultLayoutBudget,
+          ),
+        );
+        final GraphGridView grouped = stackGrid(
+          parsed.input,
+          parseSpecStackRequest(golden('stacks/request-default.json'), parsed.facts!),
+          LayoutMode.compact,
+          LaneOrder.greedy,
+        );
+        expect([off.rows, grouped.rows], [before, after], reason: rev);
+        expect(grouped.stackCount, grouped.runCount, reason: '$rev: every run collapsed');
+      }
+    });
+
+    test('every_seeded_stack_fuzz_case_hashes_to_its_golden_in_every_mode_and_order', () {
+      final List<String> cases = const LineSplitter().convert(utf8.decode(golden('stacks/fuzz/cases.jsonl')));
+      final expected =
+          (jsonDecode(utf8.decode(golden('stacks/fuzz/expected.json'))) as Map<String, Object?>)['cases']!
+              as List<Object?>;
+      expect(cases, hasLength(expected.length));
+      expect(cases.length, greaterThanOrEqualTo(60));
+      for (var c = 0; c < cases.length; c++) {
+        final line = jsonDecode(cases[c]) as Map<String, Object?>;
+        final Uint8List input = utf8.encode('${jsonEncode(line['input'])}\n');
+        final Uint8List request = utf8.encode('${jsonEncode(line['request'])}\n');
+        final want = expected[c]! as Map<String, Object?>;
+        for (final LayoutMode mode in LayoutMode.values) {
+          for (final LaneOrder order in LaneOrder.values) {
+            final Uint8List out = utf8.encode(layOutStacks(input, request, mode, order));
+            final digest = want['${mode.name}.${order.name}']! as Map<String, Object?>;
+            expect(
+              [fnv1a64Hex(out), out.length],
+              [digest['fnv1a64'], digest['bytes']],
+              reason: 'stack case $c ${mode.name} ${order.name}',
+            );
+          }
+        }
+      }
+    });
   });
 
   test('the_goldens_hash_is_fnv_1a_64', () {

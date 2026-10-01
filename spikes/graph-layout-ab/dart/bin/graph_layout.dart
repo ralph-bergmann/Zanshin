@@ -6,9 +6,10 @@ import 'package:graph_layout/graph_layout.dart';
 
 const String _usage = '''
 usage:
-  graph_layout layout --mode compact|time|free --order greedy|optimized|compact [--budget B] <input.json> <output.json>
-  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--budget B] [--runs N] [--warmup W] <input.json>
-(--order compact is Dart-only, SPEC §4.7; --budget is its search budget, default 2000000)''';
+  graph_layout layout --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] <input.json> <output.json>
+  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--budget B] [--stacks R] [--runs N] [--warmup W] <input.json>
+(--order compact is Dart-only, SPEC §4.7; --budget is its search budget, default 2000000;
+ --stacks R is Dart-only, SPEC §4.8: the stack request file R, modes compact and free only)''';
 
 /// Usage error or invalid input: exit code 2 (SPEC §6).
 final class _Exit2 implements Exception {
@@ -43,8 +44,10 @@ void main(List<String> args) {
 void _layout(_Cli cli) {
   if (cli.runs != null || cli.warmup != null) throw _Exit2('--runs / --warmup are bench-only');
   if (cli.positional.length != 2) throw _Exit2('layout takes <input.json> <output.json>');
-  final input = parseInput(_read(cli.positional[0]));
-  final json = encodeOutput(computeLayout(input, cli.mode, cli.order, budget: cli.budget));
+  final request = cli.stacks == null ? null : _read(cli.stacks!);
+  final input = parseInput(_read(cli.positional[0]), stacks: request != null);
+  final stacks = request == null ? null : parseStackRequest(request, input);
+  final json = encodeOutput(computeLayout(input, cli.mode, cli.order, budget: cli.budget, stacks: stacks));
   try {
     File(cli.positional[1]).writeAsStringSync(json);
   } on FileSystemException catch (e) {
@@ -60,31 +63,45 @@ void _bench(_Cli cli) {
   if (warmup < 0) throw _Exit2('--warmup must be ≥ 0');
   final path = cli.positional[0];
   final bytes = _read(path); // untimed (SPEC §8.2.1)
+  final request = cli.stacks == null ? null : _read(cli.stacks!);
 
-  const phases = ['parse', 'layering', 'lanes', 'blocked', 'routing', 'ordering', 'total'];
+  // With --stacks one more phase, `stacks`, after `ordering` (SPEC §6, amended 2026-10-01).
+  final phases = [
+    'parse',
+    'layering',
+    'lanes',
+    'blocked',
+    'routing',
+    'ordering',
+    if (request != null) 'stacks',
+    'total',
+  ];
+  final timed = phases.length - 1;
   final samples = List.generate(phases.length, (_) => Int64List(runs));
-  final t = Int64List(7);
+  final t = Int64List(timed + 1);
   final sw = Stopwatch()..start();
   LayoutInput? input;
   LayoutResult? result;
   for (var iter = 0; iter < warmup + runs; iter++) {
     var k = 0;
     t[k++] = sw.elapsedTicks;
-    input = parseInput(bytes);
+    input = parseInput(bytes, stacks: request != null);
+    final stacks = request == null ? null : parseStackRequest(request, input);
     t[k++] = sw.elapsedTicks;
     result = computeLayout(
       input,
       cli.mode,
       cli.order,
       budget: cli.budget,
+      stacks: stacks,
       onPhaseEnd: () => t[k++] = sw.elapsedTicks,
     );
     if (iter < warmup) continue;
     final r = iter - warmup;
-    for (var ph = 0; ph < 6; ph++) {
+    for (var ph = 0; ph < timed; ph++) {
       samples[ph][r] = _ns(t[ph + 1] - t[ph], sw.frequency);
     }
-    samples[6][r] = _ns(t[6] - t[1], sw.frequency); // total: one span, parse excluded
+    samples[timed][r] = _ns(t[timed] - t[1], sw.frequency); // total: one span, parse excluded
   }
 
   final out = StringBuffer()
@@ -139,7 +156,7 @@ Uint8List _read(String path) {
 }
 
 final class _Cli {
-  _Cli(this.mode, this.order, this.runs, this.warmup, this.budget, this.positional);
+  _Cli(this.mode, this.order, this.runs, this.warmup, this.budget, this.stacks, this.positional);
 
   factory _Cli.parse(List<String> args) {
     final flags = <String, String>{};
@@ -160,7 +177,9 @@ final class _Cli {
         name = arg.substring(2);
         value = args[++k];
       }
-      if (!const {'mode', 'order', 'runs', 'warmup', 'budget'}.contains(name)) throw _Exit2('unknown flag --$name');
+      if (!const {'mode', 'order', 'runs', 'warmup', 'budget', 'stacks'}.contains(name)) {
+        throw _Exit2('unknown flag --$name');
+      }
       if (flags.containsKey(name)) throw _Exit2('--$name given twice');
       flags[name] = value;
     }
@@ -170,7 +189,9 @@ final class _Cli {
     if (order == null) throw _Exit2('--order must be greedy, optimized or compact');
     final budget = _intFlag(flags, 'budget') ?? compactBudget;
     if (budget < 0) throw _Exit2('--budget must be ≥ 0');
-    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), budget, positional);
+    final stacks = flags['stacks'];
+    if (stacks != null && mode == Mode.time) throw _Exit2('--stacks takes --mode compact or free');
+    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), budget, stacks, positional);
   }
 
   static int? _intFlag(Map<String, String> flags, String name) {
@@ -186,5 +207,8 @@ final class _Cli {
 
   /// The `compact` order's search budget (SPEC §4.7), `compactBudget` unless `--budget` is given.
   final int budget;
+
+  /// The stack request file (SPEC §4.8, Story 4.13), or null without `--stacks`.
+  final String? stacks;
   final List<String> positional;
 }

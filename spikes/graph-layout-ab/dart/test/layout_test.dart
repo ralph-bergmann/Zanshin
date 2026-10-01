@@ -67,6 +67,7 @@ void main() {
   compactOrder();
   outputAndValidation();
   randomized();
+  stacks();
   finish();
 }
 
@@ -853,6 +854,376 @@ void randomized() {
       for (final mode in Mode.values) {
         for (final order in LaneOrder.values) {
           checkInvariants(g, run(g, mode, order), 'case $t $mode $order');
+        }
+      }
+    }
+  });
+}
+
+// ---- Story 4.13: commit stacks (docs/graph-layout.md §4.8) -------------------------------------
+
+/// A hand-built input with stack facts (keys `n<i>`): [parents] as in [graph]; [counts] overrides a
+/// node's `parent_count` (default: its parent entries), [refs] carry `has_ref`, [self] is `"this"`
+/// working copy, [others] `"other"`, [immutable] the immutable nodes.
+LayoutInput stackGraph(
+  List<List<Object?>> parents, {
+  Map<int, int> counts = const {},
+  Set<int> refs = const {},
+  int? self,
+  Set<int> others = const {},
+  Set<int> immutable = const {},
+  List<int?>? ts,
+  List<int>? priority,
+}) {
+  final n = parents.length;
+  final nodes = [
+    for (var i = 0; i < n; i++)
+      {
+        'id': 'n$i',
+        'ts_ms': ts?[i],
+        'is_root': i == n - 1,
+        'priority': priority?[i] ?? 0,
+        'parents': [
+          for (final p in parents[i])
+            switch (p) {
+              null => {'idx': null, 'kind': 'missing'},
+              Ind(:final idx) => {'idx': idx, 'kind': 'indirect'},
+              final int idx => {'idx': idx, 'kind': 'direct'},
+              _ => throw ArgumentError(p),
+            },
+        ],
+        'key': 'n$i',
+        'immutable': immutable.contains(i),
+        'parent_count': counts[i] ?? parents[i].length,
+        'has_ref': refs.contains(i),
+        'working_copy': i == self ? 'this' : (others.contains(i) ? 'other' : null),
+      },
+  ];
+  return parseInput(utf8.encode(jsonEncode({'now_ms': 0, 'utc_offset_min': 0, 'nodes': nodes})), stacks: true);
+}
+
+/// The stack request for [g] naming the node keys `n<i>` of each list.
+StackInput stackRequest(
+  LayoutInput g, {
+  List<int> expanded = const [],
+  List<int> collapsed = const [],
+  List<int> keepOpen = const [],
+  List<String> unknown = const [],
+}) => parseStackRequest(
+  utf8.encode(
+    jsonEncode({
+      'expanded': [for (final i in expanded) 'n$i', ...unknown],
+      'collapsed': [for (final i in collapsed) 'n$i', ...unknown],
+      'keep_open': [for (final i in keepOpen) 'n$i', ...unknown],
+    }),
+  ),
+  g,
+);
+
+/// The runs of [r] as member lists, oldest first, with their state.
+List<Object> runsOf(LayoutResult r) => [
+  for (var k = 0; k + 1 < r.runStart!.length; k++)
+    [
+      [for (var j = r.runStart![k]; j < r.runStart![k + 1]; j++) r.runMembers![j]],
+      runStateNames[r.runState![k]],
+    ],
+];
+
+/// Edges as (from, to, kind) tuples.
+List<List<Object>> kinds(LayoutResult r) => [
+  for (var e = 0; e < r.edgeFrom.length; e++) [r.edgeFrom[e], r.edgeTo[e], kindNames[r.edgeKind[e]]],
+];
+
+void stacks() {
+  LayoutResult grouped(LayoutInput g, [StackInput? s, Mode mode = Mode.compact, LaneOrder order = LaneOrder.greedy]) =>
+      computeLayout(g, mode, order, stacks: s ?? stackRequest(g));
+
+  test('stacks: (a) an Indirect parent edge — B a single card, C–D a stack whose parent edge is Direct', () {
+    // E ← D ← C ← B ⇠ A: B's one edge is Indirect.
+    final g = stackGraph([
+      [1],
+      [2],
+      [3],
+      [Ind(4)],
+      [],
+    ]);
+    final r = grouped(g);
+    expectEq(runsOf(r), [
+      [
+        [2, 1],
+        'collapsed',
+      ],
+    ]);
+    expectEq(kinds(r), [
+      [5, 0, 'direct'],
+      [4, 3, 'indirect'],
+      [3, 5, 'direct'],
+    ]);
+    check(r.lane[3] >= 0 && r.lane[1] < 0 && r.lane[2] < 0, 'B visible, C and D hidden');
+  });
+
+  test('stacks: (b) one real parent, two Indirect edges; (c) one Missing edge — no member', () {
+    for (final gap in [
+      [Ind(4), Ind(5)],
+      [null],
+    ]) {
+      final g = stackGraph(
+        [
+          [1],
+          [2],
+          [3],
+          gap,
+          [6],
+          [6],
+          [],
+        ],
+        counts: {3: 1},
+      );
+      expectEq(runsOf(grouped(g)), [
+        [
+          [2, 1],
+          'collapsed',
+        ],
+      ], '$gap');
+    }
+  });
+
+  test('stacks: (d) two runs meet at a gap — two stacks, the node above the gap a single card', () {
+    // G ← F ← E ← D ⇠ C ← B ← A: C's one child edge is Indirect.
+    final g = stackGraph([
+      [1],
+      [2],
+      [3],
+      [Ind(4)],
+      [5],
+      [6],
+      [],
+    ]);
+    final r = grouped(g);
+    expectEq(runsOf(r), [
+      [
+        [2, 1],
+        'collapsed',
+      ],
+      [
+        [5, 4],
+        'collapsed',
+      ],
+    ]);
+    check(r.lane[3] >= 0, 'D visible');
+    // A 0, the lower stack 1, D 2, the upper stack 3, G 4.
+    expectEq(r.row.toList(), [4, -1, -1, 2, -1, -1, 0, 3, 1], 'rows');
+  });
+
+  test('stacks: (e) a node with one Direct and one Indirect child edge is a fork, no member', () {
+    // H ← Y2 ← Y ← X ← W ← R, and Z ⇠ X.
+    final g = stackGraph([
+      [2],
+      [Ind(4)],
+      [3],
+      [4],
+      [5],
+      [6],
+      [],
+    ]);
+    expectEq(runsOf(grouped(g)), [
+      [
+        [3, 2],
+        'collapsed',
+      ],
+    ]);
+  });
+
+  test('stacks: (f) a collapsed stack keeps the Indirect kind of its newest member\'s child edge', () {
+    final g = stackGraph([
+      [Ind(1)],
+      [2],
+      [3],
+      [],
+    ]);
+    expectEq(kinds(grouped(g)), [
+      [4, 0, 'indirect'],
+      [3, 4, 'direct'],
+    ]);
+  });
+
+  test('stacks: a ref, another working copy, a merge and the immutable boundary break a run', () {
+    // A chain of 8 above the root: 0 ← 1 ← … ← 7 ← 8 (root).
+    final chain = [
+      for (var i = 0; i < 8; i++) [i + 1],
+      <Object?>[],
+    ];
+    expectEq(runsOf(grouped(stackGraph(chain))), [
+      [
+        [7, 6, 5, 4, 3, 2, 1],
+        'collapsed',
+      ],
+    ], 'plain chain');
+    expectEq(runsOf(grouped(stackGraph(chain, refs: {4}))), [
+      [
+        [3, 2, 1],
+        'collapsed',
+      ],
+      [
+        [7, 6, 5],
+        'collapsed',
+      ],
+    ], 'a ref');
+    expectEq(runsOf(grouped(stackGraph(chain, others: {4}))).length, 2, 'another workspace\'s working copy');
+    expectEq(runsOf(grouped(stackGraph(chain, counts: {4: 2}))).length, 2, 'a merge with one layout parent');
+    expectEq(runsOf(grouped(stackGraph(chain, immutable: {5, 6, 7, 8}))), [
+      [
+        [4, 3, 2, 1],
+        'collapsed',
+      ],
+      [
+        [7, 6, 5],
+        'collapsed',
+      ],
+    ], 'the immutable boundary');
+  });
+
+  test(
+    'stacks: state — @\'s mutable ancestors start expanded; CO, EX wins over CO, KO wins over all, unknown keys',
+    () {
+      // 0 (@) ← 1 ← 2 ← 3 ← 4 ← 5 (root, immutable).
+      final chain = [
+        for (var i = 0; i < 5; i++) [i + 1],
+        <Object?>[],
+      ];
+      final g = stackGraph(chain, self: 0, immutable: {5});
+      String state(StackInput s) => runsOf(grouped(g, s)).map((x) => (x as List)[1]).join(',');
+      expectEq(state(stackRequest(g)), 'expanded', 'default');
+      expectEq(state(stackRequest(g, collapsed: [4])), 'collapsed', 'CO on m_1');
+      expectEq(state(stackRequest(g, expanded: [4], collapsed: [4])), 'expanded', 'EX wins');
+      expectEq(state(stackRequest(g, collapsed: [4], keepOpen: [2])), 'expanded', 'KO on a middle member');
+      expectEq(state(stackRequest(g, collapsed: [3])), 'expanded', 'CO on a non-oldest member: ignored');
+      expectEq(state(stackRequest(g, collapsed: [4], unknown: ['zz'])), 'collapsed', 'an unknown key');
+      final away = stackGraph(chain, immutable: {5});
+      expectEq(state(stackRequest(away)), 'collapsed', 'without @ the default is collapsed');
+    },
+  );
+
+  test('stacks: a split run — the stack takes m_k\'s column, every visible node keeps its own', () {
+    // p = 5: children m1 = 4 (continuation, priority 0) and x = 2 (priority 2); the run m1 ← m2 = 3
+    // with one child c0 = 0; c = 1 merges x and p, so p's reservation outlives m1.
+    final g = stackGraph(
+      [
+        [3],
+        [2, 5],
+        [5],
+        [4],
+        [5],
+        [],
+      ],
+      priority: [0, 0, 2, 0, 0, 0],
+    );
+    final off = run(g, Mode.compact);
+    check(off.col[4] != off.col[3], 'the run is split');
+    final r = grouped(g);
+    expectEq(runsOf(r), [
+      [
+        [4, 3],
+        'collapsed',
+      ],
+    ]);
+    expectEq([r.lane[6], r.col[6]], [off.lane[3], off.col[3]], 'the stack sits in m_k\'s column');
+    for (final i in [0, 1, 2, 5]) {
+      expectEq([r.lane[i], r.col[i]], [off.lane[i], off.col[i]], 'node $i keeps its column');
+    }
+    check(r.rows <= off.rows, 'rows never grow');
+  });
+
+  test('stacks: a missing or mistyped fact, a repeated key, two "this" and a bad request are InputErrors', () {
+    Map<String, Object?> node(int i, [Map<String, Object?> extra = const {}]) => {
+      'id': 'n$i',
+      'ts_ms': null,
+      'is_root': i == 1,
+      'priority': 0,
+      'parents': i == 0
+          ? [
+              {'idx': 1, 'kind': 'direct'},
+            ]
+          : <Object?>[],
+      'key': 'n$i',
+      'immutable': false,
+      'parent_count': i == 0 ? 1 : 0,
+      'has_ref': false,
+      'working_copy': null,
+      ...extra,
+    };
+    LayoutInput parse(List<Map<String, Object?>> nodes) =>
+        parseInput(utf8.encode(jsonEncode({'now_ms': 0, 'utc_offset_min': 0, 'nodes': nodes})), stacks: true);
+    final ok = parse([node(0), node(1)]);
+    for (final field in ['key', 'immutable', 'parent_count', 'has_ref', 'working_copy']) {
+      expectThrows<InputError>(() => parse([node(0)..remove(field), node(1)]), 'no $field');
+    }
+    expectThrows<InputError>(() => parse([node(0, {'key': 'n1'}), node(1)]), 'a repeated key');
+    expectThrows<InputError>(() => parse([node(0, {'has_ref': 'no'}), node(1)]), 'a mistyped fact');
+    expectThrows<InputError>(() => parse([node(0, {'parent_count': -1}), node(1)]), 'a negative parent count');
+    expectThrows<InputError>(
+      () => parse([node(0, {'working_copy': 'this'}), node(1, {'working_copy': 'this'})]),
+      'two "this"',
+    );
+    expectThrows<InputError>(() => parseStackRequest(utf8.encode('{"expanded":[]}'), ok), 'lists missing');
+    expectThrows<InputError>(
+      () => parseStackRequest(utf8.encode('{"expanded":[1],"collapsed":[],"keep_open":[]}'), ok),
+      'a non-string key',
+    );
+    final s = parseStackRequest(utf8.encode('{"expanded":["n1","zz"],"collapsed":[],"keep_open":[]}'), ok);
+    expectEq(s.expandedNodes.toList(), [1], 'an unknown key is dropped');
+  });
+
+  test('stacks: random graphs — all expanded equals off, all collapsed only compacts (I7, y′ ≤ y)', () {
+    final rnd = Random(413);
+    for (var t = 0; t < 150; t++) {
+      final base = randomGraph(rnd, rnd.nextInt(80), branchy: t % 3 == 0);
+      final n = base.n;
+      final parents = [
+        for (var i = 0; i < n; i++)
+          [
+            for (var k = base.parStart[i]; k < base.parStart[i + 1]; k++)
+              switch (base.parKind[k]) {
+                kindMissing => null,
+                kindIndirect => Ind(base.parIdx[k]),
+                _ => base.parIdx[k],
+              },
+          ],
+      ];
+      final g = stackGraph(
+        parents,
+        refs: {
+          for (var i = 0; i < n; i++)
+            if (rnd.nextInt(12) == 0) i,
+        },
+        self: n > 1 && rnd.nextBool() ? rnd.nextInt(n - 1) : null,
+        immutable: {for (var i = rnd.nextInt(n + 1); i < n; i++) i},
+        ts: [for (var i = 0; i < n; i++) base.hasTs[i] != 0 ? base.ts[i] : null],
+        priority: base.priority.toList(),
+      );
+      final all = List.generate(n, (i) => i);
+      for (final mode in [Mode.compact, Mode.free]) {
+        for (final order in [LaneOrder.greedy, LaneOrder.compact]) {
+          final what = 'case $t $mode $order';
+          final off = computeLayout(g, mode, order);
+          final open = computeLayout(g, mode, order, stacks: stackRequest(g, keepOpen: all));
+          check(encodeOutput(open).startsWith(encodeOutput(off).replaceFirst(RegExp(r'\]\}\n$'), ']')), '$what: open');
+          final shut = computeLayout(g, mode, order, stacks: stackRequest(g, collapsed: all));
+          check(shut.rows <= off.rows && shut.lanes == off.lanes, '$what: rows / lanes');
+          for (var i = 0; i < n; i++) {
+            if (shut.lane[i] < 0) continue;
+            check(shut.lane[i] == off.lane[i] && shut.col[i] == off.col[i], '$what: I7 node $i');
+            check(shut.row[i] <= off.row[i], '$what: y′ ≤ y at $i');
+          }
+          for (var k = 0; k < shut.stackCount; k++) {
+            final run = shut.runNode!.indexOf(n + k);
+            final newest = shut.runMembers![shut.runStart![run + 1] - 1];
+            check(shut.col[n + k] == off.col[newest] && shut.row[n + k] <= off.row[newest], '$what: stack $k');
+          }
+          for (var e = 0; e < shut.edgeFrom.length; e++) {
+            final p = shut.edgeFrom[e], c = shut.edgeTo[e];
+            check(shut.row[c] >= shut.row[p] + shut.unit, '$what: I1 $p→$c');
+          }
         }
       }
     }

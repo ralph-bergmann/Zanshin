@@ -7,6 +7,7 @@ import 'graph_grid_view.dart';
 import 'layout_input.dart';
 import 'layout_request.dart';
 import 'sort.dart';
+import 'stacks.dart';
 
 // The product layout engine (Story 4.11): docs/graph-layout.md §4 for the shipped scope — the
 // modes compact | free and the lane orders greedy | compact — ported from the spike's Dart
@@ -57,17 +58,26 @@ int freeGap(int g) {
 /// Lays out [input] (docs/graph-layout.md §4) in [mode] with the lane [order], whose `compact`
 /// search may spend [budget] work units, and returns the grid buffer [GraphGridView] reads.
 ///
-/// Validates first ([validateLayoutInput]): a contract violation throws
-/// [LayoutContractException] and lays out nothing. [onPhaseEnd] runs after each of the five timed
-/// phases (layering, lanes, blocked, routing, ordering; §8.2); writing the grid is not timed.
+/// With [stacks] (Story 4.13) the finished layout's linear runs are grouped by §4.8 — the columns
+/// stay, only rows move — and the grid has format version [GraphGridView.stackFormatVersion];
+/// without it the result is 4.11's, format version 1, byte for byte.
+///
+/// Validates first ([validateLayoutInput], then [validateStackInput]): a contract violation
+/// throws [LayoutContractException] and lays out nothing. [onPhaseEnd] runs after each of the
+/// five timed phases (layering, lanes, blocked, routing, ordering; §8.2) and, with [stacks], after
+/// the sixth (stacks); writing the grid is not timed.
 Uint8List computeGraphGrid(
   LayoutInput input, {
   required LayoutMode mode,
   required LaneOrder order,
   required int budget,
+  StackInput? stacks,
   void Function()? onPhaseEnd,
 }) {
   validateLayoutInput(input);
+  if (stacks != null) {
+    validateStackInput(stacks, input.n);
+  }
   final engine = LayoutEngine(input, mode)..layering();
   onPhaseEnd?.call();
   engine.packLanes();
@@ -78,7 +88,12 @@ Uint8List computeGraphGrid(
   onPhaseEnd?.call();
   engine.orderLanes(order, budget: budget);
   onPhaseEnd?.call();
-  return engine.toGrid(order);
+  if (stacks == null) {
+    return engine.toGrid(order);
+  }
+  final grouped = StackLayout(engine, stacks)..run();
+  onPhaseEnd?.call();
+  return grouped.toGrid(order);
 }
 
 /// The layout state of docs/graph-layout.md §4, one phase per method; the phases run in order:
@@ -142,6 +157,13 @@ final class LayoutEngine {
 
   /// Each bucket's largest member y.
   var bucketEnd = Int64List(0);
+
+  /// `free`'s walk W (§4.2 free, step 3): every node by (T ascending, i descending); `null` in
+  /// `compact`. The stack pass (§4.8) reads it.
+  Int32List? freeOrder;
+
+  /// `free`'s clamped T(i) (§4.2 free, step 2); `null` in `compact`.
+  Int64List? freeT;
 
   // ---- §4.3 (re-assigned by the `compact` order, §4.7)
 
@@ -321,6 +343,8 @@ final class LayoutEngine {
       prevT = t[i];
     }
     _freeDayBuckets(order, t);
+    freeOrder = order;
+    freeT = t;
   }
 
   /// Step 4 of §4.2 free: one `day` bucket per local day of the clamped T of every non-root node.

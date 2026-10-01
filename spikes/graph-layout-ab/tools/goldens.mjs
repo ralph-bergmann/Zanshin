@@ -9,7 +9,9 @@
 //
 //   node tools/goldens.mjs        (from the spike root)
 //
-// Needs: both binaries built, inputs/ regenerated (fixture-tiny-all included), outputs/oracle/.
+// Needs: both binaries built, inputs/ regenerated (fixture-tiny-all included), outputs/oracle/,
+// and (Story 4.13) tools/stacks.mjs run, which writes inputs/stacks-design-*.json and the
+// outputs/oracle/stacks-design-*.runs.json the `stacks/` section copies.
 // Deterministic: a second run leaves `git status` clean. Exit code 1 on any failure.
 
 import fs from "node:fs";
@@ -17,6 +19,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { genInput, rng } from "./fuzz.mjs";
+import { genStackInput, stackRequest } from "./stacks.mjs";
 
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repo = path.resolve(spike, "../..");
@@ -42,6 +45,17 @@ const CUT = [
   ["design-all", "free", 90],
   ["design-default", "free", 40],
 ];
+/** Stack fuzz cases (Story 4.13): tools/stacks.mjs genStackInput + stackRequest of rng(STACK_SEED * 1_000_003 + case). */
+const STACK_SEED = 413;
+const STACK_CASES = 60;
+/**
+ * The design stack inputs' request files (Story 4.13, docs/graph-layout.md §4.8): `default` names
+ * nothing (every run collapses: none lies under @); `expanded` names every run's key of both
+ * revsets (a key the revset lacks is dropped); `mixed` — qmsvtlkr in both lists (EX wins),
+ * tzkvmrls (a non-oldest member) and the root's key (no run) changing nothing, nqxwrptl collapsed,
+ * and hvsmqplk (a middle member of the mwoqxlpn run) kept open.
+ */
+const MIXED = { expanded: ["qmsvtlkr", "tzkvmrls"], collapsed: ["qmsvtlkr", "nqxwrptl", "zzzzzzzz"], keep_open: ["hvsmqplk"] };
 
 /** FNV-1a 64 over the bytes: offset basis 0xcbf29ce484222325, prime 0x100000001b3, 16 hex digits. */
 function fnv1a64(bytes) {
@@ -55,12 +69,21 @@ function fnv1a64(bytes) {
 
 const digest = (bytes) => ({ fnv1a64: fnv1a64(bytes), bytes: bytes.length });
 
-/** Runs the reference of `order` on `inFile` (the Dart one with `budget`, when given) and returns the output bytes. */
-function layout(inFile, mode, order, budget = null) {
+/**
+ * Runs the reference of `order` on `inFile` (the Dart one with `budget`, when given) and returns
+ * the output bytes. With a stack request file (`stacks`) it is the spike's Dart binary for both
+ * orders: stacks are Dart-only (docs/graph-layout.md §4.8).
+ */
+function layout(inFile, mode, order, budget = null, stacks = null) {
   const outFile = path.join(work, "out.json");
   fs.rmSync(outFile, { force: true });
-  const args = ["layout", "--mode", mode, "--order", order, ...(budget === null ? [] : ["--budget", String(budget)]), inFile, outFile];
-  const r = spawnSync(BIN[order], args, { encoding: "utf8" });
+  const args = [
+    "layout", "--mode", mode, "--order", order,
+    ...(budget === null ? [] : ["--budget", String(budget)]),
+    ...(stacks === null ? [] : ["--stacks", stacks]),
+    inFile, outFile,
+  ];
+  const r = spawnSync(stacks === null ? BIN[order] : BIN.compact, args, { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`${order} reference, ${path.basename(inFile)} ${mode}: exit ${r.status} ${r.stderr}`);
   return fs.readFileSync(outFile);
 }
@@ -136,6 +159,58 @@ function main() {
   write("fuzz/cases.jsonl", lines.join("\n") + "\n");
   write("fuzz/expected.json", json({ seed: SEED, cases: expected }));
 
+  // Stacks (Story 4.13, docs/graph-layout.md §4.8), all from the spike's Dart binary: the design
+  // sample at e243dd2 with stack facts (tools/stacks.mjs) × three requests × modes × orders, the
+  // design's own groupStacks runs, and seeded stack fuzz cases.
+  const oracleRuns = {};
+  for (const rev of ["default", "all"]) {
+    const file = path.join(spike, "outputs/oracle", `stacks-design-${rev}.runs.json`);
+    if (!fs.existsSync(file)) throw new Error(`missing ${file}: run node tools/stacks.mjs first`);
+    oracleRuns[rev] = JSON.parse(fs.readFileSync(file, "utf8"));
+    write(`stacks/oracle/design-${rev}.runs.json`, fs.readFileSync(file));
+  }
+  const requests = {
+    default: { expanded: [], collapsed: [], keep_open: [] },
+    expanded: { expanded: [...new Set(Object.values(oracleRuns).flatMap((o) => o.runs.map((x) => x.key)))].sort(), collapsed: [], keep_open: [] },
+    mixed: MIXED,
+  };
+  for (const [state, request] of Object.entries(requests)) write(`stacks/request-${state}.json`, JSON.stringify(request) + "\n");
+  for (const rev of ["default", "all"]) {
+    const inFile = path.join(spike, "inputs", `stacks-design-${rev}.json`);
+    if (!fs.existsSync(inFile)) throw new Error(`missing ${inFile}: run node tools/stacks.mjs first`);
+    write(`stacks/design-${rev}.json`, fs.readFileSync(inFile));
+    for (const state of Object.keys(requests)) {
+      for (const mode of MODES) for (const order of ORDERS) {
+        write(`stacks/design-${rev}.${state}.${mode}.${order}.json`, layout(inFile, mode, order, null, path.join(out, `stacks/request-${state}.json`)));
+      }
+    }
+  }
+  const stackLines = [], stackExpected = [];
+  const requestFile = path.join(work, "request.json");
+  let splitRuns = 0; // runs whose oldest and newest members sit in different columns (§4.8 step 4)
+  for (let c = 0; c < STACK_CASES; c++) {
+    const r = rng(STACK_SEED * 1_000_003 + c);
+    const input = genStackInput(r);
+    const request = stackRequest(r, input);
+    stackLines.push(JSON.stringify({ input, request }));
+    fs.writeFileSync(caseFile, JSON.stringify(input) + "\n");
+    fs.writeFileSync(requestFile, JSON.stringify(request) + "\n");
+    const row = {};
+    for (const mode of MODES) for (const order of ORDERS) {
+      const bytes = layout(caseFile, mode, order, null, requestFile);
+      row[`${mode}.${order}`] = digest(bytes);
+      if (mode === "compact" && order === "greedy") {
+        const cols = JSON.parse(layout(caseFile, mode, order)).nodes.map((x) => x.col);
+        for (const run of JSON.parse(bytes).runs) if (cols[run.members[0]] !== cols[run.members[run.members.length - 1]]) splitRuns++;
+      }
+    }
+    stackExpected.push(row);
+  }
+  if (splitRuns === 0) throw new Error("no stack fuzz case has a split run (compact, greedy): raise the split shape's chance in tools/stacks.mjs");
+  console.log(`stack fuzz cases: ${splitRuns} split runs (compact, greedy)`);
+  write("stacks/fuzz/cases.jsonl", stackLines.join("\n") + "\n");
+  write("stacks/fuzz/expected.json", json({ seed: STACK_SEED, cases: stackExpected }));
+
   write("README.md", readme());
   let total = 0;
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).forEach((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : (total += fs.statSync(path.join(dir, e.name)).size)));
@@ -144,12 +219,12 @@ function main() {
 }
 
 function readme() {
-  return `# Layout goldens (Story 4.11)
+  return `# Layout goldens (Story 4.11, stacks Story 4.13)
 
 Generated — do not edit by hand. Regenerate from \`spikes/graph-layout-ab/\` after building both
 references (\`cargo build --release --manifest-path rust/Cargo.toml\`,
 \`dart compile exe dart/bin/graph_layout.dart -o dart/build/graph_layout\`), regenerating the
-inputs and running \`node tools/js_oracle.mjs\` (README \`## Run\`):
+inputs and running \`node tools/js_oracle.mjs\` and \`node tools/stacks.mjs\` (README \`## Run\`):
 
 \`\`\`sh
 node tools/goldens.mjs
@@ -176,6 +251,20 @@ reference (\`dart/\`), which is its only implementation.
 - \`fuzz/\`: \`cases.jsonl\` holds ${CASES} canonical inputs, one per line, case k =
   \`genInput(rng(${SEED} * 1_000_003 + k))\` of \`tools/fuzz.mjs\`; \`expected.json\` per case and
   \`<mode>.<order>\` the output's hash and byte length.
+- \`stacks/\` (Story 4.13, \`docs/graph-layout.md\` §4.8; every output from the spike's Dart binary
+  with \`--stacks\`, for both orders — stacks are Dart-only; run \`node tools/stacks.mjs\` first):
+  - \`design-<rev>.json\`: the design sample at \`e243dd2\` (52 commits) with stack facts;
+  - \`request-{default,expanded,mixed}.json\`: the stack requests — \`default\` names nothing
+    (every run collapses), \`expanded\` names every run's key of both revsets, \`mixed\` has a key in
+    both lists, a kept-open middle member and keys that change nothing;
+  - \`design-<rev>.<request>.<mode>.<order>.json\`: the outputs;
+  - \`oracle/design-<rev>.runs.json\`: the design's own \`groupStacks(all, rev, [])\` as runs of
+    input node indices (oldest first, ordered by newest member), after \`tools/stacks.mjs\` checked
+    that the design's gap walk yields jj-lib 0.44's edges on this sample;
+  - \`fuzz/\`: \`cases.jsonl\` holds ${STACK_CASES} cases, one \`{"input":…,"request":…}\` per line, case k
+    = \`genStackInput(r)\` then \`stackRequest(r, input)\` of \`tools/stacks.mjs\` with
+    \`r = rng(${STACK_SEED} * 1_000_003 + k)\`; \`expected.json\` per case and \`<mode>.<order>\` the output's
+    hash and byte length.
 
 Hashes are FNV-1a 64 (offset basis \`0xcbf29ce484222325\`, prime \`0x100000001b3\`) over the
 canonical UTF-8 bytes including the trailing \`\\n\`, as 16 lowercase hex digits.

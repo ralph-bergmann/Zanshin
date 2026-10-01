@@ -1049,6 +1049,12 @@ An error envelope never carries a partial payload.
   `BufferResult`). `ZanshinWorker.graphLayout` / `RepoHandle.graphLayout` return
   `({GraphTopologyView topology, GraphGridView grid})`; the precondition is recorded as for
   `graphTopology`. Contract: `docs/graph-layout.md` §13.
+  *(2026-10-01, Story 4.13: `GraphLayoutCommand` gains four fields — `stacks`, `expandedKeys`,
+  `collapsedKeys`, `keepOpenKeys` — required on the command and on `ZanshinWorker.graphLayout`,
+  pre-filled `false` / empty on `RepoHandle.graphLayout`. They never cross FFI: the worker
+  resolves the keys against the topology and, with `stacks`, groups linear runs (§4.8); the grid
+  is then format version 2. With `stacks` false the keys are ignored and the grid is version 1,
+  unchanged.)*
 - **Decode contract (`GraphTopologyView.fromEnvelope`).** `!ok` →
   `ZanshinFfiException(code, context)` carrying the envelope's `precondition` and
   `warnings`; `ok` with a non-`GraphTopology` payload, a missing `operation_id` / `refs` /

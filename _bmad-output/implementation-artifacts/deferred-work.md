@@ -881,3 +881,27 @@ _The spec (`spec-4-11-dart-layout-engine-worker-isolate.md`) carries all six ite
 - **`project-context.md` has no rules for the new layout engine.** Low; found by the review pass.
   - The guardrails (no `.sort(` in `lib/src/graph_layout/`, tunables `const` or request parameters so hot reload works, engine-core import purity, every rule change = a dated `docs/graph-layout.md` amendment + `node tools/goldens.mjs`) and the goldens' home (`packages/zanshin_core/test/graph_layout/goldens/`, rewritten wholesale by the spike tool) live only in the spec, `epic-4-context.md` and `docs/graph-layout.md` §13; Story 4.13 starts from `project-context.md`.
   - **Follow-up:** Ralph decides whether `project-context.md` gains a short "graph layout engine" block (an agent-context edit, not done unattended).
+
+## Surfaced in Story 4.13 (bmad-build-auto, 2026-10-01)
+
+_The spec (`spec-4-13-commit-stacks-layout-engine.md`) carries every item in its `deferred:` list. Numbers: its § Measurements; decisions: `decisions-review-4-10-to-4-13.md` ### 4.13._
+
+- **D11: a split run's stack node leaves its parent edge unprotected below the card.** Low; a known limit, recorded in `docs/graph-layout.md` §4.8 and §9.
+  - The stack reserves its column from its own card, so its parent edge (a branch-off from m_1's parent) rises in the stack's column without a reservation and may pass behind a lower card there. Reserving from one pitch above the parent (§4.3) would let collapsing grow `rows`. The 1,000-DAG invariants test produces 637 split runs (compact, greedy).
+  - **Follow-up:** 10.4 / 10.17 decide whether the painter marks such an edge, or Ralph prefers a growing `rows` (a SPEC amendment + goldens).
+- **The design sample's compaction with the `compact` order is measured, not derived by hand.** Low.
+  - By hand (and asserted): `compact` mode, greedy, every run collapsed — all 19 → 15, default 9 → 8 (the planning estimate 9 → 7 missed a binding column constraint at sxmtvqno). With the `compact` order the engine gives 19 → 16 and 9 → 8; the stack goldens pin those outputs, but no hand derivation backs them.
+  - **Follow-up:** none needed unless a review wants the derivation.
+- **A group of equal Y with a long δ = 0 chain costs quadratic passes.** Low; a record.
+  - §4.8's level sweep repeats passes over a group of equal Y until nothing changes; the implementations alternate the direction, so a chain of δ = 0 constraints (`free` nodes less than a minute apart with no edge between them, or (C)'s merge terms) settles in a few passes unless it runs against both directions. Not seen on any fixture or synthetic input (the `stacks` phase is 0.3–0.45 ms on fixture-large-all and ~0.8–1.0 ms on synth-10k, ~9–11 ms on synth-100k); an `assert` holds the bound in tests.
+  - **Follow-up:** a worklist per group if a real repo shows it.
+- **The stacks path has no all-inputs differential.** Low.
+  - The product engine equals the spike's Dart on the committed stack goldens (the design sample × 3 requests × 2 modes × 2 orders, 60 seeded fuzz cases × 4), and both pass the invariants; `tools/compare.mjs --core` still compares only stack-less outputs (stacks have no Rust reference).
+  - **Follow-up:** give `compare.mjs --core` a `--stacks` pass over `tools/stacks.mjs facts` inputs if the engine's stack code changes again.
+- **No real-repo numbers for stacks.** Low.
+  - Measured on the committed fixtures and the spike's synthetic inputs with synthetic facts (`node tools/stacks.mjs facts`); a real repo needs a path.
+  - **Follow-up:** dump a copy with the spike's `rust-inputs`, add facts, bench with `graph_layout_cli bench --stacks`.
+- **`cargo make test` is red on `app/lib/src/shared/theme/zanshin_icons.dart` since `40a2a58` ("update icon font").** Medium; needs Ralph (the story may not touch `app/lib`).
+  - Both of the story's gate runs stop at `test-dart-analyze` (app): 103 info-level lints (`--fatal-infos`), all in that regenerated file; `test-dart-format` (app) reports the same file. The file is unchanged since the baseline `40a2a58`.
+  - Every other gate task passed when run on its own (`cargo make --allow-private <task>`): cargo test, clippy, fmt, flutter test, test-core (785 tests), all package analyze/format steps, cargo deny, hygiene, coverage (`coverage-check: OK — 99.47 %`, `extern-coverage: OK`).
+  - **Follow-up:** Ralph fixes or excludes the generated icons file (e.g. `dart fix --apply lib/src/shared/theme/zanshin_icons.dart` + `dart format` in `app/`, or an analyzer exclude for generated files); the gate is green again after that.
