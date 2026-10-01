@@ -10,8 +10,8 @@ question:
 **What is compared.**
 - In both variants, Rust supplies the jj data: topology, edge kinds and timestamps.
 - The layout is the design's algorithm (rows, greedy interval lane packing, edge routing,
-  lane-order optimisation). It is made scalable and deterministic in [SPEC.md](SPEC.md).
-- Both implementations follow SPEC.md, must produce byte-identical output, and are timed per
+  lane-order optimisation). It is made scalable and deterministic in [docs/graph-layout.md](../../docs/graph-layout.md).
+- Both implementations follow docs/graph-layout.md, must produce byte-identical output, and are timed per
   phase on the same inputs.
 
 **The row model is still open** (Ralph, 2026-09-26; *decided 2026-09-27: `free` and `compact`,
@@ -27,7 +27,8 @@ is iteration: a Dart layout change hot-reloads into the running app. A Rust chan
 ## Layout
 
 ```
-SPEC.md       the contract: algorithm, input/output formats, CLI, verification, benchmark protocol
+SPEC.md       a pointer (2026-10-01): the contract — algorithm, input/output formats, CLI,
+              verification, benchmark protocol — now lives in ../../docs/graph-layout.md
 rust/         Rust implementation (own workspace root: empty [workspace] table), bin `graph-layout`
 dart/         Dart implementation (standalone package, not in the root workspace), bin/graph_layout.dart
 rust-inputs/  input generator (detached crate, bin `gen-inputs`): jj fixture dumps + synthetic inputs
@@ -41,6 +42,7 @@ tools/        node scripts, no npm dependencies:
   loc.mjs                           lines of code, tests excluded
   viewer-bundle.mjs                 input + outputs of every mode × order → one viewer bundle
   lane-metrics.mjs                  lane-order quality: crossings as drawn, run length, width, holes
+  goldens.mjs                       the product engine's goldens (Story 4.11)
 inputs/       generated layout inputs (gitignored)
 outputs/      generated outputs, bench lines, memory probes (gitignored)
 viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/data/ is gitignored
@@ -48,7 +50,7 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
 
 ## Status
 
-1. **Done:** the spec (SPEC.md) and this skeleton.
+1. **Done:** the spec (now `docs/graph-layout.md`) and this skeleton.
 2. **Done:** the inputs (8 files, see `inputs/manifest.json`).
 3. **Done:** the Rust and Dart implementations and their verification (below).
 4. **Done:** the benchmark, the results and the recommendation (2026-09-26).
@@ -62,6 +64,14 @@ viewer/       throwaway HTML viewer (index.html, viewer.js, viewer.css); viewer/
    [§7 of the lane order review](#7-in-the-viewer-2026-09-26).
 8. **Done:** Ralph's product decisions after using the viewer (2026-09-27). See
    [Product decisions 2026-09-27](#product-decisions-2026-09-27).
+9. **Done (2026-10-01, Story 4.11):** the port of the shipped scope (modes `compact` | `free`,
+   orders greedy | `compact`) into the product, `packages/zanshin_core/lib/src/graph_layout/`;
+   the spec's move to [`docs/graph-layout.md`](../../docs/graph-layout.md) (`SPEC.md` is a pointer)
+   with dated amendments; `free`'s day buckets in both references (amended §4.2, step 4, and
+   §7.3 I5); the dumper's switch from `walk_graph` to `Repo::graph_topology` +
+   `Repo::commit_contents` (`rust-inputs/`, every existing input byte-identical, plus
+   `fixture-tiny-all`); the product's goldens (`tools/goldens.mjs`); and `tools/compare.mjs
+   --core`, which checks the product engine's CLI against both references.
 
 ## Run
 
@@ -80,7 +90,7 @@ dart compile exe dart/bin/graph_layout.dart -o dart/build/graph_layout
 cargo test --release --manifest-path rust/Cargo.toml
 (cd dart && dart run test/layout_test.dart)
 
-# verification (SPEC.md §7)
+# verification (docs/graph-layout.md §7)
 node tools/compare.mjs --digest     # Rust ≡ Dart + invariants I1–I6 + bench digests, all 48 combinations
 node tools/js_oracle.mjs --fuzz 300 # the design as oracle: the sample, then random design graphs
 node tools/fuzz.mjs --cases 300     # input/CLI probes, then random inputs vs a naive JS reading of §4
@@ -92,6 +102,13 @@ node tools/payload.mjs              # needs outputs/rust/* from compare.mjs
 node tools/friction.mjs             # ≈ 1 min; copies rust/ + dart/ to $TMPDIR/graph-layout-friction
 node tools/loc.mjs
 /usr/bin/time -l rust/target/release/graph-layout layout --mode time --order optimized inputs/synth-100k.json /tmp/o.json
+
+# the product engine's goldens (Story 4.11; after js_oracle.mjs, which writes outputs/oracle/)
+node tools/goldens.mjs              # → packages/zanshin_core/test/graph_layout/goldens/
+
+# the product engine as a third implementation (Story 4.11)
+(cd ../../packages/zanshin_core && dart compile exe benchmark/graph_layout_cli.dart -o ../../spikes/graph-layout-ab/outputs/bin/graph_layout_core)
+node tools/compare.mjs --core outputs/bin/graph_layout_core
 
 # lane orders (`compact` is Dart-only, SPEC §4.7) and their quality
 dart/build/graph_layout layout --mode free --order compact inputs/synth-10k.json outputs/o.json
@@ -353,7 +370,7 @@ between runs, and no frame was dropped. The JS part is a few µs. The one real c
   - 92 of 2,600 runs were skipped because of the design's duplicate-parent defect (V3).
 - **Fuzz.** On 1,140 random inputs (seeds 1–3), Rust, Dart and a naive JS reading of §4 agree on
   every mode × order (6,840 runs). The input and CLI probes agree after the fixes listed in
-  SPEC.md ("Clarified during diff").
+  docs/graph-layout.md ("Clarified during diff").
 - **Stage 4 re-check.** In the benchmark run, all three builds (Rust, Dart AOT, Dart JIT)
   reported the same nodes, edges, rows, lanes and digest for every one of the 48 combinations.
 
@@ -749,7 +766,7 @@ Reuse by the MCP server. Ralph tends to drop it.
 
 ### Guardrails for the Dart variant
 
-- **Keep SPEC.md and the tools as the contract.** The spike shows a port is mechanical and can
+- **Keep docs/graph-layout.md and the tools as the contract.** The spike shows a port is mechanical and can
   be checked byte for byte: the two implementations are about the same size, 1 238 vs 1 136
   lines of code. If the layout ever has to move to Rust, that is a day of work, not a rewrite.
 - **Bound `optimized` by time or work, and show greedy first.** This is needed in either
@@ -1279,7 +1296,7 @@ history.
   `straight` and `merge` already leave the parent's top at the centre; only a branch-off leaves at
   ±0.28·W. Ralph wants every edge to leave at the centre too. That is painter geometry: route
   classes, `blocked` and every output stay unchanged, so no golden changes. The planned SPEC
-  change is [SPEC §12](SPEC.md#12-product-decisions-2026-09-27). The viewer, and
+  change is [SPEC §12](../../docs/graph-layout.md#12-product-decisions-2026-09-27). The viewer, and
   `tools/lane-metrics.mjs`'s crossings as drawn, keep the side exit, so their numbers above are
   side-exit numbers.
 - **Not decided:** `free`'s constants and whether buses may pass behind cards (SPEC §11.1, D8),

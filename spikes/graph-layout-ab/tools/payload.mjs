@@ -14,7 +14,7 @@
 //     per node row u32, lane u16, col u16                                          8 B
 //     per layout edge route (2 bits) + blocked (1 bit) in one u8; from/to are implied by the
 //              topology's CSR order with missing edges skipped (SPEC §3)          1 B
-//     per bucket kind u8, value i64, start u32, end u32 (time mode only)          17 B
+//     per bucket kind u8, value i64, start u32, end u32 (time and free)          17 B
 //   The Rust-layout variant can drop `priority` (4 B/node): only the layout reads it.
 //
 //   node tools/payload.mjs [--only <substring>]

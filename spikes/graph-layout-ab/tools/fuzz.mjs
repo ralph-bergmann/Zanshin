@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Differential fuzz for SPEC.md §7.1, beyond the fixed inputs. First fixed probes: input
+// Differential fuzz for docs/graph-layout.md §7.1, beyond the fixed inputs. First fixed probes: input
 // acceptance (§2 incl. its clarifications) and CLI exit codes (§6) must be as expected and the
 // same on both sides, with equal outputs where accepted. Then random small inputs that hit the
 // corners the real dumps do not (non-monotonic / null / future timestamps, a root with a ts,
 // indirect first parents, missing-only nodes, several roots, priority ties, > 9 lanes so the
 // windowed sift is not exact, odd UTC offsets). Each case runs Rust and Dart `layout` for every
 // mode × order and compares them byte for byte with each other AND with a naive, literal JS
-// reading of SPEC.md §4 (a third voter, quadratic, full cost recomputation per candidate).
+// reading of docs/graph-layout.md §4 (a third voter, quadratic, full cost recomputation per candidate).
 //
 //   node tools/fuzz.mjs [--cases N] [--seed S]      (defaults: 300 cases, seed 1)
 //
@@ -47,7 +47,8 @@ export const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 /** Timestamp steps along an edge: span every age-ladder rung and several calendar days. */
 export const STEPS = [0, 1000, MIN, 7 * MIN, 25 * MIN, 50 * MIN, 3 * HOUR, 10 * HOUR, 20 * HOUR, DAY, 3 * DAY, 40 * DAY];
 
-function genInput(r) {
+/** One random input (SPEC §2) from the generator [r]; also the seeded fuzz cases of tools/goldens.mjs. */
+export function genInput(r) {
   const n = r.chance(0.05) ? r.int(0, 2) : r.chance(0.15) ? r.int(60, 160) : r.int(3, 40);
   const width = r.pick([1, 2, 3, 6, 12, 30]); // how far back a first parent may reach
   const pMerge = r.pick([0, 0.1, 0.25, 0.5]);
@@ -86,7 +87,7 @@ function genInput(r) {
   return { now_ms: now, utc_offset_min: off, nodes };
 }
 
-// ---- naive, literal reading of SPEC.md §4 (third voter) -------------------------------------
+// ---- naive, literal reading of docs/graph-layout.md §4 (third voter) -------------------------------------
 const fdiv = (a, b) => Math.floor(a / b); // exact here: |a| < 2^53 and quotients far from ties
 function L2(x) { let k = 0; while (2 ** (k + 1) <= x) k++; return 256 * k + fdiv((x - 2 ** k) * 256, 2 ** k); }
 const gap = (g) => Math.min(48, fdiv(2 * L2(1 + fdiv(g, MIN)), 256));
@@ -136,6 +137,16 @@ export function reference(input, mode, order) {
       y[i] = maxOr(LP[i].map((p) => y[p] + U), base);
       prev = i;
     }
+    // Step 4 (amended 2026-10-01): one day bucket per local day of T, every non-root node, its
+    // members' min / max y; literally, with no reliance on the walk order.
+    const off = input.utc_offset_min * MIN, days = new Map();
+    for (let i = 0; i < n; i++) {
+      if (N[i].is_root) continue;
+      const key = fdiv(T[i] + off, DAY) * DAY - off;
+      const b = days.get(key);
+      days.set(key, b ? { start: Math.min(b.start, y[i]), end: Math.max(b.end, y[i]) } : { start: y[i], end: y[i] });
+    }
+    for (const key of [...days.keys()].sort((a, c) => a - c)) buckets.push({ kind: "day", value: key, ...days.get(key) });
   }
   const key = (a, c) => N[a].priority - N[c].priority || a - c;
   const fp = (i) => (LP[i].length ? LP[i][0] : -1);
@@ -212,7 +223,7 @@ export function reference(input, mode, order) {
     }
   }
   const nodes = [...Array(n).keys()].map((i) => ({ row: y[i], lane: lane[i], col: pi[lane[i]] }));
-  const out = { mode, order, unit: U, rows: n ? Math.max(...y) + U : 0, lanes: Lc, nodes, edges, buckets: mode === "time" ? buckets : [] };
+  const out = { mode, order, unit: U, rows: n ? Math.max(...y) + U : 0, lanes: Lc, nodes, edges, buckets: mode === "compact" ? [] : buckets };
   return JSON.stringify(out) + "\n";
 }
 

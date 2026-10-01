@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPEC.md §7.2 — the design as oracle. Runs the design's own computeLayout (extracted BY NAME
+// docs/graph-layout.md §7.2 — the design as oracle. Runs the design's own computeLayout (extracted BY NAME
 // from graph-view.jsx together with G, LADDER, timeBucket, roundedPath, routeEdges, analyzeEdges
 // and optimizeLanes, evaluated after graph-data.js with window = globalThis under TZ=UTC; both
 // read from git at the pinned export, tools/design-source.mjs) with Lane order = Greedy
@@ -263,5 +263,5 @@ if (CASES) {
   for (const k of Object.keys(tally).sort()) console.log(`  ${k}: ${tally[k]}`);
 }
 
-console.log(bad ? `\n${bad} problem(s)` : "\nall greedy results identical to the design, or differing only where SPEC.md says they may; expectations hold");
+console.log(bad ? `\n${bad} problem(s)` : "\nall greedy results identical to the design, or differing only where docs/graph-layout.md says they may; expectations hold");
 process.exit(bad ? 1 : 0);

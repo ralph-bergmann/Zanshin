@@ -1,4 +1,4 @@
-//! `gen-inputs`: writes the layout INPUT files of the graph-layout A/B spike (SPEC.md §2)
+//! `gen-inputs`: writes the layout INPUT files of the graph-layout A/B spike (docs/graph-layout.md §2)
 //! into `../inputs/`.
 //!
 //! ```text
@@ -12,9 +12,10 @@
 //! `dump` writes ONE input from an arbitrary jj workspace (not into `inputs/`, not into the
 //! manifest), plus a `<file>.meta.json` sidecar with each node's `CommitMeta` for a local viewer.
 //! `now_ms` defaults to the wall clock and `utc_offset_min` is the local offset at `now_ms`
-//! (SPEC.md §2). It runs under the same pinned environment as `fixtures` (no user jj/git config,
+//! (docs/graph-layout.md §2). It runs under the same pinned environment as `fixtures` (no user jj/git config,
 //! a throw-away `$XDG_CONFIG_HOME`), so user `[revset-aliases]` do not apply. NOTE: like every
-//! Zanshin verb, the walk runs the pre-verb snapshot, which may write an operation to the repo.
+//! Zanshin verb, the topology call runs the pre-verb snapshot, which may write an operation to the
+//! repo.
 //!
 //! The design-sample inputs come from `node tools/design-input.mjs`; run it before
 //! `manifest` (or `all`) so the manifest lists them too. Full regeneration, from the spike root
@@ -56,12 +57,13 @@ pub const NARROW_REVSET: &str = r#"(description(glob:"Branch[AB]-*") | merge::) 
 /// `all()` byte for byte (checked 2026-09-26). They have no remotes, so `trunk()` and
 /// `immutable_heads()` are `root()`, and `ancestors(immutable_heads().., 2)` is every commit.
 pub const FIXTURES: &[FixtureDump] = &[
+    FixtureDump { file: "fixture-tiny-all.json", fixture: "tiny-3-commits", revset: "all()" },
     FixtureDump { file: "fixture-medium-all.json", fixture: "medium-1k-commits", revset: "all()" },
     FixtureDump { file: "fixture-medium-narrow.json", fixture: "medium-1k-commits", revset: NARROW_REVSET },
     FixtureDump { file: "fixture-large-all.json", fixture: "large-10k-commits", revset: "all()" },
 ];
 
-/// The fixtures' fixed offset for calendar days (SPEC.md D7): Europe/Berlin summer time, which
+/// The fixtures' fixed offset for calendar days (docs/graph-layout.md D7): Europe/Berlin summer time, which
 /// is what the fixtures' 2001-09 timestamps and the synthetic runs would see there.
 const UTC_OFFSET_MIN: i64 = 120;
 
@@ -109,15 +111,15 @@ fn fixtures(dir: &Path) -> Result<(), String> {
         eprintln!("extracted {name} in {:?}", t.elapsed());
         for f in FIXTURES.iter().filter(|f| f.fixture == name) {
             let t = Instant::now();
-            let d = jj_dump::dump(&fixture.path, f.revset, "", 60_000, UTC_OFFSET_MIN)?;
+            let d = jj_dump::dump(&fixture.path, f.revset, "", 60_000, UTC_OFFSET_MIN, false)?;
             d.input.write(&dir.join(f.file))?;
             eprintln!(
-                "  {} ← {:?}: {} nodes in {:?} (trunk() = {:?}, @ in graph: {})",
+                "  {} ← {:?}: {} nodes in {:?} (trunk() in graph: {}, @ in graph: {})",
                 f.file,
                 f.revset,
                 d.input.nodes.len(),
                 t.elapsed(),
-                d.trunk,
+                d.trunk.is_some(),
                 d.wc_in_graph
             );
         }
@@ -173,7 +175,7 @@ fn dump(args: &[String]) -> Result<(), String> {
     let _xdg = pin_env();
     let short_prefixes = zanshin_jj::DEFAULT_LOG_REVSET; // the CLI's `revsets.short-prefixes` default
     let t = Instant::now();
-    let mut d = jj_dump::dump(Path::new(&repo), &revset, short_prefixes, 0, utc_offset_min)?;
+    let mut d = jj_dump::dump(Path::new(&repo), &revset, short_prefixes, 0, utc_offset_min, true)?;
     d.input.now_ms = now_ms;
     d.input.write(&out)?;
     let meta = jj_dump::meta_json(&revset, short_prefixes, &d);
@@ -185,12 +187,12 @@ fn dump(args: &[String]) -> Result<(), String> {
     let dropped: usize = d.dropped_duplicates.iter().map(Vec::len).sum();
     eprintln!(
         "  {} ← {revset:?}: {} nodes, edges direct/indirect/missing = {edges:?}, dropped duplicate-target \
-         edges {dropped}, in {:?} (trunk() in graph: {:?}, @ in graph: {}, now_ms {now_ms}, utc_offset_min \
+         edges {dropped}, in {:?} (trunk() in graph: {}, @ in graph: {}, now_ms {now_ms}, utc_offset_min \
          {utc_offset_min})",
         out.display(),
         d.input.nodes.len(),
         t.elapsed(),
-        d.trunk.as_ref().map(|(_, in_graph)| *in_graph),
+        d.trunk.is_some(),
         d.wc_in_graph
     );
     Ok(())

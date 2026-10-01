@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPEC.md §8 — the benchmark. Runs one `bench` process per impl × input × mode × order (W = 10,
+// docs/graph-layout.md §8 — the benchmark. Runs one `bench` process per impl × input × mode × order (W = 10,
 // N = 31, the defaults), sequentially, with the three impls interleaved per combination so slow
 // drift hits all of them alike. Writes the bench lines as JSONL, checks that every impl reports the
 // same nodes / edges / rows / lanes / digest per combination, and prints the README tables.

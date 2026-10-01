@@ -14,15 +14,15 @@ fn registry() -> Vec<(String, Value)> {
         out.push((
             d.file.to_owned(),
             json!({
-                "source": "design sample: _bmad-output/implementation-artifacts/design/graph-data.js at 57f259c (tools/design-source.mjs), converted by tools/design-input.mjs (SPEC.md §7.2)",
+                "source": "design sample: _bmad-output/implementation-artifacts/design/graph-data.js at 57f259c (tools/design-source.mjs), converted by tools/design-input.mjs (docs/graph-layout.md §7.2)",
                 "revset": d.revset,
                 "note": d.note,
             }),
         ));
     }
     for f in FIXTURES {
-        let mut note = "zanshin_jj::Repo::walk_graph (jj log pipeline, prioritize present(@)); ts = committer timestamp; \
-                        now_ms = newest ts + 60 s; trunk() = root() (no remotes), so priority class 0 is the root only; \
+        let mut note = "zanshin_jj::Repo::graph_topology (jj log pipeline, prioritize present(@), anchors [trunk(), present(@)]); \
+                        ts = committer timestamp; now_ms = newest ts + 60 s; trunk() = root() (no remotes), so priority class 0 is the root only; \
                         the history is 2001-09 (one commit per minute) while @ is the fixture's generation-time working copy (2026-06)"
             .to_owned();
         if f.revset == NARROW_REVSET {
@@ -197,7 +197,7 @@ pub fn write(dir: &Path) -> Result<(), String> {
         entries.push(Value::Object(e));
     }
     let doc = json!({
-        "spec": "SPEC.md §2 input format; regenerate as the doc comment of rust-inputs/src/main.rs says",
+        "spec": "docs/graph-layout.md §2 input format; regenerate as the doc comment of rust-inputs/src/main.rs says",
         "files": entries,
     });
     let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())? + "\n";

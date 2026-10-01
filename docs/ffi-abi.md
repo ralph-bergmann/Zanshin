@@ -1004,7 +1004,10 @@ ONCE into a `TransferableTypedData`, frees the native buffer and sends a `Transf
 the main isolate's `materialize()` hands the bytes over without a further copy, and
 `GraphTopologyView` reads them in place. **Every other envelope crosses with two**:
 `readToken`'s copy out of native memory (`Uint8List.fromList`) plus the `SendPort` copy of
-the `BufferResult`.
+the `BufferResult`. *(2026-10-01, Story 4.11: `RepoHandle.graphLayout` is a second one-copy
+consumer: its `GraphLayoutResult` carries the topology envelope (one copy) and the layout's grid
+buffer (one copy), each as a `TransferableTypedData`; the worker lays the topology out over the
+native bytes before it frees them. See `docs/graph-layout.md` §13.)*
 
 **Error codes:**
 
@@ -1038,6 +1041,14 @@ An error envelope never carries a partial payload.
   closed-handle guard (`StateError`), delegates. `anchors` and `withTimestamps` are
   required: nothing pre-fills the anchors on its own, and the timestamp cost is the layout
   mode's call.
+- *(2026-10-01, Story 4.11)* `GraphLayoutCommand(handleId, revset, prioritize, shortPrefixes,
+  anchors, mode, order, utcOffsetMin, budget)` — the same topology call (timestamps iff `mode` is
+  `free`), then the Dart layout engine over the native bytes before they are freed; replies with
+  a `GraphLayoutResult`: the topology envelope (one copy) plus the layout grid (one copy), or a
+  `LayoutContractException` instead of the grid (unknown id → `ffi.invalid_handle` envelope as a
+  `BufferResult`). `ZanshinWorker.graphLayout` / `RepoHandle.graphLayout` return
+  `({GraphTopologyView topology, GraphGridView grid})`; the precondition is recorded as for
+  `graphTopology`. Contract: `docs/graph-layout.md` §13.
 - **Decode contract (`GraphTopologyView.fromEnvelope`).** `!ok` →
   `ZanshinFfiException(code, context)` carrying the envelope's `precondition` and
   `warnings`; `ok` with a non-`GraphTopology` payload, a missing `operation_id` / `refs` /

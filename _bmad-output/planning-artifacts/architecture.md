@@ -29,7 +29,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 | FR-FFI-* | 10 | `zanshin-ffi` | Single cdylib; FFI surface + watcher subsystem |
 | FR-MCP-* | 9 | `zanshin-mcp` | Standalone Rust binary using `rmcp`, stdio transport |
 | FR-DF-* | 5 | `zanshin-diff` | Word-level diff + syntax highlight (Delta class) |
-| FR-GR-* | 6 | `zanshin-graph` | DAG lane-assignment on jj-lib's `default_index` |
+| FR-GR-* | 6 | `zanshin-graph` *(2026-10-01, Story 4.11: the `zanshin-graph` crate was removed in Story 4.12; the FR-GR-1 layout lives in `packages/zanshin_core/lib/src/graph_layout/` (Dart, worker isolate); contract `docs/graph-layout.md`)* | DAG lane-assignment on jj-lib's `default_index` |
 | FR-BO-* | 8 | Build orchestration | `cargo-make` + Dart Hooks + committed codegen |
 | FR-DR-* | 6 | Distribution | Codesign + notarize + Sparkle + GitHub Releases |
 | FR-RX-* | 4 | Reactivity (cross-cutting) | End-to-end behaviour of the watcher path |
@@ -436,7 +436,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │       ├── grammars.rs             # FR-DF-5 Kern-Set 9
 │   │       └── output.rs               # FR-DF-3 JSON serialization
 │   │
-│   ├── zanshin-graph/                  # FR-GR-* — DAG lane-assignment (lib)
+│   ├── zanshin-graph/                  # FR-GR-* — DAG lane-assignment (lib) *(2026-10-01, Story 4.11: the zanshin-graph crate was removed in Story 4.12; the FR-GR-1 layout lives in packages/zanshin_core/lib/src/graph_layout/ (Dart, worker isolate); contract docs/graph-layout.md)*
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs

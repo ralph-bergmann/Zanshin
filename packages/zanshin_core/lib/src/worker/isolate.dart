@@ -43,6 +43,10 @@ import '../ffi/request_bytes.dart';
 import '../ffi/status.dart' as repo_ffi_status;
 import '../ffi/warning.dart';
 import '../ffi/workspace.dart' as repo_ffi_workspace;
+import '../graph_layout/graph_grid_view.dart' show GraphGridView;
+import '../graph_layout/layout_input.dart' show maxUtcOffsetMin;
+import '../graph_layout/layout_reply.dart' show decodeGraphLayoutReplyInternal, layOutTopology;
+import '../graph_layout/layout_request.dart' show LaneOrder, LayoutContractException, LayoutMode;
 
 import 'commands.dart';
 import 'correlation.dart';
@@ -380,6 +384,8 @@ class ZanshinWorker {
         throw _envelopeToException(bytes);
       case TransferResult():
         throw StateError('openRepo received TransferResult — only GraphTopologyCommand replies with one');
+      case GraphLayoutResult():
+        throw StateError('openRepo received GraphLayoutResult — only GraphLayoutCommand replies with one');
     }
   }
 
@@ -438,6 +444,8 @@ class ZanshinWorker {
         throw _envelopeToException(bytes);
       case TransferResult():
         throw StateError('a creation received TransferResult — only GraphTopologyCommand replies with one');
+      case GraphLayoutResult():
+        throw StateError('a creation received GraphLayoutResult — only GraphLayoutCommand replies with one');
     }
   }
 
@@ -460,6 +468,7 @@ class ZanshinWorker {
       // bytes over without a further copy.
       TransferResult(:final data) => _recordPrecondition(cmd, data.materialize().asUint8List()),
       HandleResult() => throw StateError('send() received HandleResult — use openRepo/initRepo/cloneRepo'),
+      GraphLayoutResult() => throw StateError('send() received GraphLayoutResult — use graphLayout'),
     };
   }
 
@@ -587,6 +596,8 @@ class ZanshinWorker {
         break;
       case TransferResult():
         throw StateError('closeRepo received TransferResult — only GraphTopologyCommand replies with one');
+      case GraphLayoutResult():
+        throw StateError('closeRepo received GraphLayoutResult — only GraphLayoutCommand replies with one');
     }
   }
 
@@ -670,6 +681,70 @@ class ZanshinWorker {
       ),
     );
     return repo_ffi_graph.GraphTopologyView.fromEnvelope(bytes);
+  }
+
+  /// Lay out the whole revset's graph in the repo identified by [handleId] (Story 4.11): the
+  /// topology of [graphTopology] — re-derived from head on every call, with timestamps iff [mode]
+  /// is `free` — laid out by the Dart layout engine on the worker isolate (docs/graph-layout.md).
+  ///
+  /// Every argument is a caller pass-through (FR-JJ-17; `RepoHandle.graphLayout` pre-fills all
+  /// but [revset], [anchors] and [utcOffsetMin]). The call runs the topology call's pre-verb
+  /// snapshot, recorded for [lastPreconditionOf]; its warnings are the returned topology's.
+  /// Nothing is kept in the worker between commands (ADR-0002). The reply crosses the isolate
+  /// boundary as one copy of the topology and one of the grid (`GraphLayoutResult`); both views
+  /// own their bytes.
+  ///
+  /// Throws [ArgumentError] — before anything is sent — if [revset], [prioritize],
+  /// [shortPrefixes] or an anchor contains an interior NUL (U+0000), if [utcOffsetMin] is not
+  /// within ±1440 or if [budget] is negative. Throws [ZanshinFfiException] on the topology call's
+  /// errors (e.g. `ffi.invalid_handle`, `jj.revset_parse_error`; full list: `docs/ffi-abi.md`
+  /// § `zanshin_graph_topology`) and [LayoutContractException] when the topology's values break
+  /// a contract rule of docs/graph-layout.md §2. Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by [RepoHandle.graphLayout].
+  Future<({repo_ffi_graph.GraphTopologyView topology, GraphGridView grid})> graphLayout(
+    int handleId, {
+    required String revset,
+    required String prioritize,
+    required String shortPrefixes,
+    required List<String> anchors,
+    required LayoutMode mode,
+    required LaneOrder order,
+    required int utcOffsetMin,
+    required int budget,
+  }) async {
+    // WHY here: the worker isolate would report a throw as `internal.dispatch_error` (same rule as
+    // [graphTopology]).
+    rejectInteriorNul(revset, 'revset');
+    rejectInteriorNul(prioritize, 'prioritize');
+    rejectInteriorNul(shortPrefixes, 'shortPrefixes');
+    rejectInteriorNuls(anchors, 'anchors');
+    RangeError.checkValueInInterval(utcOffsetMin, -maxUtcOffsetMin, maxUtcOffsetMin, 'utcOffsetMin');
+    RangeError.checkNotNegative(budget, 'budget');
+    final cmd = GraphLayoutCommand(
+      commandId: _correlator.allocateId(),
+      handleId: handleId,
+      revset: revset,
+      prioritize: prioritize,
+      shortPrefixes: shortPrefixes,
+      anchors: anchors,
+      mode: mode,
+      order: order,
+      utcOffsetMin: utcOffsetMin,
+      budget: budget,
+    );
+    final WorkerResponse response = await _sendCommand(cmd);
+    switch (response) {
+      case GraphLayoutResult(:final topology):
+        // materialize() hands the one copy over without a further one.
+        final Uint8List bytes = _recordPrecondition(cmd, topology.materialize().asUint8List());
+        return decodeGraphLayoutReplyInternal(bytes, response);
+      case BufferResult(:final bytes):
+        throw _envelopeToException(_recordPrecondition(cmd, bytes));
+      case HandleResult():
+        throw StateError('graphLayout received HandleResult');
+      case TransferResult():
+        throw StateError('graphLayout received TransferResult — only GraphTopologyCommand replies with one');
+    }
   }
 
   /// Read the operation log for the repo identified by [handleId].
@@ -1860,6 +1935,52 @@ void _workerEntry(_WorkerInit init) {
               buf.dispose();
             }
             responseSP.send((commandId, TransferResult(data)));
+          }
+
+        case GraphLayoutCommand(
+          :final int handleId,
+          :final String revset,
+          :final String prioritize,
+          :final String shortPrefixes,
+          :final List<String> anchors,
+          :final LayoutMode mode,
+          :final LaneOrder order,
+          :final int utcOffsetMin,
+          :final int budget,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GraphLayoutCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final FfiBuffer buf = repo_ffi_graph.zanshinGraphTopology(
+              raw,
+              revset: revset,
+              prioritize: prioritize,
+              shortPrefixes: shortPrefixes,
+              anchors: anchors,
+              withTimestamps: mode == LayoutMode.free,
+            );
+            final TransferableTypedData topology;
+            final ({Uint8List? grid, LayoutContractException? violation}) layout;
+            try {
+              // The ONE copy of the topology across the isolate boundary (Story 4.12's rule), and
+              // the layout over the same native bytes — before the native buffer is freed.
+              topology = TransferableTypedData.fromList([buf.bytes]);
+              layout = layOutTopology(buf.bytes, mode: mode, order: order, utcOffsetMin: utcOffsetMin, budget: budget);
+            } finally {
+              buf.dispose();
+            }
+            final Uint8List? grid = layout.grid;
+            responseSP.send((
+              commandId,
+              GraphLayoutResult(
+                topology: topology,
+                grid: grid == null ? null : TransferableTypedData.fromList([grid]),
+                violation: layout.violation,
+              ),
+            ));
           }
 
         case OpLogCommand(:final int handleId, :final int limit):

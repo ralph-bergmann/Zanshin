@@ -4,7 +4,7 @@
 # deny and the coverage gate never see it.
 #
 # It is a separate crate from `../rust` (the layout implementation) on purpose: the jj dumper
-# needs jj-lib (via zanshin-jj), and SPEC.md §10 keeps jj-lib out of the layout crate's
+# needs jj-lib (via zanshin-jj), and docs/graph-layout.md §10 keeps jj-lib out of the layout crate's
 # dependency graph. Cargo.lock was seeded from the root Cargo.lock, so jj-lib's transitive
 # versions match the product build.
 [workspace]
@@ -16,14 +16,14 @@ edition = "2021"
 publish = false
 
 [dependencies]
-# WHY path deps on workspace members: the dumper runs the product's own `Repo::walk_graph`
-# (SPEC.md §2 "exactly as zanshin-jj's walk_graph runs it") and extracts the committed
+# WHY path deps on workspace members: the dumper runs the product's own `Repo::graph_topology`
+# (docs/graph-layout.md §2 "What the dumper writes", amended 2026-10-01) and extracts the committed
 # fixtures the way the test suites do. Both inherit their versions from the root workspace.
 zanshin-jj = { path = "../../../crates/zanshin-jj" }
 test-helpers = { path = "../../../crates/test-helpers" }
 tempfile = "3"
 serde_json = { version = "1", features = ["preserve_order"] } # manifest.json keeps "file" first
-chrono = { version = "=0.4.45", features = ["clock"] } # `dump`: the local UTC offset at now_ms (SPEC.md §2)
+chrono = { version = "=0.4.45", features = ["clock"] } # `dump`: the local UTC offset at now_ms (docs/graph-layout.md §2)
 
 [[bin]]
 name = "gen-inputs"

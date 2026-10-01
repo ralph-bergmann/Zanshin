@@ -268,6 +268,9 @@ the `zanshin-graph` lane crate was removed)*
   `TransferableTypedData` (one copy instead of `readToken` + `SendPort`'s two) and is read
   through `GraphTopologyView`'s typed-data views over its scalar vectors, not object by
   object; its tests check every value the view reads against the generated accessors.)*
+  *(2026-10-01, Story 4.11: `RepoHandle.graphLayout`'s reply carries the topology AND the layout's
+  grid as two `TransferableTypedData`, one copy each; the grid is read through `GraphGridView`'s
+  typed-data views over its one buffer.)*
 - Correlation: every command carries an incrementing `commandId`; worker echoes
   it. Main isolate holds `Map<int, Completer<String>>` to resolve futures.
 - Async events (watcher, progress): a separate `SendPort` per stream type.

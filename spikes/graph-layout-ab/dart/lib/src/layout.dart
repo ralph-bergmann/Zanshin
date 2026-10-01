@@ -45,8 +45,15 @@ int timeBucketKey(int ts, int nowMs, int utcOffsetMin) {
   for (final m in ladderMinutes) {
     if (age <= m * _minute) return nowMs - m * _minute;
   }
+  return dayKey(ts, utcOffsetMin);
+}
+
+/// The local-midnight instant (epoch ms) of the calendar day holding [t] at the fixed offset (D7).
+/// Shared by `time` (step 1) and `free`'s day buckets (step 4, amended 2026-10-01), which must not
+/// go through [timeBucketKey]'s `now_ms` ladder.
+int dayKey(int t, int utcOffsetMin) {
   final off = utcOffsetMin * _minute;
-  return floorDiv(ts + off, _day) * _day - off;
+  return floorDiv(t + off, _day) * _day - off;
 }
 
 /// `free` mode gap in units (SPEC §4.2 free.3), g ≥ 0.
@@ -103,8 +110,15 @@ final class LayoutResult {
 }
 
 /// Runs the whole layout; [onPhaseEnd] is called after each of the five timed phases
-/// (layering, lanes, blocked, routing, ordering; SPEC §8.2).
-LayoutResult computeLayout(LayoutInput input, Mode mode, LaneOrder order, {void Function()? onPhaseEnd}) {
+/// (layering, lanes, blocked, routing, ordering; SPEC §8.2). [budget] is the `compact` order's
+/// search budget (SPEC §4.7; a request parameter in the product, 2026-10-01).
+LayoutResult computeLayout(
+  LayoutInput input,
+  Mode mode,
+  LaneOrder order, {
+  void Function()? onPhaseEnd,
+  int budget = compactBudget,
+}) {
   final g = GraphLayout(input, mode);
   g.layering();
   onPhaseEnd?.call();
@@ -114,7 +128,7 @@ LayoutResult computeLayout(LayoutInput input, Mode mode, LaneOrder order, {void 
   onPhaseEnd?.call();
   g.route();
   onPhaseEnd?.call();
-  g.orderLanes(order);
+  g.orderLanes(order, budget: budget);
   onPhaseEnd?.call();
   return g.result(order);
 }
@@ -373,6 +387,45 @@ final class GraphLayout {
       prevY = r;
       prevT = t[i];
     }
+    _freeDayBuckets(order, t);
+  }
+
+  /// Step 4 of SPEC §4.2 free (amended 2026-10-01): one `day` bucket per local day of the clamped
+  /// T of every non-root node. T and y never decrease in the walk [order], so a bucket's members
+  /// are consecutive there (roots skipped) and one pass emits the buckets ascending.
+  void _freeDayBuckets(Int32List order, Int64List t) {
+    final y = this.y, isRoot = input.isRoot, utcOffsetMin = input.utcOffsetMin;
+    var count = 0;
+    var last = 0;
+    for (var k = 0; k < n; k++) {
+      final i = order[k];
+      if (isRoot[i] != 0) continue;
+      final key = dayKey(t[i], utcOffsetMin);
+      if (count == 0 || key != last) {
+        count++;
+        last = key;
+      }
+    }
+    final bucketKind = Uint8List(count)..fillRange(0, count, bucketDay);
+    final bucketValue = Int64List(count);
+    final bucketStart = Int64List(count);
+    final bucketEnd = Int64List(count);
+    var b = -1;
+    for (var k = 0; k < n; k++) {
+      final i = order[k];
+      if (isRoot[i] != 0) continue;
+      final key = dayKey(t[i], utcOffsetMin);
+      if (b < 0 || key != bucketValue[b]) {
+        b++;
+        bucketValue[b] = key;
+        bucketStart[b] = y[i];
+      }
+      bucketEnd[b] = y[i];
+    }
+    this.bucketKind = bucketKind;
+    this.bucketValue = bucketValue;
+    this.bucketStart = bucketStart;
+    this.bucketEnd = bucketEnd;
   }
 
   /// SPEC §4.3 [lanes].
@@ -537,8 +590,8 @@ final class GraphLayout {
     this.routes = routes;
   }
 
-  /// SPEC §4.6 / §4.7 [ordering].
-  void orderLanes(LaneOrder order) {
+  /// SPEC §4.6 / §4.7 [ordering]; [budget] bounds the `compact` order's search.
+  void orderLanes(LaneOrder order, {int budget = compactBudget}) {
     final col = Int32List(n);
     switch (order) {
       case LaneOrder.greedy:
@@ -551,7 +604,7 @@ final class GraphLayout {
           col[i] = pos[lane[i]];
         }
       case LaneOrder.compact:
-        final newLane = compactColumns(this);
+        final newLane = compactColumns(this, budget: budget);
         var count = 0;
         for (var i = 0; i < n; i++) {
           if (newLane[i] >= count) count = newLane[i] + 1;

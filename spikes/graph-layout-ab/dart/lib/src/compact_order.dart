@@ -18,7 +18,7 @@ const int compactBudget = 2000000; // work units; the search stops when they are
 /// model. Lane 0's segments stay in column 0; columns left empty are dropped at the end.
 ///
 /// Needs [GraphLayout.packLanes], [GraphLayout.markBlocked] and [GraphLayout.route] to have run.
-Int32List compactColumns(GraphLayout g) => CompactOrder(g).run();
+Int32List compactColumns(GraphLayout g, {int budget = compactBudget}) => CompactOrder(g, budget: budget).run();
 
 /// The search state of [compactColumns]. Public for the tests.
 final class CompactOrder {

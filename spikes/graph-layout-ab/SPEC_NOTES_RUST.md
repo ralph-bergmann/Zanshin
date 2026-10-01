@@ -1,6 +1,7 @@
 # SPEC notes — Rust implementation (`rust/`)
 
-Notes from implementing `SPEC.md` v1 in Rust. SPEC.md itself is unchanged.
+Notes from implementing the spec v1 (`docs/graph-layout.md`) in Rust. The spec itself was not changed
+by them.
 
 ## Ambiguities found (rust)
 
@@ -54,7 +55,7 @@ None of them occurs in the generated `inputs/`; all 48 layout outputs are byte-i
 
 ## Resolved in the stage-3 diff (2026-09-26)
 
-All seven items are now settled in SPEC.md, marked *Clarified during diff*. Items 1, 2 and 5–7
+All seven items are now settled in docs/graph-layout.md, marked *Clarified during diff*. Items 1, 2 and 5–7
 confirm the readings above. Item 4's suggestion was adopted as V4: |utc_offset_min| ≤ 1440. A
 day `value` below −2^53 stays accepted, see §1.
 

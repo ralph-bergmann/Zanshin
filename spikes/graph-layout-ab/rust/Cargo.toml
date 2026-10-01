@@ -1,7 +1,7 @@
 # Standalone spike — intentionally DETACHED from the parent Zanshin workspace.
 # The empty [workspace] table makes this its own workspace root so that the
 # parent's `crates/*` glob, `cargo test --workspace`, clippy, deny and the
-# coverage gate never touch this exploratory crate (SPEC.md §10).
+# coverage gate never touch this exploratory crate (docs/graph-layout.md §10).
 [workspace]
 
 [package]

@@ -1,4 +1,4 @@
-/// Graph-layout A/B spike: the pure-Dart implementation of `../SPEC.md`.
+/// Graph-layout A/B spike: the pure-Dart implementation of `docs/graph-layout.md`.
 library;
 
 export 'src/compact_order.dart';

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPEC.md §7.1 — Rust ≡ Dart. For every input in inputs/manifest.json × mode × order it runs
+// docs/graph-layout.md §7.1 — Rust ≡ Dart. For every input in inputs/manifest.json × mode × order it runs
 // both `layout` binaries into outputs/{rust,dart}/<input>.<mode>.<order>.json and compares the
 // files byte for byte. On a mismatch it prints the first differing header field / node / edge /
 // bucket, with the input node(s) and both sides' values as context. Equal outputs are then checked
@@ -7,7 +7,11 @@
 // `bench --runs 1 --warmup 0` on both and checks the bench line (nodes, edges, rows, lanes,
 // digest) against the digest recomputed here from the layout output (§8.4).
 //
-//   node tools/compare.mjs [--digest] [--no-run] [--only <substring>]
+//   node tools/compare.mjs [--digest] [--no-run] [--only <substring>] [--core <binary>]
+//
+// --core <binary> (2026-10-01, Story 4.11) adds the product engine's AOT-compiled CLI
+// (packages/zanshin_core/benchmark/graph_layout_cli.dart) as a third implementation over every
+// input × {compact, free} × {greedy, compact}; see the end of this file.
 //
 // Build first (from the spike root):
 //   cargo build --release --manifest-path rust/Cargo.toml
@@ -114,7 +118,7 @@ function invariants(inp, o) {
       const b = range.get(eb[i]);
       if (!b || N[i].row < b.start || N[i].row > b.end) fail(`I5 node ${i} outside its bucket`);
     }
-  } else if (o.buckets.length) fail("I5 buckets outside time mode");
+  } else if (o.mode !== "free" && o.buckets.length) fail(`I5 buckets in ${o.mode} mode`);
   // I6: free rows never decrease in (T asc, i desc) order.
   if (o.mode === "free") {
     const tss = inp.nodes.filter((x) => x.ts_ms !== null).map((x) => x.ts_ms);
@@ -123,7 +127,47 @@ function invariants(inp, o) {
     for (let i = n - 1; i >= 0; i--) T[i] = maxOr(LP[i].map((p) => T[p]), inp.nodes[i].is_root || inp.nodes[i].ts_ms === null ? tmin : inp.nodes[i].ts_ms);
     const ord = [...Array(n).keys()].sort((a, b) => T[a] - T[b] || b - a);
     for (let k = 1; k < n; k++) if (N[ord[k]].row < N[ord[k - 1]].row) { fail(`I6 row decreases at node ${ord[k]}`); break; }
+    // I5 in free (amended 2026-10-01): day buckets of the clamped T of every non-root node.
+    freeDayBuckets(inp, o, T).forEach(fail);
   }
+  return fails;
+}
+
+/** Floor division, exact for |a| < 2^53 and b > 0 (a / b alone can round up across an integer). */
+const floorDiv = (a, b) => {
+  const q = Math.floor(a / b), r = a - q * b;
+  return r < 0 ? q - 1 : r >= b ? q + 1 : q;
+};
+
+/**
+ * SPEC §7.3 I5 for `free` (amended 2026-10-01): `day` buckets only, values strictly ascending,
+ * start ≤ end, end_k ≤ start_{k+1}, every non-root node inside the bucket of its clamped T's day,
+ * start / end its members' min / max y, and no bucket iff no non-root node.
+ */
+function freeDayBuckets(inp, o, T) {
+  const fails = [];
+  const fail = (m) => { if (fails.length < 5) fails.push(m); };
+  const DAY = 86400000, off = inp.utc_offset_min * 60000;
+  const B = o.buckets, at = new Map();
+  B.forEach((b, k) => {
+    if (b.kind !== "day") fail(`I5 free bucket ${k} has kind ${b.kind}`);
+    if (b.start > b.end) fail(`I5 free bucket ${k}: start > end`);
+    if (k > 0 && !(B[k - 1].value < b.value)) fail(`I5 free bucket ${k} not ascending`);
+    if (k > 0 && B[k - 1].end > b.start) fail(`I5 free bucket ${k} starts before the previous one ends`);
+    at.set(b.value, k);
+  });
+  const lo = B.map(() => Infinity), hi = B.map(() => -Infinity);
+  let nonRoot = 0;
+  inp.nodes.forEach((x, i) => {
+    if (x.is_root) return;
+    nonRoot++;
+    const k = at.get(floorDiv(T[i] + off, DAY) * DAY - off);
+    if (k === undefined) { fail(`I5 free node ${i} has no bucket of its day`); return; }
+    lo[k] = Math.min(lo[k], o.nodes[i].row);
+    hi[k] = Math.max(hi[k], o.nodes[i].row);
+  });
+  if ((B.length === 0) !== (nonRoot === 0)) fail("I5 free: a bucket iff a non-root node");
+  B.forEach((b, k) => { if (b.start !== lo[k] || b.end !== hi[k]) fail(`I5 free bucket ${k}: start / end ≠ its members' min / max y`); });
   return fails;
 }
 
@@ -225,4 +269,53 @@ console.log(`\n${"input".padEnd(w)} | ${cols.join(" | ")}`);
 console.log(`${"-".repeat(w)}-|-${cols.map((c) => "-".repeat(c.length)).join("-|-")}`);
 for (const r of matrix) console.log(`${r.input.padEnd(w)} | ${r.cells.map((c, k) => c.padEnd(cols[k].length)).join(" | ")}`);
 console.log(`\n${matrix.length * cols.length - bad} identical and invariant-clean, ${bad} differ or fail${flag("--digest") ? " (bench digests checked)" : ""}`);
+
+// --core <binary> (Story 4.11): the product engine's CLI (packages/zanshin_core/benchmark/
+// graph_layout_cli.dart) as a third implementation, over the shipped scope only: greedy must equal
+// the Rust output byte for byte, the `compact` order the spike Dart output (its only reference),
+// and every output must pass the invariants.
+const coreBin = argv.includes("--core") ? path.resolve(argv[argv.indexOf("--core") + 1]) : null;
+if (coreBin) {
+  const CORE_MODES = ["compact", "free"], CORE_ORDERS = ["greedy", "compact"];
+  const refImpl = { greedy: "rust", compact: "dart" };
+  fs.mkdirSync(path.join(spike, "outputs/core"), { recursive: true });
+  const coreMatrix = [];
+  let coreBad = 0;
+  for (const file of files) {
+    const inputFile = path.join(spike, "inputs", file);
+    const base = file.replace(/\.json$/, "");
+    const row = { input: base, cells: [] };
+    const input = JSON.parse(fs.readFileSync(inputFile, "utf8"));
+    for (const mode of CORE_MODES) for (const order of CORE_ORDERS) {
+      const ref = path.join(spike, "outputs", refImpl[order], `${base}.${mode}.${order}.json`);
+      const out = path.join(spike, "outputs/core", `${base}.${mode}.${order}.json`);
+      let cell = "=";
+      const notes = [];
+      for (const [bin, dst] of [[BIN[refImpl[order]], ref], [coreBin, out]]) {
+        fs.rmSync(dst, { force: true });
+        const r = spawnSync(bin, ["layout", "--mode", mode, "--order", order, inputFile, dst], { encoding: "utf8", maxBuffer: 1 << 26 });
+        if (r.error) throw r.error;
+        if (r.status !== 0) { cell = "FAIL"; notes.push(`  ${path.basename(bin)} exit ${r.status}: ${r.stderr.trim()}`); }
+      }
+      if (cell === "=") {
+        const A = fs.readFileSync(ref), B = fs.readFileSync(out);
+        if (!A.equals(B)) { cell = "DIFF"; notes.push(...explain(inputFile, JSON.parse(A), JSON.parse(B)).map((l) => l.replace(/\b(rust|dart)\b/g, (m) => (m === "rust" ? refImpl[order] : "core")))); }
+        else {
+          const fails = invariants(input, JSON.parse(B));
+          if (fails.length) { cell = "INV"; notes.push(...fails.map((m) => `  invariant: ${m}`)); }
+        }
+      }
+      if (cell !== "=") { coreBad++; console.log(`core ${base} ${mode} ${order}: ${cell}\n${notes.join("\n")}`); }
+      row.cells.push(cell);
+    }
+    coreMatrix.push(row);
+  }
+  const coreCols = CORE_MODES.flatMap((m) => CORE_ORDERS.map((o) => `${m}/${o}`));
+  console.log(`\ncore (${path.relative(process.cwd(), coreBin)}) vs ${CORE_ORDERS.map((o) => `${o}: ${refImpl[o]}`).join(", ")}`);
+  console.log(`${"input".padEnd(w)} | ${coreCols.join(" | ")}`);
+  console.log(`${"-".repeat(w)}-|-${coreCols.map((c) => "-".repeat(c.length)).join("-|-")}`);
+  for (const r of coreMatrix) console.log(`${r.input.padEnd(w)} | ${r.cells.map((c, k) => c.padEnd(coreCols[k].length)).join(" | ")}`);
+  console.log(`\ncore: ${coreMatrix.length * coreCols.length - coreBad} identical and invariant-clean, ${coreBad} differ or fail`);
+  bad += coreBad;
+}
 process.exit(bad ? 1 : 0);

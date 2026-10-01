@@ -1,4 +1,4 @@
-//! Seeded, deterministic synthetic repo generator (SPEC.md §8.1: fills the scale points, the
+//! Seeded, deterministic synthetic repo generator (docs/graph-layout.md §8.1: fills the scale points, the
 //! branchy shape of ≥ 100 lanes and the ≥ 1 % non-monotonic edges the fixtures lack).
 //!
 //! It simulates a repo commit by commit (integer arithmetic only, own splitmix64 PRNG, no hash
@@ -390,7 +390,7 @@ fn emit(sim: &mut Sim, p: &Params, wc: usize) -> (Input, usize) {
             parents,
         });
     }
-    assign_priorities(&mut nodes, Some(new_idx[sim.trunk]), Some(new_idx[wc]));
+    assign_priorities(&mut nodes, &[vec![new_idx[sim.trunk]], vec![new_idx[wc]]]);
     let hidden_count = hidden.iter().filter(|&&h| h).count();
     (Input { now_ms: NOW, utc_offset_min: p.utc_offset_min, nodes }, hidden_count)
 }

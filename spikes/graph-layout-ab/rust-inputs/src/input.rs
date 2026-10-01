@@ -1,10 +1,11 @@
-//! The layout INPUT of SPEC.md §2: model, validation (V1-V4), the §2 `priority` stand-in, and
-//! the canonical writer (keys in spec order, no whitespace, one trailing `\n`).
+//! The layout INPUT of docs/graph-layout.md §2: model, validation (V1-V4), the repeated-target
+//! rule (§2), the anchors priority rule (§11.2), and the canonical writer (keys in spec order, no
+//! whitespace, one trailing `\n`).
 
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// Every integer in a file must survive a JS double (SPEC.md §1).
+/// Every integer in a file must survive a JS double (docs/graph-layout.md §1).
 const MAX_SAFE: i64 = 1 << 53;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +49,7 @@ pub struct Input {
 }
 
 impl Input {
-    /// V1-V4 of SPEC.md §2. V3 is read as "no two NON-NULL idx": jj can yield several Missing
+    /// V1-V4 of docs/graph-layout.md §2. V3 is read as "no two NON-NULL idx": jj can yield several Missing
     /// edges for one node (e.g. a merge whose parents are both outside the revset).
     pub fn validate(&self) -> Result<(), String> {
         let n = self.nodes.len();
@@ -84,7 +85,7 @@ impl Input {
         Ok(())
     }
 
-    /// The canonical form (SPEC.md §2 "Producers write the canonical form of §3").
+    /// The canonical form (docs/graph-layout.md §2 "Producers write the canonical form of §3").
     pub fn to_canonical(&self) -> String {
         let mut s = String::with_capacity(64 + self.nodes.len() * 120);
         write!(s, "{{\"now_ms\":{},\"utc_offset_min\":{},\"nodes\":[", self.now_ms, self.utc_offset_min).unwrap();
@@ -136,30 +137,127 @@ fn push_json_string(s: &mut String, v: &str) {
     s.push('"');
 }
 
-/// The first layout parent: the first non-missing edge (SPEC.md §4.1 fp).
+/// The first layout parent: the first non-missing edge (docs/graph-layout.md §4.1 fp).
 pub fn first_layout_parent(node: &Node) -> Option<usize> {
     node.parents.iter().find(|p| p.kind != Kind::Missing).and_then(|p| p.idx)
 }
 
-/// SPEC.md §2 priority stand-in: 0 = `trunk` and its first-parent chain; 1 = `wc` (@) and its
-/// first-parent chain up to the first class-0 node; 2 = everything else. An anchor that is
-/// not in the graph (`None`) leaves its class empty.
-pub fn assign_priorities(nodes: &mut [Node], trunk: Option<usize>, wc: Option<usize>) {
-    let mut class = vec![2u32; nodes.len()];
-    let mut cur = trunk;
-    while let Some(c) = cur {
-        class[c] = 0;
-        cur = first_layout_parent(&nodes[c]);
-    }
-    let mut cur = wc;
-    while let Some(c) = cur {
-        if class[c] == 0 {
-            break;
+/// docs/graph-layout.md §2's repeated-target rule (amended 2026-10-01): one parent per target,
+/// at the position of its first occurrence, `direct` if any of the repeated edges is direct;
+/// Missing parents are kept as they are. Returns the kept parents and the dropped repeats.
+pub fn dedupe_parents(parents: Vec<Parent>) -> (Vec<Parent>, Vec<Parent>) {
+    let mut kept: Vec<Parent> = Vec::with_capacity(parents.len());
+    let mut dropped = Vec::new();
+    for p in parents {
+        match p.idx.and_then(|idx| kept.iter().position(|k| k.idx == Some(idx))) {
+            Some(first) => {
+                if p.kind == Kind::Direct {
+                    kept[first].kind = Kind::Direct;
+                }
+                dropped.push(p);
+            }
+            None => kept.push(p),
         }
-        class[c] = 1;
-        cur = first_layout_parent(&nodes[c]);
+    }
+    (kept, dropped)
+}
+
+/// docs/graph-layout.md §11.2's anchors rule (normative since 2026-10-01): with A anchors every
+/// node starts in class A; for k = 0 … A − 1, each node of anchor k (ascending) and its
+/// first-parent chain take class k, up to the first node already in a class ≤ k. With the
+/// anchors `[trunk(), present(@)]` that is 0 = the trunk chain, 1 = the @ chain up to the first
+/// class-0 node, 2 = everything else; an anchor with no node in the graph leaves its class empty.
+pub fn assign_priorities(nodes: &mut [Node], anchors: &[Vec<usize>]) {
+    let a = u32::try_from(anchors.len()).expect("fewer than 2^32 anchors");
+    let mut class = vec![a; nodes.len()];
+    for (k, anchor) in (0u32..).zip(anchors) {
+        for &start in anchor {
+            let mut cur = Some(start);
+            while let Some(c) = cur {
+                if class[c] <= k {
+                    break;
+                }
+                class[c] = k;
+                cur = first_layout_parent(&nodes[c]);
+            }
+        }
     }
     for (node, c) in nodes.iter_mut().zip(class) {
         node.priority = c;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const D: Kind = Kind::Direct;
+    const I: Kind = Kind::Indirect;
+    const M: Kind = Kind::Missing;
+
+    fn p(idx: Option<usize>, kind: Kind) -> Parent {
+        Parent { idx, kind }
+    }
+
+    fn shape(parents: &[Parent]) -> Vec<(Option<usize>, Kind)> {
+        parents.iter().map(|p| (p.idx, p.kind)).collect()
+    }
+
+    /// The Dart input builder's repeated-target cases (`input_builder_test.dart`), A = 1, B = 2.
+    #[test]
+    fn dedupe_keeps_the_first_position_and_direct_if_any_is_direct() {
+        let (a, b) = (Some(1), Some(2));
+        let (kept, dropped) = dedupe_parents(vec![p(a, I), p(b, D), p(a, D)]);
+        assert_eq!(shape(&kept), vec![(a, D), (b, D)]);
+        assert_eq!(shape(&dropped), vec![(a, D)]);
+        let (kept, _) = dedupe_parents(vec![p(a, D), p(a, I)]);
+        assert_eq!(shape(&kept), vec![(a, D)]);
+        let (kept, _) = dedupe_parents(vec![p(a, I), p(a, I)]);
+        assert_eq!(shape(&kept), vec![(a, I)]);
+        let (kept, dropped) = dedupe_parents(vec![p(None, M), p(a, D), p(None, M)]);
+        assert_eq!(shape(&kept), vec![(None, M), (a, D), (None, M)]);
+        assert!(dropped.is_empty());
+    }
+
+    fn chain(parents: &[&[(Option<usize>, Kind)]]) -> Vec<Node> {
+        parents
+            .iter()
+            .enumerate()
+            .map(|(i, ps)| Node {
+                id: format!("n{i}"),
+                ts_ms: None,
+                is_root: false,
+                priority: 9,
+                parents: ps.iter().map(|&(idx, kind)| p(idx, kind)).collect(),
+            })
+            .collect()
+    }
+
+    fn classes(nodes: &[Node]) -> Vec<u32> {
+        nodes.iter().map(|n| n.priority).collect()
+    }
+
+    /// The Dart input builder's priority cases (`input_builder_test.dart`).
+    #[test]
+    fn anchors_rule_classes() {
+        // tiny-3-commits `all()`: [@, c3, c2, c1, root]; @ → root, c3 → c2 → c1 → root.
+        let tiny: &[&[(Option<usize>, Kind)]] = &[&[(Some(4), D)], &[(Some(2), D)], &[(Some(3), D)], &[(Some(4), D)], &[]];
+        let mut nodes = chain(tiny);
+        assign_priorities(&mut nodes, &[vec![4], vec![0]]);
+        assert_eq!(classes(&nodes), vec![1, 2, 2, 2, 0]);
+        assign_priorities(&mut nodes, &[]);
+        assert_eq!(classes(&nodes), vec![0; 5], "no anchor: every node class 0");
+        assign_priorities(&mut nodes, &[vec![], vec![0]]);
+        assert_eq!(classes(&nodes), vec![1, 2, 2, 2, 1], "an empty anchor 0: @'s chain is class 1");
+        // Three anchors: c2's chain is class 0, @'s class 1 up to the root (class 0), c3 class 2.
+        assign_priorities(&mut nodes, &[vec![2], vec![0], vec![1]]);
+        assert_eq!(classes(&nodes), vec![1, 2, 0, 0, 0]);
+        // An anchor-1 node already in class 0 stays class 0, and its chain is not walked.
+        assign_priorities(&mut nodes, &[vec![2], vec![3, 0]]);
+        assert_eq!(classes(&nodes), vec![1, 2, 0, 0, 0]);
+        // The chain follows the first non-missing parent, Indirect included: 0 → [missing, 2 (ind)].
+        let mut nodes = chain(&[&[(None, M), (Some(2), I)], &[(Some(2), D)], &[]]);
+        assign_priorities(&mut nodes, &[vec![], vec![0]]);
+        assert_eq!(classes(&nodes), vec![1, 2, 1]);
     }
 }

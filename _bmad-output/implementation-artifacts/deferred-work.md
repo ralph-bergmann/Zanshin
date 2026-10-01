@@ -857,3 +857,27 @@ _The spec (`spec-4-12-graph-topology-wire-lazy-dart-view.md`) carries all three 
   - The `9-25-…` comment in `sprint-status.yaml` ends "Apply = evaluate via graphSlice, Save = persist", and epics.md Story 9.25 lists the same consumer. `graphSlice` was removed in this story; the Apply path is now `RepoHandle.graphTopology`, and its "N revisions" line is `GraphTopologyView.nodeCount`.
   - Story 4.12's intent forbids editing the 9.25 text ("settled when 9.25 is refined").
   - **Follow-up:** re-point both when Ralph refines 9.25.
+
+## Surfaced in Story 4.11 (bmad-build-auto, 2026-10-01)
+
+_The spec (`spec-4-11-dart-layout-engine-worker-isolate.md`) carries all six items in its `deferred:` list. Numbers: its § Measurements._
+
+- **The "Manual check, once" is open — needs Ralph at a running Zanshin.** Medium.
+  - Story 4.11's manual check: `flutter run` on Zanshin, edit `freeGap` and one tunable `const` (e.g. `compactGravity`) in `packages/zanshin_core/lib/src/graph_layout/`, hot reload, and a debug relayout must use the new code and value. Not doable unattended.
+  - The engine keeps every tunable a `const` or a request parameter (no `static`/top-level `final`), which is what hot reload needs; the relayout trigger is 10.12's reassemble hook.
+  - **Follow-up:** run the check once 10.12 wires a layout into the app (or with a debug button).
+- **No real-repo dumps or numbers.** Low.
+  - Measured: the committed fixtures, a `git gc`-packed copy of `large-10k`, the spike's synthetic inputs. The optional real repo needs a path (decisions-review-4-10-to-4-13.md, "Not done unattended").
+  - **Follow-up:** `gen-inputs dump --repo <copy> --revset <expr> --out <file>` (spike `rust-inputs/`), then `graph_layout_cli bench` on the file and `dart run benchmark/graph_layout_occupancy.dart` pointed at the copy — never at the live repo, since the topology call snapshots.
+- **A layout on a loose store blocks the worker for its timestamps (~1.2 s at 10k).** Low; a record.
+  - Occupancy: a 60-id content page queued behind `graphLayout(free, compact)` returns after 1.24 s on `large-10k` loose, 59 ms packed; behind the timestamped topology call alone 1.23 s / 58 ms. The layout itself (builder, engine, grid, copy) adds ~1.3 ms packed.
+  - **Follow-up:** none in the engine. It is 4.10's open timestamp-cache decision (option (c)/(d), "Surfaced in Story 4.10") and 10.5's coalescing; a second layout isolate stays unjustified by these numbers.
+- **`test/worker/graph_layout_test.dart`'s large-10k `free` case costs ~20 s of the `zanshin_core` suite.** Low.
+  - The first timestamped topology call on the freshly extracted loose fixture took ~20 s (cold object reads); the three other `large-all` layouts ~0.5–2 s. One extraction and one worker per fixture (`setUpAll`); timeout 10 minutes for the coverage run.
+  - **Follow-up:** if the gate time bites, keep `large-all` to its `compact` cases (no timestamps) and leave `free` at 10k to the CLI differential, which already covers it.
+- **The barrel export of the layout's public types is 10.12's, but 10.12's sprint-status entry does not say so.** Low; found by the review pass.
+  - decisions-review-4-10-to-4-13.md (### 4.11) and `epic-4-context.md` leave `GraphGridView`, `LayoutMode`, `LaneOrder`, the `default*` pre-fills and `LayoutContractException` to 10.12's barrel export; the `10-12-adopt-backend-layout-4-10-4-12` entry does not mention it (Story 4.11 may change only its own sprint-status line). Until then the exported `ZanshinWorker.graphLayout` takes `LayoutMode` / `LaneOrder` arguments a barrel-only caller cannot name.
+  - **Follow-up:** 10.12 adds the export (`show GraphGridView`, … only: `writeGraphGrid` in the same file is `@internal`), or the 10.12 entry gains the line.
+- **`project-context.md` has no rules for the new layout engine.** Low; found by the review pass.
+  - The guardrails (no `.sort(` in `lib/src/graph_layout/`, tunables `const` or request parameters so hot reload works, engine-core import purity, every rule change = a dated `docs/graph-layout.md` amendment + `node tools/goldens.mjs`) and the goldens' home (`packages/zanshin_core/test/graph_layout/goldens/`, rewritten wholesale by the spike tool) live only in the spec, `epic-4-context.md` and `docs/graph-layout.md` §13; Story 4.13 starts from `project-context.md`.
+  - **Follow-up:** Ralph decides whether `project-context.md` gains a short "graph layout engine" block (an agent-context edit, not done unattended).

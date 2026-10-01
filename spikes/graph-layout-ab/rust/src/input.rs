@@ -35,7 +35,7 @@ impl Kind {
 pub struct Input {
     /// The fixed "now" (time mode only).
     pub now_ms: i64,
-    /// The viewer's fixed UTC offset in minutes (time mode only).
+    /// The viewer's fixed UTC offset in minutes (time and free mode; free since 2026-10-01).
     pub utc_offset_min: i64,
     /// Committer timestamp in epoch ms; meaningless where `has_ts` is false.
     pub ts: Vec<i64>,

@@ -1,4 +1,4 @@
-# SPEC.md notes from the Dart implementation
+# Spec notes from the Dart implementation (the spec: `docs/graph-layout.md`)
 
 ## Ambiguities found (dart)
 
@@ -28,7 +28,7 @@ ones on all 48 input × mode × order files, and the 4 greedy design files match
 
 ## Resolved in the stage-3 diff (2026-09-26)
 
-All four items are now settled in SPEC.md, marked *Clarified during diff*. Items 1, 2 and 4
+All four items are now settled in docs/graph-layout.md, marked *Clarified during diff*. Items 1, 2 and 4
 confirm the readings above. For item 2, Rust was changed to match Dart. Item 3 was adopted as
 V4: |utc_offset_min| ≤ 1440.
 

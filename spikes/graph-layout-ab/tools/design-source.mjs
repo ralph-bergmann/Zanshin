@@ -1,4 +1,4 @@
-// The design export the spike's design sample, its oracle (SPEC.md §7.2) and the SPEC's
+// The design export the spike's design sample, its oracle (docs/graph-layout.md §7.2) and the SPEC's
 // expectations were derived from: 57f259c, 22 commits. Ralph replaces the export folder wholesale
 // on every re-download (36 commits since a399daf, 52 since e243dd2, where computeLayout also calls
 // graph-gaps.jsx), so the tools read this revision from git, never the working tree.

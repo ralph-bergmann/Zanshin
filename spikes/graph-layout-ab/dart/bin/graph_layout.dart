@@ -6,9 +6,9 @@ import 'package:graph_layout/graph_layout.dart';
 
 const String _usage = '''
 usage:
-  graph_layout layout --mode compact|time|free --order greedy|optimized|compact <input.json> <output.json>
-  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--runs N] [--warmup W] <input.json>
-(--order compact is Dart-only, SPEC §4.7)''';
+  graph_layout layout --mode compact|time|free --order greedy|optimized|compact [--budget B] <input.json> <output.json>
+  graph_layout bench  --mode compact|time|free --order greedy|optimized|compact [--budget B] [--runs N] [--warmup W] <input.json>
+(--order compact is Dart-only, SPEC §4.7; --budget is its search budget, default 2000000)''';
 
 /// Usage error or invalid input: exit code 2 (SPEC §6).
 final class _Exit2 implements Exception {
@@ -44,7 +44,7 @@ void _layout(_Cli cli) {
   if (cli.runs != null || cli.warmup != null) throw _Exit2('--runs / --warmup are bench-only');
   if (cli.positional.length != 2) throw _Exit2('layout takes <input.json> <output.json>');
   final input = parseInput(_read(cli.positional[0]));
-  final json = encodeOutput(computeLayout(input, cli.mode, cli.order));
+  final json = encodeOutput(computeLayout(input, cli.mode, cli.order, budget: cli.budget));
   try {
     File(cli.positional[1]).writeAsStringSync(json);
   } on FileSystemException catch (e) {
@@ -72,7 +72,13 @@ void _bench(_Cli cli) {
     t[k++] = sw.elapsedTicks;
     input = parseInput(bytes);
     t[k++] = sw.elapsedTicks;
-    result = computeLayout(input, cli.mode, cli.order, onPhaseEnd: () => t[k++] = sw.elapsedTicks);
+    result = computeLayout(
+      input,
+      cli.mode,
+      cli.order,
+      budget: cli.budget,
+      onPhaseEnd: () => t[k++] = sw.elapsedTicks,
+    );
     if (iter < warmup) continue;
     final r = iter - warmup;
     for (var ph = 0; ph < 6; ph++) {
@@ -133,7 +139,7 @@ Uint8List _read(String path) {
 }
 
 final class _Cli {
-  _Cli(this.mode, this.order, this.runs, this.warmup, this.positional);
+  _Cli(this.mode, this.order, this.runs, this.warmup, this.budget, this.positional);
 
   factory _Cli.parse(List<String> args) {
     final flags = <String, String>{};
@@ -154,7 +160,7 @@ final class _Cli {
         name = arg.substring(2);
         value = args[++k];
       }
-      if (!const {'mode', 'order', 'runs', 'warmup'}.contains(name)) throw _Exit2('unknown flag --$name');
+      if (!const {'mode', 'order', 'runs', 'warmup', 'budget'}.contains(name)) throw _Exit2('unknown flag --$name');
       if (flags.containsKey(name)) throw _Exit2('--$name given twice');
       flags[name] = value;
     }
@@ -162,7 +168,9 @@ final class _Cli {
     if (mode == null) throw _Exit2('--mode must be compact, time or free');
     final order = LaneOrder.values.where((o) => o.name == flags['order']).firstOrNull;
     if (order == null) throw _Exit2('--order must be greedy, optimized or compact');
-    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), positional);
+    final budget = _intFlag(flags, 'budget') ?? compactBudget;
+    if (budget < 0) throw _Exit2('--budget must be ≥ 0');
+    return _Cli(mode, order, _intFlag(flags, 'runs'), _intFlag(flags, 'warmup'), budget, positional);
   }
 
   static int? _intFlag(Map<String, String> flags, String name) {
@@ -175,5 +183,8 @@ final class _Cli {
   final LaneOrder order;
   final int? runs;
   final int? warmup;
+
+  /// The `compact` order's search budget (SPEC §4.7), `compactBudget` unless `--budget` is given.
+  final int budget;
   final List<String> positional;
 }

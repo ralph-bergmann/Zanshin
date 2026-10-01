@@ -135,7 +135,8 @@ impl BucketKind {
     }
 }
 
-/// One time bucket: its kind, value and row range (`time` mode only).
+/// One time bucket: its kind, value and row range (`time`; `free` emits `day` buckets only,
+/// with y ranges in 1/U pitch units, amended 2026-10-01).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bucket {
     /// Kind.
@@ -255,7 +256,8 @@ pub struct Rows {
     pub unit: i64,
     /// y(i) (rows, or 1/U pitch units in `free`).
     pub y: Vec<i64>,
-    /// `time` buckets, ascending by key; empty otherwise.
+    /// `time` buckets and `free` day buckets (amended 2026-10-01), ascending by key; empty in
+    /// `compact`.
     pub buckets: Vec<Bucket>,
 }
 
@@ -277,8 +279,16 @@ pub fn bucket_key(ts: Option<i64>, is_root: bool, now_ms: i64, utc_offset_min: i
             return now_ms - m * MINUTE_MS;
         }
     }
+    day_key(ts, utc_offset_min)
+}
+
+/// The local-midnight instant (epoch ms) of the calendar day holding `t` at the fixed offset
+/// (D7): `((t + off) div 86400000)·86400000 − off`. Shared by `time` (step 1) and `free`'s day
+/// buckets (step 4), which must not go through [`bucket_key`]'s `now_ms` ladder.
+#[must_use]
+pub fn day_key(t: i64, utc_offset_min: i64) -> i64 {
     let off = utc_offset_min * MINUTE_MS;
-    (ts + off).div_euclid(DAY_MS) * DAY_MS - off
+    (t + off).div_euclid(DAY_MS) * DAY_MS - off
 }
 
 /// The bucket a key stands for: keys map 1:1 to buckets and the kind follows from the key.
@@ -434,11 +444,32 @@ fn layer_free(input: &Input, g: &Graph) -> Rows {
         y[i] = yi;
         prev = Some(i);
     }
-    Rows {
-        unit: U,
-        y,
-        buckets: Vec::new(),
+    let buckets = free_day_buckets(input, &ord, &t, &y);
+    Rows { unit: U, y, buckets }
+}
+
+/// Step 4 of SPEC §4.2 free (amended 2026-10-01): one `day` bucket per local day of the clamped
+/// T of every non-root node. T and y never decrease in the walk order `ord`, so the members of a
+/// bucket are consecutive there (roots skipped) and one pass emits the buckets ascending.
+fn free_day_buckets(input: &Input, ord: &[u32], t: &[i64], y: &[i64]) -> Vec<Bucket> {
+    let mut buckets: Vec<Bucket> = Vec::new();
+    for &i in ord {
+        let i = i as usize;
+        if input.is_root[i] {
+            continue;
+        }
+        let key = day_key(t[i], input.utc_offset_min);
+        match buckets.last_mut() {
+            Some(b) if b.value == key => b.end = y[i],
+            _ => buckets.push(Bucket {
+                kind: BucketKind::Day,
+                value: key,
+                start: y[i],
+                end: y[i],
+            }),
+        }
     }
+    buckets
 }
 
 /// §4.3 result: lane per node, lane count, and each lane's y-list (CSR, ascending).
@@ -987,6 +1018,65 @@ pub(crate) mod tests {
         // Walk (T asc, i desc): r (T = tmin = t0) → 0; a (T t0) → max(0 + gap 0, 0 + 16) = 16;
         // b: max(16 + gap(1h) = 27, 16 + 16) = 32; d: 32 + gap(23h) = 32 + 20 = 52.
         assert_eq!(rows.y, vec![52, 32, 16, 0]);
+        // Day buckets (amended 2026-10-01): t0 is 2001-09-09T01:46:40Z, so a and b share that
+        // UTC day, d is on the next; the root is in none.
+        let day = 86_400_000;
+        let d0 = t0.div_euclid(day) * day;
+        assert_eq!(
+            rows.buckets,
+            vec![
+                Bucket {
+                    kind: BucketKind::Day,
+                    value: d0,
+                    start: 16,
+                    end: 32
+                },
+                Bucket {
+                    kind: BucketKind::Day,
+                    value: d0 + day,
+                    start: 52,
+                    end: 52
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn free_day_buckets_can_share_one_row_across_local_midnight() {
+        // Two unrelated commits 30 s apart across a local midnight at UTC+2, plus the root.
+        let midnight = 1_000_072_800_000; // 2001-09-10T00:00 at UTC+2
+        let input = mk(
+            0,
+            120,
+            &[
+                (Some(midnight + 10_000), false, 0, &[]),
+                (Some(midnight - 20_000), false, 0, &[]),
+                (None, true, 0, &[]),
+            ],
+        );
+        let g = prep(&input);
+        let rows = layering(&input, &g, Mode::Free);
+        // Walk: r (T = tmin = midnight − 20 s, index 2 first) → 0; 1 → 0 + gap(0) = 0;
+        // 0 → 0 + gap(30 s) = 0. One y value, two days: end of the first = start of the second.
+        assert_eq!(rows.y, vec![0, 0, 0]);
+        assert_eq!(day_key(midnight - 20_000, 120), midnight - 86_400_000);
+        assert_eq!(
+            rows.buckets,
+            vec![
+                Bucket {
+                    kind: BucketKind::Day,
+                    value: midnight - 86_400_000,
+                    start: 0,
+                    end: 0
+                },
+                Bucket {
+                    kind: BucketKind::Day,
+                    value: midnight,
+                    start: 0,
+                    end: 0
+                },
+            ]
+        );
     }
 
     #[test]
@@ -1008,6 +1098,17 @@ pub(crate) mod tests {
         // r → 0; p: base 0 + gap(1 day) = 20, parent r + 16 → 20; c (T = t0, visited after p):
         // base 20 + gap(0) = 20, parent p + 16 = 36.
         assert_eq!(rows.y, vec![36, 20, 0]);
+        // c counts by its clamped T (p's day), not by its own ts a day earlier.
+        let day = 86_400_000;
+        assert_eq!(
+            rows.buckets,
+            vec![Bucket {
+                kind: BucketKind::Day,
+                value: t0.div_euclid(day) * day,
+                start: 20,
+                end: 36
+            }]
+        );
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope;
+import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
 ///
@@ -216,6 +217,58 @@ final class GraphTopologyCommand extends WorkerCommand implements HandleScopedCo
 
   /// Load each non-root node's committer timestamp.
   final bool withTimestamps;
+}
+
+/// Lay out the whole revset's graph in the repo identified by [handleId] (Story 4.11).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove), calls
+/// `zanshinGraphTopology(raw, …)` with timestamps iff [mode] is `free`, lays the topology out
+/// with the Dart layout engine while the native envelope is still alive, copies the envelope and
+/// the grid ONCE each into a `TransferableTypedData`, frees the native buffer, and replies with a
+/// `GraphLayoutResult` (an unknown handle still replies `BufferResult`). Nothing is kept in the
+/// worker between commands (ADR-0002).
+final class GraphLayoutCommand extends WorkerCommand implements HandleScopedCommand {
+  const GraphLayoutCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revset,
+    required this.prioritize,
+    required this.shortPrefixes,
+    required this.anchors,
+    required this.mode,
+    required this.order,
+    required this.utcOffsetMin,
+    required this.budget,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Revset selecting the nodes (caller pass-through, FR-JJ-17).
+  final String revset;
+
+  /// Branch-prioritisation revset (caller pass-through; `none()` = no prioritisation).
+  final String prioritize;
+
+  /// Disambiguation revset for the shortest-prefix lengths (caller pass-through; an EMPTY string
+  /// disables disambiguation).
+  final String shortPrefixes;
+
+  /// Ordered revsets whose selected nodes the layout's priority rule reads (caller pass-through).
+  final List<String> anchors;
+
+  /// The layout's vertical model; `free` loads the committer timestamps.
+  final LayoutMode mode;
+
+  /// The layout's lane order.
+  final LaneOrder order;
+
+  /// The fixed UTC offset in minutes for `free`'s day buckets, within ±1440.
+  final int utcOffsetMin;
+
+  /// The work units the `compact` lane order may spend, ≥ 0.
+  final int budget;
 }
 
 /// Detect the repository kind at [path] (FR-JJ-17).

@@ -1,7 +1,7 @@
 // Unit tests for the spike's Dart layout. Run: `dart run test/layout_test.dart`.
 //
 // The hand-traced graphs below list nodes children-first (jj log order); every expectation was
-// derived by hand from SPEC.md §4 before the code ran.
+// derived by hand from docs/graph-layout.md §4 before the code ran.
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -266,6 +266,76 @@ void layering() {
     );
     expectEq(r.row, [36, 20, 0]);
     expectEq(r.rows, 52);
+    // Day buckets (amended 2026-10-01): 0 counts by its clamped T (1's day), the root by none.
+    expectEq(r.bucketValue, [floorDiv(t0 + day, day) * day]);
+    expectEq([r.bucketStart, r.bucketEnd], [
+      [20],
+      [36],
+    ]);
+  });
+
+  test('free: day buckets across a local midnight share one row; roots are in none', () {
+    const midnight = 1000072800000; // 2001-09-10T00:00 at UTC+2
+    final r = run(
+      graph(
+        [[], [], []],
+        ts: [midnight + 10000, midnight - 20000, null],
+        roots: {2},
+        offset: 120,
+      ),
+      Mode.free,
+    );
+    expectEq(r.row, [0, 0, 0]);
+    expectEq(r.bucketKind, [bucketDay, bucketDay]);
+    expectEq(r.bucketValue, [midnight - day, midnight]);
+    expectEq([r.bucketStart, r.bucketEnd], [
+      [0, 0],
+      [0, 0],
+    ]);
+    final rootOnly = run(graph([[]], ts: [null], roots: {0}), Mode.free);
+    expectEq(rootOnly.bucketKind.length, 0, 'no non-root node, no bucket');
+    expectEq(run(graph([[], []], ts: [midnight, midnight - day]), Mode.compact).bucketKind.length, 0, 'compact');
+  });
+
+  test('free: a non-root node with a null ts counts by its clamped T', () {
+    const t1 = 1700000000000;
+    final r = run(
+      graph(
+        [
+          [1],
+          [2],
+          [],
+        ],
+        ts: [null, t1, null],
+        roots: {2},
+      ),
+      Mode.free,
+    );
+    expectEq(r.row, [32, 16, 0]);
+    expectEq(r.bucketValue, [floorDiv(t1, day) * day]);
+    expectEq([r.bucketStart, r.bucketEnd], [
+      [16],
+      [32],
+    ]);
+  });
+
+  test('free: day key at UTC offsets −300, 0, 330 and ±1440', () {
+    for (final (offset, want) in [(-300, -day + 5 * hour), (0, 0), (330, -330 * minute), (1440, 0), (-1440, 0)]) {
+      final r = run(
+        graph(
+          [
+            [1],
+            [],
+          ],
+          ts: [0, null],
+          roots: {1},
+          offset: offset,
+        ),
+        Mode.free,
+      );
+      expectEq(r.bucketValue, [want], 'offset $offset');
+      expectEq(dayKey(0, offset), want, 'dayKey offset $offset');
+    }
   });
 
   test('free: tmin is the least non-null ts, including a root\'s (literal reading)', () {
@@ -1039,6 +1109,55 @@ void checkDisjointReservations(GraphLayout l, List<int> lanes, String what) {
   }
 }
 
+/// The clamped T(i) of SPEC §4.2 free, steps 1–2, from scratch.
+List<int> clampedT(LayoutInput g, List<List<int>> lp) {
+  final n = g.n;
+  var tmin = 0;
+  var found = false;
+  for (var i = 0; i < n; i++) {
+    if (g.hasTs[i] != 0 && (!found || g.ts[i] < tmin)) {
+      tmin = g.ts[i];
+      found = true;
+    }
+  }
+  final tt = List.filled(n, 0);
+  for (var i = n - 1; i >= 0; i--) {
+    tt[i] = [g.isRoot[i] != 0 || g.hasTs[i] == 0 ? tmin : g.ts[i], for (final p in lp[i]) tt[p]].reduce(max);
+  }
+  return tt;
+}
+
+/// SPEC §7.3 I5 for `free` (amended 2026-10-01): `day` buckets only, values strictly ascending,
+/// start ≤ end, end_k ≤ start_{k+1}, every non-root node inside the bucket of its clamped T's day,
+/// start / end its members' min / max y, and no bucket iff no non-root node.
+void checkFreeDayBuckets(LayoutInput g, LayoutResult r, List<List<int>> lp, String what) {
+  final tt = clampedT(g, lp);
+  final count = r.bucketKind.length;
+  for (var b = 0; b < count; b++) {
+    check(r.bucketKind[b] == bucketDay, '$what: I5 free kind');
+    check(r.bucketStart[b] <= r.bucketEnd[b], '$what: I5 free start ≤ end');
+    if (b > 0) {
+      check(r.bucketValue[b - 1] < r.bucketValue[b], '$what: I5 free ascending');
+      check(r.bucketEnd[b - 1] <= r.bucketStart[b], '$what: I5 free ranges in order');
+    }
+  }
+  final lo = List.filled(count, 1 << 62), hi = List.filled(count, -(1 << 62));
+  var nonRoot = 0;
+  for (var i = 0; i < g.n; i++) {
+    if (g.isRoot[i] != 0) continue;
+    nonRoot++;
+    final b = r.bucketValue.indexOf(dayKey(tt[i], g.utcOffsetMin));
+    check(b >= 0, '$what: I5 free node $i has its day bucket');
+    if (b < 0) continue;
+    lo[b] = min(lo[b], r.row[i]);
+    hi[b] = max(hi[b], r.row[i]);
+  }
+  check((count == 0) == (nonRoot == 0), '$what: I5 free no bucket iff no non-root node');
+  for (var b = 0; b < count; b++) {
+    check(r.bucketStart[b] == lo[b] && r.bucketEnd[b] == hi[b], '$what: I5 free start / end = members\' min / max y');
+  }
+}
+
 /// SPEC §7.3 I1–I6.
 void checkInvariants(LayoutInput g, LayoutResult r, String what) {
   final n = g.n, u = r.unit, y = r.row;
@@ -1093,8 +1212,10 @@ void checkInvariants(LayoutInput g, LayoutResult r, String what) {
   check(r.rows == (n == 0 ? 0 : y.reduce(max) + u), '$what: rows');
   check(r.lanes == (n == 0 ? 0 : r.lane.reduce(max) + 1), '$what: lanes');
   // I5
-  if (r.mode != Mode.time) {
+  if (r.mode == Mode.compact) {
     check(r.bucketKind.isEmpty, '$what: I5 no buckets');
+  } else if (r.mode == Mode.free) {
+    checkFreeDayBuckets(g, r, lp, what);
   } else {
     int keyOf(int b) => switch (r.bucketKind[b]) {
       bucketRoot => rootKey,

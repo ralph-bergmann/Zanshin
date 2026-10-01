@@ -1,0 +1,66 @@
+{
+  "tiny-all": {
+    "fixture": "tiny-3-commits",
+    "revset": "all()",
+    "now_ms": 1781461547000,
+    "utc_offset_min": 120
+  },
+  "medium-narrow": {
+    "fixture": "medium-1k-commits",
+    "revset": "(description(glob:\"Branch[AB]-*\") | merge::) ~ description(glob:\"*[37]\")",
+    "now_ms": 1000060060000,
+    "utc_offset_min": 120
+  },
+  "medium-all": {
+    "fixture": "medium-1k-commits",
+    "revset": "all()",
+    "now_ms": 1781461547000,
+    "utc_offset_min": 120,
+    "input": {
+      "fnv1a64": "9f8c3833ab12e06f",
+      "bytes": 141254
+    },
+    "compact.greedy": {
+      "fnv1a64": "567456c9cc26a21b",
+      "bytes": 102049
+    },
+    "compact.compact": {
+      "fnv1a64": "a47a52d57c64047a",
+      "bytes": 102050
+    },
+    "free.greedy": {
+      "fnv1a64": "a2cd5ab853913fae",
+      "bytes": 103591
+    },
+    "free.compact": {
+      "fnv1a64": "26b99bde564b513b",
+      "bytes": 103592
+    }
+  },
+  "large-all": {
+    "fixture": "large-10k-commits",
+    "revset": "all()",
+    "now_ms": 1782113187000,
+    "utc_offset_min": 120,
+    "input": {
+      "fnv1a64": "bb40097e89ff9e9a",
+      "bytes": 1419259
+    },
+    "compact.greedy": {
+      "fnv1a64": "4298c3ae4497dec3",
+      "bytes": 1047059
+    },
+    "compact.compact": {
+      "fnv1a64": "4f73f88d0cf752ea",
+      "bytes": 1047060
+    },
+    "free.greedy": {
+      "fnv1a64": "ea9efbb406310195",
+      "bytes": 1061802
+    },
+    "free.compact": {
+      "fnv1a64": "92f14fb2524b4892",
+      "bytes": 1061803
+    }
+  }
+}

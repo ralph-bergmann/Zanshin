@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/warning.dart' show ZanshinWarning;
+import '../graph_layout/layout_request.dart' show LayoutContractException;
 
 /// Typed response hierarchy sent from the worker isolate to the main isolate.
 ///
@@ -59,6 +60,29 @@ final class TransferResult extends WorkerResponse {
 
   /// The `Envelope` bytes; materialize exactly once.
   final TransferableTypedData data;
+}
+
+/// Carries a graph layout's reply (Story 4.11): the topology envelope and the layout's grid,
+/// each as [TransferableTypedData].
+///
+/// One copy each across the isolate boundary: the worker copies the native topology envelope
+/// ONCE into [topology] and the grid buffer ONCE into [grid]; the receiving side materializes
+/// each exactly once, without a further copy. [topology] is always there — an error envelope when
+/// the topology call failed. [grid] is `null` when there is no layout: the topology call failed,
+/// its buffer could not be read, or the engine refused its input — then [violation] carries the
+/// [LayoutContractException], which crosses as the object itself.
+final class GraphLayoutResult extends WorkerResponse {
+  const GraphLayoutResult({required this.topology, required this.grid, required this.violation});
+
+  /// The `zanshin_graph_topology` `Envelope` bytes; materialize exactly once.
+  final TransferableTypedData topology;
+
+  /// The grid buffer (`GraphGridView`'s format), or `null` without a layout; materialize exactly
+  /// once.
+  final TransferableTypedData? grid;
+
+  /// The contract violation the engine found in the topology's values, or `null`.
+  final LayoutContractException? violation;
 }
 
 /// Thrown on the main side when the worker reports a failed FFI call

@@ -2,7 +2,7 @@
 //! re-implementations of lane packing and `blocked` against the O(n log n) ones.
 
 use crate::input::Input;
-use crate::layout::{bucket_key, bucket_of_key, layout, BucketKind, Layout, Mode, Order, Route};
+use crate::layout::{bucket_key, bucket_of_key, day_key, layout, BucketKind, Layout, Mode, Order, Route};
 use crate::order::tests::random_input;
 
 /// The design's packer, literally: closed-interval overlap test over every stored interval.
@@ -140,7 +140,6 @@ fn check_invariants(input: &Input, out: &Layout) {
             }
         }
         Mode::Free => {
-            assert!(out.rows.buckets.is_empty());
             let tmin = (0..n)
                 .filter(|&i| input.has_ts[i])
                 .map(|i| input.ts[i])
@@ -162,8 +161,50 @@ fn check_invariants(input: &Input, out: &Layout) {
             for w in ord.windows(2) {
                 assert!(y[w[1]] >= y[w[0]], "I6");
             }
+            check_free_day_buckets(input, out, &t);
         }
         Mode::Compact => assert!(out.rows.buckets.is_empty()),
+    }
+}
+
+/// SPEC §7.3 I5 for `free` (amended 2026-10-01): `day` buckets only, values strictly ascending,
+/// start ≤ end, end_k ≤ start_{k+1}, every non-root node inside the bucket of its clamped T's day,
+/// start / end its members' min / max y, and no bucket iff no non-root node.
+fn check_free_day_buckets(input: &Input, out: &Layout, t: &[i64]) {
+    let (y, buckets) = (&out.rows.y, &out.rows.buckets);
+    for w in buckets.windows(2) {
+        assert!(w[0].value < w[1].value, "I5 free ascending");
+        assert!(w[0].end <= w[1].start, "I5 free ranges in order");
+    }
+    let mut min_y = vec![i64::MAX; buckets.len()];
+    let mut max_y = vec![i64::MIN; buckets.len()];
+    let mut non_root = 0;
+    for i in 0..y.len() {
+        if input.is_root[i] {
+            continue;
+        }
+        non_root += 1;
+        let key = day_key(t[i], input.utc_offset_min);
+        let k = buckets
+            .iter()
+            .position(|b| b.value == key)
+            .expect("I5 free bucket of dk(i)");
+        min_y[k] = min_y[k].min(y[i]);
+        max_y[k] = max_y[k].max(y[i]);
+    }
+    assert_eq!(
+        buckets.is_empty(),
+        non_root == 0,
+        "I5 free: no bucket iff no non-root node"
+    );
+    for (k, b) in buckets.iter().enumerate() {
+        assert_eq!(b.kind, BucketKind::Day, "I5 free kind");
+        assert!(b.start <= b.end, "I5 free start ≤ end");
+        assert_eq!(
+            (b.start, b.end),
+            (min_y[k], max_y[k]),
+            "I5 free start / end = members' min / max y"
+        );
     }
 }
 

@@ -2,11 +2,12 @@
 // Index-addressed loops over flat arrays are the SPEC §8.3 data layout, kept 1:1 with Dart.
 #![allow(clippy::needless_range_loop)]
 
-//! `graph-layout` — the Rust side of the graph-layout A/B spike (`../SPEC.md`).
+//! `graph-layout` — the Rust side of the graph-layout A/B spike (`docs/graph-layout.md`).
 //!
 //! Maps a revset-induced commit DAG (as jj's graph iterator yields it: children before
 //! parents, typed Direct / Indirect / Missing edges) onto an abstract grid: per node
-//! `(row, lane, col)`, per layout edge `(route, blocked)`, per time bucket a row range.
+//! `(row, lane, col)`, per layout edge `(route, blocked)`, per time bucket a row range (`time`,
+//! and `free`'s day buckets since the 2026-10-01 amendment).
 //! Integers only, no pixels, no jj-lib dependency — the zanshin-graph shape, so the
 //! winner can move into the product almost verbatim.
 //!

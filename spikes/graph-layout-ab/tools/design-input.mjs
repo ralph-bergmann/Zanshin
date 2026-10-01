@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Converts the design's own sample (graph-data.js) into layout INPUT files, as SPEC.md §7.2
+// Converts the design's own sample (graph-data.js) into layout INPUT files, as docs/graph-layout.md §7.2
 // defines them: inputs/design-default.json and inputs/design-all.json.
 //
 //   node tools/design-input.mjs [--rev <commit>]   (from the spike root; sets TZ=UTC itself)
@@ -8,7 +8,7 @@
 // export folder. `--rev` converts another export instead, into inputs/design-<commit>-<rev>.json;
 // the pinned inputs are never overwritten.
 //
-// It evaluates graph-data.js plus the declarations SPEC.md §7.2 names, extracted BY NAME from
+// It evaluates graph-data.js plus the declarations docs/graph-layout.md §7.2 names, extracted BY NAME from
 // graph-view.jsx (the JSX parts are never evaluated), and reads the design's own visible set
 // from computeLayout(GRAPH_COMMITS, rev, 240, 62, "compact", {optimize: false}).nodes, so the
 // parents (incl. `skipped` → indirect) and `elided` (→ one missing entry) are the design's.
@@ -62,7 +62,7 @@ export function loadDesign(commit = DESIGN_REV) {
   return { ...ctx.__design, GRAPH_COMMITS: ctx.GRAPH_COMMITS, GRAPH_NOW: ctx.GRAPH_NOW, ctx };
 }
 
-/** SPEC.md §7.2: the input for rev ∈ {"default", "all"} (of the sample, or of other design-shaped commits). */
+/** docs/graph-layout.md §7.2: the input for rev ∈ {"default", "all"} (of the sample, or of other design-shaped commits). */
 export function designInput(d, rev, commits = d.GRAPH_COMMITS, nowIso = d.GRAPH_NOW) {
   const L = d.computeLayout(commits, rev, 240, 62, "compact", { optimize: false });
   const nodes = L.nodes; // design order: root first; node k has idx k
@@ -87,7 +87,7 @@ export function designInput(d, rev, commits = d.GRAPH_COMMITS, nowIso = d.GRAPH_
   return { now_ms: Date.parse(nowIso), utc_offset_min: 0, nodes: out };
 }
 
-/** SPEC.md §2 V1-V4 (V3 over non-null idx). Throws on the first violation. */
+/** docs/graph-layout.md §2 V1-V4 (V3 over non-null idx). Throws on the first violation. */
 export function validate(input) {
   const n = input.nodes.length;
   const safe = (v) => Number.isSafeInteger(v);

@@ -17,6 +17,9 @@ import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
 import '../ffi/workspace.dart' show WorkspaceEntry, WorkspaceRootResult;
+import '../graph_layout/graph_grid_view.dart' show GraphGridView;
+import '../graph_layout/layout_request.dart'
+    show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
 import 'isolate.dart';
 import 'responses.dart';
 
@@ -166,6 +169,61 @@ final class RepoHandle {
       shortPrefixes: shortPrefixes,
       anchors: anchors,
       withTimestamps: withTimestamps,
+    );
+  }
+
+  /// Lay out the whole revset's graph (Story 4.11): the [graphTopology] of [revset] — with the
+  /// committer timestamps iff [mode] is `free` — laid out on the worker isolate by the Dart
+  /// layout engine (docs/graph-layout.md), returned as the topology and the grid.
+  ///
+  /// Every parameter is a CLI or layout pass-through (FR-JJ-17); the defaults are editable
+  /// pre-fills:
+  ///
+  /// - [revset] — the nodes; prefer [logDefaults]' `log` over [defaultLogRevset].
+  /// - [anchors] — ordered revsets for the priority rule (§11.2); [defaultGraphAnchors] is the
+  ///   pre-fill.
+  /// - [utcOffsetMin] — the viewer's fixed UTC offset for `free`'s day buckets; `compact`'s layout
+  ///   does not read it, but it must lie within ±1440 in every mode.
+  /// - [prioritize], [shortPrefixes] — as in [graphTopology], pre-filled [defaultGraphPrioritize]
+  ///   and [defaultShortPrefixes]; prefer [logDefaults]' effective values.
+  /// - [mode], [order] — pre-filled [defaultLayoutMode] (`free`) and [defaultLaneOrder]
+  ///   (`compact`).
+  /// - [budget] — the `compact` order's work units, pre-filled [defaultLayoutBudget].
+  ///
+  /// The topology is re-derived from head on every call and nothing is kept between calls
+  /// (ADR-0002) — re-request on an `OpHeadsChangedEvent`. The topology's `warnings` and
+  /// [lastPrecondition] carry the call's report; card content is [commitContents] at the
+  /// topology's `operationId`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]. Throws [ArgumentError]
+  /// on an interior NUL in any expression, an offset beyond ±1440 or a negative budget. Throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.jj_lib_error`; full list: `docs/ffi-abi.md`
+  /// § `zanshin_graph_topology`) and [LayoutContractException] when the topology breaks a
+  /// contract rule of the layout's input.
+  Future<({GraphTopologyView topology, GraphGridView grid})> graphLayout({
+    required String revset,
+    required List<String> anchors,
+    required int utcOffsetMin,
+    String prioritize = defaultGraphPrioritize,
+    String shortPrefixes = defaultShortPrefixes,
+    LayoutMode mode = defaultLayoutMode,
+    LaneOrder order = defaultLaneOrder,
+    int budget = defaultLayoutBudget,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.graphLayout(
+      _handleId,
+      revset: revset,
+      prioritize: prioritize,
+      shortPrefixes: shortPrefixes,
+      anchors: anchors,
+      mode: mode,
+      order: order,
+      utcOffsetMin: utcOffsetMin,
+      budget: budget,
     );
   }
 
