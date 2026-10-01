@@ -26,12 +26,13 @@ Uint8List zanshinLogDefaults(int rawHandle) => readToken(zanshin_log_defaults(ra
 /// The repo's EFFECTIVE `jj log` defaults (Story 4.9) — the values the user's own
 /// `jj` CLI would apply, after their `[revsets]` / `[ui]` config overrides.
 ///
-/// These are pre-fills for `RepoHandle.graphSlice`'s pass-through parameters
-/// (FR-JJ-17), never applied silently — the UI shows them and the user edits
-/// them. The compile-time constants in `graph.dart` (`defaultLogRevset`,
-/// `defaultGraphPrioritize`, `defaultShortPrefixes`, `defaultSyntheticElided`)
-/// are the *builtin* values and stay available for a pre-config pre-fill; this
-/// model is the config-resolved source the UI should prefer.
+/// These are pre-fills for `RepoHandle.graphTopology`'s `revset` / `prioritize`
+/// / `shortPrefixes` pass-throughs (FR-JJ-17), never applied silently — the UI
+/// shows them and the user edits them. The compile-time constants in
+/// `graph.dart` (`defaultLogRevset`, `defaultGraphPrioritize`,
+/// `defaultShortPrefixes`) are the *builtin* values and stay available for a
+/// pre-config pre-fill; this model is the config-resolved source the UI should
+/// prefer.
 final class LogDefaults {
   /// Wrap the four effective values.
   const LogDefaults({

@@ -8,7 +8,7 @@ import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSear
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
-    show GraphSlice, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
+    show GraphTopologyView, defaultGraphAnchors, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
@@ -121,44 +121,51 @@ final class RepoHandle {
     return _worker.getChange(_handleId, changeId);
   }
 
-  /// Read the lane-assigned commit graph for [revset], metadata included
-  /// (Story 4.6, enriched in Story 4.8).
+  /// Read the whole revset's index-only graph topology (Story 4.12; the verb is
+  /// Story 4.10's): every node of [revset] in `jj log` order, its edges, refs,
+  /// working copies and flags, the node indices each anchor selects, `|all()|`
+  /// and the operation the call loaded — read lazily through the returned
+  /// [GraphTopologyView].
   ///
-  /// Every parameter is a CLI pass-through with the CLI's own default
-  /// pre-filled and editable by the caller (FR-JJ-17):
+  /// Every parameter is a CLI pass-through (FR-JJ-17):
   ///
-  /// - [prioritize] — branch-prioritisation revset, default
+  /// - [revset] — the nodes; [defaultLogRevset] is the CLI's default, exported
+  ///   for the UI to pre-fill, never applied silently.
+  /// - [prioritize] — branch-prioritisation revset, pre-filled
   ///   [defaultGraphPrioritize] (`present(@)`); `'none()'` means none.
-  /// - [syntheticElided] — render elided ancestry as synthetic rows, default
-  ///   [defaultSyntheticElided] (`true`, the CLI's `ui.log-synthetic-elided-nodes`).
   /// - [shortPrefixes] — disambiguation revset for the shortest-prefix lengths,
-  ///   default [defaultShortPrefixes]; `''` DISABLES disambiguation.
+  ///   pre-filled [defaultShortPrefixes]; `''` DISABLES disambiguation.
+  /// - [anchors] — ordered revsets for the layout's priority rule (required;
+  ///   [defaultGraphAnchors] is the editable pre-fill).
+  /// - [withTimestamps] — load every non-root committer timestamp (required: the
+  ///   cost is the layout mode's call).
   ///
-  /// [defaultLogRevset] is the CLI's default for [revset], exported for the UI
-  /// to pre-fill; it is never applied silently.
-  ///
-  /// The graph is re-derived from head on every call (ADR-0002) — re-request on
-  /// an `OpHeadsChangedEvent` to pick up external operations.
+  /// The card content of a node is [commitContents] at the view's
+  /// `operationId`. The topology is re-derived from head on every call
+  /// (ADR-0002) — re-request on an `OpHeadsChangedEvent`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
-  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// Throws [ArgumentError] on an interior NUL in any expression. Throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`;
-  /// full list: `docs/ffi-abi.md` § `zanshin_graph_slice`).
-  Future<GraphSlice> graphSlice({
+  /// full list: `docs/ffi-abi.md` § `zanshin_graph_topology`).
+  Future<GraphTopologyView> graphTopology({
     required String revset,
+    required List<String> anchors,
+    required bool withTimestamps,
     String prioritize = defaultGraphPrioritize,
-    bool syntheticElided = defaultSyntheticElided,
     String shortPrefixes = defaultShortPrefixes,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.graphSlice(
+    return _worker.graphTopology(
       _handleId,
       revset: revset,
       prioritize: prioritize,
-      syntheticElided: syntheticElided,
       shortPrefixes: shortPrefixes,
+      anchors: anchors,
+      withTimestamps: withTimestamps,
     );
   }
 
@@ -204,9 +211,9 @@ final class RepoHandle {
   /// Read the effective `jj log` defaults for this repository (Story 4.9) —
   /// what the user's own `jj` CLI would apply after their config overrides.
   ///
-  /// Use these to pre-fill [graphSlice]'s parameters instead of the builtin
-  /// constants [defaultLogRevset] / [defaultGraphPrioritize] /
-  /// [defaultShortPrefixes] / [defaultSyntheticElided]; they are offers, still
+  /// Use these to pre-fill [graphTopology]'s `revset` / `prioritize` /
+  /// `shortPrefixes` instead of the builtin constants [defaultLogRevset] /
+  /// [defaultGraphPrioritize] / [defaultShortPrefixes]; they are offers, still
   /// editable by the user (FR-JJ-17). The config is re-read Rust-side on every
   /// call and never cached, so an externally edited config file shows up on the
   /// next call without reopening the handle.
@@ -225,8 +232,8 @@ final class RepoHandle {
   /// timestamp, FULL description, conflict, empty — at the pinned operation
   /// [operationId], in [commitIds]' order (Story 4.10).
   ///
-  /// The continuation of the graph topology call's `jj log`: pass the operation
-  /// id that call returned and the ids of the cards to show. It runs no pre-verb
+  /// The continuation of [graphTopology]'s `jj log`: pass the `operationId` its
+  /// view carries and the ids of the cards to show. It runs no pre-verb
   /// snapshot, so [lastPrecondition] is left unchanged, and records no warning
   /// (the result's `warnings` is always empty). The values are commit-intrinsic,
   /// so a head that moved since the topology call changes nothing. Ids are FULL

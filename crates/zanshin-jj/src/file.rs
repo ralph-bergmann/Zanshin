@@ -217,7 +217,7 @@ pub enum FileError {
     /// [`crate::Repo::file_show`] cannot learn which `ui.conflict-marker-style` to
     /// materialize a conflict with. Reported separately from [`FileError::Backend`] because
     /// it is the user's own config that is wrong, not the repository — the same distinction
-    /// every other config-reading verb makes (`log_defaults`, `graph_slice`, the Story
+    /// every other config-reading verb makes (`log_defaults`, `graph_topology`, the Story
     /// 9.1/9.3 mutations).
     #[error("config error: {reason}")]
     Config {

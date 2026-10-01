@@ -175,43 +175,47 @@ final class GetChangeCommand extends WorkerCommand implements HandleScopedComman
   final String changeId;
 }
 
-/// Read the lane-assigned commit graph for [revset] in the repo identified by
-/// [handleId] (Story 4.6).
+/// Read the whole revset's index-only graph topology in the repo identified by
+/// [handleId] (Story 4.12).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls
-/// `zanshinGraphSlice(raw, revset, prioritize, syntheticElided, shortPrefixes)`,
-/// and replies with a `BufferResult` carrying the FlatBuffers
-/// `Envelope<GraphSlice>` bytes.
-final class GraphSliceCommand extends WorkerCommand implements HandleScopedCommand {
-  const GraphSliceCommand({
+/// remove), calls `zanshinGraphTopology(raw, …)`, copies the returned native
+/// envelope ONCE into a `TransferableTypedData`, frees the native buffer, and
+/// replies with a `TransferResult` — the one command whose reply is not a
+/// `BufferResult` copy (an unknown handle still replies `BufferResult`).
+final class GraphTopologyCommand extends WorkerCommand implements HandleScopedCommand {
+  const GraphTopologyCommand({
     required super.commandId,
     required this.handleId,
     required this.revset,
     required this.prioritize,
-    required this.syntheticElided,
     required this.shortPrefixes,
+    required this.anchors,
+    required this.withTimestamps,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
 
-  /// Revset selecting the rows (caller pass-through, FR-JJ-17).
+  /// Revset selecting the nodes (caller pass-through, FR-JJ-17).
   final String revset;
 
-  /// Branch-prioritisation revset (caller pass-through; `RepoHandle.graphSlice`
+  /// Branch-prioritisation revset (caller pass-through; `RepoHandle.graphTopology`
   /// pre-fills the CLI default `present(@)`; `none()` = no prioritisation).
   final String prioritize;
 
-  /// Render elided ancestry as synthetic "(elided revisions)" rows (caller
-  /// pass-through; the CLI's `ui.log-synthetic-elided-nodes` default is `true`).
-  final bool syntheticElided;
-
   /// Disambiguation revset for the shortest-prefix lengths (caller
-  /// pass-through; `RepoHandle.graphSlice` pre-fills the CLI default; an EMPTY
-  /// string disables disambiguation).
+  /// pass-through; `RepoHandle.graphTopology` pre-fills the CLI default; an
+  /// EMPTY string disables disambiguation).
   final String shortPrefixes;
+
+  /// Ordered revsets whose selected nodes the layout's priority rule reads
+  /// (caller pass-through; `defaultGraphAnchors` is the editable pre-fill).
+  final List<String> anchors;
+
+  /// Load each non-root node's committer timestamp.
+  final bool withTimestamps;
 }
 
 /// Detect the repository kind at [path] (FR-JJ-17).

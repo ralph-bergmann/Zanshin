@@ -91,7 +91,7 @@ fn declared_symbols(line: &str) -> Vec<String> {
 
 /// Every `zanshin_*` function the header declares, sorted and deduplicated.
 ///
-/// A declaration may wrap across several lines (`zanshin_graph_slice` does); the name
+/// A declaration may wrap across several lines (`zanshin_git_remote_set_url` does); the name
 /// always sits on the first, so each is counted exactly once.
 fn exported_symbols(header_src: &str) -> BTreeSet<String> {
     header_src
@@ -418,14 +418,14 @@ ZanshinBuf *zanshin_status(uint64_t handle);
 #[test]
 fn a_declaration_wrapped_over_several_lines_is_counted_once() {
     let header = "\
-ZanshinBuf *zanshin_graph_slice(uint64_t handle,
-                                const char *revset,
-                                const char *prioritize,
-                                bool synthetic_elided,
-                                const char *short_prefixes);
+ZanshinBuf *zanshin_wrapped_example(uint64_t handle,
+                                    const char *first,
+                                    const char *second,
+                                    bool flag,
+                                    const char *third);
 ";
     let exported = exported_symbols(header);
-    assert_eq!(exported, BTreeSet::from(["zanshin_graph_slice".to_owned()]));
+    assert_eq!(exported, BTreeSet::from(["zanshin_wrapped_example".to_owned()]));
 }
 
 #[test]

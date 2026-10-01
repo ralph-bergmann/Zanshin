@@ -19,8 +19,7 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
-import 'package:zanshin_core/src/ffi/graph.dart'
-    show defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes, defaultSyntheticElided;
+import 'package:zanshin_core/src/ffi/graph.dart' show defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import 'package:zanshin_core/src/ffi/log_defaults.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -59,7 +58,11 @@ void main() {
         equals(defaultShortPrefixes),
         reason: 'unset revsets.short-prefixes falls back to revsets.log',
       );
-      expect(defaults.syntheticElided, equals(defaultSyntheticElided));
+      expect(
+        defaults.syntheticElided,
+        isTrue,
+        reason: "the CLI's ui.log-synthetic-elided-nodes default (the topology call takes no such parameter)",
+      );
 
       await handle.close();
     });

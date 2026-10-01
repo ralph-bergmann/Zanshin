@@ -187,8 +187,9 @@ pub const JJ_CONFIG_PARSE_ERROR: &str = "jj.config_parse_error";
 /// CLI's "No user/repo/workspace config path found[ to edit]" and `gc`'s "No config directory
 /// found"; the message in `context` (Story 9.28).
 pub const JJ_CONFIG_PATH_NOT_FOUND: &str = "jj.config_path_not_found";
-/// AR-P-4: emitted by `graph.rs` when the exhausted revset graph stream left a dangling
-/// non-`Missing` edge (upstream stream contract violation); the dangling target in `context`.
+/// AR-P-4: emitted by `graph.rs` when the graph topology call (`zanshin_graph_topology`) finds a
+/// Direct/Indirect edge whose target is outside its node set (upstream stream contract
+/// violation); the dangling target in `context`.
 pub const GRAPH_DANGLING_EDGE: &str = "graph.dangling_edge";
 /// AR-P-4: emitted by `repo.rs` when arming the filesystem watcher fails during
 /// open/init/clone/convert; detail in `context`. Story 3.5 → Reserved, Story 3.6 →

@@ -34,7 +34,7 @@ import 'package:zanshin_core/src/ffi/file.dart'
 import 'package:zanshin_core/src/ffi/file_ops.dart' show decodeTrackResultEnvelope, decodeUntrackResultEnvelope;
 import 'package:zanshin_core/src/ffi/git.dart'
     show decodeGitExportResultEnvelope, decodeGitImportResultEnvelope, decodeGitRemoteEnvelopeInternal;
-import 'package:zanshin_core/src/ffi/graph.dart' show decodeGraphSliceEnvelope;
+import 'package:zanshin_core/src/ffi/graph.dart' show GraphTopologyView;
 import 'package:zanshin_core/src/ffi/log_defaults.dart' show decodeLogDefaultsEnvelope;
 import 'package:zanshin_core/src/ffi/mutate.dart' show decodeAbsorbResultEnvelope, decodeMutationResultEnvelope;
 import 'package:zanshin_core/src/ffi/op_log.dart' show decodeOpLogEnvelope;
@@ -126,10 +126,27 @@ final List<_Case> _cases = [
     read: (b) => decodeChangeEnvelope(b).warnings,
   ),
   (
-    name: 'graphSlice',
-    type: fbs.PayloadTypeId.GraphSlice,
-    data: fbs.GraphSliceObjectBuilder.new,
-    read: (b) => decodeGraphSliceEnvelope(b).warnings,
+    name: 'graphTopology',
+    type: fbs.PayloadTypeId.GraphTopology,
+    // The minimal valid payload: no node, no edge, no anchor.
+    data: () => fbs.GraphTopologyObjectBuilder(
+      operationId: 'ab',
+      commitIds: const [],
+      changeIds: const [],
+      flags: const [],
+      changeOffset: const [],
+      changeIdPrefixLen: const [],
+      commitIdPrefixLen: const [],
+      parentCount: const [],
+      edgeStart: const [0],
+      edgeTarget: const [],
+      edgeKind: const [],
+      refs: const [],
+      workingCopies: const [],
+      anchorStart: const [0],
+      anchorNode: const [],
+    ),
+    read: (b) => GraphTopologyView.fromEnvelope(b).warnings,
   ),
   (
     name: 'opLog',

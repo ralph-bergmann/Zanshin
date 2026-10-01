@@ -38,7 +38,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 - **Performance budgets (design targets — soft while WIP, no CI enforcement):**
   - Repo open with full lane-cache @ 10k commits: < 2s (NFR-P-1)
-  - `zanshin-graph` full lane-cache: < 1s (sub-budget of NFR-P-1)
+  - `zanshin-graph` full lane-cache: < 1s (sub-budget of NFR-P-1) *(2026-10-01, Story 4.12: the crate is removed; the graph read is `zanshin_graph_topology`, the whole revset's index-only topology — 22 ms @ 10k incl. its precondition, spec-4-12 § Measurements)*
   - `zanshin-diff` JSON output @ 5k-line file: < 500ms (NFR-P-3)
   - Watcher `op_heads` → Dart callback: < 100ms (NFR-P-4 / FR-RX-1)
   - FFI handle create/destroy: < 1ms (NFR-P-5) — validates long-running-worker pattern
@@ -140,7 +140,7 @@ flutter create --platforms=macos --org=de.dasralph zanshin
 cargo new --lib zanshin-jj
 cargo new --lib zanshin-ffi      # Cargo.toml manually set to crate-type = ["cdylib"]
 cargo new --lib zanshin-diff
-cargo new --lib zanshin-graph
+cargo new --lib zanshin-graph    # 2026-10-01, Story 4.12: removed (the layout is computed in Dart)
 cargo new --bin zanshin-mcp
 
 # 3. Dart Hooks + FFI toolchain
@@ -456,7 +456,7 @@ zanshin/                                # repo root, Cargo workspace
 │   │       ├── ffi_strings.rs          # CString in/out + zanshin_string_free + zanshin_buffer_free
 │   │       ├── repo.rs                 # zanshin_repo_*
 │   │       ├── diff.rs                 # zanshin_diff_*
-│   │       ├── graph.rs                # zanshin_graph_*
+│   │       ├── graph.rs                # zanshin_graph_* (2026-10-01, Story 4.12: zanshin_graph_topology)
 │   │       └── watcher.rs              # FR-FFI-5..7, AD-5 — notify-debouncer-full + dispatch
 │   │
 │   ├── zanshin-mcp/                    # FR-MCP-* — standalone bin
@@ -598,7 +598,7 @@ Post-1.0 the intent is that the three surfaces above become the external SemVer 
 | A — Workspace & Build Foundation | `Cargo.toml`, `Makefile.toml`, `rust-toolchain.toml`, `deny.toml`, `crates/*/Cargo.toml`, `app/pubspec.yaml`, `app/hook/build.dart`, `.github/workflows/ci.yml`, `schemas/README.md` | All — establishes the scaffolding |
 | B — `zanshin-jj` Adapter & Read Path | `crates/zanshin-jj/src/{repo,status,revset,change,op_log,bookmarks,remotes}.rs` | `test-fixtures/repos/` |
 | C — `zanshin-ffi` & Watcher | `crates/zanshin-ffi/src/{lib,envelope,handle,ffi_strings,repo,watcher}.rs`, `app/lib/src/{ffi,worker}/*.dart` | `schemas/envelope.fbs`, `schemas/progress.fbs`, `docs/rust-error-codes.md`, `docs/ffi-abi.md` |
-| D — `zanshin-graph` | `crates/zanshin-graph/src/*.rs`, `crates/zanshin-ffi/src/graph.rs` | `schemas/graph.fbs`, `test-fixtures/repos/large-10k-commits.tar.zst` |
+| D — `zanshin-graph` *(2026-10-01, Story 4.12: crate removed; the graph read is `zanshin-jj`'s `Repo::graph_topology` behind `crates/zanshin-ffi/src/graph.rs`, the layout is Dart, Story 4.11)* | `crates/zanshin-graph/src/*.rs`, `crates/zanshin-ffi/src/graph.rs` | `schemas/graph.fbs`, `test-fixtures/repos/large-10k-commits.tar.zst` |
 | E — `zanshin-diff` | `crates/zanshin-diff/src/*.rs`, `crates/zanshin-ffi/src/diff.rs` | `schemas/diff.fbs`, `test-fixtures/diffs/` |
 | F — Write Path & FFI Exposure | `crates/zanshin-jj/src/{mutate,conflict}.rs`, `crates/zanshin-ffi/src/repo.rs` (write surface) | `schemas/change.fbs` |
 | G — `zanshin-mcp` Binary | `crates/zanshin-mcp/src/**` | `app/macos/Runner/Resources/zanshin-mcp` (bundled via `cargo make build`) |

@@ -335,7 +335,8 @@ fn parse_revset_in(
     };
     // WHY: three USER-VISIBLE revset-language changes arrived with the jj-lib 0.42 → 0.44 bump
     // (Story 9.0a). None is a no-op; all reach users through `resolve_revset` and through
-    // `walk_graph` / the FFI `graphSlice(revset:)` pass-through, where the revset is user-typed.
+    // `walk_graph` / `graph_topology` and the FFI `graphTopology(revset:)` pass-through (the
+    // `graphSlice` one until Story 4.12, 2026-10-01), where the revset is user-typed.
     //
     // 1. `RevsetParseContext::use_glob_by_default` is GONE — this struct literal used to set it
     //    to `false`. In 0.42 that made the default kind for a bare/quoted pattern argument

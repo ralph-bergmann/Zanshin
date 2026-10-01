@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Revset graph stream — the jj-lib-free input of `zanshin-graph`'s lane assignment.
+//! Revset graph stream — the `jj log`-faithful graph read.
+//!
+//! *(2026-10-01, Story 4.12: this stream fed the lane crate's lane assignment; that crate and
+//! its FFI slice are gone. `walk_graph` stays as the `jj log`-faithful read and the oracle of
+//! Story 4.10's topology call, which the graph wire now carries.)*
 //!
 //! [`walk_graph`] reproduces the `jj log` pipeline at v0.42.0 (`cli/src/commands/log.rs`):
 //! `TopoGroupedGraph::new(revset.stream_graph(), |id| id)` prioritised by the
@@ -42,8 +46,9 @@ pub const DEFAULT_GRAPH_PRIORITIZE: &str = "present(@)";
 
 /// How a [`GraphEdge`]'s target was classified by jj-lib's revset-graph stream.
 ///
-/// Variant order follows `zanshin_graph::EdgeKind` (Story 4.1 / 4.2), not jj-lib's —
-/// the two are mapped by an exhaustive `match`, never by discriminant.
+/// Variant order follows the wire's `GraphEdgeKind` (`schemas/envelope.fbs`; 2026-10-01,
+/// Story 4.12 — it followed the removed lane crate's `EdgeKind` before), not jj-lib's — the
+/// two are mapped by an exhaustive `match`, never by discriminant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphEdgeKind {
     /// The parent is in the revset; it arrives later in the stream.

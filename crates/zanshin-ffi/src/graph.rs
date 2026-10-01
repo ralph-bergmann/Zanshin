@@ -1,293 +1,497 @@
 // SPDX-License-Identifier: MIT
 
-//! Graph-slice `FlatBuffers` payload builder (Story 4.2) and the `zanshin_graph_slice`
-//! FFI wrapper (Story 4.6).
+//! `zanshin_graph_topology` — the whole revset's index-only graph topology on the wire
+//! (Story 4.12).
 //!
-//! [`graph_slice_to_envelope`] serialises the lane rows Story 4.1 emits
-//! (`zanshin_graph::Row`) into a `FlatBuffers` `Envelope` carrying a `GraphSlice`
-//! payload — the wire form the Dart side decodes through its generated typed
-//! accessors (ADR-0001). Since Story 4.8 each commit row also carries its `jj log`-parity
-//! metadata (`GraphRowMeta`) and its pass-through lanes (`GraphActiveLane`), so a log view
-//! renders from ONE call. [`zanshin_graph_slice`] borrows the `RepoSession`, passes the
-//! caller's `revset` + `prioritize` + `short_prefixes` + `synthetic_elided` through to
-//! `zanshin_graph::collect_lanes` (re-derived from head on every call, nothing retained —
-//! ADR-0002) and returns that envelope.
+//! Calls `zanshin_jj::Repo::graph_topology` (Story 4.10) and serialises its answer into a
+//! `FlatBuffers` `Envelope<GraphTopology>`: scalar vectors indexed by node plus CSR offset
+//! vectors for the edges and the anchors — no table per node, so the Dart side reads it through
+//! typed-data views with O(1) access per node. The ids cross as raw bytes at one fixed stride per
+//! column (OQ 2 (b), decided by measurement — spec-4-12 § Measurements) and Dart formats them.
+//!
+//! The arguments cross as a `GraphTopologyRequest` request buffer (ADR-0001 composite-input
+//! pattern: `anchors` is a list). Same reader discipline as `commit_contents.rs`: `data`/`len`
+//! describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for the call only,
+//! the reader returns an OWNED struct, and the request is read BEFORE the handle is borrowed.
+//! Interior-NUL guards live Dart-side (`docs/ffi-abi.md` § Interior NUL). The verb runs the
+//! pre-verb snapshot exactly once, so its envelope carries `precondition` and `warnings` on the ok
+//! arm and on every error arm after the snapshot ran.
 
-use std::ffi::c_char;
-
-use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use flatbuffers::{FlatBufferBuilder, VerifierOptions, WIPOffset};
 use tracing::debug;
-use zanshin_graph::{collect_lanes, EdgeKind, GraphError, LaneStreamError, Row};
-use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError};
+use zanshin_jj::{ConfigError, GraphEdgeKind, GraphTopology, RevsetError, TopologyMeta};
 
 use crate::envelope::{
-    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
-    GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
+    precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj, GRAPH_DANGLING_EDGE,
+    JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
-use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
+use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
-fn map_lane_stream_err(e: LaneStreamError) -> FfiErrorObj {
-    match e {
-        LaneStreamError::Revset(RevsetError::Precondition(e)) => map_precondition_err(e),
-        LaneStreamError::Revset(RevsetError::ParseError { reason }) => FfiErrorObj {
-            report: None,
-            code: JJ_REVSET_PARSE_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        LaneStreamError::Revset(RevsetError::ResolutionError { reason }) => FfiErrorObj {
-            report: None,
-            code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        LaneStreamError::Revset(RevsetError::JjLibError(reason)) => FfiErrorObj {
-            report: None,
-            code: JJ_JJ_LIB_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        LaneStreamError::Revset(RevsetError::Config(ConfigError::Load { reason })) => FfiErrorObj {
-            report: None,
-            code: JJ_CONFIG_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        LaneStreamError::Graph(GraphError::DanglingEdge { target })
-        | LaneStreamError::Revset(RevsetError::DanglingEdge { target }) => FfiErrorObj {
-            report: None,
-            code: GRAPH_DANGLING_EDGE.to_owned(),
-            context: Some(target),
-        },
+/// Maps a [`RevsetError`] onto its AR-P-4 code; the reason (or the dangling target) rides in
+/// `context`. A failed pre-verb snapshot goes through the shared [`map_precondition_err`].
+fn map_topology_err(e: RevsetError) -> FfiErrorObj {
+    let (code, context) = match e {
+        RevsetError::Precondition(e) => return map_precondition_err(e),
+        RevsetError::ParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
+        RevsetError::ResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, reason),
+        RevsetError::JjLibError(reason) => (JJ_JJ_LIB_ERROR, reason),
+        RevsetError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
+        RevsetError::DanglingEdge { target } => (GRAPH_DANGLING_EDGE, target),
+    };
+    FfiErrorObj {
+        report: None,
+        code: code.to_owned(),
+        context: Some(context),
     }
 }
 
-// ── Row → FlatBuffers builder ─────────────────────────────────────────────────
+// ── Request-buffer reader ────────────────────────────────────────────────────
 
-/// Map `zanshin_graph::EdgeKind` onto the wire enum (order-identical by contract).
-fn edge_kind(kind: EdgeKind) -> fbs::GraphEdgeKind {
-    match kind {
-        EdgeKind::Direct => fbs::GraphEdgeKind::Direct,
-        EdgeKind::Indirect => fbs::GraphEdgeKind::Indirect,
-        EdgeKind::Missing => fbs::GraphEdgeKind::Missing,
-    }
+/// Owned Rust form of a `GraphTopologyRequest` buffer.
+#[derive(Debug)]
+struct GraphTopologyRequestOwned {
+    revset: String,
+    prioritize: String,
+    short_prefixes: String,
+    anchors: Vec<String>,
+    with_timestamps: bool,
 }
 
-/// Build the `[GraphCommitRef]` vector for one row's bookmarks or tags.
-fn refs_offset<'a>(
-    b: &mut FlatBufferBuilder<'a>,
-    refs: &[CommitRef],
-) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::GraphCommitRef<'a>>>> {
-    let mut offs = Vec::with_capacity(refs.len());
-    for r in refs {
-        let name = b.create_string(&r.name);
-        // `remote` stays absent for the local entry (null-for-absence in Dart).
-        let remote = r.remote.as_deref().map(|s| b.create_string(s));
-        offs.push(fbs::GraphCommitRef::create(
-            b,
-            &fbs::GraphCommitRefArgs {
-                name: Some(name),
-                remote,
-                synced: r.synced,
-                conflicted: r.conflicted,
-            },
-        ));
-    }
-    b.create_vector(&offs)
-}
-
-/// Build one `GraphRowMeta` table; its child strings and vectors are created first.
-fn meta_offset<'a>(b: &mut FlatBufferBuilder<'a>, meta: &CommitMeta) -> WIPOffset<fbs::GraphRowMeta<'a>> {
-    let bookmarks = refs_offset(b, &meta.bookmarks);
-    let tags = refs_offset(b, &meta.tags);
-    let wc_offs: Vec<_> = meta.working_copies.iter().map(|n| b.create_string(n)).collect();
-    let working_copies = b.create_vector(&wc_offs);
-    let change_id = b.create_string(&meta.change_id);
-    let author_name = b.create_string(&meta.author_name);
-    let author_email = b.create_string(&meta.author_email);
-    let description_first_line = b.create_string(&meta.description_first_line);
-    fbs::GraphRowMeta::create(
-        b,
-        &fbs::GraphRowMetaArgs {
-            change_id: Some(change_id),
-            change_id_prefix_len: meta.change_id_prefix_len,
-            commit_id_prefix_len: meta.commit_id_prefix_len,
-            // Presence pair — the wire has no optional scalar for Dart.
-            change_offset: meta.change_offset.unwrap_or(0),
-            has_change_offset: meta.change_offset.is_some(),
-            author_name: Some(author_name),
-            author_email: Some(author_email),
-            committer_timestamp_millis: meta.committer_timestamp.millis_since_epoch,
-            committer_tz_offset_minutes: meta.committer_timestamp.tz_offset_minutes,
-            bookmarks: Some(bookmarks),
-            tags: Some(tags),
-            working_copies: Some(working_copies),
-            working_copy: meta.working_copy,
-            immutable: meta.immutable,
-            conflict: meta.conflict,
-            empty: meta.empty,
-            hidden: meta.hidden,
-            divergent: meta.divergent,
-            root: meta.root,
-            description_first_line: Some(description_first_line),
-        },
-    )
-}
-
-/// Build one `GraphRow` table; its edge/active-lane/meta tables and strings are created
-/// first (children before parents).
-fn row_offset<'a>(b: &mut FlatBufferBuilder<'a>, row: &Row) -> WIPOffset<fbs::GraphRow<'a>> {
-    debug_assert_eq!(
-        row.meta.is_none(),
-        row.synthetic_elided,
-        "wire contract: GraphRow.meta is absent IFF the row is a synthetic elided row"
-    );
-    let mut edge_offs = Vec::with_capacity(row.edges.len());
-    for e in &row.edges {
-        let target = b.create_string(&e.target);
-        edge_offs.push(fbs::GraphRowEdge::create(
-            b,
-            &fbs::GraphRowEdgeArgs {
-                target: Some(target),
-                // `None` iff `Missing` (4.1 contract); the wire has no optional scalar for
-                // Dart, so presence rides on `kind` and 0 is a placeholder the reader ignores.
-                target_lane: e.target_lane.unwrap_or(0),
-                kind: edge_kind(e.kind),
-            },
-        ));
-    }
-    let edges = b.create_vector(&edge_offs);
-    let lane_offs: Vec<_> = row
-        .active_lanes
-        .iter()
-        .map(|l| {
-            fbs::GraphActiveLane::create(
-                b,
-                &fbs::GraphActiveLaneArgs {
-                    lane: l.lane,
-                    kind: edge_kind(l.kind),
-                },
-            )
-        })
-        .collect();
-    let active_lanes = b.create_vector(&lane_offs);
-    // Absent on a synthetic elided row — the nested table is what makes Dart see `null`.
-    let meta = row.meta.as_ref().map(|m| meta_offset(b, m));
-    let commit_id = b.create_string(&row.commit_id);
-    fbs::GraphRow::create(
-        b,
-        &fbs::GraphRowArgs {
-            commit_id: Some(commit_id),
-            lane: row.lane,
-            color_idx: row.color_idx,
-            edges: Some(edges),
-            active_lanes: Some(active_lanes),
-            synthetic_elided: row.synthetic_elided,
-            meta,
-        },
-    )
-}
-
-/// Serialise `&[Row]` into a finished `Envelope<GraphSlice>` buffer.
+/// Parse a `GraphTopologyRequest` buffer into an owned [`GraphTopologyRequestOwned`].
 ///
-/// Infallible: every `Row` is representable, so the envelope is always `ok`.
-/// `rows` are written in input (stream / `jj log`) order — one `GraphRow` per
-/// `Row`, one `GraphRowEdge` per `RowEdge`, same order. `total_rows ==
-/// rows.len()` (Story 4.4 delivered return-all; windowing is deferred past
-/// WIP and may decouple it later). A `RowEdge::target_lane` of `None` (iff
-/// `Missing`) is written as `0`;
-/// the Dart model restores `null` from `kind`.
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GraphTopologyRequest` buffer, or its
+///   `kind` is not `GraphTopology`.
+/// - `jj.invalid_input` — `revset`, `prioritize` or `short_prefixes` is absent
+///   (`<field> is required`).
+fn read_graph_topology_request(data: *const u8, len: usize) -> Result<GraphTopologyRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::GraphTopologyRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::GraphTopology)?;
+    let revset = req.revset().ok_or_else(|| missing_field("revset"))?;
+    let prioritize = req.prioritize().ok_or_else(|| missing_field("prioritize"))?;
+    let short_prefixes = req.short_prefixes().ok_or_else(|| missing_field("short_prefixes"))?;
+    Ok(GraphTopologyRequestOwned {
+        revset: revset.to_owned(),
+        prioritize: prioritize.to_owned(),
+        short_prefixes: short_prefixes.to_owned(),
+        anchors: req.anchors().into_iter().flatten().map(ToOwned::to_owned).collect(),
+        with_timestamps: req.with_timestamps(),
+    })
+}
+
+// ── Id encoder ───────────────────────────────────────────────────────────────
+
+/// The two id columns of a [`GraphTopology`] as raw bytes, one fixed stride per column
+/// (Story 4.12, OQ 2 (b)): node `i`'s id is `[i × stride, (i + 1) × stride)`. Both strides are 0
+/// iff the topology has no node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopologyIds {
+    commit_ids: Vec<u8>,
+    commit_id_stride: u8,
+    change_ids: Vec<u8>,
+    change_id_stride: u8,
+}
+
+impl TopologyIds {
+    /// Decodes every node's commit id (lowercase hex) and change id (jj reverse-hex, `z` = 0 …
+    /// `k` = 15) into bytes. The stride of a column is node 0's id length.
+    ///
+    /// # Errors
+    /// - [`RevsetError::JjLibError`] — an id is empty, of odd length, longer than 255 bytes, not
+    ///   of its column's stride, or holds a digit outside its alphabet. `zanshin-jj` only
+    ///   produces well-formed ids, so this is a contract breach, not a user error.
+    pub fn encode(topology: &GraphTopology) -> Result<Self, RevsetError> {
+        let n = topology.nodes.len();
+        let (commit_ids, commit_id_stride) = decode_column(
+            topology.nodes.iter().map(|node| node.commit_id.0.as_str()),
+            n,
+            hex_nibble,
+            "commit",
+        )?;
+        let (change_ids, change_id_stride) = decode_column(
+            topology.nodes.iter().map(|node| node.meta.change_id.as_str()),
+            n,
+            reverse_hex_nibble,
+            "change",
+        )?;
+        Ok(Self {
+            commit_ids,
+            commit_id_stride,
+            change_ids,
+            change_id_stride,
+        })
+    }
+}
+
+/// Bit 4 of a decoded digit marks a character outside the alphabet.
+const NOT_A_DIGIT: u8 = 0x10;
+
+/// Forward hex digit (`0-9a-f`) → nibble. Branch-free per character so the per-id loop
+/// vectorises — the decoder the § Measurements build times were taken with.
+fn hex_nibble(c: u8) -> u8 {
+    let digit = c.wrapping_sub(b'0');
+    let letter = c.wrapping_sub(b'a');
+    if digit < 10 {
+        digit
+    } else if letter < 6 {
+        letter + 10
+    } else {
+        NOT_A_DIGIT
+    }
+}
+
+/// jj reverse-hex digit (`z` = 0 … `k` = 15; jj-lib `hex_util.rs`) → nibble.
+fn reverse_hex_nibble(c: u8) -> u8 {
+    let value = b'z'.wrapping_sub(c);
+    if value < 16 {
+        value
+    } else {
+        NOT_A_DIGIT
+    }
+}
+
+/// Decodes one id column of `n` ids into `n × stride` bytes; see [`TopologyIds::encode`].
+///
+/// # Errors
+/// - [`RevsetError::JjLibError`] — see [`TopologyIds::encode`]; the offending id and `column`
+///   are named.
+fn decode_column<'s>(
+    ids: impl Iterator<Item = &'s str>,
+    n: usize,
+    nibble: fn(u8) -> u8,
+    column: &str,
+) -> Result<(Vec<u8>, u8), RevsetError> {
+    let mut ids = ids.peekable();
+    let Some(&first) = ids.peek() else {
+        return Ok((Vec::new(), 0));
+    };
+    let malformed = |id: &str, why: &str| RevsetError::JjLibError(format!("{column} id \"{id}\" {why}"));
+    if first.is_empty() || !first.len().is_multiple_of(2) {
+        return Err(malformed(first, "is not an even, non-zero number of hex digits"));
+    }
+    let stride = u8::try_from(first.len() / 2).map_err(|_| malformed(first, "is longer than 255 bytes"))?;
+    let mut out = vec![0u8; n * usize::from(stride)];
+    for (id, dst) in ids.zip(out.chunks_exact_mut(usize::from(stride))) {
+        let raw = id.as_bytes();
+        if raw.len() != 2 * dst.len() {
+            return Err(malformed(
+                id,
+                &format!("does not have the column's stride of {stride} bytes"),
+            ));
+        }
+        let mut bad = 0u8;
+        for (byte, pair) in dst.iter_mut().zip(raw.chunks_exact(2)) {
+            let hi = nibble(pair[0]);
+            let lo = nibble(pair[1]);
+            bad |= hi | lo;
+            *byte = (hi << 4) | (lo & 0x0f);
+        }
+        if bad & NOT_A_DIGIT != 0 {
+            return Err(malformed(id, "holds a character outside its alphabet"));
+        }
+    }
+    Ok((out, stride))
+}
+
+// ── Payload builder ──────────────────────────────────────────────────────────
+
+const FLAG_WORKING_COPY: u8 = 1;
+const FLAG_IMMUTABLE: u8 = 1 << 1;
+const FLAG_HIDDEN: u8 = 1 << 2;
+const FLAG_DIVERGENT: u8 = 1 << 3;
+const FLAG_ROOT: u8 = 1 << 4;
+const FLAG_HAS_CHANGE_OFFSET: u8 = 1 << 5;
+
+/// A node's flags byte (`schemas/envelope.fbs` § `GraphTopology`: bits 0-5, 6-7 zero).
+fn node_flags(meta: &TopologyMeta) -> u8 {
+    let bit = |set: bool, flag: u8| if set { flag } else { 0 };
+    bit(meta.working_copy, FLAG_WORKING_COPY)
+        | bit(meta.immutable, FLAG_IMMUTABLE)
+        | bit(meta.hidden, FLAG_HIDDEN)
+        | bit(meta.divergent, FLAG_DIVERGENT)
+        | bit(meta.root, FLAG_ROOT)
+        | bit(meta.change_offset.is_some(), FLAG_HAS_CHANGE_OFFSET)
+}
+
+/// A node index, edge index or count as the wire's `uint`.
+fn wire_u32(value: usize) -> u32 {
+    // WHY saturate: a FlatBuffer is smaller than 2 GiB, so it cannot hold more than u32::MAX
+    // nodes, edges or anchor entries; the saturation is unreachable for any buffer that exists.
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+/// A shortest-prefix length as the wire's `ubyte`.
+fn wire_prefix_len(len: u32) -> u8 {
+    // WHY saturate: a prefix is at most the id's hex length, 2 × its byte length — 40 for a Git
+    // commit id, 32 for a change id, 128 for the native backend's 64-byte commit id — so a real
+    // id never reaches the saturation.
+    u8::try_from(len).unwrap_or(u8::MAX)
+}
+
+/// An edge's target slot: the node index, or -1 for a Missing edge (no target).
+fn wire_edge_target(target: Option<usize>) -> i32 {
+    // WHY saturate: as in `wire_u32` — a node index past i32::MAX cannot be in a buffer.
+    target.map_or(-1, |index| i32::try_from(index).unwrap_or(i32::MAX))
+}
+
+/// Map `zanshin_jj::GraphEdgeKind` onto the wire enum (order-identical by contract).
+fn edge_kind(kind: GraphEdgeKind) -> fbs::GraphEdgeKind {
+    match kind {
+        GraphEdgeKind::Direct => fbs::GraphEdgeKind::Direct,
+        GraphEdgeKind::Indirect => fbs::GraphEdgeKind::Indirect,
+        GraphEdgeKind::Missing => fbs::GraphEdgeKind::Missing,
+    }
+}
+
+type WireVector<'a, T> = WIPOffset<flatbuffers::Vector<'a, T>>;
+
+/// The edges' CSR: `(edge_start, edge_target, edge_kind)`.
+fn edge_columns<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    topology: &GraphTopology,
+) -> (
+    WireVector<'a, u32>,
+    WireVector<'a, i32>,
+    WireVector<'a, fbs::GraphEdgeKind>,
+) {
+    let mut starts = Vec::with_capacity(topology.nodes.len() + 1);
+    let mut targets = Vec::new();
+    let mut kinds = Vec::new();
+    starts.push(0);
+    for node in &topology.nodes {
+        for edge in &node.edges {
+            targets.push(wire_edge_target(edge.target));
+            kinds.push(edge_kind(edge.kind));
+        }
+        starts.push(wire_u32(targets.len()));
+    }
+    (
+        b.create_vector(&starts),
+        b.create_vector(&targets),
+        b.create_vector(&kinds),
+    )
+}
+
+/// Every node's bookmarks then tags, sorted by node.
+fn ref_tables<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    topology: &GraphTopology,
+) -> WireVector<'a, flatbuffers::ForwardsUOffset<fbs::TopologyRef<'a>>> {
+    let mut offsets = Vec::new();
+    for (index, node) in topology.nodes.iter().enumerate() {
+        let bookmarks = node.meta.bookmarks.iter().map(|r| (fbs::TopologyRefKind::Bookmark, r));
+        let refs = bookmarks.chain(node.meta.tags.iter().map(|r| (fbs::TopologyRefKind::Tag, r)));
+        for (kind, r) in refs {
+            let name = b.create_string(&r.name);
+            // `remote` stays absent for the local entry (null-for-absence in Dart).
+            let remote = r.remote.as_deref().map(|s| b.create_string(s));
+            offsets.push(fbs::TopologyRef::create(
+                b,
+                &fbs::TopologyRefArgs {
+                    node: wire_u32(index),
+                    kind,
+                    name: Some(name),
+                    remote,
+                    synced: r.synced,
+                    conflicted: r.conflicted,
+                },
+            ));
+        }
+    }
+    b.create_vector(&offsets)
+}
+
+/// Every node's workspace names, sorted by node.
+fn working_copy_tables<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    topology: &GraphTopology,
+) -> WireVector<'a, flatbuffers::ForwardsUOffset<fbs::TopologyWorkingCopy<'a>>> {
+    let mut offsets = Vec::new();
+    for (index, node) in topology.nodes.iter().enumerate() {
+        for name in &node.meta.working_copies {
+            let workspace = b.create_string(name);
+            offsets.push(fbs::TopologyWorkingCopy::create(
+                b,
+                &fbs::TopologyWorkingCopyArgs {
+                    node: wire_u32(index),
+                    workspace: Some(workspace),
+                },
+            ));
+        }
+    }
+    b.create_vector(&offsets)
+}
+
+/// The anchors' CSR: `(anchor_start, anchor_node)`.
+fn anchor_columns<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    topology: &GraphTopology,
+) -> (WireVector<'a, u32>, WireVector<'a, u32>) {
+    let mut starts = Vec::with_capacity(topology.anchors.len() + 1);
+    let mut nodes = Vec::new();
+    starts.push(0);
+    for anchor in &topology.anchors {
+        nodes.extend(anchor.iter().map(|&index| wire_u32(index)));
+        starts.push(wire_u32(nodes.len()));
+    }
+    (b.create_vector(&starts), b.create_vector(&nodes))
+}
+
+/// Serialise a topology and its encoded ids into a finished `Envelope<GraphTopology>` buffer.
+///
+/// Infallible: every value is representable. `timestamps` is written iff `with_timestamps` (the
+/// caller's request flag), with the root's slot 0; every other vector is always written, empty
+/// when the topology has no node. `report` is written as `Envelope.precondition` / `.warnings`.
+/// `pub` for the `graph_wire` bench.
 #[must_use]
-pub fn graph_slice_to_envelope(rows: &[Row], report: &crate::envelope::CallReport) -> Vec<u8> {
-    let mut b = FlatBufferBuilder::with_capacity(1024);
-    let row_offs: Vec<_> = rows.iter().map(|r| row_offset(&mut b, r)).collect();
-    let rows_vec = b.create_vector(&row_offs);
-    let slice = fbs::GraphSlice::create(
+pub fn graph_topology_to_envelope(
+    topology: &GraphTopology,
+    ids: &TopologyIds,
+    with_timestamps: bool,
+    report: &CallReport,
+) -> Vec<u8> {
+    let nodes = &topology.nodes;
+    let mut b = FlatBufferBuilder::with_capacity(256 + ids.commit_ids.len() + ids.change_ids.len() + nodes.len() * 24);
+    let operation_id = b.create_string(&topology.operation_id.0);
+    let commit_ids = b.create_vector(&ids.commit_ids);
+    let change_ids = b.create_vector(&ids.change_ids);
+    let flags: Vec<u8> = nodes.iter().map(|node| node_flags(&node.meta)).collect();
+    let flags = b.create_vector(&flags);
+    let change_offset: Vec<u32> = nodes.iter().map(|node| node.meta.change_offset.unwrap_or(0)).collect();
+    let change_offset = b.create_vector(&change_offset);
+    let change_id_prefix_len: Vec<u8> = nodes
+        .iter()
+        .map(|node| wire_prefix_len(node.meta.change_id_prefix_len))
+        .collect();
+    let change_id_prefix_len = b.create_vector(&change_id_prefix_len);
+    let commit_id_prefix_len: Vec<u8> = nodes
+        .iter()
+        .map(|node| wire_prefix_len(node.meta.commit_id_prefix_len))
+        .collect();
+    let commit_id_prefix_len = b.create_vector(&commit_id_prefix_len);
+    let parent_count: Vec<u32> = nodes.iter().map(|node| node.meta.parent_count).collect();
+    let parent_count = b.create_vector(&parent_count);
+    let (edge_start, edge_target, edge_kind) = edge_columns(&mut b, topology);
+    let timestamps = with_timestamps.then(|| {
+        let values: Vec<i64> = nodes
+            .iter()
+            .map(|node| node.committer_timestamp_ms.unwrap_or(0))
+            .collect();
+        b.create_vector(&values)
+    });
+    let refs = ref_tables(&mut b, topology);
+    let working_copies = working_copy_tables(&mut b, topology);
+    let (anchor_start, anchor_node) = anchor_columns(&mut b, topology);
+    let payload = fbs::GraphTopology::create(
         &mut b,
-        &fbs::GraphSliceArgs {
-            rows: Some(rows_vec),
-            // A slice of more than u32::MAX rows cannot exist; clamp instead of an `as` truncation.
-            total_rows: u32::try_from(rows.len()).unwrap_or(u32::MAX),
+        &fbs::GraphTopologyArgs {
+            operation_id: Some(operation_id),
+            // WHY saturate: usize is 64 bits on every supported target, so this never triggers.
+            all_count: u64::try_from(topology.all_count).unwrap_or(u64::MAX),
+            commit_ids: Some(commit_ids),
+            change_ids: Some(change_ids),
+            commit_id_stride: ids.commit_id_stride,
+            change_id_stride: ids.change_id_stride,
+            flags: Some(flags),
+            change_offset: Some(change_offset),
+            change_id_prefix_len: Some(change_id_prefix_len),
+            commit_id_prefix_len: Some(commit_id_prefix_len),
+            parent_count: Some(parent_count),
+            edge_start: Some(edge_start),
+            edge_target: Some(edge_target),
+            edge_kind: Some(edge_kind),
+            timestamps,
+            refs: Some(refs),
+            working_copies: Some(working_copies),
+            anchor_start: Some(anchor_start),
+            anchor_node: Some(anchor_node),
         },
     );
-    finish_envelope(b, fbs::Payload::GraphSlice, Some(slice.as_union_value()), report)
+    finish_envelope(b, fbs::Payload::GraphTopology, Some(payload.as_union_value()), report)
 }
 
 // ── extern "C" ────────────────────────────────────────────────────────────────
 
-/// Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
-/// `jj log` order — the revset-selected slice of the commit graph, each commit row
-/// carrying the `jj log` display metadata of the same head-resolved snapshot.
+/// Return the whole revset's index-only graph topology in the repo referenced by `handle`
+/// (Story 4.12; the verb is Story 4.10's `Repo::graph_topology`): every node in `jj log` order
+/// with its ids, flags, prefix lengths, change offset, parent count, jj's edges verbatim (CSR),
+/// bookmarks / tags / working copies, optionally its committer timestamp, plus the node indices
+/// each anchor selects, `|all()|` and the operation the call loaded.
 ///
-/// Every expression is a caller pass-through (FR-JJ-17): `revset` selects the rows,
-/// `prioritize` is the branch-prioritisation revset (`jj log`'s
-/// `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
-/// a blank expression is a parse error), and `short_prefixes` is the disambiguation set
-/// for the shortest-prefix lengths (CLI default = `revsets.log`; an EMPTY string DISABLES
-/// disambiguation and falls back to full-index prefixes — the CLI's toggle semantic,
-/// deliberately unlike `prioritize`). `synthetic_elided` (the CLI's
-/// `ui.log-synthetic-elided-nodes`, default `true`) turns each elided-ancestor edge into a
-/// spliced synthetic row; `false` restores plain `Indirect` edges. The graph is re-derived
-/// from the head operation on every call and nothing is retained Rust-side (ADR-0002) — an
-/// operation performed by another process between two calls is visible in the second.
-/// There is no windowing: `total_rows == rows.len()`.
+/// Every argument is a caller pass-through (FR-JJ-17); Rust bakes in no default: `revset`
+/// selects the nodes, `prioritize` is `jj log`'s `revsets.log-graph-prioritize` (CLI default
+/// `present(@)`, `none()` = none; a blank expression is a parse error), `short_prefixes` the
+/// shortest-prefix disambiguation set (an EMPTY string disables it — the CLI's toggle), `anchors`
+/// an ordered revset list intersected with `revset`, and `with_timestamps` loads each non-root
+/// node's committer timestamp. The call runs the pre-verb snapshot exactly once and re-derives
+/// from the head operation; nothing is retained Rust-side (ADR-0002). The card content of a node
+/// is `zanshin_commit_contents` at the returned `operation_id`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
+/// The arguments cross as a `GraphTopologyRequest` `FlatBuffers` request buffer. Returns a
+/// `FlatBuffers` `Envelope` carrying a `GraphTopology` payload on success; the envelope carries
+/// `precondition` and `warnings` on the ok arm and on an error arm after the snapshot ran.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `ffi.null_pointer` — `revset`, `prioritize`, or `short_prefixes` is a null pointer.
-/// - `ffi.utf8_error` — `revset`, `prioritize`, or `short_prefixes` is not valid UTF-8.
-/// - `jj.revset_parse_error` — an expression is syntactically invalid or names an
-///   unknown function; jj-lib's reason in `context`.
-/// - `jj.revset_resolution_error` — an expression names a symbol that cannot be
-///   resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GraphTopologyRequest` buffer, or its
+///   `kind` is not `GraphTopology`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `revset`, `prioritize` or `short_prefixes` is absent
+///   (`<field> is required`).
+/// - `jj.revset_parse_error` — an expression (an anchor included) is syntactically invalid or
+///   names an unknown function; jj-lib's reason in `context`.
+/// - `jj.revset_resolution_error` — an expression names a symbol that cannot be resolved
+///   (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
-/// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
-/// - `jj.config_error` — the repo's effective jj config, which the revset aliases are
-///   resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
-///   a wrong-typed value; the file path or config key in `context`. A single bad
-///   `[revset-aliases]` entry does NOT produce this — it warns and is skipped.
-/// - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
-///   non-`Missing` edge after the stream was exhausted); the target id in `context`.
+/// - `jj.config_error` — the repo's effective jj config is unreadable, not valid TOML, has a
+///   malformed `config-id`, or holds a wrong-typed value; the file path or key in `context`.
+/// - `jj.jj_lib_error` — a jj-lib load, evaluation, index or commit-load failure; detail in
+///   `context`.
+/// - `graph.dangling_edge` — a Direct/Indirect edge names a target outside the node set (jj-lib's
+///   stream contract rules it out); the target id in `context`.
 ///
 /// # Safety
-/// `handle` must be a value returned by a successful `zanshin_repo_open`,
-/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
-/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
-/// handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
-/// makes a stale handle unreachable.
-/// `revset`, `prioritize`, and `short_prefixes` must be NUL-terminated UTF-8 C strings
-/// owned by the caller (Dart allocates them via `toNativeUtf8()` and frees them with
-/// `calloc.free()` after this call returns — AR-P-5 inbound rule). Rust only borrows them
-/// for the duration of the call; they are never freed on the Rust side.
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.GraphTopologyRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call. The request is read BEFORE the handle is borrowed.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_graph_slice(
-    handle: u64,
-    revset: *const c_char,
-    prioritize: *const c_char,
-    synthetic_elided: bool,
-    short_prefixes: *const c_char,
-) -> *mut ZanshinBuf {
-    debug!(fn_name = "zanshin_graph_slice", handle);
+pub unsafe extern "C" fn zanshin_graph_topology(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_graph_topology", handle);
     let buf = catch(|| {
+        let req = read_graph_topology_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        // SAFETY: all three are caller-owned NUL-terminated C strings (Dart allocates + frees).
-        let revset = unsafe { cstr_to_string(revset) }?; // null → ffi.null_pointer; bad utf8 → ffi.utf8_error
-        let prioritize = unsafe { cstr_to_string(prioritize) }?;
-        let short_prefixes = unsafe { cstr_to_string(short_prefixes) }?;
-        let rows = collect_lanes(
+        let result = session
+            .repo
+            .graph_topology(
+                &req.revset,
+                &req.prioritize,
+                &req.short_prefixes,
+                &req.anchors,
+                req.with_timestamps,
+            )
+            .and_then(|topology| TopologyIds::encode(&topology).map(|ids| (topology, ids)));
+        precondition_envelope(
             &mut session.repo,
-            &revset,
-            &prioritize,
-            &short_prefixes,
-            synthetic_elided,
-        );
-        precondition_envelope(&mut session.repo, rows, map_lane_stream_err, |rows, p| {
-            graph_slice_to_envelope(rows, p)
-        })
+            result,
+            map_topology_err,
+            |(topology, ids), report| graph_topology_to_envelope(topology, ids, req.with_timestamps, report),
+        )
     });
     vec_into_token(buf)
 }
@@ -296,483 +500,593 @@ pub unsafe extern "C" fn zanshin_graph_slice(
 
 #[cfg(test)]
 mod tests {
-    use flatbuffers::root as fb_root;
-    use zanshin_graph::{
-        assign_lanes, ActiveLane, EdgeKind, GraphEdge, GraphError, GraphNode, LaneStreamError, NodeId, Row, RowEdge,
+    use flatbuffers::{root, FlatBufferBuilder};
+    use zanshin_jj::{
+        CommitId, CommitRef, ConfigError, GraphEdgeKind, GraphTopology, OperationId, Precondition, PreconditionError,
+        RevsetError, TopologyEdge, TopologyMeta, TopologyNode, Warning, WarningKind,
     };
-    use zanshin_jj::{CommitMeta, CommitRef, ConfigError, RevsetError, Timestamp};
 
-    use super::{edge_kind, graph_slice_to_envelope, map_lane_stream_err};
+    use super::{
+        graph_topology_to_envelope, map_topology_err, read_graph_topology_request, wire_edge_target, wire_prefix_len,
+        wire_u32, TopologyIds,
+    };
     use crate::envelope::{
-        GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+        CallReport, FFI_INVALID_ARGUMENT, FFI_NULL_POINTER, GRAPH_DANGLING_EDGE, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
+        JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
     };
     use crate::fbs;
 
-    fn edge(target: &str, target_lane: Option<u32>, kind: EdgeKind) -> RowEdge {
-        RowEdge {
-            target: target.to_owned(),
-            target_lane,
-            kind,
-        }
-    }
+    const COMMIT_A: &str = "00112233445566778899aabbccddeeff01234567";
+    const COMMIT_B: &str = "ffeeddccbbaa99887766554433221100fedcba98";
+    const COMMIT_ROOT: &str = "0000000000000000000000000000000000000000";
+    const CHANGE_A: &str = "zyxwvutsrqponmlkzyxwvutsrqponmlk";
+    const CHANGE_B: &str = "klmnopqrstuvwxyzklmnopqrstuvwxyz";
+    const CHANGE_ROOT: &str = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
 
-    fn row(commit_id: &str, lane: u32, edges: Vec<RowEdge>) -> Row {
-        Row {
-            commit_id: commit_id.to_owned(),
-            lane,
-            color_idx: lane % zanshin_graph::PALETTE_SIZE,
-            edges,
-            synthetic_elided: false,
-            active_lanes: vec![],
-            meta: Some(full_meta()),
-        }
-    }
-
-    /// A fully-populated `CommitMeta` — every field distinct so a cross-wired slot in the
-    /// builder or the reader is visible in the round-trip.
-    fn full_meta() -> CommitMeta {
-        CommitMeta {
-            change_id: "qpvuntsm".to_owned(),
-            change_id_prefix_len: 2,
-            commit_id_prefix_len: 3,
-            change_offset: Some(7),
-            author_name: "Ada Lovelace".to_owned(),
-            author_email: "ada@example.com".to_owned(),
-            committer_timestamp: Timestamp {
-                millis_since_epoch: 1_700_000_000_123,
-                tz_offset_minutes: -420,
-            },
-            bookmarks: vec![
-                CommitRef {
-                    name: "feature".to_owned(),
-                    remote: None,
-                    synced: false,
-                    conflicted: true,
-                },
-                CommitRef {
-                    name: "feature".to_owned(),
-                    remote: Some("origin".to_owned()),
-                    synced: false,
-                    conflicted: false,
-                },
-            ],
-            tags: vec![CommitRef {
-                name: "v1.0".to_owned(),
-                remote: None,
-                synced: true,
-                conflicted: false,
-            }],
-            working_copies: vec!["default".to_owned(), "second".to_owned()],
-            working_copy: true,
+    fn meta(change_id: &str) -> TopologyMeta {
+        TopologyMeta {
+            change_id: change_id.to_owned(),
+            change_id_prefix_len: 0,
+            commit_id_prefix_len: 0,
+            change_offset: None,
+            bookmarks: vec![],
+            tags: vec![],
+            working_copies: vec![],
+            working_copy: false,
             immutable: false,
-            conflict: true,
-            empty: false,
-            hidden: true,
+            hidden: false,
             divergent: false,
-            root: true,
-            description_first_line: "first line".to_owned(),
+            root: false,
+            parent_count: 1,
         }
     }
 
-    /// Fork-then-merge shape from the spec's I/O matrix: a merge row with a
-    /// `Direct` + an `Indirect` edge, a row with a `Missing` edge, a root.
-    fn fork_then_merge_rows() -> Vec<Row> {
-        vec![
-            row(
-                "m\u{e9}rge-\u{2713} id",
-                0,
-                vec![
-                    edge("a", Some(0), EdgeKind::Direct),
-                    edge("b", Some(1), EdgeKind::Indirect),
-                ],
-            ),
-            row("b", 1, vec![edge("outside", None, EdgeKind::Missing)]),
-            row("a", 0, vec![]),
-        ]
-    }
-
-    fn kind_from_wire(kind: fbs::GraphEdgeKind) -> EdgeKind {
-        match kind {
-            fbs::GraphEdgeKind::Direct => EdgeKind::Direct,
-            fbs::GraphEdgeKind::Indirect => EdgeKind::Indirect,
-            fbs::GraphEdgeKind::Missing => EdgeKind::Missing,
-            other => panic!("unexpected wire GraphEdgeKind {other:?}"),
-        }
-    }
-
-    /// Verify the buffer and read the `GraphSlice` payload back through the typed accessors.
-    fn verified_slice(buf: &[u8]) -> fbs::GraphSlice<'_> {
-        let env = fb_root::<fbs::Envelope>(buf).expect("FlatBuffers Verifier must pass");
-        assert!(env.ok(), "envelope must be ok");
-        assert_eq!(
-            env.data_type(),
-            fbs::Payload::GraphSlice,
-            "data_type must be GraphSlice"
-        );
-        env.data_as_graph_slice().expect("data_as_graph_slice must succeed")
-    }
-
-    /// Map one wire `GraphCommitRef` back to the domain type.
-    fn ref_from_wire(r: fbs::GraphCommitRef<'_>) -> CommitRef {
+    fn local_ref(name: &str) -> CommitRef {
         CommitRef {
-            name: r.name().expect("name must be present").to_owned(),
-            remote: r.remote().map(ToOwned::to_owned),
-            synced: r.synced(),
-            conflicted: r.conflicted(),
+            name: name.to_owned(),
+            remote: None,
+            synced: true,
+            conflicted: false,
         }
     }
 
-    /// Map one wire `GraphRowMeta` back to the domain type (`has_change_offset` restores
-    /// the `Option`).
-    fn meta_from_wire(m: fbs::GraphRowMeta<'_>) -> CommitMeta {
-        CommitMeta {
-            change_id: m.change_id().expect("change_id must be present").to_owned(),
-            change_id_prefix_len: m.change_id_prefix_len(),
-            commit_id_prefix_len: m.commit_id_prefix_len(),
-            change_offset: m.has_change_offset().then(|| m.change_offset()),
-            author_name: m.author_name().expect("author_name must be present").to_owned(),
-            author_email: m.author_email().expect("author_email must be present").to_owned(),
-            committer_timestamp: Timestamp {
-                millis_since_epoch: m.committer_timestamp_millis(),
-                tz_offset_minutes: m.committer_tz_offset_minutes(),
-            },
-            bookmarks: m
-                .bookmarks()
-                .expect("bookmarks must be present")
-                .iter()
-                .map(ref_from_wire)
-                .collect(),
-            tags: m
-                .tags()
-                .expect("tags must be present")
-                .iter()
-                .map(ref_from_wire)
-                .collect(),
-            working_copies: m
-                .working_copies()
-                .expect("working_copies must be present")
-                .iter()
-                .map(ToOwned::to_owned)
-                .collect(),
-            working_copy: m.working_copy(),
-            immutable: m.immutable(),
-            conflict: m.conflict(),
-            empty: m.empty(),
-            hidden: m.hidden(),
-            divergent: m.divergent(),
-            root: m.root(),
-            description_first_line: m
-                .description_first_line()
-                .expect("description_first_line must be present")
-                .to_owned(),
-        }
-    }
-
-    /// Map the wire payload back to the 4.1 domain type (`Missing` ⇒ `target_lane: None`).
-    fn rows_from_wire(slice: fbs::GraphSlice<'_>) -> Vec<Row> {
-        slice
-            .rows()
-            .expect("rows must be present")
-            .iter()
-            .map(|r| Row {
-                commit_id: r.commit_id().expect("commit_id must be present").to_owned(),
-                lane: r.lane(),
-                color_idx: r.color_idx(),
-                edges: r
-                    .edges()
-                    .expect("edges must be present")
-                    .iter()
-                    .map(|e| {
-                        let kind = kind_from_wire(e.kind());
-                        RowEdge {
-                            target: e.target().expect("target must be present").to_owned(),
-                            target_lane: (kind != EdgeKind::Missing).then_some(e.target_lane()),
-                            kind,
-                        }
-                    })
-                    .collect(),
-                synthetic_elided: r.synthetic_elided(),
-                active_lanes: r
-                    .active_lanes()
-                    .expect("active_lanes must be present")
-                    .iter()
-                    .map(|l| ActiveLane {
-                        lane: l.lane(),
-                        kind: kind_from_wire(l.kind()),
-                    })
-                    .collect(),
-                meta: r.meta().map(meta_from_wire),
-            })
-            .collect()
-    }
-
-    #[test]
-    fn graph_slice_roundtrips_fork_then_merge_rows_verbatim() {
-        let rows = fork_then_merge_rows();
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        assert_eq!(slice.total_rows(), 3, "total_rows must equal the input length");
-        assert_eq!(slice.rows().map(|v| v.len()), Some(3), "one GraphRow per input Row");
-        assert_eq!(
-            rows_from_wire(slice),
-            rows,
-            "wire payload must map back to the input rows"
-        );
-    }
-
-    #[test]
-    fn graph_slice_roundtrips_rows_produced_by_assign_lanes() {
-        // The same shape, but driven through the real 4.1 producer so the builder is
-        // proven against rows `assign_lanes` actually emits (AC-2).
-        let nodes = vec![
-            GraphNode {
-                id: NodeId::commit("merge"),
-                parents: vec![
-                    GraphEdge {
-                        target: NodeId::commit("a"),
-                        kind: EdgeKind::Direct,
+    /// `[@ = A, B, root]`: A is a merge with a Direct and an Indirect edge to B (a repeated
+    /// target) and a Missing edge; B has a Missing edge and a Direct edge to the root. Every
+    /// per-node field differs between nodes so a cross-wired slot shows.
+    fn topology() -> GraphTopology {
+        GraphTopology {
+            operation_id: OperationId("ab".repeat(64)),
+            nodes: vec![
+                TopologyNode {
+                    commit_id: CommitId(COMMIT_A.to_owned()),
+                    edges: vec![
+                        TopologyEdge {
+                            target: Some(1),
+                            kind: GraphEdgeKind::Direct,
+                        },
+                        TopologyEdge {
+                            target: Some(1),
+                            kind: GraphEdgeKind::Indirect,
+                        },
+                        TopologyEdge {
+                            target: None,
+                            kind: GraphEdgeKind::Missing,
+                        },
+                    ],
+                    meta: TopologyMeta {
+                        change_id_prefix_len: 3,
+                        commit_id_prefix_len: 4,
+                        change_offset: Some(7),
+                        bookmarks: vec![
+                            local_ref("feature"),
+                            CommitRef {
+                                name: "feature".to_owned(),
+                                remote: Some("origin".to_owned()),
+                                synced: false,
+                                conflicted: true,
+                            },
+                        ],
+                        tags: vec![local_ref("v1")],
+                        working_copies: vec!["default".to_owned(), "second".to_owned()],
+                        working_copy: true,
+                        divergent: true,
+                        parent_count: 3,
+                        ..meta(CHANGE_A)
                     },
-                    GraphEdge {
-                        target: NodeId::commit("b"),
-                        kind: EdgeKind::Indirect,
-                    },
-                ],
-                meta: Some(full_meta()),
-            },
-            GraphNode {
-                id: NodeId::commit("b"),
-                parents: vec![GraphEdge {
-                    target: NodeId::commit("outside"),
-                    kind: EdgeKind::Missing,
-                }],
-                meta: Some(full_meta()),
-            },
-            GraphNode {
-                id: NodeId::commit("a"),
-                parents: vec![],
-                meta: Some(full_meta()),
-            },
-        ];
-        let rows = assign_lanes(nodes).expect("contract-conforming input must assign");
-        assert!(
-            rows.iter().any(|r| r.edges.iter().any(|e| e.kind == EdgeKind::Missing)),
-            "fixture must exercise the Missing (target_lane: None) path"
-        );
-
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        assert_eq!(usize::try_from(slice.total_rows()).ok(), Some(rows.len()));
-        assert_eq!(rows_from_wire(slice), rows);
-    }
-
-    #[test]
-    fn empty_slice_has_present_empty_rows_and_zero_total() {
-        let buf = graph_slice_to_envelope(&[], &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        assert_eq!(slice.rows().map(|v| v.len()), Some(0), "rows must be present and empty");
-        assert_eq!(slice.total_rows(), 0, "total_rows must be 0");
-    }
-
-    #[test]
-    fn missing_edge_is_written_as_target_lane_zero_with_kind_missing() {
-        let rows = vec![row("x", 0, vec![edge("outside", None, EdgeKind::Missing)])];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_edge = slice.rows().expect("rows").get(0).edges().expect("edges").get(0);
-        assert_eq!(wire_edge.target(), Some("outside"));
-        assert_eq!(wire_edge.target_lane(), 0, "Missing edge must carry the 0 placeholder");
-        assert_eq!(wire_edge.kind(), fbs::GraphEdgeKind::Missing);
-    }
-
-    #[test]
-    fn lane_and_color_idx_are_written_to_distinct_slots() {
-        // Every other fixture has `lane == color_idx` (lanes < PALETTE_SIZE), which
-        // could not tell a lane/color_idx cross-wire apart; a lane past the palette
-        // wraps its color and pins the two slots independently.
-        let rows = vec![Row {
-            commit_id: "far".to_owned(),
-            lane: 9,
-            color_idx: 1,
-            edges: vec![],
-            synthetic_elided: false,
-            active_lanes: vec![],
-            meta: Some(full_meta()),
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_row = slice.rows().expect("rows").get(0);
-        assert_eq!(wire_row.lane(), 9, "lane must land in the lane slot");
-        assert_eq!(wire_row.color_idx(), 1, "color_idx must land in the color_idx slot");
-        assert_eq!(rows_from_wire(slice), rows);
-    }
-
-    // ── Story 4.8: metadata, active lanes, elided rows ────────────────────────
-
-    /// Every catalogued metadata field survives the round-trip in its own slot.
-    #[test]
-    fn graph_row_meta_roundtrips_every_field() {
-        let rows = vec![Row {
-            meta: Some(full_meta()),
-            ..row("c", 0, vec![])
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        assert_eq!(rows_from_wire(slice), rows);
-    }
-
-    /// `change_offset` rides a presence pair (flatc 25.12.19 has no optional scalar for
-    /// Dart), so `None` must come back as `None` and never as the `0` placeholder.
-    #[test]
-    fn absent_change_offset_is_written_as_zero_with_the_presence_flag_clear() {
-        let rows = vec![Row {
-            meta: Some(CommitMeta {
-                change_offset: None,
-                ..full_meta()
-            }),
-            ..row("c", 0, vec![])
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_meta = slice.rows().expect("rows").get(0).meta().expect("meta");
-        assert_eq!(wire_meta.change_offset(), 0, "the placeholder is 0");
-        assert!(!wire_meta.has_change_offset(), "the presence flag must be clear");
-        assert_eq!(
-            rows_from_wire(slice)[0].meta.as_ref().and_then(|m| m.change_offset),
-            None
-        );
-    }
-
-    /// A synthetic elided row carries no metadata: the nested table must be ABSENT so
-    /// Dart decodes `null` (a flat scalar could not express that).
-    #[test]
-    fn a_synthetic_elided_row_writes_no_meta_table() {
-        let rows = vec![Row {
-            synthetic_elided: true,
-            meta: None,
-            ..row(
-                "elided-target",
-                1,
-                vec![edge("elided-target", Some(1), EdgeKind::Direct)],
-            )
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_row = slice.rows().expect("rows").get(0);
-        assert!(wire_row.synthetic_elided(), "the elided flag must be set");
-        assert!(wire_row.meta().is_none(), "meta must be absent on an elided row");
-        assert_eq!(rows_from_wire(slice), rows);
-    }
-
-    #[test]
-    fn active_lanes_roundtrip_in_order_with_their_kinds() {
-        let rows = vec![Row {
-            active_lanes: vec![
-                ActiveLane {
-                    lane: 1,
-                    kind: EdgeKind::Indirect,
+                    committer_timestamp_ms: Some(1_700_000_000_123),
                 },
-                ActiveLane {
-                    lane: 4,
-                    kind: EdgeKind::Direct,
+                TopologyNode {
+                    commit_id: CommitId(COMMIT_B.to_owned()),
+                    edges: vec![
+                        TopologyEdge {
+                            target: None,
+                            kind: GraphEdgeKind::Missing,
+                        },
+                        TopologyEdge {
+                            target: Some(2),
+                            kind: GraphEdgeKind::Direct,
+                        },
+                    ],
+                    meta: TopologyMeta {
+                        change_id_prefix_len: 5,
+                        commit_id_prefix_len: 6,
+                        tags: vec![local_ref("v0")],
+                        immutable: true,
+                        hidden: true,
+                        parent_count: 2,
+                        ..meta(CHANGE_B)
+                    },
+                    committer_timestamp_ms: Some(-5),
+                },
+                TopologyNode {
+                    commit_id: CommitId(COMMIT_ROOT.to_owned()),
+                    edges: vec![],
+                    meta: TopologyMeta {
+                        change_id_prefix_len: 1,
+                        commit_id_prefix_len: 2,
+                        immutable: true,
+                        root: true,
+                        parent_count: 0,
+                        ..meta(CHANGE_ROOT)
+                    },
+                    committer_timestamp_ms: None,
                 },
             ],
-            ..row("c", 0, vec![])
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_lanes = slice.rows().expect("rows").get(0).active_lanes().expect("active_lanes");
-        assert_eq!(wire_lanes.len(), 2);
-        assert_eq!(wire_lanes.get(0).lane(), 1);
-        assert_eq!(wire_lanes.get(0).kind(), fbs::GraphEdgeKind::Indirect);
-        assert_eq!(rows_from_wire(slice), rows);
+            anchors: vec![vec![2], vec![], vec![0, 1]],
+            all_count: 9,
+        }
     }
 
-    /// The local entry has no remote: `remote` must stay absent (null-for-absence), never
-    /// become an empty string.
+    fn envelope(topology: &GraphTopology, with_timestamps: bool, report: &CallReport) -> Vec<u8> {
+        let ids = TopologyIds::encode(topology).expect("well-formed ids");
+        graph_topology_to_envelope(topology, &ids, with_timestamps, report)
+    }
+
+    /// Verify the buffer and read the `GraphTopology` payload through the typed accessors.
+    fn verified(buf: &[u8]) -> (fbs::Envelope<'_>, fbs::GraphTopology<'_>) {
+        let env = root::<fbs::Envelope>(buf).expect("FlatBuffers Verifier must pass");
+        assert!(env.ok(), "envelope must be ok");
+        assert_eq!(env.data_type(), fbs::Payload::GraphTopology);
+        let payload = env.data_as_graph_topology().expect("GraphTopology payload");
+        (env, payload)
+    }
+
+    fn vec_u8(v: Option<flatbuffers::Vector<'_, u8>>) -> Vec<u8> {
+        v.expect("vector present").iter().collect()
+    }
+
+    fn vec_u32(v: Option<flatbuffers::Vector<'_, u32>>) -> Vec<u32> {
+        v.expect("vector present").iter().collect()
+    }
+
     #[test]
-    fn a_local_commit_ref_writes_no_remote_string() {
-        let rows = vec![Row {
-            meta: Some(CommitMeta {
-                bookmarks: vec![CommitRef {
-                    name: "feature".to_owned(),
-                    remote: None,
-                    synced: true,
-                    conflicted: false,
-                }],
-                ..full_meta()
+    fn topology_roundtrips_every_vector_through_the_typed_accessors() {
+        let buf = envelope(&topology(), false, &CallReport::default());
+        let (env, t) = verified(&buf);
+        assert!(env.precondition().is_none() && env.warnings().is_none(), "empty report");
+        assert_eq!(t.operation_id(), Some("ab".repeat(64).as_str()));
+        assert_eq!(t.all_count(), 9);
+        assert_eq!(t.commit_id_stride(), 20);
+        assert_eq!(t.change_id_stride(), 16);
+        let commit_ids = vec_u8(t.commit_ids());
+        assert_eq!(&commit_ids[..4], &[0x00, 0x11, 0x22, 0x33]);
+        assert_eq!(&commit_ids[20..24], &[0xff, 0xee, 0xdd, 0xcc]);
+        assert_eq!(commit_ids.len(), 60);
+        let change_ids = vec_u8(t.change_ids());
+        assert_eq!(&change_ids[..8], &[0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+        assert_eq!(&change_ids[16..24], &[0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10]);
+        assert_eq!(&change_ids[32..], &[0; 16]);
+        // bit 0 working_copy, 1 immutable, 2 hidden, 3 divergent, 4 root, 5 has_change_offset
+        assert_eq!(vec_u8(t.flags()), vec![0b10_1001, 0b00_0110, 0b01_0010]);
+        assert_eq!(
+            vec_u32(t.change_offset()),
+            vec![7, 0, 0],
+            "0 when the presence bit is clear"
+        );
+        assert_eq!(vec_u8(t.change_id_prefix_len()), vec![3, 5, 1]);
+        assert_eq!(vec_u8(t.commit_id_prefix_len()), vec![4, 6, 2]);
+        assert_eq!(vec_u32(t.parent_count()), vec![3, 2, 0]);
+        assert_eq!(vec_u32(t.edge_start()), vec![0, 3, 5, 5]);
+        assert_eq!(
+            t.edge_target().expect("edge_target").iter().collect::<Vec<_>>(),
+            vec![1, 1, -1, -1, 2],
+            "a Missing edge's slot is -1; the repeated target is kept"
+        );
+        assert_eq!(
+            t.edge_kind().expect("edge_kind").iter().collect::<Vec<_>>(),
+            vec![
+                fbs::GraphEdgeKind::Direct,
+                fbs::GraphEdgeKind::Indirect,
+                fbs::GraphEdgeKind::Missing,
+                fbs::GraphEdgeKind::Missing,
+                fbs::GraphEdgeKind::Direct,
+            ]
+        );
+        assert!(t.timestamps().is_none(), "absent when not requested");
+        assert_eq!(
+            vec_u32(t.anchor_start()),
+            vec![0, 1, 1, 3],
+            "an empty anchor is an empty range"
+        );
+        assert_eq!(vec_u32(t.anchor_node()), vec![2, 0, 1]);
+    }
+
+    #[test]
+    fn refs_are_sorted_by_node_with_bookmarks_before_tags_and_a_local_remote_absent() {
+        let buf = envelope(&topology(), false, &CallReport::default());
+        let (_, t) = verified(&buf);
+        let refs: Vec<_> = t
+            .refs()
+            .expect("refs")
+            .iter()
+            .map(|r| {
+                (
+                    r.node(),
+                    r.kind(),
+                    r.name().expect("name").to_owned(),
+                    r.remote().map(ToOwned::to_owned),
+                    r.synced(),
+                    r.conflicted(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            refs,
+            vec![
+                (
+                    0,
+                    fbs::TopologyRefKind::Bookmark,
+                    "feature".to_owned(),
+                    None,
+                    true,
+                    false
+                ),
+                (
+                    0,
+                    fbs::TopologyRefKind::Bookmark,
+                    "feature".to_owned(),
+                    Some("origin".to_owned()),
+                    false,
+                    true
+                ),
+                (0, fbs::TopologyRefKind::Tag, "v1".to_owned(), None, true, false),
+                (1, fbs::TopologyRefKind::Tag, "v0".to_owned(), None, true, false),
+            ]
+        );
+        let wcs: Vec<_> = t
+            .working_copies()
+            .expect("working_copies")
+            .iter()
+            .map(|w| (w.node(), w.workspace().expect("workspace").to_owned()))
+            .collect();
+        assert_eq!(wcs, vec![(0, "default".to_owned()), (0, "second".to_owned())]);
+    }
+
+    #[test]
+    fn requested_timestamps_are_written_with_the_root_slot_zero() {
+        let buf = envelope(&topology(), true, &CallReport::default());
+        let (_, t) = verified(&buf);
+        assert_eq!(
+            t.timestamps()
+                .expect("present when requested")
+                .iter()
+                .collect::<Vec<_>>(),
+            vec![1_700_000_000_123, -5, 0]
+        );
+    }
+
+    #[test]
+    fn an_empty_topology_writes_every_vector_present_and_empty() {
+        let empty = GraphTopology {
+            operation_id: OperationId("cd".repeat(64)),
+            nodes: vec![],
+            anchors: vec![vec![], vec![]],
+            all_count: 1,
+        };
+        let buf = envelope(&empty, true, &CallReport::default());
+        let (_, t) = verified(&buf);
+        assert_eq!(t.commit_id_stride(), 0);
+        assert_eq!(t.change_id_stride(), 0);
+        for v in [
+            vec_u8(t.commit_ids()),
+            vec_u8(t.change_ids()),
+            vec_u8(t.flags()),
+            vec_u8(t.change_id_prefix_len()),
+            vec_u8(t.commit_id_prefix_len()),
+        ] {
+            assert!(v.is_empty());
+        }
+        for v in [
+            vec_u32(t.change_offset()),
+            vec_u32(t.parent_count()),
+            vec_u32(t.anchor_node()),
+        ] {
+            assert!(v.is_empty());
+        }
+        assert_eq!(vec_u32(t.edge_start()), vec![0]);
+        assert_eq!(t.edge_target().map(|v| v.len()), Some(0));
+        assert_eq!(t.edge_kind().map(|v| v.len()), Some(0));
+        assert_eq!(t.timestamps().map(|v| v.len()), Some(0), "requested: present, empty");
+        assert_eq!(t.refs().map(|v| v.len()), Some(0));
+        assert_eq!(t.working_copies().map(|v| v.len()), Some(0));
+        assert_eq!(
+            vec_u32(t.anchor_start()),
+            vec![0, 0, 0],
+            "anchors + 1 entries, all zero"
+        );
+    }
+
+    #[test]
+    fn the_report_rides_the_ok_envelope() {
+        let report = CallReport {
+            precondition: Some(Precondition {
+                was_snapshot_taken: true,
+                ..Precondition::default()
             }),
-            ..row("c", 0, vec![])
-        }];
-        let buf = graph_slice_to_envelope(&rows, &crate::envelope::CallReport::default());
-
-        let slice = verified_slice(&buf);
-        let wire_ref = slice
-            .rows()
-            .expect("rows")
-            .get(0)
-            .meta()
-            .expect("meta")
-            .bookmarks()
-            .expect("bookmarks")
-            .get(0);
-        assert_eq!(wire_ref.name(), Some("feature"));
-        assert_eq!(wire_ref.remote(), None, "a local entry has no remote");
+            warnings: vec![Warning {
+                kind: WarningKind::ShortPrefixesFailed,
+                message: "index".to_owned(),
+            }],
+        };
+        let buf = envelope(&topology(), false, &report);
+        let (env, _) = verified(&buf);
+        assert!(env.precondition().is_some_and(|p| p.was_snapshot_taken()));
+        let warning = env.warnings().expect("warnings").get(0);
+        assert_eq!(warning.code(), Some("jj.short_prefixes_failed"));
+        assert_eq!(warning.message(), Some("index"));
     }
 
     #[test]
-    fn edge_kind_maps_every_variant_in_order() {
-        assert_eq!(edge_kind(EdgeKind::Direct), fbs::GraphEdgeKind::Direct);
-        assert_eq!(edge_kind(EdgeKind::Indirect), fbs::GraphEdgeKind::Indirect);
-        assert_eq!(edge_kind(EdgeKind::Missing), fbs::GraphEdgeKind::Missing);
+    fn the_id_encoder_decodes_hex_and_reverse_hex_extremes() {
+        let ids = TopologyIds::encode(&topology()).expect("encode");
+        assert_eq!(ids.commit_id_stride, 20);
+        assert_eq!(ids.change_id_stride, 16);
+        // Reverse-hex: z = 0 … k = 15.
+        assert_eq!(ids.change_ids[0], 0x01, "zy");
+        assert_eq!(ids.change_ids[16], 0xfe, "kl");
+        assert_eq!(&ids.change_ids[32..48], &[0; 16], "all z");
+        assert_eq!(ids.commit_ids[59], 0x00);
     }
 
-    /// Every `LaneStreamError` variant lands on its registry code with the reason/target
-    /// as `context`. `graph.dangling_edge` is unreachable with real fixtures (the jj-lib
-    /// stream never dangles), so this is the only place that arm is pinned.
     #[test]
-    fn map_lane_stream_err_maps_every_variant() {
-        let parse = map_lane_stream_err(LaneStreamError::Revset(RevsetError::ParseError {
-            reason: "bad syntax".to_owned(),
+    fn the_id_encoder_of_an_empty_topology_has_zero_strides() {
+        let ids = TopologyIds::encode(&GraphTopology {
+            operation_id: OperationId(String::new()),
+            nodes: vec![],
+            anchors: vec![],
+            all_count: 0,
+        })
+        .expect("encode");
+        assert_eq!(
+            ids,
+            TopologyIds {
+                commit_ids: vec![],
+                commit_id_stride: 0,
+                change_ids: vec![],
+                change_id_stride: 0,
+            }
+        );
+    }
+
+    fn encode_err(edit: impl FnOnce(&mut GraphTopology)) -> String {
+        let mut t = topology();
+        edit(&mut t);
+        match TopologyIds::encode(&t) {
+            Err(RevsetError::JjLibError(reason)) => reason,
+            other => panic!("expected JjLibError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_id_encoder_refuses_a_malformed_digit_in_either_alphabet() {
+        let reason = encode_err(|t| t.nodes[1].commit_id.0.replace_range(0..1, "g"));
+        assert!(reason.starts_with("commit id \"gfeedd"), "{reason}");
+        assert!(reason.ends_with("holds a character outside its alphabet"), "{reason}");
+        // A forward-hex digit is not a reverse-hex one.
+        let reason = encode_err(|t| t.nodes[2].meta.change_id.replace_range(0..1, "a"));
+        assert!(reason.starts_with("change id \"azzz"), "{reason}");
+    }
+
+    #[test]
+    fn the_id_encoder_refuses_an_odd_or_empty_first_id() {
+        let reason = encode_err(|t| t.nodes[0].commit_id.0.push('0'));
+        assert!(
+            reason.ends_with("is not an even, non-zero number of hex digits"),
+            "{reason}"
+        );
+        let reason = encode_err(|t| t.nodes[0].meta.change_id.clear());
+        assert!(reason.starts_with("change id \"\""), "{reason}");
+    }
+
+    #[test]
+    fn the_id_encoder_refuses_a_stride_mismatch_and_an_overlong_id() {
+        let reason = encode_err(|t| t.nodes[2].commit_id.0.push_str("00"));
+        assert!(
+            reason.ends_with("does not have the column's stride of 20 bytes"),
+            "{reason}"
+        );
+        let reason = encode_err(|t| t.nodes[1].commit_id.0.push('0'));
+        assert!(
+            reason.contains("stride of 20 bytes"),
+            "an odd later id is a stride mismatch: {reason}"
+        );
+        let reason = encode_err(|t| t.nodes[0].commit_id.0 = "ab".repeat(256));
+        assert!(reason.ends_with("is longer than 255 bytes"), "{reason}");
+    }
+
+    #[test]
+    fn wire_casts_pass_values_through_and_saturate() {
+        assert_eq!(wire_u32(5), 5);
+        assert_eq!(wire_u32(usize::MAX), u32::MAX);
+        assert_eq!(wire_prefix_len(40), 40);
+        assert_eq!(wire_prefix_len(300), u8::MAX);
+        assert_eq!(wire_edge_target(None), -1);
+        assert_eq!(wire_edge_target(Some(3)), 3);
+        assert_eq!(wire_edge_target(Some(usize::MAX)), i32::MAX);
+    }
+
+    /// Every `RevsetError` variant lands on its registry code with the reason / target as
+    /// `context`. `graph.dangling_edge` is unreachable through jj-lib, so this pins that arm.
+    #[test]
+    fn map_topology_err_maps_every_variant() {
+        let cases = [
+            (
+                RevsetError::ParseError {
+                    reason: "bad syntax".to_owned(),
+                },
+                JJ_REVSET_PARSE_ERROR,
+                "bad syntax",
+            ),
+            (
+                RevsetError::ResolutionError {
+                    reason: "no such bookmark".to_owned(),
+                },
+                JJ_REVSET_RESOLUTION_ERROR,
+                "no such bookmark",
+            ),
+            (RevsetError::JjLibError("boom".to_owned()), JJ_JJ_LIB_ERROR, "boom"),
+            (
+                RevsetError::Config(ConfigError::Load {
+                    reason: "/r/.jj/repo/config.toml: bad TOML".to_owned(),
+                }),
+                JJ_CONFIG_ERROR,
+                "/r/.jj/repo/config.toml: bad TOML",
+            ),
+            (
+                RevsetError::DanglingEdge {
+                    target: "cafe".to_owned(),
+                },
+                GRAPH_DANGLING_EDGE,
+                "cafe",
+            ),
+            (
+                RevsetError::Precondition(PreconditionError::Backend("op heads".to_owned())),
+                JJ_JJ_LIB_ERROR,
+                "op heads",
+            ),
+        ];
+        for (error, code, context) in cases {
+            let mapped = map_topology_err(error);
+            assert_eq!(mapped.code, code);
+            assert_eq!(mapped.context.as_deref(), Some(context));
+            assert!(
+                mapped.report.is_none(),
+                "the report is attached by precondition_envelope"
+            );
+        }
+    }
+
+    // ── Request reader ladder ────────────────────────────────────────────────
+
+    struct RequestSpec<'s> {
+        kind: fbs::RequestKind,
+        revset: Option<&'s str>,
+        prioritize: Option<&'s str>,
+        short_prefixes: Option<&'s str>,
+        anchors: Option<&'s [&'s str]>,
+        with_timestamps: bool,
+    }
+
+    const FULL: RequestSpec<'static> = RequestSpec {
+        kind: fbs::RequestKind::GraphTopology,
+        revset: Some("all()"),
+        prioritize: Some("present(@)"),
+        short_prefixes: Some(""),
+        anchors: Some(&["trunk()", "present(@)"]),
+        with_timestamps: true,
+    };
+
+    fn request(spec: &RequestSpec<'_>) -> Vec<u8> {
+        let mut b = FlatBufferBuilder::new();
+        let revset = spec.revset.map(|s| b.create_string(s));
+        let prioritize = spec.prioritize.map(|s| b.create_string(s));
+        let short_prefixes = spec.short_prefixes.map(|s| b.create_string(s));
+        let anchors = spec.anchors.map(|list| {
+            let offsets: Vec<_> = list.iter().map(|s| b.create_string(s)).collect();
+            b.create_vector(&offsets)
+        });
+        let req = fbs::GraphTopologyRequest::create(
+            &mut b,
+            &fbs::GraphTopologyRequestArgs {
+                kind: spec.kind,
+                revset,
+                prioritize,
+                short_prefixes,
+                anchors,
+                with_timestamps: spec.with_timestamps,
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    fn read_err(bytes: &[u8]) -> (String, Option<String>) {
+        let e = read_graph_topology_request(bytes.as_ptr(), bytes.len()).expect_err("must refuse");
+        (e.code, e.context)
+    }
+
+    #[test]
+    fn the_request_reader_passes_every_field_through() {
+        let bytes = request(&FULL);
+        let req = read_graph_topology_request(bytes.as_ptr(), bytes.len()).expect("valid request");
+        assert_eq!(req.revset, "all()");
+        assert_eq!(req.prioritize, "present(@)");
+        assert_eq!(req.short_prefixes, "", "an empty string is a value, not an absence");
+        assert_eq!(req.anchors, vec!["trunk()".to_owned(), "present(@)".to_owned()]);
+        assert!(req.with_timestamps);
+    }
+
+    #[test]
+    fn the_request_reader_treats_absent_anchors_as_empty_and_timestamps_as_false() {
+        let bytes = request(&RequestSpec {
+            anchors: None,
+            with_timestamps: false,
+            ..FULL
+        });
+        let req = read_graph_topology_request(bytes.as_ptr(), bytes.len()).expect("valid request");
+        assert!(req.anchors.is_empty());
+        assert!(!req.with_timestamps);
+    }
+
+    #[test]
+    fn the_request_reader_refuses_null_unverifiable_and_mis_routed_buffers() {
+        let e = read_graph_topology_request(std::ptr::null(), 0).expect_err("null");
+        assert_eq!(e.code, FFI_NULL_POINTER);
+        let (code, _) = read_err(&[1, 2, 3]);
+        assert_eq!(code, FFI_INVALID_ARGUMENT);
+        let (code, context) = read_err(&request(&RequestSpec {
+            kind: fbs::RequestKind::CommitContents,
+            ..FULL
         }));
-        assert_eq!(parse.code, JJ_REVSET_PARSE_ERROR);
-        assert_eq!(parse.context.as_deref(), Some("bad syntax"));
+        assert_eq!(code, FFI_INVALID_ARGUMENT);
+        assert_eq!(
+            context.as_deref(),
+            Some("request kind mismatch: expected GraphTopology, got CommitContents")
+        );
+    }
 
-        let resolution = map_lane_stream_err(LaneStreamError::Revset(RevsetError::ResolutionError {
-            reason: "no such bookmark".to_owned(),
-        }));
-        assert_eq!(resolution.code, JJ_REVSET_RESOLUTION_ERROR);
-        assert_eq!(resolution.context.as_deref(), Some("no such bookmark"));
-
-        let jj_lib = map_lane_stream_err(LaneStreamError::Revset(RevsetError::JjLibError("boom".to_owned())));
-        assert_eq!(jj_lib.code, JJ_JJ_LIB_ERROR);
-        assert_eq!(jj_lib.context.as_deref(), Some("boom"));
-
-        let config = map_lane_stream_err(LaneStreamError::Revset(RevsetError::Config(ConfigError::Load {
-            reason: "/r/.jj/repo/config.toml: bad TOML".to_owned(),
-        })));
-        assert_eq!(config.code, JJ_CONFIG_ERROR);
-        assert_eq!(config.context.as_deref(), Some("/r/.jj/repo/config.toml: bad TOML"));
-
-        let dangling = map_lane_stream_err(LaneStreamError::Graph(GraphError::DanglingEdge {
-            target: "deadbeef".to_owned(),
-        }));
-        assert_eq!(dangling.code, GRAPH_DANGLING_EDGE);
-        assert_eq!(dangling.context.as_deref(), Some("deadbeef"));
-
-        // Story 4.10: the topology call's own dangling edge lands on the same code.
-        let topology = map_lane_stream_err(LaneStreamError::Revset(RevsetError::DanglingEdge {
-            target: "cafe".to_owned(),
-        }));
-        assert_eq!(topology.code, GRAPH_DANGLING_EDGE);
-        assert_eq!(topology.context.as_deref(), Some("cafe"));
+    #[test]
+    fn the_request_reader_names_each_absent_required_field() {
+        for (spec, field) in [
+            (RequestSpec { revset: None, ..FULL }, "revset"),
+            (
+                RequestSpec {
+                    prioritize: None,
+                    ..FULL
+                },
+                "prioritize",
+            ),
+            (
+                RequestSpec {
+                    short_prefixes: None,
+                    ..FULL
+                },
+                "short_prefixes",
+            ),
+        ] {
+            let (code, context) = read_err(&request(&spec));
+            assert_eq!(code, JJ_INVALID_INPUT);
+            assert_eq!(context, Some(format!("{field} is required")));
+        }
     }
 }

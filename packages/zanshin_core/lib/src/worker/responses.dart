@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../ffi/precondition.dart' show Precondition;
@@ -42,6 +43,22 @@ final class BufferResult extends WorkerResponse {
   /// Raw `Envelope` bytes — decode with `Envelope(bytes)` from the generated
   /// FlatBuffers accessors.
   final Uint8List bytes;
+}
+
+/// Carries a FlatBuffers `Envelope` as [TransferableTypedData] — the graph
+/// topology's reply (Story 4.12).
+///
+/// One copy across the isolate boundary instead of two: the worker reads the
+/// native buffer `zanshin_graph_topology` returned through a view, copies it
+/// ONCE into [data], frees the native buffer and sends this; the receiving side
+/// calls `data.materialize()` exactly once, which hands over the bytes without a
+/// further copy. Every other reply is a [BufferResult], which costs the
+/// `readToken` copy out of native memory plus the `SendPort` copy.
+final class TransferResult extends WorkerResponse {
+  const TransferResult(this.data);
+
+  /// The `Envelope` bytes; materialize exactly once.
+  final TransferableTypedData data;
 }
 
 /// Thrown on the main side when the worker reports a failed FFI call

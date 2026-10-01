@@ -132,7 +132,9 @@ pre-fill for `revset` / `short_prefixes`) parses out of the box, while a user's
 `[revset-aliases]` override of `trunk()` or `immutable_heads()`, or a
 brand-new `wip()`, resolves exactly as it does in their CLI. `Repo::log_defaults()`
 returns the four *effective* `jj log` defaults for the UI to pre-fill.
-`zanshin-graph`'s `stream_lanes` feeds this stream through its lane assigner.
+*(2026-10-01, Story 4.12: the lane crate that fed this stream through its lane
+assigner is gone; `walk_graph` stays as the `jj log`-faithful read and the
+oracle of `Repo::graph_topology`, which is what crosses FFI now.)*
 
 ## Graph topology + op-pinned content (`Repo::graph_topology`, `Repo::commit_contents`)
 

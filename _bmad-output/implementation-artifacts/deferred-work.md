@@ -842,3 +842,18 @@ _The spec (`spec-4-10-graph-topology-content-split-op-pinned.md`) carries the fi
 - **A changed-path index has no measurable effect on the fixtures.** Low; a record.
   - Within noise: 5 samples per row, and several index rows are slower than their no-index rows. The fixtures' one octopus merge merges tiny trees, so `empty`'s tree merge is cheap there. The 0.78 ms per merge measured on the real repo (2026-09-26) is where the index would pay.
   - **Follow-up:** none; building the index is the user's `jj debug index-changed-paths`, not a Zanshin decision.
+
+## Surfaced in Story 4.12 (bmad-build-auto, 2026-10-01)
+
+_The spec (`spec-4-12-graph-topology-wire-lazy-dart-view.md`) carries all three items in its `deferred:` list. Numbers: its § Measurements._
+
+- **No real-repo wire numbers.** Low.
+  - `crates/zanshin-ffi/benches/graph_wire.rs` and `packages/zanshin_core/benchmark/graph_wire.dart` measure `medium` loose, `large-10k` loose, a `git gc`-packed copy of `large-10k` and a 100k synthetic topology only; the optional local real repo needs a path to one of Ralph's repos (decisions-review-4-10-to-4-13.md, "Not done unattended").
+  - **Follow-up:** run both against a COPY of a real repo (`cargo bench -p zanshin-ffi --bench graph_wire` takes its stores from the fixtures — point the Dart one at the copy: `dart run benchmark/graph_wire.dart <copy>`) — never against the live repo, since the topology call snapshots.
+- **`graph_ids_test.dart`'s `large-10k` case costs ~80–90 s of the `zanshin_core` suite.** Low.
+  - The id-encoding pin compares every node's formatted ids with the display strings `show(revset: 'all()')` returns, as the spec prescribes; `show` computes every commit's file changes, ~80 s for the 10k fixture's loose store (release cdylib). The test's timeout is 10 minutes for the coverage-instrumented run. `tiny` and `medium` take ~1 s together.
+  - **Follow-up:** if the gate time bites, drop the 10k case (medium already covers 1,002 ids of both alphabets) or pin the ids against a cheaper Rust display source — not a test-only extern (the spec forbids one).
+- **Story 9.25 still says "Apply = evaluate via `graphSlice`".** Low; found in review.
+  - The `9-25-…` comment in `sprint-status.yaml` ends "Apply = evaluate via graphSlice, Save = persist", and epics.md Story 9.25 lists the same consumer. `graphSlice` was removed in this story; the Apply path is now `RepoHandle.graphTopology`, and its "N revisions" line is `GraphTopologyView.nodeCount`.
+  - Story 4.12's intent forbids editing the 9.25 text ("settled when 9.25 is refined").
+  - **Follow-up:** re-point both when Ralph refines 9.25.

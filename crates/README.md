@@ -1,6 +1,6 @@
 # Zanshin Rust Workspace — Crates
 
-This directory contains all six Rust crates that make up the Zanshin backend.
+This directory contains all five Rust crates that make up the Zanshin backend.
 
 ## Crate Overview
 
@@ -8,10 +8,13 @@ This directory contains all six Rust crates that make up the Zanshin backend.
 |---|---|---|
 | `zanshin-jj` | lib | Anti-corruption layer over `jj-lib` (Epic 2) |
 | `zanshin-diff` | lib | Word-level diff + syntax highlight (Epic 5) |
-| `zanshin-graph` | lib | DAG lane assignment (Epic 4) |
 | `zanshin-ffi` | cdylib | FFI boundary exposed to Dart via `libzanshin_ffi.dylib` (Epic 3) |
 | `zanshin-mcp` | bin | MCP server binary (Epic 7) |
 | `xtask` | bin | Build helper tasks invoked via `cargo xtask` (Story 1.4+) |
+
+*(2026-10-01, Story 4.12: the `zanshin-graph` lane-assignment crate (Epic 4) was removed; the
+graph read is `zanshin-jj`'s `Repo::graph_topology` behind `zanshin-ffi`'s
+`zanshin_graph_topology`, and the layout is computed in Dart.)*
 
 ## `Cargo.toml` Hygiene Convention (AR-P-8)
 

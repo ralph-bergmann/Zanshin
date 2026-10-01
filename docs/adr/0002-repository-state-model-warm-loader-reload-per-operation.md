@@ -5,6 +5,7 @@
 - **Deciders:** Ralph
 - **Refines:** AD-2 (handle lifetime & ownership), AD-4 (worker isolate), AD-5 (watcher) in `architecture.md`
 - **Touches:** FR-GR-3 (`zanshin-graph` lane cache) — see Open questions
+- *(Note 2026-10-01, Story 4.12: the `zanshin-graph` crate named here and below (Decision 4, Consequences, Open questions, the benchmark and reference lines) was removed together with its FFI slice `zanshin_graph_slice`. The streamed, never-cached commit graph this ADR decided is now Story 4.10's index-only `Repo::graph_topology`, carried by `zanshin_graph_topology` and laid out in Dart (Story 4.11); the decision itself is unchanged. The accepted text below is kept as written.)*
 - **Backed by:** `_bmad-output/planning-artifacts/research/technical-vcs-gui-repo-state-cache-vs-reload-research-2026-06-22.md`
 
 ## Context

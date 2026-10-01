@@ -11,7 +11,7 @@ overrides:
   - 'architecture.md § P-9 (no per-file license headers) — superseded by SPDX-Identifier rule in Code Quality & Style'
   - 'architecture.md AD-1/AD-3/AD-4 + epics.md AR-AD-1/AR-AD-3/AR-P-2 (JSON envelope + JSON Schemas as the FFI wire) — superseded by docs/adr/0001: FlatBuffers for composite FFI data, lone strings stay CString, MCP keeps JSON-RPC'
   - 'prd.md FR-GR-3/FR-GR-5 + epics.md Story 4.3/4.6 (full materialized lane-cache on open / op_heads) — superseded by docs/adr/0002 (AC-4 resolved 2026-06-22): lazy revset stream (GG model), no long-lived materialized lane cache; full graph derive ~3 ms @ 10k (AMENDED 2026-09-30, Story 4.10: the ~3 ms is the index-only TOPOLOGY walk; the whole topology call is 22 ms @ 10k packed incl. its precondition, and since Story 4.8 a full row costs the commit loads — re-measured numbers in spec-4-10 § Measurements and the ADR-0002 Addendum 2026-09-30)'
-  - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP. AMENDED 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): row-range windowing is REPLACED, not built, because lanes depend on the whole prefix — the graph call returns the complete index-only geometry for the whole revset per operation, and card content is loaded lazily per visible page in O(page). Still open (Ralph, 2026-09-26): a fixed row-based layout or a free layout whose vertical spacing follows commit time (DECIDED 2026-09-27, Ralph: the free layout is the default and compact the only other mode; time is dropped, so the default layout needs every timestamp); time-based layouts need every commit''s committer timestamp, which lives in the commit object, not in jj''s index — Story 4.10 loads them per call on request (measured 2026-09-26: 6.7 ms for a real 1.4k-commit repo, 33.6 ms at 10k in a packed store; the earlier ~1.2 s was the loose-object fixture)'
+  - 'prd.md FR-GR-4/NFR-P-2 + epics.md Story 4.4 (render-slice over a row range, O(slice-size), no scan of the lane-cache) — superseded by the 2026-05-17 WIP-rework + ADR-0002 (no cache to slice): Story 4.4 delivered `zanshin_graph::collect_lanes` (return-all lanes per revset call, 2026-08-23); windowing deferred past WIP. AMENDED 2026-09-26 (Ralph, Story 4.10; research `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md` §3): row-range windowing is REPLACED, not built, because lanes depend on the whole prefix — the graph call returns the complete index-only geometry for the whole revset per operation, and card content is loaded lazily per visible page in O(page). Still open (Ralph, 2026-09-26): a fixed row-based layout or a free layout whose vertical spacing follows commit time (DECIDED 2026-09-27, Ralph: the free layout is the default and compact the only other mode; time is dropped, so the default layout needs every timestamp); time-based layouts need every commit''s committer timestamp, which lives in the commit object, not in jj''s index — Story 4.10 loads them per call on request (measured 2026-09-26: 6.7 ms for a real 1.4k-commit repo, 33.6 ms at 10k in a packed store; the earlier ~1.2 s was the loose-object fixture). AMENDED 2026-10-01 (Story 4.12): `zanshin_graph::collect_lanes` was removed together with the `zanshin-graph` crate and `zanshin_graph_slice`; the graph read is now the topology call `zanshin_graph_topology` (Story 4.10''s `Repo::graph_topology` on the wire, read in Dart through `GraphTopologyView`), and the layout is computed in Dart (Story 4.11)'
 scope_reminder: 'Rust workspace + FFI + MCP + build (unsigned) + minimal Dart bootstrap. Flutter UI is OUT OF SCOPE (Ralph''s separate work). Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at Ralph''s request; the rest of the Flutter UI stays Ralph''s. Release pipeline (codesign, notarize, Sparkle, GitHub Releases, reproducibility) is DEFERRED — see prd.md § 4.7.'
 posture: 'Code quality is production-grade from day 1. Scope/release-readiness is WIP — breaking changes between WIP versions are allowed, callers update, no _v2 suffixes, no in-wire schema_version. See feedback-no-mvp-shortcuts in memory.'
 ---
@@ -34,7 +34,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
   in lockstep.
 - Rust `1.95.0` (pinned via `rust-toolchain.toml`)
 
-**Rust workspace (5 lib crates + 1 bin + xtask):**
+**Rust workspace (5 lib crates + 1 bin + xtask):** *(2026-10-01, Story 4.12: 4 lib crates —
+the `zanshin-graph` lane crate was removed)*
 - `jj-lib` `=0.44.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
 - `rmcp` `=1.7.0` (pin exact)
 - `imara-diff` `=*` (pin exact — Histogram algorithm)
@@ -263,6 +264,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Commands (UI → Worker): typed `sealed class WorkerCommand` subclasses.
 - Responses (Worker → UI): FlatBuffers byte buffers — the same bytes that crossed
   FFI. Read by the requesting code via the generated typed accessors.
+  *(2026-10-01, Story 4.12: the graph topology is the one exception — it crosses as a
+  `TransferableTypedData` (one copy instead of `readToken` + `SendPort`'s two) and is read
+  through `GraphTopologyView`'s typed-data views over its scalar vectors, not object by
+  object; its tests check every value the view reads against the generated accessors.)*
 - Correlation: every command carries an incrementing `commandId`; worker echoes
   it. Main isolate holds `Map<int, Completer<String>>` to resolve futures.
 - Async events (watcher, progress): a separate `SendPort` per stream type.
@@ -349,6 +354,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - One WIP exception: `zanshin-graph` should have a small algorithmic-correctness
   test on a ~100-commit fixture (correct lane output, not timing). Catches dumb
   O(n²) regressions cheaply without paying for a large-fixture perf-test infra.
+  *(2026-10-01, Story 4.12: lapsed — the `zanshin-graph` crate was removed; the layout
+  engine's correctness tests are Dart-side, Story 4.11.)*
 - Test only against committed fixtures of known size. Do not generate
   variable-size inputs at test time.
 
@@ -698,7 +705,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
   long-lived materialized cache (ADR-0002 AC-4 resolved: full graph derive ~3 ms @ 10k,
   first render page ~27 µs). The op-heads watcher is the coherency trigger (op-id compare);
   the graph is re-derived via a lazy revset stream (`stream_graph` + `TopoGroupedGraph`, GG
-  model) and never trusted across an op-id advance. **Don't reintroduce a materialized lane
+  model) and never trusted across an op-id advance. *(2026-10-01, Story 4.12: there is no
+  lane state any more — the lane crate was removed; what is re-derived per operation is the
+  topology `zanshin_graph_topology` returns.)* **Don't reintroduce a materialized lane
   cache** — it buys nothing here (re-derive ≪ NFR-P-1's < 1s @ 10k) and brings back staleness.
   *(2026-09-30, Story 4.10: the ~3 ms / ~27 µs time the index-only TOPOLOGY walk (re-measured
   3.1 ms / 30 µs). The whole `graph_topology(all())` call is 22 ms @ 10k packed (5 ms @ 1k),
@@ -709,7 +718,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   There is no held cache to iterate: `collect_lanes(repo, revset, prioritize)` drives
   `stream_lanes` with a collecting sink (Story 4.4; windowing deferred past WIP). A future
   page composes as an early-exit sink on `stream_lanes` (O(prefix)), never as a scan over
-  held rows.
+  held rows. *(2026-10-01, Story 4.12: removed — `collect_lanes`, `stream_lanes`, the
+  `zanshin-graph` crate and `zanshin_graph_slice` are gone. The graph read is
+  `zanshin_graph_topology`: the whole revset's index-only topology per call (Story 4.10),
+  scalar vectors + CSR on the wire, laid out in Dart (Story 4.11); still re-derived per
+  operation, still no held cache.)*
 - **`imara-diff` Histogram algorithm** is ~30× faster than `similar` for large
   diffs. Don't substitute `similar` "for consistency" — the perf gap is real.
 - **Don't pre-compute things "in case the UI needs them".** Compute on

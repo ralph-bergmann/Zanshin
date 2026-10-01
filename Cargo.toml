@@ -8,7 +8,6 @@ members = ["crates/*"]
 default-members = [
     "crates/zanshin-diff",
     "crates/zanshin-ffi",
-    "crates/zanshin-graph",
     "crates/zanshin-jj",
     "crates/zanshin-mcp",
 ]
@@ -50,7 +49,6 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (`cli/src/config.rs` @ v0.44.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
-zanshin-graph = { path = "crates/zanshin-graph", version = "0.1.0" }
 zanshin-jj = { path = "crates/zanshin-jj", version = "0.1.0" }
 zstd = "0.13"
 

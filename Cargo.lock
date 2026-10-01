@@ -3389,16 +3389,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "zanshin-graph",
- "zanshin-jj",
-]
-
-[[package]]
-name = "zanshin-graph"
-version = "0.1.0"
-dependencies = [
- "test-helpers",
- "thiserror 2.0.18",
  "zanshin-jj",
 ]
 

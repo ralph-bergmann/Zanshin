@@ -372,7 +372,7 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 
 ---
 
-### Epic 4: `zanshin-graph` — DAG Lane Assignment
+### Epic 4: `zanshin-graph` — DAG Lane Assignment *(2026-10-01: the lane crate was removed in 4.12)*
 
 **Goal:** Compute commit-graph lane assignments for arbitrary jj DAGs and expose them as render-ready FlatBuffers (ADR-0001) via the FFI surface.
 
@@ -2808,7 +2808,7 @@ So that FR-RX-1 (< 100 ms budget with 100 ms CI slack), FR-RX-2 (external edit p
 
 ---
 
-## Epic 4: `zanshin-graph` — DAG Lane Assignment
+## Epic 4: `zanshin-graph` — DAG Lane Assignment *(2026-10-01: the lane crate was removed in 4.12)*
 
 Compute commit-graph lane assignments for arbitrary jj DAGs and expose render-ready FlatBuffers (ADR-0001) via the FFI surface. Hit the < 1s lane-cache budget (FR-GR-5 / NFR-P-1 sub-budget) on the 10k-commit fixture and provide O(slice-size) render-slice responses. *(2026-09-26: reopened for Stories 4.10–4.12, which replace the render-slice with the whole revset's topology plus lazy content and move the layout to Dart; see the note before Story 4.10.)*
 
@@ -4005,6 +4005,13 @@ Which modes the product exposes is 10.13's question. It does not gate this story
 - 9.31 (edge drop zones): each drawn edge is one layout edge with child and parent indices, so segment identity is explicit (10.4 item 9)
 - Epic 10 (10.1, 10.12)
 - ADR-0001, FR-GR-2 (amended 2026-09-26), FR-GR-6
+
+> **Delivered (2026-10-01, Story 4.12 done):** spec at `_bmad-output/implementation-artifacts/spec-4-12-graph-topology-wire-lazy-dart-view.md` (open questions answered in `decisions-review-4-10-to-4-13.md`; the measured ones under `### 4.12`).
+>
+> - **Wire.** `zanshin_graph_topology(handle, data, len)` over `GraphTopologyRequest` (`RequestKind.GraphTopology`, appended) → `GraphTopology` in `GraphSlice`'s Payload slot 11: scalar vectors indexed by node (ids as raw bytes at one stride per column, one flags byte, change offset with a presence bit, prefix lengths, parent counts, optional timestamps with the root's slot 0) plus CSR offsets for the edges (target −1 iff Missing, no target id) and the anchors, sparse ref / working-copy tables sorted by node. Precondition + warnings on the ok arm and on every error arm after the snapshot ran; `revset` / `prioritize` / `short_prefixes` required on the wire, no Rust default. 61 exports.
+> - **Measured** (spec § Measurements): ids as stride bytes (b) are 36 B/node vs 96 for strings (a), Rust build 146 vs 175 µs, Dart first access level (553 vs 565 µs) at 10k packed → (b); one packed flags byte beats six bool vectors on all three → packed. The chosen envelope is 56 B/node (64 with timestamps); the Dart call is 21.7 ms @ 10k, the view constructs in ~3 µs, a full pass reads every node in ~0.6 ms, the id lookups build in ~2.2 ms.
+> - **Dart.** `GraphTopologyView` (lazy typed-data views, O(1) per node, `ffi.unknown` on a malformed buffer, null for absence, lazy `indexOfCommitId` / `indicesOfChangeId`), `GraphTopologyCommand`, `ZanshinWorker.graphTopology`, `RepoHandle.graphTopology` (anchors and `withTimestamps` required). One copy across isolates: the worker copies the native buffer once into a `TransferableTypedData` (`TransferResult`), the UI's `materialize()` is zero-copy; every other reply keeps its two copies. `defaultSyntheticElided` removed.
+> - **Removed:** `zanshin_graph_slice`, `graph_slice_to_envelope`, the `GraphSlice` / `GraphRow*` / `GraphCommitRef` / `GraphActiveLane` tables, the Dart slice models + `graphSlice`, and the `zanshin-graph` crate (the workspace has 7 `Cargo.toml` files). `Repo::walk_graph`, its tests and the `graph_blueprint` bench stay.
 
 ### Story 4.13: Commit stacks in the layout engine — linear runs grouped into stack nodes, columns from the ungrouped layout, vertical compaction only [bridge]
 *(Added 2026-09-28, Ralph — console session on the design update, export at `a399daf`. Bridge scope: pure Dart in `packages/zanshin_core`, after 4.11's port; first in the spike's Dart, which is the reference and the recorder. The view side is 10.17. Refined enough to build from; ACs to be written when scheduled.)*

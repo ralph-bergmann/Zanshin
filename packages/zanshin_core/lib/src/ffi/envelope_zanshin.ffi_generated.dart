@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 27 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 28 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -56,7 +56,8 @@ enum RequestKind {
   ConfigGcList(26),
   ConfigGcDelete(27),
   EnvironmentAdopt(28),
-  CommitContents(29);
+  CommitContents(29),
+  GraphTopology(30);
 
   final int value;
   const RequestKind(this.value);
@@ -123,6 +124,8 @@ enum RequestKind {
         return RequestKind.EnvironmentAdopt;
       case 29:
         return RequestKind.CommitContents;
+      case 30:
+        return RequestKind.GraphTopology;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -131,7 +134,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 29;
+  static const int maxValue = 30;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -440,11 +443,11 @@ class _WatcherEventKindReader extends fb.Reader<WatcherEventKind> {
       WatcherEventKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
-///  How a graph edge's target was classified by the revset-graph stream.
-///  Mirrors zanshin_graph::EdgeKind — order must stay identical.
+///  How a graph edge's target was classified by jj's revset-graph stream.
+///  Mirrors zanshin_jj::GraphEdgeKind — order must stay identical.
 ///  `Direct`/`Indirect` targets are in the revset (Indirect = the direct parent
 ///  was elided; renderers may draw it dashed); `Missing` leads outside the
-///  revset and never reserves a lane.
+///  revset and has no target node.
 enum GraphEdgeKind {
   Direct(0),
   Indirect(1),
@@ -482,6 +485,43 @@ class _GraphEdgeKindReader extends fb.Reader<GraphEdgeKind> {
   @override
   GraphEdgeKind read(fb.BufferContext bc, int offset) =>
       GraphEdgeKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
+///  Whether a TopologyRef is a bookmark or a tag.
+enum TopologyRefKind {
+  Bookmark(0),
+  Tag(1);
+
+  final int value;
+  const TopologyRefKind(this.value);
+
+  factory TopologyRefKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return TopologyRefKind.Bookmark;
+      case 1:
+        return TopologyRefKind.Tag;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static TopologyRefKind? _createOrNull(int? value) => value == null ? null : TopologyRefKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<TopologyRefKind> reader = _TopologyRefKindReader();
+}
+
+class _TopologyRefKindReader extends fb.Reader<TopologyRefKind> {
+  const _TopologyRefKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  TopologyRefKind read(fb.BufferContext bc, int offset) =>
+      TopologyRefKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
@@ -682,7 +722,7 @@ enum PayloadTypeId {
   RepoDetect(8),
   WatcherEvent(9),
   Progress(10),
-  GraphSlice(11),
+  GraphTopology(11),
   LogDefaults(12),
   MutationResult(13),
   AbsorbResult(14),
@@ -737,7 +777,7 @@ enum PayloadTypeId {
       case 10:
         return PayloadTypeId.Progress;
       case 11:
-        return PayloadTypeId.GraphSlice;
+        return PayloadTypeId.GraphTopology;
       case 12:
         return PayloadTypeId.LogDefaults;
       case 13:
@@ -4081,6 +4121,138 @@ class CommitContentsRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Arguments of `zanshin_graph_topology` (Story 4.12) — the whole revset's index-only topology,
+///  every argument a caller pass-through (FR-JJ-17); Rust bakes in no default.
+///  `revset`, `prioritize` and `short_prefixes` are required: an absent field is `jj.invalid_input`
+///  "<field> is required". A present EMPTY string is a value: an empty `short_prefixes` disables
+///  disambiguation (the CLI's toggle semantic), a blank `revset`/`prioritize` is a parse error.
+///  An absent `anchors` vector is the empty list; `with_timestamps` absent is `false`.
+class GraphTopologyRequest {
+  GraphTopologyRequest._(this._bc, this._bcOffset);
+  factory GraphTopologyRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GraphTopologyRequest> reader = _GraphTopologyRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revset => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get prioritize => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get shortPrefixes => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get anchors => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  bool get withTimestamps => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+
+  @override
+  String toString() {
+    return 'GraphTopologyRequest{kind: ${kind}, revset: ${revset}, prioritize: ${prioritize}, shortPrefixes: ${shortPrefixes}, anchors: ${anchors}, withTimestamps: ${withTimestamps}}';
+  }
+}
+
+class _GraphTopologyRequestReader extends fb.TableReader<GraphTopologyRequest> {
+  const _GraphTopologyRequestReader();
+
+  @override
+  GraphTopologyRequest createObject(fb.BufferContext bc, int offset) => GraphTopologyRequest._(bc, offset);
+}
+
+class GraphTopologyRequestBuilder {
+  GraphTopologyRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevsetOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPrioritizeOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addShortPrefixesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAnchorsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWithTimestamps(bool? withTimestamps) {
+    fbBuilder.addBool(5, withTimestamps);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GraphTopologyRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revset;
+  final String? _prioritize;
+  final String? _shortPrefixes;
+  final List<String>? _anchors;
+  final bool? _withTimestamps;
+
+  GraphTopologyRequestObjectBuilder({
+    RequestKind? kind,
+    String? revset,
+    String? prioritize,
+    String? shortPrefixes,
+    List<String>? anchors,
+    bool? withTimestamps,
+  }) : _kind = kind,
+       _revset = revset,
+       _prioritize = prioritize,
+       _shortPrefixes = shortPrefixes,
+       _anchors = anchors,
+       _withTimestamps = withTimestamps;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revsetOffset = _revset == null ? null : fbBuilder.writeString(_revset!);
+    final int? prioritizeOffset = _prioritize == null ? null : fbBuilder.writeString(_prioritize!);
+    final int? shortPrefixesOffset = _shortPrefixes == null ? null : fbBuilder.writeString(_shortPrefixes!);
+    final int? anchorsOffset = _anchors == null
+        ? null
+        : fbBuilder.writeList(_anchors!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revsetOffset);
+    fbBuilder.addOffset(2, prioritizeOffset);
+    fbBuilder.addOffset(3, shortPrefixesOffset);
+    fbBuilder.addOffset(4, anchorsOffset);
+    fbBuilder.addBool(5, _withTimestamps);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Opaque handle to an open repo session.
 ///  `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
 ///  Dart passes it back verbatim to zanshin_repo_close.
@@ -5648,164 +5820,79 @@ class ProgressObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One routed parent edge of a GraphRow (Story 4.2).
-///  `target_lane` is meaningful ONLY when kind != Missing (presence == the
-///  kind flag, same pattern as RepoDetect.suggested_kind / Bookmark.remote_name):
-///  a Missing edge never lands in a lane, so Rust writes 0 and Dart models it
-///  as null. flatc 25.12.19 rejects optional scalars (`= null`) for Dart.
-class GraphRowEdge {
-  GraphRowEdge._(this._bc, this._bcOffset);
-  factory GraphRowEdge(List<int> bytes) {
+///  One bookmark or tag entry of a GraphTopology node (Story 4.12, zanshin_jj::CommitRef).
+///  Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a remote entry,
+///  then `??` when conflicted or `*` when a local entry is not synced. `remote` is ABSENT
+///  (Dart null) for the local entry — null-for-absence. Tracked-and-synced remote entries are
+///  not emitted at all (the CLI's `collect_distinct_refs` rule: `is_local() || !synced`).
+class TopologyRef {
+  TopologyRef._(this._bc, this._bcOffset);
+  factory TopologyRef(List<int> bytes) {
     final rootRef = fb.BufferContext.fromBytes(bytes);
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<GraphRowEdge> reader = _GraphRowEdgeReader();
+  static const fb.Reader<TopologyRef> reader = _TopologyRefReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  int get targetLane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  GraphEdgeKind get kind => GraphEdgeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  int get node => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  TopologyRefKind get kind => TopologyRefKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
 
   @override
   String toString() {
-    return 'GraphRowEdge{target: ${target}, targetLane: ${targetLane}, kind: ${kind}}';
+    return 'TopologyRef{node: ${node}, kind: ${kind}, name: ${name}, remote: ${remote}, synced: ${synced}, conflicted: ${conflicted}}';
   }
 }
 
-class _GraphRowEdgeReader extends fb.TableReader<GraphRowEdge> {
-  const _GraphRowEdgeReader();
+class _TopologyRefReader extends fb.TableReader<TopologyRef> {
+  const _TopologyRefReader();
 
   @override
-  GraphRowEdge createObject(fb.BufferContext bc, int offset) => GraphRowEdge._(bc, offset);
+  TopologyRef createObject(fb.BufferContext bc, int offset) => TopologyRef._(bc, offset);
 }
 
-class GraphRowEdgeBuilder {
-  GraphRowEdgeBuilder(this.fbBuilder);
+class TopologyRefBuilder {
+  TopologyRefBuilder(this.fbBuilder);
 
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(6);
   }
 
-  int addTargetOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addNode(int? node) {
+    fbBuilder.addUint32(0, node);
     return fbBuilder.offset;
   }
 
-  int addTargetLane(int? targetLane) {
-    fbBuilder.addUint32(1, targetLane);
+  int addKind(TopologyRefKind? kind) {
+    fbBuilder.addUint8(1, kind?.value);
     return fbBuilder.offset;
-  }
-
-  int addKind(GraphEdgeKind? kind) {
-    fbBuilder.addInt8(2, kind?.value);
-    return fbBuilder.offset;
-  }
-
-  int finish() {
-    return fbBuilder.endTable();
-  }
-}
-
-class GraphRowEdgeObjectBuilder extends fb.ObjectBuilder {
-  final String? _target;
-  final int? _targetLane;
-  final GraphEdgeKind? _kind;
-
-  GraphRowEdgeObjectBuilder({
-    String? target,
-    int? targetLane,
-    GraphEdgeKind? kind,
-  }) : _target = target,
-       _targetLane = targetLane,
-       _kind = kind;
-
-  /// Finish building, and store into the [fbBuilder].
-  @override
-  int finish(fb.Builder fbBuilder) {
-    final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
-    fbBuilder.startTable(3);
-    fbBuilder.addOffset(0, targetOffset);
-    fbBuilder.addUint32(1, _targetLane);
-    fbBuilder.addInt8(2, _kind?.value);
-    return fbBuilder.endTable();
-  }
-
-  /// Convenience method to serialize to byte list.
-  @override
-  Uint8List toBytes([String? fileIdentifier]) {
-    final fbBuilder = fb.Builder(deduplicateTables: false);
-    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
-    return fbBuilder.buffer;
-  }
-}
-
-///  One bookmark or tag entry on a GraphRow (Story 4.8, zanshin_jj::CommitRef).
-///  Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a
-///  remote entry, then `??` when conflicted or `*` when a local entry is not
-///  synced. `remote` is ABSENT (Dart null) for the local entry — null-for-absence.
-///  Tracked-and-synced remote entries are not emitted at all (the CLI's
-///  `collect_distinct_refs` rule: `is_local() || !synced`).
-class GraphCommitRef {
-  GraphCommitRef._(this._bc, this._bcOffset);
-  factory GraphCommitRef(List<int> bytes) {
-    final rootRef = fb.BufferContext.fromBytes(bytes);
-    return reader.read(rootRef, 0);
-  }
-
-  static const fb.Reader<GraphCommitRef> reader = _GraphCommitRefReader();
-
-  final fb.BufferContext _bc;
-  final int _bcOffset;
-
-  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
-  bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
-  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
-
-  @override
-  String toString() {
-    return 'GraphCommitRef{name: ${name}, remote: ${remote}, synced: ${synced}, conflicted: ${conflicted}}';
-  }
-}
-
-class _GraphCommitRefReader extends fb.TableReader<GraphCommitRef> {
-  const _GraphCommitRefReader();
-
-  @override
-  GraphCommitRef createObject(fb.BufferContext bc, int offset) => GraphCommitRef._(bc, offset);
-}
-
-class GraphCommitRefBuilder {
-  GraphCommitRefBuilder(this.fbBuilder);
-
-  final fb.Builder fbBuilder;
-
-  void begin() {
-    fbBuilder.startTable(4);
   }
 
   int addNameOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
   int addRemoteOffset(int? offset) {
-    fbBuilder.addOffset(1, offset);
+    fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
   int addSynced(bool? synced) {
-    fbBuilder.addBool(2, synced);
+    fbBuilder.addBool(4, synced);
     return fbBuilder.offset;
   }
 
   int addConflicted(bool? conflicted) {
-    fbBuilder.addBool(3, conflicted);
+    fbBuilder.addBool(5, conflicted);
     return fbBuilder.offset;
   }
 
@@ -5814,18 +5901,24 @@ class GraphCommitRefBuilder {
   }
 }
 
-class GraphCommitRefObjectBuilder extends fb.ObjectBuilder {
+class TopologyRefObjectBuilder extends fb.ObjectBuilder {
+  final int? _node;
+  final TopologyRefKind? _kind;
   final String? _name;
   final String? _remote;
   final bool? _synced;
   final bool? _conflicted;
 
-  GraphCommitRefObjectBuilder({
+  TopologyRefObjectBuilder({
+    int? node,
+    TopologyRefKind? kind,
     String? name,
     String? remote,
     bool? synced,
     bool? conflicted,
-  }) : _name = name,
+  }) : _node = node,
+       _kind = kind,
+       _name = name,
        _remote = remote,
        _synced = synced,
        _conflicted = conflicted;
@@ -5835,11 +5928,13 @@ class GraphCommitRefObjectBuilder extends fb.ObjectBuilder {
   int finish(fb.Builder fbBuilder) {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
-    fbBuilder.startTable(4);
-    fbBuilder.addOffset(0, nameOffset);
-    fbBuilder.addOffset(1, remoteOffset);
-    fbBuilder.addBool(2, _synced);
-    fbBuilder.addBool(3, _conflicted);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint32(0, _node);
+    fbBuilder.addUint8(1, _kind?.value);
+    fbBuilder.addOffset(2, nameOffset);
+    fbBuilder.addOffset(3, remoteOffset);
+    fbBuilder.addBool(4, _synced);
+    fbBuilder.addBool(5, _conflicted);
     return fbBuilder.endTable();
   }
 
@@ -5852,40 +5947,37 @@ class GraphCommitRefObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One lane passing vertically THROUGH a GraphRow (Story 4.8,
-///  zanshin_graph::ActiveLane) — it neither starts nor ends at that row's node.
-///  `kind` is the kind of the edge that opened the segment, so a renderer can
-///  style it without reading any neighbouring row; the color is lane % PALETTE_SIZE.
-class GraphActiveLane {
-  GraphActiveLane._(this._bc, this._bcOffset);
-  factory GraphActiveLane(List<int> bytes) {
+///  One workspace whose working-copy commit is a GraphTopology node (Story 4.12).
+class TopologyWorkingCopy {
+  TopologyWorkingCopy._(this._bc, this._bcOffset);
+  factory TopologyWorkingCopy(List<int> bytes) {
     final rootRef = fb.BufferContext.fromBytes(bytes);
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<GraphActiveLane> reader = _GraphActiveLaneReader();
+  static const fb.Reader<TopologyWorkingCopy> reader = _TopologyWorkingCopyReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  int get lane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
-  GraphEdgeKind get kind => GraphEdgeKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  int get node => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  String? get workspace => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
 
   @override
   String toString() {
-    return 'GraphActiveLane{lane: ${lane}, kind: ${kind}}';
+    return 'TopologyWorkingCopy{node: ${node}, workspace: ${workspace}}';
   }
 }
 
-class _GraphActiveLaneReader extends fb.TableReader<GraphActiveLane> {
-  const _GraphActiveLaneReader();
+class _TopologyWorkingCopyReader extends fb.TableReader<TopologyWorkingCopy> {
+  const _TopologyWorkingCopyReader();
 
   @override
-  GraphActiveLane createObject(fb.BufferContext bc, int offset) => GraphActiveLane._(bc, offset);
+  TopologyWorkingCopy createObject(fb.BufferContext bc, int offset) => TopologyWorkingCopy._(bc, offset);
 }
 
-class GraphActiveLaneBuilder {
-  GraphActiveLaneBuilder(this.fbBuilder);
+class TopologyWorkingCopyBuilder {
+  TopologyWorkingCopyBuilder(this.fbBuilder);
 
   final fb.Builder fbBuilder;
 
@@ -5893,13 +5985,13 @@ class GraphActiveLaneBuilder {
     fbBuilder.startTable(2);
   }
 
-  int addLane(int? lane) {
-    fbBuilder.addUint32(0, lane);
+  int addNode(int? node) {
+    fbBuilder.addUint32(0, node);
     return fbBuilder.offset;
   }
 
-  int addKind(GraphEdgeKind? kind) {
-    fbBuilder.addInt8(1, kind?.value);
+  int addWorkspaceOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
     return fbBuilder.offset;
   }
 
@@ -5908,22 +6000,23 @@ class GraphActiveLaneBuilder {
   }
 }
 
-class GraphActiveLaneObjectBuilder extends fb.ObjectBuilder {
-  final int? _lane;
-  final GraphEdgeKind? _kind;
+class TopologyWorkingCopyObjectBuilder extends fb.ObjectBuilder {
+  final int? _node;
+  final String? _workspace;
 
-  GraphActiveLaneObjectBuilder({
-    int? lane,
-    GraphEdgeKind? kind,
-  }) : _lane = lane,
-       _kind = kind;
+  TopologyWorkingCopyObjectBuilder({
+    int? node,
+    String? workspace,
+  }) : _node = node,
+       _workspace = workspace;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
+    final int? workspaceOffset = _workspace == null ? null : fbBuilder.writeString(_workspace!);
     fbBuilder.startTable(2);
-    fbBuilder.addUint32(0, _lane);
-    fbBuilder.addInt8(1, _kind?.value);
+    fbBuilder.addUint32(0, _node);
+    fbBuilder.addOffset(1, workspaceOffset);
     return fbBuilder.endTable();
   }
 
@@ -5936,495 +6029,195 @@ class GraphActiveLaneObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  `jj log`-parity display metadata for one commit row (Story 4.8,
-///  zanshin_jj::CommitMeta), extracted from the SAME head-resolved snapshot as the
-///  lane assignment. Ids are full; the `*_prefix_len` fields are the
-///  shortest-unique-prefix lengths the UI highlights.
+///  The whole revset's index-only topology at one operation (Story 4.12, zanshin_jj::GraphTopology)
+///  — the answer of `zanshin_graph_topology`, as scalar vectors indexed by node (n nodes, in
+///  `jj log` order: children before parents, `prioritize` first) and CSR offset vectors for the
+///  edges (E) and the anchors (A).
 ///
-///  `change_offset` is meaningful ONLY when has_change_offset == true (presence
-///  pair, same pattern as GraphRowEdge.target_lane: flatc 25.12.19 rejects
-///  optional scalars for Dart). The CLI renders `/<offset>` only for
-///  hidden/divergent commits — that is a UI decision, reproducible from the flags.
-class GraphRowMeta {
-  GraphRowMeta._(this._bc, this._bcOffset);
-  factory GraphRowMeta(List<int> bytes) {
+///  Every vector except `timestamps` is ALWAYS written, empty when n = 0. A reader treats an
+///  absent one, or one of the wrong length, as a malformed buffer.
+///
+///  - `operation_id`: the full hex id of the operation this call loaded (after its own pre-verb
+///    snapshot, if that wrote one); `zanshin_commit_contents` reads the object half pinned to it.
+///  - `all_count`: `|all()|`, counted by iterating — the VISIBLE commits only, so a revset that
+///    names hidden commits can yield more nodes than this.
+///  - `commit_ids` / `change_ids`: the raw id bytes, n × stride, node i at [i × stride,
+///    (i + 1) × stride). `commit_id_stride` / `change_id_stride` are the byte lengths of one id
+///    (one length per column; both 0 iff n = 0). A reader formats a commit id as lowercase hex and
+///    a change id as jj reverse-hex (nibble v → 'z' − v, high nibble first: 0 → 'z', 15 → 'k').
+///  - `flags`: one byte per node — bit 0 working_copy (this workspace's @), 1 immutable
+///    (in ::(immutable_heads() | root())), 2 hidden, 3 divergent, 4 root, 5 has_change_offset;
+///    bits 6-7 are zero.
+///  - `change_offset`: the node's index among the commits sharing its change id; meaningful ONLY
+///    when flags bit 5 is set (presence bit — flatc 25.12.19 has no optional scalar for Dart),
+///    0 otherwise.
+///  - `change_id_prefix_len` / `commit_id_prefix_len`: the shortest unique prefix lengths in hex
+///    digits, within the `short_prefixes` disambiguation set (or the full index when disabled).
+///  - `parent_count`: the commit's real parent count, Missing parents included (0 for the root);
+///    read from the index, never from the edges.
+///  - Edges, CSR: node i's edges are [edge_start[i], edge_start[i + 1]); `edge_start` has n + 1
+///    entries, edge_start[0] == 0, edge_start[n] == E. Within a node they are in jj's stream
+///    order, repeated targets kept (a merge can carry a Direct AND an Indirect edge to one node).
+///    `edge_target` is the target's node index, defined iff `edge_kind != Missing`; a Missing
+///    edge's slot holds -1 (a reader that skips the kind check fails loudly instead of linking
+///    node 0) and Dart reads it as null.
+///  - `timestamps`: the committer timestamps, millis since the Unix epoch — ABSENT iff the call
+///    did not request them; when present, n entries, and the root's slot is 0 (Dart null: the
+///    root carries none).
+///  - `refs`: sorted by node; per node its bookmarks, then its tags, each in zanshin-jj's order.
+///  - `working_copies`: sorted by node; per node in zanshin-jj's order. Empty in a
+///    single-workspace repo (the CLI's guard).
+///  - Anchors, CSR: anchor a's nodes are anchor_node[anchor_start[a] .. anchor_start[a + 1]],
+///    ascending (= `jj log` order); `anchor_start` has A + 1 entries.
+class GraphTopology {
+  GraphTopology._(this._bc, this._bcOffset);
+  factory GraphTopology(List<int> bytes) {
     final rootRef = fb.BufferContext.fromBytes(bytes);
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<GraphRowMeta> reader = _GraphRowMetaReader();
+  static const fb.Reader<GraphTopology> reader = _GraphTopologyReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  int get changeIdPrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  int get commitIdPrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
-  int get changeOffset => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
-  bool get hasChangeOffset => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
-  String? get authorName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
-  String? get authorEmail => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
-  int get committerTimestampMillis => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 18, 0);
-  int get committerTzOffsetMinutes => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 20, 0);
-  List<GraphCommitRef>? get bookmarks =>
-      const fb.ListReader<GraphCommitRef>(GraphCommitRef.reader).vTableGetNullable(_bc, _bcOffset, 22);
-  List<GraphCommitRef>? get tags =>
-      const fb.ListReader<GraphCommitRef>(GraphCommitRef.reader).vTableGetNullable(_bc, _bcOffset, 24);
-  List<String>? get workingCopies =>
-      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 26);
-  bool get workingCopy => const fb.BoolReader().vTableGet(_bc, _bcOffset, 28, false);
-  bool get immutable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 30, false);
-  bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 32, false);
-  bool get empty => const fb.BoolReader().vTableGet(_bc, _bcOffset, 34, false);
-  bool get hidden => const fb.BoolReader().vTableGet(_bc, _bcOffset, 36, false);
-  bool get divergent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 38, false);
-  bool get root => const fb.BoolReader().vTableGet(_bc, _bcOffset, 40, false);
-  String? get descriptionFirstLine => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 42);
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  int get allCount => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  List<int>? get commitIds => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<int>? get changeIds => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 10);
+  int get commitIdStride => const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 12, 0);
+  int get changeIdStride => const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0);
+  List<int>? get flags => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 16);
+  List<int>? get changeOffset => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 18);
+  List<int>? get changeIdPrefixLen => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 20);
+  List<int>? get commitIdPrefixLen => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 22);
+  List<int>? get parentCount => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 24);
+  List<int>? get edgeStart => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 26);
+  List<int>? get edgeTarget => const fb.ListReader<int>(fb.Int32Reader()).vTableGetNullable(_bc, _bcOffset, 28);
+  List<GraphEdgeKind>? get edgeKind =>
+      const fb.ListReader<GraphEdgeKind>(GraphEdgeKind.reader).vTableGetNullable(_bc, _bcOffset, 30);
+  List<int>? get timestamps => const fb.ListReader<int>(fb.Int64Reader()).vTableGetNullable(_bc, _bcOffset, 32);
+  List<TopologyRef>? get refs =>
+      const fb.ListReader<TopologyRef>(TopologyRef.reader).vTableGetNullable(_bc, _bcOffset, 34);
+  List<TopologyWorkingCopy>? get workingCopies =>
+      const fb.ListReader<TopologyWorkingCopy>(TopologyWorkingCopy.reader).vTableGetNullable(_bc, _bcOffset, 36);
+  List<int>? get anchorStart => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 38);
+  List<int>? get anchorNode => const fb.ListReader<int>(fb.Uint32Reader()).vTableGetNullable(_bc, _bcOffset, 40);
 
   @override
   String toString() {
-    return 'GraphRowMeta{changeId: ${changeId}, changeIdPrefixLen: ${changeIdPrefixLen}, commitIdPrefixLen: ${commitIdPrefixLen}, changeOffset: ${changeOffset}, hasChangeOffset: ${hasChangeOffset}, authorName: ${authorName}, authorEmail: ${authorEmail}, committerTimestampMillis: ${committerTimestampMillis}, committerTzOffsetMinutes: ${committerTzOffsetMinutes}, bookmarks: ${bookmarks}, tags: ${tags}, workingCopies: ${workingCopies}, workingCopy: ${workingCopy}, immutable: ${immutable}, conflict: ${conflict}, empty: ${empty}, hidden: ${hidden}, divergent: ${divergent}, root: ${root}, descriptionFirstLine: ${descriptionFirstLine}}';
+    return 'GraphTopology{operationId: ${operationId}, allCount: ${allCount}, commitIds: ${commitIds}, changeIds: ${changeIds}, commitIdStride: ${commitIdStride}, changeIdStride: ${changeIdStride}, flags: ${flags}, changeOffset: ${changeOffset}, changeIdPrefixLen: ${changeIdPrefixLen}, commitIdPrefixLen: ${commitIdPrefixLen}, parentCount: ${parentCount}, edgeStart: ${edgeStart}, edgeTarget: ${edgeTarget}, edgeKind: ${edgeKind}, timestamps: ${timestamps}, refs: ${refs}, workingCopies: ${workingCopies}, anchorStart: ${anchorStart}, anchorNode: ${anchorNode}}';
   }
 }
 
-class _GraphRowMetaReader extends fb.TableReader<GraphRowMeta> {
-  const _GraphRowMetaReader();
+class _GraphTopologyReader extends fb.TableReader<GraphTopology> {
+  const _GraphTopologyReader();
 
   @override
-  GraphRowMeta createObject(fb.BufferContext bc, int offset) => GraphRowMeta._(bc, offset);
+  GraphTopology createObject(fb.BufferContext bc, int offset) => GraphTopology._(bc, offset);
 }
 
-class GraphRowMetaBuilder {
-  GraphRowMetaBuilder(this.fbBuilder);
+class GraphTopologyBuilder {
+  GraphTopologyBuilder(this.fbBuilder);
 
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(20);
+    fbBuilder.startTable(19);
   }
 
-  int addChangeIdOffset(int? offset) {
+  int addOperationIdOffset(int? offset) {
     fbBuilder.addOffset(0, offset);
     return fbBuilder.offset;
   }
 
-  int addChangeIdPrefixLen(int? changeIdPrefixLen) {
-    fbBuilder.addUint32(1, changeIdPrefixLen);
+  int addAllCount(int? allCount) {
+    fbBuilder.addUint64(1, allCount);
     return fbBuilder.offset;
   }
 
-  int addCommitIdPrefixLen(int? commitIdPrefixLen) {
-    fbBuilder.addUint32(2, commitIdPrefixLen);
+  int addCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
   }
 
-  int addChangeOffset(int? changeOffset) {
-    fbBuilder.addUint32(3, changeOffset);
-    return fbBuilder.offset;
-  }
-
-  int addHasChangeOffset(bool? hasChangeOffset) {
-    fbBuilder.addBool(4, hasChangeOffset);
-    return fbBuilder.offset;
-  }
-
-  int addAuthorNameOffset(int? offset) {
-    fbBuilder.addOffset(5, offset);
-    return fbBuilder.offset;
-  }
-
-  int addAuthorEmailOffset(int? offset) {
-    fbBuilder.addOffset(6, offset);
-    return fbBuilder.offset;
-  }
-
-  int addCommitterTimestampMillis(int? committerTimestampMillis) {
-    fbBuilder.addInt64(7, committerTimestampMillis);
-    return fbBuilder.offset;
-  }
-
-  int addCommitterTzOffsetMinutes(int? committerTzOffsetMinutes) {
-    fbBuilder.addInt32(8, committerTzOffsetMinutes);
-    return fbBuilder.offset;
-  }
-
-  int addBookmarksOffset(int? offset) {
-    fbBuilder.addOffset(9, offset);
-    return fbBuilder.offset;
-  }
-
-  int addTagsOffset(int? offset) {
-    fbBuilder.addOffset(10, offset);
-    return fbBuilder.offset;
-  }
-
-  int addWorkingCopiesOffset(int? offset) {
-    fbBuilder.addOffset(11, offset);
-    return fbBuilder.offset;
-  }
-
-  int addWorkingCopy(bool? workingCopy) {
-    fbBuilder.addBool(12, workingCopy);
-    return fbBuilder.offset;
-  }
-
-  int addImmutable(bool? immutable) {
-    fbBuilder.addBool(13, immutable);
-    return fbBuilder.offset;
-  }
-
-  int addConflict(bool? conflict) {
-    fbBuilder.addBool(14, conflict);
-    return fbBuilder.offset;
-  }
-
-  int addEmpty(bool? empty) {
-    fbBuilder.addBool(15, empty);
-    return fbBuilder.offset;
-  }
-
-  int addHidden(bool? hidden) {
-    fbBuilder.addBool(16, hidden);
-    return fbBuilder.offset;
-  }
-
-  int addDivergent(bool? divergent) {
-    fbBuilder.addBool(17, divergent);
-    return fbBuilder.offset;
-  }
-
-  int addRoot(bool? root) {
-    fbBuilder.addBool(18, root);
-    return fbBuilder.offset;
-  }
-
-  int addDescriptionFirstLineOffset(int? offset) {
-    fbBuilder.addOffset(19, offset);
-    return fbBuilder.offset;
-  }
-
-  int finish() {
-    return fbBuilder.endTable();
-  }
-}
-
-class GraphRowMetaObjectBuilder extends fb.ObjectBuilder {
-  final String? _changeId;
-  final int? _changeIdPrefixLen;
-  final int? _commitIdPrefixLen;
-  final int? _changeOffset;
-  final bool? _hasChangeOffset;
-  final String? _authorName;
-  final String? _authorEmail;
-  final int? _committerTimestampMillis;
-  final int? _committerTzOffsetMinutes;
-  final List<GraphCommitRefObjectBuilder>? _bookmarks;
-  final List<GraphCommitRefObjectBuilder>? _tags;
-  final List<String>? _workingCopies;
-  final bool? _workingCopy;
-  final bool? _immutable;
-  final bool? _conflict;
-  final bool? _empty;
-  final bool? _hidden;
-  final bool? _divergent;
-  final bool? _root;
-  final String? _descriptionFirstLine;
-
-  GraphRowMetaObjectBuilder({
-    String? changeId,
-    int? changeIdPrefixLen,
-    int? commitIdPrefixLen,
-    int? changeOffset,
-    bool? hasChangeOffset,
-    String? authorName,
-    String? authorEmail,
-    int? committerTimestampMillis,
-    int? committerTzOffsetMinutes,
-    List<GraphCommitRefObjectBuilder>? bookmarks,
-    List<GraphCommitRefObjectBuilder>? tags,
-    List<String>? workingCopies,
-    bool? workingCopy,
-    bool? immutable,
-    bool? conflict,
-    bool? empty,
-    bool? hidden,
-    bool? divergent,
-    bool? root,
-    String? descriptionFirstLine,
-  }) : _changeId = changeId,
-       _changeIdPrefixLen = changeIdPrefixLen,
-       _commitIdPrefixLen = commitIdPrefixLen,
-       _changeOffset = changeOffset,
-       _hasChangeOffset = hasChangeOffset,
-       _authorName = authorName,
-       _authorEmail = authorEmail,
-       _committerTimestampMillis = committerTimestampMillis,
-       _committerTzOffsetMinutes = committerTzOffsetMinutes,
-       _bookmarks = bookmarks,
-       _tags = tags,
-       _workingCopies = workingCopies,
-       _workingCopy = workingCopy,
-       _immutable = immutable,
-       _conflict = conflict,
-       _empty = empty,
-       _hidden = hidden,
-       _divergent = divergent,
-       _root = root,
-       _descriptionFirstLine = descriptionFirstLine;
-
-  /// Finish building, and store into the [fbBuilder].
-  @override
-  int finish(fb.Builder fbBuilder) {
-    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
-    final int? authorNameOffset = _authorName == null ? null : fbBuilder.writeString(_authorName!);
-    final int? authorEmailOffset = _authorEmail == null ? null : fbBuilder.writeString(_authorEmail!);
-    final int? bookmarksOffset = _bookmarks == null
-        ? null
-        : fbBuilder.writeList(_bookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? tagsOffset = _tags == null
-        ? null
-        : fbBuilder.writeList(_tags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? workingCopiesOffset = _workingCopies == null
-        ? null
-        : fbBuilder.writeList(_workingCopies!.map(fbBuilder.writeString).toList());
-    final int? descriptionFirstLineOffset = _descriptionFirstLine == null
-        ? null
-        : fbBuilder.writeString(_descriptionFirstLine!);
-    fbBuilder.startTable(20);
-    fbBuilder.addOffset(0, changeIdOffset);
-    fbBuilder.addUint32(1, _changeIdPrefixLen);
-    fbBuilder.addUint32(2, _commitIdPrefixLen);
-    fbBuilder.addUint32(3, _changeOffset);
-    fbBuilder.addBool(4, _hasChangeOffset);
-    fbBuilder.addOffset(5, authorNameOffset);
-    fbBuilder.addOffset(6, authorEmailOffset);
-    fbBuilder.addInt64(7, _committerTimestampMillis);
-    fbBuilder.addInt32(8, _committerTzOffsetMinutes);
-    fbBuilder.addOffset(9, bookmarksOffset);
-    fbBuilder.addOffset(10, tagsOffset);
-    fbBuilder.addOffset(11, workingCopiesOffset);
-    fbBuilder.addBool(12, _workingCopy);
-    fbBuilder.addBool(13, _immutable);
-    fbBuilder.addBool(14, _conflict);
-    fbBuilder.addBool(15, _empty);
-    fbBuilder.addBool(16, _hidden);
-    fbBuilder.addBool(17, _divergent);
-    fbBuilder.addBool(18, _root);
-    fbBuilder.addOffset(19, descriptionFirstLineOffset);
-    return fbBuilder.endTable();
-  }
-
-  /// Convenience method to serialize to byte list.
-  @override
-  Uint8List toBytes([String? fileIdentifier]) {
-    final fbBuilder = fb.Builder(deduplicateTables: false);
-    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
-    return fbBuilder.buffer;
-  }
-}
-
-///  One lane-assigned commit row (zanshin_graph::Row). Rows carry a COMMIT id,
-///  never a change id (change ids are ambiguous for divergent changes).
-///
-///  `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
-///  splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
-///  `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
-///  is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
-///  Dart see as null). On a commit row `meta` is always present.
-///
-///  Consequence: with synthetic elided rows ON (the default) `commit_id` is NOT
-///  unique across rows — the synthetic row and the real commit it stands for
-///  share it, and a child's GraphRowEdge.target names that id with no synthetic
-///  marker. A synthetic row always sits IMMEDIATELY after the child that elided
-///  to it, and `lane` / `target_lane` are the linkage. Do not use `commit_id`
-///  alone as a row key.
-class GraphRow {
-  GraphRow._(this._bc, this._bcOffset);
-  factory GraphRow(List<int> bytes) {
-    final rootRef = fb.BufferContext.fromBytes(bytes);
-    return reader.read(rootRef, 0);
-  }
-
-  static const fb.Reader<GraphRow> reader = _GraphRowReader();
-
-  final fb.BufferContext _bc;
-  final int _bcOffset;
-
-  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  int get lane => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  int get colorIdx => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
-  List<GraphRowEdge>? get edges =>
-      const fb.ListReader<GraphRowEdge>(GraphRowEdge.reader).vTableGetNullable(_bc, _bcOffset, 10);
-  List<GraphActiveLane>? get activeLanes =>
-      const fb.ListReader<GraphActiveLane>(GraphActiveLane.reader).vTableGetNullable(_bc, _bcOffset, 12);
-  bool get syntheticElided => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
-  GraphRowMeta? get meta => GraphRowMeta.reader.vTableGetNullable(_bc, _bcOffset, 16);
-
-  @override
-  String toString() {
-    return 'GraphRow{commitId: ${commitId}, lane: ${lane}, colorIdx: ${colorIdx}, edges: ${edges}, activeLanes: ${activeLanes}, syntheticElided: ${syntheticElided}, meta: ${meta}}';
-  }
-}
-
-class _GraphRowReader extends fb.TableReader<GraphRow> {
-  const _GraphRowReader();
-
-  @override
-  GraphRow createObject(fb.BufferContext bc, int offset) => GraphRow._(bc, offset);
-}
-
-class GraphRowBuilder {
-  GraphRowBuilder(this.fbBuilder);
-
-  final fb.Builder fbBuilder;
-
-  void begin() {
-    fbBuilder.startTable(7);
-  }
-
-  int addCommitIdOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
-    return fbBuilder.offset;
-  }
-
-  int addLane(int? lane) {
-    fbBuilder.addUint32(1, lane);
-    return fbBuilder.offset;
-  }
-
-  int addColorIdx(int? colorIdx) {
-    fbBuilder.addUint32(2, colorIdx);
-    return fbBuilder.offset;
-  }
-
-  int addEdgesOffset(int? offset) {
+  int addChangeIdsOffset(int? offset) {
     fbBuilder.addOffset(3, offset);
     return fbBuilder.offset;
   }
 
-  int addActiveLanesOffset(int? offset) {
-    fbBuilder.addOffset(4, offset);
+  int addCommitIdStride(int? commitIdStride) {
+    fbBuilder.addUint8(4, commitIdStride);
     return fbBuilder.offset;
   }
 
-  int addSyntheticElided(bool? syntheticElided) {
-    fbBuilder.addBool(5, syntheticElided);
+  int addChangeIdStride(int? changeIdStride) {
+    fbBuilder.addUint8(5, changeIdStride);
     return fbBuilder.offset;
   }
 
-  int addMetaOffset(int? offset) {
+  int addFlagsOffset(int? offset) {
     fbBuilder.addOffset(6, offset);
     return fbBuilder.offset;
   }
 
-  int finish() {
-    return fbBuilder.endTable();
-  }
-}
-
-class GraphRowObjectBuilder extends fb.ObjectBuilder {
-  final String? _commitId;
-  final int? _lane;
-  final int? _colorIdx;
-  final List<GraphRowEdgeObjectBuilder>? _edges;
-  final List<GraphActiveLaneObjectBuilder>? _activeLanes;
-  final bool? _syntheticElided;
-  final GraphRowMetaObjectBuilder? _meta;
-
-  GraphRowObjectBuilder({
-    String? commitId,
-    int? lane,
-    int? colorIdx,
-    List<GraphRowEdgeObjectBuilder>? edges,
-    List<GraphActiveLaneObjectBuilder>? activeLanes,
-    bool? syntheticElided,
-    GraphRowMetaObjectBuilder? meta,
-  }) : _commitId = commitId,
-       _lane = lane,
-       _colorIdx = colorIdx,
-       _edges = edges,
-       _activeLanes = activeLanes,
-       _syntheticElided = syntheticElided,
-       _meta = meta;
-
-  /// Finish building, and store into the [fbBuilder].
-  @override
-  int finish(fb.Builder fbBuilder) {
-    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
-    final int? edgesOffset = _edges == null
-        ? null
-        : fbBuilder.writeList(_edges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? activeLanesOffset = _activeLanes == null
-        ? null
-        : fbBuilder.writeList(_activeLanes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? metaOffset = _meta?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(7);
-    fbBuilder.addOffset(0, commitIdOffset);
-    fbBuilder.addUint32(1, _lane);
-    fbBuilder.addUint32(2, _colorIdx);
-    fbBuilder.addOffset(3, edgesOffset);
-    fbBuilder.addOffset(4, activeLanesOffset);
-    fbBuilder.addBool(5, _syntheticElided);
-    fbBuilder.addOffset(6, metaOffset);
-    return fbBuilder.endTable();
-  }
-
-  /// Convenience method to serialize to byte list.
-  @override
-  Uint8List toBytes([String? fileIdentifier]) {
-    final fbBuilder = fb.Builder(deduplicateTables: false);
-    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
-    return fbBuilder.buffer;
-  }
-}
-
-///  A slice of the lane-assigned commit graph, in stream (`jj log`) order.
-///  Return-all semantics (Story 4.4): total_rows == rows.length. Windowing is
-///  deferred past WIP; if it lands later it may set total_rows > rows.length.
-class GraphSlice {
-  GraphSlice._(this._bc, this._bcOffset);
-  factory GraphSlice(List<int> bytes) {
-    final rootRef = fb.BufferContext.fromBytes(bytes);
-    return reader.read(rootRef, 0);
-  }
-
-  static const fb.Reader<GraphSlice> reader = _GraphSliceReader();
-
-  final fb.BufferContext _bc;
-  final int _bcOffset;
-
-  List<GraphRow>? get rows => const fb.ListReader<GraphRow>(GraphRow.reader).vTableGetNullable(_bc, _bcOffset, 4);
-  int get totalRows => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
-
-  @override
-  String toString() {
-    return 'GraphSlice{rows: ${rows}, totalRows: ${totalRows}}';
-  }
-}
-
-class _GraphSliceReader extends fb.TableReader<GraphSlice> {
-  const _GraphSliceReader();
-
-  @override
-  GraphSlice createObject(fb.BufferContext bc, int offset) => GraphSlice._(bc, offset);
-}
-
-class GraphSliceBuilder {
-  GraphSliceBuilder(this.fbBuilder);
-
-  final fb.Builder fbBuilder;
-
-  void begin() {
-    fbBuilder.startTable(2);
-  }
-
-  int addRowsOffset(int? offset) {
-    fbBuilder.addOffset(0, offset);
+  int addChangeOffsetOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
     return fbBuilder.offset;
   }
 
-  int addTotalRows(int? totalRows) {
-    fbBuilder.addUint32(1, totalRows);
+  int addChangeIdPrefixLenOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdPrefixLenOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
+  int addParentCountOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEdgeStartOffset(int? offset) {
+    fbBuilder.addOffset(11, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEdgeTargetOffset(int? offset) {
+    fbBuilder.addOffset(12, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEdgeKindOffset(int? offset) {
+    fbBuilder.addOffset(13, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTimestampsOffset(int? offset) {
+    fbBuilder.addOffset(14, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRefsOffset(int? offset) {
+    fbBuilder.addOffset(15, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopiesOffset(int? offset) {
+    fbBuilder.addOffset(16, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAnchorStartOffset(int? offset) {
+    fbBuilder.addOffset(17, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAnchorNodeOffset(int? offset) {
+    fbBuilder.addOffset(18, offset);
     return fbBuilder.offset;
   }
 
@@ -6433,25 +6226,116 @@ class GraphSliceBuilder {
   }
 }
 
-class GraphSliceObjectBuilder extends fb.ObjectBuilder {
-  final List<GraphRowObjectBuilder>? _rows;
-  final int? _totalRows;
+class GraphTopologyObjectBuilder extends fb.ObjectBuilder {
+  final String? _operationId;
+  final int? _allCount;
+  final List<int>? _commitIds;
+  final List<int>? _changeIds;
+  final int? _commitIdStride;
+  final int? _changeIdStride;
+  final List<int>? _flags;
+  final List<int>? _changeOffset;
+  final List<int>? _changeIdPrefixLen;
+  final List<int>? _commitIdPrefixLen;
+  final List<int>? _parentCount;
+  final List<int>? _edgeStart;
+  final List<int>? _edgeTarget;
+  final List<GraphEdgeKind>? _edgeKind;
+  final List<int>? _timestamps;
+  final List<TopologyRefObjectBuilder>? _refs;
+  final List<TopologyWorkingCopyObjectBuilder>? _workingCopies;
+  final List<int>? _anchorStart;
+  final List<int>? _anchorNode;
 
-  GraphSliceObjectBuilder({
-    List<GraphRowObjectBuilder>? rows,
-    int? totalRows,
-  }) : _rows = rows,
-       _totalRows = totalRows;
+  GraphTopologyObjectBuilder({
+    String? operationId,
+    int? allCount,
+    List<int>? commitIds,
+    List<int>? changeIds,
+    int? commitIdStride,
+    int? changeIdStride,
+    List<int>? flags,
+    List<int>? changeOffset,
+    List<int>? changeIdPrefixLen,
+    List<int>? commitIdPrefixLen,
+    List<int>? parentCount,
+    List<int>? edgeStart,
+    List<int>? edgeTarget,
+    List<GraphEdgeKind>? edgeKind,
+    List<int>? timestamps,
+    List<TopologyRefObjectBuilder>? refs,
+    List<TopologyWorkingCopyObjectBuilder>? workingCopies,
+    List<int>? anchorStart,
+    List<int>? anchorNode,
+  }) : _operationId = operationId,
+       _allCount = allCount,
+       _commitIds = commitIds,
+       _changeIds = changeIds,
+       _commitIdStride = commitIdStride,
+       _changeIdStride = changeIdStride,
+       _flags = flags,
+       _changeOffset = changeOffset,
+       _changeIdPrefixLen = changeIdPrefixLen,
+       _commitIdPrefixLen = commitIdPrefixLen,
+       _parentCount = parentCount,
+       _edgeStart = edgeStart,
+       _edgeTarget = edgeTarget,
+       _edgeKind = edgeKind,
+       _timestamps = timestamps,
+       _refs = refs,
+       _workingCopies = workingCopies,
+       _anchorStart = anchorStart,
+       _anchorNode = anchorNode;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? rowsOffset = _rows == null
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    final int? commitIdsOffset = _commitIds == null ? null : fbBuilder.writeListUint8(_commitIds!);
+    final int? changeIdsOffset = _changeIds == null ? null : fbBuilder.writeListUint8(_changeIds!);
+    final int? flagsOffset = _flags == null ? null : fbBuilder.writeListUint8(_flags!);
+    final int? changeOffsetOffset = _changeOffset == null ? null : fbBuilder.writeListUint32(_changeOffset!);
+    final int? changeIdPrefixLenOffset = _changeIdPrefixLen == null
         ? null
-        : fbBuilder.writeList(_rows!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(2);
-    fbBuilder.addOffset(0, rowsOffset);
-    fbBuilder.addUint32(1, _totalRows);
+        : fbBuilder.writeListUint8(_changeIdPrefixLen!);
+    final int? commitIdPrefixLenOffset = _commitIdPrefixLen == null
+        ? null
+        : fbBuilder.writeListUint8(_commitIdPrefixLen!);
+    final int? parentCountOffset = _parentCount == null ? null : fbBuilder.writeListUint32(_parentCount!);
+    final int? edgeStartOffset = _edgeStart == null ? null : fbBuilder.writeListUint32(_edgeStart!);
+    final int? edgeTargetOffset = _edgeTarget == null ? null : fbBuilder.writeListInt32(_edgeTarget!);
+    final int? edgeKindOffset = _edgeKind == null
+        ? null
+        : fbBuilder.writeListInt8(_edgeKind!.map((f) => f.value).toList());
+    final int? timestampsOffset = _timestamps == null ? null : fbBuilder.writeListInt64(_timestamps!);
+    final int? refsOffset = _refs == null
+        ? null
+        : fbBuilder.writeList(_refs!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? workingCopiesOffset = _workingCopies == null
+        ? null
+        : fbBuilder.writeList(_workingCopies!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? anchorStartOffset = _anchorStart == null ? null : fbBuilder.writeListUint32(_anchorStart!);
+    final int? anchorNodeOffset = _anchorNode == null ? null : fbBuilder.writeListUint32(_anchorNode!);
+    fbBuilder.startTable(19);
+    fbBuilder.addOffset(0, operationIdOffset);
+    fbBuilder.addUint64(1, _allCount);
+    fbBuilder.addOffset(2, commitIdsOffset);
+    fbBuilder.addOffset(3, changeIdsOffset);
+    fbBuilder.addUint8(4, _commitIdStride);
+    fbBuilder.addUint8(5, _changeIdStride);
+    fbBuilder.addOffset(6, flagsOffset);
+    fbBuilder.addOffset(7, changeOffsetOffset);
+    fbBuilder.addOffset(8, changeIdPrefixLenOffset);
+    fbBuilder.addOffset(9, commitIdPrefixLenOffset);
+    fbBuilder.addOffset(10, parentCountOffset);
+    fbBuilder.addOffset(11, edgeStartOffset);
+    fbBuilder.addOffset(12, edgeTargetOffset);
+    fbBuilder.addOffset(13, edgeKindOffset);
+    fbBuilder.addOffset(14, timestampsOffset);
+    fbBuilder.addOffset(15, refsOffset);
+    fbBuilder.addOffset(16, workingCopiesOffset);
+    fbBuilder.addOffset(17, anchorStartOffset);
+    fbBuilder.addOffset(18, anchorNodeOffset);
     return fbBuilder.endTable();
   }
 
@@ -6467,10 +6351,13 @@ class GraphSliceObjectBuilder extends fb.ObjectBuilder {
 ///  The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
 ///  CLI would apply, after their `[revsets]` / `[ui]` config overrides.
 ///
-///  Offered as pre-fills for zanshin_graph_slice's pass-through parameters
-///  (FR-JJ-17); nothing is applied silently, the caller decides. `short_prefixes`
-///  falls back to `log` when `revsets.short-prefixes` is ABSENT; an explicit
-///  empty string means disambiguation is DISABLED and is returned verbatim.
+///  Offered as pre-fills for zanshin_graph_topology's `revset` / `prioritize` /
+///  `short_prefixes` pass-throughs (FR-JJ-17); nothing is applied silently, the
+///  caller decides. `short_prefixes` falls back to `log` when
+///  `revsets.short-prefixes` is ABSENT; an explicit empty string means
+///  disambiguation is DISABLED and is returned verbatim. `synthetic_elided` is the
+///  effective config value only — the topology call takes no such parameter
+///  (Story 4.12: it emits no synthetic nodes).
 class LogDefaults {
   LogDefaults._(this._bc, this._bcOffset);
   factory LogDefaults(List<int> bytes) {
@@ -7601,8 +7488,8 @@ class FileAnnotationObjectBuilder extends fb.ObjectBuilder {
 ///  One matching line of `zanshin_file_search` (Story 9.4).
 ///
 ///  `line_number` is 1-based within the searched content. `conflict_side` is meaningful ONLY
-///  when has_conflict_side == true (presence pair, same rule as GraphRowMeta.change_offset:
-///  flatc 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
+///  when has_conflict_side == true (presence pair, same rule as ShowRequest.limit: flatc
+///  25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
 ///  path, whose line numbers restart at each side — there is no meaningful unified numbering
 ///  across sides (the CLI's own reasoning at `search.rs:146-147`).
 class SearchMatch {
@@ -10737,8 +10624,7 @@ class ConfigGcResultObjectBuilder extends fb.ObjectBuilder {
 
 ///  The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
 ///  operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
-///  by `commit_id`. Field names mirror GraphRowMeta's; every string is always present (an empty
-///  author or description is `""`).
+///  by `commit_id`. Every string is always present (an empty author or description is `""`).
 class CommitContent {
   CommitContent._(this._bc, this._bcOffset);
   factory CommitContent(List<int> bytes) {
@@ -11113,7 +10999,7 @@ class Envelope {
       case 10:
         return Progress.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 11:
-        return GraphSlice.reader.vTableGetNullable(_bc, _bcOffset, 10);
+        return GraphTopology.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 12:
         return LogDefaults.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 13:

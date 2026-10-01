@@ -7,7 +7,7 @@
 //! (not consumed). The config stack is re-read per call, never cached, so a config file
 //! edited between two calls on the same handle is visible in the second.
 //!
-//! These values are OFFERS: `zanshin_graph_slice`'s `revset` / `prioritize` /
+//! These values are OFFERS: `zanshin_graph_topology`'s `revset` / `prioritize` /
 //! `short_prefixes` stay caller pass-throughs (FR-JJ-17). Nothing here is applied silently.
 
 use flatbuffers::FlatBufferBuilder;

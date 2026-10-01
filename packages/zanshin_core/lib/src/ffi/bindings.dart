@@ -1398,69 +1398,59 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_set_url(
   int len,
 );
 
-/// Return every lane-assigned row of `revset` in the repo referenced by `handle`, in
-/// `jj log` order — the revset-selected slice of the commit graph, each commit row
-/// carrying the `jj log` display metadata of the same head-resolved snapshot.
+/// Return the whole revset's index-only graph topology in the repo referenced by `handle`
+/// (Story 4.12; the verb is Story 4.10's `Repo::graph_topology`): every node in `jj log` order
+/// with its ids, flags, prefix lengths, change offset, parent count, jj's edges verbatim (CSR),
+/// bookmarks / tags / working copies, optionally its committer timestamp, plus the node indices
+/// each anchor selects, `|all()|` and the operation the call loaded.
 ///
-/// Every expression is a caller pass-through (FR-JJ-17): `revset` selects the rows,
-/// `prioritize` is the branch-prioritisation revset (`jj log`'s
-/// `revsets.log-graph-prioritize`; CLI default `present(@)`, `none()` = no prioritisation;
-/// a blank expression is a parse error), and `short_prefixes` is the disambiguation set
-/// for the shortest-prefix lengths (CLI default = `revsets.log`; an EMPTY string DISABLES
-/// disambiguation and falls back to full-index prefixes — the CLI's toggle semantic,
-/// deliberately unlike `prioritize`). `synthetic_elided` (the CLI's
-/// `ui.log-synthetic-elided-nodes`, default `true`) turns each elided-ancestor edge into a
-/// spliced synthetic row; `false` restores plain `Indirect` edges. The graph is re-derived
-/// from the head operation on every call and nothing is retained Rust-side (ADR-0002) — an
-/// operation performed by another process between two calls is visible in the second.
-/// There is no windowing: `total_rows == rows.len()`.
+/// Every argument is a caller pass-through (FR-JJ-17); Rust bakes in no default: `revset`
+/// selects the nodes, `prioritize` is `jj log`'s `revsets.log-graph-prioritize` (CLI default
+/// `present(@)`, `none()` = none; a blank expression is a parse error), `short_prefixes` the
+/// shortest-prefix disambiguation set (an EMPTY string disables it — the CLI's toggle), `anchors`
+/// an ordered revset list intersected with `revset`, and `with_timestamps` loads each non-root
+/// node's committer timestamp. The call runs the pre-verb snapshot exactly once and re-derives
+/// from the head operation; nothing is retained Rust-side (ADR-0002). The card content of a node
+/// is `zanshin_commit_contents` at the returned `operation_id`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `GraphSlice` payload on success.
+/// The arguments cross as a `GraphTopologyRequest` `FlatBuffers` request buffer. Returns a
+/// `FlatBuffers` `Envelope` carrying a `GraphTopology` payload on success; the envelope carries
+/// `precondition` and `warnings` on the ok arm and on an error arm after the snapshot ran.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `ffi.null_pointer` — `revset`, `prioritize`, or `short_prefixes` is a null pointer.
-/// - `ffi.utf8_error` — `revset`, `prioritize`, or `short_prefixes` is not valid UTF-8.
-/// - `jj.revset_parse_error` — an expression is syntactically invalid or names an
-/// unknown function; jj-lib's reason in `context`.
-/// - `jj.revset_resolution_error` — an expression names a symbol that cannot be
-/// resolved (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GraphTopologyRequest` buffer, or its
+/// `kind` is not `GraphTopology`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `revset`, `prioritize` or `short_prefixes` is absent
+/// (`<field> is required`).
+/// - `jj.revset_parse_error` — an expression (an anchor included) is syntactically invalid or
+/// names an unknown function; jj-lib's reason in `context`.
+/// - `jj.revset_resolution_error` — an expression names a symbol that cannot be resolved
+/// (unknown bookmark/tag, missing `@`, ambiguous id); reason in `context`.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
-/// - `jj.jj_lib_error` — a jj-lib evaluation/backend failure; detail in `context`.
-/// - `jj.config_error` — the repo's effective jj config, which the revset aliases are
-/// resolved against, is unreadable, not valid TOML, has a malformed `config-id`, or holds
-/// a wrong-typed value; the file path or config key in `context`. A single bad
-/// `[revset-aliases]` entry does NOT produce this — it warns and is skipped.
-/// - `graph.dangling_edge` — the revset graph stream violated its contract (a dangling
-/// non-`Missing` edge after the stream was exhausted); the target id in `context`.
+/// - `jj.config_error` — the repo's effective jj config is unreadable, not valid TOML, has a
+/// malformed `config-id`, or holds a wrong-typed value; the file path or key in `context`.
+/// - `jj.jj_lib_error` — a jj-lib load, evaluation, index or commit-load failure; detail in
+/// `context`.
+/// - `graph.dangling_edge` — a Direct/Indirect edge names a target outside the node set (jj-lib's
+/// stream contract rules it out); the target id in `context`.
 ///
 /// # Safety
-/// `handle` must be a value returned by a successful `zanshin_repo_open`,
-/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
-/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale non-zero
-/// handle is undefined behaviour; the Dart worker's Model-A handle table (Story 3.9)
-/// makes a stale handle unreachable.
-/// `revset`, `prioritize`, and `short_prefixes` must be NUL-terminated UTF-8 C strings
-/// owned by the caller (Dart allocates them via `toNativeUtf8()` and frees them with
-/// `calloc.free()` after this call returns — AR-P-5 inbound rule). Rust only borrows them
-/// for the duration of the call; they are never freed on the Rust side.
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.GraphTopologyRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call. The request is read BEFORE the handle is borrowed.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
-@ffi.Native<
-  ffi.Pointer<ZanshinBuf> Function(
-    ffi.Uint64,
-    ffi.Pointer<ffi.Char>,
-    ffi.Pointer<ffi.Char>,
-    ffi.Bool,
-    ffi.Pointer<ffi.Char>,
-  )
->()
-external ffi.Pointer<ZanshinBuf> zanshin_graph_slice(
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_graph_topology(
   int handle,
-  ffi.Pointer<ffi.Char> revset,
-  ffi.Pointer<ffi.Char> prioritize,
-  bool synthetic_elided,
-  ffi.Pointer<ffi.Char> short_prefixes,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
 );
 
 /// Compare what two revisions each CHANGE, with the parent difference factored out, in the repo
@@ -2236,6 +2226,8 @@ const int AbsorbResult_VT_SKIPPED_PATHS = 12;
 
 const int AbsorbResult_VT_SOURCE_CHANGE_ID = 8;
 
+const int AnnotationLine_VT_CHANGE_ID = 6;
+
 const int AnnotationLine_VT_ORIGINAL_LINE_NUMBER = 8;
 
 const int AnnotationLine_VT_ORIGIN_FOUND = 12;
@@ -2273,6 +2265,16 @@ const int Change_VT_IS_ANONYMOUS = 22;
 const int Change_VT_IS_SIGNED = 16;
 
 const int Change_VT_PARENTS = 8;
+
+const int CommitContent_VT_AUTHOR_EMAIL = 8;
+
+const int CommitContent_VT_AUTHOR_NAME = 6;
+
+const int CommitContent_VT_COMMITTER_TIMESTAMP_MILLIS = 10;
+
+const int CommitContent_VT_COMMITTER_TZ_OFFSET_MINUTES = 12;
+
+const int CommitContent_VT_EMPTY = 18;
 
 const int CommitContentsRequest_VT_COMMIT_IDS = 8;
 
@@ -2324,9 +2326,11 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 29;
+const int ENUM_MAX_REQUEST_KIND = 30;
 
 const int ENUM_MAX_REVISION_REF = 2;
+
+const int ENUM_MAX_TOPOLOGY_REF_KIND = 1;
 
 const int ENUM_MAX_UNTRACKED_REASON = 2;
 
@@ -2353,6 +2357,8 @@ const int ENUM_MIN_REPO_KIND = 0;
 const int ENUM_MIN_REQUEST_KIND = 0;
 
 const int ENUM_MIN_REVISION_REF = 0;
+
+const int ENUM_MIN_TOPOLOGY_REF_KIND = 0;
 
 const int ENUM_MIN_UNTRACKED_REASON = 0;
 
@@ -2420,63 +2426,45 @@ const int GitRemoteAddRequest_VT_PUSH_URL = 10;
 
 const int GitRemoteAddRequest_VT_URL = 8;
 
-const int GraphActiveLane_VT_LANE = 4;
+const int GraphTopologyRequest_VT_ANCHORS = 12;
 
-const int GraphCommitRef_VT_CONFLICTED = 10;
+const int GraphTopologyRequest_VT_PRIORITIZE = 8;
 
-const int GraphCommitRef_VT_REMOTE = 6;
+const int GraphTopologyRequest_VT_SHORT_PREFIXES = 10;
 
-const int GraphCommitRef_VT_SYNCED = 8;
+const int GraphTopologyRequest_VT_WITH_TIMESTAMPS = 14;
 
-const int GraphRowEdge_VT_TARGET_LANE = 6;
+const int GraphTopology_VT_ALL_COUNT = 6;
 
-const int GraphRowMeta_VT_AUTHOR_EMAIL = 16;
+const int GraphTopology_VT_ANCHOR_NODE = 40;
 
-const int GraphRowMeta_VT_AUTHOR_NAME = 14;
+const int GraphTopology_VT_ANCHOR_START = 38;
 
-const int GraphRowMeta_VT_CHANGE_ID = 4;
+const int GraphTopology_VT_CHANGE_ID_PREFIX_LEN = 20;
 
-const int GraphRowMeta_VT_CHANGE_ID_PREFIX_LEN = 6;
+const int GraphTopology_VT_CHANGE_ID_STRIDE = 14;
 
-const int GraphRowMeta_VT_CHANGE_OFFSET = 10;
+const int GraphTopology_VT_CHANGE_OFFSET = 18;
 
-const int GraphRowMeta_VT_COMMITTER_TIMESTAMP_MILLIS = 18;
+const int GraphTopology_VT_COMMIT_ID_PREFIX_LEN = 22;
 
-const int GraphRowMeta_VT_COMMITTER_TZ_OFFSET_MINUTES = 20;
+const int GraphTopology_VT_COMMIT_ID_STRIDE = 12;
 
-const int GraphRowMeta_VT_COMMIT_ID_PREFIX_LEN = 8;
+const int GraphTopology_VT_EDGE_KIND = 30;
 
-const int GraphRowMeta_VT_DESCRIPTION_FIRST_LINE = 42;
+const int GraphTopology_VT_EDGE_START = 26;
 
-const int GraphRowMeta_VT_EMPTY = 34;
+const int GraphTopology_VT_EDGE_TARGET = 28;
 
-const int GraphRowMeta_VT_HAS_CHANGE_OFFSET = 12;
+const int GraphTopology_VT_FLAGS = 16;
 
-const int GraphRowMeta_VT_HIDDEN = 36;
+const int GraphTopology_VT_PARENT_COUNT = 24;
 
-const int GraphRowMeta_VT_IMMUTABLE = 30;
+const int GraphTopology_VT_REFS = 34;
 
-const int GraphRowMeta_VT_ROOT = 40;
+const int GraphTopology_VT_TIMESTAMPS = 32;
 
-const int GraphRowMeta_VT_TAGS = 24;
-
-const int GraphRowMeta_VT_WORKING_COPIES = 26;
-
-const int GraphRowMeta_VT_WORKING_COPY = 28;
-
-const int GraphRow_VT_ACTIVE_LANES = 12;
-
-const int GraphRow_VT_COLOR_IDX = 8;
-
-const int GraphRow_VT_EDGES = 10;
-
-const int GraphRow_VT_META = 16;
-
-const int GraphRow_VT_SYNTHETIC_ELIDED = 14;
-
-const int GraphSlice_VT_ROWS = 4;
-
-const int GraphSlice_VT_TOTAL_ROWS = 6;
+const int GraphTopology_VT_WORKING_COPIES = 36;
 
 const int InterdiffRequest_VT_FROM_TYPE = 6;
 
@@ -2490,7 +2478,7 @@ const int LogDefaults_VT_LOG = 4;
 
 const int LogDefaults_VT_LOG_GRAPH_PRIORITIZE = 6;
 
-const int LogDefaults_VT_SHORT_PREFIXES = 8;
+const int LogDefaults_VT_SYNTHETIC_ELIDED = 10;
 
 const int MissingRepoConfig_VT_CONFIG_DIR = 4;
 
@@ -2588,6 +2576,16 @@ const int Status_VT_PARENT_CHANGE_ID = 8;
 
 const int Status_VT_WORKING_COPY_CHANGE_ID = 6;
 
+const int TopologyRef_VT_CONFLICTED = 14;
+
+const int TopologyRef_VT_NODE = 4;
+
+const int TopologyRef_VT_REMOTE = 10;
+
+const int TopologyRef_VT_SYNCED = 12;
+
+const int TopologyWorkingCopy_VT_WORKSPACE = 6;
+
 const int TrackResult_VT_SNAPSHOT_STATS = 8;
 
 const int UntrackResult_VT_UNMATCHED_PATHS = 8;
@@ -2595,6 +2593,8 @@ const int UntrackResult_VT_UNMATCHED_PATHS = 8;
 const int UntrackedPath_VT_REASON_TYPE = 6;
 
 const int WatcherEvent_VT_MESSAGE = 10;
+
+const int WorkspaceEntry_VT_ROOT = 8;
 
 const int WorkspaceEntry_VT_WC_COMMIT_ID = 6;
 

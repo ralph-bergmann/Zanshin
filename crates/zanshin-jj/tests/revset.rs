@@ -168,8 +168,9 @@ fn revset_on_bookmarks_medium_equals_oracle() {
 /// to SUBSTRING.
 ///
 /// The flip was invisible to the gate before this test. Other suites DO pass bare pattern
-/// arguments — `description("Commit N")` in `zanshin-graph`'s `stream.rs`/`slice.rs`, this
-/// crate's `graph.rs`, and `zanshin-ffi`'s `graph_ffi.rs` — but the tiny fixture's descriptions
+/// arguments — `description("Commit N")` in this crate's `graph.rs` (and, until Story 4.12
+/// removed the lane crate and reshaped `zanshin-ffi`'s `graph_ffi.rs` on 2026-10-01, in the
+/// lane crate's `stream.rs`/`slice.rs` and in `graph_ffi.rs`) — but the tiny fixture's descriptions
 /// are exactly `Commit {n}`, so substring and exact agree there and every one of them passes
 /// under BOTH semantics. This test is the only place the two readings are made to disagree.
 /// See the `// WHY:` block in `parse_revset_with` (src/revset.rs) for why the new behaviour is

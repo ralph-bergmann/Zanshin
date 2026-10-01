@@ -3,9 +3,10 @@
 //! Graph-walk **blueprint** + decision-input benchmark (ADR-0002 AC-4 / Story 3.11).
 //!
 //! This is runnable reference code for the jj-lib Stream-based revset-graph traversal
-//! that `zanshin-graph` (lane layout) will build on. It deliberately loads the workspace
-//! through `jj_lib` directly (not `zanshin_jj::Repo`) so the whole path — open → resolve
-//! head → stream the topo-grouped graph — is visible in one place and self-contained.
+//! that the graph reads build on (written for the lane crate, which Story 4.12 removed on
+//! 2026-10-01; today `Repo::walk_graph` and `Repo::graph_topology`). It deliberately loads
+//! the workspace through `jj_lib` directly (not `zanshin_jj::Repo`) so the whole path — open
+//! → resolve head → stream the topo-grouped graph — is visible in one place and self-contained.
 //!
 //! It is NOT run by `cargo make test` / coverage (benches are excluded; see docs/coverage.md).
 //! Run it on demand, optimised (`--large` needs `cargo xtask gen-fixture --size large` first):

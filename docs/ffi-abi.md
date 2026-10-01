@@ -19,7 +19,10 @@ Every **fallible composite** `extern "C"` function returns a `*mut ZanshinBuf`
 | Dart | calls `buf.dispose()` / `NativeFinalizer` | Rust frees the allocation via `zanshin_buffer_free_token` |
 
 The Dart copy is isolated from Rust memory; it is safe to send across isolate
-ports and use after disposal.
+ports and use after disposal. *(2026-10-01, Story 4.12: `zanshin_graph_topology` is the
+one exception — its envelope is read through the `FfiBuffer` view and copied once into a
+`TransferableTypedData`, so it crosses the isolate boundary with ONE copy instead of the
+two every other envelope costs; see § GraphTopology payload below.)*
 
 **Infallible functions return plain types — no envelope.** There are eight:
 `zanshin_ffi_version` (a `char *` the caller frees via `zanshin_string_free`) and
@@ -33,7 +36,7 @@ by contract (two compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 60
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 61
 exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -201,9 +204,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Twenty-eight of the 60 exported symbols take their arguments as a **FlatBuffers
+Thirty of the 61 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Eighteen use the handle-scoped three-parameter shape:
+strings. Twenty use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -264,7 +267,7 @@ answer to `ffi.null_pointer`, which is a different refusal.
 
 ### Reading the buffer (Rust side) — the refusal ladder
 
-All twenty-nine wrappers share one reader shape (worked example:
+All thirty wrappers share one reader shape (worked example:
 `crates/zanshin-ffi/src/commit_views.rs:82-98`, whose module banner at `:51-56`
 carries the SAFETY argument for the unbounded lifetime
 `std::slice::from_raw_parts` produces — each reader builds its own slice in its
@@ -289,10 +292,11 @@ a login shell's — `variables is required`) and an entry whose `name` is absent
 that could not be read never reaches Rust: the Dart reader reports it itself.
 
 Row 4 is the *reader's* own required-field guard, which among the handle-taking
-readers only six have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
+readers only seven have (`file annotate`'s `path`, `file search`'s `pattern`, `git remote add`'s `name`
 and `url`, `git remote set-url`'s `name`, `interdiff`'s `from.id` / `to.id` — the
-`id` inside a present `RevisionRef` union arm — and, since Story 4.10, `commit contents`'s
-`operation_id`), plus the `zanshin_config_*` readers
+`id` inside a present `RevisionRef` union arm — since Story 4.10 `commit contents`'s
+`operation_id`, and since Story 4.12 `graph topology`'s `revset`, `prioritize` and
+`short_prefixes`), plus the `zanshin_config_*` readers
 above (`name`, `value`, `path`, `text`, a required scope) and the
 `zanshin_environment_adopt` reader (`variables`, each entry's `name`). `interdiff`'s "at least one of from or to" refusal is
 *not* row 4: an absent side is a legal value there, and the pair is judged by the
@@ -315,7 +319,7 @@ A **zero-length or garbage buffer** fails verification, so it lands on
 `data` pointer produces `ffi.null_pointer`.
 
 **The whole request buffer is judged before the handle is borrowed.** Every one
-of the nineteen handle-scoped wrappers calls its reader BEFORE `session_from_handle`, so rows 1
+of the twenty handle-scoped wrappers calls its reader BEFORE `session_from_handle`, so rows 1
 through 4 all precede row 5. That order is deliberate: a buffer built for the
 wrong verb has to be refused on its own merits, not only when the caller happens
 to hold a live handle. The only callers that see a different answer than they
@@ -327,7 +331,7 @@ bytes readable at `data`; the reader builds its slice with
 `std::slice::from_raw_parts(data, len)` before any verification runs, so a `len`
 larger than the allocation is an out-of-bounds read — undefined behaviour, not a
 refusal, and no ladder row covers it. That obligation is the caller's, and it is
-repeated in every one of the twenty-nine symbols' `# Safety` blocks.
+repeated in every one of the thirty symbols' `# Safety` blocks.
 
 Layer 4 is a different question from layer 2: the buffer verified, but the *table*
 does not carry a field the verb requires. ABSENCE is meaningful throughout —
@@ -360,7 +364,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **28** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **29** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -369,7 +373,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 28 tables + 1 shared reuse = the 29
+one caller, and no table is orphaned. 29 tables + 1 shared reuse = the 30
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -389,7 +393,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 27 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 28 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -463,7 +467,7 @@ or no `# Errors` block.
 | `zanshin_change` | `(uint64_t handle, const char *change_id)` | — | `Change` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_op_log` | `(uint64_t handle, int64_t limit)` | — | `OpLog` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_log_defaults` | `(uint64_t handle)` | — | `LogDefaults` | `ffi.invalid_handle`, `jj.config_error` | 4.9 |
-| `zanshin_graph_slice` | `(uint64_t handle, const char *revset, const char *prioritize, bool synthetic_elided, const char *short_prefixes)` | — | `GraphSlice` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.stale_working_copy`, `jj.jj_lib_error`, `jj.config_error`, `graph.dangling_edge` | 4.6 (+4.8) |
+| `zanshin_graph_topology` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GraphTopologyRequest` | `GraphTopology` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`, `graph.dangling_edge` | 4.12 |
 | `zanshin_commit_contents` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitContentsRequest` | `CommitContents` (no `precondition`, no `warnings`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.change_not_found`, `jj.jj_lib_error` | 4.10 |
 | `zanshin_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ShowRequest` | `ShowView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_evolog` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `EvologRequest` | `EvologView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
@@ -540,7 +544,7 @@ conversion's raw commits.
 
 Five symbols carry more contract than their rustdoc can hold, and keep a prose
 section: `zanshin_repo_detect` and `zanshin_repo_convert` here,
-`zanshin_graph_slice`, `zanshin_log_defaults` and `zanshin_commit_contents` further down. For every other
+`zanshin_graph_topology`, `zanshin_log_defaults` and `zanshin_commit_contents` further down. For every other
 symbol the rustdoc block above its declaration in `zanshin_ffi.h` is the contract.
 
 ### `zanshin_repo_detect`
@@ -858,262 +862,202 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 ---
 
-## GraphSlice payload (Story 4.2) and `zanshin_graph_slice` (Stories 4.6 + 4.8)
+## GraphTopology payload and `zanshin_graph_topology` (Story 4.12)
 
-The lane-assigned commit graph (Story 4.1, `zanshin_graph::Row`) crosses FFI
-as a `GraphSlice` member of the `Payload` union (`schemas/envelope.fbs`) — no
-JSON, no `schema_version` (ADR-0001). The exported symbol is
-`zanshin_graph_slice` (Story 4.6, below): it calls
-`zanshin_graph::collect_lanes` and serialises the rows with the Rust builder
-`zanshin_ffi::graph::graph_slice_to_envelope(&[Row]) -> Vec<u8>` (infallible,
-always `ok == true`); the Dart worker command `GraphSliceCommand` feeds the
-bytes to `decodeGraphSliceEnvelopeInternal`
-(`packages/zanshin_core/lib/src/ffi/graph.dart`).
+The whole revset's index-only topology (Story 4.10's `zanshin_jj::Repo::graph_topology`)
+crosses FFI as a `GraphTopology` member of the `Payload` union — in **slot 11**, the slot
+the removed `GraphSlice` held (union member order is the wire discriminant; nothing was
+renumbered). The payload is **scalar vectors indexed by node plus CSR offset vectors** for
+the edges and the anchors — no table per node — so Dart reads it through typed-data views
+with O(1) access per node. The symbol calls `Repo::graph_topology`, encodes the ids
+(`crates/zanshin-ffi/src/graph.rs::TopologyIds::encode`) and serialises the result
+(`graph_topology_to_envelope`). The card content of a node is `zanshin_commit_contents`
+(below) at the returned `operation_id`.
 
-Since **Story 4.8** each commit row is *self-contained renderable*: it carries
-the `jj log`-parity display metadata (`GraphRowMeta`) and the lanes passing
-through it (`GraphActiveLane`) alongside its own lane and edges, all derived
-from the SAME `load_at_head` snapshot in the same stream pass. Rendering the
-default `jj log` view therefore takes ONE call — no per-commit `zanshin_change`
-follow-ups, and no window in which an external `jj` operation could make the
-lanes and the metadata disagree.
+*(2026-10-01, Story 4.12: this replaces the `GraphSlice` payload and `zanshin_graph_slice`
+of Stories 4.2 / 4.6 / 4.8 — lanes, per-row metadata, synthetic "(elided revisions)" rows —
+together with the `zanshin-graph` lane crate. The layout is computed in Dart (Story 4.11);
+`zanshin_jj::Repo::walk_graph` stays as the `jj log`-faithful read. The old section is in
+git history.)*
 
-### `zanshin_graph_slice`
+### `zanshin_graph_topology`
 
 ```c
-ZanshinBuf* zanshin_graph_slice(uint64_t handle,
-                                const char* revset,
-                                const char* prioritize,
-                                bool synthetic_elided,
-                                const char* short_prefixes);
+ZanshinBuf* zanshin_graph_topology(uint64_t handle, const uint8_t* data, uintptr_t len);
 ```
 
-Returns every lane-assigned row of `revset` in the repo referenced by `handle`,
-in `jj log` order — the revset-selected slice of the commit graph. There is
-exactly ONE graph function: no `zanshin_graph_build` / `_close`, no graph
-handle, no `LaneCache` (ADR-0002 AC-4 — nothing to build, rebuild, or close),
-and no `start` / `count` / `limit` / `reversed` (Story 4.4 delivered
-return-all; windowing is deferred past WIP).
-*(2026-09-30, Story 4.10: the commit-graph view renders from the topology call
-(`zanshin_jj::Repo::graph_topology`, on the wire in Story 4.12) plus the op-pinned
-content call `zanshin_commit_contents` (Stories 4.10–4.12); this slice keeps its
-one-call rows until 4.12 decides its fate.)*
+**Request:** `GraphTopologyRequest { kind: GraphTopology, revset, prioritize,
+short_prefixes, anchors, with_timestamps }` (the *Request-buffer contract* above; the
+request is read BEFORE the handle is borrowed). Every argument is a caller pass-through
+(FR-JJ-17); Rust bakes in no default:
 
-**Parameter semantics (FR-JJ-17 pass-through):**
+- `revset` — the nodes, in `jj log` order (children before parents, `prioritize` first).
+  **Required** (row 4 of the refusal ladder: `revset is required`). The CLI's
+  `revsets.log` default is the Dart constant `defaultLogRevset` (and the effective value is
+  `zanshin_log_defaults`' `log`), a pre-fill the UI passes explicitly.
+- `prioritize` — `jj log`'s `revsets.log-graph-prioritize`. **Required.** CLI default
+  `present(@)` (Dart `defaultGraphPrioritize`); `none()` = none; a blank expression is a
+  `jj.revset_parse_error`.
+- `short_prefixes` — the shortest-prefix disambiguation set. **Required.** CLI default
+  `revsets.log` (Dart `defaultShortPrefixes`). An **EMPTY string DISABLES**
+  disambiguation (full-index prefix lengths) — the CLI's toggle, deliberately unlike
+  `prioritize`. A PARSE failure is a hard `jj.revset_parse_error`; everything that can
+  only fail while LOADING the disambiguation index — symbol resolution included — is a
+  `jj.short_prefixes_failed` warning and degrades to full-index prefixes, as the CLI does
+  (`cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.44.0).
+- `anchors` — an ordered list of revsets, each intersected with `revset` and evaluated
+  once; the layout's priority rule reads the node indices each selects. An ABSENT vector is
+  the empty list. The editable pre-fill is the Dart constant `defaultGraphAnchors`
+  (`['trunk()', 'present(@)']`); nothing applies it on its own.
+- `with_timestamps` — load each non-root commit for its committer timestamp (the one
+  per-node object load; per call, never cached). Absent = `false`.
 
-- `handle` — a live `RepoSession` handle from `zanshin_repo_open` / `_init` /
-  `_clone` / `_convert`. Borrowed, never consumed.
-- `revset` — the revset selecting the rows (e.g. `all()`, `heads(all())`).
-  Caller-owned NUL-terminated UTF-8 C string (Dart `toNativeUtf8` / `calloc.free`;
-  Rust only borrows it — AR-P-5 inbound rule). The CLI's `revsets.log` default
-  is exported as the Dart constant `defaultLogRevset` (a mirror of
-  `zanshin_jj::DEFAULT_LOG_REVSET`) for the UI to pre-fill; it is never applied
-  silently. It parses because Zanshin's builtin config layer defines the CLI's
-  `[revset-aliases]` (`trunk()`, `builtin_immutable_heads()`,
-  `immutable_heads()`, `immutable()`, `mutable()`, `visible()`, `hidden()`).
-  **Since Story 4.9** all three revset pass-throughs — `revset`, `prioritize`
-  and `short_prefixes` — resolve aliases from the repo's EFFECTIVE jj config
-  (builtin defaults < user config < repo config < workspace config), re-read on
-  every call, so a user's `[revset-aliases]` override of `trunk()` or
-  `immutable_heads()` changes the row set and the per-row `meta.immutable` flag
-  exactly as it does in their CLI, and their own `wip()` / `mine()` aliases are
-  accepted. A malformed config fails the call with `jj.config_error`; a single
-  bad alias entry only warns and is skipped. `zanshin_log_defaults` (below)
-  returns the effective values of the four `jj log` defaults.
-- `prioritize` — the branch-prioritisation revset (`jj log`'s
-  `revsets.log-graph-prioritize`). Caller-owned C string, same ownership rule.
-  The CLI default is `present(@)` — the Dart side pre-fills it as
-  `defaultGraphPrioritize` (a mirror of `zanshin_jj::DEFAULT_GRAPH_PRIORITIZE`),
-  editable by the caller; `none()` is the canonical "no prioritisation" value;
-  a blank expression is a `jj.revset_parse_error`.
-- `synthetic_elided` — render elided ancestry as synthetic "(elided revisions)"
-  rows (the CLI's `ui.log-synthetic-elided-nodes`, default `true`, pre-filled
-  Dart-side). `true`: every `Indirect` edge becomes a `Direct` edge into a
-  spliced synthetic row emitted right after its child. `false`: the pre-4.8
-  stream — plain `Indirect` edges, no synthetic rows. A plain `bool` at the C
-  surface (`zanshin_ffi.h` already includes `<stdbool.h>`).
-- `short_prefixes` — the disambiguation revset for the shortest-prefix lengths
-  (`revsets.short-prefixes`, which the CLI falls back to `revsets.log` for, so
-  the Dart pre-fill `defaultShortPrefixes == defaultLogRevset`). Caller-owned C
-  string, same ownership rule. An **EMPTY string DISABLES** disambiguation
-  (full-index prefix lengths) — the CLI's toggle semantic, deliberately unlike
-  `prioritize`, where a blank expression is a parse error. A **PARSE** failure of
-  the expression is a hard error; everything that can only fail while LOADING the
-  disambiguation index — symbol resolution included — is a `jj.short_prefixes_failed`
-  warning (Story 9.32) and degrades to full-index prefixes rather than failing the
-  call, exactly as the CLI does (pinned by jj's `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`
-  @ v0.44.0: `revsets.short-prefixes = 'missing'` warns and still prints the whole
-  log). So an unknown bookmark in `short_prefixes` succeeds; an unknown bookmark in
-  `revset` or `prioritize` is `jj.revset_resolution_error`.
+All three expressions and every anchor resolve aliases from the repo's EFFECTIVE jj config
+(Story 4.9), re-read per call. Interior NULs are guarded Dart-side (*Interior NUL* above).
 
-All expressions are passed through verbatim — nothing is baked in. An interior
-NUL (U+0000) in `revset`, `prioritize`, or `shortPrefixes` is rejected
-Dart-side with an `ArgumentError` (a C string cannot carry it; `toNativeUtf8`
-would silently truncate the expression).
+**Precondition and warnings.** The call runs the pre-verb snapshot exactly once (Story
+9.26) and re-derives from the head operation; Rust retains nothing (ADR-0002). Its
+envelope carries `precondition` and `warnings` on the ok arm and on every error arm after
+the snapshot ran (the shared `precondition_envelope`), and `RepoHandle.lastPrecondition`
+is updated by every ok call. The op-heads watcher's `OpHeadsChangedEvent` is the UI's
+re-request trigger.
 
-**Re-derive per call (ADR-0002).** The graph is re-derived from the head
-operation on every call; Rust retains no graph state between calls. An
-operation performed by another process (jj CLI, MCP) between two calls on the
-same handle is visible in the second. The op-heads watcher event stream
-(`OpHeadsChangedEvent`, Story 3.6) is the UI's re-request trigger — the worker
-does **not** auto-re-derive.
+**Success payload:** `Envelope<GraphTopology>` (n nodes, E edges, A anchors):
 
-**Success payload:** `Envelope<GraphSlice>` (shapes below); `total_rows ==
-rows.length`. Size model: the whole revset result is materialised into ONE
-buffer (every row and edge, no cap; `total_rows` saturates at `u32::MAX`) and
-copied once into Dart — windowing is deferred past WIP.
+```
+enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_jj::GraphEdgeKind order
+enum TopologyRefKind : ubyte { Bookmark, Tag }
+
+TopologyRef {
+  node:       uint             // the node index
+  kind:       TopologyRefKind
+  name:       string
+  remote:     string           // ABSENT (Dart null) for the local entry
+  synced:     bool
+  conflicted: bool
+}
+
+TopologyWorkingCopy {
+  node:      uint
+  workspace: string
+}
+
+GraphTopology {
+  operation_id:         string                 // full hex; the content call's pin
+  all_count:            ulong                  // |all()|, VISIBLE commits only
+  commit_ids:           [ubyte]                // n × commit_id_stride raw id bytes
+  change_ids:           [ubyte]                // n × change_id_stride raw id bytes
+  commit_id_stride:     ubyte                  // bytes per id; 0 iff n = 0
+  change_id_stride:     ubyte                  // bytes per id; 0 iff n = 0
+  flags:                [ubyte]                // n; bit 0 working_copy, 1 immutable, 2 hidden,
+                                               //    3 divergent, 4 root, 5 has_change_offset
+  change_offset:        [uint]                 // n; meaningful iff flags bit 5, else 0
+  change_id_prefix_len: [ubyte]                // n; hex digits
+  commit_id_prefix_len: [ubyte]                // n; hex digits
+  parent_count:         [uint]                 // n; Missing parents included, 0 for the root
+  edge_start:           [uint]                 // n + 1; edge_start[0] == 0, edge_start[n] == E
+  edge_target:          [int]                  // E; node index, -1 iff Missing
+  edge_kind:            [GraphEdgeKind]        // E; jj stream order, repeated targets kept
+  timestamps:           [long]                 // n iff requested (epoch ms), ABSENT otherwise
+  refs:                 [TopologyRef]          // sorted by node; per node bookmarks, then tags
+  working_copies:       [TopologyWorkingCopy]  // sorted by node
+  anchor_start:         [uint]                 // A + 1
+  anchor_node:          [uint]                 // anchor_start[A] entries, ascending per anchor
+}
+```
+
+- **Every vector but `timestamps` is always written**, empty when n = 0 (`edge_start` is
+  then `[0]` and `anchor_start` has A + 1 zeros). A reader treats an absent one, or one of
+  the wrong length, as a malformed buffer.
+- **Ids are raw bytes at one fixed stride per column** (OQ 2 option (b), decided by
+  measurement — spec-4-12 § Measurements): node i's id is `[i × stride, (i + 1) × stride)`
+  of its column. A reader formats a commit id as lowercase hex and a change id as jj
+  reverse-hex (nibble v → `'z' − v`, high nibble first: 0 → `z`, 15 → `k`; jj-lib
+  `hex_util.rs`). Rust refuses an id it cannot encode (odd length, a digit outside its
+  alphabet, a stride mismatch) as `jj.jj_lib_error` — `zanshin-jj` never produces one.
+- **Flags** are one byte per node (bits 6–7 zero). `has_change_offset` is the presence bit
+  of `change_offset` — flatc 25.12.19 has no optional scalar for Dart.
+- **Edges (CSR).** Node i's edges are `[edge_start[i], edge_start[i + 1])`, in jj's stream
+  order with repeated targets kept: a merge can carry a Direct AND an Indirect edge to one
+  node. `edge_target` is **kind-gated**: defined iff `edge_kind != Missing`; a Missing
+  edge's slot holds **−1** (not 0), so a reader that skips the kind check fails loudly
+  instead of linking node 0. A Missing edge carries no target id (OQ 3). No synthetic
+  "(elided revisions)" node exists.
+- **Null for absence.** `timestamps` is absent iff the call did not request them; when
+  present, the root's slot is 0 and reads as `null` in Dart (the root carries none).
+  `change_offset` reads `null` without its presence bit, a Missing edge's target `null`,
+  a local ref's `remote` `null`.
+- **Refs / working copies** are sparse tables sorted by node: per node its bookmarks, then
+  its tags, each in `zanshin-jj`'s order (the CLI's `collect_distinct_refs` filter: a
+  tracked-and-synced remote entry is not emitted); working copies per node in `zanshin-jj`'s
+  order, empty in a single-workspace repo (the CLI's guard).
+- **Anchors (CSR).** Anchor a's nodes are `anchor_node[anchor_start[a] .. anchor_start[a + 1]]`,
+  ascending (= `jj log` order); an anchor selecting nothing in `revset` is an empty range.
+- **`all_count`** is `|all()|` by iterating — the VISIBLE commits only, so a revset naming
+  hidden commits can yield more nodes than `all_count`.
+- **Indices** fit `u32` / `i32`: a FlatBuffer is smaller than 2 GiB, so the saturating
+  casts Rust carries are unreachable.
+
+**Copies across the isolate boundary.** The topology crosses with **one** copy: the worker
+reads the native buffer through `FfiBuffer.bytes` (a view over Rust's allocation), copies it
+ONCE into a `TransferableTypedData`, frees the native buffer and sends a `TransferResult`;
+the main isolate's `materialize()` hands the bytes over without a further copy, and
+`GraphTopologyView` reads them in place. **Every other envelope crosses with two**:
+`readToken`'s copy out of native memory (`Uint8List.fromList`) plus the `SendPort` copy of
+the `BufferResult`.
 
 **Error codes:**
 
 | Code                         | Condition                                                                 |
 |------------------------------|---------------------------------------------------------------------------|
-| `ffi.invalid_handle`         | Rust: `handle == 0`. Worker: unknown/closed `handleId` (Model A handle-table lookup). A stale non-zero raw handle is UB — liveness is the worker's lookup, not a Rust check (see the fn's `# Safety` rustdoc). |
-| `ffi.null_pointer`           | `revset`, `prioritize`, or `short_prefixes` is null.                      |
-| `ffi.utf8_error`             | `revset`, `prioritize`, or `short_prefixes` contains invalid UTF-8.       |
-| `jj.revset_parse_error`      | An expression is syntactically invalid / unknown function (incl. blank `prioritize`; an EMPTY `short_prefixes` is NOT an error — it disables disambiguation). The only `short_prefixes` failure that surfaces as an error code. Reason in `context`. |
-| `jj.revset_resolution_error` | `revset` or `prioritize` names a symbol that cannot be resolved; reason in `context`. NOT raised for `short_prefixes` (it warns and degrades — see above). |
-| `jj.jj_lib_error`            | jj-lib evaluation/backend failure (e.g. corrupt op store); detail in `context`. |
-| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value (Story 4.9) — or, for `zanshin_git_remote_remove`/`_rename`, the repo-level file could not be WRITTEN back (Epic 9 follow-up J); the file path or config key in `context`. A single bad `[revset-aliases]` entry does NOT produce this — it warns and is skipped. |
-| `graph.dangling_edge`        | The revset graph stream violated its contract (dangling non-`Missing` edge) — unreachable with real jj-lib streams; target id in `context`. |
+| `ffi.invalid_handle`         | Rust: `handle == 0`. Worker: unknown/closed `handleId` (Model A lookup; a `BufferResult`). |
+| `ffi.null_pointer`           | `data` is null.                                                           |
+| `ffi.invalid_argument`       | `data` does not verify as a `GraphTopologyRequest`, or its `kind` is not `GraphTopology`. |
+| `jj.invalid_input`           | `revset`, `prioritize` or `short_prefixes` is absent (`<field> is required`). |
+| `jj.revset_parse_error`      | An expression or an anchor is syntactically invalid / an unknown function (incl. a blank `prioritize`; an EMPTY `short_prefixes` is NOT an error). Reason in `context`. |
+| `jj.revset_resolution_error` | `revset`, `prioritize` or an anchor names a symbol that cannot be resolved. NOT raised for `short_prefixes` (it warns and degrades). |
+| `jj.stale_working_copy`      | The pre-verb snapshot found the working copy stale (Story 9.26); nothing is written. |
+| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value; the file path or key in `context`. A single bad `[revset-aliases]` entry only warns. |
+| `jj.jj_lib_error`            | A jj-lib load, evaluation, index or (with `with_timestamps`) commit-load failure, a failed snapshot backend, or an id the encoder refuses; detail in `context`. |
+| `graph.dangling_edge`        | A Direct/Indirect edge names a target outside the node set — unreachable with jj-lib's stream contract; the target id in `context`. |
 
-An error envelope never carries partial rows.
+An error envelope never carries a partial payload.
 
 **Dart worker integration:**
 
-- `GraphSliceCommand(handleId, revset, prioritize, syntheticElided, shortPrefixes)`
-  — worker looks up the raw handle (unknown id → `ffi.invalid_handle` envelope),
-  calls `zanshinGraphSlice(raw, revset, prioritize, syntheticElided:,
-  shortPrefixes:)` (`lib/src/ffi/graph.dart`; the two Story-4.8 parameters are
-  NAMED Dart-side because `avoid_positional_boolean_parameters` forbids a
-  positional `bool` — the C argument order is unchanged), and replies
-  `BufferResult` with the `Envelope<GraphSlice>` bytes.
-- `ZanshinWorker.graphSlice(handleId, {required revset, required prioritize,
-  required syntheticElided, required shortPrefixes})` → `GraphSlice` via
-  `decodeGraphSliceEnvelopeInternal`.
-- `RepoHandle.graphSlice({required revset, prioritize = defaultGraphPrioritize,
-  syntheticElided = defaultSyntheticElided, shortPrefixes = defaultShortPrefixes})`
-  — closed-handle guard (`StateError`), pre-fills the CLI defaults, delegates.
-  (`defaultSyntheticElided` is `true`; the constant, not the literal, is the
-  default — `packages/zanshin_core/lib/src/worker/handle.dart:126`.)
-
-```
-enum GraphEdgeKind : byte { Direct, Indirect, Missing }   // == zanshin_graph::EdgeKind order
-
-GraphRowEdge {
-  target:      string          // parent commit id, hex
-  target_lane: uint            // meaningful ONLY when kind != Missing (see below)
-  kind:        GraphEdgeKind
-}
-
-GraphActiveLane {               // a lane passing THROUGH the row (Story 4.8)
-  lane:        uint
-  kind:        GraphEdgeKind    // the kind of the edge that opened the segment
-}
-
-GraphCommitRef {                // one bookmark/tag entry (Story 4.8)
-  name:        string
-  remote:      string           // ABSENT (Dart null) for the local entry
-  synced:      bool
-  conflicted:  bool
-}
-
-GraphRowMeta {                  // jj log-parity display metadata (Story 4.8)
-  change_id:                   string   // reverse-hex display form
-  change_id_prefix_len:        uint
-  commit_id_prefix_len:        uint
-  change_offset:               uint     // meaningful ONLY when has_change_offset
-  has_change_offset:           bool
-  author_name:                 string   // may be empty
-  author_email:                string   // may be empty
-  committer_timestamp_millis:  long
-  committer_tz_offset_minutes: int
-  bookmarks:                   [GraphCommitRef]
-  tags:                        [GraphCommitRef]
-  working_copies:              [string] // empty in a single-workspace repo
-  working_copy:                bool     // this workspace's @
-  immutable:                   bool     // in ::(immutable_heads() | root())
-  conflict:                    bool
-  empty:                       bool
-  hidden:                      bool
-  divergent:                   bool
-  root:                        bool
-  description_first_line:      string   // "" when the description is empty
-}
-
-GraphRow {
-  commit_id:        string           // commit id, hex — rows are keyed by COMMIT id, not change id
-  lane:             uint
-  color_idx:        uint             // lane % PALETTE_SIZE (8)
-  edges:            [GraphRowEdge]   // one per input parent edge, same order
-  active_lanes:     [GraphActiveLane]// pass-through lanes, ascending; always present
-  synthetic_elided: bool             // this is an "(elided revisions)" row
-  meta:             GraphRowMeta     // ABSENT iff synthetic_elided
-}
-
-GraphSlice {
-  rows:        [GraphRow]      // always present (empty list for an empty slice)
-  total_rows:  uint
-}
-```
-
-- **`target_lane` presence rule.** `flatc 25.12.19` rejects optional scalars
-  (`= null`) for Dart, so absence is encoded by `kind`: a `Missing` edge never
-  reserves a lane — Rust writes `target_lane = 0` and the Dart model
-  (`GraphRowEdge.targetLane`) is `int?`, `null` iff `kind == missing`
-  (null-for-absence at the model level; same presence-flag pattern as
-  `RepoDetect.suggested_kind` / `Bookmark.remote_name`). Never read
-  `target_lane` of a `Missing` edge.
-- **`meta` absence rule.** `meta` is a NESTED TABLE precisely because that is
-  the only shape flatc 25.12.19 lets Dart see as `null`: it is absent on a
-  synthetic elided row (`GraphRow.meta` → `GraphRowMeta?`) and present on every
-  commit row. On an elided row `commit_id` holds the ELIDED TARGET's id, the
-  lane fields are real, and the single `Direct` edge points at that target's
-  real row. Inside `GraphRowMeta`, `change_offset` uses the documented presence
-  pair (`has_change_offset`; Dart `int?`) and `remote` uses string-nullability
-  (Dart `String?`, `null` for the local entry).
-- **Ref visibility is CONTENT, not styling.** `bookmarks` / `tags` carry the
-  CLI's own per-commit filter (`collect_distinct_refs`: `is_local() ||
-  !synced`) — a tracked-AND-synced remote entry simply is not part of a
-  `jj log` row and is not emitted. The unfiltered view stays
-  `zanshin_bookmarks_list`'s job. The `*` / `??` / `@remote` sigils are the UI's
-  to draw from `synced` / `conflicted` / `remote`.
-- **`commit_id` is not a unique row key.** With `synthetic_elided` on (the
-  default) the synthetic "(elided revisions)" row carries its TARGET's
-  `commit_id`, so a slice can contain two rows with the same id, and the child's
-  `GraphRowEdge.target` names that id with no synthetic marker (deliberate — the
-  wire has no `target_synthetic` field). A synthetic row always sits
-  IMMEDIATELY after the child that elided to it; `lane` / `target_lane` are the
-  linkage. Key rows by position, or by `(commit_id, synthetic_elided)`.
-- **`active_lanes` invariant.** For every routed edge on lane `L` from a child
-  row to its landing row, every row STRICTLY BETWEEN the two lists `L` in its
-  `active_lanes`; a row never lists its own lane. A renderer can therefore paint
-  any row's complete cross-section from that row's fields alone.
-- **`total_rows` semantics.** Return-all (Story 4.4 delivered it as
-  `zanshin_graph::collect_lanes`): `total_rows == rows.length`. Windowing is
-  deferred past WIP; if it lands later it may set `total_rows > rows.length`
-  (an in-place wire change — edit the `.fbs`, regenerate, update all callers).
-- **Row order** is the stream / `jj log` order (topo-grouped, children before
-  parents); one `GraphRow` per `Row`, one `GraphRowEdge` per `RowEdge`, verbatim
-  strings (no escaping).
-- **Decode contract (Dart).** `!ok` → `ZanshinFfiException(code, context)` carrying
-  the envelope's `precondition` and `warnings` (Story 9.35, the shared
-  `decodeEnvelopeErrorInternal`);
-  `ok` with a non-`GraphSlice` union variant → `ZanshinFfiException('ffi.unknown')`
-  (discriminant guard, same as every other payload decoder). An out-of-range
-  `GraphEdgeKind` byte surfaces as the generated `StateError` (cdylib/bindings
-  version-skew or corruption — crash loudly, not recoverable; the same by-design
-  rule as `RepoKind` in `repo_detect.dart`).
-- **Reachability.** The graph is reachable via the worker command
-  (`GraphSliceCommand` → `ZanshinWorker.graphSlice` / `RepoHandle.graphSlice`,
-  Story 4.6). The Dart models/decoder in `graph.dart` are — like every other
-  noun's models (`Change`, `WorkingCopyStatus`, `Operation`, `RepoHandle`) —
-  not exported from `package:zanshin_core/zanshin_core.dart` by convention; the
-  decode-contract tests import them via `src/`.
+- `GraphTopologyCommand(handleId, revset, prioritize, shortPrefixes, anchors,
+  withTimestamps)` — the worker looks up the raw handle (unknown id → `ffi.invalid_handle`
+  envelope as a `BufferResult`), calls `zanshinGraphTopology(raw, …)`
+  (`lib/src/ffi/graph.dart`, which returns the `FfiBuffer` WITHOUT `readToken`'s copy) and
+  replies with the one-copy `TransferResult` above.
+- `ZanshinWorker.graphTopology(handleId, {revset, prioritize, shortPrefixes, anchors,
+  withTimestamps})` → `GraphTopologyView`; the interior-NUL guards run on the calling side
+  (`ArgumentError`) before `send`, and the precondition is recorded.
+- `RepoHandle.graphTopology({required revset, prioritize = defaultGraphPrioritize,
+  shortPrefixes = defaultShortPrefixes, required anchors, required withTimestamps})` —
+  closed-handle guard (`StateError`), delegates. `anchors` and `withTimestamps` are
+  required: nothing pre-fills the anchors on its own, and the timestamp cost is the layout
+  mode's call.
+- **Decode contract (`GraphTopologyView.fromEnvelope`).** `!ok` →
+  `ZanshinFfiException(code, context)` carrying the envelope's `precondition` and
+  `warnings`; `ok` with a non-`GraphTopology` payload, a missing `operation_id` / `refs` /
+  `working_copies`, a missing or wrong-length structurally required vector, or nodes with a
+  zero stride → `ZanshinFfiException('ffi.unknown', …)` — never a `?? ''` / `?? []`
+  coercion. Each vector is located by hand and checked in O(1) (presence, length, bounds);
+  the values are read on access through typed-data views over the envelope bytes (a vector
+  not aligned for its element size is copied — that one vector only). An unknown
+  `edge_kind` byte throws `ffi.unknown` on access. Id → index lookups
+  (`indexOfCommitId`, `indicesOfChangeId` — several indices for a divergent change) are
+  built on first use. A view over native memory is valid only while its `FfiBuffer`
+  lives; the views the worker returns own their bytes.
+- The view types are not exported from `package:zanshin_core/zanshin_core.dart` yet
+  (Story 10.12 exports them); tests import them via `src/`.
 
 ## `LogDefaults` payload and `zanshin_log_defaults` (Story 4.9)
 
 The repo's EFFECTIVE `jj log` defaults cross FFI as a `LogDefaults` member of the
-`Payload` union (`schemas/envelope.fbs`, appended after `GraphSlice` — union
+`Payload` union (`schemas/envelope.fbs`, appended after `GraphSlice` — *(2026-10-01,
+Story 4.12: `GraphTopology` took that slot)* — union
 member order is the wire discriminant, so it is append-only). The exported
 symbol calls `zanshin_jj::Repo::log_defaults()` and serialises the result with
 `zanshin_ffi::log_defaults::log_defaults_to_envelope` (infallible, always
@@ -1196,14 +1140,17 @@ LogDefaults {
   is present but empty. An explicit `""` means "prefix disambiguation disabled"
   and is returned verbatim (`cli/src/cli_util.rs:987-1009`, the citation the
   implementing code carries at `crates/zanshin-jj/src/config.rs:407`).
-- **These are offers, not policy (FR-JJ-17).** `zanshin_graph_slice`'s
+- **These are offers, not policy (FR-JJ-17).** `zanshin_graph_topology`'s
   `revset` / `prioritize` / `short_prefixes` remain caller pass-throughs;
   nothing Rust-side substitutes a config value for a caller argument. The UI
   pre-fills from this read and the user edits. The Dart compile-time constants
-  (`defaultLogRevset`, `defaultGraphPrioritize`, `defaultShortPrefixes`,
-  `defaultSyntheticElided`) stay as the BUILTIN pre-fills for a pre-handle UI;
-  `RepoHandle.graphSlice`'s default parameter values are unchanged (Dart
-  defaults must be compile-time constants).
+  (`defaultLogRevset`, `defaultGraphPrioritize`, `defaultShortPrefixes`) stay as
+  the BUILTIN pre-fills for a pre-handle UI; `RepoHandle.graphTopology`'s
+  `prioritize` / `shortPrefixes` default to those builtin constants, not to this
+  read (Dart defaults must be compile-time constants).
+  `synthetic_elided` is the effective config value only: the topology call takes no
+  such parameter (it emits no synthetic nodes), and the Dart `defaultSyntheticElided`
+  constant was removed with the slice in Story 4.12.
 
 **Error codes:**
 
@@ -1247,8 +1194,8 @@ description, conflict, empty — crosses FFI as a `CommitContents` member of the
 discriminant). The symbol calls `zanshin_jj::Repo::commit_contents` and serialises
 the result (`crates/zanshin-ffi/src/commit_contents.rs::commit_contents_to_envelope`). The
 view half (change id, prefix lengths, refs, flags, `parent_count`) and the edges
-come from `zanshin_jj::Repo::graph_topology`, whose wire is Story 4.12; the view
-composes the two calls.
+come from `zanshin_jj::Repo::graph_topology`, on the wire since Story 4.12 as
+`zanshin_graph_topology` (above); the view composes the two calls.
 
 ### `zanshin_commit_contents`
 
@@ -1336,5 +1283,5 @@ parents and, for a merge, merges their trees.
   an empty one included), or an entry missing a required string →
   `ZanshinFfiException('ffi.unknown', …)` — no `?? ''` / `?? const []` coercion.
 - `defaultGraphAnchors` (`['trunk()', 'present(@)']`, `lib/src/ffi/graph.dart`) is the
-  editable pre-fill for the topology call's required `anchors`; nothing applies it on
-  its own.
+  editable pre-fill for the topology call's required `anchors`
+  (`RepoHandle.graphTopology`, Story 4.12); nothing applies it on its own.

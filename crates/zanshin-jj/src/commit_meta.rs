@@ -48,12 +48,14 @@ pub struct CommitRef {
 
 /// `jj log`-parity display metadata for one commit (Story 4.8).
 ///
-/// Extracted inside the same head-resolved snapshot as the lane assignment it travels
-/// with (ADR-0002) — the whole payload is one atomic view of the repo. Ids are full;
-/// `*_prefix_len` are the shortest-unique-prefix lengths the UI highlights.
+/// Extracted inside the same head-resolved snapshot as the graph row it travels with
+/// (ADR-0002) — the whole row is one atomic view of the repo. Ids are full;
+/// `*_prefix_len` are the shortest-unique-prefix lengths the UI highlights. *(2026-10-01,
+/// Story 4.12: it travelled with the lane crate's rows on the removed slice wire; it is
+/// [`crate::Repo::walk_graph`]'s row metadata.)*
 // WHY(clippy::struct_excessive_bools): the flags are the CLI's template keywords —
 // independent predicates that are simultaneously true or false for one commit (an
-// immutable working copy is both), mapped 1:1 onto the `GraphRowMeta` wire table. The
+// immutable working copy is both), mapped 1:1 onto the `jj log` row's fields. The
 // lint's remedies (a state machine, two-variant enums) can only express one-of-N, so
 // applying them would lose information the UI needs; grouping them into sub-structs would
 // re-trip the same lint one level down while adding nesting to every consumer.

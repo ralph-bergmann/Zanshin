@@ -26,6 +26,7 @@ import '../ffi/events.dart'
         closeEventSink,
         registerEventSink,
         unregisterEventSink;
+import '../ffi/ffi_buffer.dart' show FfiBuffer;
 import '../ffi/file.dart' as repo_ffi_file;
 import '../ffi/file_ops.dart' as repo_ffi_file_ops;
 import '../ffi/git.dart' as repo_ffi_git;
@@ -377,6 +378,8 @@ class ZanshinWorker {
         return OpenedRepoHandle(this, handleId, warnings: warnings);
       case BufferResult(:final bytes):
         throw _envelopeToException(bytes);
+      case TransferResult():
+        throw StateError('openRepo received TransferResult — only GraphTopologyCommand replies with one');
     }
   }
 
@@ -433,6 +436,8 @@ class ZanshinWorker {
         return CreatedRepoHandle(this, handleId, warnings: warnings, precondition: precondition);
       case BufferResult(:final bytes):
         throw _envelopeToException(bytes);
+      case TransferResult():
+        throw StateError('a creation received TransferResult — only GraphTopologyCommand replies with one');
     }
   }
 
@@ -451,9 +456,22 @@ class ZanshinWorker {
     final WorkerResponse response = await _sendCommand(cmd);
     return switch (response) {
       BufferResult(:final bytes) => _recordPrecondition(cmd, bytes),
+      // The graph topology's one-copy reply (Story 4.12): materialize() hands the
+      // bytes over without a further copy.
+      TransferResult(:final data) => _recordPrecondition(cmd, data.materialize().asUint8List()),
       HandleResult() => throw StateError('send() received HandleResult — use openRepo/initRepo/cloneRepo'),
     };
   }
+
+  /// Sends the command [build] makes from a fresh command id and returns the
+  /// worker's raw reply, without decoding it or recording its precondition.
+  ///
+  /// Test hook (Story 4.12): the only way to observe WHICH response type crossed
+  /// the isolate boundary — a materialized `TransferableTypedData` and a
+  /// `SendPort` copy are indistinguishable once decoded.
+  @visibleForTesting
+  Future<WorkerResponse> sendRaw(WorkerCommand Function(int commandId) build) =>
+      _sendCommand(build(_correlator.allocateId()));
 
   // Latest pre-verb snapshot report per handle id (Story 9.26); dropped on close.
   final Map<int, repo_ffi_precondition.Precondition> _lastPreconditions = {};
@@ -567,6 +585,8 @@ class ZanshinWorker {
       case HandleResult():
         // Should never happen for a close command — no action needed.
         break;
+      case TransferResult():
+        throw StateError('closeRepo received TransferResult — only GraphTopologyCommand replies with one');
     }
   }
 
@@ -600,41 +620,56 @@ class ZanshinWorker {
     return repo_ffi_change.decodeChangeEnvelopeInternal(bytes);
   }
 
-  /// Read the lane-assigned commit graph for [revset] in the repo identified by
-  /// [handleId] (Story 4.6).
+  /// Read the whole revset's index-only graph topology in the repo identified by
+  /// [handleId] (Story 4.12): every node of [revset] in `jj log` order with its
+  /// ids, flags, prefix lengths, parent count, edges, refs and working copies,
+  /// the node indices each of [anchors] selects, `|all()|`, and — with
+  /// [withTimestamps] — every non-root committer timestamp.
   ///
-  /// Both expressions are caller pass-throughs (FR-JJ-17): [prioritize] is the
-  /// branch-prioritisation revset (`RepoHandle.graphSlice` pre-fills the CLI
-  /// default; `none()` = no prioritisation). The graph is re-derived from head
-  /// on every call — nothing is cached here or in Rust (ADR-0002); the UI
-  /// re-requests when [events] reports an `OpHeadsChangedEvent`.
+  /// Every argument is a caller pass-through (FR-JJ-17; `RepoHandle.graphTopology`
+  /// pre-fills [prioritize] and [shortPrefixes]). The call runs the pre-verb
+  /// snapshot (recorded for [lastPreconditionOf]) and re-derives from head;
+  /// nothing is cached here or in Rust (ADR-0002) — re-request when [events]
+  /// reports an `OpHeadsChangedEvent`.
   ///
-  /// Sends a [GraphSliceCommand] via [send] and decodes the returned FlatBuffers
-  /// `Envelope<GraphSlice>` bytes into a [repo_ffi_graph.GraphSlice].
+  /// Sends a [GraphTopologyCommand]; its reply crosses the isolate boundary
+  /// with ONE copy (a `TransferResult`) and is read through the returned
+  /// [repo_ffi_graph.GraphTopologyView], which owns its bytes.
   ///
-  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.jj_lib_error`;
-  /// full list: `docs/ffi-abi.md` § `zanshin_graph_slice`).
-  /// Completes with a [StateError] after [close]. The close-guard [StateError]
-  /// is delivered synchronously by [RepoHandle.graphSlice].
-  Future<repo_ffi_graph.GraphSlice> graphSlice(
+  /// Throws [ArgumentError] if [revset], [prioritize], [shortPrefixes] or an
+  /// anchor contains an interior NUL (U+0000). Throws [ZanshinFfiException] on
+  /// FFI errors (e.g. `ffi.invalid_handle`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.jj_lib_error`; full list: `docs/ffi-abi.md`
+  /// § `zanshin_graph_topology`). Completes with a [StateError] after [close];
+  /// the close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.graphTopology].
+  Future<repo_ffi_graph.GraphTopologyView> graphTopology(
     int handleId, {
     required String revset,
     required String prioritize,
-    required bool syntheticElided,
     required String shortPrefixes,
+    required List<String> anchors,
+    required bool withTimestamps,
   }) async {
+    // WHY here and not only in the adapter: the adapter runs in the WORKER
+    // isolate, where a throw comes back as `internal.dispatch_error` rather than
+    // the documented [ArgumentError] (same rule as [commitContents]).
+    rejectInteriorNul(revset, 'revset');
+    rejectInteriorNul(prioritize, 'prioritize');
+    rejectInteriorNul(shortPrefixes, 'shortPrefixes');
+    rejectInteriorNuls(anchors, 'anchors');
     final Uint8List bytes = await send(
-      GraphSliceCommand(
+      GraphTopologyCommand(
         commandId: _correlator.allocateId(),
         handleId: handleId,
         revset: revset,
         prioritize: prioritize,
-        syntheticElided: syntheticElided,
         shortPrefixes: shortPrefixes,
+        anchors: anchors,
+        withTimestamps: withTimestamps,
       ),
     );
-    return repo_ffi_graph.decodeGraphSliceEnvelopeInternal(bytes);
+    return repo_ffi_graph.GraphTopologyView.fromEnvelope(bytes);
   }
 
   /// Read the operation log for the repo identified by [handleId].
@@ -1794,27 +1829,37 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case GraphSliceCommand(
+        case GraphTopologyCommand(
           :final int handleId,
           :final String revset,
           :final String prioritize,
-          :final bool syntheticElided,
           :final String shortPrefixes,
+          :final List<String> anchors,
+          :final bool withTimestamps,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
-            log.warning('Worker: GraphSliceCommand for unknown handleId $handleId');
+            log.warning('Worker: GraphTopologyCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_graph.zanshinGraphSlice(
+            final FfiBuffer buf = repo_ffi_graph.zanshinGraphTopology(
               raw,
-              revset,
-              prioritize,
-              syntheticElided: syntheticElided,
+              revset: revset,
+              prioritize: prioritize,
               shortPrefixes: shortPrefixes,
+              anchors: anchors,
+              withTimestamps: withTimestamps,
             );
-            responseSP.send((commandId, BufferResult(bytes)));
+            // The ONE copy across the isolate boundary (Story 4.12): out of the native
+            // buffer straight into the transferable, then the native buffer is freed.
+            final TransferableTypedData data;
+            try {
+              data = TransferableTypedData.fromList([buf.bytes]);
+            } finally {
+              buf.dispose();
+            }
+            responseSP.send((commandId, TransferResult(data)));
           }
 
         case OpLogCommand(:final int handleId, :final int limit):

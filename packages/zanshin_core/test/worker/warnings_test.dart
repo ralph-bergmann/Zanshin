@@ -147,17 +147,22 @@ void main() {
       await handle.close();
     });
 
-    test('graph_slice_reports_a_short_prefixes_index_that_does_not_load', () async {
+    test('graph_topology_reports_a_short_prefixes_index_that_does_not_load', () async {
       final RepoHandle handle = await initGit();
 
-      final GraphSlice slice = await handle.graphSlice(revset: 'all()', shortPrefixes: 'nonexistent-bookmark-xyz');
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'all()',
+        shortPrefixes: 'nonexistent-bookmark-xyz',
+        anchors: defaultGraphAnchors,
+        withTimestamps: false,
+      );
 
-      expect(_codes(slice.warnings), [ZanshinWarningCode.shortPrefixesFailed]);
+      expect(_codes(view.warnings), [ZanshinWarningCode.shortPrefixesFailed]);
       expect(
-        slice.warnings.single.message,
+        view.warnings.single.message,
         startsWith('In template expression\nFailed to load short-prefixes index\n'),
       );
-      expect(slice.warnings.single.message, contains('nonexistent-bookmark-xyz'));
+      expect(view.warnings.single.message, contains('nonexistent-bookmark-xyz'));
       await handle.close();
     });
 

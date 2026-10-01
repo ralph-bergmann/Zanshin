@@ -439,7 +439,7 @@ fn api_surface_resolves() {
             &str,
             &zanshin_jj::ProgressFn,
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
-    // Story 4.9: the variant `zanshin-ffi::map_lane_stream_err` matches on — pin its shape.
+    // Story 4.9: the variant `zanshin-ffi::map_topology_err` matches on — pin its shape.
     _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
 
     // Trivially-constructible tuple-struct wrappers.

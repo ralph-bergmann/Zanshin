@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Fixture tests for `Repo::walk_graph` (Story 4.3): the revset graph stream contract
-//! `zanshin-graph`'s lane assigner relies on — children before parents, every node once,
-//! edge kinds as jj-lib classifies them, `jj log` order, re-resolved to head per call.
+//! Fixture tests for `Repo::walk_graph` (Story 4.3): the revset graph stream contract —
+//! children before parents, every node once, edge kinds as jj-lib classifies them, `jj log`
+//! order, re-resolved to head per call. *(2026-10-01, Story 4.12: the lane crate that relied on
+//! this contract is gone; `walk_graph` stays as the `jj log`-faithful read and the oracle of
+//! `Repo::graph_topology`.)*
 
 use std::collections::HashSet;
 use std::env;

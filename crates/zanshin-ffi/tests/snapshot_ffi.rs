@@ -32,7 +32,7 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::file::{zanshin_file_annotate, zanshin_file_list, zanshin_file_search, zanshin_file_show};
 use zanshin_ffi::file_ops::zanshin_file_untrack;
 use zanshin_ffi::git::{zanshin_git_export, zanshin_git_import};
-use zanshin_ffi::graph::zanshin_graph_slice;
+use zanshin_ffi::graph::zanshin_graph_topology;
 use zanshin_ffi::log_defaults::zanshin_log_defaults;
 use zanshin_ffi::op_log::zanshin_op_log;
 use zanshin_ffi::remotes::zanshin_remotes;
@@ -417,7 +417,6 @@ fn request(build: impl FnOnce(&mut flatbuffers::FlatBufferBuilder<'static>)) -> 
 // WHY: one flat arm per wrapper keeps the table readable; splitting would only scatter it.
 #[allow(clippy::too_many_lines)]
 unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
-    let cstr = |s: &str| CString::new(s).expect("no NUL");
     let buf = |bytes: &[u8]| (bytes.as_ptr(), bytes.len());
     // SAFETY (every arm): `handle` is live; each C string / request buffer is alive for its call.
     unsafe {
@@ -426,15 +425,26 @@ unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
             "op_log" => read_and_free(zanshin_op_log(handle, -1)),
             "bookmarks" => read_and_free(zanshin_bookmarks(handle)),
             "remotes" => read_and_free(zanshin_remotes(handle)),
-            "graph_slice" => {
-                let (revset, prioritize, short) = (cstr("all()"), cstr("none()"), cstr("all()"));
-                read_and_free(zanshin_graph_slice(
-                    handle,
-                    revset.as_ptr(),
-                    prioritize.as_ptr(),
-                    true,
-                    short.as_ptr(),
-                ))
+            "graph_topology" => {
+                let req = request(|b| {
+                    let revset = b.create_string("all()");
+                    let prioritize = b.create_string("none()");
+                    let short_prefixes = b.create_string("all()");
+                    let req = fbs::GraphTopologyRequest::create(
+                        b,
+                        &fbs::GraphTopologyRequestArgs {
+                            kind: fbs::RequestKind::GraphTopology,
+                            revset: Some(revset),
+                            prioritize: Some(prioritize),
+                            short_prefixes: Some(short_prefixes),
+                            anchors: None,
+                            with_timestamps: false,
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_graph_topology(handle, ptr, len))
             }
             "file_list" | "file_show" => {
                 let show = name == "file_show";
@@ -607,7 +617,7 @@ fn every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm() {
         "op_log",
         "bookmarks",
         "remotes",
-        "graph_slice",
+        "graph_topology",
         "file_list",
         "file_show",
         "file_annotate",

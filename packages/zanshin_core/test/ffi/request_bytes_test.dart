@@ -3,9 +3,10 @@
 // Message-contract tests for [rejectInteriorNul] and its list form
 // [rejectInteriorNuls] — since the 2026-09-05 closing dedupe the single producer
 // of the interior-NUL [ArgumentError] anywhere in the package. Every caller-
-// supplied string that crosses the FFI now routes through them: the six
-// request-buffer adapters, mutate.dart's and graph.dart's C-string ones, and
-// `worker/isolate.dart`'s calling-side guards one layer up.
+// supplied string that crosses the FFI now routes through them: the
+// request-buffer adapters (graph.dart's among them since Story 4.12),
+// mutate.dart's C-string ones, and `worker/isolate.dart`'s calling-side guards
+// one layer up.
 //
 // Every OTHER NUL test in this package matches on the `throwsArgumentError` TYPE
 // only, so before this file the literal message and the `name` argument were

@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 27 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 28 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -97,7 +97,8 @@ enum RequestKind : ubyte {
   ConfigGcList,
   ConfigGcDelete,
   EnvironmentAdopt,
-  CommitContents
+  CommitContents,
+  GraphTopology
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -521,6 +522,21 @@ table CommitContentsRequest {
   commit_ids: [string];
 }
 
+/// Arguments of `zanshin_graph_topology` (Story 4.12) — the whole revset's index-only topology,
+/// every argument a caller pass-through (FR-JJ-17); Rust bakes in no default.
+/// `revset`, `prioritize` and `short_prefixes` are required: an absent field is `jj.invalid_input`
+/// "<field> is required". A present EMPTY string is a value: an empty `short_prefixes` disables
+/// disambiguation (the CLI's toggle semantic), a blank `revset`/`prioritize` is a parse error.
+/// An absent `anchors` vector is the empty list; `with_timestamps` absent is `false`.
+table GraphTopologyRequest {
+  kind: RequestKind;
+  revset: string;
+  prioritize: string;
+  short_prefixes: string;
+  anchors: [string];
+  with_timestamps: bool;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -528,7 +544,7 @@ table CommitContentsRequest {
 //   Story 3-8  : Diagnostics ✓
 //   Story 3-4b : status ✓, change ✓, op_log ✓, bookmarks ✓, remotes ✓
 //   Story 3-6  : WatcherEvent ✓, Progress ✓
-//   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6)
+//   Story 4-2  : GraphSlice ✓ (FFI wrapper 4-6) (removed 4-12; slot 11 reused by GraphTopology)
 //   Story 4-9  : LogDefaults ✓
 //   Story 5-8  : Diff
 //   Story 6-5  : mutation results ✓
@@ -551,6 +567,7 @@ table CommitContentsRequest {
 //                (`zanshin_config_file_write` answers ok with no payload)
 //   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload and no warnings)
 //   Story 4-10 : CommitContents ✓
+//   Story 4-12 : GraphTopology ✓ (GraphSlice's Payload slot 11)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -726,118 +743,108 @@ table Progress {
   message: string;
 }
 
-/// How a graph edge's target was classified by the revset-graph stream.
-/// Mirrors zanshin_graph::EdgeKind — order must stay identical.
+/// How a graph edge's target was classified by jj's revset-graph stream.
+/// Mirrors zanshin_jj::GraphEdgeKind — order must stay identical.
 /// `Direct`/`Indirect` targets are in the revset (Indirect = the direct parent
 /// was elided; renderers may draw it dashed); `Missing` leads outside the
-/// revset and never reserves a lane.
+/// revset and has no target node.
 enum GraphEdgeKind : byte { Direct, Indirect, Missing }
 
-/// One routed parent edge of a GraphRow (Story 4.2).
-/// `target_lane` is meaningful ONLY when kind != Missing (presence == the
-/// kind flag, same pattern as RepoDetect.suggested_kind / Bookmark.remote_name):
-/// a Missing edge never lands in a lane, so Rust writes 0 and Dart models it
-/// as null. flatc 25.12.19 rejects optional scalars (`= null`) for Dart.
-table GraphRowEdge {
-  target: string;          // parent commit id, hex
-  target_lane: uint;       // lane the edge is routed to; 0 / ignored when kind == Missing
-  kind: GraphEdgeKind;
-}
+/// Whether a TopologyRef is a bookmark or a tag.
+enum TopologyRefKind : ubyte { Bookmark, Tag }
 
-/// One bookmark or tag entry on a GraphRow (Story 4.8, zanshin_jj::CommitRef).
-/// Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a
-/// remote entry, then `??` when conflicted or `*` when a local entry is not
-/// synced. `remote` is ABSENT (Dart null) for the local entry — null-for-absence.
-/// Tracked-and-synced remote entries are not emitted at all (the CLI's
-/// `collect_distinct_refs` rule: `is_local() || !synced`).
-table GraphCommitRef {
+/// One bookmark or tag entry of a GraphTopology node (Story 4.12, zanshin_jj::CommitRef).
+/// Mirrors the CLI's per-commit ref rendering: `name`, then `@remote` for a remote entry,
+/// then `??` when conflicted or `*` when a local entry is not synced. `remote` is ABSENT
+/// (Dart null) for the local entry — null-for-absence. Tracked-and-synced remote entries are
+/// not emitted at all (the CLI's `collect_distinct_refs` rule: `is_local() || !synced`).
+table TopologyRef {
+  node: uint;              // the node index this entry belongs to
+  kind: TopologyRefKind;
   name: string;            // bookmark/tag name, UTF-8
   remote: string;          // absent for the local entry
   synced: bool;
   conflicted: bool;
 }
 
-/// One lane passing vertically THROUGH a GraphRow (Story 4.8,
-/// zanshin_graph::ActiveLane) — it neither starts nor ends at that row's node.
-/// `kind` is the kind of the edge that opened the segment, so a renderer can
-/// style it without reading any neighbouring row; the color is lane % PALETTE_SIZE.
-table GraphActiveLane {
-  lane: uint;
-  kind: GraphEdgeKind;
+/// One workspace whose working-copy commit is a GraphTopology node (Story 4.12).
+table TopologyWorkingCopy {
+  node: uint;              // the node index
+  workspace: string;       // the workspace name
 }
 
-/// `jj log`-parity display metadata for one commit row (Story 4.8,
-/// zanshin_jj::CommitMeta), extracted from the SAME head-resolved snapshot as the
-/// lane assignment. Ids are full; the `*_prefix_len` fields are the
-/// shortest-unique-prefix lengths the UI highlights.
+/// The whole revset's index-only topology at one operation (Story 4.12, zanshin_jj::GraphTopology)
+/// — the answer of `zanshin_graph_topology`, as scalar vectors indexed by node (n nodes, in
+/// `jj log` order: children before parents, `prioritize` first) and CSR offset vectors for the
+/// edges (E) and the anchors (A).
 ///
-/// `change_offset` is meaningful ONLY when has_change_offset == true (presence
-/// pair, same pattern as GraphRowEdge.target_lane: flatc 25.12.19 rejects
-/// optional scalars for Dart). The CLI renders `/<offset>` only for
-/// hidden/divergent commits — that is a UI decision, reproducible from the flags.
-table GraphRowMeta {
-  change_id: string;                 // ChangeId reverse-hex display form
-  change_id_prefix_len: uint;
-  commit_id_prefix_len: uint;
-  change_offset: uint;               // 0 / ignored when has_change_offset == false
-  has_change_offset: bool;
-  author_name: string;               // may be empty (jj allows it)
-  author_email: string;              // may be empty (jj allows it)
-  committer_timestamp_millis: long;  // committer timestamp, millis since the Unix epoch
-  committer_tz_offset_minutes: int;  // timezone offset, minutes east of UTC
-  bookmarks: [GraphCommitRef];
-  tags: [GraphCommitRef];
-  working_copies: [string];          // EVERY workspace whose wc commit this is (incl. the current one); empty in a single-workspace repo (the CLI's guard)
-  working_copy: bool;                // this workspace's @
-  immutable: bool;                   // in ::(immutable_heads() | root())
-  conflict: bool;
-  empty: bool;
-  hidden: bool;
-  divergent: bool;
-  root: bool;
-  description_first_line: string;    // "" when the description is empty
-}
-
-/// One lane-assigned commit row (zanshin_graph::Row). Rows carry a COMMIT id,
-/// never a change id (change ids are ambiguous for divergent changes).
+/// Every vector except `timestamps` is ALWAYS written, empty when n = 0. A reader treats an
+/// absent one, or one of the wrong length, as a malformed buffer.
 ///
-/// `synthetic_elided` marks the synthetic "(elided revisions)" row the CLI
-/// splices for an elided ancestor (`ui.log-synthetic-elided-nodes`): its
-/// `commit_id` is the ELIDED TARGET's id, its lane fields are real, and `meta`
-/// is ABSENT (Dart null — a nested table is the only shape flatc 25.12.19 lets
-/// Dart see as null). On a commit row `meta` is always present.
-///
-/// Consequence: with synthetic elided rows ON (the default) `commit_id` is NOT
-/// unique across rows — the synthetic row and the real commit it stands for
-/// share it, and a child's GraphRowEdge.target names that id with no synthetic
-/// marker. A synthetic row always sits IMMEDIATELY after the child that elided
-/// to it, and `lane` / `target_lane` are the linkage. Do not use `commit_id`
-/// alone as a row key.
-table GraphRow {
-  commit_id: string;               // commit id, hex
-  lane: uint;                      // lane this commit was placed on
-  color_idx: uint;                 // deterministic palette index, lane % PALETTE_SIZE
-  edges: [GraphRowEdge];           // one per input parent edge, same order
-  active_lanes: [GraphActiveLane]; // pass-through lanes, ascending; always present
-  synthetic_elided: bool;
-  meta: GraphRowMeta;              // absent iff synthetic_elided
-}
-
-/// A slice of the lane-assigned commit graph, in stream (`jj log`) order.
-/// Return-all semantics (Story 4.4): total_rows == rows.length. Windowing is
-/// deferred past WIP; if it lands later it may set total_rows > rows.length.
-table GraphSlice {
-  rows: [GraphRow];        // one per Row, stream order; always present (empty for an empty slice)
-  total_rows: uint;        // == rows.length in WIP (see table doc)
+/// - `operation_id`: the full hex id of the operation this call loaded (after its own pre-verb
+///   snapshot, if that wrote one); `zanshin_commit_contents` reads the object half pinned to it.
+/// - `all_count`: `|all()|`, counted by iterating — the VISIBLE commits only, so a revset that
+///   names hidden commits can yield more nodes than this.
+/// - `commit_ids` / `change_ids`: the raw id bytes, n × stride, node i at [i × stride,
+///   (i + 1) × stride). `commit_id_stride` / `change_id_stride` are the byte lengths of one id
+///   (one length per column; both 0 iff n = 0). A reader formats a commit id as lowercase hex and
+///   a change id as jj reverse-hex (nibble v → 'z' − v, high nibble first: 0 → 'z', 15 → 'k').
+/// - `flags`: one byte per node — bit 0 working_copy (this workspace's @), 1 immutable
+///   (in ::(immutable_heads() | root())), 2 hidden, 3 divergent, 4 root, 5 has_change_offset;
+///   bits 6-7 are zero.
+/// - `change_offset`: the node's index among the commits sharing its change id; meaningful ONLY
+///   when flags bit 5 is set (presence bit — flatc 25.12.19 has no optional scalar for Dart),
+///   0 otherwise.
+/// - `change_id_prefix_len` / `commit_id_prefix_len`: the shortest unique prefix lengths in hex
+///   digits, within the `short_prefixes` disambiguation set (or the full index when disabled).
+/// - `parent_count`: the commit's real parent count, Missing parents included (0 for the root);
+///   read from the index, never from the edges.
+/// - Edges, CSR: node i's edges are [edge_start[i], edge_start[i + 1]); `edge_start` has n + 1
+///   entries, edge_start[0] == 0, edge_start[n] == E. Within a node they are in jj's stream
+///   order, repeated targets kept (a merge can carry a Direct AND an Indirect edge to one node).
+///   `edge_target` is the target's node index, defined iff `edge_kind != Missing`; a Missing
+///   edge's slot holds -1 (a reader that skips the kind check fails loudly instead of linking
+///   node 0) and Dart reads it as null.
+/// - `timestamps`: the committer timestamps, millis since the Unix epoch — ABSENT iff the call
+///   did not request them; when present, n entries, and the root's slot is 0 (Dart null: the
+///   root carries none).
+/// - `refs`: sorted by node; per node its bookmarks, then its tags, each in zanshin-jj's order.
+/// - `working_copies`: sorted by node; per node in zanshin-jj's order. Empty in a
+///   single-workspace repo (the CLI's guard).
+/// - Anchors, CSR: anchor a's nodes are anchor_node[anchor_start[a] .. anchor_start[a + 1]],
+///   ascending (= `jj log` order); `anchor_start` has A + 1 entries.
+table GraphTopology {
+  operation_id: string;
+  all_count: ulong;
+  commit_ids: [ubyte];             // n × commit_id_stride
+  change_ids: [ubyte];             // n × change_id_stride
+  commit_id_stride: ubyte;         // 0 iff n = 0
+  change_id_stride: ubyte;         // 0 iff n = 0
+  flags: [ubyte];                  // n
+  change_offset: [uint];           // n; 0 when flags bit 5 is clear
+  change_id_prefix_len: [ubyte];   // n
+  commit_id_prefix_len: [ubyte];   // n
+  parent_count: [uint];            // n
+  edge_start: [uint];              // n + 1
+  edge_target: [int];              // E; -1 iff Missing
+  edge_kind: [GraphEdgeKind];      // E
+  timestamps: [long];              // n iff requested, absent otherwise; root slot 0
+  refs: [TopologyRef];             // sorted by node
+  working_copies: [TopologyWorkingCopy]; // sorted by node
+  anchor_start: [uint];            // A + 1
+  anchor_node: [uint];             // anchor_start[A] entries
 }
 
 /// The repo's EFFECTIVE `jj log` defaults (Story 4.9) — what the user's own jj
 /// CLI would apply, after their `[revsets]` / `[ui]` config overrides.
 ///
-/// Offered as pre-fills for zanshin_graph_slice's pass-through parameters
-/// (FR-JJ-17); nothing is applied silently, the caller decides. `short_prefixes`
-/// falls back to `log` when `revsets.short-prefixes` is ABSENT; an explicit
-/// empty string means disambiguation is DISABLED and is returned verbatim.
+/// Offered as pre-fills for zanshin_graph_topology's `revset` / `prioritize` /
+/// `short_prefixes` pass-throughs (FR-JJ-17); nothing is applied silently, the
+/// caller decides. `short_prefixes` falls back to `log` when
+/// `revsets.short-prefixes` is ABSENT; an explicit empty string means
+/// disambiguation is DISABLED and is returned verbatim. `synthetic_elided` is the
+/// effective config value only — the topology call takes no such parameter
+/// (Story 4.12: it emits no synthetic nodes).
 table LogDefaults {
   log: string;                  // revsets.log
   log_graph_prioritize: string; // revsets.log-graph-prioritize
@@ -986,8 +993,8 @@ table FileAnnotation {
 /// One matching line of `zanshin_file_search` (Story 9.4).
 ///
 /// `line_number` is 1-based within the searched content. `conflict_side` is meaningful ONLY
-/// when has_conflict_side == true (presence pair, same rule as GraphRowMeta.change_offset:
-/// flatc 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
+/// when has_conflict_side == true (presence pair, same rule as ShowRequest.limit: flatc
+/// 25.12.19 rejects optional scalars for Dart); it is the 0-based side of a conflicted
 /// path, whose line numbers restart at each side — there is no meaningful unified numbering
 /// across sides (the CLI's own reasoning at `search.rs:146-147`).
 table SearchMatch {
@@ -1378,8 +1385,7 @@ table ConfigGcResult {
 
 /// The object half of one `jj log` row (Story 4.10, zanshin_jj::CommitContent), read at the
 /// operation `zanshin_commit_contents` was pinned to. Commit-intrinsic, so a caller may cache it
-/// by `commit_id`. Field names mirror GraphRowMeta's; every string is always present (an empty
-/// author or description is `""`).
+/// by `commit_id`. Every string is always present (an empty author or description is `""`).
 table CommitContent {
   commit_id: string;                 // full hex, lowercase
   author_name: string;               // may be empty (jj allows it)
@@ -1407,7 +1413,7 @@ union Payload {
   RepoDetect,
   WatcherEvent,
   Progress,
-  GraphSlice,
+  GraphTopology,
   // Member order IS the wire discriminant — APPEND only, never reorder.
   LogDefaults,
   MutationResult,

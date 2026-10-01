@@ -1,33 +1,44 @@
 // SPDX-License-Identifier: MIT
 
-//! Integration tests for the `zanshin_graph_slice` FFI wrapper (Story 4.6).
+//! Integration tests for the `zanshin_graph_topology` FFI wrapper (Story 4.12).
 //!
-//! Every buffer is read through the `FlatBuffers` generated typed accessors and the
-//! Verifier — a wrong-shape payload is a compile error, not a runtime assert. The rows
-//! are mapped back to `zanshin_graph::Row` and compared against a `collect_lanes` oracle
-//! on a `zanshin_jj::Repo::open` of the same fixture. Every token is freed via
-//! `zanshin_buffer_free_token` and every handle is closed, so the suite is leak-clean.
+//! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier —
+//! a wrong-shape payload is a compile error, not a runtime assert. The wire is mapped back to a
+//! `zanshin_jj::GraphTopology` (ids re-hexed from the stride columns, edges and anchors from
+//! their CSR, refs and working copies regrouped by node) and compared against the oracle: the
+//! same call through `zanshin_jj::Repo::open` on a second handle of the same fixture. The mapper
+//! also checks every wire invariant (lengths, CSR bounds, −1 Missing slots, sort orders, zero
+//! flag bits 6-7). Every token is freed via `zanshin_buffer_free_token` and every handle is
+//! closed, so the suite is leak-clean.
 
-use std::collections::BTreeSet;
 use std::env;
 use std::ffi::CString;
+use std::path::Path;
 use std::sync::LazyLock;
 
 use flatbuffers::root as fb_root;
-use test_helpers::{add_commit_off_root, describe_commit, extract_fixture, FixtureHandle};
+use test_helpers::{
+    abandon_commit, add_commit_off_root, add_commit_with_files, add_divergent_twin, add_workspace, extract_fixture,
+    set_local_bookmark, set_remote_bookmark, set_tag, FixtureHandle,
+};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
-    graph::zanshin_graph_slice,
+    graph::zanshin_graph_topology,
     repo::{zanshin_repo_close, zanshin_repo_open},
-    FFI_INVALID_HANDLE, FFI_NULL_POINTER, FFI_UTF8_ERROR, JJ_CONFIG_ERROR, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
-use zanshin_graph::{collect_lanes, ActiveLane, EdgeKind, Row, RowEdge};
-use zanshin_jj::{CommitMeta, CommitRef, Repo, Timestamp, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET};
+use zanshin_jj::{
+    CommitId, CommitRef, GraphEdgeKind, GraphTopology, OperationId, Repo, TopologyEdge, TopologyMeta, TopologyNode,
+    DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
+};
 
 /// The CLI's `revsets.short-prefixes` default (it falls back to `revsets.log`).
 const SHORT: &str = DEFAULT_LOG_REVSET;
+
+/// The `zanshin_core` pre-fill for `anchors`.
+const ANCHORS: [&str; 2] = ["trunk()", "present(@)"];
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
 
@@ -72,21 +83,14 @@ fn parse_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
     fb_root::<fbs::Envelope>(bytes).expect("FlatBuffers Verifier must pass for a well-formed Envelope")
 }
 
-/// Create a NUL-terminated C string from a Rust `&str`.
-fn cstr(s: &str) -> CString {
-    CString::new(s).expect("test string must not contain NUL bytes")
-}
-
 /// Extract `name` and open it through the FFI; returns the live fixture + raw handle.
 ///
 /// The caller closes the handle via `zanshin_repo_close`; dropping the `FixtureHandle`
 /// deletes the extracted repo.
 unsafe fn open_fixture(name: &str) -> (FixtureHandle, u64) {
     let fixture = extract_fixture(name).expect("fixture must extract");
-    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
-
-    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
-    let open_bytes = unsafe { read_and_free(open_token) };
+    let path = CString::new(fixture.path.to_str().expect("fixture path must be valid UTF-8")).expect("no NUL");
+    let open_bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
     let open_env = parse_envelope(&open_bytes);
     assert!(open_env.ok(), "repo open must succeed");
     let handle = open_env
@@ -97,158 +101,262 @@ unsafe fn open_fixture(name: &str) -> (FixtureHandle, u64) {
 }
 
 unsafe fn close(handle: u64) {
-    let close_token = unsafe { zanshin_repo_close(handle) };
-    let close_bytes = unsafe { read_and_free(close_token) };
+    let close_bytes = unsafe { read_and_free(zanshin_repo_close(handle)) };
     assert!(parse_envelope(&close_bytes).ok(), "repo close must succeed");
 }
 
-/// Call `zanshin_graph_slice` with the CLI-default `short_prefixes` and elided rows OFF —
-/// the pre-4.8 stream shape the topology round-trips below compare against.
-unsafe fn slice_bytes(handle: u64, revset: &str, prioritize: &str) -> Vec<u8> {
-    unsafe { slice_bytes_with(handle, revset, prioritize, false, SHORT) }
+/// The arguments of one call; `None` leaves the field absent on the wire.
+#[derive(Clone)]
+struct Req<'a> {
+    kind: fbs::RequestKind,
+    revset: Option<&'a str>,
+    prioritize: Option<&'a str>,
+    short_prefixes: Option<&'a str>,
+    anchors: Option<Vec<&'a str>>,
+    with_timestamps: bool,
 }
 
-/// Call `zanshin_graph_slice` with every parameter explicit; return the envelope bytes.
-unsafe fn slice_bytes_with(
-    handle: u64,
-    revset: &str,
-    prioritize: &str,
-    synthetic_elided: bool,
-    short_prefixes: &str,
-) -> Vec<u8> {
-    let revset_cstr = cstr(revset);
-    let prio_cstr = cstr(prioritize);
-    let short_cstr = cstr(short_prefixes);
-    let token = unsafe {
-        zanshin_graph_slice(
-            handle,
-            revset_cstr.as_ptr(),
-            prio_cstr.as_ptr(),
-            synthetic_elided,
-            short_cstr.as_ptr(),
+/// `revset` with the CLI-default prioritize and short prefixes, the default anchors, no
+/// timestamps.
+fn req(revset: &str) -> Req<'_> {
+    Req {
+        kind: fbs::RequestKind::GraphTopology,
+        revset: Some(revset),
+        prioritize: Some(DEFAULT_GRAPH_PRIORITIZE),
+        short_prefixes: Some(SHORT),
+        anchors: Some(ANCHORS.to_vec()),
+        with_timestamps: false,
+    }
+}
+
+impl Req<'_> {
+    fn bytes(&self) -> Vec<u8> {
+        let mut b = flatbuffers::FlatBufferBuilder::new();
+        let revset = self.revset.map(|s| b.create_string(s));
+        let prioritize = self.prioritize.map(|s| b.create_string(s));
+        let short_prefixes = self.short_prefixes.map(|s| b.create_string(s));
+        let anchors = self.anchors.as_ref().map(|list| {
+            let offsets: Vec<_> = list.iter().map(|s| b.create_string(s)).collect();
+            b.create_vector(&offsets)
+        });
+        let req = fbs::GraphTopologyRequest::create(
+            &mut b,
+            &fbs::GraphTopologyRequestArgs {
+                kind: self.kind,
+                revset,
+                prioritize,
+                short_prefixes,
+                anchors,
+                with_timestamps: self.with_timestamps,
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    /// The same call through `zanshin_jj` on a second handle of `root`.
+    fn oracle(&self, root: &Path) -> GraphTopology {
+        let mut repo = Repo::open(root).expect("oracle repo must open");
+        let anchors: Vec<String> = self.anchors.iter().flatten().map(|&anchor| anchor.to_owned()).collect();
+        repo.graph_topology(
+            self.revset.expect("revset"),
+            self.prioritize.expect("prioritize"),
+            self.short_prefixes.expect("short_prefixes"),
+            &anchors,
+            self.with_timestamps,
         )
-    };
-    unsafe { read_and_free(token) }
+        .expect("oracle graph_topology must succeed")
+    }
 }
 
-fn kind_from_wire(kind: fbs::GraphEdgeKind) -> EdgeKind {
+/// Call `zanshin_graph_topology` with `req`; return the envelope bytes.
+unsafe fn call(handle: u64, req: &Req<'_>) -> Vec<u8> {
+    let request = req.bytes();
+    unsafe { read_and_free(zanshin_graph_topology(handle, request.as_ptr(), request.len())) }
+}
+
+const HEX: &[u8; 16] = b"0123456789abcdef";
+const REVERSE_HEX: &[u8; 16] = b"zyxwvutsrqponmlk";
+
+/// Formats raw id bytes: lowercase hex, or jj reverse-hex (nibble v → 'z' − v).
+fn format_id(bytes: &[u8], digits: &[u8; 16]) -> String {
+    bytes
+        .iter()
+        .flat_map(|b| [digits[usize::from(b >> 4)], digits[usize::from(b & 0x0f)]])
+        .map(char::from)
+        .collect()
+}
+
+fn index(value: u32) -> usize {
+    usize::try_from(value).expect("u32 fits usize")
+}
+
+fn kind_from_wire(kind: fbs::GraphEdgeKind) -> GraphEdgeKind {
     match kind {
-        fbs::GraphEdgeKind::Direct => EdgeKind::Direct,
-        fbs::GraphEdgeKind::Indirect => EdgeKind::Indirect,
-        fbs::GraphEdgeKind::Missing => EdgeKind::Missing,
+        fbs::GraphEdgeKind::Direct => GraphEdgeKind::Direct,
+        fbs::GraphEdgeKind::Indirect => GraphEdgeKind::Indirect,
+        fbs::GraphEdgeKind::Missing => GraphEdgeKind::Missing,
         other => panic!("unexpected wire GraphEdgeKind {other:?}"),
     }
 }
 
-/// Map one wire `GraphCommitRef` back to the domain type.
-fn ref_from_wire(r: fbs::GraphCommitRef<'_>) -> CommitRef {
-    CommitRef {
+/// One node's bookmarks and tags from the `refs` table, asserting the per-node order
+/// (bookmarks before tags).
+fn refs_of(refs: &[(usize, fbs::TopologyRef<'_>)], node: usize) -> (Vec<CommitRef>, Vec<CommitRef>) {
+    let mine: Vec<_> = refs.iter().filter(|(n, _)| *n == node).map(|(_, r)| *r).collect();
+    let first_tag = mine
+        .iter()
+        .position(|r| r.kind() == fbs::TopologyRefKind::Tag)
+        .unwrap_or(mine.len());
+    assert!(
+        mine[first_tag..].iter().all(|r| r.kind() == fbs::TopologyRefKind::Tag),
+        "node {node}: bookmarks come before tags"
+    );
+    let to_ref = |r: &fbs::TopologyRef<'_>| CommitRef {
         name: r.name().expect("name must be present").to_owned(),
         remote: r.remote().map(ToOwned::to_owned),
         synced: r.synced(),
         conflicted: r.conflicted(),
-    }
+    };
+    (
+        mine[..first_tag].iter().map(to_ref).collect(),
+        mine[first_tag..].iter().map(to_ref).collect(),
+    )
 }
 
-/// Map one wire `GraphRowMeta` back to the domain type (`has_change_offset` restores the
-/// `Option`).
-fn meta_from_wire(m: fbs::GraphRowMeta<'_>) -> CommitMeta {
-    CommitMeta {
-        change_id: m.change_id().expect("change_id must be present").to_owned(),
-        change_id_prefix_len: m.change_id_prefix_len(),
-        commit_id_prefix_len: m.commit_id_prefix_len(),
-        change_offset: m.has_change_offset().then(|| m.change_offset()),
-        author_name: m.author_name().expect("author_name must be present").to_owned(),
-        author_email: m.author_email().expect("author_email must be present").to_owned(),
-        committer_timestamp: Timestamp {
-            millis_since_epoch: m.committer_timestamp_millis(),
-            tz_offset_minutes: m.committer_tz_offset_minutes(),
-        },
-        bookmarks: m
-            .bookmarks()
-            .expect("bookmarks must be present")
-            .iter()
-            .map(ref_from_wire)
-            .collect(),
-        tags: m
-            .tags()
-            .expect("tags must be present")
-            .iter()
-            .map(ref_from_wire)
-            .collect(),
-        working_copies: m
-            .working_copies()
-            .expect("working_copies must be present")
-            .iter()
-            .map(ToOwned::to_owned)
-            .collect(),
-        working_copy: m.working_copy(),
-        immutable: m.immutable(),
-        conflict: m.conflict(),
-        empty: m.empty(),
-        hidden: m.hidden(),
-        divergent: m.divergent(),
-        root: m.root(),
-        description_first_line: m
-            .description_first_line()
-            .expect("description_first_line must be present")
-            .to_owned(),
+/// Map the wire payload back to a `zanshin_jj::GraphTopology`, asserting every structural
+/// invariant the schema documents on the way.
+// WHY: one linear decode of every column; splitting it would only pass the columns around.
+#[allow(clippy::too_many_lines)]
+fn topology_from_wire(t: fbs::GraphTopology<'_>) -> GraphTopology {
+    let flags = t.flags().expect("flags must be present").bytes();
+    let n = flags.len();
+    assert!(flags.iter().all(|f| f & 0b1100_0000 == 0), "flag bits 6-7 are zero");
+    let commit_stride = usize::from(t.commit_id_stride());
+    let change_stride = usize::from(t.change_id_stride());
+    assert_eq!(commit_stride == 0, n == 0, "a stride is 0 iff n = 0");
+    assert_eq!(change_stride == 0, n == 0, "a stride is 0 iff n = 0");
+    let commit_ids = t.commit_ids().expect("commit_ids").bytes();
+    let change_ids = t.change_ids().expect("change_ids").bytes();
+    assert_eq!(commit_ids.len(), n * commit_stride);
+    assert_eq!(change_ids.len(), n * change_stride);
+    let change_offset: Vec<u32> = t.change_offset().expect("change_offset").iter().collect();
+    let change_prefix = t.change_id_prefix_len().expect("change_id_prefix_len").bytes();
+    let commit_prefix = t.commit_id_prefix_len().expect("commit_id_prefix_len").bytes();
+    let parent_count: Vec<u32> = t.parent_count().expect("parent_count").iter().collect();
+    for len in [
+        change_offset.len(),
+        change_prefix.len(),
+        commit_prefix.len(),
+        parent_count.len(),
+    ] {
+        assert_eq!(len, n, "every per-node vector has n entries");
     }
-}
-
-/// Map the wire payload back to the 4.1 domain type (`Missing` ⇒ `target_lane: None`).
-fn rows_from_wire(slice: fbs::GraphSlice<'_>) -> Vec<Row> {
-    slice
-        .rows()
-        .expect("rows must be present")
+    let edge_start: Vec<u32> = t.edge_start().expect("edge_start").iter().collect();
+    let edge_target: Vec<i32> = t.edge_target().expect("edge_target").iter().collect();
+    let edge_kind: Vec<fbs::GraphEdgeKind> = t.edge_kind().expect("edge_kind").iter().collect();
+    assert_eq!(edge_start.len(), n + 1, "edge_start has n + 1 entries");
+    assert_eq!(edge_start[0], 0);
+    assert_eq!(index(edge_start[n]), edge_target.len(), "edge_start[n] == E");
+    assert_eq!(edge_kind.len(), edge_target.len());
+    let timestamps: Option<Vec<i64>> = t.timestamps().map(|v| v.iter().collect());
+    if let Some(ts) = &timestamps {
+        assert_eq!(ts.len(), n, "timestamps, when present, have n entries");
+    }
+    let refs: Vec<(usize, fbs::TopologyRef<'_>)> =
+        t.refs().expect("refs").iter().map(|r| (index(r.node()), r)).collect();
+    assert!(refs.windows(2).all(|w| w[0].0 <= w[1].0), "refs sorted by node");
+    let working_copies: Vec<(usize, String)> = t
+        .working_copies()
+        .expect("working_copies")
         .iter()
-        .map(|r| Row {
-            commit_id: r.commit_id().expect("commit_id must be present").to_owned(),
-            lane: r.lane(),
-            color_idx: r.color_idx(),
-            edges: r
-                .edges()
-                .expect("edges must be present")
-                .iter()
+        .map(|w| (index(w.node()), w.workspace().expect("workspace").to_owned()))
+        .collect();
+    assert!(
+        working_copies.windows(2).all(|w| w[0].0 <= w[1].0),
+        "working copies sorted by node"
+    );
+
+    let nodes = (0..n)
+        .map(|i| {
+            let flag = |bit: u8| flags[i] & (1 << bit) != 0;
+            let edges = (index(edge_start[i])..index(edge_start[i + 1]))
                 .map(|e| {
-                    let kind = kind_from_wire(e.kind());
-                    RowEdge {
-                        target: e.target().expect("target must be present").to_owned(),
-                        target_lane: (kind != EdgeKind::Missing).then_some(e.target_lane()),
-                        kind,
-                    }
+                    let kind = kind_from_wire(edge_kind[e]);
+                    let target = if kind == GraphEdgeKind::Missing {
+                        assert_eq!(edge_target[e], -1, "a Missing edge's slot holds -1");
+                        None
+                    } else {
+                        Some(usize::try_from(edge_target[e]).expect("a target is a node index"))
+                    };
+                    TopologyEdge { target, kind }
                 })
-                .collect(),
-            synthetic_elided: r.synthetic_elided(),
-            active_lanes: r
-                .active_lanes()
-                .expect("active_lanes must be present")
-                .iter()
-                .map(|l| ActiveLane {
-                    lane: l.lane(),
-                    kind: kind_from_wire(l.kind()),
-                })
-                .collect(),
-            meta: r.meta().map(meta_from_wire),
+                .collect();
+            if !flag(5) {
+                assert_eq!(change_offset[i], 0, "0 when the presence bit is clear");
+            }
+            let (bookmarks, tags) = refs_of(&refs, i);
+            TopologyNode {
+                commit_id: CommitId(format_id(&commit_ids[i * commit_stride..(i + 1) * commit_stride], HEX)),
+                edges,
+                meta: TopologyMeta {
+                    change_id: format_id(&change_ids[i * change_stride..(i + 1) * change_stride], REVERSE_HEX),
+                    change_id_prefix_len: u32::from(change_prefix[i]),
+                    commit_id_prefix_len: u32::from(commit_prefix[i]),
+                    change_offset: flag(5).then_some(change_offset[i]),
+                    bookmarks,
+                    tags,
+                    working_copies: working_copies
+                        .iter()
+                        .filter(|(node, _)| *node == i)
+                        .map(|(_, name)| name.clone())
+                        .collect(),
+                    working_copy: flag(0),
+                    immutable: flag(1),
+                    hidden: flag(2),
+                    divergent: flag(3),
+                    root: flag(4),
+                    parent_count: parent_count[i],
+                },
+                // The root's slot is 0 and stands for "none".
+                committer_timestamp_ms: timestamps.as_ref().and_then(|ts| (!flag(4)).then_some(ts[i])),
+            }
         })
-        .collect()
+        .collect();
+
+    let anchor_start: Vec<u32> = t.anchor_start().expect("anchor_start").iter().collect();
+    let anchor_node: Vec<u32> = t.anchor_node().expect("anchor_node").iter().collect();
+    assert_eq!(anchor_start.first(), Some(&0));
+    assert_eq!(anchor_start.last().map(|&s| index(s)), Some(anchor_node.len()));
+    let anchors = anchor_start
+        .windows(2)
+        .map(|w| {
+            anchor_node[index(w[0])..index(w[1])]
+                .iter()
+                .map(|&i| index(i))
+                .collect()
+        })
+        .collect();
+
+    GraphTopology {
+        operation_id: OperationId(t.operation_id().expect("operation_id").to_owned()),
+        nodes,
+        anchors,
+        all_count: usize::try_from(t.all_count()).expect("fits"),
+    }
 }
 
-/// Assert an `ok` `GraphSlice` envelope and return its rows + `total_rows`.
-fn ok_rows(bytes: &[u8]) -> (Vec<Row>, u32) {
+/// Assert an `ok` `GraphTopology` envelope and map it back.
+fn ok_topology(bytes: &[u8]) -> GraphTopology {
     let env = parse_envelope(bytes);
     assert!(
         env.ok(),
-        "zanshin_graph_slice must succeed, got {:?}",
-        env.error().and_then(|e| e.code())
+        "zanshin_graph_topology must succeed, got {:?}: {:?}",
+        env.error().and_then(|e| e.code()),
+        env.error().and_then(|e| e.context())
     );
-    assert_eq!(
-        env.data_type(),
-        fbs::Payload::GraphSlice,
-        "data_type must be GraphSlice"
-    );
-    let slice = env.data_as_graph_slice().expect("data_as_graph_slice must succeed");
-    (rows_from_wire(slice), slice.total_rows())
+    assert_eq!(env.data_type(), fbs::Payload::GraphTopology);
+    topology_from_wire(env.data_as_graph_topology().expect("GraphTopology payload"))
 }
 
 /// Assert an error envelope with the given code and no payload at the union level.
@@ -263,16 +371,11 @@ fn assert_error(bytes: &[u8], code: &str) {
     assert_eq!(
         env.data_type(),
         fbs::Payload::NONE,
-        "an error envelope never carries partial rows (data_type must be NONE)"
-    );
-    assert!(
-        env.data_as_graph_slice().is_none(),
-        "an error envelope must carry no rows"
+        "an error envelope never carries a partial payload"
     );
 }
 
-/// [`assert_error`] plus a non-empty `error.context` — the ABI doc promises the
-/// jj-lib reason in `context` for `jj.revset_parse_error` / `jj.revset_resolution_error`.
+/// [`assert_error`] plus a non-empty `error.context`.
 fn assert_error_with_context(bytes: &[u8], code: &str) {
     assert_error(bytes, code);
     assert!(
@@ -280,375 +383,536 @@ fn assert_error_with_context(bytes: &[u8], code: &str) {
             .error()
             .and_then(|e| e.context())
             .is_some_and(|c| !c.is_empty()),
-        "context must carry jj-lib's reason for {code}"
+        "context must carry the reason for {code}"
     );
 }
 
-/// The oracle: `collect_lanes` through `zanshin_jj::Repo::open` on the same fixture path.
-fn oracle(fixture: &FixtureHandle, revset: &str, prioritize: &str) -> Vec<Row> {
-    let mut repo = Repo::open(&fixture.path).expect("oracle repo must open");
-    collect_lanes(&mut repo, revset, prioritize, SHORT, false).expect("oracle collect_lanes must succeed")
-}
-
-// ── Round-trips against the collect_lanes oracle ──────────────────────────────
-
-#[test]
-fn graph_slice_tiny_all_with_default_prioritize_equals_collect_lanes_oracle() {
-    pin_env();
-    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    let (rows, total_rows) = ok_rows(&bytes);
-
-    assert_eq!(rows.len(), 5, "tiny all() = @ + c3 + c2 + c1 + root");
-    assert_eq!(total_rows, 5, "total_rows == rows.len() (return-all)");
-    assert_eq!(
-        rows,
-        oracle(&fx, "all()", DEFAULT_GRAPH_PRIORITIZE),
-        "wire rows must equal collect_lanes on the same repo/arguments"
+/// [`assert_error_with_context`] on an error the verb raised after its pre-verb snapshot ran:
+/// the envelope carries the snapshot's report.
+fn assert_error_after_snapshot(bytes: &[u8], code: &str) {
+    assert_error_with_context(bytes, code);
+    assert!(
+        parse_envelope(bytes).precondition().is_some(),
+        "{code}: the snapshot ran, so its report rides the error envelope"
     );
-    assert_eq!(rows[0].lane, 0, "the prioritised working copy leads on lane 0");
-    assert!(rows[4].edges.is_empty(), "the last row (root) has no edges");
-
-    unsafe { close(handle) };
 }
 
+/// Writes `.jj/repo/config.toml` — the repo config layer of an extracted fixture, which
+/// carries no `config-id`, so this legacy path IS the repo layer.
+fn write_repo_config(workspace_root: &Path, toml: &str) {
+    std::fs::write(workspace_root.join(".jj").join("repo").join("config.toml"), toml).unwrap();
+}
+
+// ── Wire == oracle ────────────────────────────────────────────────────────────
+
 #[test]
-fn graph_slice_tiny_none_prioritize_equals_oracle_and_changes_the_first_row() {
+fn graph_topology_tiny_all_equals_the_oracle_on_a_second_handle() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let all = req("all()");
 
-    let default_bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    let (default_rows, _) = ok_rows(&default_bytes);
-    let none_bytes = unsafe { slice_bytes(handle, "all()", "none()") };
-    let (none_rows, total_rows) = ok_rows(&none_bytes);
+    let bytes = unsafe { call(handle, &all) };
+    let wire = ok_topology(&bytes);
 
-    assert_eq!(none_rows.len(), 5);
-    assert_eq!(total_rows, 5);
-    assert_eq!(none_rows, oracle(&fx, "all()", "none()"));
-    assert_ne!(
-        none_rows[0].commit_id, default_rows[0].commit_id,
-        "prioritize is passed through: none() no longer forces @ first"
+    assert_eq!(wire, all.oracle(&fx.path), "every vector decodes to the oracle's value");
+    assert_eq!(wire.nodes.len(), 5, "@, c3, c2, c1, root");
+    assert_eq!(wire.anchors, vec![vec![4], vec![0]], "trunk() = root, present(@) = @");
+    assert_eq!(wire.all_count, 5);
+    assert!(
+        parse_envelope(&bytes)
+            .data_as_graph_topology()
+            .expect("payload")
+            .timestamps()
+            .is_none(),
+        "timestamps are absent when not requested"
     );
 
     unsafe { close(handle) };
 }
 
 #[test]
-fn graph_slice_medium_all_equals_collect_lanes_oracle() {
+fn graph_topology_medium_all_equals_the_oracle_with_the_octopus_merge() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("medium-1k-commits") };
+    let all = req("all()");
 
-    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    let (rows, total_rows) = ok_rows(&bytes);
+    let wire = ok_topology(&unsafe { call(handle, &all) });
 
-    assert_eq!(rows.len(), 1002, "root + @ + 1000 fixture commits");
-    assert_eq!(total_rows, 1002);
-    assert_eq!(rows, oracle(&fx, "all()", DEFAULT_GRAPH_PRIORITIZE));
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_empty_revset_returns_present_empty_rows_and_zero_total() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "none()", DEFAULT_GRAPH_PRIORITIZE) };
-    let env = parse_envelope(&bytes);
-    assert!(env.ok());
-    let slice = env.data_as_graph_slice().expect("GraphSlice payload");
-    assert_eq!(slice.rows().map(|v| v.len()), Some(0), "rows must be present and empty");
-    assert_eq!(slice.total_rows(), 0);
-
-    unsafe { close(handle) };
-}
-
-// ── Re-derive per call (ADR-0002): same handle sees an external operation ───
-
-#[test]
-fn graph_slice_rederives_from_head_so_an_external_commit_appears_on_the_next_call() {
-    pin_env();
-    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let before_bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    let (before, _) = ok_rows(&before_bytes);
-    assert_eq!(before.len(), 5);
-
-    let new_id = add_commit_off_root(&fx.path, "external op");
-
-    // Same handle — no reopen, no cache.
-    let after_bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    let (after, total_rows) = ok_rows(&after_bytes);
-    assert_eq!(after.len(), 6, "the external commit is a new row");
-    assert_eq!(total_rows, 6);
+    assert_eq!(wire, all.oracle(&fx.path));
+    assert_eq!(wire.nodes.len(), 1002);
+    let merges: Vec<u32> = wire
+        .nodes
+        .iter()
+        .map(|n| n.meta.parent_count)
+        .filter(|&c| c > 1)
+        .collect();
+    assert_eq!(merges, vec![3], "one octopus merge with three parents");
     assert!(
-        after.iter().any(|r| r.commit_id == new_id),
-        "the new commit id is in the second slice"
-    );
-    assert!(
-        before.iter().all(|r| r.commit_id != new_id),
-        "it was not in the first slice"
+        wire.nodes
+            .iter()
+            .flat_map(|n| &n.edges)
+            .all(|e| e.kind == GraphEdgeKind::Direct),
+        "every all() edge is Direct"
     );
 
     unsafe { close(handle) };
 }
 
-// ── Errors: either parameter; no panic, no rows ─────────────────────────────
-
 #[test]
-fn graph_slice_bogus_revset_returns_jj_revset_parse_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "bogus_function()", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_bogus_prioritize_returns_jj_revset_parse_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "all()", "(") };
-    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_blank_prioritize_returns_jj_revset_parse_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    // `none()` is the canonical no-prioritization value; a blank expression is a parse error.
-    let bytes = unsafe { slice_bytes(handle, "all()", "") };
-    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_unknown_bookmark_revset_returns_jj_revset_resolution_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "nonexistent-bookmark-xyz", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_unknown_bookmark_prioritize_returns_jj_revset_resolution_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes(handle, "all()", "nonexistent-bookmark-xyz") };
-    assert_error_with_context(&bytes, JJ_REVSET_RESOLUTION_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_null_revset_returns_ffi_null_pointer() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let short = cstr(SHORT);
-    let token = unsafe { zanshin_graph_slice(handle, std::ptr::null(), prio.as_ptr(), true, short.as_ptr()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_NULL_POINTER);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_null_prioritize_returns_ffi_null_pointer() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let revset = cstr("all()");
-    let short = cstr(SHORT);
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), std::ptr::null(), true, short.as_ptr()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_NULL_POINTER);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_invalid_utf8_revset_returns_ffi_utf8_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    // A lone 0x80 continuation byte is not valid UTF-8 (mirrors tests/change_ffi.rs).
-    let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
-    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let short = cstr(SHORT);
-    let token = unsafe { zanshin_graph_slice(handle, bad_utf8.as_ptr(), prio.as_ptr(), true, short.as_ptr()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_UTF8_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_invalid_utf8_prioritize_returns_ffi_utf8_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let revset = cstr("all()");
-    let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
-    let short = cstr(SHORT);
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), bad_utf8.as_ptr(), true, short.as_ptr()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_UTF8_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_on_corrupt_op_heads_returns_jj_jj_lib_error() {
+fn graph_topology_with_timestamps_writes_n_entries_and_the_root_slot_zero() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let timed = Req {
+        with_timestamps: true,
+        ..req("all()")
+    };
 
-    // Corrupt AFTER open, exactly as crates/zanshin-jj/tests/graph.rs does: the graph is
-    // re-derived from head on every call (ADR-0002), so removing op_heads makes
-    // load_at_head() fail → RevsetError::JjLibError → `jj.jj_lib_error` at the FFI surface.
-    let op_heads = fx.path.join(".jj").join("repo").join("op_heads");
-    std::fs::remove_dir_all(&op_heads).expect("op_heads must be removable");
+    let bytes = unsafe { call(handle, &timed) };
+    let wire = ok_topology(&bytes);
 
-    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error(&bytes, JJ_JJ_LIB_ERROR);
+    assert_eq!(wire, timed.oracle(&fx.path), "non-root timestamps equal the oracle");
+    let raw: Vec<i64> = parse_envelope(&bytes)
+        .data_as_graph_topology()
+        .expect("payload")
+        .timestamps()
+        .expect("present when requested")
+        .iter()
+        .collect();
+    assert_eq!(raw.len(), 5);
+    assert_eq!(raw[4], 0, "the root's slot is 0");
+    assert!(raw[..4].iter().all(|&ms| ms > 0));
 
     unsafe { close(handle) };
 }
 
 #[test]
-fn graph_slice_zero_handle_returns_ffi_invalid_handle() {
+fn graph_topology_narrowed_revset_keeps_indirect_and_missing_edges_and_the_all_count() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let all = ok_topology(&unsafe { call(handle, &req("all()")) });
+    let (c3, c1) = (&all.nodes[1].commit_id.0, &all.nodes[3].commit_id.0);
+    let revset = format!("{c3} | {c1}");
+    let narrowed = req(&revset);
+
+    let bytes = unsafe { call(handle, &narrowed) };
+    let wire = ok_topology(&bytes);
+
+    assert_eq!(wire, narrowed.oracle(&fx.path));
+    assert_eq!(wire.nodes.len(), 2);
+    assert_eq!(wire.all_count, 5, "|all()| is independent of the revset");
+    assert_eq!(
+        wire.nodes[0].edges,
+        vec![TopologyEdge {
+            target: Some(1),
+            kind: GraphEdgeKind::Indirect
+        }],
+        "c3 → c1 is Indirect (c2 elided)"
+    );
+    assert_eq!(
+        wire.nodes[1].edges,
+        vec![TopologyEdge {
+            target: None,
+            kind: GraphEdgeKind::Missing
+        }],
+        "c1's root parent is outside the revset"
+    );
+    let raw: Vec<i32> = parse_envelope(&bytes)
+        .data_as_graph_topology()
+        .expect("payload")
+        .edge_target()
+        .expect("edge_target")
+        .iter()
+        .collect();
+    assert_eq!(raw, vec![1, -1], "the Missing edge's slot holds -1");
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_keeps_a_merges_direct_and_indirect_edge_to_one_parent() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let a = add_commit_with_files(&fx.path, &[], &[("a.txt", "a")], "A");
+    let b = add_commit_with_files(&fx.path, &[&a], &[("b.txt", "b")], "B");
+    let m = add_commit_with_files(&fx.path, &[&a, &b], &[("m.txt", "m")], "M");
+    let revset = format!("all() ~ {b}");
+    let without_b = req(&revset);
+
+    let wire = ok_topology(&unsafe { call(handle, &without_b) });
+
+    assert_eq!(wire, without_b.oracle(&fx.path), "edges verbatim, order included");
+    let merge = wire.nodes.iter().find(|n| n.commit_id.0 == m).expect("M is a node");
+    let a_index = wire.nodes.iter().position(|n| n.commit_id.0 == a).expect("A is a node");
+    let kinds: Vec<GraphEdgeKind> = merge
+        .edges
+        .iter()
+        .filter(|e| e.target == Some(a_index))
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(kinds.len(), 2, "a repeated target is kept");
+    assert!(kinds.contains(&GraphEdgeKind::Direct) && kinds.contains(&GraphEdgeKind::Indirect));
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_empty_revset_writes_present_empty_vectors() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let bytes = unsafe { call(handle, &req("none()")) };
+    let wire = ok_topology(&bytes);
+
+    assert!(wire.nodes.is_empty());
+    assert_eq!(wire.all_count, 5);
+    assert_eq!(wire.anchors, vec![Vec::<usize>::new(), Vec::new()]);
+    let t = parse_envelope(&bytes).data_as_graph_topology().expect("payload");
+    assert_eq!(t.edge_start().map(|v| v.iter().collect::<Vec<_>>()), Some(vec![0]));
+    assert_eq!(
+        t.anchor_start().map(|v| v.iter().collect::<Vec<_>>()),
+        Some(vec![0, 0, 0]),
+        "anchors + 1 entries, all zero"
+    );
+    assert_eq!(t.flags().map(|v| v.len()), Some(0), "present and empty");
+    assert_eq!(t.commit_ids().map(|v| v.len()), Some(0));
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_carries_refs_working_copies_divergence_and_a_hidden_commit() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let all = ok_topology(&unsafe { call(handle, &req("all()")) });
+    let (c3, c2, c1) = (
+        all.nodes[1].commit_id.0.clone(),
+        all.nodes[2].commit_id.0.clone(),
+        all.nodes[3].commit_id.0.clone(),
+    );
+    set_local_bookmark(&fx.path, "feature", &[&c2]);
+    set_remote_bookmark(&fx.path, "feature", "origin", &c3, true);
+    set_tag(&fx.path, "v1", &[&c2]);
+    let (_second_root, second_wc) = add_workspace(&fx.path, "second");
+    let twin = add_divergent_twin(&fx.path, &c1, "divergent twin");
+    let doomed = add_commit_off_root(&fx.path, "doomed");
+    abandon_commit(&fx.path, &doomed);
+    let revset = format!("all() | {doomed}");
+    let rich = req(&revset);
+
+    let wire = ok_topology(&unsafe { call(handle, &rich) });
+
+    assert_eq!(wire, rich.oracle(&fx.path));
+    let node = |id: &str| wire.nodes.iter().find(|n| n.commit_id.0 == id).expect("a node");
+    let feature = &node(&c2).meta;
+    assert_eq!(feature.bookmarks.len(), 1);
+    assert_eq!(feature.bookmarks[0].remote, None, "the local entry has no remote");
+    assert_eq!(feature.tags.len(), 1);
+    assert_eq!(
+        node(&c3).meta.bookmarks[0].remote.as_deref(),
+        Some("origin"),
+        "a tracked-but-unsynced remote entry"
+    );
+    assert_eq!(node(&second_wc).meta.working_copies, vec!["second".to_owned()]);
+    for id in [&c1, &twin] {
+        let meta = &node(id).meta;
+        assert!(meta.divergent && meta.change_offset.is_some(), "{id} is divergent");
+    }
+    assert!(node(&doomed).meta.hidden, "the abandoned commit is hidden");
+
+    unsafe { close(handle) };
+}
+
+// ── jj errors: no partial payload ─────────────────────────────────────────────
+
+#[test]
+fn graph_topology_bogus_expressions_return_jj_revset_parse_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    for bogus in [
+        req("bogus_function()"),
+        Req {
+            prioritize: Some("("),
+            ..req("all()")
+        },
+        Req {
+            prioritize: Some(""),
+            ..req("all()")
+        },
+        Req {
+            short_prefixes: Some("bogus_function()"),
+            ..req("all()")
+        },
+        Req {
+            anchors: Some(vec!["trunk()", "("]),
+            ..req("all()")
+        },
+        // Rust does not re-check for an interior NUL (Dart guards it); the parser refuses it.
+        Req {
+            anchors: Some(vec!["trunk()\0"]),
+            ..req("all()")
+        },
+    ] {
+        let bytes = unsafe { call(handle, &bogus) };
+        assert_error_after_snapshot(&bytes, JJ_REVSET_PARSE_ERROR);
+    }
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_unknown_bookmark_returns_jj_revset_resolution_error() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    for unknown in [
+        req("nonexistent-bookmark-xyz"),
+        Req {
+            prioritize: Some("nonexistent-bookmark-xyz"),
+            ..req("all()")
+        },
+        Req {
+            anchors: Some(vec!["nonexistent-bookmark-xyz"]),
+            ..req("all()")
+        },
+    ] {
+        let bytes = unsafe { call(handle, &unknown) };
+        assert_error_after_snapshot(&bytes, JJ_REVSET_RESOLUTION_ERROR);
+    }
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_on_malformed_repo_config_returns_jj_config_error() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    write_repo_config(&fx.path, "not = = toml");
+
+    let bytes = unsafe { call(handle, &req("all()")) };
+    assert_error_with_context(&bytes, JJ_CONFIG_ERROR);
+    assert!(
+        parse_envelope(&bytes)
+            .error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.contains("config.toml")),
+        "the context must name the offending file"
+    );
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_on_corrupt_op_heads_returns_jj_jj_lib_error() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    std::fs::remove_dir_all(fx.path.join(".jj").join("repo").join("op_heads")).expect("op_heads must be removable");
+
+    let bytes = unsafe { call(handle, &req("all()")) };
+    assert_error_with_context(&bytes, JJ_JJ_LIB_ERROR);
+
+    unsafe { close(handle) };
+}
+
+#[test]
+fn graph_topology_timestamps_of_a_deleted_commit_object_return_jj_jj_lib_error() {
+    pin_env();
+    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let c2 = all_ids(&fx.path)[2].clone();
+    let objects = fx
+        .path
+        .join(".jj")
+        .join("repo")
+        .join("store")
+        .join("git")
+        .join("objects");
+    std::fs::remove_file(objects.join(&c2[..2]).join(&c2[2..])).expect("c2 is a loose object");
+
+    let index_only = unsafe { call(handle, &req("all()")) };
+    assert!(
+        parse_envelope(&index_only).ok(),
+        "no commit is loaded without timestamps"
+    );
+    let timed = unsafe {
+        call(
+            handle,
+            &Req {
+                with_timestamps: true,
+                ..req("all()")
+            },
+        )
+    };
+    assert_error_after_snapshot(&timed, JJ_JJ_LIB_ERROR);
+
+    unsafe { close(handle) };
+}
+
+/// The tiny fixture's `all()` commit ids in `jj log` order, read through `zanshin_jj`.
+fn all_ids(root: &Path) -> Vec<String> {
+    req("all()")
+        .oracle(root)
+        .nodes
+        .into_iter()
+        .map(|n| n.commit_id.0)
+        .collect()
+}
+
+// ── FFI ladder ────────────────────────────────────────────────────────────────
+
+#[test]
+fn graph_topology_refuses_a_null_unverifiable_or_mis_routed_buffer_before_the_handle() {
     pin_env();
 
-    let bytes = unsafe { slice_bytes(0, "all()", DEFAULT_GRAPH_PRIORITIZE) };
+    let null = unsafe { read_and_free(zanshin_graph_topology(0, std::ptr::null(), 0)) };
+    assert_error(&null, FFI_NULL_POINTER);
+
+    let garbage = [1u8, 2, 3];
+    let unverifiable = unsafe { read_and_free(zanshin_graph_topology(0, garbage.as_ptr(), garbage.len())) };
+    assert_error(&unverifiable, FFI_INVALID_ARGUMENT);
+
+    // Handle 0 too: the kind is refused on its own merits, before the handle rung.
+    let mis_routed = unsafe {
+        call(
+            0,
+            &Req {
+                kind: fbs::RequestKind::CommitContents,
+                ..req("all()")
+            },
+        )
+    };
+    assert_error_with_context(&mis_routed, FFI_INVALID_ARGUMENT);
+}
+
+#[test]
+fn graph_topology_zero_handle_with_a_valid_buffer_returns_ffi_invalid_handle() {
+    pin_env();
+
+    let bytes = unsafe { call(0, &req("all()")) };
     assert_error(&bytes, FFI_INVALID_HANDLE);
-    // Not folded into `assert_error`: most codes it serves DO carry a context.
-    // The borrow routes through `envelope::session_from_handle`, whose refusal
-    // does not — pinned so this wrapper cannot start decorating it.
     assert!(
         parse_envelope(&bytes).error().and_then(|e| e.context()).is_none(),
-        "the invalid-handle envelope carries no context"
+        "ffi.invalid_handle carries no context; this wrapper must not decorate it"
+    );
+    assert!(
+        parse_envelope(&bytes).precondition().is_none(),
+        "refused before the verb: no report"
     );
 }
 
-// ── Story 4.8: metadata, active lanes, elided rows across the wire ───────────
+#[test]
+fn graph_topology_names_each_absent_required_field_and_accepts_absent_anchors() {
+    pin_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    for (absent, field) in [
+        (
+            Req {
+                revset: None,
+                ..req("all()")
+            },
+            "revset",
+        ),
+        (
+            Req {
+                prioritize: None,
+                ..req("all()")
+            },
+            "prioritize",
+        ),
+        (
+            Req {
+                short_prefixes: None,
+                ..req("all()")
+            },
+            "short_prefixes",
+        ),
+    ] {
+        let bytes = unsafe { call(handle, &absent) };
+        assert_error(&bytes, JJ_INVALID_INPUT);
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.context()),
+            Some(format!("{field} is required").as_str())
+        );
+    }
+
+    let no_anchors = ok_topology(&unsafe {
+        call(
+            handle,
+            &Req {
+                anchors: None,
+                ..req("all()")
+            },
+        )
+    });
+    assert!(
+        no_anchors.anchors.is_empty(),
+        "an absent anchors vector is the empty list"
+    );
+    assert_eq!(no_anchors.nodes.len(), 5);
+
+    unsafe { close(handle) };
+}
+
+// ── Precondition, warnings, pass-throughs ─────────────────────────────────────
 
 #[test]
-fn graph_slice_carries_the_metadata_of_the_same_snapshot_and_matches_get_change() {
+fn graph_topology_reports_the_snapshot_of_a_working_copy_edit() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    std::fs::write(fx.path.join("edited.txt"), "a working-copy edit").unwrap();
 
-    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
-    let (rows, _) = ok_rows(&bytes);
+    let bytes = unsafe { call(handle, &req("all()")) };
+    let wire = ok_topology(&bytes);
 
-    // The oracle reads the same repo through the typed API — one snapshot, same answers.
-    let mut repo = Repo::open(&fx.path).expect("oracle repo must open");
-    for row in &rows {
-        let meta = row.meta.as_ref().expect("every commit row carries metadata");
-        let change = repo
-            .get_change(&zanshin_jj::ChangeId(meta.change_id.clone()))
-            .expect("the change id the row reports must resolve");
-        assert_eq!(change.commit_id.0, row.commit_id, "id pair agrees with get_change");
-        assert_eq!(meta.author_email, change.author.email);
-        assert_eq!(meta.committer_timestamp, change.timestamps.committed_at);
-        assert_eq!(
-            meta.description_first_line,
-            change.description.lines().next().unwrap_or_default()
-        );
-        assert!(meta.commit_id_prefix_len >= 1);
-        assert!(usize::try_from(meta.commit_id_prefix_len).unwrap() <= row.commit_id.len());
-    }
-    assert_eq!(rows.iter().filter(|r| r.meta.as_ref().unwrap().root).count(), 1);
-    assert_eq!(rows.iter().filter(|r| r.meta.as_ref().unwrap().working_copy).count(), 1);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_accepts_the_cli_default_log_revset_and_its_short_prefixes() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    // Both expressions only parse because the CLI's builtin aliases are defined (CAP-4).
-    let bytes = unsafe { slice_bytes_with(handle, DEFAULT_LOG_REVSET, DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
-    let (rows, total) = ok_rows(&bytes);
-
-    assert!(!rows.is_empty(), "the CLI default log revset selects rows");
-    assert_eq!(usize::try_from(total).ok(), Some(rows.len()));
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_empty_short_prefixes_disables_disambiguation_instead_of_erroring() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("medium-1k-commits") };
-
-    // "" = disabled (full-index lengths), NOT a parse error like a blank prioritize.
-    let disabled = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, false, "") };
-    let narrow = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, false, "@") };
-    let (disabled_rows, _) = ok_rows(&disabled);
-    let (narrow_rows, _) = ok_rows(&narrow);
-
-    assert_eq!(disabled_rows.len(), narrow_rows.len());
     assert!(
-        disabled_rows
-            .iter()
-            .zip(&narrow_rows)
-            .all(|(off, on)| off.meta.as_ref().unwrap().commit_id_prefix_len
-                >= on.meta.as_ref().unwrap().commit_id_prefix_len),
-        "the full index can never give a SHORTER prefix than a narrowed set"
+        parse_envelope(&bytes)
+            .precondition()
+            .is_some_and(|p| p.was_snapshot_taken()),
+        "the edit was snapshotted"
+    );
+    assert_eq!(
+        wire,
+        req("all()").oracle(&fx.path),
+        "the topology answers after the snapshot"
     );
 
     unsafe { close(handle) };
 }
 
+/// An unresolvable `short_prefixes` is NOT an error: the CLI degrades it with a warning and
+/// full-index prefix lengths (jj `cli/tests/test_log_command.rs::test_log_bad_short_prefixes`).
 #[test]
-fn graph_slice_bogus_short_prefixes_returns_jj_revset_parse_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, "bogus_function()") };
-    assert_error_with_context(&bytes, JJ_REVSET_PARSE_ERROR);
-
-    unsafe { close(handle) };
-}
-
-/// An unresolvable `short_prefixes` is NOT an error at the FFI surface either: symbol
-/// resolution happens while loading the disambiguation index, which the CLI degrades with a
-/// warning (jj `cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.42.0).
-#[test]
-fn graph_slice_unknown_bookmark_short_prefixes_degrades_to_full_index_prefixes() {
+fn graph_topology_unknown_short_prefixes_degrades_with_a_warning() {
     pin_env();
     let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
 
     let degraded_bytes = unsafe {
-        slice_bytes_with(
+        call(
             handle,
-            "all()",
-            DEFAULT_GRAPH_PRIORITIZE,
-            true,
-            "nonexistent-bookmark-xyz",
+            &Req {
+                short_prefixes: Some("nonexistent-bookmark-xyz"),
+                ..req("all()")
+            },
         )
     };
-    let disabled_bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, "") };
-    let (degraded, total) = ok_rows(&degraded_bytes);
-    let (disabled, _) = ok_rows(&disabled_bytes);
+    let degraded = ok_topology(&degraded_bytes);
+    let disabled = ok_topology(&unsafe {
+        call(
+            handle,
+            &Req {
+                short_prefixes: Some(""),
+                ..req("all()")
+            },
+        )
+    });
 
-    assert_eq!(degraded.len(), 5, "the call succeeds with the full row set");
-    assert_eq!(usize::try_from(total).ok(), Some(degraded.len()));
+    let codes: Vec<String> = parse_envelope(&degraded_bytes)
+        .warnings()
+        .expect("warnings")
+        .iter()
+        .map(|w| w.code().expect("code").to_owned())
+        .collect();
+    assert_eq!(codes, vec!["jj.short_prefixes_failed".to_owned()]);
     assert_eq!(
         degraded, disabled,
         "degrading falls back to exactly the full-index prefix lengths"
@@ -658,215 +922,86 @@ fn graph_slice_unknown_bookmark_short_prefixes_degrades_to_full_index_prefixes()
 }
 
 #[test]
-fn graph_slice_null_short_prefixes_returns_ffi_null_pointer() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let revset = cstr("all()");
-    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), prio.as_ptr(), true, std::ptr::null()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_NULL_POINTER);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_invalid_utf8_short_prefixes_returns_ffi_utf8_error() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let revset = cstr("all()");
-    let prio = cstr(DEFAULT_GRAPH_PRIORITIZE);
-    let bad_utf8 = CString::new(vec![0x61u8, 0x80, 0x6c]).expect("no interior NUL");
-    let token = unsafe { zanshin_graph_slice(handle, revset.as_ptr(), prio.as_ptr(), true, bad_utf8.as_ptr()) };
-    let bytes = unsafe { read_and_free(token) };
-    assert_error(&bytes, FFI_UTF8_ERROR);
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_synthetic_elided_toggle_adds_rows_and_off_keeps_plain_indirect_edges() {
-    pin_env();
-    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-    let eliding = "all() ~ description(\"Commit 2\")";
-
-    let off_bytes = unsafe { slice_bytes_with(handle, eliding, DEFAULT_GRAPH_PRIORITIZE, false, SHORT) };
-    let on_bytes = unsafe { slice_bytes_with(handle, eliding, DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
-    let (off, off_total) = ok_rows(&off_bytes);
-    let (on, on_total) = ok_rows(&on_bytes);
-
-    assert_eq!(off.len(), 4);
-    assert_eq!(usize::try_from(off_total).ok(), Some(off.len()));
-    assert!(off.iter().any(|r| r.edges.iter().any(|e| e.kind == EdgeKind::Indirect)));
-    assert!(
-        off.iter().all(|r| !r.synthetic_elided && r.meta.is_some()),
-        "toggle off = the pre-4.8 TOPOLOGY (plain Indirect edges, no synthetic rows); the row \
-         STRUCT still grew active_lanes/synthetic_elided/meta, so this is not byte-identity"
-    );
-
-    assert_eq!(on.len(), 5, "one synthetic row is spliced in");
-    assert_eq!(usize::try_from(on_total).ok(), Some(on.len()));
-    let synthetic: Vec<&Row> = on.iter().filter(|r| r.synthetic_elided).collect();
-    assert_eq!(synthetic.len(), 1);
-    assert!(synthetic[0].meta.is_none(), "an elided row carries no metadata");
-    assert_eq!(synthetic[0].edges.len(), 1);
-    assert_eq!(synthetic[0].edges[0].kind, EdgeKind::Direct);
-    assert!(
-        on.iter().all(|r| r.edges.iter().all(|e| e.kind != EdgeKind::Indirect)),
-        "with the toggle on no Indirect edge is left"
-    );
-
-    unsafe { close(handle) };
-}
-
-#[test]
-fn graph_slice_medium_active_lanes_cross_every_row_their_edge_spans() {
+fn graph_topology_empty_short_prefixes_disables_disambiguation_instead_of_erroring() {
     pin_env();
     let (_fx, handle) = unsafe { open_fixture("medium-1k-commits") };
 
-    let bytes = unsafe { slice_bytes_with(handle, "all()", DEFAULT_GRAPH_PRIORITIZE, true, SHORT) };
-    let (rows, _) = ok_rows(&bytes);
+    let disabled = ok_topology(&unsafe {
+        call(
+            handle,
+            &Req {
+                short_prefixes: Some(""),
+                ..req("all()")
+            },
+        )
+    });
+    let narrow = ok_topology(&unsafe {
+        call(
+            handle,
+            &Req {
+                short_prefixes: Some("@"),
+                ..req("all()")
+            },
+        )
+    });
 
-    // CAP-2 on the wire form, as a set EQUALITY: a row's active_lanes is exactly the set of
-    // lanes carrying a routed edge across it — nothing missing, nothing spurious. (The
-    // domain-side twin lives in crates/zanshin-graph/tests/common/mod.rs; test helpers are
-    // duplicated per test crate by repo convention.)
-    let mut crossing: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); rows.len()];
-    for (index, row) in rows.iter().enumerate() {
-        for edge in &row.edges {
-            let Some(lane) = edge.target_lane else { continue };
-            let landing = landing_row(&rows, index, &edge.target);
-            for crossed in &mut crossing[index + 1..landing] {
-                crossed.insert(lane);
-            }
-        }
-    }
-    for (row, expected) in rows.iter().zip(&crossing) {
-        assert!(
-            !row.active_lanes.iter().any(|l| l.lane == row.lane),
-            "a row never lists its own lane as a pass-through"
-        );
-        assert_eq!(
-            row.active_lanes.iter().map(|l| l.lane).collect::<Vec<u32>>(),
-            expected.iter().copied().collect::<Vec<u32>>(),
-            "{}: active_lanes must equal the crossing set, ascending",
-            row.commit_id
-        );
-    }
-    assert!(rows.iter().any(|r| !r.active_lanes.is_empty()));
-
-    unsafe { close(handle) };
-}
-
-/// Index of the row an edge from `child_index` to `target` lands on.
-///
-/// `commit_id` alone is ambiguous once synthetic elided rows are spliced (a synthetic row
-/// carries its TARGET's id). The CLI's splice rule disambiguates it exactly: a synthetic row
-/// sits IMMEDIATELY after the child that elided to it.
-fn landing_row(rows: &[Row], child_index: usize, target: &str) -> usize {
-    let next = child_index + 1;
-    if rows
-        .get(next)
-        .is_some_and(|r| r.synthetic_elided && r.commit_id == target)
-    {
-        return next;
-    }
-    let Some(offset) = rows[next..]
-        .iter()
-        .position(|r| !r.synthetic_elided && r.commit_id == target)
-    else {
-        panic!("{} -> {target} never lands on a real row", rows[child_index].commit_id);
-    };
-    next + offset
-}
-
-#[test]
-fn graph_slice_rederives_metadata_so_an_external_describe_appears_on_the_next_call() {
-    pin_env();
-    let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-
-    let before_bytes = unsafe { slice_bytes_with(handle, "all()", "none()", true, SHORT) };
-    let (before, _) = ok_rows(&before_bytes);
-    let target = before
-        .iter()
-        .find(|r| r.meta.as_ref().unwrap().description_first_line == "Commit 3")
-        .expect("the fixture has a 'Commit 3' row")
-        .commit_id
-        .clone();
-
-    let rewritten = describe_commit(&fx.path, &target, "Rewritten externally");
-
-    // Same handle — no reopen, no cache.
-    let after_bytes = unsafe { slice_bytes_with(handle, "all()", "none()", true, SHORT) };
-    let (after, _) = ok_rows(&after_bytes);
-    let row = after
-        .iter()
-        .find(|r| r.commit_id == rewritten)
-        .expect("the rewritten commit is in the second slice");
-    assert_eq!(
-        row.meta.as_ref().unwrap().description_first_line,
-        "Rewritten externally"
+    assert_eq!(disabled.nodes.len(), narrow.nodes.len());
+    assert!(
+        disabled
+            .nodes
+            .iter()
+            .zip(&narrow.nodes)
+            .all(|(off, on)| off.meta.commit_id_prefix_len >= on.meta.commit_id_prefix_len),
+        "the full index can never give a SHORTER prefix than a narrowed set"
+    );
+    assert!(
+        disabled
+            .nodes
+            .iter()
+            .zip(&narrow.nodes)
+            .any(|(off, on)| off.meta.commit_id_prefix_len > on.meta.commit_id_prefix_len),
+        "a 1k-commit full index needs longer prefixes somewhere"
     );
 
     unsafe { close(handle) };
 }
 
-// ── Story 4.9: the config layer reaches the FFI surface ──────────────────────
-
-/// Writes `.jj/repo/config.toml` — the repo config layer of an extracted fixture, which
-/// carries no `config-id`, so this legacy path IS the repo layer.
-fn write_repo_config(workspace_root: &std::path::Path, toml: &str) {
-    std::fs::write(workspace_root.join(".jj").join("repo").join("config.toml"), toml).unwrap();
-}
-
-/// A `[revset-aliases]` override in the repo config is visible through
-/// `zanshin_graph_slice` on the SAME handle — which also re-proves that the config is
-/// re-read per call and never cached.
 #[test]
-fn graph_slice_resolves_repo_config_aliases_on_the_same_handle() {
+fn graph_topology_resolves_repo_config_aliases_written_after_open_on_the_next_call() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+    let wip = Req {
+        prioritize: Some("none()"),
+        ..req("wip()")
+    };
 
-    // Before the override, `wip()` is an unknown function.
-    let before = unsafe { slice_bytes(handle, "wip()", "none()") };
-    assert_error(&before, JJ_REVSET_PARSE_ERROR);
+    let before = unsafe { call(handle, &wip) };
+    assert_error_with_context(&before, JJ_REVSET_PARSE_ERROR);
 
     write_repo_config(&fx.path, "[revset-aliases]\n'wip()' = 'description(\"Commit 2\")'\n");
 
-    let after = unsafe { slice_bytes_with(handle, "wip()", "none()", true, SHORT) };
-    let (rows, total) = ok_rows(&after);
-    assert_eq!(total, 1, "wip() selects exactly one row");
-    assert_eq!(
-        rows[0]
-            .meta
-            .as_ref()
-            .expect("commit rows carry meta")
-            .description_first_line,
-        "Commit 2"
-    );
+    let after = ok_topology(&unsafe { call(handle, &wip) });
+    assert_eq!(after.nodes.len(), 1, "wip() selects exactly one node");
+    assert_eq!(after.nodes[0].commit_id.0, all_ids(&fx.path)[2], "it is c2");
 
     unsafe { close(handle) };
 }
 
-/// A malformed repo config fails the call with `jj.config_error` and the file in
-/// `context` — never a silent fall-back to the builtin alias layer.
 #[test]
-fn graph_slice_on_malformed_repo_config_returns_jj_config_error() {
+fn graph_topology_rederives_from_head_so_an_external_commit_appears_on_the_next_call() {
     pin_env();
     let (fx, handle) = unsafe { open_fixture("tiny-3-commits") };
-    write_repo_config(&fx.path, "not = = toml");
 
-    let bytes = unsafe { slice_bytes(handle, "all()", DEFAULT_GRAPH_PRIORITIZE) };
-    assert_error_with_context(&bytes, JJ_CONFIG_ERROR);
-    assert!(
-        parse_envelope(&bytes)
-            .error()
-            .and_then(|e| e.context())
-            .is_some_and(|c| c.contains("config.toml")),
-        "the context must name the offending file"
-    );
+    let before = ok_topology(&unsafe { call(handle, &req("all()")) });
+    let new_id = add_commit_off_root(&fx.path, "external op");
+    // Same handle — no reopen, no cache.
+    let after = ok_topology(&unsafe { call(handle, &req("all()")) });
+
+    assert_eq!(before.nodes.len(), 5);
+    assert_eq!(after.nodes.len(), 6, "the external commit is a new node");
+    assert!(after.nodes.iter().any(|n| n.commit_id.0 == new_id));
+    assert!(before.nodes.iter().all(|n| n.commit_id.0 != new_id));
+    assert_ne!(before.operation_id, after.operation_id, "a new head operation");
 
     unsafe { close(handle) };
 }
