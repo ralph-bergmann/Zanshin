@@ -169,8 +169,9 @@ the `zanshin-graph` lane crate was removed)*
   No string-parsing of `jj` output. Fixture-setup scripts may shell out; production
   code may not. (FR-JJ-16, NFR-R-1) Tests may also run `crates/zanshin-parity`'s pinned
   `jj` (stock CLI built from crates.io `jj-cli` at the `jj-lib` pin) — the parity oracle,
-  Story 9.47; it compares repo STATE through jj-lib and reads the CLI's text only to count
-  its `Warning:` lines.
+  Story 9.47. It compares repo STATE through jj-lib; the CLI's own text is read only to count
+  its `Warning:` lines and, in a scenario's read-back (`config get` / `config path`), as
+  stdout compared between the two repos — never to drive Zanshin.
 - `zanshin-jj` is the ONLY production/library crate that imports `jj_lib`. Other
   internal crates consume `zanshin-jj`'s typed API, not jj-lib directly. (The
   `xtask` fixture generator also imports `jj_lib`, but only as a build-time tool —
@@ -182,8 +183,10 @@ the `zanshin-graph` lane crate was removed)*
 - **Pin bump (jj-lib).** (1) Bump `jj-lib` and `jj-cli` together in
   `[workspace.dependencies]` (both exact pins). (2) Bump the `../jj` reference tag
   (CLAUDE.md). (3) Run `cargo make test`. (4) Triage every parity-oracle failure
-  (`crates/zanshin-parity/tests/oracle/`): port the CLI change, ledger it in `ledger.rs` with
-  a reason and a reference, or open a story; a STALE entry means a gap closed — remove it.
+  (`crates/zanshin-parity/tests/oracle/`): UNEXPECTED → port the CLI change, ledger it in
+  `ledger.rs` (reason, reference, both values), or open a story; CHANGED → a ledgered gap now
+  shows other values (a wrong fix, a regression, or a CLI change) — fix it or update the
+  values with a reason; STALE → a gap closed — remove the entry.
   (5) Hand-audit what the oracle cannot see: read verbs, refusal and warning CODES, network
   and interactive verbs, and verbs no scenario covers yet. A new verb story adds its
   scenarios to `scenarios.rs` — they are its acceptance criteria against the real CLI.

@@ -6947,7 +6947,11 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 **Implementation notes (as built, 2026-10-08, branch `story/9-47-parity-oracle`; plan `docs/superpowers/plans/2026-10-08-parity-oracle.md`).**
 - **Layout.** `crates/zanshin-parity`:
   - `src/main.rs` is the stock `jj` (`CliRunner::init().run()`; crates.io `jj-cli =0.46.0` resolved with no `[patch]` and a single `jj-lib`).
-  - `tests/oracle/` holds `driver.rs` (hermetic subprocess), `state.rs` (labelled capture, `STATE_ASPECTS` with the global `args` exclusion), `compare.rs` (diff + outcomes), `scenarios.rs` (24 + 2), `ledger.rs` (8 entries, UNEXPECTED / STALE) and `harness.rs`.
+  - `tests/oracle/` holds `driver.rs` (hermetic subprocess), `state.rs` (labelled capture, `STATE_ASPECTS` with the global `args` exclusion), `compare.rs` (diff + outcomes), `scenarios.rs` (24 + 2), `ledger.rs` (8 entries, UNEXPECTED / CHANGED / STALE) and `harness.rs`.
+  - Review fixes (final whole-branch review):
+    - Ledger entries pin both values, so a ledgered aspect that diverges differently fails as CHANGED. Before, a wrong fix or a new regression in a ledgered aspect passed.
+    - The driver calls `pin_test_env()` itself and requires `XDG_CONFIG_HOME` (own test binary `tests/driver_pins_env.rs`), so a test that forgets the pin cannot reach `~/.config/jj`.
+    - The project-context wording now says the oracle also compares the stdout of the `config_set_repo` read-back.
 - **Deviations from the design.**
   1. A plain `jj git init` without a remote writes no repo config, so it creates no secure config entry at all. The hermeticity test therefore writes a repo config first.
   2. Subprocesses also get `LLVM_PROFILE_FILE=/dev/null`, so the coverage run's instrumented `jj` writes no profiles.

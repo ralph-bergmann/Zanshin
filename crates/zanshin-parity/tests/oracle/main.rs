@@ -100,6 +100,19 @@ fn ledger_names_only_known_scenarios_and_aspects() {
     }
 }
 
+/// A ledgered aspect that still diverges, but with other values than the ledger pins, must
+/// fail: otherwise a wrong fix or a fresh regression in that aspect would pass as "expected".
+#[test]
+#[should_panic(expected = "CHANGED descriptions")]
+fn a_ledgered_aspect_with_other_values_fails() {
+    let found = [compare::Divergence {
+        aspect: "descriptions".to_owned(),
+        zanshin: "a different Zanshin value".to_owned(),
+        cli: "a different CLI value".to_owned(),
+    }];
+    ledger::assert_matches_ledger("describe_commit_trailers", &found);
+}
+
 #[test]
 fn identical_cli_built_repos_capture_equal() {
     test_helpers::pin_test_env();
