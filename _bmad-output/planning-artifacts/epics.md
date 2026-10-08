@@ -6850,6 +6850,100 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Non-goals.** Verbs Zanshin has not ported yet — they read v0.46.0 when they are ported; new CLI verbs (9.43–9.45).
 
+### Story 9.47: Differential parity oracle in the gate — `zanshin-jj` against the stock jj CLI at the pinned tag [M]
+*(Added 2026-10-08, console session, Ralph. This is the outcome of the analysis "fork jj instead of re-porting the CLI?". Ralph's decisions: no fork, POC deleted. The parity oracle is adopted as a test-only tool and runs in the gate. Tests may invoke jj for it.)*
+
+**Motivation.**
+- **How parity is checked today.** The CLI parity rule (project-context.md § zanshin-jj) is verified by hand. A pin bump only surfaces what the compiler and the gate see. Everything else needs an audit like 9.46, which reads CLI diffs hunk by hunk. A behavior change the CLI makes silently goes unnoticed until someone reads the right diff (examples: 0.44's glob default, 0.45's worktree warning).
+- **What the POC showed (2026-10-08, throwaway).** It ran 24 operations through `zanshin-jj` and through the stock CLI at the pin, on two identical repos each, and compared the resulting repo state.
+  - Every shipped mutating verb matched, except 6 explainable divergences.
+  - One of the 6 was an untracked bug: `templates.commit_trailers` is never applied (`deferred-work.md` "Surfaced 2026-10-08 while analysing …").
+  - Against the previous jj release, the 0.46 behavior change of a scenario showed up as new divergences on its own.
+- **What running it in the gate buys.**
+  - Parity of mutating verbs becomes an executable check instead of a reading exercise.
+  - A pin bump surfaces CLI behavior changes as failing scenarios.
+  - Future verb stories get executable acceptance criteria against the real CLI.
+
+**Design (approved by Ralph 2026-10-08).**
+1. **Crate `crates/zanshin-parity`.**
+   - It is test-only: `publish = false`, NOT in `default-members`, never built for release.
+   - Its only source is `src/main.rs`. That is a bin named `jj` running upstream's entry point (`jj_cli::cli_util::CliRunner::init().run()`), built from crates.io `jj-cli`. This makes it the stock CLI at exactly the pin, with no installed `jj` and no fork.
+   - `[workspace.dependencies]` pins `jj-cli = "=0.46.0"` next to `jj-lib`, with the CLI's default features so the behavior is stock. Both move together at every pin bump.
+   - Coverage: `exclude_prefix = crates/zanshin-parity/` (a test-only crate, the same pattern as `crates/test-helpers/`).
+   - Rejected alternatives:
+     - The `jj` on `PATH`: not the pinned version (0.45.1 installed vs pin 0.46.0).
+     - `jj-cli` in-process: `CliRunner::init` installs a global tracing subscriber that panics next to the test's, sets an `exit(1)` signal handler, and reads the process argv/cwd. Without a fork this cannot work.
+2. **The oracle** lives in `crates/zanshin-parity/tests/oracle/`. It is integration tests, split into focused modules: CLI driver, state capture, comparison, scenarios, ledger.
+   - **Per scenario:**
+     - The pinned `jj` builds two identical repos (fixture setup through the CLI, already allowed).
+     - The operation runs through `zanshin-jj`'s public API in repo A, and through the pinned `jj` (argv, subprocess of `CARGO_BIN_EXE_jj`) in repo B.
+     - The semantic state of both repos is captured via jj-lib and compared aspect by aspect.
+   - **No ids are compared,** because timestamps differ. The aspects are:
+     - commit graph labelled by description, descriptions, tree ids, conflicts;
+     - `@` and every workspace's working copy;
+     - bookmarks, Git refs and Git HEAD, colocation;
+     - files on disk, with the short ids inside conflict markers normalized;
+     - operation count, descriptions and attributes;
+     - refused or not, warned or not.
+   - Each scenario is its own `#[test]`, so they run in parallel and fail individually with a readable per-aspect diff.
+3. **Hermetic environment.**
+   - The in-process side pins `test_helpers::TEST_ENV` plus a leaked `XDG_CONFIG_HOME` (the existing `pin_test_env` / `ENV_GUARD` pattern).
+   - Every `jj` subprocess gets the same values explicitly via `Command::env`.
+   - Neither side reads or writes `~/.config/jj` or the developer's git config.
+4. **Initial scenarios** (the POC's set):
+   - `describe`: message; snapshot of a modified file, then describe; immutable refusal; root refusal; unchanged message; `templates.commit_trailers`.
+   - `new`: single parent; clean merge; conflicting merge, including conflict flags and markers on disk.
+   - `abandon`: a middle commit (descendant rebase, bookmark deleted, Git refs exported); `@`.
+   - `edit`.
+   - `undo`: after describe; cross-workspace refusal (9.39).
+   - `bookmark create`, `bookmark create` of an existing name (refusal), `bookmark delete`.
+   - `config set --repo`, including that the CLI reads Zanshin's write back.
+   - `config set` with a dirty `@` (snapshot op plus warning).
+   - `util snapshot`.
+   - `restore --from`, and `restore` without arguments.
+   - `absorb`.
+   - `git init` against `Repo::init`, both colocated and `--no-colocate`.
+5. **Ledger and failure policy.**
+   - The ledger is a table of expected divergences. Each entry has a scenario, an aspect, a reason and a reference (story, ADR or `deferred-work.md`).
+   - A scenario FAILS when:
+     - (a) a divergence is not in the ledger, or
+     - (b) a ledger entry for that scenario no longer diverges. That entry is stale and must be removed, so the ledger never outlives a fix.
+   - Initial entries:
+     - `commit_trailers` not applied (`deferred-work.md` 2026-10-08).
+     - An unchanged-message `describe` writes an operation (9.40).
+     - `Repo::init` does not colocate (9.20).
+     - The description is stored verbatim, without the trailing newline the CLI's `-m` adds (Story 10.15, design question (c): how subject and body compose).
+     - The CLI's "There are unresolved conflicts" status line has no Zanshin warning code (`docs/rust-error-codes.md`).
+   - One deliberate difference is excluded as an aspect GLOBALLY instead of being ledgered per scenario, because it hits every mutating scenario: Zanshin writes no operation `args` attribute (it has no argv; ADR-0003). The exclusion and its reason are written next to the aspect list.
+6. **Rules and process.**
+   - project-context.md: the no-shell-out rule (§ zanshin-jj, Anti-Patterns) stays for production code. Tests may additionally run the oracle's pinned `jj`. `crates/zanshin-parity` joins the list of test-only crates that import `jj_lib` (next to `xtask` and `test-helpers`).
+   - The pin-bump procedure is written down in project-context.md § zanshin-jj. Today it lives only in CLAUDE.md's reference-tag sentence. The steps:
+     1. Bump `jj-lib` and `jj-cli` together.
+     2. Bump the `../jj` reference tag.
+     3. Run the gate.
+     4. Triage every new oracle divergence: port it, ledger it with a reason, or open a story.
+   - The `test-cargo-hygiene` manifest count goes from 7 to 8.
+   - `cargo deny` (advisories, bans) must stay green with jj-cli's dependency tree.
+
+**Acceptance criteria.**
+- `cargo make test` runs the oracle, and every scenario is green with the initial ledger.
+- During development, two deliberate breaks are shown to fail the right scenario and the gate with a readable aspect diff (not committed):
+  - an injected divergence (e.g. a changed CLI argv);
+  - a removed ledger entry.
+- After a gate run there is no new entry in `~/.config/jj/repos` or `~/.config/jj/workspaces`.
+- clippy (pedantic, `-D warnings`), rustfmt, the coverage ratchet (with the exclude), cargo deny and the hygiene count (8) are all green.
+- project-context.md is updated: test exception, crate list, pin-bump procedure.
+- The spec records the measured gate cost: cold build, warm test runtime.
+
+**Non-goals.**
+- Read verbs. They leave no repo state; comparing them needs typed results against templated CLI output.
+- Typed refusal and warning codes. Only refused/warned is compared.
+- Network verbs, interactive verbs, concurrency.
+- Fixing the ledgered divergences; each keeps its own story or deferred entry.
+- MCP.
+
+**Related:** 9.46 (this automates its "compare behavior" step for mutating verbs; the hunk reading for reads and refusal codes stays manual), 9.40, 9.20, 9.39, `deferred-work.md` "Surfaced 2026-10-08 while analysing …".
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
