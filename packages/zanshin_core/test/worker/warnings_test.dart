@@ -84,7 +84,10 @@ void main() {
     /// opened AFTER the write so the handle's config stack sees it.
     Future<RepoHandle> initWithRepoConfig(String toml) async {
       await (await initGit()).close();
-      final ConfigFileText file = await worker.configFileRead(ConfigScope.repo, workspaceRoot: root);
+      final ConfigFileText file = await worker.configFileRead(
+        const ConfigScopeTarget(ConfigScope.repo),
+        workspaceRoot: root,
+      );
       await worker.configFileWrite(file.path, toml, workspaceRoot: root);
       return worker.openRepo(root);
     }
@@ -242,7 +245,7 @@ void main() {
       await (await initGit()).close();
 
       final ConfigSetResult result = await worker.configSet(
-        ConfigScope.repo,
+        const ConfigScopeTarget(ConfigScope.repo),
         'user.name',
         'Somebody Else',
         workspaceRoot: root,

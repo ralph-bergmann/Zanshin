@@ -11,13 +11,16 @@ export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 export 'src/ffi/config.dart'
     show
         ConfigEntry,
+        ConfigFileTarget,
         ConfigFileText,
         ConfigFileWriteResult,
         ConfigGcFailure,
         ConfigGcResult,
         ConfigGetResult,
         ConfigScope,
+        ConfigScopeTarget,
         ConfigSetResult,
+        ConfigTarget,
         ConfigUnsetResult,
         ConfigValueSource,
         MissingRepoConfig,

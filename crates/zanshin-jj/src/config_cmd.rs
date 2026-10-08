@@ -23,10 +23,10 @@
 //!    repo, then the workspace layer, each right before it loads, and its notices are the verb's
 //!    first warnings ([`ConfigOutcome::warnings`]), on success AND on failure. Without a root
 //!    nothing is fixed up, and `config gc` runs no fix-up either.
-//! 2. **File selection** (`set`, `unset`, the editor halves) — the CLI's `edit_config_file`:
-//!    the scope's existing files, else the CLI's new-file default; more than one candidate, or
-//!    an explicit path that is not one of them, is [`ConfigCmdError::AmbiguousFile`] (the CLI
-//!    prompts; the GUI chooses and passes `path` back).
+//! 2. **File selection** (`set`, `unset`, the editor halves) — the CLI's `edit_config_file` @
+//!    v0.46.0 over a [`ConfigTarget`]: a scope's FIRST file, else the CLI's new-file default;
+//!    `--file PATH` only when PATH is a location jj recognizes, else
+//!    [`ConfigCmdError::UnrecognizedFile`].
 //! 3. **Edit + save** through `config.rs`'s writer family — `toml_edit` keeps comments and
 //!    formatting. The write itself writes no operation (config files are not repo state; only
 //!    `set`'s identity-check snapshot may, as in the CLI). An open
@@ -84,6 +84,19 @@ impl ConfigScope {
             Self::Workspace => "workspace",
         }
     }
+}
+
+/// The file `set`, `unset` and `edit` write — the CLI's `ConfigTargetArgs` @ v0.46.0
+/// (`--user | --repo | --workspace | --file PATH`, exactly one).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigTarget {
+    /// The scope's first file, else its new-file default.
+    Scope(ConfigScope),
+    /// One file, which must be a location jj recognizes as a config file: a loaded layer's file,
+    /// the repo or workspace config file, a user config path, or a `*.toml` directly inside a
+    /// user config directory. A relative path is taken relative to the workspace root — the GUI
+    /// has no current directory to resolve it against.
+    File(PathBuf),
 }
 
 /// Which layer of the stack a listed value comes from — jj-lib's `ConfigSource` minus the
@@ -284,13 +297,13 @@ pub enum ConfigCmdError {
         /// `Failed to unset <name>: <jj-lib reason>`.
         reason: String,
     },
-    /// More than one file could be written and none was chosen, or the chosen path is not one
-    /// of the candidates; no config file was written (at repo/workspace scope the secure
-    /// directory and id file may have been created first, as the CLI creates them).
-    #[error("choose one of the config files: {}", display_paths(.candidates))]
-    AmbiguousFile {
-        /// The files that could be written.
-        candidates: Vec<PathBuf>,
+    /// [`ConfigTarget::File`] names a path jj does not recognize as a config file location; no
+    /// config file was written (with a workspace root the repo and workspace secure directories
+    /// may have been created first, as the CLI creates them while it checks).
+    #[error("Configuration file '{}' is not a valid jj configuration file location", .path.display())]
+    UnrecognizedFile {
+        /// The path as resolved (a relative one joined onto the workspace root).
+        path: PathBuf,
     },
     /// A name, value or file text is not valid TOML.
     #[error("{message}")]
@@ -314,14 +327,6 @@ impl From<crate::ConfigError> for ConfigCmdError {
         let crate::ConfigError::Load { reason } = e;
         Self::Config { reason }
     }
-}
-
-fn display_paths(paths: &[PathBuf]) -> String {
-    paths
-        .iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 // ── Public verbs ──────────────────────────────────────────────────────────────
@@ -376,9 +381,9 @@ pub fn config_path(workspace_root: Option<&Path>, scope: ConfigScope) -> ConfigO
     outcome(|warnings| path_with(&ConfigEnv::from_env(), workspace_root, scope, warnings))
 }
 
-/// `jj config set --user|--repo|--workspace NAME VALUE` — `value_text` is a TOML expression,
-/// falling back to a bare string (the CLI's `parse_value_or_bare_string`); `path` chooses among
-/// several candidate files.
+/// `jj config set --user|--repo|--workspace|--file PATH NAME VALUE` — `value_text` is a TOML
+/// expression, falling back to a bare string (the CLI's `parse_value_or_bare_string`); `target`
+/// picks the file as the CLI does (see the module doc).
 ///
 /// For `user.name`/`user.email` with a workspace, the working copy is snapshotted first (the
 /// CLI's `check_wc_author`; a failure there is silently skipped) and `@`'s author compared.
@@ -389,35 +394,29 @@ pub fn config_path(workspace_root: Option<&Path>, scope: ConfigScope) -> ConfigO
 ///
 /// In [`ConfigSetOutcome::result`]: bad `workspace_root`, [`ConfigCmdError::Config`],
 /// [`ConfigCmdError::Parse`] (name or value), [`ConfigCmdError::NoConfigPath`],
-/// [`ConfigCmdError::AmbiguousFile`], [`ConfigCmdError::WouldOverwrite`].
+/// [`ConfigCmdError::UnrecognizedFile`], [`ConfigCmdError::WouldOverwrite`].
 #[must_use = "the outcome carries the result and the snapshot report"]
 pub fn config_set(
     workspace_root: Option<&Path>,
-    scope: ConfigScope,
+    target: &ConfigTarget,
     name: &str,
     value_text: &str,
-    path: Option<&Path>,
 ) -> ConfigSetOutcome {
-    set_with(&ConfigEnv::from_env(), workspace_root, scope, (name, value_text), path)
+    set_with(&ConfigEnv::from_env(), workspace_root, target, (name, value_text))
 }
 
-/// `jj config unset --user|--repo|--workspace NAME`; returns the file written.
+/// `jj config unset --user|--repo|--workspace|--file PATH NAME`; returns the file written.
 ///
 /// # Errors
 ///
 /// In [`ConfigOutcome::result`]: bad `workspace_root`, [`ConfigCmdError::Config`],
-/// [`ConfigCmdError::Parse`], [`ConfigCmdError::NoConfigPath`], [`ConfigCmdError::AmbiguousFile`],
-/// [`ConfigCmdError::WouldDeleteTable`], [`ConfigCmdError::NotFound`] (`"<name>" doesn't
-/// exist`). As in the CLI, repo/workspace scope creates the secure directory even when it then
-/// refuses.
+/// [`ConfigCmdError::Parse`], [`ConfigCmdError::NoConfigPath`],
+/// [`ConfigCmdError::UnrecognizedFile`], [`ConfigCmdError::WouldDeleteTable`],
+/// [`ConfigCmdError::NotFound`] (`"<name>" doesn't exist`). As in the CLI, repo/workspace scope
+/// creates the secure directory even when it then refuses.
 #[must_use = "the outcome carries the result and the warnings"]
-pub fn config_unset(
-    workspace_root: Option<&Path>,
-    scope: ConfigScope,
-    name: &str,
-    path: Option<&Path>,
-) -> ConfigOutcome<PathBuf> {
-    outcome(|warnings| unset_with(&ConfigEnv::from_env(), workspace_root, scope, name, path, warnings))
+pub fn config_unset(workspace_root: Option<&Path>, target: &ConfigTarget, name: &str) -> ConfigOutcome<PathBuf> {
+    outcome(|warnings| unset_with(&ConfigEnv::from_env(), workspace_root, target, name, warnings))
 }
 
 /// `jj config edit`, editor half 1: the file the CLI would open, and its exact text. An absent
@@ -429,27 +428,24 @@ pub fn config_unset(
 /// # Errors
 ///
 /// In [`ConfigOutcome::result`]: bad `workspace_root`, [`ConfigCmdError::NoConfigPath`],
-/// [`ConfigCmdError::AmbiguousFile`], [`ConfigCmdError::Config`] (the fix-up failed, or the file
-/// could not be created or read, or is not UTF-8).
+/// [`ConfigCmdError::UnrecognizedFile`], [`ConfigCmdError::Config`] (the fix-up failed, or the
+/// file could not be created or read, or is not UTF-8).
 #[must_use = "the outcome carries the result and the warnings"]
-pub fn config_file_read(
-    workspace_root: Option<&Path>,
-    scope: ConfigScope,
-    path: Option<&Path>,
-) -> ConfigOutcome<ConfigFileText> {
-    outcome(|warnings| file_read_with(&ConfigEnv::from_env(), workspace_root, scope, path, warnings))
+pub fn config_file_read(workspace_root: Option<&Path>, target: &ConfigTarget) -> ConfigOutcome<ConfigFileText> {
+    outcome(|warnings| file_read_with(&ConfigEnv::from_env(), workspace_root, target, warnings))
 }
 
-/// `jj config edit`, editor half 2: replaces the file at `path` with `text` — only a file
-/// [`config_file_read`] can return for some scope of this root, and only after `text` parses as
-/// TOML (nothing is written otherwise). Like half 1, it starts with the secure-config fix-up
-/// alone when there is a workspace root (Story 9.37).
+/// `jj config edit`, editor half 2: replaces the file at `path` with `text` — only a location
+/// [`config_file_read`] accepts for this root (checked without creating anything; a relative
+/// `path` joined onto the workspace root), and only after `text` parses as TOML (nothing is
+/// written otherwise). Like half 1, it starts with the secure-config fix-up alone when there is
+/// a workspace root (Story 9.37).
 ///
 /// # Errors
 ///
-/// In [`ConfigOutcome::result`]: bad `workspace_root`; [`ConfigCmdError::AmbiguousFile`]
-/// (`path` is not such a file; the allowed files in `candidates`); [`ConfigCmdError::Parse`]
-/// (with the span); [`ConfigCmdError::Config`] (the fix-up or the write failed).
+/// In [`ConfigOutcome::result`]: bad `workspace_root`; [`ConfigCmdError::UnrecognizedFile`]
+/// (`path` is not such a location); [`ConfigCmdError::Parse`] (with the span);
+/// [`ConfigCmdError::Config`] (the fix-up or the write failed).
 #[must_use = "the outcome carries the result and the warnings"]
 pub fn config_file_write(workspace_root: Option<&Path>, path: &Path, text: &str) -> ConfigOutcome<()> {
     outcome(|warnings| file_write_with(&ConfigEnv::from_env(), workspace_root, path, text, warnings))
@@ -674,36 +670,110 @@ fn secure_create(
         .flatten())
 }
 
-/// The CLI's `edit_config_file`: the candidate files of `scope`, then the pick.
+/// The CLI's `ConfigTargetArgs::edit_config_file` (`cli/src/commands/config/mod.rs` @ v0.46.0):
+/// a scope's FIRST file — the user scope's first existing file, else its new-file default; the
+/// repo / workspace scope's create-forced secure file — or a [`ConfigTarget::File`] through
+/// [`resolve_file_to_edit`]. Returns the file with the source it is written as.
 fn select_file(
     env: &ConfigEnv,
     ws: Option<&WorkspaceDirs>,
-    scope: ConfigScope,
-    explicit: Option<&Path>,
-) -> Result<PathBuf, ConfigCmdError> {
-    let candidates: Vec<PathBuf> = if scope == ConfigScope::User {
-        let existing = config::user_edit_candidates(env);
-        if existing.is_empty() {
-            new_user_config_file(env).into_iter().collect()
-        } else {
-            existing
-        }
-    } else {
-        secure_create(env, ws, scope)?.into_iter().collect()
+    target: &ConfigTarget,
+) -> Result<(PathBuf, ConfigSource), ConfigCmdError> {
+    let scope = match target {
+        ConfigTarget::Scope(scope) => *scope,
+        ConfigTarget::File(path) => return resolve_file_to_edit(env, ws, path, true),
     };
-    if candidates.is_empty() {
-        return Err(ConfigCmdError::NoConfigPath {
+    let first = if scope == ConfigScope::User {
+        config::user_edit_candidates(env)
+            .into_iter()
+            .next()
+            .or_else(|| new_user_config_file(env))
+    } else {
+        secure_create(env, ws, scope)?
+    };
+    first
+        .map(|path| (path, scope.source()))
+        .ok_or_else(|| ConfigCmdError::NoConfigPath {
             reason: format!("No {} config path found to edit", scope.word()),
-        });
+        })
+}
+
+/// The CLI's `ConfigEnv::resolve_file_to_edit` (`cli/src/config.rs:682-742` @ v0.46.0), with a
+/// relative `path` taken against the workspace root instead of the CWD (none without a root). In
+/// the CLI's order: a loaded layer's file — system, user, repo, workspace, enumerated without
+/// parsing so the editor halves still reach a broken file — then the repo, then the workspace
+/// secure file, then a user config path or a `*.toml` directly inside a user config directory.
+///
+/// With `create` (`set`, `unset`, the read half) both secure files are create-forced while they
+/// are checked, as the CLI's `repo_config_path` / `workspace_config_path` force them — even when
+/// the match turns out to be a user file — and a matched new file's parent is created `0700`.
+/// Without it (the write half) nothing is created.
+fn resolve_file_to_edit(
+    env: &ConfigEnv,
+    ws: Option<&WorkspaceDirs>,
+    path: &Path,
+    create: bool,
+) -> Result<(PathBuf, ConfigSource), ConfigCmdError> {
+    let path = ws.map_or_else(|| path.to_owned(), |ws| ws.workspace_root.join(path));
+    if path.is_relative() {
+        return Err(ConfigCmdError::UnrecognizedFile { path });
     }
-    if let Some(path) = explicit {
-        if candidates.iter().any(|c| c == path) {
-            return Ok(path.to_owned());
+    let canonical = std::fs::canonicalize(&path).ok();
+    let matches = |p: &Path| p == path || Some(p) == canonical.as_deref();
+    let secure = match ws {
+        Some(ws) => secure_files(env, ws)?,
+        None => Vec::new(),
+    };
+    let loaded = config::system_edit_candidates(env)
+        .into_iter()
+        .map(|p| (p, ConfigSource::System))
+        .chain(
+            config::user_edit_candidates(env)
+                .into_iter()
+                .map(|p| (p, ConfigSource::User)),
+        )
+        .chain(secure.iter().filter(|(p, _)| p.exists()).cloned());
+    if let Some(found) = loaded.into_iter().find(|(p, _)| matches(p)) {
+        return Ok(found);
+    }
+    for scope in [ConfigScope::Repo, ConfigScope::Workspace] {
+        // WHY `.ok()`: the CLI's `if let Ok(Some(..))` skips a failed creation the same way.
+        let file = if create {
+            secure_create(env, ws, scope).ok().flatten()
+        } else {
+            secure
+                .iter()
+                .find(|(_, s)| *s == scope.source())
+                .map(|(p, _)| p.clone())
+        };
+        if file.is_some_and(|f| matches(&f)) {
+            return Ok((with_parent(path, create), scope.source()));
         }
-    } else if let [only] = candidates.as_slice() {
-        return Ok(only.clone());
     }
-    Err(ConfigCmdError::AmbiguousFile { candidates })
+    let user = config::user_config_candidates(env);
+    if user.iter().any(|u| matches(u) || is_file_in_config_dir(&path, u)) {
+        return Ok((with_parent(path, create), ConfigSource::User));
+    }
+    Err(ConfigCmdError::UnrecognizedFile { path })
+}
+
+/// `path`, its parent created `0700` first when `create` — errors ignored, as the CLI ignores
+/// them (the save names them).
+fn with_parent(path: PathBuf, create: bool) -> PathBuf {
+    if let Some(dir) = path.parent().filter(|_| create) {
+        config::create_private_dir_all(dir).ok();
+    }
+    path
+}
+
+/// The CLI's `is_file_in_config_dir` (`cli/src/config.rs:787-801` @ v0.46.0): `file` is a
+/// `*.toml` directly inside `dir`, which is not a file.
+fn is_file_in_config_dir(file: &Path, dir: &Path) -> bool {
+    if file.extension() != Some(std::ffi::OsStr::new("toml")) || dir.is_file() {
+        return false;
+    }
+    file.parent()
+        .is_some_and(|parent| parent == dir || std::fs::canonicalize(parent).ok().as_deref() == Some(dir))
 }
 
 /// The CLI's `new_user_config_file`: the first candidate, its parent created `0700` (errors
@@ -813,9 +883,8 @@ fn path_with(
 fn set_with(
     env: &ConfigEnv,
     root: Option<&Path>,
-    scope: ConfigScope,
+    target: &ConfigTarget,
     (name, value_text): (&str, &str),
-    path: Option<&Path>,
 ) -> ConfigSetOutcome {
     let mut precondition = None;
     let mut warnings = Vec::new();
@@ -824,7 +893,7 @@ fn set_with(
         startup(env, ws.as_ref(), "config set", Some(&mut warnings))?;
         let name = parse_name(name)?;
         let value = parse_value_or_bare_string(value_text)?;
-        let file_path = select_file(env, ws.as_ref(), scope, path)?;
+        let (file_path, source) = select_file(env, ws.as_ref(), target)?;
         let working_copy_author = if let (Some(field), Some(ws)) = (author_field(&name), &ws) {
             check_wc_author(&ws.workspace_root, field, &value, (&mut precondition, &mut warnings))
         } else {
@@ -841,7 +910,7 @@ fn set_with(
                 ),
             ));
         }
-        let mut file = config::load_config_file(scope.source(), &file_path)?;
+        let mut file = config::load_config_file(source, &file_path)?;
         file.set_value(&name, value)
             .map_err(|e| ConfigCmdError::WouldOverwrite {
                 reason: format!("Failed to set {name}: {e}"),
@@ -915,16 +984,15 @@ fn working_copy_author(repo: &crate::Repo) -> Option<(String, String)> {
 fn unset_with(
     env: &ConfigEnv,
     root: Option<&Path>,
-    scope: ConfigScope,
+    target: &ConfigTarget,
     name: &str,
-    path: Option<&Path>,
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<PathBuf, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     startup(env, ws.as_ref(), "config unset", Some(warnings))?;
     let name = parse_name(name)?;
-    let file_path = select_file(env, ws.as_ref(), scope, path)?;
-    let mut file = config::load_config_file(scope.source(), &file_path)?;
+    let (file_path, source) = select_file(env, ws.as_ref(), target)?;
+    let mut file = config::load_config_file(source, &file_path)?;
     let old = file.delete_value(&name).map_err(|e| ConfigCmdError::WouldDeleteTable {
         reason: format!("Failed to unset {name}: {e}"),
     })?;
@@ -940,40 +1008,33 @@ fn unset_with(
 fn file_read_with(
     env: &ConfigEnv,
     root: Option<&Path>,
-    scope: ConfigScope,
-    path: Option<&Path>,
+    target: &ConfigTarget,
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<ConfigFileText, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     fix_up(env, ws.as_ref(), warnings)?;
-    let file_path = select_file(env, ws.as_ref(), scope, path)?;
+    let (file_path, source) = select_file(env, ws.as_ref(), target)?;
     if !file_path.exists() {
-        config::save_config_file(&config::load_config_file(scope.source(), &file_path)?)?;
+        config::save_config_file(&config::load_config_file(source, &file_path)?)?;
     }
     let bytes = std::fs::read(&file_path).map_err(|e| io_error(&file_path, &e))?;
     let text = String::from_utf8(bytes).map_err(|e| io_error(&file_path, &e))?;
     Ok(ConfigFileText { path: file_path, text })
 }
 
-/// Every file [`config_file_read`] can currently return for some scope of `ws`, with its
-/// source — its selection, side-effect-free: the existing user files, or the CLI's new-file
-/// default only when there are none; the repo and workspace SECURE files, only when their id
-/// file exists (never the legacy fallback) and their secure dir records this repo/workspace
-/// (never a COPIED repo's original). [`file_write_with`] runs the start-up fix-up right before
-/// (Story 9.37), which migrates the legacy file and forks the copy, so these two filters only
-/// matter for a layer that fix-up could not fix — e.g. a copy jj-lib could not fork, such as a
-/// read-only one.
+/// The repo and workspace SECURE files of `ws` with their source, resolved side-effect-free
+/// (they may not exist): only when their id file exists (never the legacy fallback) and their
+/// secure dir records this repo/workspace (never a COPIED repo's original). Every caller runs the
+/// start-up fix-up first (Story 9.37), which migrates the legacy file and forks the copy, so these
+/// two filters only matter for a layer that fix-up could not fix — e.g. a copy jj-lib could not
+/// fork, such as a read-only one.
 ///
 /// # Errors
 ///
 /// - [`ConfigCmdError::Config`] — an id file is unreadable or malformed.
-fn writable_files(env: &ConfigEnv, ws: Option<&WorkspaceDirs>) -> Result<Vec<(PathBuf, ConfigSource)>, ConfigCmdError> {
-    let mut user = config::user_edit_candidates(env);
-    if user.is_empty() {
-        user.extend(config::user_config_candidates(env).into_iter().next());
-    }
-    let mut files: Vec<(PathBuf, ConfigSource)> = user.into_iter().map(|p| (p, ConfigSource::User)).collect();
-    for layer in ws.into_iter().flat_map(|ws| config::secure_layers(env, ws.paths())) {
+fn secure_files(env: &ConfigEnv, ws: &WorkspaceDirs) -> Result<Vec<(PathBuf, ConfigSource)>, ConfigCmdError> {
+    let mut files = Vec::new();
+    for layer in config::secure_layers(env, ws.paths()) {
         if layer.has_id_file() {
             let path = layer.resolved_path()?.filter(|p| !layer.records_another_dir(p));
             files.extend(path.map(|p| (p, layer.source)));
@@ -991,21 +1052,16 @@ fn file_write_with(
 ) -> Result<(), ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     fix_up(env, ws.as_ref(), warnings)?;
-    let allowed = writable_files(env, ws.as_ref())?;
-    let Some(source) = allowed.iter().find(|(p, _)| p == path).map(|(_, s)| *s) else {
-        return Err(ConfigCmdError::AmbiguousFile {
-            candidates: allowed.into_iter().map(|(p, _)| p).collect(),
-        });
-    };
+    let (path, source) = resolve_file_to_edit(env, ws.as_ref(), path, false)?;
     ConfigLayer::parse(source, text).map_err(toml_error)?;
     if source == ConfigSource::User {
-        // The new-file default's parent, as `new_user_config_file` creates it (errors ignored —
-        // the write names them).
+        // A new user file's parent, as `new_user_config_file` / the read half create it (errors
+        // ignored — the write names them).
         if let Some(dir) = path.parent() {
             config::create_private_dir_all(dir).ok();
         }
     }
-    std::fs::write(path, text).map_err(|e| io_error(path, &e))
+    std::fs::write(&path, text).map_err(|e| io_error(&path, &e))
 }
 
 /// `<config_dir>/jj/repos`, after the start-up stack (no workspace).
@@ -1097,7 +1153,7 @@ mod tests {
     use super::{
         gc_delete_with, gc_list_with, is_bare_string, parse_value_or_bare_string, resolve_workspace,
         resolved_config_values, set_with, toml_error, ConfigCmdError, ConfigEntry, ConfigListQuery, ConfigScope,
-        ConfigValueSource, WorkspaceDirs,
+        ConfigTarget, ConfigValueSource, WorkspaceDirs,
     };
     use crate::config::{self, ConfigEnv};
 
@@ -1126,20 +1182,18 @@ mod tests {
     fn unset_with(
         env: &ConfigEnv,
         root: Option<&Path>,
-        scope: ConfigScope,
+        target: &ConfigTarget,
         name: &str,
-        path: Option<&Path>,
     ) -> Result<PathBuf, ConfigCmdError> {
-        super::unset_with(env, root, scope, name, path, &mut Vec::new())
+        super::unset_with(env, root, target, name, &mut Vec::new())
     }
 
     fn file_read_with(
         env: &ConfigEnv,
         root: Option<&Path>,
-        scope: ConfigScope,
-        path: Option<&Path>,
+        target: &ConfigTarget,
     ) -> Result<super::ConfigFileText, ConfigCmdError> {
-        super::file_read_with(env, root, scope, path, &mut Vec::new())
+        super::file_read_with(env, root, target, &mut Vec::new())
     }
 
     fn file_write_with(env: &ConfigEnv, root: Option<&Path>, path: &Path, text: &str) -> Result<(), ConfigCmdError> {
@@ -1338,10 +1392,10 @@ mod tests {
             list_with(&env, None, &query()).map(|_| ()).unwrap_err(),
             get_with(&env, None, "user.name").map(|_| ()).unwrap_err(),
             path_with(&env, None, ConfigScope::User).map(|_| ()).unwrap_err(),
-            unset_with(&env, None, ConfigScope::User, "user.name", None)
+            unset_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), "user.name")
                 .map(|_| ())
                 .unwrap_err(),
-            set_with(&env, None, ConfigScope::User, ("user.name", "x"), None)
+            set_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), ("user.name", "x"))
                 .result
                 .map(|_| ())
                 .unwrap_err(),
@@ -1353,7 +1407,7 @@ mod tests {
                 "{err}"
             );
         }
-        let read = file_read_with(&env, None, ConfigScope::User, None).expect("read");
+        let read = file_read_with(&env, None, &ConfigTarget::Scope(ConfigScope::User)).expect("read");
         assert_eq!(
             (read.path.as_path(), read.text.as_str()),
             (file.as_path(), "[user\nname = ")
@@ -1378,9 +1432,14 @@ mod tests {
             &user_file(tmp.path()),
             "[user]\nemail = 'user@x'\n[revsets]\nlog = '@'\n",
         );
-        set_with(&env, Some(&root), ConfigScope::Repo, ("user.email", "repo@x"), None)
-            .result
-            .expect("repo set");
+        set_with(
+            &env,
+            Some(&root),
+            &ConfigTarget::Scope(ConfigScope::Repo),
+            ("user.email", "repo@x"),
+        )
+        .result
+        .expect("repo set");
 
         let rows = list_with(&env, Some(&root), &query()).unwrap().value;
         for (name, value, source) in [
@@ -1532,7 +1591,12 @@ mod tests {
 
         let tmp = tempfile::tempdir().unwrap();
         let env = env_in(tmp.path());
-        let out = set_with(&env, None, ConfigScope::User, ("user.name", "Ralph Bergmann"), None);
+        let out = set_with(
+            &env,
+            None,
+            &ConfigTarget::Scope(ConfigScope::User),
+            ("user.name", "Ralph Bergmann"),
+        );
         assert!(out.precondition.is_none());
         let file = user_file(tmp.path());
         assert_eq!(out.result.unwrap().path, file);
@@ -1544,33 +1608,48 @@ mod tests {
         assert_eq!(mode & 0o777, 0o700);
     }
 
+    /// jj 0.45: the user scope writes its FIRST file instead of prompting; `--file` writes any
+    /// recognized location — a loaded file or a new `*.toml` in `conf.d` — and nothing else.
     #[test]
-    fn set_with_two_user_files_needs_a_chosen_path() {
+    fn set_with_two_user_files_writes_the_first_or_the_named_file() {
         let tmp = tempfile::tempdir().unwrap();
         let env = env_in(tmp.path());
         let main = user_file(tmp.path());
-        let extra = tmp.path().join("cfg").join("jj").join("conf.d").join("x.toml");
+        let conf_d = tmp.path().join("cfg").join("jj").join("conf.d");
+        let extra = conf_d.join("x.toml");
         write(&main, "# mine\n");
         write(&extra, "");
         write(&extra.with_extension("txt"), "");
-        let out = set_with(&env, None, ConfigScope::User, ("a.b", "1"), None);
-        assert!(matches!(
-            out.result,
-            Err(ConfigCmdError::AmbiguousFile { ref candidates }) if *candidates == [main.clone(), extra.clone()]
-        ));
-        let stray = tmp.path().join("elsewhere.toml");
-        let out = set_with(&env, None, ConfigScope::User, ("a.b", "1"), Some(&stray));
-        assert!(matches!(out.result, Err(ConfigCmdError::AmbiguousFile { .. })));
-        assert!(!stray.exists());
+        let file = |path: &Path| ConfigTarget::File(path.to_owned());
 
-        let out = set_with(&env, None, ConfigScope::User, ("a.b", "1"), Some(&extra));
+        let out = set_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), ("a.b", "1"));
+        assert_eq!(out.result.unwrap().path, main, "the first loaded user file");
+        assert_eq!(fs::read_to_string(&main).unwrap(), "[a]\nb = 1\n# mine\n");
+        assert_eq!(fs::read_to_string(&extra).unwrap(), "", "only the first file");
+
+        for stray in [tmp.path().join("elsewhere.toml"), extra.with_extension("txt")] {
+            let out = set_with(&env, None, &file(&stray), ("a.b", "2"));
+            assert!(
+                matches!(out.result, Err(ConfigCmdError::UnrecognizedFile { ref path }) if *path == stray),
+                "{stray:?}"
+            );
+        }
+        assert!(!tmp.path().join("elsewhere.toml").exists(), "nothing written");
+
+        let out = set_with(&env, None, &file(&extra), ("a.b", "2"));
         assert_eq!(out.result.unwrap().path, extra);
-        assert_eq!(fs::read_to_string(&extra).unwrap(), "[a]\nb = 1\n");
-        assert_eq!(fs::read_to_string(&main).unwrap(), "# mine\n", "only the chosen file");
-        let err = ConfigCmdError::AmbiguousFile {
-            candidates: vec![main, extra],
-        };
-        assert!(err.to_string().contains("config.toml, "), "{err}");
+        assert_eq!(fs::read_to_string(&extra).unwrap(), "[a]\nb = 2\n");
+
+        let new = conf_d.join("new.toml");
+        let out = set_with(&env, None, &file(&new), ("a.b", "3"));
+        assert_eq!(out.result.unwrap().path, new, "a new *.toml inside a user config dir");
+        assert_eq!(fs::read_to_string(&new).unwrap(), format!("{HEADER}[a]\nb = 3\n"));
+
+        let err = ConfigCmdError::UnrecognizedFile { path: "/x.toml".into() };
+        assert_eq!(
+            err.to_string(),
+            "Configuration file '/x.toml' is not a valid jj configuration file location"
+        );
     }
 
     #[test]
@@ -1579,7 +1658,9 @@ mod tests {
         let env = env_in(tmp.path());
         let file = user_file(tmp.path());
         write(&file, "[revset-aliases]\n'x()' = '@'\n");
-        let set = |name: &str, value: &str| set_with(&env, None, ConfigScope::User, (name, value), None).result;
+        let set = |name: &str, value: &str| {
+            set_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), (name, value)).result
+        };
         set("snapshot.auto-track", "'glob:**/*.rs'").unwrap();
         assert_eq!(get_with(&env, None, "snapshot.auto-track").unwrap(), "glob:**/*.rs");
         assert!(matches!(set("x", "'unterminated"), Err(ConfigCmdError::Parse { .. })));
@@ -1601,7 +1682,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let env = env_without_user(tmp.path());
         for scope in [ConfigScope::User, ConfigScope::Repo, ConfigScope::Workspace] {
-            let out = set_with(&env, None, scope, ("a", "1"), None);
+            let out = set_with(&env, None, &ConfigTarget::Scope(scope), ("a", "1"));
             assert!(matches!(
                 out.result,
                 Err(ConfigCmdError::NoConfigPath { ref reason }) if reason.ends_with("config path found to edit")
@@ -1615,7 +1696,14 @@ mod tests {
     fn setting_the_identity_reports_a_differing_working_copy_author() {
         let (tmp, root) = workspace();
         let env = env_in(tmp.path());
-        let set = |name: &str, value: &str| set_with(&env, Some(&root), ConfigScope::Repo, (name, value), None);
+        let set = |name: &str, value: &str| {
+            set_with(
+                &env,
+                Some(&root),
+                &ConfigTarget::Scope(ConfigScope::Repo),
+                (name, value),
+            )
+        };
 
         let out = set("user.email", "other@example.com");
         assert!(out.precondition.is_some(), "the snapshot ran");
@@ -1632,7 +1720,7 @@ mod tests {
         assert!(out.precondition.is_none(), "no snapshot for other keys");
         assert!(out.result.unwrap().working_copy_author.is_none());
 
-        let out = set_with(&env, None, ConfigScope::User, ("user.name", "x"), None);
+        let out = set_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), ("user.name", "x"));
         assert!(out.precondition.is_none(), "no workspace, no snapshot");
 
         let out = set("user.name", "42");
@@ -1656,7 +1744,7 @@ mod tests {
             &file,
             "# keep\n[user]\nname = 'a' # me\nemail = 'e'\n[revset-aliases]\n'x()' = '@'\n",
         );
-        let unset = |name: &str| unset_with(&env, None, ConfigScope::User, name, None);
+        let unset = |name: &str| unset_with(&env, None, &ConfigTarget::Scope(ConfigScope::User), name);
         assert_eq!(unset("user.name").unwrap(), file);
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
@@ -1679,19 +1767,19 @@ mod tests {
     fn file_read_creates_an_absent_file_with_the_schema_header() {
         let (tmp, root) = workspace();
         let env = env_in(tmp.path());
-        let read = file_read_with(&env, Some(&root), ConfigScope::Workspace, None).unwrap();
+        let read = file_read_with(&env, Some(&root), &ConfigTarget::Scope(ConfigScope::Workspace)).unwrap();
         assert_eq!(read.text, HEADER);
         assert_eq!(fs::read_to_string(&read.path).unwrap(), HEADER);
         assert!(read
             .path
             .starts_with(tmp.path().join("cfg").join("jj").join("workspaces")));
-        let again = file_read_with(&env, Some(&root), ConfigScope::Workspace, None).unwrap();
+        let again = file_read_with(&env, Some(&root), &ConfigTarget::Scope(ConfigScope::Workspace)).unwrap();
         assert_eq!(again, read);
 
         write(&user_file(tmp.path()), "");
         fs::write(user_file(tmp.path()), [0xff, 0xfe]).unwrap();
         assert!(matches!(
-            file_read_with(&env, None, ConfigScope::User, None),
+            file_read_with(&env, None, &ConfigTarget::Scope(ConfigScope::User)),
             Err(ConfigCmdError::Config { .. })
         ));
     }
@@ -1700,7 +1788,7 @@ mod tests {
     fn file_write_validates_before_writing_and_only_writes_known_files() {
         let (tmp, root) = workspace();
         let env = env_in(tmp.path());
-        let repo = file_read_with(&env, Some(&root), ConfigScope::Repo, None).unwrap();
+        let repo = file_read_with(&env, Some(&root), &ConfigTarget::Scope(ConfigScope::Repo)).unwrap();
         let err = file_write_with(&env, Some(&root), &repo.path, "[user\nname = ").unwrap_err();
         let ConfigCmdError::Parse { message, span } = err else {
             panic!("a parse refusal")
@@ -1720,11 +1808,62 @@ mod tests {
         file_write_with(&env, None, &default_user, "a = 1\n").expect("the user default is writable");
         assert_eq!(fs::read_to_string(&default_user).unwrap(), "a = 1\n");
         let stray = tmp.path().join("stray.toml");
-        let Err(ConfigCmdError::AmbiguousFile { candidates }) = file_write_with(&env, Some(&root), &stray, "") else {
-            panic!("a stray path must refuse")
-        };
-        assert!(candidates.contains(&default_user) && candidates.contains(&repo.path));
+        assert!(matches!(
+            file_write_with(&env, Some(&root), &stray, ""),
+            Err(ConfigCmdError::UnrecognizedFile { path }) if path == stray
+        ));
         assert!(!stray.exists());
+        // A relative path is taken against the workspace root; without one there is no base.
+        let relative = Path::new("stray.toml");
+        let joined = fs::canonicalize(&root).unwrap().join(relative);
+        assert!(matches!(
+            file_write_with(&env, Some(&root), relative, ""),
+            Err(ConfigCmdError::UnrecognizedFile { path }) if path == joined
+        ));
+        assert!(matches!(
+            file_write_with(&env, None, relative, ""),
+            Err(ConfigCmdError::UnrecognizedFile { path }) if path == relative
+        ));
+    }
+
+    /// `--file` naming the workspace config file `config path` reported (its id and secure dir
+    /// exist, the file does not yet): the write half accepts it WITHOUT creating anything, and
+    /// `set` creates it — after create-forcing the repo file first, as the CLI checks in that
+    /// order.
+    #[test]
+    fn file_targets_reach_a_not_yet_written_secure_file() {
+        let (tmp, root) = workspace();
+        let env = env_in(tmp.path());
+        let ws_file = path_with(&env, Some(&root), ConfigScope::Workspace).unwrap().remove(0);
+        assert!(!ws_file.exists());
+
+        file_write_with(&env, Some(&root), &ws_file, "a = 1\n").expect("a recognized location");
+        assert_eq!(fs::read_to_string(&ws_file).unwrap(), "a = 1\n");
+        fs::remove_file(&ws_file).unwrap();
+
+        let target = ConfigTarget::File(ws_file.clone());
+        let out = set_with(&env, Some(&root), &target, ("b", "2"));
+        assert_eq!(out.result.unwrap().path, ws_file);
+        assert_eq!(fs::read_to_string(&ws_file).unwrap(), format!("{HEADER}b = 2\n"));
+        assert!(
+            root.join(".jj").join("repo").join("config-id").exists(),
+            "the repo file was forced too"
+        );
+    }
+
+    /// A system config file is a loaded layer, so `--file` may target it.
+    #[test]
+    fn a_file_target_reaches_a_system_config_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let system = tmp.path().join("etc").join("jj").join("config.toml");
+        write(&system, "");
+        let env = ConfigEnv {
+            system_config_dir: Some(tmp.path().join("etc")),
+            ..env_in(tmp.path())
+        };
+        let out = set_with(&env, None, &ConfigTarget::File(system.clone()), ("a", "1"));
+        assert_eq!(out.result.unwrap().path, system);
+        assert_eq!(fs::read_to_string(&system).unwrap(), "a = 1\n");
     }
 
     // ── gc ──────────────────────────────────────────────────────────────────
@@ -1835,9 +1974,10 @@ mod tests {
         assert!(rows.iter().all(|r| r.name != "foo.baz"));
     }
 
-    /// (a) The new-file default is writable only while no user file exists.
+    /// (a) A user config path is a recognized location whether or not other user files exist —
+    /// the new-file default stays writable next to `conf.d/a.toml` (jj 0.45 `--file`).
     #[test]
-    fn file_write_offers_the_user_default_only_without_user_files() {
+    fn file_write_accepts_a_user_config_path_next_to_other_user_files() {
         let tmp = tempfile::tempdir().unwrap();
         let env = env_in(tmp.path());
         let default_user = user_file(tmp.path());
@@ -1846,19 +1986,13 @@ mod tests {
 
         let other = tempfile::tempdir().unwrap();
         let env = env_in(other.path());
-        let conf_d = other.path().join("cfg").join("jj").join("conf.d").join("a.toml");
-        write(&conf_d, "");
-        let Err(ConfigCmdError::AmbiguousFile { candidates }) =
-            file_write_with(&env, None, &user_file(other.path()), "")
-        else {
-            panic!("the default must not be writable while conf.d/a.toml exists")
-        };
-        assert_eq!(candidates, [conf_d]);
-        assert!(!user_file(other.path()).exists());
+        write(&other.path().join("cfg").join("jj").join("conf.d").join("a.toml"), "");
+        file_write_with(&env, None, &user_file(other.path()), "b = 2\n").expect("still a user config path");
+        assert_eq!(fs::read_to_string(user_file(other.path())).unwrap(), "b = 2\n");
     }
 
     /// (b) Without an id file the repo/workspace layer offers nothing — never the legacy file;
-    /// (c) a malformed id file is a config error, not an ambiguous-file refusal.
+    /// (c) a malformed id file is a config error, not an unrecognized-file refusal.
     #[test]
     fn file_write_never_offers_the_legacy_file_and_names_a_bad_id() {
         let (tmp, root) = workspace();
@@ -1866,7 +2000,7 @@ mod tests {
         let legacy = root.join(".jj").join("repo").join("config.toml");
         assert!(matches!(
             file_write_with(&env, Some(&root), &legacy, ""),
-            Err(ConfigCmdError::AmbiguousFile { .. })
+            Err(ConfigCmdError::UnrecognizedFile { .. })
         ));
         assert!(!legacy.exists());
 

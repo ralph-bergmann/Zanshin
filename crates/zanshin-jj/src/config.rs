@@ -496,8 +496,22 @@ pub(crate) fn user_config_candidates(env: &ConfigEnv) -> Vec<PathBuf> {
 /// repair (`jj config edit`'s role). An unreadable directory contributes nothing here; the
 /// stack load names it.
 pub(crate) fn user_edit_candidates(env: &ConfigEnv) -> Vec<PathBuf> {
+    existing_files(env_user_config_paths(env))
+}
+
+/// The existing system config FILES, expanded like [`user_edit_candidates`] — the paths of the
+/// CLI's loaded `System` layers, which `jj config set --file` may target (jj 0.45).
+pub(crate) fn system_edit_candidates(env: &ConfigEnv) -> Vec<PathBuf> {
+    existing_files(system_config_paths(
+        env.system_config_dir.as_deref(),
+        env.jj_config.as_deref(),
+    ))
+}
+
+/// `paths` expanded as [`add_path_layers`] loads them, without parsing.
+fn existing_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    for path in env_user_config_paths(env).into_iter().filter(|p| p.exists()) {
+    for path in paths.into_iter().filter(|p| p.exists()) {
         if path.is_dir() {
             let mut entries: Vec<PathBuf> = std::fs::read_dir(&path)
                 .into_iter()

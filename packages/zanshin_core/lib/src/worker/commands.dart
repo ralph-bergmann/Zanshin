@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
-import '../ffi/config.dart' show ConfigScope;
+import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
@@ -1088,26 +1088,22 @@ final class ConfigSetCommand extends WorkerCommand {
   const ConfigSetCommand({
     required super.commandId,
     required this.workspaceRoot,
-    required this.scope,
+    required this.target,
     required this.name,
     required this.value,
-    required this.path,
   });
 
   /// The workspace root; `null` = no workspace.
   final String? workspaceRoot;
 
-  /// The scope.
-  final ConfigScope scope;
+  /// The file to write: a scope's first file, or one named file.
+  final ConfigTarget target;
 
   /// The dotted config name.
   final String name;
 
   /// The value as TOML text (a bare string when it does not look like TOML).
   final String value;
-
-  /// The file to write when the scope has several; `null` = the single one.
-  final String? path;
 }
 
 /// `jj config unset` — see `ZanshinWorker.configUnset`.
@@ -1115,22 +1111,18 @@ final class ConfigUnsetCommand extends WorkerCommand {
   const ConfigUnsetCommand({
     required super.commandId,
     required this.workspaceRoot,
-    required this.scope,
+    required this.target,
     required this.name,
-    required this.path,
   });
 
   /// The workspace root; `null` = no workspace.
   final String? workspaceRoot;
 
-  /// The scope.
-  final ConfigScope scope;
+  /// The file to write: a scope's first file, or one named file.
+  final ConfigTarget target;
 
   /// The dotted config name.
   final String name;
-
-  /// The file to write when the scope has several; `null` = the single one.
-  final String? path;
 }
 
 /// `jj config edit`, half 1 — see `ZanshinWorker.configFileRead`.
@@ -1138,18 +1130,14 @@ final class ConfigFileReadCommand extends WorkerCommand {
   const ConfigFileReadCommand({
     required super.commandId,
     required this.workspaceRoot,
-    required this.scope,
-    required this.path,
+    required this.target,
   });
 
   /// The workspace root; `null` = no workspace.
   final String? workspaceRoot;
 
-  /// The scope.
-  final ConfigScope scope;
-
-  /// The file when the scope has several; `null` = the single one.
-  final String? path;
+  /// The file to read: a scope's first file, or one named file.
+  final ConfigTarget target;
 }
 
 /// `jj config edit`, half 2 — see `ZanshinWorker.configFileWrite`.

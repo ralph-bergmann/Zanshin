@@ -354,7 +354,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_commit_contents(
   int len,
 );
 
-/// `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
+/// `jj config edit`, editor half 1: the file `zanshin_config_set` would write (the scope's first
+/// file, or `path` — the CLI's `--file`) and its exact text, CREATING an absent
 /// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
 /// start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
 /// starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
@@ -365,13 +366,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_commit_contents(
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigFileReadRequest`, or its `kind`
 /// is not `ConfigFileRead`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the start-up fix-up failed, or the file could not be created or read,
 /// or is not UTF-8.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location.
 ///
 /// # Safety
 /// As `zanshin_config_list`.
@@ -381,8 +382,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_file_read(
   int len,
 );
 
-/// `jj config edit`, editor half 2: replace a config file's text — only a file
-/// `zanshin_config_file_read` can return for some scope of this root, and only after `text`
+/// `jj config edit`, editor half 2: replace a config file's text — only a location
+/// `zanshin_config_file_read` accepts for this root (checked without creating anything; a
+/// relative `path` taken against `workspace_root`), and only after `text`
 /// parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
 /// `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
 /// start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
@@ -395,7 +397,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_file_read(
 /// - `jj.invalid_input` — `path` or `text` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_ambiguous_file` — `path` is not such a file; the allowed files in `context`.
+/// - `jj.config_unrecognized_file` — `path` is not such a location; the resolved path in
+/// `context`.
 /// - `jj.config_parse_error` — `text` is not valid TOML; span and message in `context`, the file
 /// untouched.
 /// - `jj.config_error` — the start-up fix-up or the write failed.
@@ -535,12 +538,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_path(
   int len,
 );
 
-/// Set a config value in a file of a scope — the CLI's `jj config set --user|--repo|--workspace
-/// NAME VALUE`.
+/// Set a config value in one config file — the CLI's `jj config set
+/// --user|--repo|--workspace|--file PATH NAME VALUE`.
 ///
 /// `value` is TOML text, a bare string when it does not look like TOML. The file is the scope's
-/// single existing file (or the CLI's new-file default); with several, `path` must name one
-/// (the CLI's prompt). Comments and formatting survive; the config write itself writes no
+/// FIRST file (or the CLI's new-file default), or — with `path` instead of `scope`, the CLI's
+/// `--file` — that file, which must be a location jj recognizes (a relative one is taken
+/// against `workspace_root`). Comments and formatting survive; the config write itself writes no
 /// operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
 /// first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
 /// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
@@ -553,14 +557,14 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_path(
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigSetRequest`, or its `kind` is not
 /// `ConfigSet`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`, or `name` / `value` is absent.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`, or `name` / `value` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load, or the file could not be read or written.
 /// - `jj.config_parse_error` — `name` or `value` is not valid TOML; span and message in `context`.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`; the
-/// candidates in `context`, one per line. Nothing written.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location; the resolved path
+/// in `context`. Nothing written.
 /// - `jj.config_would_overwrite` — the value would replace a whole table, or a non-table parent.
 ///
 /// # Safety
@@ -571,8 +575,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_set(
   int len,
 );
 
-/// Remove a config value from a file of a scope — the CLI's `jj config unset
-/// --user|--repo|--workspace NAME`. File selection and `path` as `zanshin_config_set`; returns
+/// Remove a config value from one config file — the CLI's `jj config unset
+/// --user|--repo|--workspace|--file PATH NAME`. File selection as `zanshin_config_set`; returns
 /// a `ConfigUnsetResult` naming the file. No operation is written. With `workspace_root`, the
 /// CLI's start-up secure-config fix-up runs first (Story 9.37); its notices ride the ok AND the
 /// error envelope.
@@ -581,13 +585,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_set(
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigUnsetRequest`, or its `kind` is
 /// not `ConfigUnset`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`, or `name` is absent.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`, or `name` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load, or the file could not be read or written.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location.
 /// - `jj.config_would_delete_table` — `name` is a whole table.
 /// - `jj.config_not_found` — the file does not hold `name` (`"<name>" doesn't exist`).
 ///

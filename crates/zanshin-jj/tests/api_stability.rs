@@ -1074,13 +1074,19 @@ fn story_9_28_surface_resolves() {
     // Story 9.37: the six verbs that can start with the secure-config fix-up report its warnings
     // on success AND failure — `ConfigOutcome`.
     use zanshin_jj::ConfigOutcome as O;
+    // jj 0.45: `--user|--repo|--workspace|--file PATH` is one `ConfigTarget`.
+    use zanshin_jj::ConfigTarget as T;
     _ = zanshin_jj::config_list as fn(Option<&Path>, &zanshin_jj::ConfigListQuery) -> O<Vec<zanshin_jj::ConfigEntry>>;
     _ = zanshin_jj::config_get as fn(Option<&Path>, &str) -> O<String>;
     _ = zanshin_jj::config_path as fn(Option<&Path>, ConfigScope) -> O<Vec<PathBuf>>;
-    _ = zanshin_jj::config_set
-        as fn(Option<&Path>, ConfigScope, &str, &str, Option<&Path>) -> zanshin_jj::ConfigSetOutcome;
-    _ = zanshin_jj::config_unset as fn(Option<&Path>, ConfigScope, &str, Option<&Path>) -> O<PathBuf>;
-    _ = zanshin_jj::config_file_read as fn(Option<&Path>, ConfigScope, Option<&Path>) -> O<zanshin_jj::ConfigFileText>;
+    _ = zanshin_jj::config_set as fn(Option<&Path>, &T, &str, &str) -> zanshin_jj::ConfigSetOutcome;
+    _ = zanshin_jj::config_unset as fn(Option<&Path>, &T, &str) -> O<PathBuf>;
+    _ = zanshin_jj::config_file_read as fn(Option<&Path>, &T) -> O<zanshin_jj::ConfigFileText>;
+    for target in [T::Scope(ConfigScope::User), T::File(PathBuf::new())] {
+        match target {
+            T::Scope(_) | T::File(_) => {}
+        }
+    }
     _ = zanshin_jj::config_file_write as fn(Option<&Path>, &Path, &str) -> O<()>;
     let outcome: O<()> = zanshin_jj::ConfigOutcome {
         result: Err(E::NotFound { reason: String::new() }),
@@ -1140,10 +1146,8 @@ fn story_9_28_surface_resolves() {
         (E::WouldOverwrite { reason: "o".into() }, "o"),
         (E::WouldDeleteTable { reason: "d".into() }, "d"),
         (
-            E::AmbiguousFile {
-                candidates: vec!["/a".into(), "/b".into()],
-            },
-            "choose one of the config files: /a, /b",
+            E::UnrecognizedFile { path: "/a".into() },
+            "Configuration file '/a' is not a valid jj configuration file location",
         ),
         (
             E::Parse {

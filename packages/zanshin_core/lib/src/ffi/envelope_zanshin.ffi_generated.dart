@@ -3241,10 +3241,11 @@ class ConfigPathRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Arguments of `zanshin_config_set` — `jj config set --user|--repo|--workspace NAME VALUE`.
-///  `value` is TOML text (a bare string when it does not look like TOML); `name` and `value` are
-///  required. `path` ABSENT lets the verb pick the scope's single file; with several candidates
-///  (the CLI's prompt) it must name one of them.
+///  Arguments of `zanshin_config_set` — `jj config set --user|--repo|--workspace|--file PATH NAME
+///  VALUE`. `value` is TOML text (a bare string when it does not look like TOML); `name` and
+///  `value` are required. EXACTLY ONE of `scope` (the scope's first file) and `path` (the CLI's
+///  `--file`, jj 0.45: a location jj recognizes as a config file; relative = against
+///  `workspace_root`) — `scope` stays `Unspecified` when `path` is sent.
 class ConfigSetRequest {
   ConfigSetRequest._(this._bc, this._bcOffset);
   factory ConfigSetRequest(List<int> bytes) {
@@ -3369,8 +3370,8 @@ class ConfigSetRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Arguments of `zanshin_config_unset` — `jj config unset --user|--repo|--workspace NAME`;
-///  `path` as in ConfigSetRequest.
+///  Arguments of `zanshin_config_unset` — `jj config unset --user|--repo|--workspace|--file PATH
+///  NAME`; `scope` / `path` as in ConfigSetRequest.
 class ConfigUnsetRequest {
   ConfigUnsetRequest._(this._bc, this._bcOffset);
   factory ConfigUnsetRequest(List<int> bytes) {
@@ -3484,8 +3485,8 @@ class ConfigUnsetRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Arguments of `zanshin_config_file_read` — `jj config edit`, editor half 1; `path` as in
-///  ConfigSetRequest.
+///  Arguments of `zanshin_config_file_read` — `jj config edit`, editor half 1; `scope` / `path`
+///  as in ConfigSetRequest.
 class ConfigFileReadRequest {
   ConfigFileReadRequest._(this._bc, this._bcOffset);
   factory ConfigFileReadRequest(List<int> bytes) {
@@ -3588,8 +3589,8 @@ class ConfigFileReadRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Arguments of `zanshin_config_file_write` — `jj config edit`, editor half 2. `path` (a file
-///  `zanshin_config_file_read` can return) and `text` are required.
+///  Arguments of `zanshin_config_file_write` — `jj config edit`, editor half 2. `path` (a location
+///  `zanshin_config_file_read` accepts) and `text` are required.
 class ConfigFileWriteRequest {
   ConfigFileWriteRequest._(this._bc, this._bcOffset);
   factory ConfigFileWriteRequest(List<int> bytes) {

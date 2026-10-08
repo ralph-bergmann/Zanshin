@@ -116,11 +116,11 @@ void main() {
   test('an error envelope and a wrong payload throw ZanshinFfiException', () {
     final Uint8List error = fbs.EnvelopeObjectBuilder(
       ok: false,
-      error: fbs.FfiErrorObjectBuilder(code: 'jj.config_ambiguous_file', context: '/a\n/b'),
+      error: fbs.FfiErrorObjectBuilder(code: 'jj.config_unrecognized_file', context: '/a'),
     ).toBytes();
     expect(
       () => decodeConfigSetEnvelope(error),
-      throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_ambiguous_file')),
+      throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_unrecognized_file')),
     );
     expect(
       () => decodeConfigGetEnvelopeInternal(
@@ -135,9 +135,9 @@ void main() {
       () => zanshinConfigList(name: 'a\u0000'),
       () => zanshinConfigGet('a\u0000'),
       () => zanshinConfigPath(ConfigScope.repo, workspaceRoot: '/a\u0000'),
-      () => zanshinConfigSet(ConfigScope.user, 'a', 'b\u0000'),
-      () => zanshinConfigUnset(ConfigScope.user, 'a', path: '/\u0000'),
-      () => zanshinConfigFileRead(ConfigScope.user, path: '/\u0000'),
+      () => zanshinConfigSet(const ConfigScopeTarget(ConfigScope.user), 'a', 'b\u0000'),
+      () => zanshinConfigUnset(const ConfigFileTarget('/\u0000'), 'a'),
+      () => zanshinConfigFileRead(const ConfigFileTarget('/\u0000')),
       () => zanshinConfigFileWrite('/f', 'a\u0000'),
       () => zanshinConfigGcDelete(['/\u0000']),
     ]) {

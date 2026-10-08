@@ -171,10 +171,10 @@ pub const JJ_CONFIG_WOULD_OVERWRITE: &str = "jj.config_would_overwrite";
 /// unset the table's values, or edit the file.
 pub const JJ_CONFIG_WOULD_DELETE_TABLE: &str = "jj.config_would_delete_table";
 /// AR-P-4: emitted by `config.rs`'s `set` / `unset` / `file_read` / `file_write` wrappers when
-/// more than one file could be written and no `path` chose one, or the given `path` is not one
-/// of the candidates — the CLI's file prompt; the candidate paths in `context`, one per line,
-/// nothing written (Story 9.28).
-pub const JJ_CONFIG_AMBIGUOUS_FILE: &str = "jj.config_ambiguous_file";
+/// the request's `path` (the CLI's `--file`, jj 0.45) is not a location jj recognizes as a
+/// config file — the CLI's "Configuration file '…' is not a valid jj configuration file
+/// location"; the resolved path in `context`, nothing written.
+pub const JJ_CONFIG_UNRECOGNIZED_FILE: &str = "jj.config_unrecognized_file";
 /// AR-P-4: emitted by `config.rs` when a config name, a `set` value or `file_write` text is not
 /// valid TOML; `context` is `"<start>..<end>\n<message>"` when the parser reports a byte span,
 /// else the message (Story 9.28). Nothing is written.

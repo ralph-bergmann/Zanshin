@@ -1703,75 +1703,78 @@ class ZanshinWorker {
     return repo_ffi_config.decodeConfigPathEnvelopeInternal(bytes);
   }
 
-  /// `jj config set --<scope> NAME VALUE`. [value] is TOML text (a bare string
-  /// when it does not look like TOML); with several candidate files, [path] must
-  /// name one (`jj.config_ambiguous_file` lists them). The config write itself
-  /// writes no operation; only the `user.name`/`user.email` check's snapshot may
-  /// (a dirty `@`), exactly as the CLI's `check_wc_author`.
+  /// `jj config set --<scope>|--file PATH NAME VALUE`. [value] is TOML text (a
+  /// bare string when it does not look like TOML). [target] picks the file as
+  /// the CLI does since jj 0.45: a scope's FIRST file, or one named file, which
+  /// must be a location jj recognizes (else `jj.config_unrecognized_file`). The
+  /// config write itself writes no operation; only the `user.name`/`user.email`
+  /// check's snapshot may (a dirty `@`), exactly as the CLI's `check_wc_author`.
   Future<repo_ffi_config.ConfigSetResult> configSet(
-    repo_ffi_config.ConfigScope scope,
+    repo_ffi_config.ConfigTarget target,
     String name,
     String value, {
     String? workspaceRoot,
-    String? path,
   }) async {
     rejectInteriorNuls([name, value], 'name/value');
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-    rejectInteriorNul(path, 'path');
+    _rejectTargetNul(target);
     final Uint8List bytes = await send(
       ConfigSetCommand(
         commandId: _correlator.allocateId(),
         workspaceRoot: workspaceRoot,
-        scope: scope,
+        target: target,
         name: name,
         value: value,
-        path: path,
       ),
     );
     return repo_ffi_config.decodeConfigSetEnvelopeInternal(bytes);
   }
 
-  /// `jj config unset --<scope> NAME`; returns the file written (and the
-  /// call's warnings).
+  /// `jj config unset --<scope>|--file PATH NAME`, [target] as in [configSet];
+  /// returns the file written (and the call's warnings).
   Future<repo_ffi_config.ConfigUnsetResult> configUnset(
-    repo_ffi_config.ConfigScope scope,
+    repo_ffi_config.ConfigTarget target,
     String name, {
     String? workspaceRoot,
-    String? path,
   }) async {
     rejectInteriorNul(name, 'name');
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-    rejectInteriorNul(path, 'path');
+    _rejectTargetNul(target);
     final Uint8List bytes = await send(
       ConfigUnsetCommand(
         commandId: _correlator.allocateId(),
         workspaceRoot: workspaceRoot,
-        scope: scope,
+        target: target,
         name: name,
-        path: path,
       ),
     );
     return repo_ffi_config.decodeConfigUnsetEnvelopeInternal(bytes);
   }
 
-  /// `jj config edit`, editor half 1: the file and its exact text, creating an
-  /// absent file first (as the CLI does before starting the editor).
+  /// `jj config edit`, editor half 1: the file [target] picks (as in
+  /// [configSet]) and its exact text, creating an absent file first (as the CLI
+  /// does before starting the editor).
   Future<repo_ffi_config.ConfigFileText> configFileRead(
-    repo_ffi_config.ConfigScope scope, {
+    repo_ffi_config.ConfigTarget target, {
     String? workspaceRoot,
-    String? path,
   }) async {
     rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-    rejectInteriorNul(path, 'path');
+    _rejectTargetNul(target);
     final Uint8List bytes = await send(
       ConfigFileReadCommand(
         commandId: _correlator.allocateId(),
         workspaceRoot: workspaceRoot,
-        scope: scope,
-        path: path,
+        target: target,
       ),
     );
     return repo_ffi_config.decodeConfigFileTextEnvelopeInternal(bytes);
+  }
+
+  /// The calling-side NUL guard for a [repo_ffi_config.ConfigFileTarget]'s path.
+  static void _rejectTargetNul(repo_ffi_config.ConfigTarget target) {
+    if (target case repo_ffi_config.ConfigFileTarget(:final path)) {
+      rejectInteriorNul(path, 'path');
+    }
   }
 
   /// `jj config edit`, editor half 2: replaces the file's text — refused with
@@ -2486,44 +2489,28 @@ void _workerEntry(_WorkerInit init) {
 
         case ConfigSetCommand(
           :final String? workspaceRoot,
-          :final repo_ffi_config.ConfigScope scope,
+          :final repo_ffi_config.ConfigTarget target,
           :final String name,
           :final String value,
-          :final String? path,
         ):
           final Uint8List bytes = repo_ffi_config.zanshinConfigSet(
-            scope,
+            target,
             name,
             value,
             workspaceRoot: workspaceRoot,
-            path: path,
           );
           responseSP.send((commandId, BufferResult(bytes)));
 
         case ConfigUnsetCommand(
           :final String? workspaceRoot,
-          :final repo_ffi_config.ConfigScope scope,
+          :final repo_ffi_config.ConfigTarget target,
           :final String name,
-          :final String? path,
         ):
-          final Uint8List bytes = repo_ffi_config.zanshinConfigUnset(
-            scope,
-            name,
-            workspaceRoot: workspaceRoot,
-            path: path,
-          );
+          final Uint8List bytes = repo_ffi_config.zanshinConfigUnset(target, name, workspaceRoot: workspaceRoot);
           responseSP.send((commandId, BufferResult(bytes)));
 
-        case ConfigFileReadCommand(
-          :final String? workspaceRoot,
-          :final repo_ffi_config.ConfigScope scope,
-          :final String? path,
-        ):
-          final Uint8List bytes = repo_ffi_config.zanshinConfigFileRead(
-            scope,
-            workspaceRoot: workspaceRoot,
-            path: path,
-          );
+        case ConfigFileReadCommand(:final String? workspaceRoot, :final repo_ffi_config.ConfigTarget target):
+          final Uint8List bytes = repo_ffi_config.zanshinConfigFileRead(target, workspaceRoot: workspaceRoot);
           responseSP.send((commandId, BufferResult(bytes)));
 
         case ConfigFileWriteCommand(:final String? workspaceRoot, :final String path, :final String text):

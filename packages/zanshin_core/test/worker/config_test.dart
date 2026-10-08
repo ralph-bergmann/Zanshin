@@ -21,6 +21,8 @@ import 'package:zanshin_core/src/worker/responses.dart';
 
 Matcher ffiError(String code) => throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', code));
 
+const ConfigTarget repo = ConfigScopeTarget(ConfigScope.repo);
+
 void main() {
   group('ZanshinWorker config surface (real cdylib)', () {
     late ZanshinWorker worker;
@@ -55,25 +57,25 @@ void main() {
       final String file = paths.single;
       expect(file, startsWith('$xdg/jj/repos/'));
 
-      final ConfigSetResult plain = await worker.configSet(ConfigScope.repo, 'revsets.log', '@', workspaceRoot: root);
+      final ConfigSetResult plain = await worker.configSet(repo, 'revsets.log', '@', workspaceRoot: root);
       expect(plain.path, file);
       expect(plain.precondition, isNull, reason: 'only an identity write snapshots');
       expect(plain.workingCopyAuthor, isNull);
 
-      // The optional path crosses the worker: a stray one is refused, the candidate accepted.
+      // A file target crosses the worker: an unrecognized location is refused, the
+      // repo config file accepted.
       await expectLater(
-        worker.configSet(ConfigScope.repo, 'revsets.log', '@', workspaceRoot: root, path: '/stray.toml'),
-        ffiError('jj.config_ambiguous_file'),
+        worker.configSet(const ConfigFileTarget('/stray.toml'), 'revsets.log', '@', workspaceRoot: root),
+        ffiError('jj.config_unrecognized_file'),
       );
       final ConfigSetResult chosen = await worker.configSet(
-        ConfigScope.repo,
+        ConfigFileTarget(file),
         'revsets.log',
         '@',
         workspaceRoot: root,
-        path: file,
       );
       expect(chosen.path, file);
-      expect((await worker.configFileRead(ConfigScope.repo, workspaceRoot: root, path: file)).path, file);
+      expect((await worker.configFileRead(ConfigFileTarget(file), workspaceRoot: root)).path, file);
 
       // The list filters cross the worker.
       final List<ConfigEntry> prefixed = await worker.configList(workspaceRoot: root, name: 'revsets');
@@ -82,7 +84,7 @@ void main() {
       expect(withDefaults.any((r) => r.source == ConfigValueSource.defaults), isTrue);
 
       final ConfigSetResult identity = await worker.configSet(
-        ConfigScope.repo,
+        repo,
         'user.name',
         'Somebody Else',
         workspaceRoot: root,
@@ -100,13 +102,13 @@ void main() {
       expect(rows.map((r) => r.name), containsAll(['revsets.log', 'user.name']));
       expect(rows.every((r) => r.source == ConfigValueSource.repo && r.path == file), isTrue);
 
-      expect((await worker.configUnset(ConfigScope.repo, 'revsets.log', workspaceRoot: root, path: file)).path, file);
+      expect((await worker.configUnset(ConfigFileTarget(file), 'revsets.log', workspaceRoot: root)).path, file);
       await expectLater(
-        worker.configUnset(ConfigScope.repo, 'nope', workspaceRoot: root),
+        worker.configUnset(repo, 'nope', workspaceRoot: root),
         ffiError('jj.config_not_found'),
       );
 
-      final ConfigFileText text = await worker.configFileRead(ConfigScope.repo, workspaceRoot: root);
+      final ConfigFileText text = await worker.configFileRead(repo, workspaceRoot: root);
       expect(text.path, file);
       expect(text.text, contains('Somebody Else'));
       await expectLater(

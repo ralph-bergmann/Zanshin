@@ -40,6 +40,32 @@ enum ConfigScope {
   final fbs.ConfigScope wire;
 }
 
+/// The file `configSet` / `configUnset` / `configFileRead` write — the CLI's
+/// `--user | --repo | --workspace | --file PATH`, exactly one (jj 0.45).
+sealed class ConfigTarget {
+  const ConfigTarget();
+}
+
+/// A scope's first file, else its new-file default.
+final class ConfigScopeTarget extends ConfigTarget {
+  const ConfigScopeTarget(this.scope);
+
+  /// The scope.
+  final ConfigScope scope;
+}
+
+/// One file (`--file PATH`) — a location jj recognizes as a config file: a
+/// loaded layer's file, the repo or workspace config file, a user config path,
+/// or a `*.toml` directly inside a user config directory. A relative path is
+/// taken against the workspace root; anything else is refused with
+/// `jj.config_unrecognized_file`.
+final class ConfigFileTarget extends ConfigTarget {
+  const ConfigFileTarget(this.path);
+
+  /// The file's path.
+  final String path;
+}
+
 /// Which layer a listed value comes from (mirrors `zanshin_jj::ConfigValueSource`).
 enum ConfigValueSource {
   /// jj's (and Zanshin's builtin) defaults.
@@ -265,16 +291,27 @@ Uint8List zanshinConfigPath(ConfigScope scope, {String? workspaceRoot}) {
   return callWithRequest(request, zanshin_config_path);
 }
 
-/// `zanshin_config_set` — `jj config set --<scope> NAME VALUE`; [value] is TOML
-/// text (a bare string when it does not look like TOML).
-Uint8List zanshinConfigSet(ConfigScope scope, String name, String value, {String? workspaceRoot, String? path}) {
+/// [target] on the wire: a scope, or a `path` with the scope left ABSENT.
+(fbs.ConfigScope?, String?) _wireTarget(ConfigTarget target) {
+  switch (target) {
+    case ConfigScopeTarget(:final scope):
+      return (scope.wire, null);
+    case ConfigFileTarget(:final path):
+      rejectInteriorNul(path, 'path');
+      return (null, path);
+  }
+}
+
+/// `zanshin_config_set` — `jj config set --<scope>|--file PATH NAME VALUE`;
+/// [value] is TOML text (a bare string when it does not look like TOML).
+Uint8List zanshinConfigSet(ConfigTarget target, String name, String value, {String? workspaceRoot}) {
   rejectInteriorNuls([name, value], 'name/value');
   rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-  rejectInteriorNul(path, 'path');
+  final (fbs.ConfigScope? scope, String? path) = _wireTarget(target);
   final Uint8List request = fbs.ConfigSetRequestObjectBuilder(
     kind: fbs.RequestKind.ConfigSet,
     workspaceRoot: workspaceRoot,
-    scope: scope.wire,
+    scope: scope,
     name: name,
     value: value,
     path: path,
@@ -282,15 +319,15 @@ Uint8List zanshinConfigSet(ConfigScope scope, String name, String value, {String
   return callWithRequest(request, zanshin_config_set);
 }
 
-/// `zanshin_config_unset` — `jj config unset --<scope> NAME`.
-Uint8List zanshinConfigUnset(ConfigScope scope, String name, {String? workspaceRoot, String? path}) {
+/// `zanshin_config_unset` — `jj config unset --<scope>|--file PATH NAME`.
+Uint8List zanshinConfigUnset(ConfigTarget target, String name, {String? workspaceRoot}) {
   rejectInteriorNul(name, 'name');
   rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-  rejectInteriorNul(path, 'path');
+  final (fbs.ConfigScope? scope, String? path) = _wireTarget(target);
   final Uint8List request = fbs.ConfigUnsetRequestObjectBuilder(
     kind: fbs.RequestKind.ConfigUnset,
     workspaceRoot: workspaceRoot,
-    scope: scope.wire,
+    scope: scope,
     name: name,
     path: path,
   ).toBytes();
@@ -298,13 +335,13 @@ Uint8List zanshinConfigUnset(ConfigScope scope, String name, {String? workspaceR
 }
 
 /// `zanshin_config_file_read` — `jj config edit`, editor half 1.
-Uint8List zanshinConfigFileRead(ConfigScope scope, {String? workspaceRoot, String? path}) {
+Uint8List zanshinConfigFileRead(ConfigTarget target, {String? workspaceRoot}) {
   rejectInteriorNul(workspaceRoot, 'workspaceRoot');
-  rejectInteriorNul(path, 'path');
+  final (fbs.ConfigScope? scope, String? path) = _wireTarget(target);
   final Uint8List request = fbs.ConfigFileReadRequestObjectBuilder(
     kind: fbs.RequestKind.ConfigFileRead,
     workspaceRoot: workspaceRoot,
-    scope: scope.wire,
+    scope: scope,
     path: path,
   ).toBytes();
   return callWithRequest(request, zanshin_config_file_read);

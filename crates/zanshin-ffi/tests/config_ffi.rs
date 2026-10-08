@@ -20,8 +20,8 @@ use zanshin_ffi::config::{
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_NULL_POINTER, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
-    JJ_CONFIG_PATH_NOT_FOUND, JJ_INVALID_INPUT, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_NULL_POINTER, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR, JJ_CONFIG_PATH_NOT_FOUND,
+    JJ_CONFIG_UNRECOGNIZED_FILE, JJ_INVALID_INPUT, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
 use zanshin_jj::Repo;
 
@@ -414,7 +414,7 @@ fn every_wrapper_works_at_repo_scope() {
     });
     assert_eq!(
         error_code(&call(zanshin_config_file_write, Some(&stray))),
-        JJ_CONFIG_AMBIGUOUS_FILE
+        JJ_CONFIG_UNRECOGNIZED_FILE
     );
 
     // gc: the repo goes away, its config dir is listed, then deleted.
@@ -643,15 +643,21 @@ fn list_without_a_scope_and_the_workspace_scope_are_accepted() {
         .starts_with(xdg().join("jj").join("workspaces").to_str().unwrap()));
 }
 
-/// The optional `path` of `set` / `unset` / `file_read` reaches the file selection: a path that
-/// is not a candidate is `jj.config_ambiguous_file` with nothing written, the candidate itself
-/// is accepted — the GUI's answer to that refusal.
+/// The `path` of `set` / `unset` / `file_read` is the CLI's `--file` (jj 0.45), sent INSTEAD of a
+/// scope: a location jj does not recognize is `jj.config_unrecognized_file` with nothing written,
+/// the scope's own file is accepted, and a scope together with a path is `jj.invalid_input`.
 #[test]
-fn the_optional_path_reaches_the_file_selection() {
+fn the_path_is_the_file_target() {
     use fbs::RequestKind as K;
     let (_tmp, root) = workspace();
-    let at = |kind| fields(kind, Some(root.as_str()));
-    let path_bytes = call(zanshin_config_path, Some(&path_req(&at(K::ConfigPath))));
+    let at = |kind| Fields {
+        scope: fbs::ConfigScope::Unspecified,
+        ..fields(kind, Some(root.as_str()))
+    };
+    let path_bytes = call(
+        zanshin_config_path,
+        Some(&path_req(&fields(K::ConfigPath, Some(root.as_str())))),
+    );
     let file = ok(&path_bytes)
         .data_as_config_path_result()
         .unwrap()
@@ -687,11 +693,18 @@ fn the_optional_path_reaches_the_file_selection() {
         (zanshin_config_file_read, read("/stray.toml")),
     ] {
         let bytes = call(f, Some(&stray));
-        assert_eq!(error_code(&bytes), JJ_CONFIG_AMBIGUOUS_FILE);
+        assert_eq!(error_code(&bytes), JJ_CONFIG_UNRECOGNIZED_FILE);
         let context = envelope(&bytes).error().unwrap().context().unwrap().to_owned();
-        assert_eq!(context, file, "the candidate the GUI can choose");
+        assert_eq!(context, "/stray.toml", "the refused path");
     }
     assert!(!Path::new(&file).exists(), "nothing written");
+    let both = set_req(&Fields {
+        name: Some("revsets.log"),
+        value: Some("@"),
+        path: Some(file.as_str()),
+        ..fields(K::ConfigSet, Some(root.as_str()))
+    });
+    assert_eq!(error_code(&call(zanshin_config_set, Some(&both))), JJ_INVALID_INPUT);
 
     let set_bytes = call(zanshin_config_set, Some(&set(file.as_str())));
     assert_eq!(

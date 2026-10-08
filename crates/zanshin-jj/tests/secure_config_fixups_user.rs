@@ -9,7 +9,7 @@
 
 use std::{env, fs};
 
-use zanshin_jj::{config_file_read, ConfigScope, Repo, WarningKind};
+use zanshin_jj::{config_file_read, ConfigScope, ConfigTarget, Repo, WarningKind};
 
 #[test]
 fn the_editor_half_migrates_a_legacy_repo_config_under_a_broken_user_file() {
@@ -34,7 +34,7 @@ fn the_editor_half_migrates_a_legacy_repo_config_under_a_broken_user_file() {
     // SAFETY: as above.
     unsafe { env::set_var("JJ_CONFIG", &user) };
 
-    let outcome = config_file_read(Some(&root), ConfigScope::Repo, None);
+    let outcome = config_file_read(Some(&root), &ConfigTarget::Scope(ConfigScope::Repo));
 
     let read = outcome.result.expect("the editor half ignores the broken user file");
     let kinds: Vec<WarningKind> = outcome.warnings.iter().map(|w| w.kind).collect();

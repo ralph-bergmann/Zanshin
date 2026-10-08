@@ -23,12 +23,12 @@ use std::path::PathBuf;
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{ConfigCmdError, ConfigListQuery, ConfigScope, ConfigValueSource};
+use zanshin_jj::{ConfigCmdError, ConfigListQuery, ConfigScope, ConfigTarget, ConfigValueSource};
 
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request, CallReport,
-    FfiErrorObj, JJ_CONFIG_AMBIGUOUS_FILE, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR,
-    JJ_CONFIG_PATH_NOT_FOUND, JJ_CONFIG_WOULD_DELETE_TABLE, JJ_CONFIG_WOULD_OVERWRITE, JJ_INVALID_INPUT,
+    FfiErrorObj, JJ_CONFIG_ERROR, JJ_CONFIG_NOT_FOUND, JJ_CONFIG_PARSE_ERROR, JJ_CONFIG_PATH_NOT_FOUND,
+    JJ_CONFIG_UNRECOGNIZED_FILE, JJ_CONFIG_WOULD_DELETE_TABLE, JJ_CONFIG_WOULD_OVERWRITE, JJ_INVALID_INPUT,
     JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
 use crate::fbs;
@@ -47,6 +47,21 @@ fn required_scope(scope: fbs::ConfigScope) -> Result<ConfigScope, FfiErrorObj> {
         fbs::ConfigScope::Repo => Ok(ConfigScope::Repo),
         fbs::ConfigScope::Workspace => Ok(ConfigScope::Workspace),
         _ => Err(missing_field("scope")),
+    }
+}
+
+/// The CLI's one-of `--user | --repo | --workspace | --file PATH` (jj 0.45): a present `path` is
+/// the `--file` target and excludes a scope (clap's group conflict, `jj.invalid_input`); without
+/// it the scope is required.
+fn read_target(scope: fbs::ConfigScope, path: Option<&str>) -> Result<ConfigTarget, FfiErrorObj> {
+    match (scope, path) {
+        (fbs::ConfigScope::Unspecified, Some(path)) => Ok(ConfigTarget::File(path.into())),
+        (scope, None) => required_scope(scope).map(ConfigTarget::Scope),
+        (_, Some(_)) => Err(FfiErrorObj {
+            report: None,
+            code: JJ_INVALID_INPUT.to_owned(),
+            context: Some("a scope cannot be used with a path".to_owned()),
+        }),
     }
 }
 
@@ -134,10 +149,9 @@ fn read_path_request(data: *const u8, len: usize) -> Result<PathReq, FfiErrorObj
 
 struct SetReq {
     root: Option<PathBuf>,
-    scope: ConfigScope,
+    target: ConfigTarget,
     name: String,
     value: String,
-    path: Option<PathBuf>,
 }
 
 fn read_set_request(data: *const u8, len: usize) -> Result<SetReq, FfiErrorObj> {
@@ -149,18 +163,16 @@ fn read_set_request(data: *const u8, len: usize) -> Result<SetReq, FfiErrorObj> 
     expect_request_kind(req.kind(), fbs::RequestKind::ConfigSet)?;
     Ok(SetReq {
         root: opt_path(req.workspace_root()),
-        scope: required_scope(req.scope())?,
+        target: read_target(req.scope(), req.path())?,
         name: required(req.name(), "name")?,
         value: required(req.value(), "value")?,
-        path: opt_path(req.path()),
     })
 }
 
 struct UnsetReq {
     root: Option<PathBuf>,
-    scope: ConfigScope,
+    target: ConfigTarget,
     name: String,
-    path: Option<PathBuf>,
 }
 
 fn read_unset_request(data: *const u8, len: usize) -> Result<UnsetReq, FfiErrorObj> {
@@ -172,16 +184,14 @@ fn read_unset_request(data: *const u8, len: usize) -> Result<UnsetReq, FfiErrorO
     expect_request_kind(req.kind(), fbs::RequestKind::ConfigUnset)?;
     Ok(UnsetReq {
         root: opt_path(req.workspace_root()),
-        scope: required_scope(req.scope())?,
+        target: read_target(req.scope(), req.path())?,
         name: required(req.name(), "name")?,
-        path: opt_path(req.path()),
     })
 }
 
 struct FileReadReq {
     root: Option<PathBuf>,
-    scope: ConfigScope,
-    path: Option<PathBuf>,
+    target: ConfigTarget,
 }
 
 fn read_file_read_request(data: *const u8, len: usize) -> Result<FileReadReq, FfiErrorObj> {
@@ -193,8 +203,7 @@ fn read_file_read_request(data: *const u8, len: usize) -> Result<FileReadReq, Ff
     expect_request_kind(req.kind(), fbs::RequestKind::ConfigFileRead)?;
     Ok(FileReadReq {
         root: opt_path(req.workspace_root()),
-        scope: required_scope(req.scope())?,
-        path: opt_path(req.path()),
+        target: read_target(req.scope(), req.path())?,
     })
 }
 
@@ -249,14 +258,7 @@ pub(crate) fn map_config_cmd_err(e: ConfigCmdError) -> FfiErrorObj {
         ConfigCmdError::NotFound { reason } => (JJ_CONFIG_NOT_FOUND, reason),
         ConfigCmdError::WouldOverwrite { reason } => (JJ_CONFIG_WOULD_OVERWRITE, reason),
         ConfigCmdError::WouldDeleteTable { reason } => (JJ_CONFIG_WOULD_DELETE_TABLE, reason),
-        ConfigCmdError::AmbiguousFile { candidates } => (
-            JJ_CONFIG_AMBIGUOUS_FILE,
-            candidates
-                .iter()
-                .map(|p| p.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
+        ConfigCmdError::UnrecognizedFile { path } => (JJ_CONFIG_UNRECOGNIZED_FILE, path.to_string_lossy().into_owned()),
         ConfigCmdError::Parse { message, span } => (
             JJ_CONFIG_PARSE_ERROR,
             span.map_or_else(|| message.clone(), |r| format!("{}..{}\n{message}", r.start, r.end)),
@@ -562,12 +564,13 @@ pub unsafe extern "C" fn zanshin_config_path(data: *const u8, len: usize) -> *mu
     }))
 }
 
-/// Set a config value in a file of a scope — the CLI's `jj config set --user|--repo|--workspace
-/// NAME VALUE`.
+/// Set a config value in one config file — the CLI's `jj config set
+/// --user|--repo|--workspace|--file PATH NAME VALUE`.
 ///
 /// `value` is TOML text, a bare string when it does not look like TOML. The file is the scope's
-/// single existing file (or the CLI's new-file default); with several, `path` must name one
-/// (the CLI's prompt). Comments and formatting survive; the config write itself writes no
+/// FIRST file (or the CLI's new-file default), or — with `path` instead of `scope`, the CLI's
+/// `--file` — that file, which must be a location jj recognizes (a relative one is taken
+/// against `workspace_root`). Comments and formatting survive; the config write itself writes no
 /// operation. For `user.name`/`user.email` with a workspace the working copy is snapshotted
 /// first (the CLI's `check_wc_author`) — that snapshot MAY commit an operation when `@` is
 /// dirty, exactly as in the CLI; then the envelope — ok or error — carries `precondition` and
@@ -580,14 +583,14 @@ pub unsafe extern "C" fn zanshin_config_path(data: *const u8, len: usize) -> *mu
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigSetRequest`, or its `kind` is not
 ///   `ConfigSet`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`, or `name` / `value` is absent.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`, or `name` / `value` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load, or the file could not be read or written.
 /// - `jj.config_parse_error` — `name` or `value` is not valid TOML; span and message in `context`.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`; the
-///   candidates in `context`, one per line. Nothing written.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location; the resolved path
+///   in `context`. Nothing written.
 /// - `jj.config_would_overwrite` — the value would replace a whole table, or a non-table parent.
 ///
 /// # Safety
@@ -597,13 +600,7 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
     debug!(fn_name = "zanshin_config_set");
     vec_into_token(catch(|| {
         let req = read_set_request(data, len)?;
-        let outcome = zanshin_jj::config_set(
-            req.root.as_deref(),
-            req.scope,
-            &req.name,
-            &req.value,
-            req.path.as_deref(),
-        );
+        let outcome = zanshin_jj::config_set(req.root.as_deref(), &req.target, &req.name, &req.value);
         let report = CallReport {
             precondition: outcome.precondition,
             warnings: outcome.warnings,
@@ -615,8 +612,8 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
     }))
 }
 
-/// Remove a config value from a file of a scope — the CLI's `jj config unset
-/// --user|--repo|--workspace NAME`. File selection and `path` as `zanshin_config_set`; returns
+/// Remove a config value from one config file — the CLI's `jj config unset
+/// --user|--repo|--workspace|--file PATH NAME`. File selection as `zanshin_config_set`; returns
 /// a `ConfigUnsetResult` naming the file. No operation is written. With `workspace_root`, the
 /// CLI's start-up secure-config fix-up runs first (Story 9.37); its notices ride the ok AND the
 /// error envelope.
@@ -625,13 +622,13 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigUnsetRequest`, or its `kind` is
 ///   not `ConfigUnset`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`, or `name` is absent.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`, or `name` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load, or the file could not be read or written.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location.
 /// - `jj.config_would_delete_table` — `name` is a whole table.
 /// - `jj.config_not_found` — the file does not hold `name` (`"<name>" doesn't exist`).
 ///
@@ -643,13 +640,14 @@ pub unsafe extern "C" fn zanshin_config_unset(data: *const u8, len: usize) -> *m
     vec_into_token(catch(|| {
         let req = read_unset_request(data, len)?;
         outcome_to_envelope(
-            zanshin_jj::config_unset(req.root.as_deref(), req.scope, &req.name, req.path.as_deref()),
+            zanshin_jj::config_unset(req.root.as_deref(), &req.target, &req.name),
             |path, report| unset_to_envelope(path, report),
         )
     }))
 }
 
-/// `jj config edit`, editor half 1: the file of a scope and its exact text, CREATING an absent
+/// `jj config edit`, editor half 1: the file `zanshin_config_set` would write (the scope's first
+/// file, or `path` — the CLI's `--file`) and its exact text, CREATING an absent
 /// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
 /// start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
 /// starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
@@ -660,13 +658,13 @@ pub unsafe extern "C" fn zanshin_config_unset(data: *const u8, len: usize) -> *m
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ConfigFileReadRequest`, or its `kind`
 ///   is not `ConfigFileRead`.
-/// - `jj.invalid_input` — `scope` is `Unspecified`.
+/// - `jj.invalid_input` — neither or both of `scope` and `path`.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the start-up fix-up failed, or the file could not be created or read,
 ///   or is not UTF-8.
 /// - `jj.config_path_not_found` — no file of the scope can be determined.
-/// - `jj.config_ambiguous_file` — several candidate files and no (or a foreign) `path`.
+/// - `jj.config_unrecognized_file` — `path` is not a jj config file location.
 ///
 /// # Safety
 /// As `zanshin_config_list`.
@@ -676,14 +674,15 @@ pub unsafe extern "C" fn zanshin_config_file_read(data: *const u8, len: usize) -
     vec_into_token(catch(|| {
         let req = read_file_read_request(data, len)?;
         outcome_to_envelope(
-            zanshin_jj::config_file_read(req.root.as_deref(), req.scope, req.path.as_deref()),
+            zanshin_jj::config_file_read(req.root.as_deref(), &req.target),
             file_text_to_envelope,
         )
     }))
 }
 
-/// `jj config edit`, editor half 2: replace a config file's text — only a file
-/// `zanshin_config_file_read` can return for some scope of this root, and only after `text`
+/// `jj config edit`, editor half 2: replace a config file's text — only a location
+/// `zanshin_config_file_read` accepts for this root (checked without creating anything; a
+/// relative `path` taken against `workspace_root`), and only after `text`
 /// parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
 /// `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
 /// start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
@@ -696,7 +695,8 @@ pub unsafe extern "C" fn zanshin_config_file_read(data: *const u8, len: usize) -
 /// - `jj.invalid_input` — `path` or `text` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_ambiguous_file` — `path` is not such a file; the allowed files in `context`.
+/// - `jj.config_unrecognized_file` — `path` is not such a location; the resolved path in
+///   `context`.
 /// - `jj.config_parse_error` — `text` is not valid TOML; span and message in `context`, the file
 ///   untouched.
 /// - `jj.config_error` — the start-up fix-up or the write failed.
@@ -772,8 +772,8 @@ mod tests {
     use zanshin_jj::{ConfigCmdError as E, ConfigValueSource};
 
     use super::{
-        fbs, gc_list_to_envelope, gc_result_to_envelope, list_to_envelope, map_config_cmd_err, required_scope,
-        set_to_envelope, wire_source,
+        fbs, gc_list_to_envelope, gc_result_to_envelope, list_to_envelope, map_config_cmd_err, read_target,
+        required_scope, set_to_envelope, wire_source,
     };
 
     fn envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
@@ -798,11 +798,9 @@ mod tests {
                 "d",
             ),
             (
-                E::AmbiguousFile {
-                    candidates: vec!["/a".into(), "/b".into()],
-                },
-                "jj.config_ambiguous_file",
-                "/a\n/b",
+                E::UnrecognizedFile { path: "/a".into() },
+                "jj.config_unrecognized_file",
+                "/a",
             ),
             (
                 E::Parse {
@@ -824,6 +822,26 @@ mod tests {
         ] {
             let obj = map_config_cmd_err(err);
             assert_eq!((obj.code.as_str(), obj.context.as_deref()), (code, Some(context)));
+        }
+    }
+
+    /// Exactly one of `scope` and `path` — the CLI's `--user|--repo|--workspace|--file` group.
+    #[test]
+    fn a_target_is_a_scope_or_a_path_never_both() {
+        use zanshin_jj::{ConfigScope, ConfigTarget};
+        assert_eq!(
+            read_target(fbs::ConfigScope::Repo, None).unwrap(),
+            ConfigTarget::Scope(ConfigScope::Repo)
+        );
+        assert_eq!(
+            read_target(fbs::ConfigScope::Unspecified, Some("/x.toml")).unwrap(),
+            ConfigTarget::File("/x.toml".into())
+        );
+        for (scope, path) in [
+            (fbs::ConfigScope::Unspecified, None),
+            (fbs::ConfigScope::User, Some("/x.toml")),
+        ] {
+            assert_eq!(read_target(scope, path).unwrap_err().code, "jj.invalid_input");
         }
     }
 

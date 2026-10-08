@@ -88,7 +88,10 @@ void main() {
 
     /// Replace the repo-scope config file of the workspace at [root] with [toml].
     Future<void> writeRepoConfig(String toml) async {
-      final ConfigFileText file = await worker.configFileRead(ConfigScope.repo, workspaceRoot: root);
+      final ConfigFileText file = await worker.configFileRead(
+        const ConfigScopeTarget(ConfigScope.repo),
+        workspaceRoot: root,
+      );
       await worker.configFileWrite(file.path, toml, workspaceRoot: root);
     }
 
@@ -121,7 +124,7 @@ void main() {
       await writeRepoConfig('[user.name]\nx = 1\n');
 
       final ZanshinFfiException e = await _thrown(
-        worker.configSet(ConfigScope.repo, 'user.name', 'x', workspaceRoot: root),
+        worker.configSet(const ConfigScopeTarget(ConfigScope.repo), 'user.name', 'x', workspaceRoot: root),
       );
 
       expect(e.code, 'jj.config_would_overwrite');

@@ -16,8 +16,8 @@ use std::{env, fs};
 
 use tempfile::TempDir;
 use zanshin_jj::{
-    config_get, config_list, config_path, config_set, ConfigCmdError, ConfigListQuery, ConfigScope, PreconditionError,
-    Repo, RepoError, StatusError, Warning, WarningKind,
+    config_get, config_list, config_path, config_set, ConfigCmdError, ConfigListQuery, ConfigScope, ConfigTarget,
+    PreconditionError, Repo, RepoError, StatusError, Warning, WarningKind,
 };
 
 /// The process-lifetime `$XDG_CONFIG_HOME` — LEAKED so it outlives every test; every secure
@@ -92,9 +92,14 @@ fn migrated_message(legacy: &Path, new: &Path) -> String {
 /// A repo whose config lives in its secure directory already (`config set --repo`).
 fn secure_repo(value: &str) -> (TempDir, PathBuf) {
     let (tmp, root) = workspace();
-    config_set(Some(&root), ConfigScope::Repo, "test.marker", value, None)
-        .result
-        .expect("repo-scope set");
+    config_set(
+        Some(&root),
+        &ConfigTarget::Scope(ConfigScope::Repo),
+        "test.marker",
+        value,
+    )
+    .result
+    .expect("repo-scope set");
     (tmp, root)
 }
 
@@ -357,7 +362,12 @@ fn config_verbs_report_the_migration_before_their_own_warnings() {
     );
 
     let (_tmp, root) = legacy_repo(LEGACY);
-    let set = config_set(Some(&root), ConfigScope::Repo, "user.name", "Somebody Else", None);
+    let set = config_set(
+        Some(&root),
+        &ConfigTarget::Scope(ConfigScope::Repo),
+        "user.name",
+        "Somebody Else",
+    );
     let written = set.result.expect("set");
     assert!(
         written.working_copy_author.is_some(),

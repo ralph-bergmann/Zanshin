@@ -14,8 +14,14 @@ use std::{env, fs};
 
 use zanshin_jj::{
     config_file_read, config_file_write, config_get, config_list, config_path, config_set, config_unset, Backend,
-    ConfigCmdError, ConfigListQuery, ConfigScope, ConfigValueSource, Repo,
+    ConfigCmdError, ConfigListQuery, ConfigScope, ConfigTarget, ConfigValueSource, Repo,
 };
+
+const USER: ConfigTarget = ConfigTarget::Scope(ConfigScope::User);
+
+fn file(path: &Path) -> ConfigTarget {
+    ConfigTarget::File(path.to_owned())
+}
 
 fn set_env(name: &str, value: impl AsRef<std::ffi::OsStr>) {
     // SAFETY: single-threaded — this binary contains exactly one #[test].
@@ -70,7 +76,7 @@ fn user_scope_matrix() {
         config_path(None, ConfigScope::User).result.unwrap(),
         [first.clone(), dir.clone()]
     );
-    let set = config_set(None, ConfigScope::User, "user.name", "Ralph Bergmann", None);
+    let set = config_set(None, &USER, "user.name", "Ralph Bergmann");
     assert_eq!(set.result.expect("set").path, first);
     assert!(fs::read_to_string(&first)
         .unwrap()
@@ -87,29 +93,28 @@ fn user_scope_matrix() {
         )]
     );
 
-    // ── two files: the CLI would prompt, so nothing is written without a choice ──
+    // ── two files: the user scope writes the FIRST (jj 0.45); `--file` names any other ──
     fs::create_dir_all(&dir).unwrap();
     let hand = dir.join("hand.toml");
     fs::write(&hand, "# written by hand\nui.color = 'never'   # keep me\n").unwrap();
     assert!(user_rows(None).contains(&("ui.color".to_owned(), "'never'".to_owned(), Some(hand.clone()))));
     let before = (fs::read_to_string(&first).unwrap(), fs::read_to_string(&hand).unwrap());
-    let ambiguous = config_set(None, ConfigScope::User, "user.email", "r@example.com", None).result;
-    let Err(ConfigCmdError::AmbiguousFile { candidates }) = ambiguous else {
-        panic!("two files must refuse, got {ambiguous:?}")
-    };
-    assert_eq!(candidates, [first.clone(), hand.clone()]);
     let stray = tmp.path().join("stray.toml");
     assert!(matches!(
-        config_set(None, ConfigScope::User, "user.email", "r@example.com", Some(&stray)).result,
-        Err(ConfigCmdError::AmbiguousFile { .. })
+        config_set(None, &file(&stray), "user.email", "r@example.com").result,
+        Err(ConfigCmdError::UnrecognizedFile { path }) if path == stray
     ));
     assert_eq!(
         (fs::read_to_string(&first).unwrap(), fs::read_to_string(&hand).unwrap()),
         before,
         "nothing written"
     );
+    let set = config_set(None, &USER, "user.email", "first@example.com");
+    assert_eq!(set.result.expect("the first file").path, first);
+    assert_eq!(fs::read_to_string(&hand).unwrap(), before.1, "only the first file");
+    config_unset(None, &USER, "user.email").result.expect("unset");
 
-    config_set(None, ConfigScope::User, "user.email", "r@example.com", Some(&hand))
+    config_set(None, &file(&hand), "user.email", "r@example.com")
         .result
         .expect("the chosen file");
     assert_eq!(fs::read_to_string(&first).unwrap(), before.0, "only the chosen file");
@@ -118,9 +123,7 @@ fn user_scope_matrix() {
         "# written by hand\nui.color = 'never'   # keep me\n\n[user]\nemail = \"r@example.com\"\n",
         "comments and formatting survive"
     );
-    config_unset(None, ConfigScope::User, "user.email", Some(&hand))
-        .result
-        .expect("unset");
+    config_unset(None, &file(&hand), "user.email").result.expect("unset");
     assert_eq!(
         fs::read_to_string(&hand).unwrap(),
         "# written by hand\nui.color = 'never'   # keep me\n\n[user]\n",
@@ -136,7 +139,7 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
     let ws = tmp.join("ws");
     fs::create_dir(&ws).unwrap();
     let repo = Repo::init(&ws, Some(Backend::Git)).result.expect("init");
-    config_set(None, ConfigScope::User, "revsets.log", "root()", Some(first))
+    config_set(None, &file(first), "revsets.log", "root()")
         .result
         .expect("set");
     assert_eq!(repo.log_defaults().unwrap().log, "root()");
@@ -151,17 +154,14 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
             .unwrap_err(),
         config_get(None, "user.name").result.map(|_| ()).unwrap_err(),
         config_path(None, ConfigScope::User).result.map(|_| ()).unwrap_err(),
-        config_set(None, ConfigScope::User, "a", "1", Some(first))
-            .result
-            .map(|_| ())
-            .unwrap_err(),
+        config_set(None, &file(first), "a", "1").result.map(|_| ()).unwrap_err(),
     ] {
         assert!(
             matches!(&err, ConfigCmdError::Config { reason } if reason.contains("conf.d")),
             "{err}"
         );
     }
-    let read = config_file_read(None, ConfigScope::User, Some(hand))
+    let read = config_file_read(None, &file(hand))
         .result
         .expect("read the broken file");
     assert_eq!(read.text, "[ui\ncolor = ");
