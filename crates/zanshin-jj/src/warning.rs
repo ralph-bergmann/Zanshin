@@ -106,6 +106,9 @@ pub enum WarningKind {
     /// of the main repository was probably meant (`cli/src/commands/git/init.rs:272-281` @
     /// v0.46.0, which warns since jj 0.45 instead of refusing).
     ColocatedInGitWorktree,
+    /// `workspace root` with a name whose recorded directory does not exist (moved or deleted):
+    /// the path is still returned (`cli/src/commands/workspace/root.rs:60-66` @ v0.46.0).
+    WorkspacePathInaccessible,
 }
 
 /// One warning a call produced (Story 9.32).

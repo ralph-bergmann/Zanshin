@@ -1423,9 +1423,11 @@ class ZanshinWorker {
   /// A `null` [name] is the CLI's own default, the CURRENT workspace, and reads
   /// the workspace loader alone — the one path that cannot fail. A PRESENT
   /// [name], even the current workspace's own, goes through the workspace store
-  /// and can REFUSE, because the CLI's named path never shortcuts to the loader.
-  /// An explicitly empty [name] is a VALUE, not an absence. This read writes no
-  /// operation — not even on a refusal.
+  /// and can REFUSE or WARN, because the CLI's named path never shortcuts to the
+  /// loader; a recorded directory that does not exist comes back with a
+  /// `jj.workspace_path_inaccessible` warning. An explicitly empty [name] is a
+  /// VALUE, not an absence. This read writes no operation — not even on a
+  /// refusal.
   ///
   /// Sends a [WorkspaceRootCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path and the call's
@@ -1434,7 +1436,7 @@ class ZanshinWorker {
   /// Throws [ArgumentError] if [name] contains an interior NUL (U+0000). Throws
   /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
-  /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`). Completes with a
+  /// `jj.jj_lib_error`). Completes with a
   /// [StateError] after [close]; the close-guard [StateError] is delivered
   /// synchronously by [RepoHandle.workspaceRoot].
   Future<repo_ffi_workspace.WorkspaceRootResult> workspaceRoot(int handleId, {String? name}) async {

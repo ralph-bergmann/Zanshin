@@ -1571,16 +1571,14 @@ impl Repo {
     ///
     /// This is [`Repo::list_working_copies`] plus the path half. The name/commit columns are
     /// literally that call's result — same values, same jj-lib `BTreeMap` order (lexicographic by
-    /// workspace name) — and `root` is one `WorkspaceStore` lookup per row, canonicalized to an
-    /// absolute path. The CLI's `root.relative()` rendering is not ported.
+    /// workspace name) — and `root` is one `WorkspaceStore` lookup per row, the absolute recorded
+    /// path. The CLI's `root.relative()` rendering is not ported.
     ///
-    /// A row whose path cannot be reported keeps its name and commit and reports
-    /// [`crate::WorkspaceEntry::root`] as `None`: workspaces created before jj 0.38.0 have no
-    /// recorded path, a store may be unreadable, and a recorded directory may have moved or been
-    /// deleted. NONE of those fails the listing — the CLI degrades the same way
-    /// (`cli/src/commit_templater.rs:1787` @ v0.44.0) and points at
-    /// [`Repo::resolve_workspace_root`] for strict path diagnostics. That asymmetry between the
-    /// two verbs is reproduced, not smoothed over.
+    /// [`crate::WorkspaceEntry::root`] is the RECORDED path — reported even when the directory has
+    /// moved or been deleted, as the CLI does since jj 0.46. A row whose path cannot be reported
+    /// keeps its name and commit and reports `None`: workspaces created before jj 0.38.0 have no
+    /// recorded path, and a store may be unreadable. Neither fails the listing; the CLI points at
+    /// [`Repo::resolve_workspace_root`] for strict path diagnostics.
     ///
     /// # Errors
     ///
@@ -1599,12 +1597,14 @@ impl Repo {
     ///
     /// `resolve_workspace_root(None)` returns exactly what the infallible
     /// [`Repo::workspace_root`] accessor returns, and reads the loader alone — no repo load, no
-    /// store read (`cli/src/commands/workspace/root.rs:78` @ v0.44.0). That is the ONLY overlap
+    /// store read (`cli/src/commands/workspace/root.rs:75` @ v0.46.0). That is the ONLY overlap
     /// between the two: with a name — even the CURRENT workspace's own — the call goes through
-    /// the `WorkspaceStore` and can REFUSE, because the CLI's named path never shortcuts to the
-    /// loader. A named lookup runs the CLI's four stages in ITS order (store load, view
-    /// membership, recorded path, join + canonicalize), each with its own refusal, and returns an
-    /// ABSOLUTE path — the CLI's CWD-relative rendering is the GUI's job.
+    /// the `WorkspaceStore` and can REFUSE or WARN, because the CLI's named path never shortcuts
+    /// to the loader. A named lookup runs the CLI's stages in ITS order (store load, view
+    /// membership, recorded path) and returns the ABSOLUTE recorded path — not canonicalized, as
+    /// in the CLI since jj 0.46; the CLI's CWD-relative rendering is the GUI's job. A recorded
+    /// directory that does not exist is no refusal: the path comes back with a
+    /// `jj.workspace_path_inaccessible` warning in [`crate::Warned::warnings`].
     ///
     /// An explicitly present EMPTY name is a VALUE, not an absence: no workspace is named `""`,
     /// so it refuses as [`crate::WorkspaceError::NotFound`].
@@ -1614,12 +1614,10 @@ impl Repo {
     /// - [`crate::WorkspaceError::NotFound`] — no workspace of that name is in the head view.
     /// - [`crate::WorkspaceError::NoRecordedPath`] — the workspace exists but the store holds no
     ///   path for it (it predates jj 0.38.0, or its entry was wiped).
-    /// - [`crate::WorkspaceError::PathUnresolved`] — a path IS recorded but does not resolve; the
-    ///   I/O reason rides in `reason`.
     /// - [`crate::WorkspaceError::Backend`] — the workspace store could not be loaded or read, or
     ///   `load_at_head` failed.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn resolve_workspace_root(&self, name: Option<&str>) -> Result<PathBuf, crate::WorkspaceError> {
+    pub fn resolve_workspace_root(&self, name: Option<&str>) -> Result<crate::Warned<PathBuf>, crate::WorkspaceError> {
         crate::workspace::resolve_root(self.workspace(), name)
     }
 

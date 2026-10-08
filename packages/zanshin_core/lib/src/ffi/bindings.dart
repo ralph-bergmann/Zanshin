@@ -2149,10 +2149,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_undo(
 ///
 /// Handle-only: the CLI verb takes no argument at all, and its `-T/--template` flag is rendering.
 /// Rows come in jj-lib's own `BTreeMap` order (lexicographic by workspace name). A row's `root`
-/// is ABSENT when the path cannot be reported — no recorded path (a workspace predating jj
-/// 0.38.0), an unreadable store, or a recorded directory that moved or was deleted. None of those
-/// fails the call: the CLI's own list template degrades the same way and points at
-/// `zanshin_workspace_root` for strict diagnostics. This read writes NO operation of its own.
+/// is the RECORDED path, reported even when that directory moved or was deleted (jj 0.46); it is
+/// ABSENT only when nothing can be reported — no recorded path (a workspace predating jj 0.38.0)
+/// or an unreadable store. Neither fails the call; the CLI points at `zanshin_workspace_root` for
+/// strict diagnostics. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceList` payload on success.
 ///
@@ -2189,10 +2189,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_list(
 /// goes through the `WorkspaceStore` and can refuse: the CLI's named path never shortcuts to the
 /// loader, and that asymmetry is reproduced rather than smoothed over. An explicitly present
 /// EMPTY name is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
-/// The returned path is ABSOLUTE and canonicalized; CWD-relative shortening is the GUI's job.
-/// This read writes NO operation — not even on a refusal.
+/// The returned path is ABSOLUTE — for a name, the recorded path, not canonicalized (jj 0.46);
+/// CWD-relative shortening is the GUI's job. This read writes NO operation — not even on a
+/// refusal.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success; a recorded
+/// directory that does not exist warns `jj.workspace_path_inaccessible` — the path is still
+/// returned, as the CLI prints it.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -2203,8 +2206,6 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_list(
 /// `context`.
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
 /// the name in `context`.
-/// - `jj.workspace_path_unresolved` — a path IS recorded but does not resolve; `context` names
-/// the workspace and the I/O reason.
 /// - `jj.jj_lib_error` — the workspace store could not be loaded or read, or `load_at_head`
 /// failed; detail in `context`.
 ///

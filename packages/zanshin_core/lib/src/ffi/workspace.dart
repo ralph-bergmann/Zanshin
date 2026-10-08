@@ -22,10 +22,10 @@ import 'warning.dart';
 // its `--name` must be distinguishably ABSENT — that absence is what applies the
 // CLI's documented default, the current workspace.
 //
-// They are also asymmetric on an unusable recorded path, deliberately: a
+// They are also asymmetric when no path can be reported, deliberately: a
 // [WorkspaceEntry.root] degrades to `null` while [workspaceRoot] refuses. The
-// CLI's own list template degrades the same way and points at
-// `jj workspace root --name` for strict path diagnostics.
+// CLI's own list template degrades the same way. A recorded directory that no
+// longer exists is reported by both (jj 0.46); [workspaceRoot] adds a warning.
 
 // ── FFI adapters ─────────────────────────────────────────────────────────────
 
@@ -44,8 +44,8 @@ Uint8List zanshinWorkspaceList(int rawHandle) => readToken(zanshin_workspace_lis
 /// A `null` [name] is the wire form of "the user did not supply `--name`", which
 /// applies the CLI's own default — the CURRENT workspace — and reads the
 /// workspace loader alone, the one path that cannot fail. A PRESENT [name], even
-/// the current workspace's own, goes through the workspace store and can REFUSE:
-/// the CLI's named path never shortcuts to the loader. An explicitly EMPTY [name]
+/// the current workspace's own, goes through the workspace store and can REFUSE
+/// or WARN: the CLI's named path never shortcuts to the loader. An explicitly EMPTY [name]
 /// is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
 Uint8List zanshinWorkspaceRoot(int rawHandle, {String? name}) {
   rejectInteriorNul(name, 'name');
@@ -71,11 +71,11 @@ final class WorkspaceEntry {
   /// `WorkingCopyStatus.workingCopyChangeId` reports.
   final String wcCommitId;
 
-  /// Absolute path of the workspace's root directory, or `null` when it cannot
-  /// be reported: the workspace predates jj 0.38.0 and has no recorded path, the
-  /// store is unreadable, or the recorded directory moved or was deleted.
-  /// Null-for-absence — never a sentinel — and never a reason for the listing to
-  /// fail. Use [zanshinWorkspaceRoot] for strict path diagnostics.
+  /// Absolute RECORDED path of the workspace's root directory — reported even
+  /// when that directory moved or was deleted (jj 0.46) — or `null` when no path
+  /// can be reported: the workspace predates jj 0.38.0 and has no recorded path,
+  /// or the store is unreadable. Null-for-absence — never a sentinel — and never
+  /// a reason for the listing to fail.
   final String? root;
 }
 

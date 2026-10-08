@@ -15,6 +15,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/ffi/workspace.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
@@ -82,11 +83,10 @@ void main() {
   });
 
   group('decodeWorkspaceRootEnvelope decode contract', () {
-    test('throws ZanshinFfiException on each of the three named refusals', () {
+    test('throws ZanshinFfiException on each of the two named refusals', () {
       for (final code in const [
         'jj.workspace_not_found',
         'jj.workspace_no_recorded_path',
-        'jj.workspace_path_unresolved',
       ]) {
         expect(
           () => decodeWorkspaceRootEnvelope(errorEnvelope(code, 'second')),
@@ -110,6 +110,29 @@ void main() {
       ).toBytes();
 
       expect(decodeWorkspaceRootEnvelope(bytes).path, '/repos/second');
+    });
+
+    test('decodes a stale root together with its inaccessible-path warning', () {
+      // Since jj 0.46 a recorded directory that is gone is reported, not
+      // refused: the path comes back and the warning rides along.
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.WorkspaceRoot,
+        data: fbs.WorkspaceRootObjectBuilder(root: '/gone/second'),
+        warnings: [
+          fbs.WarningObjectBuilder(
+            code: ZanshinWarningCode.workspacePathInaccessible,
+            message: 'Cannot access workspace path: /gone/second',
+          ),
+        ],
+      ).toBytes();
+
+      final WorkspaceRootResult root = decodeWorkspaceRootEnvelope(bytes);
+
+      expect(root.path, '/gone/second');
+      expect(root.warnings, hasLength(1));
+      expect(root.warnings.single.code, ZanshinWarningCode.workspacePathInaccessible);
+      expect(root.warnings.single.message, 'Cannot access workspace path: /gone/second');
     });
 
     test('throws ffi.unknown when the payload carries no root', () {

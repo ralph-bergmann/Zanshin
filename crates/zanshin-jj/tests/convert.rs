@@ -917,11 +917,13 @@ fn assert_own_root_resolves(repo: &mut zanshin_jj::Repo, expected: &std::path::P
     let named = repo
         .resolve_workspace_root(Some("default"))
         .expect("the workspace's own recorded path must resolve");
-    assert_same_dir(&named, expected);
+    assert!(named.warnings.is_empty(), "the recorded directory exists");
+    assert_same_dir(&named.value, expected);
     assert_eq!(
-        named,
+        named.value,
         repo.resolve_workspace_root(None)
-            .expect("the no-name default cannot fail"),
+            .expect("the no-name default cannot fail")
+            .value,
         "naming the current workspace must agree with the no-name default"
     );
 }

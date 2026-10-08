@@ -853,14 +853,6 @@ fn workspace_surface_resolves() {
         name: "legacy".to_owned(),
     };
     assert_eq!(no_path.to_string(), "workspace has no recorded path: legacy");
-    let unresolved = zanshin_jj::WorkspaceError::PathUnresolved {
-        name: "moved".to_owned(),
-        reason: "No such file or directory (os error 2)".to_owned(),
-    };
-    assert_eq!(
-        unresolved.to_string(),
-        "cannot resolve absolute workspace path for moved: No such file or directory (os error 2)"
-    );
     assert_eq!(
         zanshin_jj::WorkspaceError::Backend("boom".to_owned()).to_string(),
         "jj-lib error: boom"
@@ -870,9 +862,13 @@ fn workspace_surface_resolves() {
 
     _ = zanshin_jj::Repo::list_workspaces
         as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkspaceEntry>, zanshin_jj::WorkspaceError>;
-    // `workspace root` is in the CLI's no-snapshot set, so both stay `&self` (Story 9.26).
+    // `workspace root` is in the CLI's no-snapshot set, so both stay `&self` (Story 9.26); its
+    // `jj.workspace_path_inaccessible` warning (jj 0.46) rides the `Warned` return.
     _ = zanshin_jj::Repo::resolve_workspace_root
-        as fn(&zanshin_jj::Repo, Option<&str>) -> Result<std::path::PathBuf, zanshin_jj::WorkspaceError>;
+        as fn(
+            &zanshin_jj::Repo,
+            Option<&str>,
+        ) -> Result<zanshin_jj::Warned<std::path::PathBuf>, zanshin_jj::WorkspaceError>;
     // The shipped infallible accessor keeps its name and its `&Path` return (Story 9.7 adds a
     // distinct verb rather than renaming it — `zanshin-ffi/src/repo.rs` arms the watcher with it).
     _ = zanshin_jj::Repo::workspace_root as fn(&zanshin_jj::Repo) -> &std::path::Path;
@@ -1213,6 +1209,7 @@ fn story_9_32_warning_surface_resolves() {
         K::UndoPushOperation,
         K::UndoWorkspaceRemoval,
         K::ColocatedInGitWorktree,
+        K::WorkspacePathInaccessible,
     ];
     for kind in every {
         match kind {
@@ -1245,10 +1242,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigRegenerated
             | K::UndoPushOperation
             | K::UndoWorkspaceRemoval
-            | K::ColocatedInGitWorktree => {}
+            | K::ColocatedInGitWorktree
+            | K::WorkspacePathInaccessible => {}
         }
     }
-    assert_eq!(every.len(), 30);
+    assert_eq!(every.len(), 31);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

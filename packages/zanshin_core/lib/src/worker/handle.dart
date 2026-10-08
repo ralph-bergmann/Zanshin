@@ -908,11 +908,11 @@ final class RepoHandle {
   /// name/working-copy-commit pair the repo's `View` holds plus an ABSOLUTE root
   /// path.
   ///
-  /// A row's `root` is `null` when the path cannot be reported: the workspace
-  /// predates jj 0.38.0 and has no recorded path, the store is unreadable, or the
-  /// recorded directory moved or was deleted. None of those fails the listing —
-  /// the CLI's own list template degrades the same way and points at
-  /// [workspaceRoot] for strict path diagnostics. That asymmetry between the two
+  /// A row's `root` is the RECORDED path, reported even when the directory moved
+  /// or was deleted (jj 0.46). It is `null` when no path can be reported: the
+  /// workspace predates jj 0.38.0 and has no recorded path, or the store is
+  /// unreadable. Neither fails the listing — the CLI's own list template degrades
+  /// the same way, where [workspaceRoot] refuses. That asymmetry between the two
   /// verbs is reproduced, not smoothed over.
   ///
   /// This read writes no operation of its own. Throws [StateError] synchronously if the
@@ -931,13 +931,15 @@ final class RepoHandle {
   /// A `null` [name] is the CLI's own documented default, the CURRENT workspace;
   /// that path reads the workspace loader alone — no repo load, no store read —
   /// and cannot fail. A PRESENT [name], even the current workspace's own, goes
-  /// through the workspace store and can REFUSE, because the CLI's named path
-  /// never shortcuts to the loader. An explicitly empty [name] is a VALUE, not an
-  /// absence: no workspace is named `''`, so it refuses with
+  /// through the workspace store and can REFUSE or WARN, because the CLI's named
+  /// path never shortcuts to the loader. An explicitly empty [name] is a VALUE,
+  /// not an absence: no workspace is named `''`, so it refuses with
   /// `jj.workspace_not_found`.
   ///
-  /// The returned path is absolute and canonicalized; CWD-relative shortening is
-  /// the UI's job.
+  /// The returned path is absolute. A named workspace's path is the RECORDED one,
+  /// not canonicalized (jj 0.46); when that directory does not exist it comes
+  /// back anyway, with a `jj.workspace_path_inaccessible` warning. CWD-relative
+  /// shortening is the UI's job.
   ///
   /// This read writes no operation — not even on a refusal. Throws [StateError]
   /// synchronously if the handle is already [_closed]; throws [ArgumentError] if
@@ -945,7 +947,7 @@ final class RepoHandle {
   /// FlatBuffers string would carry all the way into a workspace name; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
-  /// `jj.workspace_path_unresolved`, `jj.jj_lib_error`).
+  /// `jj.jj_lib_error`).
   Future<WorkspaceRootResult> workspaceRoot({String? name}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

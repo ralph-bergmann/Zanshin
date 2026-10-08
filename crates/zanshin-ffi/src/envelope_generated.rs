@@ -14723,13 +14723,12 @@ pub mod zanshin {
         ///
         /// `name` and `wc_commit_id` are the VIEW half (`View::wc_commit_ids()`), the same pair
         /// `zanshin_jj::WorkingCopy` carries; `root` is the half that lives in the WorkspaceStore.
-        /// `root` is ABSENT (null-for-absence) whenever the path cannot be reported — the workspace
-        /// predates jj 0.38.0 and has no recorded path, the store is unreadable, or the recorded
-        /// directory moved or was deleted. That absence NEVER fails the listing: the CLI's own
-        /// `WorkspaceRef::root` collapses every such failure to "no root" so list templates keep
-        /// rendering (`cli/src/commit_templater.rs:1787` @ v0.44.0), and points at
-        /// `jj workspace root --name` — here `zanshin_workspace_root` — for strict path diagnostics.
-        /// When present it is an ABSOLUTE, canonicalized path; CWD-relative shortening is the GUI's job.
+        /// `root` is the RECORDED path, reported even when the directory moved or was deleted, as the
+        /// CLI's list template does since jj 0.46 (`cli/src/commit_templater.rs:1896-1906` @ v0.46.0).
+        /// It is ABSENT (null-for-absence) only when no path can be reported — the workspace predates
+        /// jj 0.38.0 and has no recorded path, or the store is unreadable. That absence NEVER fails the
+        /// listing. When present it is an ABSOLUTE path, not canonicalized; CWD-relative shortening is
+        /// the GUI's job.
         pub struct WorkspaceEntry<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -15000,8 +14999,9 @@ pub mod zanshin {
         ///
         /// Always present on a successful call — unlike `WorkspaceEntry.root`, which is optional. That
         /// asymmetry is the CLI's own: `jj workspace list` degrades to no root while
-        /// `jj workspace root --name` raises one of three distinct refusals, and it is reproduced here
-        /// rather than unified.
+        /// `jj workspace root --name` refuses when there is no path to report, and it is reproduced here
+        /// rather than unified. A recorded directory that does not exist is reported anyway, with a
+        /// `jj.workspace_path_inaccessible` warning on the envelope.
         pub struct WorkspaceRoot<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

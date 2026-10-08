@@ -24,7 +24,7 @@ use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
-    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
+    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_INACCESSIBLE,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ fn root_request_bytes(name: Option<&str>) -> Vec<u8> {
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
-/// A fixture with a SECOND workspace, so both a resolvable and an unresolvable root are on the
+/// A fixture with a SECOND workspace, so both an existing and a stale recorded root are on the
 /// wire in one call. Returns `(handle, fixture root, second workspace root)`.
 ///
 /// Both `FixtureHandle`s are leaked so their `TempDir`s outlive the returned raw handle, exactly
@@ -138,7 +138,7 @@ fn open_two_workspace_scenario() -> (u64, std::path::PathBuf, std::path::PathBuf
 }
 
 /// The plain fixture, whose single recorded path is the GENERATOR's temp dir and no longer
-/// resolves. Returns `(handle, fixture root)`.
+/// exists. Returns `(handle, fixture root)`.
 fn open_stale_scenario() -> (u64, std::path::PathBuf) {
     let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
     let root = fixture.path.clone();
@@ -149,10 +149,10 @@ fn open_stale_scenario() -> (u64, std::path::PathBuf) {
 
 // ── zanshin_workspace_list ────────────────────────────────────────────────────
 
-/// Both wire states of `WorkspaceEntry.root` in one payload: `default`'s is ABSENT (its recorded
-/// path is stale) and `second`'s is present and absolute. A path failure never fails the call.
+/// Both kinds of recorded root in one payload: `default`'s is stale (jj 0.46 reports it anyway) and
+/// `second`'s is the directory it lives in. A stale path never fails the call.
 #[test]
-fn workspace_list_carries_present_and_absent_roots() {
+fn workspace_list_carries_stale_and_live_roots() {
     pin_env();
     let (handle, _root, second_root) = open_two_workspace_scenario();
 
@@ -173,12 +173,12 @@ fn workspace_list_carries_present_and_absent_roots() {
     assert_eq!(entries.get(0).name(), Some("default"));
     assert!(
         !entries.get(0).wc_commit_id().unwrap_or_default().is_empty(),
-        "the view half must still be reported for a degraded row"
+        "the view half must be reported for a stale row too"
     );
-    assert_eq!(
-        entries.get(0).root(),
-        None,
-        "null-for-absence: the fixture's recorded path no longer resolves"
+    let stale = entries.get(0).root().expect("the fixture records a path");
+    assert!(
+        !Path::new(stale).exists(),
+        "the fixture's recorded path no longer exists; got {stale:?}"
     );
 
     assert_eq!(entries.get(1).name(), Some("second"));
@@ -195,10 +195,11 @@ fn workspace_list_carries_present_and_absent_roots() {
 // ── zanshin_workspace_root ────────────────────────────────────────────────────
 
 /// The absent-name default reads the loader alone and returns the OPEN workspace's root; naming
-/// the very same workspace goes through the store and refuses. That asymmetry is the CLI's own,
-/// and a reader that dropped the `name` field would make both calls succeed identically.
+/// the very same workspace goes through the store, returns its stale recorded path and warns. That
+/// asymmetry is the CLI's own, and a reader that dropped the `name` field would make both calls
+/// answer identically.
 #[test]
-fn workspace_root_absent_name_succeeds_where_the_named_current_workspace_refuses() {
+fn workspace_root_absent_name_answers_quietly_where_the_named_current_workspace_warns() {
     pin_env();
     let (handle, root) = open_stale_scenario();
 
@@ -219,6 +220,7 @@ fn workspace_root_absent_name_succeeds_where_the_named_current_workspace_refuses
         fs::canonicalize(wire_root).expect("wire root exists"),
         fs::canonicalize(&root).expect("fixture root exists")
     );
+    assert!(env.warnings().is_none(), "the open workspace's root never warns");
 
     let req = root_request_bytes(Some("default"));
     // SAFETY: see above.
@@ -226,13 +228,28 @@ fn workspace_root_absent_name_succeeds_where_the_named_current_workspace_refuses
     // SAFETY: see above.
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
-    assert!(!env.ok(), "the named path never shortcuts to the loader");
-    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_WORKSPACE_PATH_UNRESOLVED));
+    assert!(env.ok(), "a stale recorded path is reported, not refused");
+    let stale = env
+        .data_as_workspace_root()
+        .expect("WorkspaceRoot payload")
+        .root()
+        .expect("root is always present on success");
     assert!(
-        env.error()
-            .and_then(|e| e.context())
-            .is_some_and(|c| c.starts_with("default: ")),
-        "context must name the workspace and the I/O reason"
+        !Path::new(stale).exists(),
+        "the named path never shortcuts to the loader"
+    );
+    let warnings: Vec<(&str, &str)> = env
+        .warnings()
+        .expect("the stale path rides with a warning")
+        .iter()
+        .map(|w| (w.code().unwrap(), w.message().unwrap()))
+        .collect();
+    assert_eq!(
+        warnings,
+        [(
+            JJ_WORKSPACE_PATH_INACCESSIBLE,
+            format!("Cannot access workspace path: {stale}").as_str()
+        )]
     );
 
     close_handle(handle);
@@ -264,7 +281,7 @@ fn workspace_root_finds_a_named_sibling_workspace() {
     close_handle(handle);
 }
 
-/// The three named refusals, each with its own code. An explicitly EMPTY name is a VALUE, not an
+/// The two named refusals, each with its own code. An explicitly EMPTY name is a VALUE, not an
 /// absence: it must NOT fall back to the current workspace.
 #[test]
 fn workspace_root_refuses_with_one_code_per_cause() {
@@ -287,7 +304,7 @@ fn workspace_root_refuses_with_one_code_per_cause() {
     }
     close_handle(handle);
 
-    // No recorded path at all is a DIFFERENT refusal from a stale one: nothing can be repaired.
+    // No recorded path at all refuses, where a stale one only warns: there is no path to report.
     fs::remove_dir_all(root.join(".jj").join("repo").join("workspace_store")).expect("store exists");
     let handle = open_handle(&root);
     let req = root_request_bytes(Some("default"));

@@ -5,10 +5,10 @@
 //!
 //! The committed `tiny-3-commits` fixture is a free witness for the interesting rows: its
 //! `.jj/repo/workspace_store/index` records `default` → the GENERATOR's temp directory, which no
-//! longer exists after extraction. So the fixture as shipped already exercises BOTH halves of the
-//! CLI's asymmetry — `list` degrades to `root: None` while `resolve_root(Some("default"))`
-//! refuses. Regenerating the fixture to "fix" that staleness is forbidden AND would destroy the
-//! witness.
+//! longer exists after extraction. So the fixture as shipped already exercises jj 0.46's handling
+//! of an unreachable recorded path — `list` reports it, `resolve_root(Some("default"))` returns it
+//! with a `jj.workspace_path_inaccessible` warning. Regenerating the fixture to "fix" that
+//! staleness is forbidden AND would destroy the witness.
 //!
 //! Every path comparison canonicalizes BOTH sides: on macOS the system temp dir is
 //! `/var/folders/…`, a symlink to `/private/var/folders/…`, and only one side of a naive
@@ -24,7 +24,7 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture};
-use zanshin_jj::{Repo, WorkspaceError};
+use zanshin_jj::{Repo, Warned, WarningKind, WorkspaceError};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     // WHY: empty string pins jj-lib/git off the developer's globals for reproducibility.
@@ -123,10 +123,11 @@ fn assert_same_dir(actual: &Path, expected: &Path) {
 
 // ── list: the view half is reused, the path half is added ────────────────────
 
-/// The shipped fixture records a path that no longer exists, so its single row degrades: name and
-/// commit are still reported, `root` is absent, and the call SUCCEEDS.
+/// The shipped fixture records a path that no longer exists. jj 0.46 lists the recorded path
+/// as-is (no canonicalization), so the row still carries a `root` — one that does not exist — and
+/// the call SUCCEEDS.
 #[test]
-fn list_on_the_fixture_reports_one_row_with_no_root() {
+fn list_on_the_fixture_reports_the_stale_recorded_root() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
@@ -141,15 +142,17 @@ fn list_on_the_fixture_reports_one_row_with_no_root() {
         wc_pairs(&fx.path),
         "the name/commit half must equal View::wc_commit_ids() entry for entry"
     );
-    assert_eq!(
-        entries[0].root, None,
-        "the fixture records the GENERATOR's temp dir, which no longer resolves"
+    let root = entries[0].root.as_ref().expect("the fixture records a path");
+    assert!(
+        !root.exists(),
+        "the fixture records the GENERATOR's temp dir, which no longer exists; got {root:?}"
     );
     assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
-/// Added workspaces record paths that DO resolve, so both halves of a row are exercised at once:
-/// `default` still degrades while the added ones report their real directories.
+/// Added workspaces record paths that DO exist, so both kinds of row are exercised at once:
+/// `default` still reports its stale recorded path while the added ones report their real
+/// directories.
 ///
 /// The added names are chosen so the ordering assertion has teeth: `aaa` is created LAST but must
 /// come FIRST, which only jj-lib's lexicographic `BTreeMap` order satisfies — creation order and
@@ -179,7 +182,10 @@ fn list_with_more_workspaces_reports_resolvable_roots_in_lexicographic_order() {
     );
     assert_eq!(entries[2].wc_commit_id.0, second_wc);
 
-    assert_eq!(entries[1].root, None, "default's recorded path is still stale");
+    assert!(
+        !entries[1].root.as_ref().expect("default records a path").exists(),
+        "default's recorded path is still stale"
+    );
     assert_same_dir(entries[0].root.as_ref().expect("aaa's path resolves"), &aaa.path);
     assert_same_dir(entries[2].root.as_ref().expect("second's path resolves"), &second.path);
 }
@@ -256,8 +262,9 @@ fn root_without_a_name_is_the_open_workspace() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let before = head_op_id(&mut repo);
 
-    let root = repo.resolve_workspace_root(None).unwrap();
+    let Warned { value: root, warnings } = repo.resolve_workspace_root(None).unwrap();
 
+    assert!(warnings.is_empty(), "the no-name default never warns");
     assert_same_dir(&root, repo.workspace_root());
     assert_same_dir(&root, &fx.path);
     // The `.fbs`, the FFI wrapper and `handle.dart` all promise an ABSOLUTE, canonicalized path.
@@ -311,7 +318,7 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     );
 
     // (b) the no-name default is THIS workspace's root, not the primary's.
-    let own = repo.resolve_workspace_root(None).unwrap();
+    let own = repo.resolve_workspace_root(None).unwrap().value;
     assert_same_dir(&own, &second.path);
     assert_ne!(
         fs::canonicalize(&own).unwrap(),
@@ -320,12 +327,14 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     );
 
     // (c) naming the PRIMARY reaches the shared store — and hits the fixture's stale entry, the
-    // same refusal the primary side reports for itself.
-    let result = repo.resolve_workspace_root(Some("default"));
-    match result {
-        Err(WorkspaceError::PathUnresolved { name, .. }) => assert_eq!(name, "default"),
-        other => panic!("the shared store's stale `default` entry must be PathUnresolved, got: {other:?}"),
-    }
+    // same warning the primary side reports for itself.
+    let named = repo.resolve_workspace_root(Some("default")).unwrap();
+    assert_eq!(
+        named.value,
+        entries[0].root.clone().expect("default records a path"),
+        "root and list report the same recorded path"
+    );
+    assert_inaccessible_warning(&named);
 }
 
 /// A SIBLING workspace's path is visible from this one — the whole point of the verb.
@@ -339,34 +348,39 @@ fn root_with_a_name_finds_a_sibling_workspace() {
 
     let root = repo.resolve_workspace_root(Some("second")).unwrap();
 
-    assert_same_dir(&root, &second.path);
+    assert!(root.warnings.is_empty(), "second's directory exists");
+    assert_same_dir(&root.value, &second.path);
     assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
-/// The CLI's asymmetry, in one test: `None` succeeds on the very repo where naming the SAME
-/// workspace refuses, because the named path always goes through the store — which here holds the
-/// generator's stale temp dir.
+/// The CLI's asymmetry, in one test: `None` answers the open workspace's root on the very repo where
+/// naming the SAME workspace goes through the store — which here holds the generator's stale temp
+/// dir. Since jj 0.46 the CLI reports that path anyway, with a warning, instead of refusing
+/// (`cli/src/commands/workspace/root.rs:60-66` @ v0.46.0).
 #[test]
-fn root_named_current_workspace_refuses_where_the_default_path_succeeds() {
+fn root_named_current_workspace_warns_where_the_default_path_does_not() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
     let before = head_op_id(&mut repo);
 
-    assert!(repo.resolve_workspace_root(None).is_ok());
+    let default = repo.resolve_workspace_root(None).unwrap();
+    assert!(default.warnings.is_empty());
 
-    let result = repo.resolve_workspace_root(Some("default"));
-    match result {
-        Err(WorkspaceError::PathUnresolved { name, reason }) => {
-            assert_eq!(name, "default");
-            assert!(!reason.is_empty(), "the I/O reason must be forwarded");
-        }
-        other => panic!("a stale recorded path must be PathUnresolved, got: {other:?}"),
-    }
+    let named = repo.resolve_workspace_root(Some("default")).unwrap();
+    assert_ne!(named.value, default.value, "the store holds the generator's path");
+    assert!(!named.value.exists());
+    assert_inaccessible_warning(&named);
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
+}
+
+/// A named root whose directory is gone carries exactly the CLI's warning, path included.
+fn assert_inaccessible_warning(named: &Warned<PathBuf>) {
+    assert_eq!(named.warnings.len(), 1, "got {:?}", named.warnings);
+    assert_eq!(named.warnings[0].kind, WarningKind::WorkspacePathInaccessible);
     assert_eq!(
-        head_op_id(&mut repo),
-        before,
-        "a REFUSAL must not write an operation either"
+        named.warnings[0].message,
+        format!("Cannot access workspace path: {}", named.value.display())
     );
 }
 
@@ -393,8 +407,8 @@ fn root_with_an_unknown_or_empty_name_is_not_found() {
     );
 }
 
-/// The workspace exists but the store holds no path for it — the pre-jj-0.38.0 state, which is a
-/// DIFFERENT refusal from a stale path because nothing can be repaired.
+/// The workspace exists but the store holds no path for it — the pre-jj-0.38.0 state. Unlike a
+/// stale path, which is reported with a warning, there is no path to report, so it refuses.
 #[test]
 fn root_with_no_recorded_path_refuses_distinctly() {
     pin_env();
@@ -541,10 +555,11 @@ fn assert_own_root_resolves(repo: &mut Repo, expected: &Path) {
     let named = repo
         .resolve_workspace_root(Some("default"))
         .expect("the workspace's own recorded path must resolve");
-    assert_same_dir(&named, expected);
+    assert!(named.warnings.is_empty(), "the recorded directory exists");
+    assert_same_dir(&named.value, expected);
     assert_eq!(
-        named,
-        repo.resolve_workspace_root(None).unwrap(),
+        named.value,
+        repo.resolve_workspace_root(None).unwrap().value,
         "naming the current workspace must agree with the no-name default"
     );
 }
@@ -553,17 +568,13 @@ fn assert_own_root_resolves(repo: &mut Repo, expected: &Path) {
 ///
 /// On macOS every `TempDir` is `/var/folders/…`, a symlink to `/private/var/folders/…`, which is
 /// exactly the shape a caller-supplied path can have. `SimpleWorkspaceStore::add` records a
-/// workspace's root RELATIVE to the `repo_path` the store was loaded with, counting the `..`
-/// segments LEXICALLY, while every read finishes the join with `realpath(3)`, which resolves the
-/// symlinked prefix BEFORE those `..`. A record written against a raw path therefore resolves from
-/// no base at all, and the workspace's OWN row goes absent while `root --name default` refuses.
-/// The real CLI never hits it: its workspace loader canonicalizes before either side runs.
+/// workspace's root RELATIVE to the `repo_path` the store was loaded with, and since jj 0.46 every
+/// read joins it back LEXICALLY (`simple_workspace_store.rs:236-238` @ 0.46.0) — so the recorded
+/// path has to name the workspace's own directory, raw or canonical, or the OWN row and
+/// `root --name default` report a path that is not this workspace.
 ///
 /// What this pins is the WRITE seam — `Repo::init`. The second half re-opens the same repo, which
-/// asserts that `Repo::open` did not break what `init` recorded; it cannot fail on `Repo::open`'s
-/// own canonicalize, because the read join realpaths a raw and a canonical base to the same
-/// directory (that canonicalize is forward-defence for a future writer working off an opened
-/// repo — Story 9.23's `workspace add`; see `Repo::open`'s WHY block).
+/// asserts that `Repo::open` did not break what `init` recorded.
 #[test]
 fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
     pin_env();

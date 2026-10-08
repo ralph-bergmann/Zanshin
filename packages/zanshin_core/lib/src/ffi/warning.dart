@@ -144,6 +144,10 @@ abstract final class ZanshinWarningCode {
   /// where a workspace of the main repository was probably meant.
   static const colocatedInGitWorktree = 'jj.colocated_in_git_worktree';
 
+  /// `workspaceRoot` named a workspace whose recorded directory does not exist;
+  /// the recorded path is returned anyway.
+  static const workspacePathInaccessible = 'jj.workspace_path_inaccessible';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -182,6 +186,7 @@ abstract final class ZanshinWarningCode {
     undoPushOperation,
     undoWorkspaceRemoval,
     colocatedInGitWorktree,
+    workspacePathInaccessible,
     loginShellUnresolved,
   ];
 }

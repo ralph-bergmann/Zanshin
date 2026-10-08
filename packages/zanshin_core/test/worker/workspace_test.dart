@@ -160,8 +160,8 @@ void main() {
       expect(entries.single.wcCommitId, isNotEmpty, reason: 'the view half is still reported');
       expect(entries.single.root, isNull, reason: 'null-for-absence, never an empty string');
 
-      // (b) the named path refuses instead - the CLI's own asymmetry - with the
-      // code that says "nothing to repair", not the stale-path one.
+      // (b) the named path refuses instead - the CLI's own asymmetry - since there
+      // is no path to report (a stale one would come back with a warning).
       await expectLater(
         handle.workspaceRoot(name: 'default'),
         throwsA(

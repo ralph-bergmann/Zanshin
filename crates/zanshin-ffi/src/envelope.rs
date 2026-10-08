@@ -127,19 +127,11 @@ pub const JJ_BOOKMARK_TRACKED_REMOTE_EXISTS: &str = "jj.bookmark_tracked_remote_
 /// workspace — `zanshin_workspace_list` names them all.
 pub const JJ_WORKSPACE_NOT_FOUND: &str = "jj.workspace_not_found";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when the workspace EXISTS but the
-/// workspace store holds no path for it; the name in `context` (Story 9.7).
-///
-/// Distinct from `jj.workspace_path_unresolved` because there is nothing to repair: workspaces
-/// created before jj 0.38.0 have no recorded path at all, so the answer is simply unavailable.
+/// workspace store holds no path for it; the name in `context` (Story 9.7). Workspaces created
+/// before jj 0.38.0 have no recorded path at all, so the answer is simply unavailable. (A path
+/// that IS recorded but does not exist is no error since jj 0.46: it is returned with the
+/// `jj.workspace_path_inaccessible` warning.)
 pub const JJ_WORKSPACE_NO_RECORDED_PATH: &str = "jj.workspace_no_recorded_path";
-/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_root` when a path IS recorded but does
-/// not resolve — the directory moved, was deleted, or is unreachable; the workspace name and the
-/// I/O reason in `context` (Story 9.7).
-///
-/// Distinct from `jj.workspace_no_recorded_path` because the remedy differs: the workspace can
-/// be forgotten (Story 9.13) or its directory restored. `zanshin_workspace_list` never emits
-/// either — it degrades the row's `root` to absent instead (CLI parity).
-pub const JJ_WORKSPACE_PATH_UNRESOLVED: &str = "jj.workspace_path_unresolved";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
 /// fails (network, authentication, or transport error); detail in `context`.
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
@@ -272,6 +264,8 @@ pub const JJ_UNDO_PUSH_OPERATION: &str = "jj.undo_push_operation";
 pub const JJ_UNDO_WORKSPACE_REMOVAL: &str = "jj.undo_workspace_removal";
 /// Warning: a colocating conversion created the repo inside a linked git worktree.
 pub const JJ_COLOCATED_IN_GIT_WORKTREE: &str = "jj.colocated_in_git_worktree";
+/// Warning: `zanshin_workspace_root` returned a recorded path whose directory does not exist.
+pub const JJ_WORKSPACE_PATH_INACCESSIBLE: &str = "jj.workspace_path_inaccessible";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -309,6 +303,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::UndoPushOperation => JJ_UNDO_PUSH_OPERATION,
         K::UndoWorkspaceRemoval => JJ_UNDO_WORKSPACE_REMOVAL,
         K::ColocatedInGitWorktree => JJ_COLOCATED_IN_GIT_WORKTREE,
+        K::WorkspacePathInaccessible => JJ_WORKSPACE_PATH_INACCESSIBLE,
     }
 }
 
@@ -1088,6 +1083,7 @@ mod tests {
                 K::UndoPushOperation => "jj.undo_push_operation",
                 K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
                 K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
+                K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
             }
         }
         let kinds = [
@@ -1121,6 +1117,7 @@ mod tests {
             K::UndoPushOperation,
             K::UndoWorkspaceRemoval,
             K::ColocatedInGitWorktree,
+            K::WorkspacePathInaccessible,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

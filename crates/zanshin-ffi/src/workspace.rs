@@ -14,8 +14,9 @@
 //! because its `--name` must be distinguishably ABSENT — that absence is what applies the CLI's
 //! documented default, the current workspace.
 //!
-//! They are also asymmetric on an unusable recorded path, deliberately: a `WorkspaceEntry`'s
-//! `root` degrades to absent while `zanshin_workspace_root` refuses with one of three codes. See
+//! They are also asymmetric when no path can be reported, deliberately: a `WorkspaceEntry`'s
+//! `root` degrades to absent while `zanshin_workspace_root` refuses with one of two codes; a stale
+//! recorded path is reported by both, with a warning from `zanshin_workspace_root`. See
 //! `zanshin_jj::workspace`'s module doc for why that is parity rather than an inconsistency.
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
@@ -24,23 +25,21 @@ use zanshin_jj::{WorkspaceEntry, WorkspaceError};
 
 use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, precondition_envelope,
-    reject_null_request, session_from_handle, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
-    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
+    reject_null_request, session_from_handle, CallReport, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
+    JJ_WORKSPACE_NO_RECORDED_PATH,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 /// Maps a [`WorkspaceError`] onto its AR-P-4 code; user data always rides in `context`.
 ///
-/// The three refusal variants get three codes rather than one, because their remedies differ —
-/// the same test `jj.remote_exists` passed in Story 9.5. `PathUnresolved` carries BOTH the
-/// workspace name and the I/O reason, since neither alone identifies the failure.
+/// The two refusal variants get two codes rather than one, because their remedies differ — the
+/// same test `jj.remote_exists` passed in Story 9.5.
 fn map_workspace_err(e: WorkspaceError) -> FfiErrorObj {
     let (code, context) = match e {
         WorkspaceError::Precondition(e) => return map_precondition_err(e),
         WorkspaceError::NotFound { name } => (JJ_WORKSPACE_NOT_FOUND, name),
         WorkspaceError::NoRecordedPath { name } => (JJ_WORKSPACE_NO_RECORDED_PATH, name),
-        WorkspaceError::PathUnresolved { name, reason } => (JJ_WORKSPACE_PATH_UNRESOLVED, format!("{name}: {reason}")),
         WorkspaceError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
@@ -90,7 +89,7 @@ fn read_workspace_root_request(data: *const u8, len: usize) -> Result<WorkspaceR
 /// table, and the outer vector and `WorkspaceList` table come after the loop. `root` is written
 /// only when present — null-for-absence is the wire form of "this workspace's path cannot be
 /// reported", which is never an error here.
-fn workspace_list_to_envelope(entries: &[WorkspaceEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
+fn workspace_list_to_envelope(entries: &[WorkspaceEntry], report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
     let offsets: Vec<_> = entries
         .iter()
@@ -118,17 +117,12 @@ fn workspace_list_to_envelope(entries: &[WorkspaceEntry], report: &crate::envelo
 /// Serialise one resolved workspace root into a finished `Envelope<WorkspaceRoot>` buffer.
 ///
 /// Unlike a list row's `root`, this field is always present: the verb refuses rather than
-/// reporting an absent path.
-fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
+/// reporting an absent path. `report` carries its warnings (`jj.workspace_path_inaccessible`).
+fn workspace_root_to_envelope(root: &std::path::Path, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let root_off = b.create_string(&root.to_string_lossy());
     let table = fbs::WorkspaceRoot::create(&mut b, &fbs::WorkspaceRootArgs { root: Some(root_off) });
-    finish_envelope(
-        b,
-        fbs::Payload::WorkspaceRoot,
-        Some(table.as_union_value()),
-        &crate::envelope::CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::WorkspaceRoot, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -138,10 +132,10 @@ fn workspace_root_to_envelope(root: &std::path::Path) -> Vec<u8> {
 ///
 /// Handle-only: the CLI verb takes no argument at all, and its `-T/--template` flag is rendering.
 /// Rows come in jj-lib's own `BTreeMap` order (lexicographic by workspace name). A row's `root`
-/// is ABSENT when the path cannot be reported — no recorded path (a workspace predating jj
-/// 0.38.0), an unreadable store, or a recorded directory that moved or was deleted. None of those
-/// fails the call: the CLI's own list template degrades the same way and points at
-/// `zanshin_workspace_root` for strict diagnostics. This read writes NO operation of its own.
+/// is the RECORDED path, reported even when that directory moved or was deleted (jj 0.46); it is
+/// ABSENT only when nothing can be reported — no recorded path (a workspace predating jj 0.38.0)
+/// or an unreadable store. Neither fails the call; the CLI points at `zanshin_workspace_root` for
+/// strict diagnostics. This read writes NO operation of its own.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceList` payload on success.
 ///
@@ -187,10 +181,13 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
 /// goes through the `WorkspaceStore` and can refuse: the CLI's named path never shortcuts to the
 /// loader, and that asymmetry is reproduced rather than smoothed over. An explicitly present
 /// EMPTY name is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
-/// The returned path is ABSOLUTE and canonicalized; CWD-relative shortening is the GUI's job.
-/// This read writes NO operation — not even on a refusal.
+/// The returned path is ABSOLUTE — for a name, the recorded path, not canonicalized (jj 0.46);
+/// CWD-relative shortening is the GUI's job. This read writes NO operation — not even on a
+/// refusal.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success; a recorded
+/// directory that does not exist warns `jj.workspace_path_inaccessible` — the path is still
+/// returned, as the CLI prints it.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -201,8 +198,6 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
 ///   `context`.
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
 ///   the name in `context`.
-/// - `jj.workspace_path_unresolved` — a path IS recorded but does not resolve; `context` names
-///   the workspace and the I/O reason.
 /// - `jj.jj_lib_error` — the workspace store could not be loaded or read, or `load_at_head`
 ///   failed; detail in `context`.
 ///
@@ -226,7 +221,10 @@ pub unsafe extern "C" fn zanshin_workspace_root(handle: u64, data: *const u8, le
             .repo
             .resolve_workspace_root(req.name.as_deref())
             .map_err(map_workspace_err)?;
-        Ok(workspace_root_to_envelope(&root))
+        Ok(workspace_root_to_envelope(
+            &root.value,
+            &CallReport::warnings(root.warnings),
+        ))
     });
     vec_into_token(buf)
 }
@@ -239,9 +237,7 @@ mod tests {
     use zanshin_jj::{CommitId, WorkspaceEntry, WorkspaceError};
 
     use super::{map_workspace_err, workspace_list_to_envelope, workspace_root_to_envelope};
-    use crate::envelope::{
-        JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_UNRESOLVED,
-    };
+    use crate::envelope::{CallReport, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH};
     use crate::fbs;
 
     fn entry(name: &str, root: Option<&str>) -> WorkspaceEntry {
@@ -256,7 +252,7 @@ mod tests {
     fn workspace_list_writes_present_and_absent_roots_in_order() {
         let buf = workspace_list_to_envelope(
             &[entry("default", Some("/tmp/ws")), entry("second", None)],
-            &crate::envelope::CallReport::default(),
+            &CallReport::default(),
         );
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
@@ -277,7 +273,7 @@ mod tests {
 
     #[test]
     fn workspace_list_empty_roundtrips() {
-        let buf = workspace_list_to_envelope(&[], &crate::envelope::CallReport::default());
+        let buf = workspace_list_to_envelope(&[], &CallReport::default());
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         let payload = env.data_as_workspace_list().expect("expected WorkspaceList payload");
@@ -285,8 +281,12 @@ mod tests {
     }
 
     #[test]
-    fn workspace_root_roundtrips() {
-        let buf = workspace_root_to_envelope(&PathBuf::from("/tmp/ws/second"));
+    fn workspace_root_roundtrips_with_its_warnings() {
+        let warning = zanshin_jj::Warning {
+            kind: zanshin_jj::WarningKind::WorkspacePathInaccessible,
+            message: "Cannot access workspace path: /tmp/ws/second".to_owned(),
+        };
+        let buf = workspace_root_to_envelope(&PathBuf::from("/tmp/ws/second"), &CallReport::warnings(vec![warning]));
         let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
         assert!(env.ok());
         assert_eq!(env.data_type(), fbs::Payload::WorkspaceRoot);
@@ -294,6 +294,9 @@ mod tests {
             env.data_as_workspace_root().expect("payload").root(),
             Some("/tmp/ws/second")
         );
+        let warnings = env.warnings().expect("warnings");
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings.get(0).code(), Some("jj.workspace_path_inaccessible"));
     }
 
     #[test]
@@ -309,18 +312,6 @@ mod tests {
         });
         assert_eq!(no_path.code, JJ_WORKSPACE_NO_RECORDED_PATH);
         assert_eq!(no_path.context, Some("legacy".to_owned()));
-
-        // Both halves ride in `context`: neither the name nor the I/O reason alone identifies
-        // which workspace failed and why.
-        let unresolved = map_workspace_err(WorkspaceError::PathUnresolved {
-            name: "moved".to_owned(),
-            reason: "No such file or directory (os error 2)".to_owned(),
-        });
-        assert_eq!(unresolved.code, JJ_WORKSPACE_PATH_UNRESOLVED);
-        assert_eq!(
-            unresolved.context,
-            Some("moved: No such file or directory (os error 2)".to_owned())
-        );
 
         let backend = map_workspace_err(WorkspaceError::Backend("boom".to_owned()));
         assert_eq!(backend.code, JJ_JJ_LIB_ERROR);
