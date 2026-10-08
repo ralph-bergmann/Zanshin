@@ -66,6 +66,30 @@ pub struct State {
     op_chain: Vec<String>,
 }
 
+impl State {
+    /// The change id of the commit labelled `label` (`"@"` = the working-copy commit,
+    /// `"root"` = the root commit), for a scenario's Zanshin call.
+    pub fn change(&self, label: &str) -> zanshin_jj::ChangeId {
+        let label = if label == "@" {
+            self.aspects["working copy @"].as_str()
+        } else {
+            label
+        };
+        let change = self
+            .labels
+            .of_change
+            .iter()
+            .find(|(_, candidate)| candidate.as_str() == label)
+            .map_or_else(|| panic!("no commit labelled {label:?}"), |(change, _)| change.clone());
+        zanshin_jj::ChangeId(change)
+    }
+
+    /// The same change id as a CLI revision argument.
+    pub fn change_arg(&self, label: &str) -> String {
+        self.change(label).0
+    }
+}
+
 /// The state of the repo at `root`. With `before`, the operation aspects cover only the
 /// operations written since `before` was captured, and rewritten commits keep their old names.
 pub fn capture(root: &Path, before: Option<&State>) -> State {

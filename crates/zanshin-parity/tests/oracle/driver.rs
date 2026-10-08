@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 
-/// One `jj` invocation: whether it succeeded, and what it printed to stderr.
+/// One `jj` invocation: whether it succeeded, and what it printed.
 pub struct CliRun {
     pub success: bool,
+    pub stdout: String,
     pub stderr: String,
 }
 
@@ -52,6 +53,7 @@ pub fn jj(cwd: &Path, args: &[&str]) -> CliRun {
     let output = command(cwd, args).output().expect("spawn the pinned jj");
     CliRun {
         success: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     }
 }
@@ -60,6 +62,8 @@ pub fn jj(cwd: &Path, args: &[&str]) -> CliRun {
 pub enum Step {
     /// `jj <args>` in the repo root.
     Jj(&'static [&'static str]),
+    /// `jj <args>` in a directory relative to the repo root (a second workspace beside it).
+    JjAt(&'static str, &'static [&'static str]),
     /// Writes a file (relative to the repo root) without snapshotting it.
     Write(&'static str, &'static str),
 }
@@ -67,7 +71,7 @@ pub enum Step {
 /// A temp dir holding a repo at `<temp>/repo`, created by `jj <init>` and then `steps`.
 ///
 /// WHY `<temp>/repo` and not the temp dir itself: a second workspace can live beside the repo
-/// and still be removed with the temp dir.
+/// (`../ws2`) and still be removed with the temp dir.
 pub fn fresh_repo(init: &[&str], steps: &[&[Step]]) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::Builder::new()
         .prefix("zanshin-parity-")
@@ -80,6 +84,9 @@ pub fn fresh_repo(init: &[&str], steps: &[&[Step]]) -> (tempfile::TempDir, PathB
         match step {
             Step::Jj(args) => {
                 jj(&root, args).ok();
+            }
+            Step::JjAt(relative, args) => {
+                jj(&root.join(relative), args).ok();
             }
             Step::Write(path, text) => std::fs::write(root.join(path), text).expect("write a fixture file"),
         }

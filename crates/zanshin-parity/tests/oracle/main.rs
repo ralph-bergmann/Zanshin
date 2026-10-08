@@ -2,6 +2,9 @@
 
 //! The differential parity oracle (Story 9.47): the same operation through `zanshin-jj`
 //! (repo A) and through the stock jj CLI at the pin (repo B), compared by meaning.
+//!
+//! Every scenario is its own test. It fails when the two repos differ in an aspect the ledger
+//! (`ledger.rs`) does not list for it, or when a ledgered divergence no longer happens.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -10,8 +13,92 @@ use std::path::Path;
 
 mod compare;
 mod driver;
+mod harness;
+mod ledger;
 mod scenarios;
 mod state;
+
+/// One `#[test]` per scenario id, so they run in parallel and fail individually. The same id
+/// list also yields `SCENARIO_IDS`, so a table entry without a test cannot slip through.
+macro_rules! parity {
+    ($($id:ident),* $(,)?) => {
+        const SCENARIO_IDS: &[&str] = &[$(stringify!($id)),*];
+        $(
+            #[test]
+            fn $id() {
+                test_helpers::pin_test_env();
+                let found = harness::run(stringify!($id));
+                ledger::assert_matches_ledger(stringify!($id), &found);
+            }
+        )*
+    };
+}
+
+parity!(
+    describe_gui_text,
+    describe_cli_text,
+    new_on_wc,
+    new_merge,
+    new_conflicting_merge,
+    abandon_middle,
+    abandon_wc,
+    edit_parent,
+    undo_after_describe,
+    bookmark_create,
+    bookmark_create_existing,
+    bookmark_delete,
+    config_set_repo,
+    config_set_with_dirty_wc,
+    snapshot_modified_file,
+    snapshot_then_describe,
+    describe_immutable,
+    describe_root,
+    describe_no_change,
+    describe_commit_trailers,
+    restore_from,
+    restore_no_args,
+    absorb,
+    undo_cross_workspace,
+    init_colocated,
+    init_no_colocate,
+);
+
+/// Every scenario id the table and the init list define.
+fn defined_ids() -> BTreeSet<&'static str> {
+    scenarios::scenarios()
+        .iter()
+        .map(|scenario| scenario.id)
+        .chain(scenarios::INIT_SCENARIOS.iter().map(|(id, _)| *id))
+        .collect()
+}
+
+#[test]
+fn every_scenario_has_a_test() {
+    assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
+    assert_eq!(SCENARIO_IDS.len(), 26);
+}
+
+#[test]
+fn ledger_names_only_known_scenarios_and_aspects() {
+    let ids = defined_ids();
+    let aspects: BTreeSet<&str> = state::STATE_ASPECTS
+        .iter()
+        .chain(compare::OUTCOME_ASPECTS)
+        .copied()
+        .collect();
+    for expected in ledger::LEDGER {
+        assert!(
+            ids.contains(expected.scenario),
+            "ledger names unknown scenario {}",
+            expected.scenario
+        );
+        assert!(
+            aspects.contains(expected.aspect),
+            "ledger names unknown aspect {}",
+            expected.aspect
+        );
+    }
+}
 
 #[test]
 fn identical_cli_built_repos_capture_equal() {
