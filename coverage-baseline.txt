@@ -9,6 +9,7 @@ epsilon_pct = 0.10
 new_file_floor_pct = 80.00
 exclude_prefix = crates/xtask/
 exclude_prefix = crates/test-helpers/
+exclude_prefix = crates/zanshin-parity/
 #
 # path = pct
 crates/zanshin-ffi/src/bookmark_ops.rs = 100.00

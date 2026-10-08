@@ -1,0 +1,36 @@
+[package]
+name = "zanshin-parity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
+
+# The stock jj CLI at the jj-lib pin — the parity oracle's CLI side (Story 9.47).
+[[bin]]
+name = "jj"
+path = "src/main.rs"
+
+[dependencies]
+# WHY: jj-cli builds the stock `jj` the oracle (tests/oracle/) runs as a subprocess against
+# `zanshin-jj`, so the tests compare against exactly the pinned CLI — no installed `jj`, no
+# fork. zanshin-parity is a test-only tool crate: never shipped (not in `default-members`,
+# `publish = false`), coverage `exclude_prefix`, and — like `xtask` and `test-helpers` — exempt
+# from the FR-JJ-16 "only zanshin-jj imports jj_lib" ACL (project-context.md § zanshin-jj).
+jj-cli = { workspace = true }
+
+[dev-dependencies]
+# WHY: the oracle reads both repos' state through jj-lib directly (ids → labels), drives
+# Zanshin through its public `zanshin-jj` API, and pins the hermetic test env via test-helpers.
+jj-lib = { workspace = true }
+pollster = { workspace = true }
+tempfile = { workspace = true }
+test-helpers = { path = "../test-helpers", version = "0.1.0" }
+zanshin-jj = { workspace = true }
+
+[lints]
+workspace = true

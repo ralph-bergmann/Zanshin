@@ -11,6 +11,7 @@ This directory contains all five Rust crates that make up the Zanshin backend.
 | `zanshin-ffi` | cdylib | FFI boundary exposed to Dart via `libzanshin_ffi.dylib` (Epic 3) |
 | `zanshin-mcp` | bin | MCP server binary (Epic 7) |
 | `xtask` | bin | Build helper tasks invoked via `cargo xtask` (Story 1.4+) |
+| `zanshin-parity` | bin (test-only) | The stock `jj` at the `jj-lib` pin + the parity oracle tests (Story 9.47) |
 
 *(2026-10-01, Story 4.12: the `zanshin-graph` lane-assignment crate (Epic 4) was removed; the
 graph read is `zanshin-jj`'s `Repo::graph_topology` behind `zanshin-ffi`'s

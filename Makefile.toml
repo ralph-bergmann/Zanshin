@@ -247,11 +247,11 @@ set -euo pipefail
 manifests=$(git ls-files '*Cargo.toml' ':(exclude)spikes/')
 count=$(git ls-files '*Cargo.toml' ':(exclude)spikes/' | wc -l | tr -d '[:space:]')
 
-# Sanity: the workspace manifest set is fixed (root + six crates). A count
+# Sanity: the workspace manifest set is fixed (root + seven crates). A count
 # mismatch means a crate was added or removed without anyone revisiting this
 # gate — surface it rather than silently checking a different set.
-if [ "$count" -ne 7 ]; then
-    echo "test-cargo-hygiene: expected 7 tracked Cargo.toml files, found $count:" >&2
+if [ "$count" -ne 8 ]; then
+    echo "test-cargo-hygiene: expected 8 tracked Cargo.toml files, found $count:" >&2
     echo "$manifests" >&2
     exit 1
 fi
