@@ -6835,6 +6835,21 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Related:** 9.13 / 9.23 (the 0.46 workspace model), 2.12 / 2.13 conversions (`convert.rs`, which already detects linked worktrees).
 
+### Story 9.46: v0.44 → v0.46 parity audit of the already-ported verbs [M/R]
+*(Added 2026-10-08, console session, Ralph — from `deferred-work.md` "Surfaced 2026-10-08": the jj-lib 0.44 → 0.46 bump only covered what the compiler and the gate surfaced.)*
+
+**Motivation.** The CLI parity rule (project-context.md § zanshin-jj) holds against the PINNED tag, and the pin moved to v0.46.0. `git -C ../jj diff --stat v0.44.0 v0.46.0 -- cli/src` changes these sources behind verbs Zanshin already ships: `describe.rs` (+ `description_util.rs`), `log.rs`, `status.rs`, `show.rs`, `evolog.rs`, `interdiff.rs`, `restore.rs`, `absorb.rs`, `file/{show,list,annotate,search,track,untrack}.rs`, `bookmark/list.rs` and `bookmark/mod.rs` (shared by `bookmark create`/`delete`), `git/init.rs` (the source of `convert_colocated` / `convert_import`), `git/clone.rs`, `git/import.rs`, `git/remote/{add,list}.rs`, `operation/{log,show,diff}.rs` (behind `op_log`), `util/snapshot.rs` (behind `Repo::snapshot`), `config/{set,unset,edit,list}.rs`, and the shared `cli_util.rs` (+289 lines: start-up environment, `snapshot_impl`, `finish`, stale recovery — every verb) and `git_util.rs`. Unchanged at the CLI level: `abandon`, `new`, `edit`, `git fetch`, `git remote remove/rename/set-url`. Without an audit a CLI user and a Zanshin user can see different results from the same verb, and the hundreds of `@ v0.44.0` citations in the source no longer say which behavior is current.
+
+**Scope.**
+1. Per verb above, read the CLI diff between the tags (plus the shared helpers it calls) and classify every hunk: terminal UX only (no action), observable behavior Zanshin already matches, or a divergence.
+2. Port a divergence in this story when it is small and needs no public-API decision; otherwise record it as its own story (and in `sprint-status.yaml`). A public-API decision goes to Ralph.
+3. In every function the audit touches, re-point the `@ v0.44.0` citations to v0.46.0 lines; leave untouched code alone.
+4. Witnesses for every ported divergence; the audit result itself — per verb: "no change" / "ported (commit)" / "story X" — goes into this story's spec.
+
+**Already done at v0.46.0 (out of scope).** `undo` (9.39), `workspace list` / `workspace root` (2026-10-08), the `config` file targets of `config/mod.rs` (2026-10-08), the colocated-conversion worktree warning (2026-10-08), and what the bump itself ported (per-workspace Git HEAD, `git import` without the HEAD import, the non-colocated conversion's `import_head_commit`, colocation via `open_git_repo_at_workdir`, `ResolvedRevset::evaluate` for `at_operation()`, `untracked_remote_tags()` in `immutable_heads()`). The graph's `at_operation()` gap is 9.42; the no-change gate is 9.40.
+
+**Non-goals.** Verbs Zanshin has not ported yet — they read v0.46.0 when they are ported; new CLI verbs (9.43–9.45).
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
