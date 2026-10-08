@@ -60,6 +60,8 @@ pub fn jj(cwd: &Path, args: &[&str]) -> CliRun {
 pub enum Step {
     /// `jj <args>` in the repo root.
     Jj(&'static [&'static str]),
+    /// Writes a file (relative to the repo root) without snapshotting it.
+    Write(&'static str, &'static str),
 }
 
 /// A temp dir holding a repo at `<temp>/repo`, created by `jj <init>` and then `steps`.
@@ -79,6 +81,7 @@ pub fn fresh_repo(init: &[&str], steps: &[&[Step]]) -> (tempfile::TempDir, PathB
             Step::Jj(args) => {
                 jj(&root, args).ok();
             }
+            Step::Write(path, text) => std::fs::write(root.join(path), text).expect("write a fixture file"),
         }
     }
     (dir, root)

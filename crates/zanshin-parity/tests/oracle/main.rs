@@ -4,10 +4,57 @@
 //! (repo A) and through the stock jj CLI at the pin (repo B), compared by meaning.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::path::Path;
 
+mod compare;
 mod driver;
+mod scenarios;
+mod state;
+
+#[test]
+fn identical_cli_built_repos_capture_equal() {
+    test_helpers::pin_test_env();
+    let (_a, a) = driver::fresh_repo(&["git", "init"], &[scenarios::BASE]);
+    let (_b, b) = driver::fresh_repo(&["git", "init"], &[scenarios::BASE]);
+    let found = compare::compare(&state::capture(&a, None).aspects, &state::capture(&b, None).aspects);
+    assert!(
+        found.is_empty(),
+        "{:?}",
+        found.iter().map(|d| &d.aspect).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_description_difference_shows_in_descriptions_without_ids() {
+    test_helpers::pin_test_env();
+    let (_a, a) = driver::fresh_repo(&["git", "init"], &[scenarios::BASE]);
+    let (_b, b) = driver::fresh_repo(&["git", "init"], &[scenarios::BASE]);
+    let before_a = state::capture(&a, None);
+    let before_b = state::capture(&b, None);
+    driver::jj(&a, &["describe", "-m", "C one"]).ok();
+    driver::jj(&b, &["describe", "-m", "C two"]).ok();
+    let found = compare::compare(
+        &state::capture(&a, Some(&before_a)).aspects,
+        &state::capture(&b, Some(&before_b)).aspects,
+    );
+    // The label is the description's first line, so other aspects differ by label text too;
+    // what matters is that `descriptions` is among them and no aspect leaks a commit id.
+    assert!(found.iter().any(|d| d.aspect == "descriptions"));
+    let has_commit_id = |s: &str| s.split(|c: char| !c.is_ascii_hexdigit()).any(|t| t.len() == 40);
+    assert!(found
+        .iter()
+        .all(|d| !has_commit_id(&d.zanshin) && !has_commit_id(&d.cli)));
+}
+
+#[test]
+fn every_captured_aspect_is_listed() {
+    test_helpers::pin_test_env();
+    let (_a, a) = driver::fresh_repo(&["git", "init"], &[scenarios::BASE]);
+    let keys: BTreeSet<_> = state::capture(&a, None).aspects.into_keys().collect();
+    assert_eq!(keys, state::STATE_ASPECTS.iter().copied().collect());
+}
 
 #[test]
 fn pinned_jj_builds_a_repo_zanshin_opens() {
