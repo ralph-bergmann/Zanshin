@@ -141,7 +141,7 @@ pub fn test_settings() -> UserSettings {
     }
     let mut config = StackedConfig::with_defaults();
     config.add_layer(layer);
-    UserSettings::from_config(config).expect("valid settings")
+    UserSettings::from_config_and_home_dir(config, None).expect("valid settings")
 }
 
 /// Adds a visible commit off root to the jj workspace at `workspace_root` via an external
@@ -628,18 +628,18 @@ fn ref_target(targets: &[&str]) -> RefTarget {
 /// Panics on any jj-lib failure — a failure here is a broken fixture.
 #[must_use = "the handle keeps the second workspace alive; dropping it deletes the directory"]
 pub fn add_workspace(workspace_root: &Path, name: &str) -> (FixtureHandle, String) {
-    let (workspace, repo) = load(workspace_root);
+    // WHY canonicalize first: since jj 0.46 the workspace store records the NEW workspace's root
+    // RELATIVE to the LOADER's repo path and every read joins the record back onto the reading
+    // loader's — which is canonical for `Repo::open` (and the CLI, whose cwd is canonical).
+    // Loading through the RAW argument (on macOS a `/var/folders/…` temp path that is a symlink
+    // to `/private/var/folders/…`) records one `..` too few and nothing ever resolves. This is the
+    // stand-in for Story 9.23's production `workspace add`, which will hold a `Repo` whose
+    // workspace is canonical end to end and get the same alignment for free.
+    let workspace_root = std::fs::canonicalize(workspace_root).unwrap();
+    let (workspace, repo) = load(&workspace_root);
     let temp = TempDir::new().unwrap();
     let second_root = temp.path().join(name);
     std::fs::create_dir_all(&second_root).unwrap();
-    // WHY not `workspace_root.join(".jj").join("repo")`: `init_workspace_with_existing_repo` hands
-    // this path to the workspace store, which records the NEW workspace's root RELATIVE to it,
-    // while every read joins that record back onto the canonicalized `Workspace::repo_path()`.
-    // Re-deriving it from the RAW argument (on macOS a `/var/folders/…` temp path that is a
-    // symlink to `/private/var/folders/…`) records one `..` too few and nothing ever resolves.
-    // `Workspace::workspace_root()` is canonicalized by jj-lib, so both spellings agree. This is
-    // the stand-in for Story 9.23's production `workspace add`, which will hold a `Repo` whose
-    // workspace is canonical end to end and get the same alignment for free.
     let repo_path = workspace.workspace_root().join(".jj").join("repo");
     let (second, repo) = pollster::block_on(Workspace::init_workspace_with_existing_repo(
         &second_root,

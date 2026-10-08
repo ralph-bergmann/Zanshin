@@ -536,7 +536,7 @@ fn startup(
     let paths = ws.map(WorkspaceDirs::paths);
     let raw = config::load_raw(env, paths, fix_ups)?;
     let resolved = config::resolve_raw(env, paths, &raw, Some(command))?;
-    Ok(config::settings_from(resolved)?)
+    Ok(config::settings_from(env, resolved)?)
 }
 
 /// A TOML parse failure as [`ConfigCmdError::Parse`] (message + span). `toml_edit`'s error type

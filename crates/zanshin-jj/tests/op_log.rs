@@ -577,7 +577,8 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
         GitRefName::new("refs/heads/main"),
         RefTarget::normal(commit1_id.clone()),
     );
-    tx.repo_mut().set_git_head_target(RefTarget::normal(commit1_id));
+    tx.repo_mut()
+        .set_git_head_target(workspace.workspace_name(), RefTarget::normal(commit1_id));
     let repo_a = pollster::block_on(tx.commit("op A: git state at Commit 1")).expect("commit op A");
 
     let mut tx2 = repo_a.start_transaction();
@@ -585,7 +586,8 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
         GitRefName::new("refs/heads/main"),
         RefTarget::normal(commit3_id.clone()),
     );
-    tx2.repo_mut().set_git_head_target(RefTarget::normal(commit3_id));
+    tx2.repo_mut()
+        .set_git_head_target(workspace.workspace_name(), RefTarget::normal(commit3_id));
     pollster::block_on(tx2.commit("op B: git state moved to Commit 3")).expect("commit op B");
 
     // undo() through the crate's public API: head (op B) -> its single parent (op A).
@@ -598,12 +600,17 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     //
     // WHY: read the `View` directly. jj 0.44 removed the `git_head()`/`git_refs()` REVSET
     // functions, but the view fields they exposed — and which `undo()` copies from `current`
-    // — are unchanged, so this asserts the same property one level closer to the code.
+    // — are unchanged, so this asserts the same property one level closer to the code. Since
+    // jj 0.45 the git head is kept per workspace (`View::git_heads`).
     let (oracle, _settings) = oracle_workspace(&fx.path);
     let view_repo = pollster::block_on(oracle.repo_loader().load_at_head()).expect("oracle load_at_head");
     let view = view_repo.view();
 
-    let head: Vec<String> = view.git_head().added_ids().map(ObjectId::hex).collect();
+    let head: Vec<String> = view
+        .git_head(oracle.workspace_name())
+        .present_adds()
+        .map(ObjectId::hex)
+        .collect();
     assert_eq!(
         head,
         vec![layout.commit3_commit_hex.clone()],
@@ -613,7 +620,7 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     let refs: Vec<String> = view
         .git_refs()
         .values()
-        .flat_map(RefTarget::added_ids)
+        .flat_map(RefTarget::present_adds)
         .map(ObjectId::hex)
         .collect();
     assert!(

@@ -1030,8 +1030,8 @@ fn trunk_alias_resolves_a_main_bookmark_on_origin_and_ignores_other_remotes() {
     );
 }
 
-/// `builtin_immutable_heads()` = `trunk() | tags() | untracked_remote_bookmarks()`
-/// degenerates to `root()` on both fixtures, so every other `immutable == true` assertion is
+/// `builtin_immutable_heads()` = `trunk() | tags() | untracked_remote_bookmarks() |
+/// untracked_remote_tags()` degenerates to `root()` on both fixtures, so every other `immutable == true` assertion is
 /// on the root commit and would survive dropping `.ancestors()` — or `immutable_heads()`
 /// itself. A tag makes the set non-degenerate and pins the ancestry semantics Story 4.9's
 /// config layer must preserve.

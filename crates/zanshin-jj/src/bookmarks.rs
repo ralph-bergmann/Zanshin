@@ -88,7 +88,7 @@ pub(crate) fn list_bookmarks(workspace: &Workspace) -> Result<Vec<Bookmark>, Boo
     for (name, target) in view.local_bookmarks() {
         // added_ids().next() handles normal AND conflicted targets uniformly
         // (a normal target is a one-add merge; no dead else-branch).
-        if let Some(commit_id) = target.added_ids().next() {
+        if let Some(commit_id) = target.present_adds().next() {
             out.push(Bookmark {
                 name: name.as_str().to_owned(),
                 target: to_change(commit_id)?,
@@ -102,7 +102,7 @@ pub(crate) fn list_bookmarks(workspace: &Workspace) -> Result<Vec<Bookmark>, Boo
         if !remote_ref.is_present() || !remote_ref.is_tracked() {
             continue;
         }
-        if let Some(commit_id) = remote_ref.target.added_ids().next() {
+        if let Some(commit_id) = remote_ref.target.present_adds().next() {
             out.push(Bookmark {
                 name: symbol.name.as_str().to_owned(),
                 target: to_change(commit_id)?,

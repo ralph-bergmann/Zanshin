@@ -8,6 +8,7 @@ use jj_lib::backend::CommitId;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
@@ -50,14 +51,37 @@ fn pin_env() -> &'static Path {
     &ENV_GUARD
 }
 
-/// The commit ids the workspace's imported Git `HEAD` points at — the view's `git_head`.
+/// The commit ids the workspace's imported Git `HEAD` points at — the view's git head for the
+/// workspace (kept per workspace since jj 0.45, and only for a COLOCATED one).
 ///
 /// WHY: jj 0.44 removed the `git_head()` REVSET function (upstream deprecated it, suggesting
-/// `first_parent(@)` as a colocated-repo approximation). The underlying `View::git_head` is
-/// unchanged and `convert.rs` still writes it, so reading the view asserts exactly the property
-/// these tests were written for — and does so more tightly than `first_parent(@)` would: the
-/// latter is also satisfied by `check_out` alone, so it could not catch a dropped `import_head`.
+/// `first_parent(@)` as a colocated-repo approximation). Reading the view asserts exactly the
+/// property these tests were written for — and does so more tightly than `first_parent(@)`
+/// would: the latter is also satisfied by `check_out` alone, so it could not catch a dropped
+/// `import_head`.
 fn git_head_ids(workspace_root: &std::path::Path) -> Vec<CommitId> {
+    let (workspace, repo) = oracle_repo(workspace_root);
+    repo.view()
+        .git_head(workspace.workspace_name())
+        .present_adds()
+        .cloned()
+        .collect()
+}
+
+/// The parents of the workspace's `@` — where a NON-colocated conversion checks the imported
+/// Git `HEAD` out. Since jj 0.45 that path records no git head in the view (`import_head_commit`,
+/// as `jj git init` does), so the checkout is what witnesses the head import.
+fn wc_parent_ids(workspace_root: &std::path::Path) -> Vec<CommitId> {
+    let (workspace, repo) = oracle_repo(workspace_root);
+    let wc_id = repo
+        .view()
+        .get_wc_commit_id(workspace.workspace_name())
+        .expect("the workspace has an @");
+    repo.store().get_commit(wc_id).expect("load @").parent_ids().to_vec()
+}
+
+/// Loads the workspace at `workspace_root` with a fixed identity, at its head operation.
+fn oracle_repo(workspace_root: &std::path::Path) -> (Workspace, std::sync::Arc<jj_lib::repo::ReadonlyRepo>) {
     let mut config = StackedConfig::with_defaults();
     config.add_layer(
         ConfigLayer::parse(
@@ -73,7 +97,7 @@ fn git_head_ids(workspace_root: &std::path::Path) -> Vec<CommitId> {
         )
         .expect("valid config literal"),
     );
-    let settings = UserSettings::from_config(config).expect("valid settings");
+    let settings = UserSettings::from_config_and_home_dir(config, None).expect("valid settings");
     let workspace = Workspace::load(
         &settings,
         workspace_root,
@@ -82,7 +106,7 @@ fn git_head_ids(workspace_root: &std::path::Path) -> Vec<CommitId> {
     )
     .expect("oracle workspace load");
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
-    repo.view().git_head().added_ids().cloned().collect()
+    (workspace, repo)
 }
 
 /// Run a git command in `dir`; panics on non-zero exit.
@@ -428,10 +452,21 @@ fn convert_import_git_repo_with_commit_returns_jj_native() {
         "working copy must be materialised with HEAD's tree"
     );
 
-    // Repo::open succeeds and the imported HEAD is recorded in git_head.
+    // Repo::open succeeds and `@` sits on the imported HEAD commit. Since jj 0.45 the
+    // non-colocated path records no git head (the CLI's `jj git init` uses `import_head_commit`).
     zanshin_jj::Repo::open(&dst).expect("Repo::open");
-    let head = git_head_ids(&dst);
-    assert_eq!(head.len(), 1, "imported HEAD commit must be reachable via git_head");
+    assert_eq!(
+        git_head_ids(&dst),
+        Vec::<CommitId>::new(),
+        "a non-colocated workspace tracks no git head"
+    );
+    let src_head = git_stdout(&["rev-parse", "HEAD"], src.path());
+    let parents: Vec<String> = wc_parent_ids(&dst).iter().map(CommitId::hex).collect();
+    assert_eq!(
+        parents,
+        vec![src_head],
+        "`@` must be checked out onto the source's HEAD commit"
+    );
 }
 
 // ── Test 2: source refs/HEAD unchanged after import ──────────────────────────
@@ -600,9 +635,14 @@ fn convert_import_unborn_branch_source_succeeds() {
         RepoKind::Jj,
         "must detect as Jj even with unborn branch source"
     );
-    // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1).
+    // Empty history: an unborn source imports no HEAD commit (symmetric to Test 1) — `@`
+    // stays on the root commit.
     let mut repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
-    assert_eq!(git_head_ids(&dst).len(), 0, "unborn source must import no HEAD commit");
+    assert_eq!(
+        zanshin_jj::resolve_revset(&repo, "@-").expect("resolve @-"),
+        zanshin_jj::resolve_revset(&repo, "root()").expect("resolve root()"),
+        "unborn source must import no HEAD commit"
+    );
     // The NON-colocated head transaction carries its own `has_changes()` guard, separate
     // from the ones inside `init_git_refs` / `import_git_head` — and this is the only
     // `convert_import` row with an empty source. Without this assertion, dropping that guard
@@ -635,10 +675,10 @@ fn convert_import_bare_unborn_source_succeeds() {
         RepoKind::Jj,
         "must detect as Jj for bare unborn source"
     );
-    zanshin_jj::Repo::open(&dst).expect("Repo::open");
+    let repo = zanshin_jj::Repo::open(&dst).expect("Repo::open");
     assert_eq!(
-        git_head_ids(&dst).len(),
-        0,
+        zanshin_jj::resolve_revset(&repo, "@-").expect("resolve @-"),
+        zanshin_jj::resolve_revset(&repo, "root()").expect("resolve root()"),
         "bare unborn source must import no HEAD commit"
     );
 }
@@ -1087,9 +1127,9 @@ fn undo_after_convert_import_reverts_only_the_head_import() {
     let dst = dst_parent.path().join("workspace");
 
     let mut repo = convert_import(src.path(), &dst).result.expect("convert_import");
-    let head_ids = git_head_ids(&dst);
+    let head_ids = wc_parent_ids(&dst);
     let [head] = head_ids.as_slice() else {
-        panic!("expected exactly one imported git_head commit; got: {head_ids:?}");
+        panic!("expected `@` on exactly one imported HEAD commit; got: {head_ids:?}");
     };
     let descendants = format!("descendants({0}) ~ {0}", head.hex());
     assert_eq!(

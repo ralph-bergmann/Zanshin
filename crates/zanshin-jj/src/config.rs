@@ -116,7 +116,9 @@
 //!
 //! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
 //! and `jj_lib::config::migrate` — the CLI's `default_config_migrations()`
-//! (`cli/src/config.rs:879-881` @ v0.44.0) is `vec![]`, so there is no rule to port. Re-check it
+//! (`cli/src/config.rs:972-1052` @ v0.46.0) holds one rule, `fix.tools.<name>.line-range-arg` →
+//! `line-range-args` (to be removed in jj 0.51), which only rewrites `fix.tools` — a table no
+//! Zanshin verb reads — so it is not ported yet; whoever ports a `fix` verb ports it. Re-check it
 //! at every pin bump, together with `maybe_migrate_legacy_config`'s TODO (jj 0.49 is to stop
 //! migrating the legacy files automatically and only warn). `resolve` runs with `command: None`
 //! (a state the CLI itself produces before a subcommand is known) for every verb except the
@@ -149,7 +151,7 @@ use crate::Repo;
 /// user's `[revset-aliases]` or `[revsets]` entry overrides.
 ///
 /// The `[revsets] log` / `log-graph-prioritize` values and the whole `[revset-aliases]`
-/// table are verbatim from `cli/src/config/revsets.toml` at v0.44.0;
+/// table are verbatim from `cli/src/config/revsets.toml` at v0.46.0;
 /// `ui.log-synthetic-elided-nodes` is verbatim from `cli/src/config/misc.toml:44` and
 /// `ui.conflict-marker-style` from `cli/src/config/misc.toml:45` (Story 9.4 — the style
 /// `file show` materializes a conflicted file with); `snapshot.max-new-file-size` and
@@ -166,8 +168,8 @@ use crate::Repo;
 /// one insertion path over layered config; a hardcoded array plus a config pass would get
 /// the arity semantics wrong.
 ///
-/// The CLI's other `[revsets]` keys (`arrange`, `fix`, `sign`, `op-diff-changes-in`,
-/// `simplify-parents`, `bookmark-advance-*`) are deliberately NOT copied — no Zanshin verb
+/// The CLI's other `[revsets]` keys (`arrange`, `converge`, `fix`, `git-push`, `run`, `sign`,
+/// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are deliberately NOT copied — no Zanshin verb
 /// consumes them, and an unread default is a lie about what we honour.
 const BUILTIN_CONFIG_TOML: &str = r#"
 [revsets]
@@ -199,7 +201,9 @@ latest(
 
 # If immutable_heads() failed to evaluate, many jj commands wouldn't work. Use
 # present(expr) if symbols in expr might not always exist.
-'builtin_immutable_heads()' = 'trunk() | tags() | untracked_remote_bookmarks()'
+'builtin_immutable_heads()' = '''
+trunk() | tags() | untracked_remote_bookmarks() | untracked_remote_tags()
+'''
 'immutable_heads()' = 'builtin_immutable_heads()'
 'immutable()' = '::(immutable_heads() | root())'
 'mutable()' = '~immutable()'
@@ -936,11 +940,13 @@ pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
 
 /// Turns a resolved stack into the `UserSettings` jj-lib signs commits and operations with.
 ///
-/// `UserSettings::from_config` reads `user.*`, `operation.*`, `debug.*` and `signing.*`
-/// eagerly, so a wrong-typed value there refuses HERE — naming the key — exactly where the
-/// CLI fails at start-up.
-pub(crate) fn settings_from(config: StackedConfig) -> Result<UserSettings, ConfigError> {
-    UserSettings::from_config(config).map_err(|e| value_error(&e))
+/// `UserSettings::from_config_and_home_dir` reads `user.*`, `operation.*`, `debug.*` and
+/// `signing.*` eagerly, so a wrong-typed value there refuses HERE — naming the key — exactly
+/// where the CLI fails at start-up. `env`'s canonicalized `$HOME` is what jj-lib expands a
+/// `~/` config path against — the CLI passes its `ConfigEnv::home_dir()`
+/// (`cli/src/cli_util.rs:4747-4750` @ v0.46.0).
+pub(crate) fn settings_from(env: &ConfigEnv, config: StackedConfig) -> Result<UserSettings, ConfigError> {
+    UserSettings::from_config_and_home_dir(config, env.home_dir.clone()).map_err(|e| value_error(&e))
 }
 
 /// The `UserSettings` an EXISTING workspace is opened with: its full effective stack.
@@ -958,7 +964,8 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
         repo_path: loader.repo_path(),
         workspace_root: loader.workspace_root(),
     };
-    settings_from(load_with(&ConfigEnv::from_env(), Some(paths))?)
+    let env = ConfigEnv::from_env();
+    settings_from(&env, load_with(&env, Some(paths))?)
 }
 
 /// The CLI's start-up config check, run FIRST by every creation path (`init`, `clone`,
@@ -973,7 +980,8 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
 ///
 /// - [`ConfigError::Load`] — as [`user_settings_for`].
 pub(crate) fn check_startup_stack() -> Result<(), ConfigError> {
-    settings_from(load_with(&ConfigEnv::from_env(), None)?).map(drop)
+    let env = ConfigEnv::from_env();
+    settings_from(&env, load_with(&env, None)?).map(drop)
 }
 
 /// The `UserSettings` the workspace at `workspace_root` is CREATED with (`init`, `clone`,
@@ -994,7 +1002,8 @@ pub(crate) fn user_settings_for_new_workspace(workspace_root: &Path) -> Result<U
         repo_path: &workspace_root.join(".jj").join("repo"),
         workspace_root,
     };
-    settings_from(load_with(&ConfigEnv::from_env(), Some(paths))?)
+    let env = ConfigEnv::from_env();
+    settings_from(&env, load_with(&env, Some(paths))?)
 }
 
 /// The first `ConfigGetError` down `err`'s `source()` chain, as a [`ConfigError`].
@@ -2313,10 +2322,10 @@ mod tests {
     fn a_wrong_typed_identity_refuses_the_settings_naming_the_key() {
         let mut config = StackedConfig::with_defaults();
         config.add_layer(ConfigLayer::parse(ConfigSource::User, "[user]\nname = 1\n").unwrap());
-        let err = settings_from(config).expect_err("a non-string user.name must refuse");
+        let err = settings_from(&bare_env(), config).expect_err("a non-string user.name must refuse");
         assert!(err.to_string().contains("user.name"), "got: {err}");
 
-        let settings = settings_from(StackedConfig::with_defaults()).expect("jj-lib defaults are valid");
+        let settings = settings_from(&bare_env(), StackedConfig::with_defaults()).expect("jj-lib defaults are valid");
         assert_eq!(
             settings.user_name(),
             "",

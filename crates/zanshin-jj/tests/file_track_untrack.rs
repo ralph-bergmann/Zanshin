@@ -992,7 +992,7 @@ fn a_workspace_without_at_is_refused() {
     {
         let (workspace, repo) = load(&fx.root);
         let mut tx = repo.start_transaction();
-        pollster::block_on(tx.repo_mut().remove_wc_commit(workspace.workspace_name())).expect("remove @");
+        pollster::block_on(tx.repo_mut().remove_workspace(workspace.workspace_name())).expect("remove @");
         pollster::block_on(tx.repo_mut().rebase_descendants()).expect("rebase");
         pollster::block_on(tx.commit("test: remove working-copy commit")).expect("commit");
     }

@@ -123,7 +123,7 @@ fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = repo.start_transaction();
-    pollster::block_on(tx.repo_mut().remove_wc_commit(&workspace_name))?;
+    pollster::block_on(tx.repo_mut().remove_workspace(&workspace_name))?;
     // remove_wc_commit rewrites the abandoned @; jj requires descendants rebased
     // before the transaction can commit (same discipline as repo.rs clone_into).
     pollster::block_on(tx.repo_mut().rebase_descendants())?;

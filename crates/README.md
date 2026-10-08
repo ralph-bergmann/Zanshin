@@ -65,6 +65,6 @@ The same constraint applies to `[lib] name = "..."` and any cdylib artefact name
 
 ## Rust Toolchain
 
-Rust is pinned to `1.95.0` via the workspace-root `rust-toolchain.toml`. `rustup`
+Rust is pinned to `1.97.1` via the workspace-root `rust-toolchain.toml`. `rustup`
 auto-applies it on every `cargo` invocation from anywhere in the repo. See the root
 `README.md` § Toolchain for install + bump policy.

@@ -10,11 +10,12 @@ use jj_lib::config::{ConfigSource, StackedConfig};
 use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::repo::Repo as _;
-use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
-    self, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression, RevsetExtensions,
-    RevsetParseContext, RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
+    self, ResolvedRevset, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
+    RevsetExtensions, RevsetParseContext, RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver,
+    UserRevsetExpression,
 };
+use jj_lib::ui_path::RepoPathUiConverter;
 use jj_lib::workspace::Workspace;
 
 use crate::change::change_from_commit;
@@ -397,6 +398,20 @@ pub(crate) fn resolve_expression(
     repo_dyn: &dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Arc<ResolvedRevsetExpression>, RevsetError> {
+    // WHY drop the other repos: the CLI's `RevsetExpressionEvaluator::resolve`
+    // (`cli/src/revset_util.rs:118-121` @ v0.46.0) does the same — only `evaluate` needs the
+    // index `at_operation()` merges in.
+    let (expression, _other_repos) = resolve_for_evaluation(repo_dyn, expr)?.into_inner();
+    Ok(expression)
+}
+
+/// [`resolve_expression`] keeping what jj-lib needs to EVALUATE the result: the repos an
+/// `at_operation()` brings into context, whose commits a non-ancestor operation may not have
+/// in `repo_dyn`'s index.
+fn resolve_for_evaluation<'r>(
+    repo_dyn: &'r dyn jj_lib::repo::Repo,
+    expr: &Arc<UserRevsetExpression>,
+) -> Result<ResolvedRevset<'r>, RevsetError> {
     let extensions = RevsetExtensions::default();
     let symbol_resolver = SymbolResolver::new(repo_dyn, extensions.symbol_resolvers());
     expr.resolve_user_expression(repo_dyn, &symbol_resolver)
@@ -415,8 +430,11 @@ pub(crate) fn evaluate_revset<'r>(
     repo_dyn: &'r dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Box<dyn Revset + 'r>, RevsetError> {
-    resolve_expression(repo_dyn, expr)?
-        .evaluate(repo_dyn)
+    // `ResolvedRevset::evaluate`, as the CLI's `RevsetExpressionEvaluator::evaluate`
+    // (`cli/src/revset_util.rs:134-139` @ v0.46.0): it evaluates against an index merged with
+    // the repos an `at_operation()` brought in.
+    resolve_for_evaluation(repo_dyn, expr)?
+        .evaluate()
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
 

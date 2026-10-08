@@ -166,7 +166,7 @@ pub(crate) fn commit_contents(
         .map(|id| parse_commit_id(&id.0, id_hex_len))
         .collect::<Result<Vec<_>, _>>()?;
     for (id, requested) in ids.iter().zip(commit_ids) {
-        if !repo.index().has_id(id).map_err(be)? {
+        if !pollster::block_on(repo.index().has_id(id)).map_err(be)? {
             return Err(CommitContentError::CommitNotFound(requested.0.clone()));
         }
     }

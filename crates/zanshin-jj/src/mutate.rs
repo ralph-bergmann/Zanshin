@@ -22,6 +22,7 @@
 //! locked-working-copy lifecycle — [`lock_working_copy`] and [`commit_with_locked_wc`] (Story
 //! 9.22) — is the raw-transaction shape `file track`/`file untrack` use instead.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use jj_lib::absorb::{absorb_hunks, split_hunks_to_trees, AbsorbSource};
@@ -499,20 +500,23 @@ pub(crate) struct Finish {
     pub(crate) facts: FinishFacts,
 }
 
-/// Resets Git HEAD to `wc_commit`'s parent and the index to its tree — the CLI's
-/// `try_reset_git_head` (`cli/src/cli_util.rs:2673-2695` @ v0.44.0). A failure to MOVE the HEAD
-/// ref (a concurrent `git checkout`) is a warning there, so it is a `jj.git_head_update_failed`
-/// warning here (Story 9.32); the next snapshot imports whatever HEAD actually is.
+/// Resets `workspace_name`'s Git HEAD (in the git worktree at `workspace_root`) to `wc_commit`'s
+/// parent and the index to its tree — the CLI's `try_reset_git_head`
+/// (`cli/src/cli_util.rs:2730-2754` @ v0.46.0). A failure to MOVE the HEAD ref (a concurrent
+/// `git checkout`) is a warning there, so it is a `jj.git_head_update_failed` warning here
+/// (Story 9.32); the next snapshot imports whatever HEAD actually is.
 ///
 /// # Errors
 ///
 /// - [`MutateError::Backend`] — any other reset failure.
 pub(crate) fn try_reset_git_head(
     mut_repo: &mut MutableRepo,
+    workspace_name: &WorkspaceName,
+    workspace_root: &Path,
     wc_commit: &Commit,
     sink: &mut Warnings,
 ) -> Result<(), MutateError> {
-    match pollster::block_on(git::reset_head(mut_repo, wc_commit)) {
+    match pollster::block_on(git::reset_head(mut_repo, workspace_name, workspace_root, wc_commit)) {
         Ok(()) => Ok(()),
         Err(e @ git::GitResetHeadError::UpdateHeadRef(_)) => {
             sink.extend([warning::git_head_update_failed(&e)]);
@@ -627,7 +631,8 @@ pub(crate) fn finish_transaction(
 
     if ctx.colocated {
         if let Some(wc_commit) = &maybe_new_wc_commit {
-            try_reset_git_head(tx.repo_mut(), wc_commit, sink)?;
+            let workspace_root = workspace.workspace_root();
+            try_reset_git_head(tx.repo_mut(), &workspace_name, workspace_root, wc_commit, sink)?;
         }
         export_refs_into(tx.repo_mut(), &mut facts, sink)?;
     }

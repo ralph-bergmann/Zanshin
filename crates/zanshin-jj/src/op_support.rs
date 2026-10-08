@@ -502,8 +502,7 @@ pub(crate) fn resolve_commit(repo: &dyn jj_lib::repo::Repo, id: &crate::ChangeId
         return Err(ResolveError::NotFound);
     }
     let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0).ok_or(ResolveError::NotFound)?;
-    let targets = repo
-        .resolve_change_id(&jj_id)
+    let targets = pollster::block_on(repo.resolve_change_id(&jj_id))
         .map_err(|e| ResolveError::Backend(e.to_string()))?
         .ok_or(ResolveError::NotFound)?;
     let visible = targets.into_visible().ok_or(ResolveError::NotFound)?;
@@ -574,9 +573,7 @@ pub(crate) fn resolve_commit_id_prefix(
         return Err(CommitPrefixError::Malformed);
     }
     let prefix = jj_lib::object_id::HexPrefix::try_from_hex(&id.0).ok_or(CommitPrefixError::Malformed)?;
-    let resolution = repo
-        .index()
-        .resolve_commit_id_prefix(&prefix)
+    let resolution = pollster::block_on(repo.index().resolve_commit_id_prefix(&prefix))
         .map_err(|e| CommitPrefixError::Backend(e.to_string()))?;
     match resolution {
         jj_lib::object_id::PrefixResolution::SingleMatch(commit_id) => repo

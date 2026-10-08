@@ -90,13 +90,12 @@ fn corrupt_workspace_store(workspace_root: &Path) {
     fs::write(store_dir(workspace_root).join("index"), b"not a protobuf at all").expect("index must be writable");
 }
 
-/// Makes `SimpleWorkspaceStore::load` ITSELF fail, rather than a later read.
+/// Makes loading the workspace store ITSELF fail, rather than a later read.
 ///
-/// `load` never reads the index — it only creates the directory when absent — so a corrupt index
-/// exercises `get_workspace_path`, not `load`. A DANGLING SYMLINK in the store's place is the one
-/// deterministic way to fail `load` without touching permissions: `Path::exists()` follows the
-/// link and reports `false`, so jj-lib takes its create-the-dir branch, and `fs::create_dir` then
-/// returns `EEXIST` because the symlink occupies the name.
+/// Loading never reads the index — it only creates what is absent — so a corrupt index exercises
+/// `get_workspace_path`, not the load. A DANGLING SYMLINK in the store's place is the one
+/// deterministic way to fail the load without touching permissions: nothing can be created
+/// through it. Since jj 0.46 that load is part of opening the repo.
 fn dangle_workspace_store(workspace_root: &Path) {
     let dir = store_dir(workspace_root);
     fs::remove_dir_all(&dir).expect("the fixture has a workspace store");
@@ -226,26 +225,6 @@ fn list_with_an_unreadable_store_still_returns_the_rows() {
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].root, None, "a path failure NEVER fails the listing");
-    assert_eq!(entry_pairs(&entries), wc_pairs(&fx.path));
-}
-
-/// A store that cannot even be LOADED is still just a path failure for `list`.
-///
-/// A separate case from the corrupt-index one above: `SimpleWorkspaceStore::load` never reads the
-/// index, so only a dangling symlink reaches `list_workspaces`'s
-/// `SimpleWorkspaceStore::load(..).ok()` degradation at all. Line coverage cannot see the
-/// difference — the `.ok()` executes either way — so without this the branch ships unpinned.
-#[test]
-fn list_with_an_unloadable_store_still_returns_the_rows() {
-    pin_env();
-    let fx = extract_fixture("tiny-3-commits").unwrap();
-    dangle_workspace_store(&fx.path);
-    let mut repo = Repo::open(&fx.path).unwrap();
-
-    let entries = repo.list_workspaces().unwrap();
-
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].root, None, "a failed store LOAD never fails the listing");
     assert_eq!(entry_pairs(&entries), wc_pairs(&fx.path));
 }
 
@@ -446,15 +425,52 @@ fn root_with_an_unreadable_store_is_a_backend_error() {
     );
 }
 
+/// A store that cannot be LOADED refuses the OPEN itself: since jj 0.46 jj-lib loads the
+/// workspace store with the repo (`RepoLoader::workspace_store`), exactly as the CLI's start-up
+/// does, so neither verb is ever reached — there is no store load of its own left in them.
+#[test]
+fn an_unloadable_store_refuses_the_open() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    dangle_workspace_store(&fx.path);
+
+    let result = Repo::open(&fx.path);
+    assert!(
+        result.is_err(),
+        "a store that cannot be loaded must refuse the open, got: {:?}",
+        result.map(|_| ())
+    );
+}
+
+/// A store that cannot be LOADED any more under an open handle is still just a path failure for
+/// `list`: the per-call load (the CLI's per-command one) fails, and every row degrades. Line
+/// coverage cannot tell this from the corrupt-index case — the `.ok()` executes either way — so
+/// without this the branch ships unpinned.
+#[test]
+fn list_with_an_unloadable_store_still_returns_the_rows() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    // Read BEFORE the store breaks: the oracle opens the workspace itself, and that open now
+    // loads the store too.
+    let expected = wc_pairs(&fx.path);
+    dangle_workspace_store(&fx.path);
+
+    let entries = repo.list_workspaces().unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].root, None, "a failed store LOAD never fails the listing");
+    assert_eq!(entry_pairs(&entries), expected);
+}
+
 /// A store that cannot be LOADED is the FIRST stage of the named path, and it maps to `Backend`
-/// — the same code as an unreadable index, but reached through a different jj-lib call. Only a
-/// dangling symlink exercises `resolve_root`'s own `SimpleWorkspaceStore::load(..).map_err(be)`.
+/// — the same code as an unreadable index, but reached through a different jj-lib call.
 #[test]
 fn root_with_an_unloadable_store_is_a_backend_error() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    dangle_workspace_store(&fx.path);
     let repo = Repo::open(&fx.path).unwrap();
+    dangle_workspace_store(&fx.path);
 
     let result = repo.resolve_workspace_root(Some("default"));
     assert!(
@@ -463,6 +479,23 @@ fn root_with_an_unloadable_store_is_a_backend_error() {
     );
     // The loader-only path never touches the store, so it is unaffected.
     assert!(repo.resolve_workspace_root(None).is_ok());
+}
+
+/// A store DELETED under an open handle is recreated EMPTY by the next call's load — exactly as
+/// by the next CLI command, which loads the store at start-up — so the named path refuses with
+/// `NoRecordedPath`, never with a read error of a store the handle captured when it was opened.
+#[test]
+fn a_store_wiped_under_an_open_handle_is_recreated_like_the_next_cli_command() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let repo = Repo::open(&fx.path).unwrap();
+    remove_workspace_store(&fx.path);
+
+    match repo.resolve_workspace_root(Some("default")) {
+        Err(WorkspaceError::NoRecordedPath { name }) => assert_eq!(name, "default"),
+        other => panic!("a wiped store must read as NoRecordedPath, got: {other:?}"),
+    }
+    assert!(store_dir(&fx.path).is_dir(), "the load recreated the store");
 }
 
 /// The membership check runs against the head view, so a repo whose head cannot be resolved

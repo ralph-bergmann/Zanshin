@@ -29,19 +29,21 @@
 //! (`commit_templater.rs:1781-1783`) says list templates must keep rendering and points at
 //! `jj workspace root --name` for strict path diagnostics.
 //!
-//! Two traps the implementation respects. `SimpleWorkspaceStore::load` is **not** a pure read:
-//! on a repo with no `workspace_store/` directory it CREATES one and writes an empty store
-//! (`jj-lib workspace_store.rs:117-125`, for repos predating jj 0.38.0). That is jj-lib's own
-//! behavior, the CLI triggers it too, and it writes NO operation. And the stored path is relative
-//! to `.jj/repo` (`workspace_store.rs:176-181`), not to the workspace root, so the join base is
-//! [`Workspace::repo_path`] and the joined path keeps `../..` segments only `canonicalize`
-//! resolves.
+//! Two facts the implementation relies on. The store is loaded afresh per call through jj-lib's
+//! own factory, as every CLI command loads it at start-up — and that load is **not** a pure read:
+//! a missing `workspace_store/` directory, `type` file or index is CREATED, the index empty
+//! (`jj-lib repo.rs:543-564` / `simple_workspace_store.rs:91-100` @ 0.46.0, for repos predating
+//! jj 0.38.0) — jj-lib's own behavior, the CLI triggers it too, and it writes NO operation. And
+//! the store resolves the `.jj/repo`-relative stored path itself (`simple_workspace_store.rs:
+//! 224-239`): what it returns is absolute and LEXICALLY normalized, so only `canonicalize` proves
+//! it exists.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use jj_lib::default_backend_factories::default_backend_factories;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::workspace::Workspace;
-use jj_lib::workspace_store::{SimpleWorkspaceStore, WorkspaceStore as _};
+use jj_lib::workspace_store::WorkspaceStore;
 
 use crate::CommitId;
 
@@ -124,26 +126,36 @@ fn from_view(e: crate::ViewError) -> WorkspaceError {
 
 /// Resolves one workspace's RECORDED path to an absolute directory — the stage both verbs share.
 ///
-/// The stored path is relative to `.jj/repo`, so `repo_path` is the join base; the join keeps
-/// `../..` segments that only `canonicalize` resolves. The three failure stages are kept apart
-/// here so [`resolve_root`] can report them apart; [`list_workspaces`] discards the distinction
-/// with `.ok()`, which is precisely the CLI's own asymmetry.
-fn resolve_recorded_root(
-    store: &SimpleWorkspaceStore,
-    repo_path: &Path,
-    name: &str,
-) -> Result<PathBuf, WorkspaceError> {
+/// Since jj 0.46 the store itself turns the stored `.jj/repo`-relative path into an absolute,
+/// lexically normalized one; `canonicalize` then resolves symlinks and proves it exists. The
+/// three failure stages are kept apart here so [`resolve_root`] can report them apart;
+/// [`list_workspaces`] discards the distinction with `.ok()`, which is precisely the CLI's own
+/// asymmetry.
+fn resolve_recorded_root(store: &dyn WorkspaceStore, name: &str) -> Result<PathBuf, WorkspaceError> {
     // Names are UTF-8 by construction (`WorkspaceNameBuf` wraps a `String`), so the ref-cast is
     // total — only PATHS need lossy handling.
     let recorded = store
         .get_workspace_path(WorkspaceName::new(name))
         .map_err(be)?
         .ok_or_else(|| WorkspaceError::NoRecordedPath { name: name.to_owned() })?;
-    let joined = repo_path.join(recorded);
-    std::fs::canonicalize(&joined).map_err(|e| WorkspaceError::PathUnresolved {
+    std::fs::canonicalize(&recorded).map_err(|e| WorkspaceError::PathUnresolved {
         name: name.to_owned(),
         reason: e.to_string(),
     })
+}
+
+/// Loads the workspace store afresh, the way every CLI command's start-up does
+/// (`StoreFactories::load_workspace_store`, jj-lib `repo.rs:543-564` @ 0.46.0) — NOT the store
+/// this handle's loader captured when it was opened: a store directory deleted under an open
+/// handle is recreated EMPTY here, exactly as the next CLI command recreates it, instead of
+/// failing every read of the captured one.
+fn load_store(workspace: &Workspace) -> Result<Box<dyn WorkspaceStore>, WorkspaceError> {
+    default_backend_factories()
+        .load_workspace_store(
+            workspace.repo_loader().settings(),
+            &workspace.repo_path().join("workspace_store"),
+        )
+        .map_err(be)
 }
 
 /// Lists every workspace of this repo with its working-copy commit and root directory.
@@ -154,9 +166,9 @@ fn resolve_recorded_root(
 /// (lexicographic by workspace name).
 ///
 /// Every path-side failure — store load, store read, an absent entry, a `canonicalize` that fails
-/// — collapses to `root: None`, so a broken path can never fail the listing. That is
-/// `WorkspaceRef::root`'s contract (`cli/src/commit_templater.rs:1771-1789` @ v0.44.0): list
-/// templates must keep rendering, and [`resolve_root`] is where strict path diagnostics live.
+/// — collapses to `root: None`, so a broken path can never fail the listing. That is `WorkspaceRef::root`'s
+/// contract (`cli/src/commit_templater.rs:1771-1789` @ v0.44.0): list templates must keep
+/// rendering, and [`resolve_root`] is where strict path diagnostics live.
 ///
 /// # Errors
 ///
@@ -165,16 +177,15 @@ fn resolve_recorded_root(
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntry>, WorkspaceError> {
     let rows = crate::view::list_working_copies(workspace).map_err(from_view)?;
-    let repo_path = workspace.repo_path();
     // Loaded ONCE, looked up per row: `get_workspace_path` re-decodes the whole protobuf index
     // per call either way, and a failed load must not fail the listing.
-    let store = SimpleWorkspaceStore::load(repo_path).ok();
+    let store = load_store(workspace).ok();
     Ok(rows
         .into_iter()
         .map(|row| WorkspaceEntry {
             root: store
                 .as_ref()
-                .and_then(|s| resolve_recorded_root(s, repo_path, &row.workspace_name).ok()),
+                .and_then(|s| resolve_recorded_root(s.as_ref(), &row.workspace_name).ok()),
             name: row.workspace_name,
             wc_commit_id: row.commit_id,
         })
@@ -185,10 +196,10 @@ pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntr
 ///
 /// With `name` absent this reads the loader only — no repo load, no store read — exactly as
 /// `cli/src/commands/workspace/root.rs:78` @ v0.44.0 does, and it is the one path that cannot
-/// fail. With a name present the CLI's four stages run in ITS order, each with its own refusal:
-/// load the store, check view membership, read the recorded path, then join and canonicalize.
-/// The named path never shortcuts to the loader, so `resolve_root(Some(<the current workspace's
-/// own name>))` CAN refuse where `resolve_root(None)` succeeds — the CLI behaves the same way.
+/// fail. With a name present the CLI's stages run in ITS order, each with its own refusal: load
+/// the store, check view membership, read the recorded path, then canonicalize. The named path never shortcuts to the loader, so `resolve_root(Some(<the current
+/// workspace's own name>))` CAN refuse where `resolve_root(None)` succeeds — the CLI behaves the
+/// same way.
 ///
 /// An explicitly present EMPTY name is a VALUE, not an absence: no workspace is named `""`, so it
 /// is a [`WorkspaceError::NotFound`].
@@ -206,13 +217,12 @@ pub(crate) fn resolve_root(workspace: &Workspace, name: Option<&str>) -> Result<
     let Some(name) = name else {
         return Ok(workspace.workspace_root().to_owned());
     };
-    let repo_path = workspace.repo_path();
-    let store = SimpleWorkspaceStore::load(repo_path).map_err(be)?;
+    let store = load_store(workspace)?;
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     if !readonly.view().wc_commit_ids().contains_key(WorkspaceName::new(name)) {
         return Err(WorkspaceError::NotFound { name: name.to_owned() });
     }
-    resolve_recorded_root(&store, repo_path, name)
+    resolve_recorded_root(store.as_ref(), name)
 }
 
 #[cfg(test)]

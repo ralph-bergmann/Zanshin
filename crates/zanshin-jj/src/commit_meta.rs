@@ -199,7 +199,7 @@ impl<'a> LogMetaIndex<'a> {
 
         // One resolve_change_id for all three change-identity facts (the CLI computes
         // them in three separate template keywords; one lookup is the same answer).
-        let targets = repo_dyn.resolve_change_id(change_id).map_err(jj)?;
+        let targets = pollster::block_on(repo_dyn.resolve_change_id(change_id)).map_err(jj)?;
         let hidden = targets.as_ref().is_none_or(|t| !t.has_visible(commit_id));
         let divergent = targets
             .as_ref()
@@ -208,10 +208,12 @@ impl<'a> LogMetaIndex<'a> {
             .as_ref()
             .and_then(|t| t.find_offset(commit_id))
             .and_then(|offset| u32::try_from(offset).ok());
+        // jj 0.46 made the change-id half of the prefix lookup async (the commit-id half is not).
+        let change_prefix_len = pollster::block_on(self.prefixes.shortest_change_prefix_len(repo_dyn, change_id));
 
         Ok(TopologyMeta {
             change_id: change_id.reverse_hex(),
-            change_id_prefix_len: prefix_len(self.prefixes.shortest_change_prefix_len(repo_dyn, change_id))?,
+            change_id_prefix_len: prefix_len(change_prefix_len)?,
             commit_id_prefix_len: prefix_len(self.prefixes.shortest_commit_prefix_len(repo_dyn, commit_id))?,
             change_offset,
             bookmarks: self.bookmarks.get(&id_hex).cloned().unwrap_or_default(),
@@ -316,9 +318,9 @@ fn build_refs_index<'v>(refs: impl Iterator<Item = (&'v RefName, LocalRemoteRefT
                     .remote_refs
                     .iter()
                     .all(|&(_, remote_ref)| !remote_ref.is_tracked() || remote_ref.target == *local_target),
-                conflicted: local_target.has_conflict(),
+                conflicted: !local_target.is_resolved(),
             };
-            insert_at(&mut index, local_target.added_ids(), &entry);
+            insert_at(&mut index, local_target.present_adds(), &entry);
         }
         for &(remote_name, remote_ref) in &target.remote_refs {
             let synced = remote_ref.is_tracked() && remote_ref.target == *local_target;
@@ -329,9 +331,9 @@ fn build_refs_index<'v>(refs: impl Iterator<Item = (&'v RefName, LocalRemoteRefT
                 name: name.as_str().to_owned(),
                 remote: Some(remote_name.as_str().to_owned()),
                 synced,
-                conflicted: remote_ref.target.has_conflict(),
+                conflicted: !remote_ref.target.is_resolved(),
             };
-            insert_at(&mut index, remote_ref.target.added_ids(), &entry);
+            insert_at(&mut index, remote_ref.target.present_adds(), &entry);
         }
     }
     index

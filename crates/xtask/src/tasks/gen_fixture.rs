@@ -126,7 +126,7 @@ fn make_settings() -> Result<UserSettings, BoxError> {
     );
     let mut config = StackedConfig::with_defaults();
     config.add_layer(ConfigLayer::parse(ConfigSource::User, &config_text)?);
-    Ok(UserSettings::from_config(config)?)
+    Ok(UserSettings::from_config_and_home_dir(config, None)?)
 }
 
 fn sig(commit_index: u32) -> Signature {

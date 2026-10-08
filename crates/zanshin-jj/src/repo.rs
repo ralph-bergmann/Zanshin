@@ -298,7 +298,8 @@ impl Repo {
         self.pending_warnings.extend(fix_ups);
         refreshed?;
         let config = crate::config::load(self)?;
-        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace);
+        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
+            .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
         let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
         let mut report = crate::Precondition::default();
         let result = crate::snapshot::run(

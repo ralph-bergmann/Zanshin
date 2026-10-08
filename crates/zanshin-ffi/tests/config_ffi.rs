@@ -406,7 +406,7 @@ fn every_wrapper_works_at_repo_scope() {
     let context = envelope(&bad).error().unwrap().context().unwrap().to_owned();
     assert!(context.contains(".."), "span first: {context}");
     let good = call(zanshin_config_file_write, Some(&write("revsets.log = '@'\n")));
-    assert!(ok(&good).data_type() == fbs::Payload::NONE);
+    assert_eq!(ok(&good).data_type(), fbs::Payload::NONE);
     let stray = file_write_req(&Fields {
         path: Some("/nope.toml"),
         value: Some(""),

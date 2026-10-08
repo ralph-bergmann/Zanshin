@@ -181,8 +181,7 @@ pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change,
 
     // 3. Resolve → visible commit(s), divergence-aware (D4).
     //    resolve_change_id is a Repo-trait method; `as _` import above brings it in scope.
-    let targets = repo_dyn
-        .resolve_change_id(&jj_id)
+    let targets = pollster::block_on(repo_dyn.resolve_change_id(&jj_id))
         .map_err(be)? // IndexError → Backend
         .ok_or_else(|| ChangeError::NotFound { id: id.0.clone() })?; // absent id
     let commit_id = targets
@@ -258,8 +257,7 @@ pub(crate) fn change_from_commit(
 
     // 9. Divergence (D4): more than one VISIBLE commit carries this change id. A complete
     //    change id is unambiguous, so `resolve_change_id` cannot hit its ambiguity panic.
-    let divergent = repo_dyn
-        .resolve_change_id(commit.change_id())
+    let divergent = pollster::block_on(repo_dyn.resolve_change_id(commit.change_id()))
         .map_err(reason)?
         .as_ref()
         .is_some_and(jj_lib::index::ResolvedChangeTargets::is_divergent);

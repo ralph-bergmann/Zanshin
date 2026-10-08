@@ -873,14 +873,20 @@ fn an_unborn_git_head_is_imported_without_moving_at() {
 
 /// A colocated workspace whose `@` was forgotten elsewhere: the refs import still runs and
 /// finishes (the CLI's does), only the `@`-naming projection is skipped — no verb fails.
+///
+/// The view keeps the workspace's git head: since jj 0.45 `remove_workspace` drops it too, and
+/// the head import would then check a NEW `@` out — so the git head is put back, the state a
+/// workspace forgotten before 0.45 migrates into.
 #[test]
 fn a_workspace_without_at_still_imports_the_refs() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     {
         let (workspace, head) = load(&root);
+        let git_head = head.view().git_head(workspace.workspace_name()).clone();
         let mut tx = head.start_transaction();
-        pollster::block_on(tx.repo_mut().remove_wc_commit(workspace.workspace_name())).expect("remove @");
+        pollster::block_on(tx.repo_mut().remove_workspace(workspace.workspace_name())).expect("remove @");
+        tx.repo_mut().set_git_head_target(workspace.workspace_name(), git_head);
         pollster::block_on(tx.repo_mut().rebase_descendants()).expect("rebase");
         pollster::block_on(tx.commit("test: forget @")).expect("commit");
     }

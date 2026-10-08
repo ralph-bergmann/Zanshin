@@ -32,11 +32,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.
 - Dart `main` channel (≥ `3.13.0-104.0.dev`) — bundled with Flutter main; track moves
   in lockstep.
-- Rust `1.95.0` (pinned via `rust-toolchain.toml`)
+- Rust `1.97.1` (pinned via `rust-toolchain.toml`)
 
 **Rust workspace (5 lib crates + 1 bin + xtask):** *(2026-10-01, Story 4.12: 4 lib crates —
 the `zanshin-graph` lane crate was removed)*
-- `jj-lib` `=0.44.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
+- `jj-lib` `=0.46.0` (pre-1.0 — pin exact; churn absorbed in `zanshin-jj`)
 - `rmcp` `=1.7.0` (pin exact)
 - `imara-diff` `=*` (pin exact — Histogram algorithm)
 - `tree-sitter-highlight`
@@ -772,10 +772,13 @@ the `zanshin-graph` lane crate was removed)*
   — research backing ADR-0003 (30-agent jj-0.42 feasibility map; 69 ops mapped+verified; prior art GG/JayJay/VisualJJ)
 - `../jj` (local, read-only) — upstream jj **monorepo** checkout (sibling of the repo root):
   both `lib/` (jj-lib source) and `cli/` (the jj CLI). Read at the pinned tag: `git -C ../jj show
-  v0.44.0:lib/src/<file>` / `:cli/src/<file>` (working tree may be on `main`, ahead of the pin).
+  v0.46.0:lib/src/<file>` / `:cli/src/<file>` (working tree may be on `main`, ahead of the pin).
+  Since jj 0.45 many jj-lib modules (`merge`, `backend`, `op_store`, `repo_path`, `file_util`, …)
+  live in the `jj-core` crate (`core/src/`) and are re-exported by jj-lib under their old paths.
   The jj **CLI** orchestration (`cli/`, `cli_util`) is NOT vendored — prior art for ADR-0003 / Epic 9.
-  For jj-lib reads there's a shortcut: the same crate is vendored version-exact under
-  `~/.cargo/registry/.../jj-lib-0.44.0/src/…` (read directly, no `git show`). Optional convenience;
+  For jj-lib reads there's a shortcut: the same crates are vendored version-exact under
+  `~/.cargo/registry/.../jj-lib-0.46.0/src/…` and `…/jj-core-0.46.0/src/…` (read directly, no
+  `git show`). Optional convenience;
   the build never depends on `../jj`. See CLAUDE.md § "jj source reference" for the full convention.
 - `_bmad-output/planning-artifacts/architecture.md` — full architecture
   rationale (AD-1..AD-7, P-1..P-9, anti-patterns, structure)

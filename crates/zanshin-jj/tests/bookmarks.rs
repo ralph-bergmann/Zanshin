@@ -75,7 +75,7 @@ fn bookmarks_on_medium_equals_local_oracle() {
     let mut oracle: Vec<(String, String)> = view
         .local_bookmarks()
         .filter_map(|(name, target)| {
-            let cid = target.added_ids().next()?;
+            let cid = target.present_adds().next()?;
             let commit = store.get_commit(cid).ok()?;
             Some((name.as_str().to_owned(), commit.change_id().reverse_hex()))
         })
@@ -107,7 +107,7 @@ fn setup_with_remote_bookmarks() -> (FixtureHandle, String) {
     let commit_id = base
         .view()
         .local_bookmarks()
-        .find_map(|(_, target)| target.added_ids().next().cloned())
+        .find_map(|(_, target)| target.present_adds().next().cloned())
         .expect("medium fixture has at least one local bookmark");
 
     // Resolve CommitId → ChangeId (reverse-hex) before the transaction.
@@ -294,7 +294,7 @@ fn bookmarks_conflicted_target_uses_first_added_change_id() {
     // so the FIRST add must be the change id `list_bookmarks` reports (AC-5 #11).
     let mut commit_ids = Vec::new();
     for (_, target) in base.view().local_bookmarks() {
-        if let Some(cid) = target.added_ids().next() {
+        if let Some(cid) = target.present_adds().next() {
             if !commit_ids.contains(cid) {
                 commit_ids.push(cid.clone());
             }
@@ -351,7 +351,7 @@ fn bookmarks_preserve_non_ascii_name_and_sort_by_codepoint() {
     let commit_id = base
         .view()
         .local_bookmarks()
-        .find_map(|(_, target)| target.added_ids().next().cloned())
+        .find_map(|(_, target)| target.present_adds().next().cloned())
         .expect("medium fixture has at least one local bookmark");
 
     let mut tx = base.start_transaction();

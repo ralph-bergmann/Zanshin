@@ -106,7 +106,7 @@ fn local_bookmark_target(root: &Path, name: &str) -> Option<String> {
     let hex = repo
         .view()
         .get_local_bookmark(name.as_ref())
-        .added_ids()
+        .present_adds()
         .next()
         .map(jj_lib::object_id::ObjectId::hex);
     hex

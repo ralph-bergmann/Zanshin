@@ -385,8 +385,9 @@ fn adding_a_remote_whose_push_url_another_remote_uses_warns() {
 
 /// The URL check skips the remote being added and every remote section that does not load, as
 /// the CLI's `warn_if_remote_url_matches` does: an EMPTY `[remote "first"]` section does not stop
-/// `first` from being added (jj-lib finds no remote there), and a section without a URL is
-/// ignored instead of failing the call.
+/// `first` from being added (jj-lib finds no remote there), a section without a URL (which gix
+/// 0.88 loads, with no URL) matches nothing, and a section that does not load — an invalid fetch
+/// refspec, though its URL is the new one — is skipped instead of failing the call or warning.
 #[test]
 fn the_remote_url_check_skips_the_new_remote_and_sections_that_do_not_load() {
     let fx = git_fx("");
@@ -399,6 +400,7 @@ fn the_remote_url_check_skips_the_new_remote_and_sections_that_do_not_load() {
         .join("config");
     let mut text = fs::read_to_string(&git_config).expect("git config");
     text.push_str("[remote \"first\"]\n[remote \"nourl\"]\n\tfetch = +refs/heads/*:refs/remotes/nourl/*\n");
+    text.push_str("[remote \"badspec\"]\n\turl = https://example.com/project.git\n\tfetch = ^^^\n");
     fs::write(&git_config, text).expect("git config");
     let mut repo = Repo::open(&fx.root).expect("open");
 

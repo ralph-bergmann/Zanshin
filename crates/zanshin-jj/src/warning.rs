@@ -17,8 +17,9 @@ use std::error::Error;
 use std::path::Path;
 
 use jj_lib::merged_tree::MergedTree;
-use jj_lib::repo_path::{RepoPath, RepoPathBuf, RepoPathUiConverter};
+use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::settings::{HumanByteSize, UserSettings};
+use jj_lib::ui_path::RepoPathUiConverter;
 use jj_lib::working_copy::{self, UntrackedReason};
 
 /// What a warning is about — one variant per remedy, each the port of one jj CLI
@@ -543,7 +544,7 @@ mod tests {
             layer.set_value("user.name", name).expect("name");
             layer.set_value("user.email", email).expect("email");
             config.add_layer(layer);
-            jj_lib::settings::UserSettings::from_config(config).expect("settings")
+            jj_lib::settings::UserSettings::from_config_and_home_dir(config, None).expect("settings")
         };
         let tail = " Until configured, your commits will be created with the empty identity, and can't be pushed \
                     to remotes.";

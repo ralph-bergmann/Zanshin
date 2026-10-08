@@ -25,13 +25,13 @@ use std::sync::Arc;
 
 use jj_lib::annotate::FileAnnotator;
 use jj_lib::backend::TreeValue;
+use jj_lib::backend::{MergedTreeValue, MergedTreeValueExt as _};
 use jj_lib::commit::Commit;
 use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::conflicts::{
     materialize_merge_result_to_bytes, materialize_tree_value, resolve_file_executable, ConflictMaterializeOptions,
     MaterializedTreeValue,
 };
-use jj_lib::merge::MergedTreeValue;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::repo_path::{RepoPath, RepoPathBuf};
@@ -810,7 +810,7 @@ mod tests {
 
         let mut factories = default_backend_factories();
         factories.add_backend(
-            SecretBackend::name(),
+            SecretBackend::NAME,
             Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
         );
         let workspace = Workspace::load(&settings, &fx.path, &factories, &default_working_copy_factories())
@@ -862,9 +862,10 @@ mod tests {
     /// `SecretBackend` raises `AccessDenied`, and it cannot be reached through [`crate::Repo`].
     #[test]
     fn render_entry_pairs_each_skipped_path_with_the_clis_warning() {
+        use jj_lib::backend::MergedTreeValue;
         use jj_lib::conflicts::{ConflictMarkerStyle, ConflictMaterializeOptions};
         use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
-        use jj_lib::merge::{Merge, MergedTreeValue};
+        use jj_lib::merge::Merge;
         use jj_lib::repo::Repo as _;
         use jj_lib::secret_backend::SecretBackend;
         use jj_lib::workspace::Workspace;
@@ -881,7 +882,7 @@ mod tests {
         SecretBackend::adopt_git_repo(&fx.path);
         let mut factories = default_backend_factories();
         factories.add_backend(
-            SecretBackend::name(),
+            SecretBackend::NAME,
             Box::new(|settings, store_path| Ok(Box::new(SecretBackend::load(settings, store_path)?))),
         );
         let workspace = Workspace::load(

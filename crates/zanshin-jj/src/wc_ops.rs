@@ -25,19 +25,21 @@
 //! tell which tool wrote the operation. Zanshin's next verb snapshots first too (Story 9.26), so
 //! the newly tracked path lands in `@` exactly when it would for a CLI user.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::fileset::{self, FilesetAliasesMap, FilesetDiagnostics, FilesetParseContext};
 use jj_lib::git;
+use jj_lib::git_backend::GitRepoAtWorkdirError;
 use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::{Matcher, NothingMatcher, PrefixMatcher};
 use jj_lib::merge::Merge;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
-use jj_lib::repo_path::{RepoPath, RepoPathBuf, RepoPathUiConverter};
+use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::transaction::Transaction;
+use jj_lib::ui_path::{parse_fs_path, RepoPathUiConverter};
 use jj_lib::working_copy::{self, LockedWorkingCopy, SnapshotOptions};
 use jj_lib::workspace::Workspace;
 
@@ -242,14 +244,16 @@ fn xdg_config_home() -> Option<PathBuf> {
 
 /// The global excludes file a git config names — the CLI's `get_excludes_file_path` closure.
 ///
-/// A configured `core.excludesFile` is `~/`-expanded and — when relative — joined onto the
-/// WORKSPACE root, where `git` would read it; without one it is `$XDG_CONFIG_HOME/git/ignore`.
-/// A non-UTF-8 value yields no file, as in the CLI.
-fn excludes_file_path(workspace: &Workspace, config: &gix::config::File<'_>) -> Option<PathBuf> {
+/// A configured `core.excludesFile` is `~/`-expanded — against the config environment's
+/// home, as the CLI's `config_env().home_dir()` (`cli/src/cli_util.rs:1680-1683` @ v0.46.0) —
+/// and, when relative, joined onto the WORKSPACE root, where `git` would read it; without one
+/// it is `$XDG_CONFIG_HOME/git/ignore`. A non-UTF-8 value yields no file, as in the CLI.
+fn excludes_file_path(workspace: &Workspace, config: &gix::config::File) -> Option<PathBuf> {
     if let Some(value) = config.string("core.excludesFile") {
+        let home_dir = crate::config::ConfigEnv::from_env().home_dir;
         let path = std::str::from_utf8(&value)
             .ok()
-            .map(jj_lib::file_util::expand_home_path)?;
+            .map(|value| jj_lib::file_util::expand_home_path(value, home_dir.as_deref()))?;
         Some(workspace.workspace_root().join(path))
     } else {
         xdg_config_home().map(|x| x.join("git").join("ignore"))
@@ -334,34 +338,33 @@ pub(crate) fn snapshot_options<'a>(
 }
 
 /// Whether `workspace` shares its working copy with a git work tree — the port of
-/// `is_colocated_git_workspace` (`cli/src/git_util.rs:62-78` @ v0.44.0).
+/// `is_colocated_git_workspace` (`cli/src/git_util.rs:67-77` @ v0.46.0).
 ///
-/// A git backend whose work dir IS the workspace root, or whose work dir is the parent of the
-/// workspace's (canonicalized) `.git`; a bare repo or a non-git backend is not colocated.
+/// Colocated when the git backend opens a repository AT the workspace root that shares the
+/// backend's common dir: the main work tree, or — since jj 0.46 — a linked git worktree of a
+/// child workspace. No repository there, an unrelated one, or a non-git backend is not
+/// colocated.
 ///
-/// WHY `std::fs::canonicalize` where the CLI calls `dunce::canonicalize`: `dunce` differs only
-/// on Windows (it strips `\\?\` prefixes); on macOS it IS `std::fs::canonicalize`.
-pub(crate) fn is_colocated_git_workspace(workspace: &Workspace) -> bool {
+/// # Errors
+///
+/// - [`GitRepoAtWorkdirError::Other`] — the repository at the root could not be opened for any
+///   other reason; the CLI refuses the command with it.
+pub(crate) fn is_colocated_git_workspace(workspace: &Workspace) -> Result<bool, GitRepoAtWorkdirError> {
     let Ok(git_backend) = git::get_git_backend(workspace.repo_loader().store()) else {
-        return false;
+        return Ok(false);
     };
-    let Some(git_workdir) = git_backend.git_workdir() else {
-        return false;
-    };
-    if git_workdir == workspace.workspace_root() {
-        return true;
+    match git_backend.open_git_repo_at_workdir(workspace.workspace_root()) {
+        Ok(_) => Ok(true),
+        Err(GitRepoAtWorkdirError::NotFound { .. } | GitRepoAtWorkdirError::Unrelated { .. }) => Ok(false),
+        Err(err) => Err(err),
     }
-    let Ok(dot_git_path) = std::fs::canonicalize(workspace.workspace_root().join(".git")) else {
-        return false;
-    };
-    std::fs::canonicalize(git_workdir).ok().as_deref() == dot_git_path.parent()
 }
 
 // ── The two verbs ────────────────────────────────────────────────────────────────
 
 /// Parses the requested paths the way the CLI parses a bare path argument, with the process
 /// CWD replaced by the WORKSPACE ROOT (a GUI has no CWD): `RepoPathUiConverter::parse_file_path`
-/// (jj-lib `repo_path.rs:702`, i.e. `RepoPathBuf::parse_fs_path(root, root, entry)`). That
+/// (jj-lib `ui_path.rs:99-103` @ 0.46.0, i.e. `ui_path::parse_fs_path(root, root, entry)`). That
 /// normalises exactly as `jj file track nope/` does — a trailing `/`, `.` components and `//`
 /// collapse, an absolute path INSIDE the workspace is accepted — and refuses a path that
 /// escapes the workspace. Each result is a PREFIX (the Story 9.3/9.4 convention for the
@@ -389,7 +392,7 @@ fn parse_paths(workspace: &Workspace, paths: &[String], verb: &str) -> Result<Ve
                     reason: "invalid path: an empty path is not a path".to_owned(),
                 });
             }
-            RepoPathBuf::parse_fs_path(root, root, entry).map_err(|e| MutateError::InvalidInput {
+            parse_fs_path(root, root, entry).map_err(|e| MutateError::InvalidInput {
                 reason: format!("invalid path: {}", flatten_chain(&e)),
             })
         })
@@ -457,13 +460,15 @@ struct UntrackOutcome {
 }
 
 /// The body of `cmd_file_untrack` between the lock and the commit (`untrack.rs:62-111`).
+/// `colocated_root` is the workspace root — the git worktree the export writes to — when the
+/// workspace is colocated, `None` otherwise.
 fn untrack_in_tx(
     tx: &mut Transaction,
     locked_wc: &mut dyn LockedWorkingCopy,
     wc_commit: &Commit,
     matcher: &dyn Matcher,
     options: &SnapshotOptions<'_>,
-    colocated: bool,
+    colocated_root: Option<&Path>,
     paths: &[RepoPathBuf],
 ) -> Result<UntrackOutcome, MutateError> {
     let wc_tree = wc_commit.tree();
@@ -500,11 +505,12 @@ fn untrack_in_tx(
         pollster::block_on(locked_wc.reset(&new_commit)).map_err(be)?;
     }
     let num_rebased = pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
-    let export = if colocated {
-        // `export_working_copy_changes_to_git` (`cli/src/cli_util.rs:2650-2661`).
+    let export = if let Some(workspace_root) = colocated_root {
+        // `export_working_copy_changes_to_git` (`cli/src/cli_util.rs:2705-2717` @ v0.46.0).
         let mut_repo = tx.repo_mut();
         pollster::block_on(git::update_intent_to_add(
             mut_repo.base_repo().as_ref(),
+            workspace_root,
             &wc_tree,
             &new_commit.tree(),
         ))
@@ -537,12 +543,22 @@ pub(crate) fn file_untrack(
     let matcher = prefix_matcher(&paths);
     let auto_tracking = auto_tracking_matcher(&ctx.config, &mut ctx.warnings)?;
     let options = snapshot_options(workspace, &ctx.config, auto_tracking.as_ref())?;
-    let colocated = is_colocated_git_workspace(workspace);
+    let colocated_root = is_colocated_git_workspace(workspace)
+        .map_err(|e| MutateError::Backend(flatten_chain(&e)))?
+        .then(|| workspace.workspace_root().to_owned());
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let sink = &mut ctx.warnings;
     let (outcome, mutation) =
         mutate::commit_with_locked_wc(workspace, &readonly, "untrack paths", |tx, locked_wc, wc_commit| {
-            let outcome = untrack_in_tx(tx, locked_wc, wc_commit, matcher.as_ref(), &options, colocated, &paths)?;
+            let outcome = untrack_in_tx(
+                tx,
+                locked_wc,
+                wc_commit,
+                matcher.as_ref(),
+                &options,
+                colocated_root.as_deref(),
+                &paths,
+            )?;
             if let Some(export) = &outcome.export {
                 sink.extend(warning::git_export_failed(export));
             }

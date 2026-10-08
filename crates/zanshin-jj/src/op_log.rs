@@ -173,7 +173,7 @@ pub(crate) fn undo(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result<M
 /// `cli/src/commands/operation/mod.rs`'s `view_with_desired_portions_restored` inline
 /// (small, pure, single-use — CLI-only orchestration jj-lib doesn't expose): `head_ids`,
 /// local bookmarks/tags, remote-tracking views, and `wc_commit_ids` come from `target`;
-/// `git_refs`/`git_head` stay at `current`.
+/// `git_refs`/`git_heads` stay at `current`.
 fn restored_view(target: &op_store::View, current: &op_store::View) -> op_store::View {
     op_store::View {
         head_ids: target.head_ids.clone(),
@@ -181,7 +181,7 @@ fn restored_view(target: &op_store::View, current: &op_store::View) -> op_store:
         local_tags: target.local_tags.clone(),
         remote_views: target.remote_views.clone(),
         git_refs: current.git_refs.clone(),
-        git_head: current.git_head.clone(),
+        git_heads: current.git_heads.clone(),
         wc_commit_ids: target.wc_commit_ids.clone(),
     }
 }

@@ -288,8 +288,10 @@ pub(crate) fn project_abandoned(stats: &jj_lib::git::GitImportStats) -> Vec<Chan
 /// Imports the backing git repo's refs into jj's view (Story 9.5) — the CLI's
 /// `jj git import`.
 ///
-/// Order mirrors `cli/src/commands/git/import.rs:58-59` exactly: `import_head` FIRST, then
-/// `import_refs`. A descendant pass then runs BEFORE the commit, because `import_refs` calls
+/// Mirrors `cli/src/commands/git/import.rs:55-56` @ v0.46.0: `import_refs` only — since jj
+/// 0.45 a non-colocated workspace no longer imports Git HEAD (the CLI dropped its
+/// `import_head` call; a detached HEAD's commits are not imported). A descendant pass then
+/// runs BEFORE the commit, because `import_refs` calls
 /// `record_abandoned_commit` (`jj-lib git.rs:796`), which populates `parent_mapping`, and
 /// `Transaction::write` panics while rewrites are outstanding — the CLI handles this
 /// centrally in `tx.finish` → `rebase_mutable_descendants` (`cli_util.rs:2927-2945`),
@@ -329,7 +331,6 @@ pub(crate) fn git_import(workspace: &mut Workspace, ctx: &mut VerbContext) -> Re
     let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
     let immutable = Arc::clone(&ctx.immutable);
     let finished = mutate::finish_or_no_op(workspace, "import git refs", ctx, |tx, sink| {
-        pollster::block_on(git::import_head(tx.repo_mut())).map_err(map_import_err)?;
         let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &import_options)).map_err(map_import_err)?;
         sink.extend(crate::warning::git_import_failed(&stats));
         // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
@@ -518,10 +519,10 @@ fn warn_if_remote_url_matches(
     // Git uses the fetch URL for push when no push URL is configured.
     let new_push_url = new_push_url.unwrap_or(new_fetch_url);
     for remote_name in git_repo.remote_names() {
-        if remote_name.as_ref() == new_remote.as_str() {
+        if remote_name == new_remote.as_str() {
             continue;
         }
-        let Some(Ok(remote)) = git_repo.try_find_remote_without_url_rewrite(&*remote_name) else {
+        let Some(Ok(remote)) = git_repo.try_find_remote_without_url_rewrite(&**remote_name) else {
             continue;
         };
         let fetch = remote.url(gix::remote::Direction::Fetch).map(gix::Url::to_bstring);

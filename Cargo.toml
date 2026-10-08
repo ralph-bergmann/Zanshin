@@ -21,34 +21,34 @@ description = "Zanshin — macOS Flutter GUI for the Jujutsu (jj) VCS"
 homepage = "https://github.com/dasralph/zanshin"
 repository = "https://github.com/dasralph/zanshin"
 authors = ["Ralph Bergmann <ralph@dasralph.de>"]
-rust-version = "1.95.0"
+rust-version = "1.97.1"
 publish = false
 
 [workspace.dependencies]
-chrono = { version = "=0.4.45", features = ["clock"] }  # WHY: the exact version cargo resolves for jj-lib 0.44's `^0.4.44` requirement (jj-lib declares a caret range, not an exact pin); DatePatternContext requires From<DateTime<Local>>
+chrono = { version = "=0.4.45", features = ["clock"] }  # WHY: the exact version cargo resolves for jj-lib 0.46's `^0.4.44` requirement (jj-lib declares a caret range, not an exact pin); DatePatternContext requires From<DateTime<Local>>
 clap = { version = "4", features = ["derive"] }
-etcetera = "=0.11.0"  # WHY: `zanshin-jj/src/wc_ops.rs`'s port of the CLI's `base_ignores` falls back to `etcetera::home_dir()/.config` exactly as the CLI does (`cli/src/cli_util.rs:1666` @ v0.44.0). Exact-pinned to the version already in Cargo.lock as a jj-lib 0.44.0 transitive — no new crate in the tree
+etcetera = "=0.11.0"  # WHY: `zanshin-jj/src/wc_ops.rs`'s port of the CLI's `base_ignores` falls back to `etcetera::home_dir()/.config` exactly as the CLI does (`cli/src/cli_util.rs:1698` @ v0.46.0). Exact-pinned to the version jj's own workspace pins @ v0.46.0 (jj-lib itself stopped depending on it in 0.46, so zanshin-jj is now its only dependent here)
 flatbuffers = "=25.12.19"
 futures = "0.3" # WHY: jj-lib exposes Stream-based APIs — consumed in production by zanshin-jj (status.rs, revset.rs, graph.rs) and by the zanshin-jj graph_blueprint bench
 getrandom = "=0.4.2"  # WHY: seeds the `ChaCha20Rng` that `SecureConfig::load_config` requires — the single call site is `zanshin-jj/src/config.rs::SecureLayer::create_path`. `rand::make_rng()` (what the CLI uses) `expect`s on OS-RNG failure and no FFI-reachable path may panic, so the seed is drawn by hand. Exact-pinned to the version already in Cargo.lock as a jj-lib transitive
 # WHY features = ["watchman"]: the jj CLI builds jj-lib with its default features
-# `["watchman", "git"]` (`cli/Cargo.toml:139` @ v0.44.0). Without the feature a user's
+# `["watchman", "git"]` (`cli/Cargo.toml:140` @ v0.46.0). Without the feature a user's
 # `fsmonitor.backend = "watchman"` makes every working-copy snapshot fail with jj-lib's "not
 # compiled with the `watchman` feature" error, where the CLI queries Watchman (and falls back to
 # a full scan when the daemon is unreachable). Story 9.26 snapshots before every verb, so the
 # feature is parity, not an option. Zanshin never bundles, installs or launches the daemon.
-jj-lib = { version = "=0.44.0", features = ["watchman"] }  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
+jj-lib = { version = "=0.46.0", features = ["watchman"] }  # WHY: pre-1.0 exact-pin; API churn absorbed inside zanshin-jj (FR-JJ-16)
 notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
 rand_chacha = "=0.10.0"  # WHY: `SecureConfig::load_config` takes a `&mut ChaCha20Rng` by concrete type — the single call site is `zanshin-jj/src/config.rs::SecureLayer::create_path`. It also re-exports `rand_core`, which is where `SeedableRng::from_seed` lives, so no separate `rand`/`rand_core` dependency is needed (and `rand` is deliberately NOT added: `rand::make_rng()` panics). Exact-pinned to the version already in Cargo.lock as a jj-lib transitive
 tar = "0.4"
 tempfile = "3"
-gix = { version = "=0.85.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; exact-pinned because gix::hash::Kind is passed INTO jj-lib's Workspace::init_internal_git, so a gix that drifts from jj-lib 0.44's transitive one is a type mismatch, not a warning
+gix = { version = "=0.88.0", default-features = false } # WHY: gix::Repository/Direction required by remotes.rs, gix::hash::Kind by repo.rs and xtask's gen_fixture.rs; exact-pinned because gix::hash::Kind is passed INTO jj-lib's Workspace::init_internal_git, so a gix that drifts from jj-lib 0.46's transitive one is a type mismatch, not a warning
 thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (`cli/src/config.rs` @ v0.44.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
+whoami = "2.1.2"  # WHY: the jj CLI's own source of `operation.hostname`/`operation.username` and of the `--when.hostnames` context (jj's workspace `Cargo.toml` @ v0.46.0 pins `whoami = "2.1.2"`) — same crate, same values in `jj op log`
 zanshin-jj = { path = "crates/zanshin-jj", version = "0.1.0" }
 zstd = "0.13"
 

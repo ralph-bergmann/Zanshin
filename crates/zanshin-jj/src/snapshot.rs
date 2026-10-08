@@ -34,6 +34,7 @@
 //! `immutable_heads()` is parsed with the start-up environment but RESOLVED only where a step
 //! needs it (`cli_util.rs:2105-2108`).
 
+use std::path::Path;
 use std::sync::Arc;
 
 use jj_lib::commit::Commit;
@@ -478,9 +479,10 @@ impl StepCtx<'_> {
     }
 }
 
-/// Port of `import_git_head` (`cli/src/cli_util.rs:1352-1416` @ v0.44.0).
+/// Port of `import_git_head` (`cli/src/cli_util.rs:1380-1445` @ v0.46.0).
 ///
-/// When the Git HEAD moved to a commit, `@` is checked out onto it (the old `@` abandoned if
+/// When this workspace's Git HEAD (the worktree at its root — jj tracks HEAD per workspace
+/// since 0.45) moved to a commit, `@` is checked out onto it (the old `@` abandoned if
 /// discardable) and the working-copy STATE is reset to the new `@` WITHOUT touching a file —
 /// the files are presumably what the `git` command that moved HEAD left behind. When HEAD was
 /// deleted, only the descendants are rebased and the transaction finishes normally. Nothing is
@@ -494,14 +496,15 @@ fn import_git_head(
     sink: &mut Warnings,
 ) -> Result<Arc<ReadonlyRepo>, PreconditionError> {
     let workspace_name = workspace.workspace_name().to_owned();
+    let workspace_root = workspace.workspace_root().to_owned();
     let mut tx = start_repo_transaction(&repo, &workspace_name);
-    pollster::block_on(git::import_head(tx.repo_mut())).map_err(|e| backend(&e))?;
+    pollster::block_on(git::import_head(tx.repo_mut(), &workspace_name, &workspace_root)).map_err(|e| backend(&e))?;
     if !tx.repo().has_changes() {
         return Ok(repo);
     }
 
-    let old_git_head_present = repo.view().git_head().is_present();
-    let new_git_head = tx.repo().view().git_head().clone();
+    let old_git_head_present = repo.view().git_head(&workspace_name).is_present();
+    let new_git_head = tx.repo().view().git_head(&workspace_name).clone();
     if let Some(new_git_head_id) = new_git_head.as_normal() {
         let new_git_head_commit = tx.repo().store().get_commit(new_git_head_id).map_err(|e| backend(&e))?;
         let wc_commit = pollster::block_on(tx.repo_mut().check_out(workspace_name, &new_git_head_commit))
@@ -550,6 +553,7 @@ fn snapshot_working_copy(
     sink: &mut Warnings,
 ) -> Result<(Arc<ReadonlyRepo>, working_copy::SnapshotStats), PreconditionError> {
     let workspace_name = workspace.workspace_name().to_owned();
+    let workspace_root = workspace.workspace_root().to_owned();
     let auto_tracking = wc_ops::auto_tracking_matcher(ctx.config, sink)?;
     let options = wc_ops::snapshot_options(workspace, ctx.config, auto_tracking.as_ref())?;
     let mut locked_ws = pollster::block_on(workspace.start_working_copy_mutation()).map_err(|e| backend(&e))?;
@@ -564,7 +568,8 @@ fn snapshot_working_copy(
     report.snapshot_stats = wc_ops::project_stats(&stats);
 
     if new_tree.tree_ids_and_labels() != wc_commit.tree().tree_ids_and_labels() {
-        let (new_repo, num_rebased) = commit_snapshot(&repo, &workspace_name, &wc_commit, &new_tree, ctx, facts, sink)?;
+        let ws = (workspace_name.as_ref(), workspace_root.as_path());
+        let (new_repo, num_rebased) = commit_snapshot(&repo, ws, &wc_commit, &new_tree, ctx, facts, sink)?;
         repo = new_repo;
         report.snapshot_rebased = saturate(num_rebased);
     }
@@ -577,11 +582,12 @@ fn snapshot_working_copy(
     Ok((repo, stats))
 }
 
-/// The transaction half of [`snapshot_working_copy`]: record `new_tree` as `@`'s content.
+/// The transaction half of [`snapshot_working_copy`]: record `new_tree` as `@`'s content in
+/// the workspace `(name, root)` — the root is the git worktree a colocated export writes to.
 /// Returns the new repo and how many descendants were rebased onto the new `@`.
 fn commit_snapshot(
     repo: &Arc<ReadonlyRepo>,
-    workspace_name: &WorkspaceName,
+    (workspace_name, workspace_root): (&WorkspaceName, &Path),
     wc_commit: &Commit,
     new_tree: &MergedTree,
     ctx: &StepCtx<'_>,
@@ -620,11 +626,12 @@ fn commit_snapshot(
     if ctx.colocated {
         if wc_immutable {
             // A new working-copy commit was created on top: reset Git HEAD and the index.
-            mutate::try_reset_git_head(mut_repo, &new_wc_commit, sink)?;
+            mutate::try_reset_git_head(mut_repo, workspace_name, workspace_root, &new_wc_commit, sink)?;
         } else {
-            // `export_working_copy_changes_to_git` (`cli_util.rs:2650-2661`).
+            // `export_working_copy_changes_to_git` (`cli_util.rs:2705-2717` @ v0.46.0).
             pollster::block_on(git::update_intent_to_add(
                 mut_repo.base_repo().as_ref(),
+                workspace_root,
                 &wc_commit.tree(),
                 &new_wc_commit.tree(),
             ))

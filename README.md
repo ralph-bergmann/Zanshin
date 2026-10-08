@@ -11,14 +11,14 @@ overrides.**
 
 | Tool    | Pin                                    | Source-of-truth                                                          |
 |---------|----------------------------------------|--------------------------------------------------------------------------|
-| Rust    | `1.95.0`                               | `rust-toolchain.toml` (auto-applied by `rustup` on `cargo` invocation)   |
+| Rust    | `1.97.1`                               | `rust-toolchain.toml` (auto-applied by `rustup` on `cargo` invocation)   |
 | Flutter | `main` channel, ≥ `3.44.0-1.0.pre-573` | `app/pubspec.yaml` → `environment.flutter`; this README is the human pin |
 | Dart    | `main` channel, ≥ `3.13.0-104.0.dev`   | `app/pubspec.yaml` → `environment.sdk`; bundled with Flutter `main`      |
 | `flatc` | `25.12.19`                             | `docs/development-setup.md`; FlatBuffers FFI-wire compiler (ADR-0001)    |
 
 **Why these versions:**
 
-- **Rust `1.95.0`** — pinned exactly to make CI and developer machines
+- **Rust `1.97.1`** — pinned exactly to make CI and developer machines
   byte-equivalent
   in compiler output. Bumps are explicit PRs with a `# WHY:` rationale; the
   release-phase
@@ -39,9 +39,9 @@ overrides.**
 **One-time install (per machine):**
 
 ```sh
-# Rust — rustup auto-installs 1.95.0 the first time you cd into the repo and run cargo,
+# Rust — rustup auto-installs 1.97.1 the first time you cd into the repo and run cargo,
 # but you can pre-install:
-rustup install 1.95.0
+rustup install 1.97.1
 # https://rustup.rs
 
 # Flutter main channel (manual; no FVM):

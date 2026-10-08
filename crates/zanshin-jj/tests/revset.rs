@@ -73,7 +73,7 @@ fn local_bookmark_change_ids(workspace_root: &Path) -> HashSet<String> {
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
     let mut out = HashSet::new();
     for (_name, target) in repo.view().local_bookmarks() {
-        for commit_id in target.added_ids() {
+        for commit_id in target.present_adds() {
             let commit = repo.store().get_commit(commit_id).unwrap();
             out.insert(commit.change_id().reverse_hex());
         }
@@ -485,7 +485,7 @@ fn remove_working_copy(workspace_root: &Path) {
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = repo.start_transaction();
-    pollster::block_on(tx.repo_mut().remove_wc_commit(&workspace_name)).unwrap();
+    pollster::block_on(tx.repo_mut().remove_workspace(&workspace_name)).unwrap();
     // remove_wc_commit rewrites the abandoned @; jj requires descendants rebased
     // before the transaction can commit (mirrors tests/status.rs).
     pollster::block_on(tx.repo_mut().rebase_descendants()).unwrap();

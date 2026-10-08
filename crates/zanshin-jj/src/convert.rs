@@ -109,7 +109,7 @@ use std::sync::Arc;
 use jj_lib::config::StackedConfig;
 use jj_lib::git::{import_refs, GitImportOptions, GitRefKind};
 use jj_lib::ref_name::{GitRefName, RemoteName, WorkspaceName};
-use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::repo::ReadonlyRepo;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
@@ -591,7 +591,7 @@ fn external_arm(
     repo: &Arc<ReadonlyRepo>,
     report: &mut ConversionReport,
 ) -> Result<(), RepoError> {
-    let colocated = is_colocated_git_workspace(workspace);
+    let colocated = is_colocated_git_workspace(workspace).map_err(convert_failed)?;
     let config = config::load_for_workspace(workspace)?;
     let repo = init_git_refs(
         repo,
@@ -610,11 +610,13 @@ fn external_arm(
     import_head_into_destination(workspace, &repo, &env, &mut report.warnings)
 }
 
-/// The CLI's non-colocated head import (`init.rs:260-270`): import HEAD, check `@` out onto the
-/// imported commit, and — only when something changed — finish the transaction like
+/// The CLI's non-colocated head import (`init.rs:262-270` @ v0.46.0): import the HEAD commit,
+/// check `@` out onto it, and — only when something changed — finish the transaction like
 /// `tx.finish(ui, "import git head")`, whose working-copy update materialises HEAD's tree in
-/// the destination. Skipped when HEAD is unborn (a fresh `git init` with no commits): then
-/// `import_head` changed nothing, no `@` is created, and no operation is written.
+/// the destination. Since jj 0.45 this records NO git head in the view (`import_head_commit`,
+/// not `import_head`): a non-colocated workspace does not track Git HEAD. Skipped when HEAD is
+/// unborn (a fresh `git init` with no commits): then nothing changed, no `@` is created, and
+/// no operation is written.
 fn import_head_into_destination(
     workspace: &mut Workspace,
     repo: &Arc<ReadonlyRepo>,
@@ -623,10 +625,8 @@ fn import_head_into_destination(
 ) -> Result<(), RepoError> {
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(repo, &workspace_name);
-    pollster::block_on(jj_lib::git::import_head(tx.repo_mut())).map_err(convert_failed)?;
-    if let Some(git_head_id) = tx.repo().view().git_head().as_normal().cloned() {
+    if let Some(commit) = pollster::block_on(jj_lib::git::import_head_commit(tx.repo_mut())).map_err(convert_failed)? {
         let mut_repo = tx.repo_mut();
-        let commit = mut_repo.store().get_commit(&git_head_id).map_err(convert_failed)?;
         pollster::block_on(mut_repo.check_out(workspace_name, &commit)).map_err(convert_failed)?;
         pollster::block_on(mut_repo.rebase_descendants()).map_err(convert_failed)?;
     }
@@ -659,7 +659,7 @@ mod tests {
         let settings = settings();
         let (ws, _repo) =
             pollster::block_on(jj_lib::workspace::Workspace::init_simple(&settings, tmp.path())).expect("init_simple");
-        assert!(!is_colocated_git_workspace(&ws));
+        assert!(!is_colocated_git_workspace(&ws).expect("open"));
     }
 
     /// The alias reader needs a GIT backend; on anything else `get_git_repo` refuses and the
@@ -696,7 +696,7 @@ mod tests {
             &settings, &root, &git_dir,
         ))
         .expect("init_external_git");
-        assert!(is_colocated_git_workspace(&ws));
+        assert!(is_colocated_git_workspace(&ws).expect("open"));
     }
 
     /// A config fault inside the conversion's snapshot stays a config fault; anything else fails

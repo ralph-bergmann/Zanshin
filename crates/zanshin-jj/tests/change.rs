@@ -448,7 +448,7 @@ fn change_on_merge_in_medium_fixture_has_three_parents() {
     let mut oracle_parent_change_ids: Vec<String> = Vec::new();
     'outer: for (name, target) in repo_jj.view().local_bookmarks() {
         if name == "merge" {
-            for commit_id in target.added_ids() {
+            for commit_id in target.present_adds() {
                 let commit = repo_jj.store().get_commit(commit_id).unwrap();
                 if commit.parent_ids().len() == 3 {
                     merge_change_id = Some(ChangeId(commit.change_id().reverse_hex()));
@@ -514,8 +514,7 @@ fn change_on_divergent_id_returns_divergent_flag() {
     .unwrap();
     let repo_jj = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
     let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&divergent_id.0).unwrap();
-    let targets = repo_jj
-        .resolve_change_id(&jj_id)
+    let targets = pollster::block_on(repo_jj.resolve_change_id(&jj_id))
         .unwrap()
         .expect("divergent id must resolve");
     assert!(targets.is_divergent(), "oracle: change id must be divergent");

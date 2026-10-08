@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 
 [toolchain]
-channel = "1.95.0"
+channel = "1.97.1"
 components = ["rustfmt", "clippy", "rust-src"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 profile = "minimal"
