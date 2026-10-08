@@ -6944,6 +6944,25 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Related:** 9.46 (this automates its "compare behavior" step for mutating verbs; the hunk reading for reads and refusal codes stays manual), 9.40, 9.20, 9.39, `deferred-work.md` "Surfaced 2026-10-08 while analysing …".
 
+**Implementation notes (as built, 2026-10-08, branch `story/9-47-parity-oracle`; plan `docs/superpowers/plans/2026-10-08-parity-oracle.md`).**
+- **Layout.** `crates/zanshin-parity`:
+  - `src/main.rs` is the stock `jj` (`CliRunner::init().run()`; crates.io `jj-cli =0.46.0` resolved with no `[patch]` and a single `jj-lib`).
+  - `tests/oracle/` holds `driver.rs` (hermetic subprocess), `state.rs` (labelled capture, `STATE_ASPECTS` with the global `args` exclusion), `compare.rs` (diff + outcomes), `scenarios.rs` (24 + 2), `ledger.rs` (8 entries, UNEXPECTED / STALE) and `harness.rs`.
+- **Deviations from the design.**
+  1. A plain `jj git init` without a remote writes no repo config, so it creates no secure config entry at all. The hermeticity test therefore writes a repo config first.
+  2. Subprocesses also get `LLVM_PROFILE_FILE=/dev/null`, so the coverage run's instrumented `jj` writes no profiles.
+  3. The coverage exclude carries no inline comment, because `coverage-check` rewrites the file.
+- **Results.**
+  - All 26 scenarios matched the POC's findings exactly: 8 ledger rows, nothing unledgered.
+  - The two dev-time breaks failed as specified: an injected argv change gave UNEXPECTED; a moved ledger entry gave UNEXPECTED in one scenario and STALE in the other.
+  - The gate is green: coverage held at 99.49 %, `cargo deny` advisories and bans ok (24 duplicate-version warnings, warn level), hygiene count 8.
+  - `~/.config/jj/repos` received no new entry.
+- **Measured cost** (M-series laptop, one run each):
+  - Fully cold `cargo build -p zanshin-parity --tests` in an empty target dir: 34.7 s wall. For comparison, a fully cold `cargo build -p zanshin-jj --tests`: 31.2 s.
+  - Rebuilding `jj-cli` alone: 19.9 s.
+  - Warm `cargo test -p zanshin-parity`: 18.2 s, of which the oracle is 16.1 s. The gate runs it twice (cargo test + coverage), about +32 s per gate.
+  - The first gate run on the branch (cold for both targets) took 1197 s in total.
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 

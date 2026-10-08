@@ -167,13 +167,26 @@ the `zanshin-graph` lane crate was removed)*
 **`zanshin-jj` — jj-lib adapter (anti-corruption layer):**
 - ALL jj access goes through `zanshin-jj` → `jj-lib`. No shelling to the `jj` CLI.
   No string-parsing of `jj` output. Fixture-setup scripts may shell out; production
-  code may not. (FR-JJ-16, NFR-R-1)
+  code may not. (FR-JJ-16, NFR-R-1) Tests may also run `crates/zanshin-parity`'s pinned
+  `jj` (stock CLI built from crates.io `jj-cli` at the `jj-lib` pin) — the parity oracle,
+  Story 9.47; it compares repo STATE through jj-lib and reads the CLI's text only to count
+  its `Warning:` lines.
 - `zanshin-jj` is the ONLY production/library crate that imports `jj_lib`. Other
   internal crates consume `zanshin-jj`'s typed API, not jj-lib directly. (The
   `xtask` fixture generator also imports `jj_lib`, but only as a build-time tool —
   not part of the shipped surface; likewise `crates/test-helpers` — a test-only
   tool crate, dev-dep everywhere, coverage `exclude_prefix` — imports it for the
-  `add_commit_off_root` write helper, Story 4.6.)
+  `add_commit_off_root` write helper, Story 4.6; and `crates/zanshin-parity` — test-only,
+  never shipped, coverage `exclude_prefix` — builds the stock `jj` from `jj-cli` and reads
+  repo state through `jj_lib` in its oracle tests, Story 9.47.)
+- **Pin bump (jj-lib).** (1) Bump `jj-lib` and `jj-cli` together in
+  `[workspace.dependencies]` (both exact pins). (2) Bump the `../jj` reference tag
+  (CLAUDE.md). (3) Run `cargo make test`. (4) Triage every parity-oracle failure
+  (`crates/zanshin-parity/tests/oracle/`): port the CLI change, ledger it in `ledger.rs` with
+  a reason and a reference, or open a story; a STALE entry means a gap closed — remove it.
+  (5) Hand-audit what the oracle cannot see: read verbs, refusal and warning CODES, network
+  and interactive verbs, and verbs no scenario covers yet. A new verb story adds its
+  scenarios to `scenarios.rs` — they are its acceptance criteria against the real CLI.
 - When jj-lib's API changes (it will — pre-1.0), absorb the diff inside `zanshin-jj`'s
   module body. The crate's public surface stays stable. Mutations are visible in
   `jj op log` indistinguishably from CLI-initiated ones (NFR-R-2).
@@ -590,8 +603,9 @@ the `zanshin-graph` lane crate was removed)*
 **Hard-banned anti-patterns (reject at review on first sight):**
 
 - **NEVER shell out to the `jj` CLI** in production code. All jj access goes
-  through `zanshin-jj` → `jj-lib`. Fixture-setup scripts may shell out;
-  production code may not. (NFR-R-1, FR-JJ-16)
+  through `zanshin-jj` → `jj-lib`. Fixture-setup scripts may shell out, and so may the
+  parity oracle's tests (`crates/zanshin-parity`, Story 9.47); production code may not.
+  (NFR-R-1, FR-JJ-16)
 - **NEVER parse `jj` CLI output strings.** Even for "just a quick lookup".
   Structured access through the adapter is the WHOLE POINT.
 - **NEVER diverge from the jj CLI's observable behavior** for a given input — same verbs,

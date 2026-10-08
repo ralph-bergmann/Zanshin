@@ -32,7 +32,9 @@ rather than baking in defaults. See project-context.md § zanshin-jj for the can
   (currently `v0.46.0`, matching the `jj-lib =0.46.0` pin in the root `Cargo.toml`) — e.g.
   `git -C ../jj show v0.46.0:lib/src/workspace.rs` or `:cli/src/commands/git/init.rs`.
   The working tree may sit on `main`, ahead of the pin — those APIs need not match what
-  we build against. Bump the reference tag in lockstep when the `jj-lib` pin moves.
+  we build against. Bump the reference tag in lockstep when the `jj-lib` / `jj-cli` pin
+  moves (the parity oracle, `crates/zanshin-parity`, runs the stock CLI at that pin; the
+  pin-bump steps are in project-context.md § zanshin-jj).
 - **jj-lib shortcut:** the same crate is also vendored version-exact at
   `~/.cargo/registry/src/*/jj-lib-<version>/src/…` (and `jj-core-<version>`) — literally the released code cargo
   compiles, so `Read` it directly (no `git show`, no tag-drift risk). Handy for library
