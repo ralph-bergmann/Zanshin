@@ -140,6 +140,10 @@ abstract final class ZanshinWarningCode {
   /// not (Story 9.39).
   static const undoWorkspaceRemoval = 'jj.undo_workspace_removal';
 
+  /// A colocating conversion created the repo inside a linked git worktree,
+  /// where a workspace of the main repository was probably meant.
+  static const colocatedInGitWorktree = 'jj.colocated_in_git_worktree';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -177,6 +181,7 @@ abstract final class ZanshinWarningCode {
     configRegenerated,
     undoPushOperation,
     undoWorkspaceRemoval,
+    colocatedInGitWorktree,
     loginShellUnresolved,
   ];
 }

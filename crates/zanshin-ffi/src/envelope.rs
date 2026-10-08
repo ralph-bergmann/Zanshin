@@ -270,6 +270,8 @@ pub const JJ_UNDO_PUSH_OPERATION: &str = "jj.undo_push_operation";
 /// Warning: `undo` undid a workspace removal — the workspace is back, its directory is not
 /// (Story 9.39).
 pub const JJ_UNDO_WORKSPACE_REMOVAL: &str = "jj.undo_workspace_removal";
+/// Warning: a colocating conversion created the repo inside a linked git worktree.
+pub const JJ_COLOCATED_IN_GIT_WORKTREE: &str = "jj.colocated_in_git_worktree";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -306,6 +308,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigRegenerated => JJ_CONFIG_REGENERATED,
         K::UndoPushOperation => JJ_UNDO_PUSH_OPERATION,
         K::UndoWorkspaceRemoval => JJ_UNDO_WORKSPACE_REMOVAL,
+        K::ColocatedInGitWorktree => JJ_COLOCATED_IN_GIT_WORKTREE,
     }
 }
 
@@ -1084,6 +1087,7 @@ mod tests {
                 K::ConfigRegenerated => "jj.config_regenerated",
                 K::UndoPushOperation => "jj.undo_push_operation",
                 K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
+                K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
             }
         }
         let kinds = [
@@ -1116,6 +1120,7 @@ mod tests {
             K::ConfigRegenerated,
             K::UndoPushOperation,
             K::UndoWorkspaceRemoval,
+            K::ColocatedInGitWorktree,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

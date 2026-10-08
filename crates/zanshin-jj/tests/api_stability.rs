@@ -1212,6 +1212,7 @@ fn story_9_32_warning_surface_resolves() {
         K::ConfigRegenerated,
         K::UndoPushOperation,
         K::UndoWorkspaceRemoval,
+        K::ColocatedInGitWorktree,
     ];
     for kind in every {
         match kind {
@@ -1243,10 +1244,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigCopied
             | K::ConfigRegenerated
             | K::UndoPushOperation
-            | K::UndoWorkspaceRemoval => {}
+            | K::UndoWorkspaceRemoval
+            | K::ColocatedInGitWorktree => {}
         }
     }
-    assert_eq!(every.len(), 29);
+    assert_eq!(every.len(), 30);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

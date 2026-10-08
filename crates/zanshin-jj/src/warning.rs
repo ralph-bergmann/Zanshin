@@ -102,6 +102,10 @@ pub enum WarningKind {
     /// `undo` undid a workspace removal: the workspace is back in the view, its directory is not
     /// (`cli/src/commands/undo.rs:142-156` @ v0.46.0; Story 9.39).
     UndoWorkspaceRemoval,
+    /// A colocating conversion created the repo inside a LINKED git worktree, where a workspace
+    /// of the main repository was probably meant (`cli/src/commands/git/init.rs:272-281` @
+    /// v0.46.0, which warns since jj 0.45 instead of refusing).
+    ColocatedInGitWorktree,
 }
 
 /// One warning a call produced (Story 9.32).

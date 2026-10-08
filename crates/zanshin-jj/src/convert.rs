@@ -115,7 +115,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::op_support::start_repo_transaction;
 use crate::repo::{creation_error, CreationOutcome};
-use crate::warning::{self, Warnings};
+use crate::warning::{self, WarningKind, Warnings};
 use crate::wc_ops::is_colocated_git_workspace;
 use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
 
@@ -572,12 +572,14 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
     external_arm(&mut workspace, &repo, report)
 }
 
-/// The CLI's External-arm steps after `init_external_git`, in its order (`init.rs:244-272`):
-/// refs op, the start-up environment (`for_workable_repo`), `.jj/.gitignore`, `maybe_snapshot`,
-/// the `trunk()` alias, and — non-colocated only — the head op. Colocation is read with the CLI's
-/// own check rather than assumed: it is normally true for [`convert_colocated`] and false for
-/// [`convert_import`], but a linked git worktree (`.git` a gitdir POINTER file) reaches
-/// `convert_colocated` too, and `workspace_path == git_repo_path` (D5) is a colocated request
+/// The CLI's External-arm steps after `init_external_git`, in its order (`init.rs:249-282` @
+/// v0.46.0): refs op, the start-up environment (`for_workable_repo`), `.jj/.gitignore`,
+/// `maybe_snapshot`, the `trunk()` alias, — non-colocated only — the head op, and — colocated
+/// in a LINKED git worktree only — the `jj.colocated_in_git_worktree` warning. Colocation is read
+/// with the CLI's own check rather than assumed: it is normally true for [`convert_colocated`]
+/// and false for [`convert_import`], but a linked git worktree (`.git` a gitdir POINTER file)
+/// reaches `convert_colocated` too — since jj 0.45 the CLI creates the repo there and warns
+/// instead of refusing — and `workspace_path == git_repo_path` (D5) is a colocated request
 /// `convert_import` honours.
 ///
 /// Every step reports into `report` as it runs (Story 9.33), so a failure keeps what came
@@ -604,11 +606,21 @@ fn external_arm(
     maybe_add_gitignore(workspace.workspace_root(), colocated)?;
     let repo = maybe_snapshot(workspace, repo, (&config, &env), colocated, report)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
-    if colocated {
-        return Ok(());
+    if !colocated {
+        return import_head_into_destination(workspace, &repo, &env, &mut report.warnings);
     }
-    import_head_into_destination(workspace, &repo, &env, &mut report.warnings)
+    let git_repo = jj_lib::git::get_git_repo(workspace.repo_loader().store()).map_err(convert_failed)?;
+    if git_repo.kind() == gix::repository::Kind::LinkedWorkTree {
+        report
+            .warnings
+            .push(WarningKind::ColocatedInGitWorktree, COLOCATED_IN_GIT_WORKTREE);
+    }
+    Ok(())
 }
+
+/// The CLI's warning for a colocated repo created inside a linked git worktree (`init.rs:272-281`
+/// @ v0.46.0), minus its hint.
+const COLOCATED_IN_GIT_WORKTREE: &str = "Initialized a new colocated jj repo inside a Git worktree.";
 
 /// The CLI's non-colocated head import (`init.rs:262-270` @ v0.46.0): import the HEAD commit,
 /// check `@` out onto it, and — only when something changed — finish the transaction like

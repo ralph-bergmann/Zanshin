@@ -383,9 +383,10 @@ void main() {
         'jj.config_regenerated',
         'jj.undo_push_operation',
         'jj.undo_workspace_removal',
+        'jj.colocated_in_git_worktree',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(30), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(31), reason: 'no code is registered twice');
     });
   });
 

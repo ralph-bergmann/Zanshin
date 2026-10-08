@@ -1074,6 +1074,47 @@ fn convert_colocated_writes_the_two_cli_operations() {
     );
 }
 
+/// jj 0.45 replaced the CLI's refusal to colocate inside a LINKED git worktree with a warning
+/// (`git/init.rs:272-281` @ v0.46.0): the conversion succeeds and warns last; the main
+/// repository's own conversion does not warn.
+#[test]
+fn convert_colocated_inside_a_linked_git_worktree_warns() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let main = tmp.path().join("main");
+    fs::create_dir(&main).expect("main dir");
+    init_git_repo_with_commit(&main);
+    let worktree = tmp.path().join("linked");
+    git(
+        &["worktree", "add", "-q", "-b", "side", worktree.to_str().unwrap()],
+        &main,
+    );
+
+    let linked = convert_colocated(&worktree);
+    linked
+        .result
+        .expect("the CLI creates the repo inside a linked worktree");
+    let last = linked.warnings.last().expect("a warning");
+    assert_eq!(
+        (last.kind, last.message.as_str()),
+        (
+            zanshin_jj::WarningKind::ColocatedInGitWorktree,
+            "Initialized a new colocated jj repo inside a Git worktree."
+        )
+    );
+
+    let primary = convert_colocated(&main);
+    primary.result.expect("convert the main repository");
+    assert!(
+        primary
+            .warnings
+            .iter()
+            .all(|w| w.kind != zanshin_jj::WarningKind::ColocatedInGitWorktree),
+        "the main repository is no linked worktree: {:?}",
+        primary.warnings
+    );
+}
+
 #[test]
 fn convert_import_writes_the_two_cli_operations_and_materialises_head() {
     pin_env();
