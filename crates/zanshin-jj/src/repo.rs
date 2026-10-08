@@ -1991,18 +1991,19 @@ impl Repo {
 
     /// [`Repo::open_with_report`]'s open, recording the fix-up's warnings into `warnings`.
     fn open_reported(path: &Path, warnings: &mut Vec<crate::Warning>) -> Result<Self, RepoError> {
-        // WHY canonicalize instead of a bare `exists()` probe: jj-lib's workspace store records
-        // every workspace's root RELATIVE to the `repo_path` the store was loaded with. Resolving
-        // here makes `Workspace::repo_path()` canonical, so this handle spells that base the same
-        // way the WRITE seams (`Repo::init`/`clone`, `convert.rs`) now do — which is what keeps a
-        // future writer that records an entry from an OPENED repo (Story 9.23's `workspace add`,
-        // via `init_workspace_with_existing_repo`) from storing a record nothing can resolve.
-        // The real CLI canonicalizes in its loader for the same reason.
-        //
-        // It is NOT what fixes today's READ path: `resolve_recorded_root` finishes the join with
-        // `std::fs::canonicalize` — `realpath(3)` — which resolves the symlinked prefix BEFORE
-        // applying the record's `..` segments, so a raw and a canonical base give the identical
-        // result. The reads were already insensitive to this argument's spelling.
+        // WHY canonicalize instead of a bare `exists()` probe: the CLI canonicalizes its CWD and
+        // its `-R` path before it builds the workspace loader (`cli/src/cli_util.rs:4636-4639`,
+        // `:4703-4706` @ v0.46.0), so every path its loader hands jj-lib is canonical. It matters
+        // for the workspace store: `DefaultWorkspaceLoader::new` takes a primary workspace's
+        // `.jj/repo` exactly as spelled, the store's base is that path, and since jj 0.46 both
+        // its write (`relative_path`) and its read (`normalize_path`) are purely LEXICAL
+        // (`simple_workspace_store.rs:168`, `:236-238`). A raw symlinked base (macOS
+        // `/var/folders/…`) still reads its own records, but a writer working off an OPENED repo
+        // — Story 9.23's `workspace add`, whose `init_workspace_with_existing_repo` records the
+        // CANONICAL new root against this base — would count its `..` segments from the raw
+        // spelling, and a canonical base (a secondary workspace's loader canonicalizes its
+        // `.jj/repo` file) would resolve them one level off. A canonical open keeps base and
+        // records in one spelling.
         //
         // `std::fs::canonicalize`, never `dunce::` — see `workspace.rs`'s house rule.
         //
@@ -2061,13 +2062,13 @@ impl Repo {
     fn init_workspace(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
         // The CLI's start-up config check runs before the command touches any path.
         crate::config::check_startup_stack()?;
-        // WHY canonicalize BEFORE the init call: jj-lib writes the workspace-store entry inside
-        // `init_with_factories`, recording the new root relative to the RAW path it was handed
-        // while `Workspace::repo_path()` — the base every read joins onto — is canonical. A
-        // symlinked caller path (macOS `/var/folders/…`) therefore yields a workspace that
-        // cannot resolve its own root. Doing it after the call would be too late. See
-        // `Repo::open` for the full note. The settings are resolved for that canonical root,
-        // as the CLI resolves them for its canonicalized destination.
+        // WHY canonicalize BEFORE the init call: the CLI's `jj git init` canonicalizes its
+        // destination before it creates anything (`cli/src/commands/git/init.rs:162-163` @
+        // v0.46.0), and the settings below are resolved for that canonical root, as the CLI
+        // resolves them. The workspace-store entry itself would be consistent either way: jj-lib's
+        // `init_with_factories` canonicalizes both the store's base (`ReadonlyRepo::init`,
+        // `repo.rs:228`) and the root it records (`Workspace::new`). The handle is then re-opened
+        // through the canonical root — see `Repo::open` for why its base must be canonical.
         let root = std::fs::canonicalize(path).map_err(|e| RepoError::InitFailed {
             reason: format!("{}: {e}", path.display()),
         })?;
@@ -2150,9 +2151,9 @@ impl Repo {
     fn clone_reported(url: &str, target_path: &Path, sink: &mut crate::warning::Warnings) -> Result<Self, RepoError> {
         // The CLI's start-up config check runs before the command touches any path.
         crate::config::check_startup_stack()?;
-        // WHY canonicalize: `clone_into` reaches the same `init_with_factories` seam as
-        // `Repo::init`, so a symlinked target would record a workspace-store entry the clone's
-        // own reads cannot resolve. See `Repo::open` for the full note.
+        // WHY canonicalize: as in `Repo::init` — the CLI's `jj git clone` canonicalizes its
+        // destination too (`cli/src/commands/git/clone.rs:219` @ v0.46.0), and the settings and
+        // the re-opened handle use that root.
         let target_path = std::fs::canonicalize(target_path).map_err(|e| RepoError::CloneFailed {
             reason: format!("{}: {e}", target_path.display()),
         })?;

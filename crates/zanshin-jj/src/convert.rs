@@ -201,14 +201,10 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    // WHY canonicalize: `convert_into` reaches jj-lib's `init_with_factories`, which records the
-    // new workspace's root in the store RELATIVE to the RAW path it was handed. `relative_path`
-    // counts those `..` segments lexically, while every read finishes its join with
-    // `std::fs::canonicalize` — `realpath(3)`, which resolves the symlinked prefix BEFORE the
-    // `..` — so a record written against a symlinked caller path (macOS `/var/folders/…`)
-    // resolves from NO base at all and the converted workspace cannot report its own root. This
-    // was already broken before the canonicalize; it is a fix, not the preservation of a working
-    // case. The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
+    // WHY canonicalize: as in `Repo::init` — the CLI's `jj git init` canonicalizes its
+    // destination (`cli/src/commands/git/init.rs:162-163` @ v0.46.0), and the settings and the
+    // re-opened handle use that root (`Repo::open` explains why the store's base must be
+    // canonical). The failure answer mirrors the `PathNotFound` arm above, keeping the caller's
     // spelling in the payload.
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
     // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
@@ -548,9 +544,9 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
 fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
-    // canonicalize has to follow the directory creation. It has to happen at all because
-    // `init_external_git` records the workspace root in the store RELATIVE to this path while
-    // every read joins onto the canonical `Workspace::repo_path()` — see `Repo::open`.
+    // canonicalize has to follow the directory creation. It has to happen at all because the CLI
+    // canonicalizes its destination after creating it (`cli/src/commands/git/init.rs:162-163` @
+    // v0.46.0) — see `Repo::init`.
     let workspace_path =
         std::fs::canonicalize(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // The settings are resolved for the canonical destination, AFTER it exists — the CLI's

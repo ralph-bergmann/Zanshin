@@ -45,8 +45,8 @@ void main() {
     /// On macOS `Directory.systemTemp` is `/var/folders/…`, a symlink to
     /// `/private/var/folders/…`, so this is the end-to-end witness that a repo
     /// initialised through a symlinked path can still resolve its own root:
-    /// `Repo::init` canonicalizes before jj-lib records the workspace-store
-    /// entry, so the record and the base every read joins it onto agree.
+    /// `Repo::init` canonicalizes its destination as the CLI does, and the
+    /// handle it returns reads the workspace store from that canonical base.
     late String repoPath;
 
     setUp(() async {

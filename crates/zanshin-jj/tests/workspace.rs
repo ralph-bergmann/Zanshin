@@ -267,14 +267,14 @@ fn root_without_a_name_is_the_open_workspace() {
     assert!(warnings.is_empty(), "the no-name default never warns");
     assert_same_dir(&root, repo.workspace_root());
     assert_same_dir(&root, &fx.path);
-    // The `.fbs`, the FFI wrapper and `handle.dart` all promise an ABSOLUTE, canonicalized path.
-    // Every other assertion here canonicalizes both sides, so it would pass on a non-canonical
-    // one; this is the only place the guarantee itself is checked. WHY it holds, twice over: the
-    // no-name path returns `Workspace::workspace_root()` verbatim, which jj-lib canonicalized in
-    // `Workspace::new` (`jj-lib-0.44.0/src/workspace.rs:170`, `dunce::canonicalize`), and
-    // `Repo::open` now canonicalizes its own argument before handing it to `Workspace::load` so
-    // the workspace store's records and the base every read joins them onto agree. `resolve_root`
-    // itself still does no path work at all on this branch.
+    // The no-name root is ABSOLUTE and canonical (a NAMED root is the store's recorded path,
+    // not canonicalized since jj 0.46). Every other assertion here canonicalizes both sides, so
+    // it would pass on a non-canonical one; this is the only place the guarantee itself is
+    // checked. WHY it holds, twice over: the no-name path returns `Workspace::workspace_root()`
+    // verbatim, which jj-lib canonicalized in `Workspace::new` (`jj-lib-0.46.0/src/workspace.rs:171`,
+    // `dunce::canonicalize`), and `Repo::open` canonicalizes its own argument before handing it to
+    // the workspace loader, as the CLI does. `resolve_root` itself does no path work at all on
+    // this branch.
     assert_eq!(
         root,
         fs::canonicalize(&root).unwrap(),
