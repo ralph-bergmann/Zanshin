@@ -96,6 +96,12 @@ pub enum WarningKind {
     /// (`secure_config.rs:48-50` `CONFIG_NOT_FOUND`, `maybe_load_config` `:384-391`, printed at
     /// `cli/src/config.rs:462-464`; Story 9.37).
     ConfigRegenerated,
+    /// `undo` undid a `jj git push` operation, which often leaves conflicted bookmarks
+    /// (`cli/src/commands/undo.rs:134-141` @ v0.46.0; Story 9.39).
+    UndoPushOperation,
+    /// `undo` undid a workspace removal: the workspace is back in the view, its directory is not
+    /// (`cli/src/commands/undo.rs:142-156` @ v0.46.0; Story 9.39).
+    UndoWorkspaceRemoval,
 }
 
 /// One warning a call produced (Story 9.32).

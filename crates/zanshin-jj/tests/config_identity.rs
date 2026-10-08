@@ -225,7 +225,7 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
         ("new_change", repo.new_change(&[id()]).map(drop)),
         ("edit", repo.edit(id()).map(drop)),
         ("abandon", repo.abandon(&[id()]).map(drop)),
-        ("undo", repo.undo().map(drop)),
+        ("undo", repo.undo(false).map(drop)),
         ("git_fetch", repo.git_fetch("origin", &progress).map(drop)),
         ("git_import", repo.git_import().map(drop)),
         ("git_export", repo.git_export().map(drop)),

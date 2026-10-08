@@ -270,7 +270,7 @@ fn undo_names_the_workspace() {
     let change = working_copy_change(&repo);
     repo.describe(change, "a description").expect("describe succeeds");
 
-    repo.undo().expect("undo succeeds");
+    repo.undo(false).expect("undo succeeds");
 
     assert_eq!(head_op_workspace_name(tmp.path()).as_deref(), Some("default"));
 }
@@ -388,7 +388,7 @@ fn the_shared_funnel_undo_and_fetch_also_record_the_second_workspace() {
     assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
 
     // `op_log.rs::undo`.
-    repo.undo().expect("undo succeeds");
+    repo.undo(false).expect("undo succeeds");
     assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
 
     // `remotes.rs::git_fetch` — reopened first, so the backend reads the remote off disk.

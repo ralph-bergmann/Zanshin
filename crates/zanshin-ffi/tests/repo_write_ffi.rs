@@ -32,7 +32,7 @@ use zanshin_ffi::repo::{
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE,
 };
 use zanshin_jj::{resolve_revset, ChangeId, Repo};
 
@@ -528,7 +528,7 @@ fn undo_valid_round_trip_restores_previous_op() {
     let describe_bytes = unsafe { read_and_free(describe_token) };
     assert!(parse_envelope(&describe_bytes).ok(), "describe must succeed");
 
-    let token = unsafe { zanshin_undo(handle) };
+    let token = unsafe { zanshin_undo(handle, false) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -582,7 +582,7 @@ fn undo_root_op_returns_jj_nothing_to_undo() {
     fs::write(heads_dir.join(&root_hex), "").unwrap();
 
     let (fresh_handle, _) = open_handle(tmp.path());
-    let token = unsafe { zanshin_undo(fresh_handle) };
+    let token = unsafe { zanshin_undo(fresh_handle, false) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -590,6 +590,47 @@ fn undo_root_op_returns_jj_nothing_to_undo() {
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_NOTHING_TO_UNDO));
 
     close_handle(fresh_handle);
+}
+
+/// jj 0.46 (Story 9.39): an operation performed in ANOTHER workspace is refused with
+/// `jj.undo_cross_workspace` — `"<operation>\n<workspace>"` in `context` — unless
+/// `allow_cross_workspace` is true, which undoes it.
+#[test]
+fn undo_cross_workspace_refuses_unless_allowed() {
+    pin_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    // The handle keeps the second workspace's directory alive for the test's duration.
+    let (second, second_wc) = test_helpers::add_workspace(&fixture.path, "second");
+
+    let (second_handle, _) = open_handle(&second.path);
+    let wc_change = {
+        let repo = Repo::open(&second.path).expect("open second");
+        let ids = resolve_revset(&repo, &second_wc).expect("resolve second's @");
+        ids[0].0.clone()
+    };
+    let change_cstr = cstr(&wc_change);
+    let desc_cstr = cstr("described in second");
+    let describe_token = unsafe { zanshin_describe(second_handle, change_cstr.as_ptr(), desc_cstr.as_ptr()) };
+    assert!(
+        parse_envelope(&unsafe { read_and_free(describe_token) }).ok(),
+        "describe in second"
+    );
+    close_handle(second_handle);
+
+    let (handle, _) = open_handle(&fixture.path);
+    let refused = unsafe { read_and_free(zanshin_undo(handle, false)) };
+    let env = parse_envelope(&refused);
+    assert!(!env.ok(), "an operation of another workspace is refused by default");
+    let error = env.error().expect("error");
+    assert_eq!(error.code(), Some(JJ_UNDO_CROSS_WORKSPACE));
+    let context = error.context().expect("context").to_owned();
+    let (operation, workspace) = context.split_once('\n').expect("two lines");
+    assert_eq!(operation.len(), 12, "the CLI's short operation id");
+    assert_eq!(workspace, "second");
+
+    let allowed = unsafe { read_and_free(zanshin_undo(handle, true)) };
+    assert!(parse_envelope(&allowed).ok(), "allowed, it is undone");
+    close_handle(handle);
 }
 
 // ── git_fetch ─────────────────────────────────────────────────────────────────
@@ -1407,7 +1448,7 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let abandon_bytes = unsafe { read_and_free(abandon_token) };
     assert_invalid_handle(&abandon_bytes);
 
-    let undo_token = unsafe { zanshin_undo(0) };
+    let undo_token = unsafe { zanshin_undo(0, false) };
     let undo_bytes = unsafe { read_and_free(undo_token) };
     assert_invalid_handle(&undo_bytes);
 

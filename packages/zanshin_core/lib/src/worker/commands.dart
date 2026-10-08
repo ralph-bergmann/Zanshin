@@ -397,18 +397,26 @@ final class AbandonCommand extends WorkerCommand implements HandleScopedCommand 
   final List<String> changeIds;
 }
 
-/// Revert the last operation of the repo identified by [handleId], one step
-/// back from the current head (Story 6.5).
+/// Undo the last operation of the repo identified by [handleId] — the CLI's
+/// `jj undo` with its undo stack (Story 6.5, Story 9.39).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinUndo(raw)`, and replies with a `BufferResult`
+/// remove), calls `zanshinUndo(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
 final class UndoCommand extends WorkerCommand implements HandleScopedCommand {
-  const UndoCommand({required super.commandId, required this.handleId});
+  const UndoCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.allowCrossWorkspace,
+  });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
+
+  /// The CLI's `--allow-cross-workspace`: undo an operation performed in
+  /// another workspace instead of refusing (`jj.undo_cross_workspace`).
+  final bool allowCrossWorkspace;
 }
 
 /// Fetch all branches and tags from [remoteName] and import them, in the repo

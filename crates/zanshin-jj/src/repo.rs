@@ -1025,26 +1025,33 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::mutate::abandon(repo.workspace_mut(), ctx, change_ids))
     }
 
-    /// Reverts the last operation, one step back from the current head (FR-JJ-14a).
+    /// Undoes the last operation — the CLI's `jj undo` @ v0.46.0, undo stack included
+    /// (FR-JJ-14a, Story 9.39): a repeated `undo` goes further back into the past instead of
+    /// redoing the previous one, and an undo stack the CLI started is continued here (and vice
+    /// versa).
     ///
-    /// Mirrors the CLI's `jj undo`: restores the head operation's single parent's repo
-    /// state + local bookmarks/tags + remote-tracking bookmarks (leaving `git_refs`/
-    /// `git_head` untouched) onto a freshly-committed op. Calling `undo()` twice in a
-    /// row redoes the first `undo()`.
+    /// Restores the undone operation's parent's repo state + local bookmarks/tags +
+    /// remote-tracking bookmarks (leaving `git_refs`/`git_heads` untouched) onto a
+    /// freshly-committed op. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
+    /// (default `false`): without it, an operation performed in another workspace is not undone.
+    /// Undoing a push or a workspace removal warns (`jj.undo_push_operation`,
+    /// `jj.undo_workspace_removal`). See `op_log::undo` for the step.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::NothingToUndo`] — the head operation IS the op-store root
+    /// - [`crate::MutateError::UndoCrossWorkspace`] — the operation to undo was performed in
+    ///   another workspace and `allow_cross_workspace` is `false`.
+    /// - [`crate::MutateError::NothingToUndo`] — the operation to undo IS the op-store root
     ///   (no parent to restore to).
-    /// - [`crate::MutateError::InvalidInput`] — the head operation has more than one
+    /// - [`crate::MutateError::InvalidInput`] — the operation to undo has more than one
     ///   parent (a divergent-write merge op) — undoing a merge operation is refused.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including an effective jj config that changed and no longer reads (see
     ///   [`Repo::open`]); refused before the verb itself runs.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn undo(&mut self) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::op_log::undo(repo.workspace_mut(), ctx))
+    pub fn undo(&mut self, allow_cross_workspace: bool) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::op_log::undo(repo.workspace_mut(), ctx, allow_cross_workspace))
     }
 
     /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).

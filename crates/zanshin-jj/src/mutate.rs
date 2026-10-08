@@ -155,17 +155,26 @@ pub enum MutateError {
         /// Human-readable reason, naming the offending file or alias.
         reason: String,
     },
-    /// [`crate::Repo::undo`] was called with the head operation at the op-store root —
-    /// there is no parent operation to restore to. Currently unreachable through this
-    /// crate's own public API alone: `Workspace::init_*` always commits an
-    /// "add workspace" op on top of root, so a freshly opened repo's head always has at
-    /// least one parent. It exists as a defensive CLI-parity guard mirroring the CLI's
-    /// own `Cannot undo root operation` refusal, not a normally-reachable path — it only
-    /// fires against a hand-crafted or externally-mutated op-store (see
-    /// `tests/op_log.rs`'s `undo_at_root_operation_returns_nothing_to_undo`, which has to
-    /// engineer that state via direct `op_heads` file manipulation).
+    /// [`crate::Repo::undo`]'s target is the op-store root operation — there is no parent
+    /// operation to restore to: the CLI's `Cannot undo root operation`. Since the undo stack
+    /// (Story 9.39) this is reachable through the public API: an undo stack that walked back to
+    /// the very first operation (the "add workspace" op on top of root) targets root next.
     #[error("nothing to undo")]
     NothingToUndo,
+    /// [`crate::Repo::undo`]'s target operation was performed in ANOTHER workspace and the
+    /// caller did not allow that — the CLI's "Refusing to undo operation {operation} because it
+    /// was performed in workspace {workspace}" (`cli/src/commands/undo.rs:120-133` @ v0.46.0).
+    /// Nothing is written.
+    ///
+    /// Its own variant because the remedy is specific: undo it anyway (`allow_cross_workspace`,
+    /// the CLI's `--allow-cross-workspace`), or revert that one operation instead.
+    #[error("refusing to undo operation {operation} because it was performed in workspace {workspace}")]
+    UndoCrossWorkspace {
+        /// The target operation's id, shortened to the CLI's 12 hex digits.
+        operation: String,
+        /// The workspace the target operation was performed in.
+        workspace: String,
+    },
     /// [`crate::Repo::git_fetch`] was called with a remote name that has no
     /// configured git remote (FR-JJ-13).
     ///

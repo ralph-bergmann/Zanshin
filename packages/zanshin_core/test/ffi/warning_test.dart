@@ -381,9 +381,11 @@ void main() {
         'jj.config_migrated',
         'jj.config_copied',
         'jj.config_regenerated',
+        'jj.undo_push_operation',
+        'jj.undo_workspace_removal',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(28), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(30), reason: 'no code is registered twice');
     });
   });
 

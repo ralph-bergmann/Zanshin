@@ -29,7 +29,7 @@ use crate::envelope::{
     JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
     JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
     JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR, WATCHER_IO_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -136,6 +136,11 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
             report: None,
             code: JJ_NOTHING_TO_UNDO.to_owned(),
             context: None,
+        },
+        MutateError::UndoCrossWorkspace { operation, workspace } => FfiErrorObj {
+            report: None,
+            code: JJ_UNDO_CROSS_WORKSPACE.to_owned(),
+            context: Some(format!("{operation}\n{workspace}")),
         },
         MutateError::RemoteNotFound { name } => FfiErrorObj {
             report: None,
@@ -1031,16 +1036,23 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
     vec_into_token(buf)
 }
 
-/// Revert the last operation of the repo referenced by `handle`, one step back from
-/// the current head. Calling this twice in a row redoes the first `undo`.
+/// Undo the last operation of the repo referenced by `handle` — the CLI's `jj undo` @ v0.46.0
+/// with its undo stack (Story 9.39): calling this twice in a row goes further back instead of
+/// redoing the first `undo`. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
+/// (`false` is the CLI's default): without it, an operation performed in another workspace is
+/// not undone.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success; undoing a
+/// push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `jj.nothing_to_undo` — the head operation IS the op-store root (no parent to
+/// - `jj.undo_cross_workspace` — the operation to undo was performed in another workspace and
+///   `allow_cross_workspace` is false; `"<operation>\n<workspace>"` in `context`, nothing is
+///   written.
+/// - `jj.nothing_to_undo` — the operation to undo IS the op-store root (no parent to
 ///   restore to).
-/// - `jj.invalid_input` — the head operation has more than one parent (a
+/// - `jj.invalid_input` — the operation to undo has more than one parent (a
 ///   divergent-write merge op).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
@@ -1059,12 +1071,12 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 /// (Story 3.9) makes a stale handle unreachable.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_undo(handle: u64) -> *mut ZanshinBuf {
-    debug!(fn_name = "zanshin_undo", handle);
+pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_undo", handle, allow_cross_workspace);
     let buf = catch(|| {
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.undo();
+        let result = session.repo.undo(allow_cross_workspace);
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
@@ -1398,6 +1410,16 @@ mod tests {
         let e = map_mutate_err(MutateError::NothingToUndo);
         assert_eq!(e.code, JJ_NOTHING_TO_UNDO);
         assert!(e.context.is_none());
+    }
+
+    #[test]
+    fn map_mutate_err_undo_cross_workspace_names_the_operation_then_the_workspace() {
+        let e = map_mutate_err(MutateError::UndoCrossWorkspace {
+            operation: "0123456789ab".to_owned(),
+            workspace: "second".to_owned(),
+        });
+        assert_eq!(e.code, crate::JJ_UNDO_CROSS_WORKSPACE);
+        assert_eq!(e.context.as_deref(), Some("0123456789ab\nsecond"));
     }
 
     #[test]

@@ -2193,16 +2193,23 @@ ZanshinBuf *zanshin_edit(uint64_t handle, const char *change_id);
 ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
- * Revert the last operation of the repo referenced by `handle`, one step back from
- * the current head. Calling this twice in a row redoes the first `undo`.
+ * Undo the last operation of the repo referenced by `handle` — the CLI's `jj undo` @ v0.46.0
+ * with its undo stack (Story 9.39): calling this twice in a row goes further back instead of
+ * redoing the first `undo`. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
+ * (`false` is the CLI's default): without it, an operation performed in another workspace is
+ * not undone.
  *
- * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success; undoing a
+ * push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`).
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
- * - `jj.nothing_to_undo` — the head operation IS the op-store root (no parent to
+ * - `jj.undo_cross_workspace` — the operation to undo was performed in another workspace and
+ *   `allow_cross_workspace` is false; `"<operation>\n<workspace>"` in `context`, nothing is
+ *   written.
+ * - `jj.nothing_to_undo` — the operation to undo IS the op-store root (no parent to
  *   restore to).
- * - `jj.invalid_input` — the head operation has more than one parent (a
+ * - `jj.invalid_input` — the operation to undo has more than one parent (a
  *   divergent-write merge op).
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
@@ -2221,7 +2228,7 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  * (Story 3.9) makes a stale handle unreachable.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_undo(uint64_t handle);
+ZanshinBuf *zanshin_undo(uint64_t handle, bool allow_cross_workspace);
 
 /**
  * Fetch all branches and tags from `remote_name` and import them, in the repo

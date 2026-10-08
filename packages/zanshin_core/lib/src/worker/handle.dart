@@ -391,17 +391,24 @@ final class RepoHandle {
     return _worker.abandon(_handleId, changeIds);
   }
 
-  /// Revert the last operation, one step back from the current head
-  /// (Story 6.5). Calling this twice in a row redoes the first `undo`.
+  /// Undo the last operation — the CLI's `jj undo` @ v0.46.0 with its undo
+  /// stack (Story 6.5, Story 9.39): calling this twice in a row goes further
+  /// back instead of redoing the first `undo`, and an undo stack the CLI
+  /// started is continued. [allowCrossWorkspace] is the CLI's
+  /// `--allow-cross-workspace` (default `false`, as in the CLI): without it an
+  /// operation performed in another workspace is refused. Undoing a push or a
+  /// workspace removal warns (`jj.undo_push_operation`,
+  /// `jj.undo_workspace_removal`).
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.undo_cross_workspace` — `context` is `"<operation>\n<workspace>"` —,
   /// `jj.nothing_to_undo`).
-  Future<MutationResult> undo() {
+  Future<MutationResult> undo({bool allowCrossWorkspace = false}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.undo(_handleId);
+    return _worker.undo(_handleId, allowCrossWorkspace: allowCrossWorkspace);
   }
 
   /// Fetch all branches and tags from [remoteName] and import them

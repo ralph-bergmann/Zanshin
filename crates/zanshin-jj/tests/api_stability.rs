@@ -506,8 +506,14 @@ fn api_surface_resolves() {
     _ = zanshin_jj::MutateError::Backend(String::new());
     _ = sample_mutation_result();
 
-    // op-log undo (Story 6.2)
+    // op-log undo (Story 6.2); the undo stack + `--allow-cross-workspace` (Story 9.39, jj 0.46)
     _ = zanshin_jj::MutateError::NothingToUndo;
+    _ = zanshin_jj::MutateError::UndoCrossWorkspace {
+        operation: String::new(),
+        workspace: String::new(),
+    };
+    _ = zanshin_jj::Repo::undo
+        as fn(&mut zanshin_jj::Repo, bool) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 
     // git_fetch (Story 6.4a)
     _ = zanshin_jj::MutateError::RemoteNotFound { name: String::new() };
@@ -1204,6 +1210,8 @@ fn story_9_32_warning_surface_resolves() {
         K::ConfigMigrated,
         K::ConfigCopied,
         K::ConfigRegenerated,
+        K::UndoPushOperation,
+        K::UndoWorkspaceRemoval,
     ];
     for kind in every {
         match kind {
@@ -1233,10 +1241,12 @@ fn story_9_32_warning_surface_resolves() {
             | K::CloneCleanupFailed
             | K::ConfigMigrated
             | K::ConfigCopied
-            | K::ConfigRegenerated => {}
+            | K::ConfigRegenerated
+            | K::UndoPushOperation
+            | K::UndoWorkspaceRemoval => {}
         }
     }
-    assert_eq!(every.len(), 27);
+    assert_eq!(every.len(), 29);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

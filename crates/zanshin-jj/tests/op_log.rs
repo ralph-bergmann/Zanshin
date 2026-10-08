@@ -17,7 +17,7 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::extract_fixture;
-use zanshin_jj::{ChangeError, ChangeId, MutateError, OpLogError, Repo};
+use zanshin_jj::{ChangeError, ChangeId, MutateError, OpLogError, Repo, WarningKind};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
@@ -349,7 +349,7 @@ fn undo_reverts_a_describe_and_records_op_log_entry() {
     repo.describe(target.clone(), "New description").unwrap();
     assert_eq!(repo.get_change(&target).unwrap().description, "New description");
 
-    let undo_result = repo.undo().unwrap();
+    let undo_result = repo.undo(false).unwrap();
     assert!(undo_result.new_change_ids.is_empty());
     assert!(undo_result.abandoned_change_ids.is_empty());
 
@@ -384,7 +384,7 @@ fn undo_reverts_a_new_change_and_moves_wc_back() {
     assert_eq!(new_result.working_copy_change_id, new_change_id);
     assert!(repo.get_change(&new_change_id).is_ok());
 
-    let undo_result = repo.undo().unwrap();
+    let undo_result = repo.undo(false).unwrap();
     assert!(undo_result.new_change_ids.is_empty());
     assert!(undo_result.abandoned_change_ids.is_empty());
     assert_eq!(
@@ -398,39 +398,195 @@ fn undo_reverts_a_new_change_and_moves_wc_back() {
     );
 }
 
+/// The undo STACK (Story 9.39): a second `undo` goes further back instead of redoing the first —
+/// the CLI's own op-log example (`cli/src/commands/undo.rs:79-104` @ v0.46.0): operations A, B,
+/// C; undo (restores B); E; undo (restores B again, NOT the first undo); undo (restores A).
 #[test]
-fn undo_twice_in_a_row_redoes_the_mutation() {
+fn undo_twice_in_a_row_goes_further_back() {
     pin_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let layout = oracle_layout(&fx.path);
     let mut repo = Repo::open(&fx.path).unwrap();
-
     let target = ChangeId(layout.commit1_change_id.clone());
-    let original_description = repo.get_change(&target).unwrap().description;
+    let head = |repo: &mut Repo| repo.op_log(Some(1)).unwrap().swap_remove(0);
+    let description = |repo: &mut Repo| repo.get_change(&target).unwrap().description;
 
-    repo.describe(target.clone(), "New description").unwrap();
-    let post_mutation_op_count = repo.op_log(None).unwrap().len();
+    repo.describe(target.clone(), "A").unwrap();
+    let op_a = head(&mut repo).id.0;
+    repo.describe(target.clone(), "B").unwrap();
+    let op_b = head(&mut repo).id.0;
+    repo.describe(target.clone(), "C").unwrap();
 
-    repo.undo().unwrap();
+    repo.undo(false).unwrap();
+    assert_eq!(description(&mut repo), "B", "the 1st undo restores B");
     assert_eq!(
-        repo.get_change(&target).unwrap().description,
-        original_description,
-        "1st undo must revert the describe"
+        head(&mut repo).description,
+        format!("undo: restore to operation {op_b}")
     );
 
-    repo.undo().unwrap();
+    repo.describe(target.clone(), "E").unwrap();
+    repo.undo(false).unwrap();
+    assert_eq!(description(&mut repo), "B", "undoing E restores B again");
     assert_eq!(
-        repo.get_change(&target).unwrap().description,
-        "New description",
-        "2nd undo must redo the describe (undo of an undo)"
+        head(&mut repo).description,
+        format!("undo: restore to operation {op_b}"),
+        "E's parent is an undo, so the restore jumps to the operation IT restored — never a chain of undos"
     );
 
-    let ops_after = repo.op_log(None).unwrap().len();
+    repo.undo(false).unwrap();
+    assert_eq!(description(&mut repo), "A", "undoing an undo goes one further back");
     assert_eq!(
-        ops_after,
-        post_mutation_op_count + 2,
-        "op-log must have grown by exactly 2 new ops"
+        head(&mut repo).description,
+        format!("undo: restore to operation {op_a}")
     );
+}
+
+/// Commits an operation described `description` on top of the head — no view change and no
+/// workspace recorded, the shape of an operation another tool wrote. Returns its id.
+fn foreign_op(root: &Path, description: &str) -> String {
+    let (workspace, _settings) = oracle_workspace(root);
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let repo = pollster::block_on(repo.start_transaction().commit(description)).expect("commit the foreign op");
+    repo.op_id().hex()
+}
+
+/// The stack lives in the operation DESCRIPTIONS, so an undo stack another tool (the CLI) started
+/// is continued here: a head `undo: restore to operation <A>` makes A the operation to undo.
+#[test]
+fn undo_continues_an_undo_stack_another_tool_started() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let target = ChangeId(layout.commit1_change_id.clone());
+    let before_a = repo.op_log(Some(1)).unwrap().swap_remove(0).id.0;
+    repo.describe(target.clone(), "A").unwrap();
+    let op_a = repo.op_log(Some(1)).unwrap().swap_remove(0).id.0;
+    repo.describe(target.clone(), "B").unwrap();
+    foreign_op(&fx.path, &format!("undo: restore to operation {op_a}"));
+
+    repo.undo(false).unwrap();
+
+    assert_eq!(
+        repo.op_log(Some(1)).unwrap()[0].description,
+        format!("undo: restore to operation {before_a}"),
+        "the foreign undo restored A, so this undo undoes A itself"
+    );
+    assert_eq!(repo.get_change(&target).unwrap().description, "Commit 1");
+}
+
+/// A stack that resolves to the op-store ROOT is the CLI's "Cannot undo root operation".
+#[test]
+fn undo_whose_stack_reaches_the_root_operation_returns_nothing_to_undo() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = repo
+        .op_log(None)
+        .unwrap()
+        .into_iter()
+        .find(|op| op.root_op)
+        .unwrap()
+        .id
+        .0;
+    foreign_op(&fx.path, &format!("undo: restore to operation {root}"));
+    let before = repo.op_log(None).unwrap().len();
+
+    let result = repo.undo(false);
+
+    assert!(matches!(result, Err(MutateError::NothingToUndo)), "got: {result:?}");
+    assert_eq!(repo.op_log(None).unwrap().len(), before, "a refusal writes nothing");
+}
+
+/// An undo description whose id does not parse is the CLI's internal error — on the operation to
+/// undo, and on the parent it would restore.
+#[test]
+fn undo_of_an_unparseable_undo_description_is_a_backend_error() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    foreign_op(&fx.path, "undo: restore to operation not-an-id");
+
+    let result = repo.undo(false);
+    assert!(
+        matches!(result, Err(MutateError::Backend(ref reason)) if reason == "Failed to parse ID of target operation in undo-stack"),
+        "got: {result:?}"
+    );
+
+    // A normal operation on top: now the broken undo is the PARENT to restore.
+    repo.describe(ChangeId(layout.commit1_change_id.clone()), "on top")
+        .unwrap();
+    let result = repo.undo(false);
+    assert!(
+        matches!(result, Err(MutateError::Backend(ref reason)) if reason == "Failed to parse ID of target operation's parent in undo-stack"),
+        "got: {result:?}"
+    );
+}
+
+/// jj 0.46: an operation performed in ANOTHER workspace is not undone unless allowed — and is
+/// undone, as before, when it is.
+#[test]
+fn undo_refuses_an_operation_of_another_workspace_unless_allowed() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let target = ChangeId(layout.commit1_change_id.clone());
+    // The handle keeps the second workspace's directory alive for the test's duration.
+    let (second, _second_wc) = test_helpers::add_workspace(&fx.path, "second");
+    let mut from_second = Repo::open(&second.path).unwrap();
+    from_second.describe(target.clone(), "described in second").unwrap();
+    let op = from_second.op_log(Some(1)).unwrap().swap_remove(0).id.0;
+    drop(from_second);
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(None).unwrap().len();
+    match repo.undo(false) {
+        Err(MutateError::UndoCrossWorkspace { operation, workspace }) => {
+            assert_eq!(operation, op[..12], "the CLI's 12-digit short id");
+            assert_eq!(workspace, "second");
+        }
+        other => panic!("expected UndoCrossWorkspace, got: {other:?}"),
+    }
+    assert_eq!(repo.op_log(None).unwrap().len(), before, "a refusal writes nothing");
+    assert_eq!(repo.get_change(&target).unwrap().description, "described in second");
+
+    repo.undo(true)
+        .expect("allowed, the other workspace's operation is undone");
+    assert_eq!(repo.get_change(&target).unwrap().description, "Commit 1");
+}
+
+/// Undoing a push warns, as the CLI does; so does undoing a workspace removal. An operation that
+/// records no workspace (both foreign ops here) never refuses.
+#[test]
+fn undo_of_a_push_or_a_workspace_removal_warns() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    for (description, kind, message) in [
+        (
+            "push bookmark main to origin",
+            WarningKind::UndoPushOperation,
+            "Undoing a push operation often leads to conflicted bookmarks.",
+        ),
+        (
+            "remove workspace 'second'",
+            WarningKind::UndoWorkspaceRemoval,
+            "Undoing a workspace removal restores the workspace, but does not restore the workspace directory.",
+        ),
+    ] {
+        foreign_op(&fx.path, description);
+        repo.undo(false).expect("an operation with no workspace is undone");
+        let warnings = repo.take_warnings();
+        assert_eq!(
+            warnings
+                .iter()
+                .map(|w| (w.kind, w.message.as_str()))
+                .collect::<Vec<_>>(),
+            [(kind, message)],
+            "{description}"
+        );
+    }
 }
 
 #[test]
@@ -456,7 +612,7 @@ fn undo_at_root_operation_returns_nothing_to_undo() {
     fs::write(heads_dir.join(&root_hex), "").unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
-    let result = repo.undo();
+    let result = repo.undo(false);
 
     assert!(
         matches!(result, Err(MutateError::NothingToUndo)),
@@ -477,7 +633,7 @@ fn undo_on_corrupt_repo_returns_backend_error() {
     let op_heads = tmp.path().join(".jj").join("repo").join("op_heads");
     fs::remove_dir_all(&op_heads).unwrap();
 
-    let result = repo.undo();
+    let result = repo.undo(false);
 
     assert!(
         matches!(result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
@@ -497,7 +653,7 @@ fn undo_immediately_after_init_returns_backend_error_no_working_copy() {
     // see the NothingToUndo test above). Undoing restores the root op's empty view,
     // which has no wc_commit_id entry for any workspace -- sync_working_copy's own
     // guard surfaces that as a Backend error rather than panicking.
-    let result = repo.undo();
+    let result = repo.undo(false);
 
     assert!(
         matches!(result, Err(MutateError::Backend(ref msg)) if msg.contains("working-copy")),
@@ -548,7 +704,7 @@ fn undo_on_merge_op_returns_invalid_input() {
     // synchronously persists a "reconcile divergent operations" merge op as the new
     // sole head, and undo()'s parent-count guard refuses it.
     let mut repo_c = Repo::open(&fx.path).unwrap();
-    match repo_c.undo() {
+    match repo_c.undo(false) {
         Err(MutateError::InvalidInput { reason }) => {
             assert_eq!(reason, "cannot undo a merge operation");
         }
@@ -592,7 +748,7 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
 
     // undo() through the crate's public API: head (op B) -> its single parent (op A).
     let mut repo = Repo::open(&fx.path).unwrap();
-    repo.undo().unwrap();
+    repo.undo(false).unwrap();
 
     // git_head must still point at Commit 3 (CURRENT/op B) -- NOT revert to Commit 1
     // (the target op's value). A regression that swapped restored_view's git_refs/

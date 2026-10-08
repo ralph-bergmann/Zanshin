@@ -11,12 +11,14 @@ use futures::StreamExt as _;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store;
 use jj_lib::op_walk;
+use jj_lib::operation::Operation as JjOperation;
 use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::VerbContext;
+use crate::warning::WarningKind;
 use crate::Timestamp;
 
 /// A jj operation-log id in plain forward-hex display form (e.g. `"abc123…"`).
@@ -117,54 +119,124 @@ pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<
     Ok(out)
 }
 
-/// Reverts the last operation, one step back from the CURRENT head (FR-JJ-14a).
+/// Undoes the last operation — the port of the CLI's `cmd_undo` (`cli/src/commands/undo.rs` @
+/// v0.46.0) with its undo STACK (Story 9.39): a repeated `undo` goes further back into the past.
 ///
-/// Restores the head operation's single parent's view — repo state (`head_ids`, local
-/// bookmarks/tags) plus remote-tracking bookmarks, matching the CLI's default (unflagged)
-/// `jj undo` portions — onto a freshly-committed op, leaving `git_refs`/`git_head` at
-/// their CURRENT (pre-undo) values. Mirrors the CLI's `cmd_undo` (`../jj` `v0.42.0`
-/// `cli/src/commands/undo.rs`) minus its `UNDO_OP_DESC_PREFIX` "jump over old
-/// undo-stacks" optimization: this is a single-step walk-back from the current head, not
-/// a description-parsed redo/undo stack. Calling `undo()` twice in a row still redoes the
-/// first `undo()`: each call's target is the current head's parent, and the first undo
-/// op's parent IS the pre-undo (post-mutation) state.
+/// The step, as in the CLI:
+///
+/// 1. The target is the head operation — unless the head is itself an undo operation
+///    (description `undo: restore to operation <hex>`), then it is the operation that undo
+///    restored to, so the next undo goes one further back.
+/// 2. Unless `allow_cross_workspace`, a target performed in ANOTHER workspace refuses
+///    ([`MutateError::UndoCrossWorkspace`], jj 0.46). An operation that records no workspace
+///    never refuses.
+/// 3. Undoing a `push …` operation warns `jj.undo_push_operation`, undoing a `remove workspace…`
+///    operation `jj.undo_workspace_removal` — the CLI's two warnings, in its order.
+/// 4. The target's single parent is restored; when that parent is an undo operation itself, the
+///    operation IT restored to is used instead, so undos never form a linked list.
+/// 5. The restored view takes the repo state (`head_ids`, local bookmarks/tags, `wc_commit_ids`)
+///    and the remote-tracking bookmarks from the restored operation and keeps `git_refs` /
+///    `git_heads` at their current values (`DEFAULT_REVERT_WHAT`), committed as
+///    `undo: restore to operation <hex>` — the description is the stack: the CLI and Zanshin
+///    continue each other's undo stacks through it.
 ///
 /// No `rebase_descendants()` call — a raw `set_view` records no rewrites, matching the
 /// CLI (which doesn't call it either).
 ///
 /// # Errors
 ///
-/// - [`MutateError::NothingToUndo`] — the head operation IS the op-store root operation
-///   (no parent to restore to).
-/// - [`MutateError::InvalidInput`] — the head operation has more than one parent (a
-///   divergent-write "reconcile divergent operations" merge op) — mirrors the CLI's own
-///   refusal to undo a merge operation, rather than silently picking one parent.
-/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+/// - [`MutateError::UndoCrossWorkspace`] — the target was performed in another workspace and
+///   `allow_cross_workspace` is `false`.
+/// - [`MutateError::NothingToUndo`] — the target is the op-store root operation ("Cannot undo
+///   root operation"), e.g. after an undo stack walked back to the very first operation.
+/// - [`MutateError::InvalidInput`] — the target has more than one parent (a "reconcile divergent
+///   operations" merge op) — the CLI's "Cannot undo a merge operation".
+/// - [`MutateError::Backend`] — an undo operation's description names no valid operation id, or
+///   an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn undo(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result<MutationResult, MutateError> {
+pub(crate) fn undo(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    allow_cross_workspace: bool,
+) -> Result<MutationResult, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
-    let head_op = readonly.operation().clone();
-    let parent_ids = head_op.parent_ids();
-    if parent_ids.is_empty() {
-        return Err(MutateError::NothingToUndo);
-    }
-    let [target_parent_id] = parent_ids else {
-        return Err(MutateError::InvalidInput {
-            reason: "cannot undo a merge operation".to_owned(),
-        });
-    };
     let workspace_name = workspace.workspace_name().to_owned();
 
-    let target_parent =
-        pollster::block_on(workspace.repo_loader().load_operation(target_parent_id)).map_err(mutate::be)?;
+    let target_op = through_undo(
+        workspace,
+        readonly.operation().clone(),
+        "Failed to parse ID of target operation in undo-stack",
+    )?;
+    if !allow_cross_workspace {
+        if let Some(op_workspace) = &target_op.metadata().workspace_name {
+            if *op_workspace != workspace_name {
+                return Err(MutateError::UndoCrossWorkspace {
+                    operation: format!("{:.12}", target_op.id()),
+                    workspace: op_workspace.as_str().to_owned(),
+                });
+            }
+        }
+    }
+    let description = &target_op.metadata().description;
+    if description.starts_with(PUSH_OP_DESC_PREFIX) {
+        ctx.warnings.push(WarningKind::UndoPushOperation, UNDO_PUSH_OPERATION);
+    }
+    if description.starts_with("remove workspace") {
+        ctx.warnings
+            .push(WarningKind::UndoWorkspaceRemoval, UNDO_WORKSPACE_REMOVAL);
+    }
+
+    let parents = pollster::block_on(target_op.parents()).map_err(mutate::be)?;
+    let target_parent = match <[JjOperation; 1]>::try_from(parents) {
+        Ok([parent]) => parent,
+        Err(parents) if parents.is_empty() => return Err(MutateError::NothingToUndo),
+        Err(_) => {
+            return Err(MutateError::InvalidInput {
+                reason: "cannot undo a merge operation".to_owned(),
+            })
+        }
+    };
+    let target_parent = through_undo(
+        workspace,
+        target_parent,
+        "Failed to parse ID of target operation's parent in undo-stack",
+    )?;
     let target_view = pollster::block_on(target_parent.view()).map_err(mutate::be)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     tx.repo_mut()
         .set_view(restored_view(target_view.store_view(), readonly.view().store_view()));
-    let description = format!("undo: restore to operation {}", target_parent.id().hex());
+    let description = format!("{UNDO_OP_DESC_PREFIX}{}", target_parent.id().hex());
     let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
     mutate::mutation_result(&finish, Vec::new(), Vec::new())
+}
+
+/// The description prefix that makes an operation an undo operation — the CLI's
+/// `UNDO_OP_DESC_PREFIX` (`cli/src/commands/undo.rs:55` @ v0.46.0). It is the undo stack's only
+/// record, so it must stay byte-identical to the CLI's.
+const UNDO_OP_DESC_PREFIX: &str = "undo: restore to operation ";
+
+/// The description prefix of a `jj git push` operation — the CLI's `TX_DESC_PUSH`, which
+/// `is_push_operation` tests (`cli/src/commands/git/push.rs:272`, `:1492-1494` @ v0.46.0).
+const PUSH_OP_DESC_PREFIX: &str = "push ";
+
+/// The CLI's warning for undoing a push (`undo.rs:134-141` @ v0.46.0), minus its hint.
+const UNDO_PUSH_OPERATION: &str = "Undoing a push operation often leads to conflicted bookmarks.";
+
+/// The CLI's warning for undoing a workspace removal (`undo.rs:142-156` @ v0.46.0), minus its
+/// hint.
+const UNDO_WORKSPACE_REMOVAL: &str =
+    "Undoing a workspace removal restores the workspace, but does not restore the workspace directory.";
+
+/// `op` itself — or, when `op` is an undo operation, the operation it restored to (the CLI's two
+/// `strip_prefix(UNDO_OP_DESC_PREFIX)` look-ups). A description whose id does not parse is the
+/// CLI's internal error `parse_failure`.
+fn through_undo(workspace: &Workspace, op: JjOperation, parse_failure: &str) -> Result<JjOperation, MutateError> {
+    let Some(hex) = op.metadata().description.strip_prefix(UNDO_OP_DESC_PREFIX) else {
+        return Ok(op);
+    };
+    let id = op_store::OperationId::try_from_hex(hex).ok_or_else(|| MutateError::Backend(parse_failure.to_owned()))?;
+    pollster::block_on(workspace.repo_loader().load_operation(&id)).map_err(mutate::be)
 }
 
 /// Restores only the portions of the view the CLI's default (unflagged) `jj undo`

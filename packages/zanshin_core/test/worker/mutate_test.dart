@@ -120,6 +120,23 @@ void main() {
       await handle.close();
     });
 
+    test('undo_twice_goes_further_back_and_carries_allow_cross_workspace', () async {
+      // Story 9.39: the undo stack — the 2nd undo goes further back instead of
+      // redoing the 1st — and the CLI's `--allow-cross-workspace` reaches Rust
+      // (the refusal itself is pinned by crates/zanshin-ffi/tests/repo_write_ffi.rs).
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String wc = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: wc, description: 'A');
+      await handle.describe(changeId: wc, description: 'B');
+
+      await handle.undo();
+      expect((await handle.getChange(wc)).description, 'A');
+      await handle.undo(allowCrossWorkspace: true);
+      expect((await handle.getChange(wc)).description, isEmpty, reason: 'one further back, not a redo');
+
+      await handle.close();
+    });
+
     test('undo_on_closed_handle_surfaces_ffi_invalid_handle', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       await handle.close();

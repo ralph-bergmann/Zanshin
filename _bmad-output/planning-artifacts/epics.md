@@ -6760,6 +6760,8 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 **Non-goals.** `jj redo` (9.21), `op restore` / `op revert` (9.12).
 
+**Update 2026-10-08 (jj 0.46, done).** Ported against `cmd_undo` @ v0.46.0, which adds two things to the scope above: an operation performed in ANOTHER workspace is refused ("Refusing to undo operation … because it was performed in workspace …") unless `--allow-cross-workspace` — `Repo::undo(allow_cross_workspace)`, `jj.undo_cross_workspace`, the flag through the FFI and `zanshin_core`; and undoing a `remove workspace` operation warns like a push does (`jj.undo_workspace_removal`, next to `jj.undo_push_operation`).
+
 ### Story 9.40: No-change verbs write no operation — `WorkspaceCommandTransaction::finish`'s `has_changes()` gate [M]
 *(Added 2026-09-24, Ralph — pre-existing divergence first found by the 9.27 review, re-found by the 9.26 follow-up review.)*
 

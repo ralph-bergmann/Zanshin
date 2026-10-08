@@ -935,18 +935,27 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
-  /// Revert the last operation of the repo identified by [handleId], one step
-  /// back from the current head (Story 6.5).
+  /// Undo the last operation of the repo identified by [handleId] — the CLI's
+  /// `jj undo` with its undo stack (Story 6.5, Story 9.39); see
+  /// [RepoHandle.undo] for [allowCrossWorkspace].
   ///
   /// Sends an [UndoCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.nothing_to_undo`). Completes with a [StateError] after [close]. The
-  /// close-guard [StateError] is delivered synchronously by [RepoHandle.undo].
-  Future<repo_ffi_mutate.MutationResult> undo(int handleId) async {
+  /// `jj.undo_cross_workspace`, `jj.nothing_to_undo`). Completes with a
+  /// [StateError] after [close]. The close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.undo].
+  Future<repo_ffi_mutate.MutationResult> undo(
+    int handleId, {
+    bool allowCrossWorkspace = false,
+  }) async {
     final Uint8List bytes = await send(
-      UndoCommand(commandId: _correlator.allocateId(), handleId: handleId),
+      UndoCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        allowCrossWorkspace: allowCrossWorkspace,
+      ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
@@ -2105,14 +2114,17 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case UndoCommand(:final int handleId):
+        case UndoCommand(:final int handleId, :final bool allowCrossWorkspace):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: UndoCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_mutate.zanshinUndo(raw);
+            final Uint8List bytes = repo_ffi_mutate.zanshinUndo(
+              raw,
+              allowCrossWorkspace: allowCrossWorkspace,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

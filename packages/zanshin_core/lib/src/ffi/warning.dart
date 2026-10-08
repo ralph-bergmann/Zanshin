@@ -132,6 +132,14 @@ abstract final class ZanshinWarningCode {
   /// command start (Story 9.37).
   static const configRegenerated = 'jj.config_regenerated';
 
+  /// `undo` undid a `jj git push` operation, which often leaves conflicted
+  /// bookmarks (Story 9.39).
+  static const undoPushOperation = 'jj.undo_push_operation';
+
+  /// `undo` undid a workspace removal: the workspace is back, its directory is
+  /// not (Story 9.39).
+  static const undoWorkspaceRemoval = 'jj.undo_workspace_removal';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -167,6 +175,8 @@ abstract final class ZanshinWarningCode {
     configMigrated,
     configCopied,
     configRegenerated,
+    undoPushOperation,
+    undoWorkspaceRemoval,
     loginShellUnresolved,
   ];
 }

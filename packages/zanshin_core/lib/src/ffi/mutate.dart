@@ -82,9 +82,11 @@ Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeId
   (ptr, len) => readToken(zanshin_abandon(rawHandle, ptr, len)),
 );
 
-/// Call `zanshin_undo` with the raw `u64` handle, and return the FlatBuffers
-/// `Envelope` bytes.
-Uint8List zanshinUndo(int rawHandle) => readToken(zanshin_undo(rawHandle));
+/// Call `zanshin_undo` with the raw `u64` handle and [allowCrossWorkspace] (the
+/// CLI's `--allow-cross-workspace`, a plain C `bool` — ADR-0001's scalar rule),
+/// and return the FlatBuffers `Envelope` bytes.
+Uint8List zanshinUndo(int rawHandle, {bool allowCrossWorkspace = false}) =>
+    readToken(zanshin_undo(rawHandle, allowCrossWorkspace));
 
 /// Call `zanshin_git_fetch` with the raw `u64` handle and [remoteName], and
 /// return the FlatBuffers `Envelope` bytes.

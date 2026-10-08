@@ -74,9 +74,13 @@ pub const JJ_INVALID_INPUT: &str = "jj.invalid_input";
 /// the repo's effective immutable set `::(immutable_heads() | root())`; the offending hex
 /// commit id in `context`. No operation is committed.
 pub const JJ_IMMUTABLE: &str = "jj.immutable";
-/// AR-P-4: emitted by `repo.rs::zanshin_undo` when the head operation is the op-store
+/// AR-P-4: emitted by `repo.rs::zanshin_undo` when the operation to undo is the op-store
 /// root — there is no parent operation to restore to.
 pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
+/// AR-P-4: emitted by `repo.rs::zanshin_undo` when the operation to undo was performed in another
+/// workspace and `allow_cross_workspace` is false (jj 0.46, Story 9.39); `context` is
+/// `"<operation>\n<workspace>"` — the 12-digit short operation id, then the workspace name.
+pub const JJ_UNDO_CROSS_WORKSPACE: &str = "jj.undo_cross_workspace";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured git
 /// remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and — since Story
 /// 9.5 — by `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does
@@ -260,6 +264,12 @@ pub const JJ_CONFIG_COPIED: &str = "jj.config_copied";
 /// Warning: the secure config directory was missing and was regenerated empty at command start
 /// (Story 9.37).
 pub const JJ_CONFIG_REGENERATED: &str = "jj.config_regenerated";
+/// Warning: `undo` undid a `jj git push` operation, which often leaves conflicted bookmarks
+/// (Story 9.39).
+pub const JJ_UNDO_PUSH_OPERATION: &str = "jj.undo_push_operation";
+/// Warning: `undo` undid a workspace removal — the workspace is back, its directory is not
+/// (Story 9.39).
+pub const JJ_UNDO_WORKSPACE_REMOVAL: &str = "jj.undo_workspace_removal";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -294,6 +304,8 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigMigrated => JJ_CONFIG_MIGRATED,
         K::ConfigCopied => JJ_CONFIG_COPIED,
         K::ConfigRegenerated => JJ_CONFIG_REGENERATED,
+        K::UndoPushOperation => JJ_UNDO_PUSH_OPERATION,
+        K::UndoWorkspaceRemoval => JJ_UNDO_WORKSPACE_REMOVAL,
     }
 }
 
@@ -1070,6 +1082,8 @@ mod tests {
                 K::ConfigMigrated => "jj.config_migrated",
                 K::ConfigCopied => "jj.config_copied",
                 K::ConfigRegenerated => "jj.config_regenerated",
+                K::UndoPushOperation => "jj.undo_push_operation",
+                K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
             }
         }
         let kinds = [
@@ -1100,6 +1114,8 @@ mod tests {
             K::ConfigMigrated,
             K::ConfigCopied,
             K::ConfigRegenerated,
+            K::UndoPushOperation,
+            K::UndoWorkspaceRemoval,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

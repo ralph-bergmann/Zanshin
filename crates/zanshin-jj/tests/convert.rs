@@ -1140,7 +1140,7 @@ fn undo_after_convert_import_reverts_only_the_head_import() {
         "after the head import `@` sits on top of the imported HEAD"
     );
 
-    repo.undo().expect("undo must succeed");
+    repo.undo(false).expect("undo must succeed");
 
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
     assert!(
