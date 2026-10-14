@@ -5,6 +5,8 @@ const { useState } = React;
 
 // Marker spot: first free stretch on the edge, scanning from the child (the gap starts right below it).
 // Free = away from corners, card borders, crossings and stretches shared with other edges.
+// A marker never sits right at a card: its break keeps CLEAR px of visible line to the card or bend on both sides where the line allows.
+const CLEAR = 12;
 function placeGapMarkers(edges) {
   const segs = edges.map(e => {
     const s = [];
@@ -17,9 +19,7 @@ function placeGapMarkers(edges) {
   });
   const spot = (i) => {
     const S = segs[i];
-    for (const wantH of [false, true]) for (let si = S.length - 1; si >= 0; si--) {
-      const s = S[si]; if (s.h !== wantH) continue;
-      const need = s.h ? 30 : 26, m0 = si === S.length - 1 ? 8 : 12, m1 = si === 0 ? 8 : 12;
+    const cand = S.map((s, si) => {
       const ux = (s.x1 - s.x2) / s.len, uy = (s.y1 - s.y2) / s.len;
       const U = (x, y) => (x - s.x2) * ux + (y - s.y2) * uy;
       const bad = [];
@@ -35,15 +35,25 @@ function placeGapMarkers(edges) {
         }
       }); });
       bad.sort((a, b) => a[0] - b[0]);
-      let a = m0;
-      const tryIv = (lo, hi) => hi - lo >= need ? lo + Math.min((hi - lo) / 2, need / 2 + 6) : null;
-      let u = null;
-      for (const [b0, b1] of bad) { if (b0 > a) { u = tryIv(a, Math.min(b0, s.len - m1)); if (u != null) break; } a = Math.max(a, b1); }
-      if (u == null) u = tryIv(a, s.len - m1);
-      if (u != null) return { x: s.x2 + ux * u, y: s.y2 + uy * u, dir: s.h ? "h" : "v" };
+      const free = []; let a = 0;
+      bad.forEach(([b0, b1]) => { if (b0 > a) free.push([a, Math.min(b0, s.len)]); a = Math.max(a, b1); });
+      if (a < s.len) free.push([a, s.len]);
+      return { s, si, ux, uy, free };
+    });
+    const at = (c, u) => ({ x: c.s.x2 + c.ux * u, y: c.s.y2 + c.uy * u, dir: c.s.h ? "h" : "v" });
+    for (const wantH of [false, true]) for (let k = cand.length - 1; k >= 0; k--) {
+      const c = cand[k]; if (c.s.h !== wantH) continue;
+      const need = c.s.h ? 30 : 26, m0 = c.si === S.length - 1 ? 8 : 12, m1 = c.si === 0 ? 8 : 12;
+      for (const [f0, f1] of c.free) {
+        const lo = Math.max(f0, m0), hi = Math.min(f1, c.s.len - m1);
+        if (hi - lo >= need) return at(c, lo + Math.min((hi - lo) / 2, need / 2 + 6));
+      }
     }
+    // nothing has the room: the middle of the longest free stretch, so line stays visible on both sides of the break
+    let best = null, len = -1;
+    cand.forEach(c => c.free.forEach(([f0, f1]) => { if (f1 - f0 > len) { len = f1 - f0; best = at(c, (f0 + f1) / 2); } }));
     const end = edges[i].pts[edges[i].pts.length - 1];
-    return { x: end[0], y: end[1] + 11, dir: "v" };
+    return best || { x: end[0], y: end[1] + CLEAR + 4, dir: "v" };
   };
   const groups = new Map();
   edges.forEach((e, i) => { if (!e.dashed) return; const k = e.to + "|" + e.via; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
@@ -53,7 +63,10 @@ function placeGapMarkers(edges) {
     // several indirect edges through the same hidden parent (= hidden merge) share one marker on the card's stem
     if (idx.length > 1 && !edges.some((e, j) => e.to === e0.to && !idx.includes(j))) {
       const ids = [...new Set(idx.flatMap(i => edges[i].hiddenIds))];
-      out.push({ key, edges: idx, from: idx.map(i => edges[i].from), to: e0.to, via: e0.via, count: ids.length, hiddenIds: ids, group: true, x: end[0], y: end[1] + 10, dir: "v" });
+      // on the shared stem below the card: near the card with CLEAR px of line on both sides, else the stem's middle
+      const stem = Math.min(...idx.map(i => { const p = edges[i].pts, k = p.length; return Math.abs(p[k - 1][1] - p[k - 2][1]); }));
+      const off = stem >= 2 * (CLEAR + 4) ? CLEAR + 4 + Math.min(6, (stem - 2 * (CLEAR + 4)) / 2) : stem / 2;
+      out.push({ key, edges: idx, from: idx.map(i => edges[i].from), to: e0.to, via: e0.via, count: ids.length, hiddenIds: ids, group: true, x: end[0], y: end[1] + off, dir: "v" });
       return;
     }
     idx.forEach(i => out.push({ key: key + "|" + edges[i].from, edges: [i], from: [edges[i].from], to: e0.to, via: e0.via, count: edges[i].count, hiddenIds: edges[i].hiddenIds, ...spot(i) }));

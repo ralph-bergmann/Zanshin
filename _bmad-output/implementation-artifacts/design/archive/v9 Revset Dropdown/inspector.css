@@ -1,0 +1,93 @@
+/* ============================================================
+   INSPECTOR — describe in place, select hunks, compose a commit or a split
+   ============================================================ */
+/* selection checkbox — moon, like every other selection */
+.gck{flex-shrink:0;width:15px;height:15px;padding:0;border-radius:4.5px;display:grid;place-items:center;border:1.5px solid var(--text-faint);color:var(--accent-ink);background:transparent;transition:background 120ms,border-color 120ms}
+.gck:hover{border-color:var(--text-muted)}
+.gck.on,.gck.mixed{background:var(--accent);border-color:var(--accent)}
+.gck:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* the title is the describe field */
+.gins-title{margin:8px 12px 0;padding:4px 8px 6px;border-radius:10px;outline:none;transition:background 120ms}
+.gins-title .gins-subj{padding:0}
+.gins-title .gins-desc{margin-top:6px}
+.gins-title.is-editable:hover,.gins-title.is-editable:focus-visible{background:var(--fl-hover)}
+.gins-title.is-editable:focus-visible{box-shadow:0 0 0 2px var(--accent-ring)}
+.gins-pen{display:inline-block;margin-left:8px;vertical-align:1px;color:var(--text-faint);opacity:0;transition:opacity 120ms}
+.gins-title.is-editable:hover .gins-pen,.gins-title.is-editable:focus-visible .gins-pen{opacity:1}
+.gins-meta{padding-top:4px}
+.gins-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.gins-scroll>*{flex-shrink:0}
+.gins-scroll .bcd-body{flex:none;overflow:visible;min-height:auto}
+.gins-scroll::-webkit-scrollbar{width:6px}.gins-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+
+/* fields */
+.gdesc-subj,.gdesc-body,.gcomp-msg,.gset-in,.gset-sel{box-sizing:border-box;width:100%;border-radius:8px;border:1px solid var(--fl-border);background:rgba(8,10,22,.45);color:var(--text);font-family:var(--font-sans);outline:none;transition:border-color 120ms,box-shadow 120ms}
+[data-theme="light"] .gdesc-subj,[data-theme="light"] .gdesc-body,[data-theme="light"] .gcomp-msg,[data-theme="light"] .gset-in,[data-theme="light"] .gset-sel{background:rgba(255,255,255,.9)}
+.gdesc-subj:focus,.gdesc-body:focus,.gcomp-msg:focus,.gset-in:focus,.gset-sel:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.gdesc-subj::placeholder,.gdesc-body::placeholder,.gcomp-msg::placeholder,.gset-in::placeholder{color:var(--text-faint)}
+.gdesc{margin:8px 12px 0;padding:10px;border-radius:12px;background:var(--fl-hover);display:flex;flex-direction:column;gap:8px}
+.gdesc-subj{height:36px;padding:0 10px;font-size:15px;font-weight:600}
+.gdesc-body{padding:8px 10px;font-size:13px;line-height:1.5;resize:vertical;min-height:62px}
+.gdesc-ft{display:flex;align-items:center;gap:6px}
+.gdesc-ft code,.gcomp-cmd{flex:1;min-width:0;font:11px var(--font-mono);color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gins-btn:disabled{opacity:.4;pointer-events:none}
+
+/* changes */
+.gch-hd{display:flex;align-items:center;gap:10px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}
+.gch-title{font-size:12.5px;font-weight:600;color:var(--text)}
+.gch-meta{display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+.gch-meta span{font:11px var(--font-mono)}
+.gch-viewed{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-dim);white-space:nowrap}
+.gch-viewed svg{color:var(--add)}
+.gch-viewed button{font-size:11.5px;color:var(--text-muted);padding:2px 7px;border-radius:6px}
+.gch-viewed button:hover{background:var(--fl-hover);color:var(--text)}
+.gch-files{display:flex;flex-direction:column;gap:1px;margin:0 -8px 14px}
+.gch-file{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 8px;border-radius:8px;transition:background 120ms,opacity 140ms}
+.gch-file:hover{background:var(--fl-hover)}
+.gch-file.is-focus{background:var(--fl-on)}
+.gch-file .file-path{flex:1;min-width:0;font:11.5px var(--font-mono);color:var(--text-muted)}
+.gch-file.is-focus .file-path{color:var(--text)}
+.gch-file.is-viewed .file-path{opacity:.55}
+.gch-vw{display:grid;color:var(--add);flex-shrink:0}
+.gch-file .file-stat{font-size:11px}
+.gch-file.is-lifted,.ghunk.is-lifted{opacity:.38;outline:1.5px dashed var(--accent);outline-offset:-1.5px}
+.gch-empty{padding:22px 2px;font-size:12.5px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}
+
+/* hunks */
+.gdv{overflow:hidden}
+.gdv .diff-body{max-height:none;padding:4px 0}
+.gdv .diff-toolbar .diff-mode-toggle{margin-left:auto}
+.gdv .seg{display:grid;place-items:center;padding:3px 7px}
+.ghunk+.ghunk{border-top:1px solid var(--fl-border)}
+.ghunk-hd{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 10px;background:var(--accent-soft);color:var(--text-dim);transition:background 120ms}
+.ghunk-range{font:11px var(--font-mono);color:var(--hunk);white-space:nowrap}
+.ghunk-ctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--font-mono);color:var(--text-muted)}
+.ghunk-stat{display:flex;gap:6px;margin-left:auto;flex-shrink:0;font:11px var(--font-mono)}
+.ghunk-grip{flex-shrink:0;color:var(--text-faint);opacity:0;transition:opacity 120ms}
+.ghunk-hd.is-grab:hover .ghunk-grip{opacity:1}
+.ghunk.is-sel .ghunk-hd{background:color-mix(in oklch,var(--accent) 24%,transparent);color:var(--text)}
+.ghunk.is-sel .diff-line,.ghunk.is-sel .diff-row{box-shadow:inset 2px 0 0 var(--accent)}
+
+/* composer — the result, drawn the way the graph draws it: the child above, the selection below */
+.gcomp{flex-shrink:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-top:1px solid var(--fl-border);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent 48px);animation:gcomp-in 260ms cubic-bezier(.32,.72,0,1) both}
+[data-theme="light"] .gcomp{background:linear-gradient(180deg,rgba(255,255,255,.5),transparent 48px)}
+@keyframes gcomp-in{from{opacity:0;transform:translateY(12px)}}
+.gdesc-fields{display:flex;flex-direction:column;gap:6px}
+.gcomp .gdesc-subj{height:34px;font-size:13.5px}
+.gcomp .gdesc-body{min-height:44px;resize:none}
+.gcomp-result{display:flex;flex-direction:column;gap:2px;padding:0 2px}
+.gcomp-node{position:relative;display:flex;align-items:center;gap:8px;height:24px;min-width:0;font-size:12px;color:var(--text-dim)}
+.gcomp-dot{flex-shrink:0;width:9px;height:9px;margin:0 2.5px;border-radius:50%;border:1.5px solid var(--text-faint);box-sizing:border-box}
+.gcomp-node.is-rest::after{content:"";position:absolute;left:6.25px;top:17px;width:1.5px;height:16px;background:var(--text-faint);opacity:.7}
+.gcomp-node.is-sel .gcomp-dot{background:var(--accent);border-color:var(--accent)}
+.gcomp-node.is-wc .gcomp-dot{border-color:var(--co);box-shadow:0 0 0 3px var(--co-soft)}
+.gcomp-l{font-weight:600;color:var(--text);white-space:nowrap}
+.gcomp-m{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.gcomp-stat{display:inline-flex;gap:5px;font:11px var(--font-mono)}
+.gcomp-n{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.gcomp-n.is-msg{color:var(--text)}
+.gcomp-ft{display:flex;align-items:center;gap:6px}
+.gcomp-warn{font-size:11.5px;color:oklch(84% .15 85)}
+.gcomp-hint{font-size:11.5px;line-height:1.45;color:var(--text-dim);text-wrap:pretty}
+[data-theme="light"] .gcomp-warn{color:oklch(50% .13 70)}

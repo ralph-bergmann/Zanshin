@@ -1,0 +1,60 @@
+<!-- @dsCard group="Components" viewport="700x470" name="Content" subtitle="FileRow, DiffView + DiffHunk, ProjectRow, Kbd" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}.g{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}.h{display:flex;align-items:center;gap:8px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}.h b{font-size:12.5px;font-weight:600;color:var(--text)}.h .a{font:11px var(--font-mono);color:var(--add)}.h .r{font:11px var(--font-mono);color:var(--rem)}.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}.keys{display:flex;align-items:center;gap:4px;margin-top:16px;font-size:11px;color:var(--text-dim)}.tree{margin-top:18px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { FileRow, DiffView, DiffHunk, ProjectRow, Kbd, Segmented, Checkbox } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [sel, setSel] = React.useState(0);
+    const [mode, setMode] = React.useState("unified");
+    const [hs, setHs] = React.useState({ a: true, b: false });
+    const [viewed, setViewed] = React.useState(false);
+    const files = [["M", "lib/onboarding/swipe_controller.dart", 42, 7], ["A", "lib/onboarding/widgets/swipe_hint.dart", 88, 0], ["D", "lib/legacy/onboarding_pager.dart", 0, 131], ["M", "test/onboarding/swipe_controller_test.dart", 19, 2]];
+    return (
+      <div className="g">
+        <div>
+          <div className="h"><Checkbox mixed label="Select all"/><b>Changes</b><span>4 files</span><span className="a">+149</span><span className="r">−140</span></div>
+          <div className="list" role="list">{files.map(([s, p, a, r], i) => <FileRow key={p} status={s} path={p} added={a} removed={r} selected={sel === i} viewed={i === 3} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
+          <div className="tree" role="tree">
+            <ProjectRow kind="group" name="Mobile" expanded count={3}/>
+            <ProjectRow depth={1} name="MyApp" path="~/code/work/mobile/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected/>
+            <ProjectRow depth={1} name="design-kit" path="~/code/work/mobile/design-kit" branch="main" status="behind" behind={3} lastOpened="5d ago"/>
+            <ProjectRow depth={1} name="old-experiment" path="~/code/play/old-experiment" branch="—" status="missing" lastOpened="6mo ago"/>
+          </div>
+          <div className="keys"><Kbd>⌘</Kbd><Kbd>,</Kbd><span>Settings</span><span style={{ width: 10 }}></span><Kbd>⌘</Kbd><Kbd>↩</Kbd><span>Commit / Split</span></div>
+        </div>
+        <DiffView file={files[sel][1]} viewed={viewed} onViewedChange={setViewed}
+          tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
+          <DiffHunk oldStart={12} newStart={12} context="class SwipeController" mode={mode} selectable selected={hs.a} onToggle={(v) => setHs({ ...hs, a: v })} onGrab={() => {}} lines={[
+            "   final double threshold;",
+            "-  void onEnd() {",
+            "-    _reset();",
+            "+  void onEnd(DragEndDetails d) {",
+            "+    if (d.primaryVelocity!.abs() > threshold) {",
+            "+      _commit(d.primaryVelocity! < 0);",
+            "+      return;",
+            "+    }",
+            "+    _reset();",
+            "   }",
+          ]}/>
+          <DiffHunk oldStart={40} newStart={45} mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={["-  static const _kSettle = 220;", "+  static const _kSettle = 260;"]}/>
+        </DiffView>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!-- @dsCard group="Components" viewport="700x470" name="Settings" subtitle="SettingsGroup + SettingsRow — General and Project scopes in one window" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.win{max-width:620px;margin:0 auto;border-radius:18px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-dialog);overflow:hidden}.hd{display:flex;justify-content:center;padding:16px 56px 2px}.scope{padding:10px 28px 14px;text-align:center;font-size:12px;line-height:1.5;color:var(--text-dim)}.scope code{font:11.5px var(--font-mono);color:var(--text-muted)}.bd{display:flex;flex-direction:column;gap:18px;padding:2px 24px 18px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { SettingsGroup, SettingsRow, Segmented, Switch, Select, TextField, NamiMark } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [tab, setTab] = React.useState("general");
+    const [th, setTh] = React.useState("system");
+    const [den, setDen] = React.useState("compact");
+    const [hide, setHide] = React.useState(true);
+    return (
+      <div className="win">
+        <div className="hd"><Segmented variant="tabs" label="Scope" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <NamiMark size={14}/> }]}/></div>
+        <div className="scope">For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></div>
+        <div className="bd">
+          <SettingsGroup title="Appearance">
+            <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "light", label: "Light", icon: "sun" }, { value: "dark", label: "Dark", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
+            <SettingsRow label="Density"><Segmented variant="inset" label="Density" value={den} onChange={setDen} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup title="While you scroll">
+            <SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph. The minimap stays."><Switch label="Hide controls while scrolling" checked={hide} onChange={setHide}/></SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup title="Identity">
+            <SettingsRow label="Email" configKey="user.email"><TextField defaultValue="ralph@dasralph.de" aria-label="Email"/></SettingsRow>
+          </SettingsGroup>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

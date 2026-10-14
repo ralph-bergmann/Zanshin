@@ -1,0 +1,47 @@
+/* Menu — right-click / ••• actions on a change */
+.zs-menu{display:flex;flex-direction:column;gap:1px;min-width:250px;max-width:320px;padding:5px;border-radius:var(--radius-card);background:var(--bg-elevated);border:1px solid var(--border-strong);box-shadow:var(--shadow-popover);color:var(--text);cursor:default;transform-origin:top left;animation:zs-menu-in var(--dur-menu) ease-out both}
+.zs-menu-head{display:flex;align-items:center;gap:8px;min-width:0;padding:4px 8px 7px;margin-bottom:3px;border-bottom:1px solid var(--border)}
+.zs-menu-subj{font-size:var(--fs-md);color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-menu-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;height:28px;padding:0 8px;border:0;border-radius:var(--radius-sm);background:none;font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;cursor:default}
+.zs-menu-item>.zs-icon{color:var(--text-muted)}
+.zs-menu-cmd{font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
+.zs-menu-item:not(:disabled):hover,.zs-menu-item:not(:disabled):focus-visible{background:var(--accent);color:var(--accent-ink);outline:none}
+.zs-menu-item:not(:disabled):hover>.zs-icon,.zs-menu-item:not(:disabled):hover .zs-menu-cmd{color:var(--accent-ink)}
+.zs-menu-item.is-danger,.zs-menu-item.is-danger>.zs-icon{color:var(--rem)}
+.zs-menu-item.is-danger:not(:disabled):hover{background:var(--rem);color:#fff}
+.zs-menu-item.is-danger:not(:disabled):hover>.zs-icon,.zs-menu-item.is-danger:not(:disabled):hover .zs-menu-cmd{color:#fff}
+.zs-menu-item:disabled{opacity:.38}
+.zs-menu-sep{height:1px;background:var(--border);margin:4px 6px}
+
+/* DropMenu — opens over the target card after a short rest while dragging. The likeliest action sits nearest the card
+   (above the card the list runs bottom-up) and is what a plain drop does. The footer shows the exact jj command. */
+.zs-drop{display:flex;flex-direction:column;width:288px;border-radius:13px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:0 22px 50px -14px rgba(0,0,0,.62),0 2px 8px rgba(0,0,0,.25);color:var(--text);user-select:none;animation:zs-drop-in 180ms var(--ease-glide) both}
+[data-theme="light"] .zs-drop{box-shadow:0 22px 50px -16px rgba(58,46,34,.34),0 2px 8px rgba(58,46,34,.1)}
+.zs-drop.is-single{width:max-content;min-width:240px;max-width:400px}
+@keyframes zs-drop-in{from{opacity:0;scale:.94}}
+.zs-drop-list{display:flex;flex-direction:column;gap:1px;padding:5px}
+.zs-drop-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:10px;height:30px;padding:0 10px 0 9px;border:0;border-radius:8px;background:none;font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;white-space:nowrap;cursor:default}
+.zs-drop-item>.zs-icon{color:var(--text-muted)}
+.zs-drop-l{overflow:hidden;text-overflow:ellipsis}
+.zs-drop-k{font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
+.zs-drop-note{font-size:var(--fs-sm);font-weight:500;color:var(--warn)}
+.zs-drop-item.is-on{background:var(--accent);color:var(--accent-ink)}
+.zs-drop-item.is-on>.zs-icon,.zs-drop-item.is-on .zs-drop-k,.zs-drop-item.is-on .zs-drop-note{color:var(--accent-ink)}
+.zs-drop-sep{height:1px;background:var(--fl-border);margin:3px 8px}
+.zs-drop-cmd{padding:8px 13px;font:var(--fs-id) var(--font-mono);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zs-drop.is-above .zs-drop-cmd{border-top:1px solid var(--fl-border)}
+.zs-drop.is-below .zs-drop-cmd{border-bottom:1px solid var(--fl-border)}
+
+/* ProjectMenu — the capsule names the place, so it holds everything about the place */
+.zs-pm{display:flex;flex-direction:column;gap:1px;width:300px;padding:5px;border-radius:13px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);transform-origin:top left;animation:zs-pop var(--dur-pop) var(--ease-glide)}
+.zs-pm-h{padding:8px 10px 4px 28px;font-size:var(--fs-xs);font-weight:600;letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
+.zs-pm-item{display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 10px 0 6px;border:0;border-radius:8px;background:none;font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;cursor:default}
+.zs-pm-item:hover,.zs-pm-item:focus-visible{background:var(--accent);color:var(--accent-ink);outline:none}
+.zs-pm-item:hover .zs-pm-sub,.zs-pm-item:hover .zs-pm-kbd,.zs-pm-item:hover .zs-pm-chk,.zs-pm-item:focus-visible .zs-pm-sub{color:var(--accent-ink)}
+.zs-pm-chk{width:14px;display:grid;place-items:center;flex-shrink:0;color:var(--accent)}
+.zs-pm-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-pm-item.is-on .zs-pm-name{font-weight:600}
+.zs-pm-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.zs-pm-sub{margin-left:auto;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
+.zs-pm-kbd{margin-left:auto;font:12px var(--font-sans);color:var(--text-faint)}
+.zs-pm-sep{height:1px;margin:4px 8px;background:var(--fl-border)}

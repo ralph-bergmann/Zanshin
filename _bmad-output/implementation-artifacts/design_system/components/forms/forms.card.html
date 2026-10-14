@@ -1,0 +1,59 @@
+<!-- @dsCard group="Components" viewport="700x336" name="Forms" subtitle="Segmented, Switch, Slider, Checkbox, TextField, Select, SearchField" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Segmented, Switch, Slider, SearchField, Checkbox, TextField, Select } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [lay, setLay] = React.useState("free");
+    const [th, setTh] = React.useState("system");
+    const [a, setA] = React.useState(true);
+    const [w, setW] = React.useState(240);
+    const [q, setQ] = React.useState("");
+    const [c1, setC1] = React.useState(true);
+    const [mode, setMode] = React.useState("unified");
+    return (
+      <div className="col">
+        <div className="row"><span className="lbl">Segmented</span>
+          <Segmented label="Layout" value={lay} onChange={setLay} options={[{ value: "free", label: "Free", title: "Rows follow commit time" }, { value: "compact", label: "Compact", title: "Rows = dependency depth" }]}/>
+          <Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "light", label: "Light", icon: "sun" }, { value: "dark", label: "Dark", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/>
+          <Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>
+        </div>
+        <div className="row"><span className="lbl">Toggles</span>
+          <Switch label="Detailed cards" checked={a} onChange={setA}/><Switch label="Off" checked={false}/>
+          <span style={{ width: 8 }}></span>
+          <Checkbox checked={c1} onChange={setC1} label="Select hunk"/><Checkbox mixed label="Select swipe_controller.dart"/><Checkbox label="Select all"/>
+          <span style={{ width: 8 }}></span>
+          <Slider label="Card width" min={160} max={400} step={10} value={w} unit="px" onChange={setW}/>
+        </div>
+        <div className="row"><span className="lbl">Fields</span>
+          <TextField size="lg" placeholder="Summary" defaultValue="feat(onboarding): swipe gestures" style={{ width: 300 }}/>
+          <TextField defaultValue="ralph@dasralph.de" aria-label="Email" style={{ width: 170 }}/>
+          <Select label="Fetch from" value="origin" options={["origin", "upstream"]}/>
+        </div>
+        <div className="row"><span className="lbl"></span>
+          <TextField multiline placeholder="Details (optional)" style={{ width: 300 }}/>
+          <TextField mono defaultValue="builtin_immutable_heads()" aria-label="Immutable heads revset" style={{ width: 240 }}/>
+        </div>
+        <div className="row"><span className="lbl">Search</span>
+          <SearchField placeholder="Search projects, paths…" value={q} onChange={setQ} style={{ width: 230 }}/>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

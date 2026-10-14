@@ -1,0 +1,42 @@
+<!-- @dsCard group="Components" viewport="920x1020" name="jj log Configurations" subtitle="RevsetDialog — selectable built-ins, the Default search switch and tag, filters, the full command" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:16px 20px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:10px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);margin-top:6px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { RevsetDialog } = window.ZanshinDesignSystem_a33847;
+  const SEED = [
+    { id: "c-onb", name: "Onboarding feature", op: "&", rules: [{ fn: "files", mode: "prefix", value: "lib/features/onboarding/", not: false }] },
+    { id: "c-lena", name: "Lena’s changes", op: "&", rules: [{ fn: "author", mode: "substring", ci: true, value: "Lena", not: false }] },
+    { id: "c-fix", name: "My fixes", op: "&", rules: [{ fn: "mine", not: false }, { fn: "subject", mode: "glob", value: "fix*", not: false }] },
+  ];
+  const COUNT = { default: 33, all: 35, "c-onb": 7, "c-lena": 12, "c-fix": 1 };
+  function One({ sel0, home0 }) {
+    const [configs, setConfigs] = React.useState(SEED), [sel, setSel] = React.useState(sel0), [home, setHome] = React.useState(home0);
+    const dirty = configs !== SEED || home !== home0;
+    return <RevsetDialog style={{ height: 452 }} configs={configs} selected={sel} defaultId={home} me="Ralph Stein" matchCount={COUNT[sel] != null ? COUNT[sel] : 0} total={35} dirty={dirty}
+      onSelect={setSel} onDefaultChange={setHome} onChange={setConfigs} onCancel={() => { setConfigs(SEED); setHome(home0); }} onApply={() => {}} onOk={() => {}} onClose={() => {}}/>;
+  }
+  const Demo = () => (
+    <div className="col">
+      <div className="lbl">A built-in selected — jj log is the default, its switch locked on</div>
+      <One sel0="default" home0="default"/>
+      <div className="lbl">A configuration selected — another one is the default search</div>
+      <One sel0="c-fix" home0="c-onb"/>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

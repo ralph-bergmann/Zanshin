@@ -1,0 +1,45 @@
+/* Overlays — transient layers above the graph: the undo toast, the hover peek, the drag ghost */
+
+/* Toast */
+.zs-toast{display:flex;width:max-content;max-width:100%;align-items:center;gap:8px;height:38px;padding:0 5px 0 15px;border-radius:var(--radius-pill);background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);font-size:var(--fs-control);color:var(--text);white-space:nowrap;animation:zs-toast-in 280ms var(--ease-glide) both}
+@keyframes zs-toast-in{from{opacity:0;transform:translateY(10px)}}
+.zs-toast-t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.zs-toast-t .zs-cid{vertical-align:-1px}
+.zs-toast-t code{font:600 12px var(--font-mono)}
+.zs-toast-undo{flex-shrink:0;height:28px;padding:0 13px;margin-left:4px;border:0;border-radius:var(--radius-pill);font:inherit;font-size:var(--fs-control);font-weight:500;color:var(--text);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover)}
+.zs-toast-undo:hover{background:var(--fl-on)}
+.zs-toast-x{flex-shrink:0;width:26px;height:26px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:none;color:var(--text-dim);cursor:default}
+.zs-toast-x:hover{background:var(--fl-hover);color:var(--text)}
+.zs-toast-undo:focus-visible,.zs-toast-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* PeekCard */
+.zs-peek{width:340px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-card);box-shadow:var(--shadow-popover);color:var(--text);text-align:left;cursor:default}
+.zs-peek-subj{font-size:13px;font-weight:600;line-height:1.35;color:var(--text);text-wrap:pretty;white-space:normal}
+.zs-peek-desc{font-size:12px;line-height:1.45;color:var(--text-dim);white-space:pre-line;text-wrap:pretty}
+.zs-peek-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:11.5px;color:var(--text-dim)}
+.zs-peek-dim{color:var(--text-faint);font-family:var(--font-mono)}
+.zs-peek-stats{display:flex;gap:10px;align-items:center;font:var(--fs-sm) var(--font-mono);padding-top:8px;border-top:1px solid var(--border)}
+.zs-peek-stats .fa,.zs-peek-stats .la{color:var(--add)}
+.zs-peek-stats .fm{color:var(--text-dim)}
+.zs-peek-stats .fd,.zs-peek-stats .lr{color:var(--rem)}
+.zs-peek-lines{margin-left:auto;display:flex;gap:8px}
+.zs-peek-hint{padding:8px 0 0;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-dim)}
+
+/* DragGhost */
+.zs-ghost{pointer-events:none;transition:opacity 140ms}
+.zs-ghost.is-muted{opacity:.3}
+.zs-ghost-card{display:flex;align-items:center;gap:8px;width:max-content;max-width:280px;height:34px;padding:0 12px;border-radius:var(--radius-card);background:var(--card-solid-hi);border:1px solid var(--accent);box-shadow:var(--shadow-drag);font-size:var(--fs-control);font-weight:500;color:var(--text);rotate:-1.5deg}
+.zs-ghost-card .zs-cid{flex-shrink:0}
+.zs-ghost-subj{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-ghost-subj.is-mono{font:12px var(--font-mono)}
+.zs-ghost-card.is-bm{height:28px;padding:0 12px 0 9px;border-radius:var(--radius-pill);gap:6px}
+.zs-ghost-card.is-bm>.zs-icon{color:var(--text-muted);flex-shrink:0}
+.zs-ghost-bm{font:600 12px var(--font-mono);white-space:nowrap}
+.zs-ghost-rest{font:var(--fs-id) var(--font-mono);color:var(--text-dim);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-ghost-card.is-diff{gap:9px}
+.zs-ghost-card .zs-file-status{flex-shrink:0}
+.zs-ghost-stat{display:flex;gap:6px;font:var(--fs-sm) var(--font-mono);flex-shrink:0}
+.zs-ghost-stat .a{color:var(--add)}.zs-ghost-stat .r{color:var(--rem)}
+.zs-ghost-cmd{display:flex;flex-direction:column;gap:3px;width:max-content;max-width:340px;margin-top:8px;padding:7px 10px;border-radius:var(--radius-md);background:var(--bg-elevated);border:1px solid var(--border-strong);font:var(--fs-id) var(--font-mono);color:var(--text-muted);box-shadow:0 10px 24px -12px rgba(0,0,0,.5)}
+.zs-ghost-cmd.is-on{color:var(--text);border-color:var(--accent)}
+.zs-ghost-alt{font:var(--fs-sm) var(--font-sans);color:var(--text-dim)}

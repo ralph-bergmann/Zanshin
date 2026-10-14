@@ -1,0 +1,56 @@
+<!-- @dsCard group="Components" viewport="700x650" name="Menus" subtitle="Menu (••• / right-click), ProjectMenu (the capsule), DropMenu (while dragging)" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.g{display:grid;grid-template-columns:auto auto;gap:18px 20px;align-items:start;justify-content:start}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Menu, ProjectMenu, DropMenu } = window.ZanshinDesignSystem_a33847;
+  const Demo = () => (
+    <div className="g">
+      <Menu id="plkmnvxo" subject="feat(onboarding): swipe gestures + haptic feedback" items={[
+        { id: "new", label: "New change on top", icon: "new-on-top", cmd: "jj new" },
+        { id: "after", label: "Insert after", icon: "insert-after", cmd: "jj new -A" },
+        { id: "before", label: "Insert before", icon: "insert-before", cmd: "jj new -B" },
+        "sep",
+        { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit" },
+        { id: "describe", label: "Describe…", icon: "describe", cmd: "jj describe" },
+        { id: "squash", label: "Squash into parent", icon: "squash", cmd: "jj squash" },
+        "sep",
+        { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+      ]}/>
+      <ProjectMenu activeId="p_myapp" recent={[
+        { id: "p_myapp", name: "MyApp", branch: "feature/new-ui", status: "dirty" },
+        { id: "p_api", name: "api-server", branch: "develop", status: "ahead" },
+        { id: "p_workers", name: "workers", branch: "fix/queue", status: "conflict" },
+        { id: "p_scratch", name: "scratch", branch: "main", status: "dirty" },
+        { id: "p_dotfiles", name: "dotfiles", branch: "main", status: "clean" },
+      ]}/>
+      <DropMenu place="below" active={0} items={[
+        { id: "onto", group: "move", icon: "move-onto", label: "Move here", hint: "rebase -s", cmd: "jj rebase -s ovknlmro -o vruxwmqv" },
+        { id: "only", group: "move", icon: "move-only", label: "Move only this change", hint: "rebase -r", cmd: "jj rebase -r ovknlmro -o vruxwmqv" },
+        { id: "after", group: "place", icon: "insert-after", label: "Insert after", hint: "rebase -A", cmd: "jj rebase -r ovknlmro -A vruxwmqv" },
+        { id: "before", group: "place", icon: "insert-before", label: "Insert before", hint: "rebase -B", cmd: "jj rebase -r ovknlmro -B vruxwmqv" },
+        { id: "squash", group: "combine", icon: "squash-into", label: "Squash into this change", hint: "squash", cmd: "jj squash --from ovknlmro --into vruxwmqv" },
+        { id: "merge", group: "combine", icon: "merge-new", label: "New merge change", hint: "new", cmd: "jj new vruxwmqv ovknlmro" },
+        { id: "dup", group: "copy", icon: "duplicate", label: "Duplicate here", hint: "duplicate", cmd: "jj duplicate ovknlmro -o vruxwmqv" },
+      ]}/>
+      <DropMenu place="above" active={0} items={[
+        { id: "bm", group: "move", icon: "bookmark", label: "Move ZAN-412 here", note: "backwards", cmd: "jj bookmark move feature/ZAN-412_onboarding-swipe-gestures --to xyzrmwpo --allow-backwards" },
+      ]}/>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

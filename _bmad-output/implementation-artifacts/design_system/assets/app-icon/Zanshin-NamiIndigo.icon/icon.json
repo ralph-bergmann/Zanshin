@@ -1,0 +1,50 @@
+{
+  "fill": {
+    "linear-gradient": {
+      "angle": 90,
+      "stops": [
+        {
+          "position": 0,
+          "color": "#1d2540"
+        },
+        {
+          "position": 1,
+          "color": "#131831"
+        }
+      ]
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Wave-Top.svg",
+          "fill": {
+            "solid": "#f4cf80"
+          },
+          "name": "Wave-Top"
+        },
+        {
+          "image-name": "Wave-Mid.svg",
+          "fill": {
+            "solid": "#dca85b"
+          },
+          "name": "Wave-Mid"
+        },
+        {
+          "image-name": "Wave-Bottom.svg",
+          "fill": {
+            "solid": "#b58346"
+          },
+          "name": "Wave-Bottom"
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

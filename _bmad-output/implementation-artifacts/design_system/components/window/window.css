@@ -1,0 +1,6 @@
+/* TrafficLights — the window's, not the content's: 3 × 12px across the 52px chrome column */
+.zs-traffic{display:flex;align-items:center;justify-content:space-between;width:var(--chrome-col);flex-shrink:0}
+.zs-traffic button{width:12px;height:12px;padding:0;border:0;border-radius:50%;cursor:default;transition:filter var(--dur-hover)}
+.zs-traffic button:hover{filter:brightness(1.4)}
+.zs-traffic .c{background:var(--tl-close)}.zs-traffic .m{background:var(--tl-min)}.zs-traffic .z{background:var(--tl-zoom)}
+.zs-traffic.is-idle button{background:var(--border-strong)}

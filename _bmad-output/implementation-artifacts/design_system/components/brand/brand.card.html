@@ -1,0 +1,36 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Brand" subtitle="NamiMark, Wordmark, Icon (65 glyphs)" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box}.row{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}.paper{background:var(--canvas);padding:10px 14px;border-radius:10px;border:1px solid var(--border)}.black{background:#000;padding:10px 14px;border-radius:10px}.grid{display:grid;grid-template-columns:repeat(15,1fr);gap:4px;margin-top:18px}.ic{display:grid;place-items:center;height:34px;border-radius:8px;color:var(--text-muted);background:var(--fl-hover)}.ic:hover{color:var(--text);background:var(--fl-on)}.cap{font:var(--fs-sm) var(--font-mono);color:var(--text-dim);margin-top:6px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { NamiMark, Wordmark, Icon } = window.ZanshinDesignSystem_a33847;
+  const Demo = () => (
+    <div>
+      <div className="row">
+        <NamiMark size={96}/><NamiMark size={56}/><NamiMark size={28} chip/><NamiMark size={16}/><NamiMark size={56} bare/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginLeft: "auto" }}>
+          <Wordmark height={22}/>
+          <div className="paper" data-theme="light"><Wordmark height={14} variant="ink"/></div>
+          <div className="black"><Wordmark height={14} variant="white"/></div>
+        </div>
+      </div>
+      <div className="grid">{Icon.names.map(n => <span key={n} className="ic" title={n}><Icon name={n} size={16}/></span>)}</div>
+      <div className="cap">{Icon.names.length} glyphs · 16px grid · currentColor · hover for names</div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+/* ============================================================
+   DIRECT MANIPULATION — drop menu, ghost, drag states, undo toast
+   ============================================================ */
+/* item drags keep the arrow (Finder does); only a held canvas shows the closed hand */
+.gws.is-dragging,.gws.is-dragging *{cursor:default!important;user-select:none}
+.gcard.drag-from{border-style:dashed;border-color:var(--accent)}
+.gcard.bm-lift .gbm{opacity:.35}
+.gbm-trigger.is-grab,.gbm-item.is-grab,.gbl-row,.gdetail-bm.is-grab,.gch-file.is-grab,.ghunk-hd.is-grab{user-select:none;-webkit-user-select:none}
+
+/* the drop menu floats over its target; above the card the list runs bottom-up so the likeliest action is nearest */
+.gdrop{position:absolute;z-index:70;width:288px;display:flex;flex-direction:column;border-radius:13px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:0 22px 50px -14px rgba(0,0,0,.62),0 2px 8px rgba(0,0,0,.25);user-select:none;animation:gdrop-in 180ms cubic-bezier(.32,.72,0,1) both}
+[data-theme="light"] .gdrop{box-shadow:0 22px 50px -16px rgba(58,46,34,.34),0 2px 8px rgba(58,46,34,.1)}
+.gdrop.is-above{transform:translate(-50%,-100%);transform-origin:50% 100%}
+.gdrop.is-below{transform:translate(-50%,0);transform-origin:50% 0}
+.gdrop.is-single{width:max-content;min-width:240px;max-width:400px}
+@keyframes gdrop-in{from{opacity:0;scale:.94}}
+.gdrop-list{display:flex;flex-direction:column;gap:1px;padding:5px}
+.gdrop-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:10px;height:30px;padding:0 10px 0 9px;border-radius:8px;font-size:12.5px;color:var(--text);white-space:nowrap}
+.gdrop-item svg{color:var(--text-muted)}
+.gdrop-l{overflow:hidden;text-overflow:ellipsis}
+.gdrop-k{font:11px var(--font-mono);color:var(--text-faint)}
+.gdrop-note{font-size:11px;font-weight:500;color:oklch(84% .15 85)}
+[data-theme="light"] .gdrop-note{color:oklch(50% .13 70)}
+.gdrop-item.on{background:var(--accent);color:var(--accent-ink)}
+.gdrop-item.on svg,.gdrop-item.on .gdrop-k,.gdrop-item.on .gdrop-note{color:var(--accent-ink)}
+.gdrop-sep{height:1px;background:var(--fl-border);margin:3px 8px}
+.gdrop-cmd{padding:8px 13px;font:11.5px var(--font-mono);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gdrop-cmd code{font:inherit;color:inherit}
+.gdrop.is-above .gdrop-cmd{border-top:1px solid var(--fl-border)}
+.gdrop.is-below .gdrop-cmd{border-bottom:1px solid var(--fl-border)}
+
+/* ghost */
+.gghost{transition:opacity 140ms}
+.gghost.is-muted{opacity:.3}
+.gghost-card.is-bm{height:28px;padding:0 12px 0 9px;border-radius:999px;gap:6px}
+.gghost-card.is-bm svg{color:var(--text-muted);flex-shrink:0}
+.gghost-bm{font:600 12px var(--font-mono);white-space:nowrap}
+.gghost-rest{font:11.5px var(--font-mono);color:var(--text-dim);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gghost-card.is-diff{gap:9px}
+.gghost-card .mono{font:12px var(--font-mono)}
+.gghost-card .file-status{flex-shrink:0}
+.gghost-stat{display:flex;gap:6px;font:11px var(--font-mono);flex-shrink:0}
+
+/* toast — every graph edit can be taken back */
+.gtoast{position:absolute;bottom:20px;z-index:40;display:flex;width:max-content;align-items:center;gap:8px;height:38px;max-width:calc(100% - 48px);padding:0 5px 0 15px;border-radius:999px;background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);font-size:12.5px;color:var(--text);white-space:nowrap;transform:translateX(-50%);animation:gtoast-in 280ms cubic-bezier(.32,.72,0,1) both}
+@keyframes gtoast-in{from{opacity:0;transform:translate(-50%,10px)}}
+.gtoast-t{min-width:0}
+.gtoast-t .gcid{vertical-align:-1px}
+.gtoast-t code{font:600 12px var(--font-mono)}
+.gtoast-undo{flex-shrink:0;height:28px;padding:0 13px;margin-left:4px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--text);background:var(--fl-hover);transition:background 120ms}
+.gtoast-undo:hover{background:var(--fl-on)}
+.gtoast-x{flex-shrink:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--text-dim)}
+.gtoast-x:hover{background:var(--fl-hover);color:var(--text)}
+.gtoast-undo:focus-visible,.gtoast-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}

@@ -1,0 +1,81 @@
+/* ============================================================
+   ZANSHIN — colour tokens
+   Night (indigo) is the default theme; [data-theme="light"] is warm paper.
+   Names mirror the client source (app.css / graph.css / float.css) so code and designs share one vocabulary.
+   Accent system: gold = @ (working copy) + the ONE primary action · moon (--accent) = selection, focus, controls.
+   ============================================================ */
+:root{
+  color-scheme:dark;
+  /* ---- base palette ---- */
+  --night-0:#0e1224;--night-1:#12162a;--night-2:#131831;--night-3:#1a1f35;--night-4:#1c2138;--night-5:#1f2540;--night-icon:#1d2540;--night-lift:#6078b2;
+  --paper-0:#fffdfa;--paper-1:#f7f4f0;--paper-2:#f0ece7;--paper-3:#e8e3dd;--paper-4:#cbc7c2;--paper-ink:#26242c;--umber:#3a2e22;
+  --gold-50:#fff6e4;--gold-200:#f4cf80;--gold-400:#dca85b;--gold-500:#d9a755;--gold-600:#b58346;--gold-ink:#26304d;
+  --saffron:oklch(78% .16 75);--saffron-paper:oklch(58% .16 65);
+  --moon:oklch(80% .07 272);--moon-paper:oklch(48% .12 272);
+  --green-400:#4ade80;--green-700:#1a7f45;--red-400:#f87171;--red-600:#c23a3a;--amber-400:#fbbf24;--amber-paper:oklch(52% .13 70);
+  --tl-close:#ef4444;--tl-min:#eab308;--tl-zoom:#22c55e;
+
+  /* ---- window canvas: two static shaders (linear + flat radial lift) ---- */
+  --canvas:radial-gradient(115% 85% at 10% -12%,rgba(96,120,178,.24),rgba(96,120,178,0) 62%),linear-gradient(165deg,#1a2038,#12162a 68%,#0e1224);/* @kind other */
+  --canvas-base:#12162a;
+  --gold:#dca85b;
+
+  /* ---- solid surfaces ---- */
+  --card-solid:#1a1f35;--card-solid-hi:#1f2540;--bg-elevated:#1c2138;
+  --bg-card:rgba(255,255,255,.045);--bg-card-2:rgba(255,255,255,.075);
+  --border:rgba(255,255,255,.07);--border-strong:rgba(255,255,255,.14);
+  --code-bg:rgba(8,10,22,.42);--scrim:rgba(7,9,20,.48);
+
+  /* ---- floating glass (fl-*) ---- */
+  --fl-bg:rgba(26,31,56,.66);--fl-bg-strong:rgba(24,29,52,.86);--fl-bg-solid:#1a1f35;--fl-border:rgba(255,255,255,.09);
+  --fl-sheen:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0) 46px);/* @kind other */
+  --fl-hover:rgba(255,255,255,.07);--fl-on:rgba(255,255,255,.11);--fl-gold:#dca85b;
+
+  /* ---- text ladder: every step ≥ 4.5:1 on #1a1f35 (muted 8.3 · dim 5.8 · faint 4.7) ---- */
+  --text:#e7e9f2;--text-muted:#b3b9d0;--text-dim:#9299b4;--text-faint:#8189a5;
+
+  /* ---- graph lines ---- */
+  --edge:rgba(214,222,245,.34);--edge-hov:rgba(234,238,250,.72);--grid-dot:rgba(255,255,255,.07);
+
+  /* ---- @ working copy (saffron) ---- */
+  --co:oklch(78% .16 75);--co-soft:oklch(78% .16 75 / .14);--co-deep:oklch(78% .16 75 / .55);--co-glow:oklch(78% .16 75 / .30);--co-text:oklch(86% .10 75);--co-ink:#1a1206;
+
+  /* ---- moon accent: selection, focus, controls ---- */
+  --accent:oklch(80% .07 272);--accent-ink:#141831;--accent-soft:oklch(80% .07 272 / .14);--accent-ring:oklch(80% .07 272 / .3);--hunk:oklch(80% .07 272);
+
+  /* ---- semantic ---- */
+  --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);
+  --conflict:#fbbf24;--warn:oklch(84% .15 85);--warn-bg:oklch(80% .15 85 / .16);
+
+  /* ---- readable aliases ---- */
+  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--bg-elevated);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
+  --fg-1:var(--text);--fg-2:var(--text-muted);--fg-3:var(--text-dim);--fg-4:var(--text-faint);
+  --line:var(--border);--line-strong:var(--border-strong);--line-glass:var(--fl-border);
+  --primary:var(--fl-gold);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent);
+}
+
+[data-theme="light"]{
+  color-scheme:light;
+  --canvas:radial-gradient(115% 85% at 10% -12%,rgba(220,168,91,.20),rgba(220,168,91,0) 62%),linear-gradient(165deg,#f7f4f0,#f0ece7 68%,#e8e3dd);/* @kind other */
+  --canvas-base:#f0ece7;
+  --card-solid:#fffdfa;--card-solid-hi:#ffffff;--bg-elevated:#fffdfa;
+  --bg-card:rgba(255,253,250,.90);--bg-card-2:rgba(58,46,34,.07);
+  --border:rgba(58,46,34,.12);--border-strong:rgba(58,46,34,.22);
+  --code-bg:rgba(255,255,255,.66);--scrim:rgba(58,46,34,.18);
+  --fl-bg:rgba(255,253,250,.74);--fl-bg-strong:rgba(255,253,250,.9);--fl-bg-solid:#fffdfa;--fl-border:rgba(58,46,34,.12);
+  --fl-sheen:linear-gradient(180deg,rgba(255,255,255,.6),rgba(255,255,255,0) 46px);/* @kind other */
+  --fl-hover:rgba(58,46,34,.06);--fl-on:rgba(58,46,34,.1);--fl-gold:oklch(56% .12 70);
+  /* text ladder: every step ≥ 4.5:1 on #fffdfa (muted 8.3 · dim 6.9 · faint 5.1) */
+  --text:#26242c;--text-muted:#514c47;--text-dim:#5f5852;--text-faint:#736c65;
+  --edge:rgba(58,46,34,.30);--edge-hov:rgba(58,46,34,.62);--grid-dot:rgba(58,46,34,.10);
+  --co:oklch(58% .16 65);--co-soft:oklch(58% .16 65 / .10);--co-deep:oklch(58% .16 65 / .45);--co-glow:oklch(58% .16 65 / .22);--co-text:oklch(45% .14 65);--co-ink:#fff8ec;
+  --accent:oklch(48% .12 272);--accent-ink:#fff;--accent-soft:oklch(48% .12 272 / .09);--accent-ring:oklch(48% .12 272 / .22);--hunk:oklch(48% .12 272);
+  /* diff colours darkened for paper: the night greens/reds fall below 2:1 here */
+  --add:#1a7f45;--add-bg:rgba(26,127,69,.10);--rem:#c23a3a;--rem-bg:rgba(194,58,58,.09);
+  --conflict:oklch(52% .13 70);--warn:oklch(50% .13 70);--warn-bg:oklch(80% .15 85 / .16);
+  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--bg-elevated);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
+  --fg-1:var(--text);--fg-2:var(--text-muted);--fg-3:var(--text-dim);--fg-4:var(--text-faint);
+  --line:var(--border);--line-strong:var(--border-strong);--line-glass:var(--fl-border);
+  --primary:var(--fl-gold);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent);
+}
+

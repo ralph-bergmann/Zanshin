@@ -1,0 +1,48 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Actions" subtitle="Button, IconButton, AtPill — gold for the one primary action, quiet fills for the rest" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Button, IconButton, AtPill, Island, IslandSeparator } = window.ZanshinDesignSystem_a33847;
+  const Demo = () => (
+    <div className="col">
+      <div className="row"><span className="lbl">Primary</span>
+        <Button variant="primary" size="lg" icon="plus" iconSize={15} title="jj new — start a new change on top of @">New change</Button>
+        <Button variant="primary" icon="plus" title="jj new vruxwmqv">New change on top</Button>
+        <Button variant="primary" size="md" icon="plus" iconSize={12}>Add directory</Button>
+      </div>
+      <div className="row"><span className="lbl">Quiet</span>
+        <Button>New change</Button>
+        <Button title="jj squash — fold into the parent">Squash into parent</Button>
+        <Button size="md" icon="cloud">Clone from remote</Button>
+        <Button size="md" variant="ghost" icon="folder-plus">New group</Button>
+        <Button variant="danger" title="jj abandon">Abandon</Button>
+        <Button disabled>Squash into parent</Button>
+      </div>
+      <div className="row"><span className="lbl">Icon</span>
+        <Island shape="bar"><IconButton icon="fetch" label="Fetch — jj git fetch"/><IconButton icon="push" label="Push — jj git push"/></Island>
+        <Island shape="bar"><IconButton icon="view-options" label="View options" active/></Island>
+        <Island shape="rail" style={{ flexDirection: "row" }}><IconButton size="lg" icon="branch" iconSize={19} label="Bookmarks" active/><IconButton size="lg" icon="workstream" iconSize={19} label="Workstreams"/><IconButton size="lg" icon="reviews" iconSize={19} label="Reviews"/><IconButton size="lg" icon="undo" iconSize={19} label="Undo Timeline"/></Island>
+        <IconButton size="sm" icon="close" iconSize={12} label="Close (Esc)"/>
+      </div>
+      <div className="row"><span className="lbl">Locator</span>
+        <AtPill direction="down"/><AtPill direction="up"/><AtPill direction="right"/>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

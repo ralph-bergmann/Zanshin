@@ -1,0 +1,52 @@
+/* ============================================================
+   ZANSHIN — radii, elevation, material, motion
+   ============================================================ */
+:root{
+  --radius-xs:4px;      /* @ badge, inline code */
+  --radius-kbd:3px;
+  --radius-sm:6px;      /* menu items */
+  --radius-md:8px;      /* option rows, file rows, close buttons */
+  --radius-btn:9px;     /* inspector + dialog buttons, search */
+  --radius-card:10px;   /* change cards, context menus, controls inside islands */
+  --radius-rail:11px;   /* rail buttons */
+  --radius-popover:12px;/* callouts, diff block */
+  --radius-island:14px; /* top-bar islands, view menu */
+  --radius-panel:16px;  /* inspector, rail, pinned panels */
+  --radius-dialog:18px;
+  --radius-pill:999px;
+  --radius-icon:22.66%;/* @kind radius */ /* app icon (58 / 256) */
+
+  --fl-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 36px -12px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.22);
+  --shadow-island:var(--fl-shadow);
+  --shadow-menu:0 24px 60px -16px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.2);
+  --shadow-popover:0 14px 40px rgba(0,0,0,.45);
+  --shadow-callout:0 18px 44px -12px rgba(0,0,0,.55);
+  --shadow-dialog:0 40px 100px -24px rgba(0,0,0,.72),0 2px 10px rgba(0,0,0,.2);
+  --shadow-drag:0 0 0 3px var(--accent-ring),0 20px 44px -14px rgba(0,0,0,.6);
+  --ring-select:0 0 0 3px var(--accent-ring);
+  --ring-wc:0 0 0 1px var(--co-deep),0 0 0 4px var(--co-glow),0 8px 28px -10px var(--co-glow);
+  --ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring);
+  --ring-drop:0 0 0 4px var(--accent-ring),0 14px 32px -14px rgba(0,0,0,.55);
+
+  --glass-blur:blur(18px) saturate(1.4);/* @kind other */
+  --glass-blur-strong:blur(22px) saturate(1.4);/* @kind other */
+  --scrim-blur:blur(12px) saturate(1.2);/* @kind other */
+
+  --ease-glide:cubic-bezier(.32,.72,0,1);/* @kind other */  /* panels, pills, graph FLIP — fast out, long settle */
+  --ease-spring:cubic-bezier(.3,1.4,.5,1);/* @kind other */ /* quick-action fan-out only */
+  --ease-loader:cubic-bezier(.65,.05,.35,.95);/* @kind other */
+  --dur-hover:120ms;/* @kind other */--dur-menu:110ms;/* @kind other */--dur-pop:160ms;/* @kind other */--dur-panel:200ms;/* @kind other */--dur-slide:260ms;/* @kind other */--dur-flip:460ms;/* @kind other */--dur-birth:540ms;/* @kind other */
+}
+[data-theme="light"]{
+  --fl-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 14px 34px -14px rgba(58,46,34,.32),0 2px 8px rgba(58,46,34,.08);
+  --shadow-island:var(--fl-shadow);
+  --shadow-menu:0 24px 60px -18px rgba(58,46,34,.3),0 2px 8px rgba(58,46,34,.08);
+  --shadow-popover:0 14px 40px -12px rgba(58,46,34,.28);
+  --shadow-callout:0 18px 44px -14px rgba(58,46,34,.3);
+  --shadow-dialog:0 40px 100px -28px rgba(58,46,34,.34),0 2px 10px rgba(58,46,34,.08);
+  --shadow-drag:0 0 0 3px var(--accent-ring),0 20px 44px -16px rgba(58,46,34,.35);
+  --ring-select:0 0 0 3px var(--accent-ring);
+  --ring-wc:0 0 0 1px var(--co-deep),0 0 0 4px var(--co-glow),0 8px 28px -10px var(--co-glow);
+  --ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring);
+  --ring-drop:0 0 0 4px var(--accent-ring),0 14px 32px -14px rgba(58,46,34,.3);
+}

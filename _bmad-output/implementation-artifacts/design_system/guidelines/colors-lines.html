@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x200" name="Lines & borders" subtitle="Hairlines at 7–14% white; graph edges at 34%, the @ path in saffron" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../styles.css"/>
+<link rel="stylesheet" href="specimen.css"/>
+</head>
+<body>
+<div class="grid" style="grid-template-columns:1fr 1fr">
+<div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+<div class="sw"><div class="chip" style="background:var(--card-solid)"></div><span class="k">--border</span><span class="v">white / .07 dividers</span></div>
+<div class="sw"><div class="chip" style="background:var(--card-solid);border-color:var(--border-strong)"></div><span class="k">--border-strong</span><span class="v">white / .14 cards</span></div>
+<div class="sw"><div class="chip" style="background:var(--fl-bg);border-color:var(--fl-border)"></div><span class="k">--fl-border</span><span class="v">white / .09 glass</span></div>
+</div>
+<svg width="100%" height="110" viewBox="0 0 320 110" style="overflow:visible">
+<path class="zs-edge" d="M20 100 V20"/><text x="20" y="12" class="v" fill="currentColor" style="fill:var(--text-dim);font-size:10px" text-anchor="middle">--edge</text>
+<path class="zs-edge is-hover" d="M95 100 V20"/><text x="95" y="12" style="fill:var(--text-dim);font:10px var(--font-mono)" text-anchor="middle">--edge-hov</text>
+<path class="zs-edge is-wc" d="M170 100 V20"/><text x="170" y="12" style="fill:var(--text-dim);font:10px var(--font-mono)" text-anchor="middle">@ path</text>
+<g class="zs-gap"><path class="zs-edge is-gap" d="M245 100 V64"/><path class="zs-edge is-gap" d="M245 56 V20"/><line class="zs-gap-cut" x1="240" y1="59.2" x2="250" y2="54.8"/><line class="zs-gap-cut" x1="240" y1="65.2" x2="250" y2="60.8"/></g><text x="245" y="12" style="fill:var(--text-dim);font:10px var(--font-mono)" text-anchor="middle">hidden</text>
+</svg>
+</div>
+</body>
+</html>

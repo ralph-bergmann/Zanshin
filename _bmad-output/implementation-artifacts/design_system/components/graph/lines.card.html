@@ -1,0 +1,68 @@
+<!-- @dsCard group="Components" viewport="700x620" name="Graph lines — anatomy" subtitle="One line per parent → child pair: own exits and entries, tracks, gutter detour, bridges, gap markers with 12px of line" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.plane{position:relative;height:364px}.plane>.zs-card{position:absolute}.plane svg{position:absolute;inset:0;overflow:visible;pointer-events:none}.n{fill:var(--accent)}.nt{font:600 9.5px var(--font-sans);fill:var(--accent-ink);text-anchor:middle}.port{fill:var(--accent)}.legend{display:grid;grid-template-columns:1fr 1fr;gap:9px 22px;padding:14px 24px 18px;border-top:1px solid var(--border);font-size:12px;line-height:1.45;color:var(--text-dim);text-wrap:pretty}.legend div{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start}.legend i{display:grid;place-items:center;width:15px;height:15px;margin-top:1px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:600 9.5px var(--font-sans);font-style:normal}.legend b{font-weight:600;color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard, GraphEdge, GraphPorts } = window.ZanshinDesignSystem_a33847;
+  // compact cards 160 × 40 · columns 56px apart (centres 120 / 336 / 552) · rows 48px apart (tops 40 / 128 / 216 / 304)
+  const W = 160, H = 40, col = (c) => 40 + c * 216, row = (r) => 40 + r * 88, cx = (c) => col(c) + W / 2;
+  const [e1, e2] = GraphPorts.exits(2, W);          // P: two forks on the right → 38.8 / 50.8 from the centre
+  const [one] = GraphPorts.exits(1, W);             // a single line on one side → 0.28 × 160 = 44.8
+  const [in1] = GraphPorts.entries(1, W);           // M's second parent enters 24px right of the centre
+  const sp = GraphPorts.trackSpacing(2);            // 6
+  const bandP = row(3) - 24, bandF = row(2) - 24, bandX = row(1) - 24;
+  const cards = [
+    ["P", 0, 3, "pnwqxrtk", "feat(cache): offline store"], ["C", 0, 2, "qrvtmkxl", "feat(cache): repository"], ["F", 1, 2, "mwoqxlpn", "feat(api): pagination"],
+    ["Y", 2, 2, "qmsvtlkr", "feat(settings): sections"], ["M", 0, 1, "kxwsnptm", "merge: api into cache"], ["X", 2, 1, "wrnxqpsz", "feat(settings): themes"],
+    ["W", 0, 0, "vkxnrslp", "feat(cache): sync queue"], ["Z", 1, 0, "rsyntlvq", "refactor(api): middleware"], ["K", 2, 0, "hvsmqplk", "test(api): contracts"],
+  ];
+  const lines = [
+    { k: "PC", from: [cx(0), row(3)], to: [cx(0), row(2) + H] },
+    { k: "PF", from: [cx(0) + e1, row(3)], to: [cx(1), row(2) + H], bend: bandP - sp / 2 },
+    { k: "PY", from: [cx(0) + e2, row(3)], to: [cx(2), row(2) + H], bend: bandP + sp / 2 },
+    { k: "CM", from: [cx(0), row(2)], to: [cx(0), row(1) + H] },
+    { k: "FM", from: [cx(1) - one, row(2)], to: [cx(0) + in1, row(1) + H], bend: bandF },
+    { k: "FK", points: [[cx(1) + one, row(2)], [cx(1) + one, bandF], [444, bandF], [444, bandX - sp / 2], [cx(2), bandX - sp / 2], [cx(2), row(0) + H]] },
+    { k: "YX", from: [cx(2), row(2)], to: [cx(2), row(1) + H] },
+    { k: "XZ", from: [cx(2) - one, row(1)], to: [cx(1), row(0) + H], bend: bandX + sp / 2, cuts: [GraphPorts.bridge(444, bandX + sp / 2, "h")] },
+    { k: "MW", from: [cx(0), row(1)], to: [cx(0), row(0) + H], gap: true },
+  ];
+  const ports = [[cx(0) + e1, row(3)], [cx(0) + e2, row(3)], [cx(1) - one, row(2)], [cx(1) + one, row(2)], [cx(0) + in1, row(1) + H], [cx(2) - one, row(1)]];
+  const badges = [[1, 212, 296], [2, 172, 180], [3, 236, 266], [4, 458, 150], [5, 420, 120], [6, 142, 104]];
+  const legend = [
+    [1, "Own exits", "every line leaves the parent's top edge at its own port; a straight line leaves from the centre. Here P sends two forks right (38.8 / 50.8px from the centre)."],
+    [2, "Own entries", "the first parent enters the child at the bottom centre, every other parent beside it — the farther the parent, the farther out (24px, then 16px apart)."],
+    [3, "Tracks", "forks turn just above the parent, merges just below the child; runs in one band stack 3.5–6px apart and nest instead of crossing."],
+    [4, "Gutter", "the lane is taken (in Free also: a card would hide the run) — the line climbs the gutter between columns and turns below the child."],
+    [5, "Bridge", "where two lines cross, the horizontal one breaks (12 × 10) and keeps ≥ 12px of line to the next bend or card; without that room the vertical one breaks."],
+    [6, "Gap marker", "hidden history: dashed, with the break where the line has room — never right at a card, 12px of visible line on both sides."],
+  ];
+  const Demo = () => (
+    <div>
+      <div className="plane">
+        <svg width="700" height="364">
+          {lines.map((l) => <GraphEdge key={l.k} from={l.from} to={l.to} points={l.points} bend={l.bend} gap={l.gap} cuts={l.cuts}/>)}
+          {ports.map(([x, y], i) => <circle key={i} className="port" cx={x} cy={y} r="2.4"></circle>)}
+        </svg>
+        {cards.map(([k, c, r, id, s]) => <ChangeCard key={k} style={{ left: col(c), top: row(r) }} width={W} detailed={false} id={id} subject={s}/>)}
+        <svg width="700" height="364">{badges.map(([n, x, y]) => <g key={n}><circle className="n" cx={x} cy={y} r="7.5"></circle><text className="nt" x={x} y={y + 3.3}>{n}</text></g>)}</svg>
+      </div>
+      <div className="legend">{legend.map(([n, t, d]) => <div key={n}><i>{n}</i><span><b>{t}</b> — {d}</span></div>)}</div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

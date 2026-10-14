@@ -1,0 +1,41 @@
+<!-- @dsCard group="Components" viewport="700x500" name="Search menu" subtitle="SearchMenu — the default search, the other jj log variants ($), Go to · Filter by, Edit Configurations…" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.g{display:grid;grid-template-columns:420px minmax(0,1fr);gap:22px;align-items:start}.notes{display:flex;flex-direction:column;gap:12px;padding-top:6px;font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}.notes b{font-weight:600;color:var(--text-muted)}.notes code{font:11.5px var(--font-mono);color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { SearchMenu } = window.ZanshinDesignSystem_a33847;
+  const [jjlog, all] = SearchMenu.builtins;
+  const variants = [jjlog, all,
+    { id: "c-onb", name: "Onboarding feature", expr: 'files("lib/features/onboarding/")' },
+    { id: "c-lena", name: "Lena’s changes", expr: 'author(substring-i:"Lena")' },
+    { id: "c-fix", name: "My fixes", expr: 'mine() & subject(glob:"fix*")' }];
+  function Demo() {
+    const [cur, setCur] = React.useState("c-onb");
+    return (
+      <div className="g">
+        <SearchMenu variants={variants} current={cur} onPickVariant={setCur}/>
+        <div className="notes">
+          <div><b>First row</b> — the default search, tagged <i>Default</i>. Set in the configurations dialog; ✕ in the field returns to it.</div>
+          <div><b>$</b> marks a variant that draws the graph. The row the graph shows is selected in moon.</div>
+          <div><b>Go to</b> selects a change, the graph stays. <b>Filter by</b> redraws it — a typed search runs in <code>all()</code>.</div>
+          <div><b>Prefixes</b> <code>c: b: a: f: d:</code> switch the scope while typing; Backspace in an empty field returns to Any.</div>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

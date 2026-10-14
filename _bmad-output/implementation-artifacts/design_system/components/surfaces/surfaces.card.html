@@ -1,0 +1,58 @@
+<!-- @dsCard group="Components" viewport="700x680" name="Surfaces" subtitle="Island (the View capsule), Popover + OptionRow / OptionLink (View options), Callout, Dialog (Projects shell)" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.g{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}.stack{display:flex;flex-direction:column;gap:16px;align-items:flex-start}.frame{position:relative;height:280px;margin-top:18px;border-radius:12px;overflow:hidden;border:1px solid var(--border)}.n{padding:0 6px 0 2px;font-size:12px;color:var(--text-dim);white-space:nowrap}.n b{font-weight:600;color:var(--text-muted)}.brand{display:flex;align-items:center;gap:9px;padding:0 4px 6px}.brand-n{font-size:14px;font-weight:600;letter-spacing:.02em}.brand-s{font:10.5px var(--font-mono);color:var(--text-dim);margin-top:1px}.bar{display:flex;margin-bottom:16px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Island, IslandSeparator, IconButton, GraphSearch, Popover, PopoverHeader, PopoverSeparator, OptionRow, OptionLink, Segmented, Switch, Slider, Callout, CalloutText, Dialog, SearchField, Button, ProjectRow, NamiMark } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [layout, setLayout] = React.useState("free");
+    const [det, setDet] = React.useState(true);
+    const [stk, setStk] = React.useState(true);
+    const [w, setW] = React.useState(240);
+    return (
+      <div>
+        <div className="bar"><Island shape="bar"><GraphSearch size="medium" hotkey={false}/><span className="n"><b>35</b> changes</span><IslandSeparator/><IconButton icon="view-options" label="View options" active/></Island></div>
+        <div className="g">
+          <Popover width={300}>
+            <PopoverHeader>Graph view</PopoverHeader>
+            <OptionRow label="Layout"><Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "free", label: "Free", title: "Rows follow commit time" }, { value: "compact", label: "Compact", title: "Rows = dependency depth" }]}/></OptionRow>
+            <OptionRow label="Detailed cards"><Switch label="Detailed cards" checked={det} onChange={setDet}/></OptionRow>
+            <OptionRow label="Group stacks" title="Collapse linear runs of changes into one stack card"><Switch label="Group stacks" checked={stk} onChange={setStk}/></OptionRow>
+            <OptionRow label="Card width"><Slider label="Card width" min={160} max={400} step={10} value={w} unit="px" width={96} onChange={setW}/></OptionRow>
+            <PopoverSeparator/>
+            <OptionLink label="Appearance, diffs and more" action="Settings…" shortcut="⌘,"/>
+          </Popover>
+          <div className="stack">
+            <Callout icon="workstream" title="Workstreams"><CalloutText>No workstreams yet. Create one with <code>jj workstream new</code>.</CalloutText></Callout>
+            <Callout icon="undo" title="Undo Timeline" count="142 ops"><CalloutText>describe -m "wip: refactor" · 8 min ago</CalloutText></Callout>
+          </div>
+        </div>
+        <div className="frame zs-canvas">
+          <Dialog title="Projects" width={640} height={262} onClose={() => {}}
+            navHeader={<div className="brand"><NamiMark size={32} chip/><div><div className="brand-n">Zanshin</div><div className="brand-s">jj client · v0.24.0</div></div></div>}
+            nav={[{ id: "projects", label: "Projects", icon: "folder-open" }, { id: "remotes", label: "Remotes", icon: "cloud" }, { id: "settings", label: "Settings", icon: "settings" }]} activeNav="projects"
+            tools={<><SearchField placeholder="Search projects, paths…" style={{ flex: 1 }}/><Button size="md" variant="primary" icon="plus" iconSize={12}>Add directory</Button></>}>
+            <ProjectRow kind="group" name="Work" expanded count={1} groups={2}/>
+            <ProjectRow depth={1} name="MyApp" path="~/code/work/mobile/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected/>
+            <ProjectRow depth={1} name="api-server" path="~/code/work/backend/api-server" branch="develop" status="ahead" ahead={2} lastOpened="1h ago"/>
+          </Dialog>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

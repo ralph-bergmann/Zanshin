@@ -1,0 +1,72 @@
+<!-- @dsCard group="Components" viewport="700x820" name="Day axis" subtitle="DayAxis — Free layout: dashed dividers between calendar days, each label on the divider below that day's first commit" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.plane{position:relative}.plane>.zs-card{position:absolute}.edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}.foot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px 18px;align-items:center;padding:14px 24px 18px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}.foot b{font-weight:600;color:var(--text-muted)}.spec{position:relative;display:flex;align-items:center;width:120px;height:24px}.spec svg{position:absolute;inset:0}.spec .zs-day-label{position:relative;transform:none}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard, GraphEdge, GraphPorts, DayAxis, DayLabel } = window.ZanshinDesignSystem_a33847;
+  // Free rows (graph-layout.jsx): gaps grow with the time between commits, log-damped and capped at 3 pitches; an edge is at least one pitch.
+  const U = 16, W = 240, H = 40, GAP_Y = 48, PITCH = H + GAP_Y, PAD = 56, NOW = Date.parse("2026-09-25T14:00");
+  const gapUnits = (g) => { const x = 1 + Math.floor(Math.max(0, g) / 60000); let k = 0; while (2 ** (k + 1) <= x) k++; const l2 = 256 * k + Math.floor(((x - 2 ** k) * 256) / 2 ** k); return Math.min(48, Math.floor((2 * l2) / 256)); };
+  const C = [
+    { id: "vruxwmqv", s: "Release v1.0.0", t: "2026-09-23T10:00", lane: 0, imm: true, bm: ["main"] },
+    { id: "kkmpptxz", s: "feat(onboarding): scaffold 4-page flow", t: "2026-09-24T09:10", lane: 0, p: "vruxwmqv" },
+    { id: "pnwqxrtk", s: "feat(cache): offline store schema", t: "2026-09-24T11:40", lane: 1, p: "vruxwmqv" },
+    { id: "nlrtpsqy", s: "feat(onboarding): hero illustrations", t: "2026-09-24T16:05", lane: 0, p: "kkmpptxz" },
+    { id: "xyzrmwpo", s: "feat(onboarding): animated page indicator", t: "2026-09-25T09:00", lane: 0, p: "nlrtpsqy" },
+    { id: "qrvtmkxl", s: "feat(cache): write-through repository", t: "2026-09-25T10:30", lane: 1, p: "pnwqxrtk" },
+    { id: "ovknlmro", s: "", t: "2026-09-25T14:00", lane: 0, p: "xyzrmwpo", wc: true },
+  ];
+  const by = new Map(C.map((c) => [c.id, c]));
+  let prevT = null, prevU = null;
+  C.forEach((c) => { const T = Date.parse(c.t); c.u = Math.max(prevU == null ? 0 : prevU + gapUnits(T - prevT), c.p ? by.get(c.p).u + U : 0); prevT = T; prevU = c.u; });
+  const maxU = Math.max(...C.map((c) => c.u));
+  C.forEach((c) => { c.y = PAD + ((maxU - c.u) / U) * PITCH; c.x = PAD + c.lane * (W + 56); c.cx = c.x + W / 2; });
+  const age = (t) => { const m = (NOW - Date.parse(t)) / 60000; return m < 1 ? "now" : m < 1440 ? Math.floor(m / 60) + "h" : Math.floor(m / 1440) + "d"; };
+  // days: divider midway between the top of the previous day's newest card and the bottom of this day's oldest card; label on it
+  const day0 = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const today = day0(NOW), groups = new Map();
+  C.forEach((c) => { const k = day0(Date.parse(c.t)), g = groups.get(k); if (!g) groups.set(k, { k, lo: c, hi: c }); else { if (c.u < g.lo.u) g.lo = c; if (c.u > g.hi.u) g.hi = c; } });
+  const days = []; let prev = null, lastY = Infinity;
+  [...groups.values()].sort((a, b) => a.k - b.k).forEach((g) => {
+    const label = g.k === today ? "Today" : g.k === today - 86400000 ? "Yesterday" : new Date(g.k).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const floor = prev ? prev.hi.y : g.lo.y + H + GAP_Y, mid = (floor + g.lo.y + H) / 2, y = Math.min(mid, lastY - 22);
+    days.push({ key: g.k, label, y, guide: prev ? mid : null }); prev = g; lastY = y;
+  });
+  const height = PAD + (maxU / U) * PITCH + H + GAP_Y + 8;
+  const anc = new Set(); for (let x = by.get("ovknlmro"); x; x = x.p && by.get(x.p)) anc.add(x.id);
+  const Demo = () => (
+    <div>
+      <div className="plane" style={{ height }}>
+        <DayAxis width={700} height={height} days={days}/>
+        <svg className="edges" width="700" height={height}>
+          {C.filter((c) => c.p).map((c) => {
+            const p = by.get(c.p), wc = anc.has(c.id) && anc.has(p.id);
+            if (p.lane === c.lane) return <GraphEdge key={c.id} from={[p.cx, p.y]} to={[c.cx, c.y + H]} kind={wc ? "wc" : "normal"}/>;
+            const [e] = GraphPorts.exits(1, W);
+            return <GraphEdge key={c.id} from={[p.cx + e, p.y]} to={[c.cx, c.y + H]} bend={p.y - GAP_Y / 2}/>;
+          })}
+        </svg>
+        {C.map((c) => <ChangeCard key={c.id} style={{ left: c.x, top: c.y }} width={W} detailed={false} id={c.id} subject={c.s} empty={!c.s} workingCopy={c.wc} immutable={c.imm} bookmarks={c.bm} date={age(c.t)}/>)}
+      </div>
+      <div className="foot">
+        <div className="spec"><svg width="120" height="24"><line className="zs-day-guide" x1="0" x2="120" y1="12" y2="12"></line></svg><DayLabel style={{ marginLeft: 14 }}>Yesterday</DayLabel></div>
+        <div><b>Free only.</b> Reading upward, a label means "this day starts here": it sits on the dashed divider below the day's first commit, at the left edge, sticky; the oldest day's label sits below its first commit. No gutter — days never interleave in Free, so the band around a divider holds no cards. Label: mono 11, <b>--text-muted</b> on <b>--card-solid</b>, 1px <b>--border</b>, radius 5 · divider: 1px <b>--border-strong</b>, dash 2 6.</div>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Zanshin — project notes
+
+- Primary client: **`JJ Desktop Client Floating.html`** — the reference for all design work and the design system. The other versions (docked client, studies) stay for reference; don't delete them.
+- `Search Study.html` keeps every search-field variant for experiments (its own files: `search-study.jsx/.css`, `revset-config-search.jsx`, `search-one.jsx` (model "One menu"), `app-float-search.jsx`, separate storage keys). The client ships the chosen variant in `graph-search.jsx` + `search.css`.
+- Graph layout engine: `graph-layout.jsx` (rows, lanes, columns, line routing, day axis; `computeLayout` + `groupStacks`), loaded before `graph-view.jsx` by every page that uses the graph. Layouts: **Free** (default; rows follow commit time, 16 units = 1 pitch, day labels on the dividers between days) and **Compact** (rows = generation depth). Both share one set of columns: switching only changes heights, never width or order. The old "Time" layout is gone.
+- `Graph Lines Study.html` compares edge routing on the client's real layout (`graph-lines-study.jsx`, storage `zanshin.linesStudy.*`): A = the routing before, B = one line per parent→child pair (**shipped** — the team chose B), C = shared fork lines + own port per merge parent. Same engine as the client (`GraphLayout.reroute` draws A/C), plus Free/Compact, card width and a "+children" fan-out scenario.
+- Before changing the app, archive the current state first: copy the floating client's files (`JJ Desktop Client Floating.html` + every file it loads) into `archive/vN <Name>/`.
+- App icon / brand mark: **Nami** (the three gold waves on indigo, `icons/zanshin-icon-04-nami-indigo.svg`). The enso is retired.
+- Accent system: gold = @ (working copy) + the one primary action; moon (`--accent`) = selection, focus, controls.
+- Design system: lives in its own project, **Zanshin Design System** (`a33847c9-000b-4914-ae7f-6291f117e05f`), read-only from here. Whenever the floating client's visual system changes (new or changed component, token, pattern, rule), append a numbered entry to `DESIGN-SYSTEM-SYNC.md` in the same turn — what changed, which app files/classes, what the design system should add or update. Never edit old entries.
+- Fonts: the client self-hosts Inter + JetBrains Mono via `fonts.css` → `assets/fonts/` (same files as the design system).

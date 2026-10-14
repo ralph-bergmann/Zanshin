@@ -1,0 +1,11 @@
+/* specimen-card scaffolding (not shipped — styles.css does not import this) */
+body{margin:0;padding:18px 22px;background:var(--canvas);color:var(--text);min-height:100vh;box-sizing:border-box;font-family:var(--font-sans);font-size:13px}
+*{box-sizing:border-box}
+.k{font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap}
+.v{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);line-height:1.45}
+.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
+.row{display:flex;gap:12px;align-items:flex-start}
+.grid{display:grid;gap:12px}
+.sw{display:flex;flex-direction:column;gap:5px;min-width:0}
+.chip{height:52px;border-radius:10px;border:1px solid var(--border)}
+.on-card{background:var(--card-solid);border:1px solid var(--border-strong);border-radius:12px;padding:12px 14px}

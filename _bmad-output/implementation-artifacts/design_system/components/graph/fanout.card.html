@@ -1,0 +1,49 @@
+<!-- @dsCard group="Components" viewport="700x470" name="Graph lines — exit fan-out" subtitle="The same nine lines at 400 / 240 / 160px card width: 12px apart · squeezed · the outermost share one exit" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:14px 0 0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);overflow:hidden}.stage{position:relative;height:112px}.stage>.zs-card{position:absolute;left:24px;top:58px}.stage svg{position:absolute;inset:0;overflow:visible;pointer-events:none}.port{fill:var(--accent)}.tick{stroke:var(--text-faint);stroke-width:1;stroke-dasharray:2 3}.cap{position:absolute;right:24px;top:6px;text-align:right;font-size:12px;color:var(--text-dim)}.cap b{display:block;font:600 12.5px var(--font-mono);color:var(--text)}.foot{padding:14px 24px 0;border-top:1px solid var(--border);margin-top:6px;font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}.foot code{font:11.5px var(--font-mono);color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard, GraphEdge, GraphPorts } = window.ZanshinDesignSystem_a33847;
+  const M = 9, H = 40, TOP = 58, X0 = 24, RIGHT = 720;
+  // nine forks leave the right half of one parent; tracks 3.5px apart, centred in the band above it (more lines than room)
+  function Stage({ w, title, note }) {
+    const cx = X0 + w / 2, xs = GraphPorts.exits(M, w), sp = GraphPorts.trackSpacing(M), mid = TOP - 24;
+    const ys = xs.map((_, k) => mid - ((M - 1) * sp) / 2 + k * sp);
+    const ports = [...new Set(xs.map((x) => +(cx + x).toFixed(1)))];
+    const gap = xs[1] - xs[0];
+    return (
+      <div className="stage">
+        <ChangeCard width={w} detailed={false} id="mwoqxlpn" subject="feat(api): paginated responses for /events"/>
+        <svg width="700" height="112">
+          <line className="tick" x1={cx} x2={cx} y1={TOP - 6} y2={TOP}></line>
+          {xs.map((x, k) => <GraphEdge key={k} points={[[cx + x, TOP], [cx + x, ys[k]], [RIGHT, ys[k]]]}/>)}
+          {ports.map((x) => <circle key={x} className="port" cx={x} cy={TOP} r="2.2"></circle>)}
+        </svg>
+        <div className="cap"><b>{title}</b>{note || gap.toFixed(1).replace(/\.0$/, "") + " px apart · " + ports.length + " exits"}</div>
+      </div>
+    );
+  }
+  const Demo = () => (
+    <div>
+      <Stage w={400} title="400 px"/>
+      <Stage w={240} title="240 px"/>
+      <Stage w={160} title="160 px" note="7 px apart · the outer three share one exit"/>
+      <div className="foot">Exits sit <b>12px</b> apart while they fit between 18px from the centre and 18px from the card edge (a single fork leaves 0.28 × width from the centre); with less width they squeeze down to <b>7px</b>; beyond that the outermost lines share one exit and split above the card. Extra entries on a child: 16px apart, down to 8. <code>GraphPorts.exits(m, width)</code></div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

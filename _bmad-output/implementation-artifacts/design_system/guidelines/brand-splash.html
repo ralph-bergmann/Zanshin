@@ -1,0 +1,37 @@
+<!-- @dsCard group="Brand" viewport="700x360" name="Splash screen" subtitle="Always dark, 560 × 320 — 残心 + wordmark lock-up, tagline, version, status, gold loader" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../styles.css"/>
+<link rel="stylesheet" href="specimen.css"/>
+<style>body{display:grid;place-items:center;padding:20px}.sp{width:560px;height:320px;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px -16px rgba(10,14,30,.65),0 4px 14px -4px rgba(10,14,30,.5)}.sp svg{display:block}.run{animation:sp-run 2.1s cubic-bezier(.65,.05,.35,.95) infinite}@keyframes sp-run{from{transform:translateX(-224px)}to{transform:translateX(560px)}}.dot{animation:sp-dot 1.85s ease-in-out infinite}@keyframes sp-dot{0%,100%{opacity:.35}50%{opacity:1}}@media (prefers-reduced-motion:reduce){.run,.dot{animation:none}}</style>
+</head>
+<body>
+<div class="sp">
+<svg width="560" height="320" viewBox="0 0 560 320" role="img" aria-label="Zanshin splash screen">
+<defs>
+<linearGradient id="wm" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="224.8" y2="100"><stop offset="0" stop-color="#fff6e4"/><stop offset=".5" stop-color="#f4cf80"/><stop offset="1" stop-color="#d9a755"/></linearGradient>
+<linearGradient id="bar" x1="0" x2="1"><stop offset="0" stop-color="#f4cf80" stop-opacity="0"/><stop offset=".35" stop-color="#f4cf80"/><stop offset=".7" stop-color="#dca85b"/><stop offset="1" stop-color="#dca85b" stop-opacity="0"/></linearGradient>
+</defs>
+<image href="../assets/zanshin-splash-bg.svg" width="560" height="320"/>
+<g opacity="0.05" transform="translate(-56 18) scale(3.045) translate(-14 -76)" fill="none" stroke="#f4cf80" stroke-linecap="round" stroke-linejoin="round">
+<path d="M 28 92 Q 72 60, 116 92 T 196 92 Q 218 84, 228 90" stroke-width="5.58" opacity=".95"/>
+<path d="M 24 134 Q 76 100, 132 134 T 212 134 Q 226 130, 234 134" stroke-width="6.82" opacity=".77"/>
+<path d="M 22 178 Q 88 138, 154 178 T 234 178" stroke-width="8.06" opacity=".59"/>
+</g>
+<text x="497" y="128" font-family="Shippori Mincho, serif" font-weight="600" font-size="118" fill="#f4cf80" opacity="0.04" text-anchor="middle">残</text>
+<text x="497" y="246" font-family="Shippori Mincho, serif" font-weight="600" font-size="118" fill="#f4cf80" opacity="0.04" text-anchor="middle">心</text>
+<text x="117" y="141" font-family="Shippori Mincho, serif" font-weight="500" font-size="44" fill="#f4cf80" letter-spacing="1.8">残心</text>
+<g transform="translate(229 104) scale(0.38)"><path d="M 0 0 L 62 0 L 0 100 L 62 100 M 94 100 L 126 0 L 158 100 M 190 100 L 190 0 L 252 100 L 252 0 M 339 19 A 27 22 0 1 0 313 50 A 27 22 0 1 1 287 81 M 374 0 L 374 100 M 436 0 L 436 100 M 374 50 L 436 50 M 468 0 L 468 100 M 500 100 L 500 0 L 562 100 L 562 0" fill="none" stroke="url(#wm)" stroke-width="7.37" stroke-linecap="butt" stroke-linejoin="miter"/></g>
+<text x="280" y="177" font-family="Inter, sans-serif" font-size="11.5" font-weight="500" letter-spacing="1.96" fill="#a9b3d0" text-anchor="middle">JUJUTSU CLIENT</text>
+<line x1="36" y1="253" x2="524" y2="253" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="36" y="276" font-family="JetBrains Mono, monospace" font-size="12" fill="#e7dcc4">2026.2.1 <tspan fill="#8792b4">· Build 4127</tspan></text>
+<g class="dot"><circle cx="368" cy="272" r="6" fill="#f4cf80" opacity="0.16"/><circle cx="368" cy="272" r="3" fill="#f4cf80"/></g>
+<text x="524" y="276" font-family="Inter, sans-serif" font-size="11.5" fill="#98a3c2" text-anchor="end">Repository wird geladen…</text>
+<rect x="0" y="318" width="560" height="2" fill="#ffffff" fill-opacity="0.07"/>
+<rect class="run" x="0" y="318" width="213" height="2" fill="url(#bar)"/>
+</svg>
+</div>
+</body>
+</html>

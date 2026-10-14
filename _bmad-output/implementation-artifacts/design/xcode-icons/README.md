@@ -7,10 +7,10 @@ Four `.icon` bundles for the new Liquid Glass app icon format
 
 ```
 xcode-icons/
-├─ 01-Clean/          Zanshin-Clean.icon         ← your pick
+├─ 01-Clean/          Zanshin-Clean.icon
 ├─ 02-BoldBrush/      Zanshin-BoldBrush.icon
 ├─ 03-DryBrush/       Zanshin-DryBrush.icon
-└─ 04-NamiIndigo/     Zanshin-NamiIndigo.icon
+└─ 04-NamiIndigo/     Zanshin-NamiIndigo.icon    ← your pick
 ```
 
 Each `.icon` is a *package* (a folder Finder treats as a single file).
@@ -23,11 +23,11 @@ uses on disk.
 
 ### Option A · Drag into Xcode (recommended)
 
-1. Drag the `.icon` file (e.g. `Zanshin-Clean.icon`) into your Xcode 26
+1. Drag the `.icon` file (e.g. `Zanshin-NamiIndigo.icon`) into your Xcode 26
    project navigator.
 2. In your target's **Build Settings** → **App Icon Set Name**, set the
    name to match the `.icon` file *without* the extension
-   (e.g. `Zanshin-Clean`).
+   (e.g. `Zanshin-NamiIndigo`).
 3. Build. Xcode generates a Liquid Glass icon for iOS/macOS 26 and a
    bitmap fallback for older OS versions automatically.
 

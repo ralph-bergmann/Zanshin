@@ -1,0 +1,64 @@
+<!-- @dsCard group="Components" viewport="700x670" name="Search suggestions" subtitle="SearchPopover — grouped matches in Any, one scope (Author), the footer says what Enter does" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:12px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.lbl code{font:11px var(--font-mono);text-transform:none;letter-spacing:0;color:var(--text-muted)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { SearchPopover, SearchGroup, SearchRow, SearchMatch, SearchTag, SearchAvatar, ChangeId } = window.ZanshinDesignSystem_a33847;
+  const q = "set";
+  const anyRows = [
+    { g: "Files" },
+    { k: "f1", icon: "folder", mono: true, label: <SearchMatch text="lib/settings/" match={q} split={4}/>, meta: "7 changes", cmd: "jj log -r 'files(\"lib/settings/\")'" },
+    { k: "f2", icon: "file", mono: true, label: <SearchMatch text="lib/settings/settings_page.dart" match={q} split={13}/>, meta: "4 changes", cmd: "jj log -r 'files(file:\"lib/settings/settings_page.dart\")'" },
+    { k: "f3", icon: "file", mono: true, label: <SearchMatch text="lib/settings/theme_picker.dart" match={q} split={13}/>, meta: "1 change", cmd: "jj log -r 'files(file:\"lib/settings/theme_picker.dart\")'" },
+    { k: "fm", more: true, label: "4 more in Files" },
+    { g: "Changes" },
+    { k: "c1", icon: "change", before: <ChangeId id="qmsvtlkr" length={8}/>, label: <SearchMatch text="feat(settings): section-based layout" match={q}/>, meta: <><SearchTag>not in view</SearchTag><span>Lena · 2d</span></>, go: "Not in this view — switches to all() and selects it" },
+    { k: "c2", icon: "change", before: <ChangeId id="wrnxqpsz" length={8}/>, label: <SearchMatch text="feat(settings): theme picker with live preview" match={q}/>, meta: "Lena · 2d", go: "Selects the change — the graph stays as it is" },
+    { k: "cm", more: true, label: "4 more in Changes" },
+    { g: "Descriptions" },
+    { k: "d", icon: "description", label: "Descriptions containing", quote: q, meta: "8 changes", cmd: "jj log -r 'description(substring-i:\"set\")'" },
+  ];
+  const authorRows = [
+    { k: "a1", icon: <SearchAvatar name="Alice"/>, label: <SearchMatch text="Alice" match="li"/>, meta: "2 changes", cmd: "jj log -r 'author(exact:\"Alice\")'" },
+    { k: "a2", icon: <SearchAvatar name="Charlie Davis"/>, label: <SearchMatch text="Charlie Davis" match="li"/>, meta: "5 changes", cmd: "jj log -r 'author(exact:\"Charlie Davis\")'" },
+    { k: "a3", icon: "user", label: "Authors containing", quote: "li", meta: "7 changes", cmd: "jj log -r 'author(substring-i:\"li\")'" },
+  ];
+  function List({ rows, start = 0 }) {
+    const nav = rows.filter((r) => !r.g);
+    const [hi, setHi] = React.useState(start);
+    const cur = nav[hi];
+    const footer = cur.more ? { text: "Narrows the search to " + cur.label.split(" in ")[1].toLowerCase(), verb: "Show" }
+      : cur.go ? { text: cur.go, verb: /Not in this view/.test(cur.go) ? "Show" : "Select" } : { text: <code>{cur.cmd}</code>, verb: "Filter" };
+    return (
+      <SearchPopover footer={footer}>
+        {rows.map((r) => r.g ? <SearchGroup key={r.g} label={r.g}/> : (
+          <SearchRow key={r.k} icon={r.icon} before={r.before} label={r.label} quote={r.quote} mono={r.mono} meta={r.meta} more={r.more}
+            highlighted={nav[hi] === r} onMouseMove={() => setHi(nav.indexOf(r))}/>
+        ))}
+      </SearchPopover>
+    );
+  }
+  const Demo = () => (
+    <div className="col">
+      <div className="lbl">Any · typing <code>set</code> — groups ordered by their best match</div>
+      <List rows={anyRows}/>
+      <div className="lbl">Author · typing <code>li</code></div>
+      <List rows={authorRows}/>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

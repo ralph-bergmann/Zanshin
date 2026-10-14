@@ -1,0 +1,55 @@
+/* Segmented */
+.zs-seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--fl-hover)}
+.zs-seg-btn{display:flex;align-items:center;gap:5px;height:22px;padding:0 9px;border:0;border-radius:var(--radius-sm);background:transparent;font-size:var(--fs-md);color:var(--text-muted);cursor:default;transition:background var(--dur-hover),color var(--dur-hover)}
+.zs-seg-btn:hover{color:var(--text)}
+.zs-seg-btn.is-on{background:var(--fl-on);color:var(--text)}
+.zs-seg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* Switch */
+.zs-switch{position:relative;flex-shrink:0;width:30px;height:18px;padding:0;border-radius:9px;background:var(--bg-card-2);border:1px solid var(--border-strong);cursor:default;transition:background 160ms,border-color 160ms}
+.zs-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--text-dim);transition:transform 160ms,background 160ms}
+.zs-switch.is-on{background:var(--accent);border-color:var(--accent)}
+.zs-switch.is-on::after{transform:translateX(12px);background:var(--accent-ink)}
+.zs-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Slider */
+.zs-slider{display:inline-flex;align-items:center;gap:10px}
+.zs-slider input{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--p),var(--border-strong) var(--p));outline:none;cursor:default;margin:0}
+.zs-slider input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.zs-slider input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.zs-slider input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--accent-ring),0 1px 4px rgba(0,0,0,.45)}
+.zs-slider-val{font:var(--fs-sm) var(--font-mono);color:var(--text-dim);min-width:38px}
+
+/* SearchField */
+.zs-search{display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;min-width:0;border-radius:var(--radius-btn);background:var(--fl-hover);border:1px solid transparent;color:var(--text-dim);transition:border-color var(--dur-hover),box-shadow var(--dur-hover)}
+.zs-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.zs-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:var(--fs-control);color:var(--text)}
+.zs-search input::placeholder{color:var(--text-faint)}
+
+/* Segmented variants — tabs (settings scope), inset (inside a settings row), sm (icon toggles in a diff toolbar) */
+.zs-seg--tabs{padding:3px;border-radius:10px;min-width:0}
+.zs-seg--tabs .zs-seg-btn{height:28px;padding:0 14px;gap:7px;border-radius:7px;font-size:var(--fs-control);white-space:nowrap}
+.zs-seg--inset{background:rgba(0,0,0,.2)}
+[data-theme="light"] .zs-seg--inset{background:rgba(58,46,34,.07)}
+.zs-seg--inset .zs-seg-btn{height:24px;padding:0 10px;white-space:nowrap}
+.zs-seg--sm .zs-seg-btn{height:18px;padding:0 7px;font-size:var(--fs-xs);display:grid;place-items:center}
+
+/* Checkbox — files and hunks; moon like every other selection */
+.zs-check{flex-shrink:0;width:15px;height:15px;padding:0;border-radius:4.5px;display:grid;place-items:center;border:1.5px solid var(--text-faint);color:var(--accent-ink);background:transparent;cursor:default;transition:background var(--dur-hover),border-color var(--dur-hover)}
+.zs-check:hover{border-color:var(--text-muted)}
+.zs-check.is-on,.zs-check.is-mixed{background:var(--accent);border-color:var(--accent)}
+.zs-check:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zs-check:disabled{opacity:.38;pointer-events:none}
+
+/* TextField + Select — the inset well */
+.zs-field{box-sizing:border-box;width:100%;min-width:0;border-radius:var(--radius-md);border:1px solid var(--fl-border);background:rgba(8,10,22,.45);color:var(--text);font-family:var(--font-sans);outline:none;transition:border-color var(--dur-hover),box-shadow var(--dur-hover)}
+[data-theme="light"] .zs-field{background:rgba(255,255,255,.9)}
+.zs-field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.zs-field::placeholder{color:var(--text-faint)}
+.zs-field--sm{height:30px;padding:0 10px;font-size:var(--fs-control)}
+.zs-field--md{height:34px;padding:0 10px;font-size:13.5px;font-weight:600}
+.zs-field--lg{height:36px;padding:0 10px;font-size:15px;font-weight:600}
+.zs-field--area{display:block;padding:8px 10px;font-size:13px;line-height:1.5;resize:vertical;min-height:62px}
+.zs-field--area.is-compact{min-height:44px;resize:none}
+.zs-field.is-mono{font-family:var(--font-mono);font-size:12px;font-weight:400}
+.zs-select{height:30px;padding:0 8px;font-size:var(--fs-control);width:auto;min-width:170px;cursor:default}

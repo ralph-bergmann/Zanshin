@@ -1,0 +1,32 @@
+/* Button — 30 (sm, inspector) · 32 (md, dialogs) · 44 (lg, the bar's primary action) */
+.zs-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:var(--radius-btn);font:var(--type-control);white-space:nowrap;color:var(--text-muted);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover),color var(--dur-hover),box-shadow var(--dur-hover)}
+.zs-btn:hover{background:var(--fl-on);color:var(--text)}
+.zs-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zs-btn:disabled{opacity:.38;pointer-events:none}
+.zs-btn--md{height:32px}
+.zs-btn--lg{height:44px;padding:0 16px 0 13px;gap:8px;border-radius:var(--radius-island);font-size:13px}
+.zs-btn--primary{color:var(--text);background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 24%,transparent),color-mix(in oklch,var(--fl-gold) 9%,transparent));box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--fl-gold) 55%,transparent)}
+.zs-btn--primary:hover{color:var(--text);background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 30%,transparent),color-mix(in oklch,var(--fl-gold) 12%,transparent));box-shadow:inset 0 0 0 1px var(--fl-gold)}
+.zs-btn--primary>.zs-icon{color:var(--fl-gold)}
+.zs-btn--lg.zs-btn--primary{background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 18%,transparent),color-mix(in oklch,var(--fl-gold) 5%,transparent)),var(--fl-bg);box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--fl-gold) 60%,transparent),var(--fl-shadow);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.zs-btn--lg.zs-btn--primary:hover{background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 26%,transparent),color-mix(in oklch,var(--fl-gold) 9%,transparent)),var(--fl-bg);box-shadow:inset 0 0 0 1px var(--fl-gold),var(--fl-shadow)}
+.zs-btn--ghost{background:transparent;color:var(--text-dim)}
+.zs-btn--ghost:hover{background:var(--fl-hover);color:var(--text)}
+.zs-btn--danger{background:transparent;color:var(--text-dim)}
+.zs-btn--danger:hover{background:var(--rem-bg);color:var(--rem)}
+
+/* IconButton — 28 (sm, panel close) · 36 (md, inside islands) · 40 (lg, rail) */
+.zs-ib{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover),color var(--dur-hover)}
+.zs-ib:hover{background:var(--fl-hover);color:var(--text)}
+.zs-ib.is-on{background:var(--fl-on);color:var(--text)}
+.zs-ib:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zs-ib--sm{width:28px;height:28px;border-radius:var(--radius-md);color:var(--text-dim)}
+.zs-ib--lg{width:40px;height:40px;border-radius:var(--radius-rail);color:var(--text-dim)}
+.zs-ib--lg:focus-visible{outline-offset:-2px}
+
+/* AtPill — exists only while @ is out of view; points toward it */
+.zs-atpill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px 0 9px;border-radius:var(--radius-pill);font:var(--type-control);color:var(--text);white-space:nowrap;cursor:default;background:var(--fl-sheen),var(--fl-bg);border:1px solid color-mix(in oklch,var(--fl-gold) 38%,var(--fl-border));box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);transition:background var(--dur-hover)}
+.zs-atpill:hover{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--fl-sheen),var(--fl-bg)}
+.zs-atpill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zs-atpill>.zs-icon{color:var(--text-dim);transform:rotate(180deg);transition:transform 220ms var(--ease-glide)}
+.zs-atpill.dir-up>.zs-icon{transform:none}.zs-atpill.dir-left>.zs-icon{transform:rotate(-90deg)}.zs-atpill.dir-right>.zs-icon{transform:rotate(90deg)}

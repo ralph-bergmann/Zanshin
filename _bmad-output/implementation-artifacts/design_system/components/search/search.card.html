@@ -1,0 +1,52 @@
+<!-- @dsCard group="Components" viewport="700x620" name="Search field" subtitle="GraphSearch — default search, typed search, a variant by name ($), focused with Recent, narrow" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:14px}.row{display:flex;align-items:center;gap:14px}.lbl{width:92px;flex-shrink:0;font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.note{font-size:12px;color:var(--text-dim);white-space:nowrap}.cap{display:flex;padding:0 4px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { GraphSearch, SearchPopover, SearchGroup, SearchRow, ChangeId, Island } = window.ZanshinDesignSystem_a33847;
+  const Cap = ({ children }) => <div className="cap"><Island shape="bar">{children}</Island></div>;
+  function Demo() {
+    const [hi, setHi] = React.useState(1);
+    const recents = [
+      { key: "a", icon: "user", label: "Lena König", sub: 'author(exact:"Lena König")', meta: "9 changes", cmd: "jj log -r 'author(exact:\"Lena König\")'" },
+      { key: "c", icon: "change", before: <ChangeId id="plkmnvxo" length={8}/>, label: "feat(onboarding): swipe gestures + haptic feedback", meta: "Ralph · 3h", go: true },
+      { key: "f", icon: "folder", label: "lib/features/settings/", sub: 'files("lib/features/settings/")', meta: "6 changes", cmd: "jj log -r 'files(\"lib/features/settings/\")'" },
+      { key: "d", icon: "description", label: "“cache”", sub: 'description(substring-i:"cache")', meta: "5 changes", cmd: "jj log -r 'description(substring-i:\"cache\")'" },
+    ];
+    const cur = recents[hi];
+    return (
+      <div className="col">
+        <div className="row"><span className="lbl">Default</span><Cap><GraphSearch hotkey={false}/></Cap><span className="note">empty · ⌘F · no ✕</span></div>
+        <div className="row"><span className="lbl">Typed search</span><Cap><GraphSearch hotkey={false} view="search" scope="author" value="Lena König"/></Cap></div>
+        <div className="row"><span className="lbl">Variant</span><Cap><GraphSearch hotkey={false} view="variant" variantName="Onboarding feature"/></Cap><span className="note">$ = draws the graph</span></div>
+        <div className="row"><span className="lbl">Built-in</span><Cap><GraphSearch hotkey={false} view="variant" variantName="all()" variantMono/></Cap></div>
+        <div className="row"><span className="lbl">Narrow</span><Cap><GraphSearch hotkey={false} size="narrow" view="search" scope="file" value="lib/features/"/></Cap><span className="note">≤ 980px · icon-only pill</span></div>
+        <div className="row" style={{ alignItems: "flex-start" }}><span className="lbl" style={{ paddingTop: 16 }}>Focused</span>
+          <Cap>
+            <GraphSearch hotkey={false} focused expanded>
+              <SearchPopover footer={cur.go ? { text: "Selects the change — the graph stays as it is", verb: "Select" } : { text: <code>{cur.cmd}</code>, verb: "Filter" }}>
+                <SearchGroup label="Recent" action="Clear"/>
+                {recents.map((r, i) => <SearchRow key={r.key} icon={r.icon} before={r.before} label={r.label} sub={r.sub} mono={r.key === "f"} meta={r.meta} highlighted={i === hi} onMouseMove={() => setHi(i)}/>)}
+              </SearchPopover>
+            </GraphSearch>
+          </Cap>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

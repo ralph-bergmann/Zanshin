@@ -1,0 +1,14 @@
+/* base — element defaults every Zanshin surface assumes (the client runs a global border-box reset; so does every zs- element) */
+[class*="zs-"],[class*="zs-"]::before,[class*="zs-"]::after{box-sizing:border-box}
+body{font-family:var(--font-sans);font-size:var(--fs-base);color:var(--text);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--text)}
+code,kbd,samp{font-family:var(--font-mono)}
+.zs-canvas{background:var(--canvas)}
+.zs-dots{background-image:radial-gradient(circle,var(--grid-dot) 1px,transparent 1.3px);background-size:var(--grid-step) var(--grid-step);background-position:4px 4px}
+.zs-glass{background:var(--fl-sheen),var(--fl-bg);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+[data-material="solid"] .zs-glass{background:var(--fl-sheen),var(--fl-bg-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+@keyframes zs-pop{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+@keyframes zs-menu-in{from{opacity:0;transform:scale(.97)}}
+@keyframes zs-panel-in{from{opacity:0;transform:translateX(12px)}}
+@keyframes zs-callout-in{from{opacity:0;transform:translateX(-4px)}}
+@media (prefers-reduced-motion:reduce){[class*="zs-"]{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
